@@ -1,0 +1,146 @@
+# -----------------------------------------------------------------------------
+# Secrets and local environment
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+.envrc
+.direnv/
+secrets/
+private/
+credentials/
+*.secret
+*.secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+*service-account*.json
+*service_account*.json
+*serviceAccount*.json
+client_secret*.json
+credentials.json
+application_default_credentials.json
+
+# Terraform and infrastructure state can contain credentials.
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# -----------------------------------------------------------------------------
+# Firebase and Google platform-local files
+# -----------------------------------------------------------------------------
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+**/google-services.json
+**/GoogleService-Info.plist
+lib/firebase_options.dart
+
+# -----------------------------------------------------------------------------
+# Flutter and Dart
+# -----------------------------------------------------------------------------
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter_tool_state
+build/
+coverage/
+doc/api/
+**/generated_plugin_registrant.dart
+
+# Android
+**/.gradle/
+**/local.properties
+**/key.properties
+**/captures/
+**/.cxx/
+**/.externalNativeBuild/
+
+# iOS and macOS
+**/Pods/
+**/.symlinks/
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+**/DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# -----------------------------------------------------------------------------
+# Python backend and tooling
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.eggs/
+dist/
+wheelhouse/
+
+# -----------------------------------------------------------------------------
+# Model weights, caches, and generated data
+# -----------------------------------------------------------------------------
+.cache/
+.huggingface/
+.temporal/
+models/
+model-cache/
+checkpoints/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Museum images, transcripts, exports, and evaluation data are private by
+# default. Add only deliberately cleared synthetic/public fixtures elsewhere.
+data/
+datasets/
+uploads/
+specimens/
+exports/
+artifacts/
+outputs/
+tmp/
+temp/
+
+# -----------------------------------------------------------------------------
+# Logs, editors, and operating systems
+# -----------------------------------------------------------------------------
+*.log
+logs/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+Thumbs.db
