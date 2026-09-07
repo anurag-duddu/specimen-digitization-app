@@ -3,7 +3,7 @@
 | Document field | Value |
 |---|---|
 | Status | Draft for product review |
-| Version | 0.3 |
+| Version | 0.4 |
 | Date | 2026-09-07 |
 | Working product name | Specimen Digitization Platform |
 | Product owner | TBD |
@@ -338,6 +338,7 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | HAR-016 | P1 | Permit multiple specialized agents where a profile benefits from them, but require explicit responsibilities, typed handoffs, bounded execution, and a final verifier that can abstain. |
 | HAR-017 | P1 | Cache source responses where policy permits while retaining retrieval date and supporting forced refresh. |
 | HAR-018 | P1 | Provide a sandbox and test fixtures so a profile and its adapters can be evaluated without touching production records or paid services. |
+| HAR-019 | P0 | Never invent, guess, or coerce a value to satisfy completeness. When source evidence is insufficient, the harness must abstain, preserve the unresolved state and attempts, and fail the affected clearance gate. |
 
 ### 11.7 Collection profile management
 
@@ -384,7 +385,7 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | ID | Priority | Requirement |
 |---|---:|---|
 | QUE-001 | P0 | After all required attempts complete, assign exactly one disposition: Cleared, Needs human review, or Deferred. |
-| QUE-002 | P0 | Cleared requires complete required-label coverage, completed independent passes, resolved critical disagreements, schema-valid output, satisfied profile-specific required fields, complete provenance, zero unresolved hard validation errors, and any required human approval. |
+| QUE-002 | P0 | Cleared requires complete required-label coverage, completed independent passes, resolved critical disagreements, schema-valid output, a supported non-empty value for every profile-specific mandatory field, complete provenance, zero unresolved hard validation errors, and any required human approval. |
 | QUE-003 | P0 | Needs human review covers cases a person can reasonably resolve now: classification ambiguity, segmentation correction, transcription disagreement, missing/ambiguous field, conflicting evidence, policy exception, or reviewer-required rule. |
 | QUE-004 | P0 | Deferred is limited to documented model-capability limitations after all configured viable attempts, such as unsupported script, exceptionally complex handwriting, severe occlusion/damage, or an unavailable required capability with no current approved substitute. |
 | QUE-005 | P0 | Rate limits, timeouts, provider outages, invalid credentials, code errors, and exhausted temporary capacity remain operational blocks and cannot produce Deferred. |
@@ -484,12 +485,19 @@ For every such case, the record must retain the literal text, candidates conside
 
 - The first pilot subcollection is **Insects**.
 - The following fields are mandatory members of the entomological record schema.
+- **Cleared requires a supported, non-empty value for every mandatory field.** A placeholder or processing state such as `unknown`, `unreadable`, `not present`, or `not applicable` does not satisfy this requirement.
+- No agent, model, validator, or reviewer workflow may invent or pressure-generate a value merely to make a record complete. Insufficient evidence produces an explicit abstention and blocks Cleared.
 - Taxonomy work begins with Global Names Verifier, Catalogue of Life, GBIF, and BugGuide for North American material.
 - Geography work begins with Mapcarta and Google Maps.
 - Parties/person research uses the taxonomy sources or an approved Google search workflow to find species authors.
 - Fields other than the explicit taxonomy, geography, and parties-resolution work are transcribed as seen on the labels.
+- **Corrected after technical verification:** the official Axiell expansion of `IRN` is **Internal Record Number**, not “Internal Reference Number.”
 
-“Mandatory” currently means that every record version must contain a typed state for the field: a supported value, `unknown`, `unreadable`, `not present on label`, or `not applicable`. Whether every field must contain a non-empty value before a specimen can enter Cleared remains an open collection-policy decision.
+Every record version must still retain a typed state for each mandatory field so omissions are visible and queryable. Absence states are legitimate processing outcomes, but they do not become data values and cannot pass the Insects clearance gate. A missing or ambiguous value after all required attempts complete routes the specimen to **Needs human review**; it may enter **Deferred** only when the separate, narrowly defined model-capability policy in `QUE-004` applies. If a required lookup could not execute because of credentials, authorization, service availability, or another operational condition, the job remains operationally blocked under `QUE-005` rather than entering a final queue.
+
+#### EMu Parties technical finding — checked 2026-09-07
+
+Field Museum's currently published active Darwin Core mapping, together with its 2024 sample and 2019 historical schema evidence, indicates that `Identified by IRN` refers to an `eparties` record. The public collection search exposes catalogue IRNs and flattened person names, but no anonymous Parties resolver was confirmed. The exact production mapping and approved authority-access mechanism still require Field Museum confirmation; see the [dated EMu Parties/IRN research note](./EMU_PARTIES_IRN_RESEARCH.md).
 
 #### Mandatory fields
 
@@ -513,7 +521,7 @@ For every such case, the record must retain the literal text, candidates conside
 | Collectors | `collectors` | Verbatim names plus separate person/party candidates when resolution is required. |
 | Verbatim D/T/S | `verbatim_dts` | Transcribed exactly; expansion and internal semantics require confirmation. |
 | Taxon | `taxon` | Verbatim scientific name plus separately resolved name, authorship, status, rank, and source identifier. |
-| Identified by IRN | `identified_by_irn` | Exact stored value; the target authority and lookup semantics require confirmation. |
+| Identified by IRN | `identified_by_irn` | Internal Record Number of the resolved `eparties` record. Qualify it with source system, tenant/environment, and module; the current production column, expected serialization, and approved lookup path require confirmation. |
 | Date Identified | `date_identified` | Literal text plus a separately parsed date or partial date. |
 
 The proposed internal keys are implementation candidates, not approved Field Museum mappings. They must be reconciled with the target collection-management schema before development.
@@ -546,10 +554,9 @@ Source adapters must preserve the exact query, result candidates, source release
 #### Insects-specific items not yet confirmed
 
 - The exact parent path and collection code for Insects in the application's configurable taxonomy.
-- Whether “mandatory” means non-null for Cleared or mandatory schema presence with explicit absence states.
 - The expansion, format, and business meaning of `Verbatim D/T/S`.
-- Whether `Identified by IRN` points to a Field Museum/EMu Parties IRN, and how that authority is queried.
-- Whether “Parties” resolution applies only to species authors or also to Collectors and identifiers.
+- The current production column, serialization, and approved lookup path for the `eparties` record referenced by `Identified by IRN`; no anonymous public Parties resolver was confirmed in the 2026-09-07 check.
+- Whether the collection manager confirms Parties resolution for every person-name field. Current Field Museum schema evidence supports collector, identifier, and taxonomy-author references, but the production requirement remains unapproved.
 - Whether missing metric or imperial elevation values should be converted, left absent, or both; any conversion must remain visibly derived.
 - Required date precision and formats for partial, uncertain, or range dates.
 - Source precedence and conflict rules among Global Names Verifier, Catalogue of Life, GBIF, and BugGuide.
@@ -833,14 +840,16 @@ The first vertical slice is acceptable only when all of the following are demons
 8. The harness performs typed lookup and validation steps and demonstrates success, no-match, ambiguity, rate-limit, timeout, and authentication-error behavior in tests.
 9. A temporary provider failure resumes from a checkpoint and does not duplicate observations, tool effects, or records.
 10. Cleared is impossible when any configured critical gate is unresolved.
-11. Rate-limited, broken, or credential-blocked jobs do not enter Deferred.
-12. A legitimate model-capability limitation can enter Deferred only with attempts, reason, and retry eligibility recorded.
-13. A reviewer can resolve a Needs human review case and see dependent validations and disposition update.
-14. Every final field can be traced to source pixels, model/human observations, transformations, lookup evidence, and policy decisions.
-15. An authorized user can export a cleared record and manifest twice without creating a logically different result or duplicate downstream identity.
-16. Unauthorized users cannot access restricted source images, records, credentials, or exports.
-17. Accessibility, security, recovery, and quality gates defined during Phase 0 pass.
-18. A production-like end-to-end run completes without direct Firestore edits or hidden manual repair.
+11. An Insects specimen with any empty or unresolved mandatory field cannot enter Cleared and is routed with an explicit reason.
+12. Tests that demand completion despite missing evidence produce an abstention rather than an invented, placeholder, or coerced value.
+13. Rate-limited, broken, or credential-blocked jobs do not enter Deferred.
+14. A legitimate model-capability limitation can enter Deferred only with attempts, reason, and retry eligibility recorded.
+15. A reviewer can resolve a Needs human review case and see dependent validations and disposition update.
+16. Every final field can be traced to source pixels, model/human observations, transformations, lookup evidence, and policy decisions.
+17. An authorized user can export a cleared record and manifest twice without creating a logically different result or duplicate downstream identity.
+18. Unauthorized users cannot access restricted source images, records, credentials, or exports.
+19. Accessibility, security, recovery, and quality gates defined during Phase 0 pass.
+20. A production-like end-to-end run completes without direct Firestore edits or hidden manual repair.
 
 ## 20. Dependencies
 
@@ -875,9 +884,9 @@ These questions do not prevent the initial PRD draft, but the starred items must
 
 1. **What downstream collection management system and exact target schema will receive the first cleared Insects records?** ★
 2. **What does “cleared” mean institutionally?** ★ Must every pilot record receive human approval, or can a calibrated subset clear automatically after hard gates?
-3. **For the mandatory fields, does missing information block clearance, or may the record contain explicit `unknown`, `unreadable`, `not present`, or `not applicable` states?** ★
-4. **What do `Verbatim D/T/S` and `Identified by IRN` mean in the target system, including types and validation rules?** ★
-5. **Does Parties resolution cover species authors only, or also Collectors and the person represented by `Identified by IRN`?** ★
+3. **What does `Verbatim D/T/S` mean in the target system, including its format and validation rules?** ★
+4. **Can Field Museum confirm the current production column, serialization, authority-access method, and permitted fields for the `eparties` record referenced by `Identified by IRN`?** ★
+5. **Can the collection manager confirm that Parties resolution is required for every person-name field, including species authors, Collectors, and identifiers?** ★
 6. **What are the acceptable error targets, especially for critical fields, and who approves the gold set?** ★
 7. **Which Flutter targets are launch requirements: iOS, Android, web, macOS, Windows, or all of them?** ★ Folder selection, camera behavior, offline support, and deployment differ by target.
 8. Is offline capture with later synchronization required at launch, or is resumable online upload sufficient?
