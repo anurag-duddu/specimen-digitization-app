@@ -496,3 +496,36 @@ does not establish faithful display geometry. Independent readings' text was
 visually present but absent from the captured accessibility tree; this remains
 an accessibility follow-up pending deeper semantics verification, not a confirmed
 screen-reader defect. Browser viewport override was reset after QA.
+
+
+## B04 backend reproduction — 95215d9
+
+Exact candidate `95215d9ad6270052a644c12e4b822da399f0c487`, identical tracked tree
+before execution. Original SQL9519/PG5569 state retained from the failing builds;
+no reseed or manual repair of either near-cap record. Preserved all28 raw snapshot
+rows per record before starting the new API. Evidence/harness in
+`qa-evidence/95215d9/`; full prior snapshots and restart checkpoints retained in
+the private QA temporary directory rather than duplicating large synthetic data.
+
+| Independent actual TCP/SQL check | Result |
+|---|---|
+| Original blocked record98b3eac6… | First approval recovers;211 new decisions succeed: recovery,100 ordinary approvals,110 missing/restored approvals. Maximum current snapshot130668 bytes; final52134. |
+| Original ordinary-cap record7aced055… | First approval recovers;101 new ordinary decisions succeed. Maximum/final current snapshot88283 bytes. |
+| Full historical reconstruction | First record239 revisions/19 pages/235 unique audit events; second129 revisions/10 pages/125 unique events. Every global sequence is contiguous; duplicate appearances agree exactly. Every historical model digest matches its page entry. All56 pre-repair raw snapshot rows remain exactly equal, including stored payload/hash. |
+| Compaction/reference/retry | New current snapshots stay below128KiB through rollover; previous run references resolve and their run digests match. First successful repair-decision receipt replays identically after all later decisions. Stale new writes and wrong run IDs/digests return409; excessive page limit returns422. |
+| Authorization and stored tampering | Actual HTTP with SQL memberships and injected QA token verifier: viewer reads history; anonymous401, wrong organization404, revocation404. Sensitive permission removal denies409 (conflict envelope limitation); restoration200. Altered checksum of one QA-owned SQL snapshot causes409 for exact-version and page reads; restoring original checksum restores200 and exact original row. No Firebase crypto claim. |
+| Process restart | Terminated actual API process4855 and started a fresh API5575. New HTTP client obtains exact current workspace, bounded page and original revision28 workspace for both records; six equality checks pass. SQL connector/database were not restarted in this check. |
+| Bound unchanged | Independent SQLite and SQL262143/262144-byte acceptance,262145 rejection, rejected-save atomicity and no success receipt on rejected create all pass. No limit increase. |
+| Affected committed regressions |18 passed,1 opt-in SQL test skipped in5.18s; own tests above independently exercise actual TCP/SQL rather than treating the skip as evidence. |
+
+Backend capacity/recovery behavior passes the independent reproduction. Full B04
+closure awaits the client history read-only flow on the assembled candidate.
+A provenance wire clarification is pending: page item.sha256 on a legacy revision
+differs from its original stored snapshot.sha256 because the API hashes the parsed
+model with new default fields. Original stored bytes/hash are independently
+verified and unchanged; the page hash must be labelled as reconstructed-model
+hash or return the original retained hash so reviewers can distinguish them.
+This is not evidence of lost history; it is a precise hash-meaning limitation.
+F04 responsive source geometry remains open until browser verification. Overall
+P0 remains not accepted; all live-provider/institutional/production limits above
+still apply.

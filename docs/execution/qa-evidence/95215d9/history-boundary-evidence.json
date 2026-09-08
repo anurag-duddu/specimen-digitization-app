@@ -1,0 +1,74 @@
+[
+  {
+    "transport": "sqlite",
+    "bytes": 262143,
+    "expected": "accepted",
+    "actual": "accepted",
+    "passed": true
+  },
+  {
+    "transport": "sqlite",
+    "case": "overlimit_save_atomic",
+    "passed": true
+  },
+  {
+    "transport": "sqlite",
+    "bytes": 262144,
+    "expected": "accepted",
+    "actual": "accepted",
+    "passed": true
+  },
+  {
+    "transport": "sqlite",
+    "case": "overlimit_save_atomic",
+    "passed": true
+  },
+  {
+    "transport": "sqlite",
+    "bytes": 262145,
+    "expected": "rejected",
+    "actual": "rejected",
+    "passed": true
+  },
+  {
+    "transport": "sqlite",
+    "case": "rejected_create_no_record_or_receipt",
+    "passed": true
+  },
+  {
+    "transport": "sql_connect",
+    "bytes": 262143,
+    "expected": "accepted",
+    "actual": "accepted",
+    "passed": true
+  },
+  {
+    "transport": "sql_connect",
+    "case": "overlimit_save_atomic",
+    "passed": true
+  },
+  {
+    "transport": "sql_connect",
+    "bytes": 262144,
+    "expected": "accepted",
+    "actual": "accepted",
+    "passed": true
+  },
+  {
+    "transport": "sql_connect",
+    "case": "overlimit_save_atomic",
+    "passed": true
+  },
+  {
+    "transport": "sql_connect",
+    "bytes": 262145,
+    "expected": "rejected",
+    "actual": "rejected",
+    "passed": true
+  },
+  {
+    "transport": "sql_connect",
+    "case": "rejected_create_no_record_or_receipt",
+    "passed": true
+  }
+]
