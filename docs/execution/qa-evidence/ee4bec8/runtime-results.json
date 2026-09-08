@@ -1,0 +1,15 @@
+{
+  "policies": {
+    "revision": 40,
+    "exact_fresh_execution_readback": true,
+    "all_scoped_composites_null": true,
+    "four_policy_tamper_classes_blocked": true
+  },
+  "telemetry": {
+    "revision": 21,
+    "exact_fresh_execution_readback": true,
+    "all_scoped_composites_null": true,
+    "four_policy_tamper_classes_blocked": true
+  },
+  "classifier_unconfigured_unapproved_no_child": true
+}
