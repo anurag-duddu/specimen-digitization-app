@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import stat
+import sys
 
 import pytest
 
@@ -104,3 +105,52 @@ def test_private_artifact_rejects_public_directory(inputs, tmp_path):
 def test_bootstrap_not_published_as_runtime_operation():
     connector = MODULE_PATH.parents[2] / "dataconnect/connector"
     assert all("PrepareFirstAdministrator" not in path.read_text() for path in connector.glob("*.gql"))
+
+
+@pytest.mark.parametrize("input_name", ["request", "auth-record"])
+@pytest.mark.parametrize("unsafe", ["public", "symlink", "git"])
+def test_bootstrap_cli_rejects_unsafe_private_inputs(inputs, tmp_path, monkeypatch, capsys, input_name, unsafe):
+    tmp_path.chmod(0o700)
+    request = dict(inputs)
+    auth = request.pop("auth_record")
+    paths = {"request": tmp_path / "request.json", "auth-record": tmp_path / "auth.json"}
+    for key, payload in [("request", request), ("auth-record", auth)]:
+        paths[key].write_text(json.dumps(payload))
+        paths[key].chmod(0o600)
+    target = paths[input_name]
+    if unsafe == "public":
+        target.chmod(0o644)
+    elif unsafe == "symlink":
+        alias = tmp_path / "alias.json"
+        alias.symlink_to(target)
+        paths[input_name] = alias
+    else:
+        checkout = tmp_path / "checkout"
+        checkout.mkdir()
+        (checkout / ".git").write_text("gitdir: synthetic")
+        target.rename(checkout / target.name)
+        paths[input_name] = checkout / target.name
+    output = tmp_path / "prepared.json"
+    monkeypatch.setattr(sys, "argv", ["bootstrap_admin.py", "--request", str(paths["request"]),
+                                    "--auth-record", str(paths["auth-record"]), "--output", str(output)])
+    with pytest.raises(SystemExit) as error:
+        bootstrap.main()
+    assert error.value.code == 2
+    assert not output.exists()
+    captured = capsys.readouterr()
+    assert "synthetic-admin" not in captured.out + captured.err
+
+
+def test_bootstrap_cli_accepts_private_regular_inputs(inputs, tmp_path, monkeypatch):
+    tmp_path.chmod(0o700)
+    request = dict(inputs)
+    auth = request.pop("auth_record")
+    for name, value in [("request", request), ("auth", auth)]:
+        path = tmp_path / (name + ".json")
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+    output = tmp_path / "prepared.json"
+    monkeypatch.setattr(sys, "argv", ["bootstrap_admin.py", "--request", str(tmp_path / "request.json"),
+                                    "--auth-record", str(tmp_path / "auth.json"), "--output", str(output)])
+    assert bootstrap.main() == 0
+    assert json.loads(output.read_bytes())["state"] == "prepared_not_applied"

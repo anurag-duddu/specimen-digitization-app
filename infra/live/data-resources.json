@@ -99,8 +99,15 @@
   },
   "cost_inputs": {
     "currency": "USD",
-    "approved_total_limit": null,
-    "approved_restore_clone_hours": null,
+    "approved_total_limit": 5,
+    "approved_daily_limit": 5,
+    "shared_across_sessions_and_retries": true,
+    "daily_reset_allowed": false,
+    "ordinary_reservation_target": 4,
+    "contingency": 1,
+    "proposed_backup_restore_allocation": 1,
+    "proposed_restore_clone_hours_max": 2,
+    "approved_restore_clone_hours": 2,
     "observed_database_tier": null,
     "observed_storage_gib": null,
     "observed_backup_gib": null,
@@ -111,6 +118,6 @@
     "new_persistent_sql_instances_proposed": 0,
     "isolated_restore_clone_count_proposed": 1,
     "runtime_and_inference_budget_owner": "delivery_and_processing",
-    "estimate_status": "blocked_on_current_metadata_and_approved_budget"
+    "estimate_status": "budget_supplied_quote_blocked_on_current_metadata"
   }
 }
