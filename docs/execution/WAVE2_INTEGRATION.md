@@ -8,8 +8,8 @@ No second-wave push, merge, cloud change, paid inference or complete-P0 claim.
 
 Application assembly source026d0b9 is integrated as e963811. The Python source,
 Python tests, dataconnect, scripts/data, pyproject.toml and uv.lock trees match
-026d0b9 exactly, verified with an empty Git diff after assembly. Flutter remains
-the repaired first-wave client pending its reviewed second-wave handoff.
+026d0b9 exactly, verified with an empty Git diff after assembly. Reviewed Flutter
+16826ac is integrated as a398583, the combined application checkpoint.
 
 | Original owner commit | Integrated commit | Scope |
 |---|---|---|
@@ -25,6 +25,7 @@ the repaired first-wave client pending its reviewed second-wave handoff.
 | 9df1955 | c3ffc0d | Original domain timestamp projection |
 | cb968490 | 53b52ea | Actionable unavailable memory-enforcement hint |
 | 026d0b9 | e963811 | Backend application assembly and frozen fixture |
+| 16826ac | a398583 | Flutter workflow, evidence, geometry and metadata paging |
 
 Existing first-wave data and B01–B04/F04/history-checksum repairs were not picked
 again. Reliability conflicted with the already integrated c99d1b2 retained-hash
@@ -54,6 +55,19 @@ checks this resolution. Architecture docs through27d7778 and coordinator status
   test_http_process_restart.py: all26 passed in27.13s. This includes actual API
   TCP plus local TCP Parties plus SQL, worker discovery, review/recovery/history,
   receipt/CAS and process restart. Log: /tmp/specimen-wave2-sql-http.log.
+- Combined a398583 canonical scripts/ci/verify.sh passed: 206 Python tests,
+  13 optional SQL/codec skips; 47 Flutter tests, three opt-in live skips;
+  analysis, web release and repository scanners passed. Log:
+  /tmp/specimen-wave2-combined-canonical.log.
+- The opt-in Flutter live_next_workflow_test.dart then passed against a fresh
+  actual local HTTP API, SQLite and TCP mock Parties on loopback port8123.
+  It exercised preflight, upload/completion, retained phase/authority/raw reading
+  artifacts, alignment, explicit authority selection, stale CAS rejection,
+  separate approval, pinned prior evidence and scoped metadata search. Specimen
+  02fe30c0-5777-5b24-b4b2-39a92722a67a moved from revision24 to26, cleared.
+  Log: /tmp/specimen-wave2-combined-live.log; retained synthetic state:
+  /tmp/specimen-wave2-combined-a398583-local. This is repository HTTP evidence;
+  independent additive GUI verification remains pending.
 
 Frozen next response fixture SHA256:
 6d1bf6bf4eab1b47defdafcc8c99c10dd51dc15dc28f46a18c65782b3dfbb07f.
@@ -64,7 +78,7 @@ remain separate from this default-environment run and production runtime approva
 
 ## Still open
 
-New Flutter workflow integration and independent combined QA remain required.
+Independent combined QA remains required after Flutter workflow integration.
 The source checkpoint explicitly leaves current active-graph size, bounded raw
 blob download, actual optional-codec intake, shared circuits, total SAM/auth
 deadlines, metadata propagation and SQL checksum race correctness incomplete.
