@@ -1,0 +1,26 @@
+{
+  "pass": true,
+  "transport": "actual HTTP; emulator-mode injected identities/membership policy; SQLite",
+  "current_and_pinned_artifacts": [
+    {
+      "route": "/observations/9d16e0ed-b890-40de-ab29-3623735da015/raw",
+      "revoked_sensitive_status": 403
+    },
+    {
+      "route": "/observations/9d16e0ed-b890-40de-ab29-3623735da015/metadata",
+      "revoked_sensitive_status": 403
+    },
+    {
+      "route": "/disagreements/b7dc63fa-c608-438d-930a-fd066a26f700",
+      "revoked_sensitive_status": 403
+    },
+    {
+      "route": "/observations/9d16e0ed-b890-40de-ab29-3623735da015/raw?revision=20",
+      "revoked_sensitive_status": 403
+    }
+  ],
+  "actor_cursor_reuse_rejected": true,
+  "permission_cursor_reuse_rejected": true,
+  "membership_revoke_denied": true,
+  "restored_access": true
+}

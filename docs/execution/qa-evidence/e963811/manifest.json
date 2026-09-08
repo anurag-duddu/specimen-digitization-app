@@ -1,0 +1,40 @@
+{
+  "files": [
+    {
+      "path": "auth-results.json",
+      "size_bytes": 806
+    },
+    {
+      "path": "auth.py",
+      "size_bytes": 3078
+    },
+    {
+      "path": "independent-results.json",
+      "size_bytes": 22901
+    },
+    {
+      "path": "independent.py",
+      "size_bytes": 11168
+    },
+    {
+      "path": "reading-results.json",
+      "size_bytes": 10475
+    },
+    {
+      "path": "readings.py",
+      "size_bytes": 4388
+    },
+    {
+      "path": "worker-results.json",
+      "size_bytes": 692
+    },
+    {
+      "path": "worker.py",
+      "size_bytes": 3065
+    }
+  ],
+  "retained_full_workspace_and_phase_artifacts": "Resolve /tmp/specimen-qa-wave2-path",
+  "canonical_log": "/tmp/specimen-qa-wave2-e963811-canonical.log",
+  "sql_log": "/tmp/specimen-qa-wave2-e963811-sql.log",
+  "note": "Committed result captures abbreviate long hashes and cursor strings; full exact captures remain at retained path. No scanner rules were changed."
+}

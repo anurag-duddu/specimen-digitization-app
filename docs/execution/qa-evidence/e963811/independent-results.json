@@ -1,0 +1,800 @@
+{
+  "candidate": "e963811aad17[digest abbreviated]",
+  "transport": "actual loopback HTTP API and Parties; SQL Connect/PostgreSQL for authority case",
+  "checks": [
+    {
+      "name": "preflight_valid_png",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "contract_version": "image-preflight-v1",
+          "origin": "server_preflight",
+          "status": "review",
+          "input_sha256": "7f194fdff2c2[digest abbreviated]",
+          "size_bytes": 257,
+          "declared_media_type": "image/png",
+          "actual_format": "PNG",
+          "decode": {
+            "status": "decoded",
+            "input_sha256": "7f194fdff2c2[digest abbreviated]",
+            "size_bytes": 257,
+            "family": "RASTER",
+            "reason": "decoded_local",
+            "provenance": {
+              "original_sha256": "7f194fdff2c2[digest abbreviated]",
+              "derivative_sha256": "7f194fdff2c2[digest abbreviated]",
+              "family": "RASTER",
+              "actual_format": "PNG",
+              "codec": "Pillow",
+              "codec_version": "12.3.0",
+              "native_library_version": null,
+              "algorithm_version": "bounded-codec-png-v1",
+              "coordinate_space": "original_pixel_edges",
+              "transform": {
+                "orientation": 1,
+                "original_width": 120,
+                "original_height": 80,
+                "view_width": 120,
+                "view_height": 80,
+                "matrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0
+                ],
+                "coordinate_space": "pixel_edges",
+                "algorithm_version": "exif-edge-affine-v1"
+              },
+              "sensor_crop": null,
+              "conversion": [
+                "exif_orientation",
+                "rgb8",
+                "metadata_strip"
+              ],
+              "memory_limit_enforced": false,
+              "cpu_limit_enforced": true,
+              "metadata_policy": "strip_all"
+            }
+          },
+          "diagnostics": {
+            "status": "valid",
+            "input_sha256": "7f194fdff2c2[digest abbreviated]",
+            "size_bytes": 257,
+            "format": "PNG",
+            "width": 120,
+            "height": 80,
+            "issues": [
+              "uniform_luminance"
+            ],
+            "limits": {
+              "max_bytes": 25000000,
+              "max_axis": 20000,
+              "max_pixels": 40000000,
+              "allowed_formats": [
+                "PNG"
+              ],
+              "sample_axis": 256
+            },
+            "transform": {
+              "orientation": 1,
+              "original_width": 120,
+              "original_height": 80,
+              "view_width": 120,
+              "view_height": 80,
+              "matrix": [
+                1,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "coordinate_space": "pixel_edges",
+              "algorithm_version": "exif-edge-affine-v1"
+            },
+            "metrics": {
+              "algorithm_version": "thumbnail-luminance-gradient-v1",
+              "calibrated": false,
+              "mean_luminance": 255.0,
+              "contrast_stddev": 0.0,
+              "dark_fraction": 0.0,
+              "bright_fraction": 1.0,
+              "mean_neighbor_gradient": 0.0,
+              "sample_width": 120,
+              "sample_height": 80
+            },
+            "limitations": [
+              "uncalibrated_quality_metrics",
+              "focus_glare_framing_occlusion_not_determined",
+              "no_heic_or_raw_decoder"
+            ]
+          },
+          "capabilities": [
+            {
+              "family": "JPEG/PNG/TIFF",
+              "status": "available",
+              "package": "Pillow",
+              "installed_version": "12.3.0",
+              "required_version": null,
+              "reason": "subject_to_profile_formats"
+            },
+            {
+              "family": "HEIC",
+              "status": "disabled",
+              "package": "pillow-heif",
+              "installed_version": null,
+              "required_version": "1.7.0",
+              "reason": "codec_disabled"
+            },
+            {
+              "family": "DNG",
+              "status": "disabled",
+              "package": "rawpy",
+              "installed_version": null,
+              "required_version": "0.27.1",
+              "reason": "codec_disabled"
+            }
+          ],
+          "issues": [
+            "uniform_luminance",
+            "memory_limit_not_enforced_local_test_only"
+          ],
+          "action_hints": [
+            "inspect_original_focus_glare_and_framing",
+            "confirm_before_creating_specimen"
+          ],
+          "unmeasured": [
+            "focus",
+            "glare",
+            "framing",
+            "label_coverage",
+            "museum_quality_acceptance"
+          ],
+          "source_transmitted": true,
+          "specimen_created": false,
+          "original_preserved": true,
+          "external_provider_used": false
+        }
+      }
+    },
+    {
+      "name": "preflight_mismatched_mime",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "contract_version": "image-preflight-v1",
+          "origin": "server_preflight",
+          "status": "review",
+          "input_sha256": "7f194fdff2c2[digest abbreviated]",
+          "size_bytes": 257,
+          "declared_media_type": "image/jpeg",
+          "actual_format": "PNG",
+          "decode": {
+            "status": "decoded",
+            "input_sha256": "7f194fdff2c2[digest abbreviated]",
+            "size_bytes": 257,
+            "family": "RASTER",
+            "reason": "decoded_local",
+            "provenance": {
+              "original_sha256": "7f194fdff2c2[digest abbreviated]",
+              "derivative_sha256": "7f194fdff2c2[digest abbreviated]",
+              "family": "RASTER",
+              "actual_format": "PNG",
+              "codec": "Pillow",
+              "codec_version": "12.3.0",
+              "native_library_version": null,
+              "algorithm_version": "bounded-codec-png-v1",
+              "coordinate_space": "original_pixel_edges",
+              "transform": {
+                "orientation": 1,
+                "original_width": 120,
+                "original_height": 80,
+                "view_width": 120,
+                "view_height": 80,
+                "matrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0
+                ],
+                "coordinate_space": "pixel_edges",
+                "algorithm_version": "exif-edge-affine-v1"
+              },
+              "sensor_crop": null,
+              "conversion": [
+                "exif_orientation",
+                "rgb8",
+                "metadata_strip"
+              ],
+              "memory_limit_enforced": false,
+              "cpu_limit_enforced": true,
+              "metadata_policy": "strip_all"
+            }
+          },
+          "diagnostics": {
+            "status": "valid",
+            "input_sha256": "7f194fdff2c2[digest abbreviated]",
+            "size_bytes": 257,
+            "format": "PNG",
+            "width": 120,
+            "height": 80,
+            "issues": [
+              "uniform_luminance"
+            ],
+            "limits": {
+              "max_bytes": 25000000,
+              "max_axis": 20000,
+              "max_pixels": 40000000,
+              "allowed_formats": [
+                "PNG"
+              ],
+              "sample_axis": 256
+            },
+            "transform": {
+              "orientation": 1,
+              "original_width": 120,
+              "original_height": 80,
+              "view_width": 120,
+              "view_height": 80,
+              "matrix": [
+                1,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "coordinate_space": "pixel_edges",
+              "algorithm_version": "exif-edge-affine-v1"
+            },
+            "metrics": {
+              "algorithm_version": "thumbnail-luminance-gradient-v1",
+              "calibrated": false,
+              "mean_luminance": 255.0,
+              "contrast_stddev": 0.0,
+              "dark_fraction": 0.0,
+              "bright_fraction": 1.0,
+              "mean_neighbor_gradient": 0.0,
+              "sample_width": 120,
+              "sample_height": 80
+            },
+            "limitations": [
+              "uncalibrated_quality_metrics",
+              "focus_glare_framing_occlusion_not_determined",
+              "no_heic_or_raw_decoder"
+            ]
+          },
+          "capabilities": [
+            {
+              "family": "JPEG/PNG/TIFF",
+              "status": "available",
+              "package": "Pillow",
+              "installed_version": "12.3.0",
+              "required_version": null,
+              "reason": "subject_to_profile_formats"
+            },
+            {
+              "family": "HEIC",
+              "status": "disabled",
+              "package": "pillow-heif",
+              "installed_version": null,
+              "required_version": "1.7.0",
+              "reason": "codec_disabled"
+            },
+            {
+              "family": "DNG",
+              "status": "disabled",
+              "package": "rawpy",
+              "installed_version": null,
+              "required_version": "0.27.1",
+              "reason": "codec_disabled"
+            }
+          ],
+          "issues": [
+            "uniform_luminance",
+            "memory_limit_not_enforced_local_test_only",
+            "declared_media_type_mismatch"
+          ],
+          "action_hints": [
+            "inspect_original_focus_glare_and_framing",
+            "confirm_before_creating_specimen"
+          ],
+          "unmeasured": [
+            "focus",
+            "glare",
+            "framing",
+            "label_coverage",
+            "museum_quality_acceptance"
+          ],
+          "source_transmitted": true,
+          "specimen_created": false,
+          "original_preserved": true,
+          "external_provider_used": false
+        }
+      }
+    },
+    {
+      "name": "preflight_corrupt_png",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "contract_version": "image-preflight-v1",
+          "origin": "server_preflight",
+          "status": "rejected",
+          "input_sha256": "b3102227ec4d[digest abbreviated]",
+          "size_bytes": 7,
+          "declared_media_type": "image/png",
+          "actual_format": null,
+          "decode": {
+            "status": "rejected",
+            "input_sha256": "b3102227ec4d[digest abbreviated]",
+            "size_bytes": 7,
+            "family": "RASTER",
+            "reason": "malformed_or_unsupported_codec_input",
+            "provenance": null
+          },
+          "diagnostics": null,
+          "capabilities": [
+            {
+              "family": "JPEG/PNG/TIFF",
+              "status": "available",
+              "package": "Pillow",
+              "installed_version": "12.3.0",
+              "required_version": null,
+              "reason": "subject_to_profile_formats"
+            },
+            {
+              "family": "HEIC",
+              "status": "disabled",
+              "package": "pillow-heif",
+              "installed_version": null,
+              "required_version": "1.7.0",
+              "reason": "codec_disabled"
+            },
+            {
+              "family": "DNG",
+              "status": "disabled",
+              "package": "rawpy",
+              "installed_version": null,
+              "required_version": "0.27.1",
+              "reason": "codec_disabled"
+            }
+          ],
+          "issues": [
+            "malformed_or_unsupported_codec_input"
+          ],
+          "action_hints": [
+            "choose_valid_image"
+          ],
+          "unmeasured": [
+            "focus",
+            "glare",
+            "framing",
+            "label_coverage",
+            "museum_quality_acceptance"
+          ],
+          "source_transmitted": true,
+          "specimen_created": false,
+          "original_preserved": true,
+          "external_provider_used": false
+        }
+      }
+    },
+    {
+      "name": "preflight_disabled_heic",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "contract_version": "image-preflight-v1",
+          "origin": "server_preflight",
+          "status": "blocked",
+          "input_sha256": "a30b31d6de07[digest abbreviated]",
+          "size_bytes": 9,
+          "declared_media_type": "image/heic",
+          "actual_format": null,
+          "decode": {
+            "status": "blocked",
+            "input_sha256": "a30b31d6de07[digest abbreviated]",
+            "size_bytes": 9,
+            "family": "HEIC",
+            "reason": "codec_disabled",
+            "provenance": null
+          },
+          "diagnostics": null,
+          "capabilities": [
+            {
+              "family": "JPEG/PNG/TIFF",
+              "status": "available",
+              "package": "Pillow",
+              "installed_version": "12.3.0",
+              "required_version": null,
+              "reason": "subject_to_profile_formats"
+            },
+            {
+              "family": "HEIC",
+              "status": "disabled",
+              "package": "pillow-heif",
+              "installed_version": null,
+              "required_version": "1.7.0",
+              "reason": "codec_disabled"
+            },
+            {
+              "family": "DNG",
+              "status": "disabled",
+              "package": "rawpy",
+              "installed_version": null,
+              "required_version": "0.27.1",
+              "reason": "codec_disabled"
+            }
+          ],
+          "issues": [
+            "codec_disabled"
+          ],
+          "action_hints": [
+            "configure_approved_codec_or_choose_supported_format"
+          ],
+          "unmeasured": [
+            "focus",
+            "glare",
+            "framing",
+            "label_coverage",
+            "museum_quality_acceptance"
+          ],
+          "source_transmitted": true,
+          "specimen_created": false,
+          "original_preserved": true,
+          "external_provider_used": false
+        }
+      }
+    },
+    {
+      "name": "preflight_oversize",
+      "pass": true,
+      "detail": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "invalid_input",
+            "category": "input",
+            "message": "Preflight image exceeds configured byte limit",
+            "retryable": false,
+            "request_id": "752ee4f1-1b29-4ceb-b0fd-fee780797c4d",
+            "details": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "preflight_empty",
+      "pass": true,
+      "detail": {
+        "status": 422,
+        "body": {
+          "error": {
+            "code": "invalid_input",
+            "category": "input",
+            "message": "Preflight image is empty",
+            "retryable": false,
+            "request_id": "a4e4b86e-743a-4592-9213-01a0a84abb83",
+            "details": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "preflight_missing_auth",
+      "pass": true,
+      "detail": 401
+    },
+    {
+      "name": "preflight_wrong_scope",
+      "pass": true,
+      "detail": 403
+    },
+    {
+      "name": "preflight_zero_persistence",
+      "pass": true,
+      "detail": {
+        "before": {
+          "records": 0,
+          "versions": 0,
+          "receipts": 0,
+          "documents": 0
+        },
+        "after": {
+          "records": 0,
+          "versions": 0,
+          "receipts": 0,
+          "documents": 0
+        }
+      }
+    },
+    {
+      "name": "exact_record_intent_before_tcp",
+      "pass": true,
+      "detail": [
+        true,
+        true
+      ]
+    },
+    {
+      "name": "authority_initial_review",
+      "pass": true,
+      "detail": {
+        "blocker": null,
+        "disposition": "needs_human_review"
+      }
+    },
+    {
+      "name": "phase_parse",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "phase_plan",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "phase_lookup",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "phase_resolve",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "phase_normalize",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "phase_validate",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "phase_finalize",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "quality_uncalibrated",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_ok_/phases/lookup",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "artifact_auth_/phases/lookup",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_scope_/phases/lookup",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_ok_/authority-results/parties?field_key=identified_by_irn",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "artifact_auth_/authority-results/parties?field_key=identified_by_irn",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_scope_/authority-results/parties?field_key=identified_by_irn",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_ok_/authority-results/parties/raw?field_key=identified_by_irn",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "artifact_auth_/authority-results/parties/raw?field_key=identified_by_irn",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_scope_/authority-results/parties/raw?field_key=identified_by_irn",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_ok_/observations/46ad2814-460e-4921-ae00-bf87a5a88e7a/raw",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "artifact_auth_/observations/46ad2814-460e-4921-ae00-bf87a5a88e7a/raw",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_scope_/observations/46ad2814-460e-4921-ae00-bf87a5a88e7a/raw",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_ok_/observations/46ad2814-460e-4921-ae00-bf87a5a88e7a/metadata",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "artifact_auth_/observations/46ad2814-460e-4921-ae00-bf87a5a88e7a/metadata",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_scope_/observations/46ad2814-460e-4921-ae00-bf87a5a88e7a/metadata",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_ok_/disagreements/28e3afb6-5792-430e-804b-eb7b662cd00e",
+      "pass": true,
+      "detail": 200
+    },
+    {
+      "name": "artifact_auth_/disagreements/28e3afb6-5792-430e-804b-eb7b662cd00e",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "artifact_scope_/disagreements/28e3afb6-5792-430e-804b-eb7b662cd00e",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "reject_bad_selection_emu:/fmnh/eparties/7taxon",
+      "pass": true,
+      "detail": "{\"error\":{\"code\":\"invalid_input\",\"category\":\"input\",\"message\":\"Authority field_key must match target_id\",\"retryable\":false,\"request_id\":\"3419ac36-b8b0-4f05-8b67-970ccc29b1ff\",\"details\":{}}}"
+    },
+    {
+      "name": "reject_bad_selection_emu:/other/eparties/7",
+      "pass": true,
+      "detail": "{\"error\":{\"code\":\"invalid_input\",\"category\":\"input\",\"message\":\"Select one retained authority candidate\",\"retryable\":false,\"request_id\":\"c04bec30-1f1c-4c04-b99f-b976e69949ac\",\"details\":{}}}"
+    },
+    {
+      "name": "reject_bad_selection_emu:/fmnh/eparties/999",
+      "pass": true,
+      "detail": "{\"error\":{\"code\":\"invalid_input\",\"category\":\"input\",\"message\":\"Select one retained authority candidate\",\"retryable\":false,\"request_id\":\"75c09c82-3f5e-4df3-ba10-423f212e97a1\",\"details\":{}}}"
+    },
+    {
+      "name": "rejected_decisions_no_revision_or_network",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "selection_is_not_approval",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "separate_approval",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "raw_bytes_and_headers",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "raw_corruption_fails_closed",
+      "pass": true,
+      "detail": {
+        "status": 503,
+        "body": "{\"error\":{\"code\":\"runtime_unavailable\",\"category\":\"operational\",\"message\":\"authority_artifact_integrity_failure\",\"retryable\":true,\"request_id\":\"7bbaf40b-3fea-4713-9150-1c75361ac21a\",\"details\":{}}}"
+      }
+    },
+    {
+      "name": "raw_restored_exactly",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "correction_requires_review_and_new_receipt",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_workspace_exact",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_parse",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_plan",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_lookup",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_resolve",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_normalize",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_validate",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "historical_phase_exact_finalize",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "sql_search_metadata",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "sql_cursor_terminal_empty",
+      "pass": true,
+      "detail": null
+    },
+    {
+      "name": "search_invalid_{'cursor': '[cursor omitted]', 'risk_min': 0}",
+      "pass": true,
+      "detail": 422
+    },
+    {
+      "name": "search_invalid_{'risk_min': 'NaN'}",
+      "pass": true,
+      "detail": 422
+    },
+    {
+      "name": "search_invalid_{'cursor': '1'}",
+      "pass": true,
+      "detail": 422
+    },
+    {
+      "name": "search_invalid_{'created_from': '2026-09-01'}",
+      "pass": true,
+      "detail": 422
+    },
+    {
+      "name": "search_invalid_{'unexpected': 'x'}",
+      "pass": true,
+      "detail": 422
+    },
+    {
+      "name": "search_duplicate_filter",
+      "pass": true,
+      "detail": 422
+    }
+  ]
+}
