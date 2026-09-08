@@ -5,7 +5,9 @@ Coordinator: `01a07f48-a57c-71b0-9642-c9430886049c`.
 Baseline: `a53f855e963b457c3ee2065f387609a193bb6f32`.
 Branch: `codex/live-processing`.
 Worktree: `/Users/anuragduddu/.codex/worktrees/908e/specimen-digitization-app`.
-Current implementation SHA: pending scoped commit; exact PR head recorded below.
+Implementation SHA: `e497d949657b74270d21f932ac179a72644ed189`.
+PR head includes this code plus report-only handoff updates; use the PR checks page
+for current exact-head CI, avoiding a self-referential report-commit SHA.
 GitHub main advanced externally to `1d297db520a6e31021e7bfa5e5f81b77e90cf618`
 via PR5 during this work. This branch remains based on a53f855; local evidence is
 not combined latest-main coverage. Delivery owns final integration/revalidation.
@@ -210,7 +212,13 @@ approved Job/service/IAM rollout. QA: authorized source bounds, restart/fencing,
 real independent observations, review persistence and no automatic clearance.
 No cloud launch or completed end-to-end product is claimed by this report.
 
-PR: pending. CI URLs/exact head: pending. No merge authorized.
+PR: [9](https://github.com/anurag-duddu/specimen-digitization-app/pull/9).
+[Current PR checks](https://github.com/anurag-duddu/specimen-digitization-app/pull/9/checks).
+Initial exact implementation run:
+[34261014978](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34261014978).
+All five jobs were in progress at report submission. Report-only updates may
+supersede that initial run; the live PR checks page is authoritative. Final CI
+outcome is also sent to coordinator with full head SHA. No merge authorized.
 
 ## SAM CPU serving target and evidence (2026-09-08)
 
@@ -379,3 +387,13 @@ Worker image built with embedded baseline source provenance for local smoke;
 `--version` ignored a spoofed runtime `SPECIMEN_SOURCE_SHA`, and no-config production
 returned the expected exit2 blocker. Final committed source image rebuild and
 PR CI provenance are separate handoff records below.
+
+## Committed-source image proof
+
+The worker candidate was rebuilt with
+`SOURCE_SHA=e497d949657b74270d21f932ac179a72644ed189` using the frozen code commit.
+Local OCI manifest list:
+`sha256:d8b3f7ecd0ef16380a5f2c4b2361d50c382de33bd0007faf06148cc022bc8646`.
+Build log `/tmp/processing-worker-candidate-build.log`. No image publication or
+cloud run occurred. Delivery must rebuild from its final integrated commit;
+local image proof does not qualify the future combined candidate.
