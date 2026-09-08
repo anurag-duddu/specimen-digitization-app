@@ -69,6 +69,7 @@ class HuggingFaceModelGateway:
         token: str | None = None,
         bill_to: str | None = None,
         routes: Mapping[str, HuggingFaceInferenceRoute] | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         resolved_token = token or os.getenv("HF_TOKEN")
         if not resolved_token:
@@ -76,6 +77,11 @@ class HuggingFaceModelGateway:
                 "HF_TOKEN is required for Hugging Face model access."
             )
 
+        if timeout_seconds is not None and not 0 < timeout_seconds <= 600:
+            raise ModelGatewayConfigurationError(
+                "Model timeout must be within0..600 seconds"
+            )
+        self._timeout_seconds = timeout_seconds
         self._token = SecretStr(resolved_token)
         self._bill_to = bill_to if bill_to is not None else os.getenv("HF_BILL_TO")
         selected_routes = INITIAL_HUGGINGFACE_ROUTES if routes is None else routes
@@ -106,10 +112,16 @@ class HuggingFaceModelGateway:
     def model_for(self, route_id: str) -> HuggingFaceModel:
         """Return a Pydantic AI model bound to the route's concrete provider."""
         route = self.route(route_id)
+        timeout_options = (
+            {"timeout": self._timeout_seconds}
+            if self._timeout_seconds is not None
+            else {}
+        )
         client = AsyncInferenceClient(
             provider=route.provider,
             api_key=self._token.get_secret_value(),
             bill_to=self._bill_to or None,
+            **timeout_options,
         )
         provider = HuggingFaceProvider(hf_client=client)
         return HuggingFaceModel(route.model_id, provider=provider)

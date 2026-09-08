@@ -7,7 +7,7 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import Protocol
-from .domain import Principal, Scope, Specimen
+from .domain import Principal, Scope, Specimen, WorkItem, WorkPage, now
 
 
 def digest(value: object) -> str:
@@ -64,7 +64,27 @@ class Missing(KeyError):
     pass
 
 
+def work_available_at(specimen: Specimen) -> str | None:
+    run = specimen.run
+    if run.stage in {
+        "finalized",
+        "processing_blocked",
+        "paused",
+        "cancelled",
+        "waiting_for_review",
+    }:
+        return None
+    if run.blocker == "external_outcome_unknown" and run.lease_until:
+        return run.lease_until
+    if run.stage == "retry_scheduled" and run.next_retry_at:
+        return run.next_retry_at
+    return now()
+
+
 class Repository(Protocol):
+    def due_page(
+        self, scope: Scope, cutoff: str, after_id: str | None, limit: int = 50
+    ) -> WorkPage: ...
     def get(self, scope: Scope, specimen_id: str) -> Specimen: ...
     def list(self, scope: Scope) -> list[Specimen]: ...
     def create(
@@ -140,6 +160,26 @@ class SQLiteRepository:
                         "UPDATE versions SET sha256=? WHERE org=? AND collection=? AND id=? AND revision=?",
                         (digest(json.loads(row[4])), *row[:4]),
                     )
+            columns = {row[1] for row in db.execute("PRAGMA table_info(records)")}
+            migrate = "work_available_at" not in columns
+            for column in ("work_available_at", "created_at", "state"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE records ADD COLUMN {column} TEXT")
+            if migrate:
+                for row in db.execute("SELECT org,collection,id,payload FROM records"):
+                    specimen = Specimen.model_validate_json(row[3])
+                    db.execute(
+                        "UPDATE records SET work_available_at=?,created_at=?,state=? WHERE org=? AND collection=? AND id=?",
+                        (
+                            work_available_at(specimen),
+                            specimen.created_at,
+                            specimen.run.stage,
+                            *row[:3],
+                        ),
+                    )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS records_due ON records(org,collection,id,work_available_at)"
+            )
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -164,6 +204,37 @@ class SQLiteRepository:
             ).fetchall()
         return [Specimen.model_validate_json(r[0]) for r in rows]
 
+    def history_page(
+        self, scope, ident, after_revision=0, through_revision=None, limit=50
+    ):
+        current = self.get(scope, ident)
+        through = current.version if through_revision is None else through_revision
+        if (
+            not 1 <= limit <= 100
+            or not 0 <= after_revision <= through <= current.version
+        ):
+            raise ValueError("Invalid history page bounds")
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT revision,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision>? AND revision<=? ORDER BY revision LIMIT ?",
+                (
+                    scope.organization_id,
+                    scope.collection_id,
+                    ident,
+                    after_revision,
+                    through,
+                    limit,
+                ),
+            ).fetchall()
+        items = [{"revision": r[0], "sha256": r[1]} for r in rows]
+        return {
+            "items": items,
+            "through_revision": through,
+            "next_cursor": items[-1]["revision"]
+            if len(items) == limit and items[-1]["revision"] < through
+            else None,
+        }
+
     def version(self, scope, ident, revision):
         self.get(scope, ident)
         with self.connect() as db:
@@ -176,6 +247,36 @@ class SQLiteRepository:
         if digest(json.loads(row[0])) != row[1]:
             raise Conflict("Historical snapshot digest mismatch")
         return Specimen.model_validate_json(row[0])
+
+    def due_page(self, scope, cutoff, after_id=None, limit=50):
+        if not 1 <= limit <= 100:
+            raise ValueError("Work page limit must be 1..100")
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id,revision,state,work_available_at,created_at FROM records WHERE org=? AND collection=? AND created_at<=? AND work_available_at<=? AND id>? ORDER BY id LIMIT ?",
+                (
+                    scope.organization_id,
+                    scope.collection_id,
+                    cutoff,
+                    cutoff,
+                    after_id or "",
+                    limit + 1,
+                ),
+            ).fetchall()
+        items = [
+            WorkItem(
+                specimen_id=r[0],
+                revision=r[1],
+                state=r[2],
+                work_available_at=r[3],
+                created_at=r[4],
+            )
+            for r in rows[:limit]
+        ]
+        return WorkPage(
+            items=items,
+            next_cursor=items[-1].specimen_id if len(rows) > limit else None,
+        )
 
     def version_info(self, scope, ident, revision):
         self.get(scope, ident)
@@ -247,8 +348,16 @@ class SQLiteRepository:
             check_snapshot(payload)
             try:
                 db.execute(
-                    "INSERT INTO records VALUES (?,?,?,?,?,?) ON CONFLICT(org,collection,id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload",
-                    (*identity, specimen.version, payload, specimen.asset.sha256),
+                    "INSERT INTO records (org,collection,id,revision,payload,checksum,work_available_at,created_at,state) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(org,collection,id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,work_available_at=excluded.work_available_at,state=excluded.state",
+                    (
+                        *identity,
+                        specimen.version,
+                        payload,
+                        specimen.asset.sha256,
+                        work_available_at(specimen),
+                        specimen.created_at,
+                        specimen.run.stage,
+                    ),
                 )
             except sqlite3.IntegrityError as exc:
                 raise Conflict("Duplicate source checksum within collection") from exc

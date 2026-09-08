@@ -440,6 +440,9 @@ def test_production_transcriber_does_not_receive_peer_observations(
         )
 
     class Gateway:
+        def __init__(self, timeout_seconds=None):
+            self.timeout_seconds = timeout_seconds
+
         def route(self, route):
             return INITIAL_HUGGINGFACE_ROUTES[route]
 
@@ -457,6 +460,7 @@ def test_production_transcriber_does_not_receive_peer_observations(
     specimen.run.observations[0].literal_text = "PEER-OUTPUT-MUST-NOT-LEAK"
     blobs = LocalBlobs(tmp_path / "blobs")
     adapter = production.ProductionAdapters(blobs)
+    specimen.run.dependencies = adapter.pin_dependencies(specimen.run)
     for route in specimen.run.profile.routes:
         observation = adapter.transcribe(specimen, specimen.run.regions[0], route)
         assert observation.literal_text == "Independent source"
