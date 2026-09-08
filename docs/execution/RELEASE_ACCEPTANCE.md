@@ -222,3 +222,148 @@ and the launch; the worker deliberately rejects mismatches. It must supply
 USD 5 budget, and qualify native SAM timing. No real model, image, cloud or paid
 call was made during this independent follow-up. Runtime owner canonical checks
 and exact integrated release checks remain separate from this focused review.
+
+## Approved human-review release projection
+
+The user explicitly selected complete human review of all ten specimens, with
+only automated classification and automated clearance deferred. The coordinator
+approved the concrete mapping below. Authority is the private
+`human-review-release-scope-v1.json`, SHA-256
+`14f6b1140f7d45e46c022e4a1c4f60cd775bafbef73ca363a677f278e0eafd1a`.
+This decision changes acceptance scope; it does not qualify any unexecuted PRD
+criterion, expand infrastructure authority, raise the USD 5 cap, grant sensitive
+access or change the ten-source denominator.
+
+`scripts/qa/live/human_review.py` is a separate projection over the unchanged
+45-case full gate. It requires **every existing ten UI and fifteen live case**,
+plus these four manual subcriteria. Generic blocked/not-run/failed/non-live rows
+remain pending. A row cannot declare itself deferred. Full-PRD rows and their
+actual statuses remain present and are reported separately; no entire mixed PRD
+row is silently treated as passed or deferred.
+
+| Manual subcriterion | PRD relation and required evidence |
+|---|---|
+| HUMAN-LABEL-COVERAGE | PRD-04/05/12: review the whole original and all regions, compare two readings of every required label and explicitly confirm coverage. Missing/inaccurate or omitted label coverage keeps the human journey incomplete until addressed. No region/specimen may be removed to fit budget. |
+| HUMAN-FIELD-SEPARATION | PRD-07/16: preserve literal output separately from human field corrections/normalized values and trace each claimed value to retained source/reading/review evidence. Missing authority/normalization remains explicit; no invented derivation chain. |
+| HUMAN-NO-AUTOMATIC-CLEARANCE | PRD-10/11/14/15: correction/save does not enable automatic clearance, approve institutional semantics/risk, or mislabel an operational failure as Deferred. Exercise denial controls with unresolved mandatory values and verify review state/history survive. |
+| HUMAN-ACCESSIBLE-REVIEW | Manual portion of PRD-19: execute keyboard/focus/error recovery, image/region navigation, text-based uncertainty and save/reopen in the actual public review UI. This does not claim institutional quality thresholds are approved. |
+
+The existing UI/live cases cover intake/immutability, authentic sign-in and scope,
+actual processing, literal comparisons/uncertainty, correction/save/readback,
+search/queue, provenance/history, denial, recovery/restart/restore and budget.
+Automated PRD-03 and the automated/institutional portions of mixed criteria stay
+at their actual full-PRD status. In particular, PRD-04/07/08/10/11/14/15/16/17/19/20
+are not wholesale waived. `full_prd_qualified` and `release_accepted` remain false
+in every human-checker output. Only the coordinator's independent actual release
+review may make a release decision for the approved human scope.
+
+### Retained record evidence
+
+The report retains the original 45 `results`, `deployment` and cumulative
+`budget`, adding `scope_sha256`, four `human_results` with the same evidence-row
+fields, and `human_records`. Empty records are pending; a partially supplied
+record list cannot become complete. A complete list has exactly the frozen ten
+unique specimen IDs, each with:
+
+- `original`: artifact descriptor for the approved original bytes.
+- `before_review`, `after_save`, `after_reload`: separate artifact descriptors
+  for actual API workspace JSON, captured at the named milestones. Preserve
+  the private original response, not a reconstructed summary or direct DB edit.
+- `sam_receipt`: the retained SAM response JSON, including source generation,
+  manifest/model/checkpoint pins, checkpoint file map, original regions and masks.
+- `raw_observations`: map from each observation ID to its retained raw response
+  artifact. `crops`: the corresponding map to exact reader input crop bytes.
+- `masks`: map from each retained region ID to its mask-byte artifact.
+
+All artifact descriptors use paths relative to the private evidence directory
+plus SHA-256 over exact retained bytes. The checker verifies original/scope
+bindings; SAM receipt and model config/checkpoint-file hashes; every retained
+region/mask/crop; exact Qwen/Novita and Muse/DeepInfra route pairs; validated,
+non-truncated literal outputs reconstructed from the retained final raw response;
+exact uncertainty; unchanged raw readings/regions across edits; a new reasoned
+review event, coverage confirmation, advanced revision/version and equal saved
+versus reopened state. `sam_config_sha256` is the checkpoint's `config.json`
+SHA-256; `sam_checkpoint_sha256` hashes its canonical file-name/hash map.
+Both the deployment and every retained SAM region must use the existing approved
+`SAM3_MODEL.revision`, with region method `sam3`; mutual agreement on a different
+revision cannot qualify. JSON evidence is parsed from the same bounded bytes
+whose SHA-256 was checked, so a file replacement between reads is rejected.
+
+The current pilot intentionally retains `processing_blocked` with
+`pilot_evidence_review_required`, false institutional/human approval flags and
+null disposition. This is eligible for human evidence checking **only after**
+actual SAM and both validated readers exist for every retained region and the
+human review/save/reload checks pass. A cost/provider/output-limit failure, empty
+result, incomplete reading pair or setup screen cannot qualify.
+
+Raw response artifacts preserve provider responses without image-bearing request
+messages. The independent PROVIDER-ACTUAL case must also verify the real blind
+request path; hashes/declared route names alone cannot prove independence or that
+an external call occurred. This checker establishes retained-byte consistency,
+not authenticity, model quality, billing completeness or production availability.
+All sensitive artifacts and receipts remain outside Git.
+
+### Execution and evidence states
+
+Use the explicit commands in `scripts/qa/live/README.md`. The scope file is owned
+by the current user, mode 0600, outside Git and verified against the exact approved
+hash. Template generation is explicitly `human_review_preflight: not_run` and
+cannot count as execution. Checking exits 0 only for evidence ready for independent
+review, 1 for pending requirements and 2 for invalid/tampered evidence. Both scope
+verdicts remain visible. A merged candidate needs fresh candidate-bound evidence.
+
+TDD: initial **35 failures / 6 passes** reproduced the full-gate-only gap;
+follow-ups each reproduced two failures for scope/crop completeness, optional
+uncertainty/template-state handling, and new review-event/run identity. These are
+local authored fixtures, not actual first-ten outcomes. Logs:
+`/tmp/specimen-ac0d-human-review-red.log`,
+`/tmp/specimen-ac0d-human-artifacts-red.log`,
+`/tmp/specimen-ac0d-human-defaults-red.log`,
+`/tmp/specimen-ac0d-human-save-red.log`. Final scoped/canonical results are
+recorded below before handoff. No model, route, cloud or Flutter behavior changed.
+
+The independent coordinator review confirmed a JSON hash/parse race and requested
+approved SAM revision binding. Both now have regressions: one byte-swap failure
+and three unapproved revision/method failures, respectively, before fixes.
+Logs `/tmp/specimen-ac0d-human-byte-race-red.log` and
+`/tmp/specimen-ac0d-human-sam-pin-red.log`. A first canonical attempt stopped at
+the secret scanner's classification of a public decision digest. The source now
+derives the identical digest from the readable canonical approved decision; no
+scanner rule or allowlist was changed. The next canonical passed 870 Python /
+26 skips, 120 Flutter / 7 skips and release web build in 20.2 seconds; this was
+before the final three SAM binding regressions. Final exact-source validation
+follows below.
+
+## Independent explicit-sensitivity runtime review
+
+Reviewed runtime implementation `e7f4985064c5b6a778b556852c0e4d0d247f456d`,
+owner documentation tip `61c525142f6f7b33c26ac0cfc26622074aeec360` in clean
+worktree 7471. Batch/item flags are strict booleans defaulting to sensitive;
+items must match the retained batch. Explicit false persists into the asset,
+SQL mutation metadata and optional pilot ledger. Legacy omissions remain
+sensitive without changing their canonical payloads/digests. Repository guards
+reject downgrades, and current/historical/image/graph/artifact access checks the
+selected asset's classification and current membership.
+
+Independent focused execution: **109 passed**, 3 existing warnings, exit 0 in
+7.47 seconds. Log `/tmp/specimen-ac0d-sensitivity-review-20260908.log`. Also
+loaded the actual parent Git versions of Asset and PilotLaunch and compared
+their serialized values and digests with the candidate on a concrete authored
+ten-source launch; both matched. No blocking scoped source finding remains.
+These checks use local SQLite/ASGI and injected SQL boundaries; deployed V2
+connector behavior and actual first-ten sensitivity are **Not confirmed** by
+this review. Initial admin sensitive permission remains false. No real images,
+models, cloud resources or paid calls were used, and no deployment was made.
+
+### Final local validation of the human projection
+
+All **149 focused tests passed**, including the byte-swap and three SAM binding
+regressions. Final canonical `scripts/ci/verify.sh` exited 0: **873 Python passed /
+26 skipped**, **120 Flutter passed / 7 skipped**, static analysis, all repository
+and security hooks, and release web build passed. Logs:
+`/tmp/specimen-ac0d-human-final-focused-20260908.log` and
+`/tmp/specimen-ac0d-human-final-canonical-20260908.log`.
+The existing full-gate implementation and Flutter source are unchanged in this
+commit. Coordinator confirmation of the final source-review repairs, integration
+with runtime/data/client changes and actual candidate-bound live evidence remain
+separate follow-ups. These local passes do not change either release verdict.

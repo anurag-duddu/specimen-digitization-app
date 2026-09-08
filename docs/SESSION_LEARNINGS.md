@@ -806,3 +806,56 @@ If any answer is no or unknown, retain the item and record the exact blocker.
 - IAM findings: Read-only SQL catalog packet delivered with exact database guard/timeouts; PG18local syntax validation passed, live execution Not confirmed. IAM registration/login is distinct from SQL rights. SELECT/USAGE/CONNECT cannot create supplemental indexes, and MAINTAIN only covers applicable maintenance operations. Inspect actual catalog owners before granting narrowly reviewed owner rights. Installed Firebase CLI setup/grant helpers create passworded firebasesuperuser and may transfer ownership, so they violate this maintenance boundary. No helper invocation, blanket grant, source change or cloud write occurred.
 - Failed approaches and follow-ups: Default pricing search mixed Iowa base and extended-support prices; regional rendered table resolved the ambiguity. In-app browser content export is unsupported; no raw export was claimed. Inventory JSON uses an outer data envelope; initial direct root-field extraction returned null and was corrected without inferring missing metadata. Independent reviewer released access to DATA connector9569 on PostgreSQL5589; DATA will stop only its owned fixture after coordinating with root. Production native backup/restore, verified identity, source classification, effective IAM, protected deployment and human-review acceptance remain root-owned gates. No prune or worktree removal.
 - Final scoped validation/cleanup: Offline data-plan validator passed and all28 plan regressions passed after the observation-only JSON update; full canonical verification from the sensitivity commit remains applicable to unchanged implementation. Scoped commit hooks cover the new report/log/config. Owned serve-local session stopped normally via Ctrl-C cleanup after reviewer release and coordinator notice; no listeners remain on5589/9569. User services3000/8000 were not touched. User reports Firebase SQL Connect data/schema screens appear empty; this is a useful initial-setup signal, not verified PostgreSQL catalog contents. Root received that steering and the unchanged read-only inspection packet.
+
+## 2026-09-08 — Human-review projection and independent sensitivity review
+
+- Acceptance task `01a082b4-a9bc-7413-a3c5-5077dd5c3a9f`, branch
+  `codex/release-acceptance`, worktree ac0d, following commits `610c75e` and
+  `e005df2`. New scoped commit is identified by the subsequent coordinator
+  handoff; PR and production acceptance: Not confirmed.
+- Added a separate decision-bound human-review gate. It preserves all 45 full
+  cases and their actual statuses, requires all ten specimens, all UI/live
+  cases, four approved manual subcriteria, and exact retained originals,
+  SAM/reader artifacts, human coverage/edit/save/reload history. Only automated
+  classification/clearance are deferred. It always returns release acceptance
+  and full PRD qualification false; authored evidence cannot establish live
+  authenticity, model quality, institutional authority or billing completeness.
+- TDD logs and details are in `docs/execution/RELEASE_ACCEPTANCE.md`: initial
+  35 failures, then scope/crop, optional uncertainty, save/history, byte-swap,
+  and approved SAM revision/method failures reproduced before repairs. The
+  canonical before the last three regressions passed 870 Python/26 skips,
+  120 Flutter/7 skips, analysis/hooks and web build in 20.2 seconds; exact final
+  validation is recorded in the appended completion entry below.
+- Independent runtime sensitivity review: implementation `e7f4985`, report
+  `61c5251` in clean worktree 7471. 109 focused tests passed in 7.47 seconds at
+  `/tmp/specimen-ac0d-sensitivity-review-20260908.log`. Actual parent Git Asset
+  and concrete ten-source PilotLaunch serialization/digests matched the new
+  default-sensitive models. No blocking scoped finding remains. Actual V2
+  SQL integration and the ten-source classification decision remain Not
+  confirmed; initial admin sensitive permission stays false.
+- Reusable learning: parse the exact bounded bytes that were hashed; agreeing
+  receipts do not establish an approved model revision. Preserve historical
+  serialization while adding explicit classifications; never infer omitted
+  classification means non-sensitive. Full-PRD states must survive a narrower
+  user-approved release projection.
+- Failed approach: secret scanner flagged the public scope-decision digest;
+  derive it from the exact readable canonical decision instead, retaining the
+  same authoritative digest without changing scanner rules or allowlists.
+- No private evidence entered Git, no model/cloud/paid effect, no push, merge,
+  deployment or pruning. Coordinator owns final independent review, the
+  integrated Flutter sensitivity changes, actual V2 validation and release.
+
+### Completion evidence for the preceding human-review entry
+
+- Final focused suite: 149 passed, one existing warning. Canonical
+  `scripts/ci/verify.sh`: exit 0; 873 Python passed/26 skipped, 120 Flutter
+  passed/7 skipped, static analysis, repository/security hooks and release
+  web build passed. Logs `/tmp/specimen-ac0d-human-final-focused-20260908.log`
+  and `/tmp/specimen-ac0d-human-final-canonical-20260908.log`.
+- Coordinator identified the same hash/parse race and requested exact approved
+  SAM revision binding. Both repairs and their red-to-green regressions are
+  included in this validation; final independent source-review confirmation is
+  pending with the coordinator. No existing full-gate or Flutter implementation
+  changed here, and no live acceptance is claimed. The user asked whether SQL
+  Connect was being used; the current data inventory/report confirms reuse of
+  the existing running Cloud SQL instance through Firebase SQL Connect.

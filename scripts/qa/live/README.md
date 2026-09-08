@@ -71,3 +71,33 @@ workflow/job URLs; they do not prove real serving or quality. A final merged can
 owner PR head: create a new ledger and rerun relevant checks; never relabel old
 evidence. A reviewer must verify immutable image digest formats, actual URLs,
 workflow conclusions and runtime/data state against the deployed environment.
+
+## Approved human-review release
+
+`human_review.py` retains the full 45-case evaluator and separately checks the
+user-approved first-ten human scope: all ten UI cases, all fifteen live cases,
+four explicit manual subcriteria and per-ten original/SAM/reader/correction/
+readback artifacts. Only automated classification/clearance capabilities are
+deferred; full PRD status stays visible and unqualified. The
+[acceptance report](../../../docs/execution/RELEASE_ACCEPTANCE.md#approved-human-review-release-projection)
+defines the mapping and exact record schema.
+
+Generate a private template (not an acceptance run):
+
+```bash
+uv run python scripts/qa/live/human_review.py "$PRIVATE_READY_MANIFEST" \
+  --approved-manifest-sha256 "$COORDINATOR_MANIFEST_SHA256" \
+  --candidate-sha "$FROZEN_COMBINED_SHA" \
+  --scope-decision "$PRIVATE_APPROVED_SCOPE_FILE" \
+  --approved-scope-sha256 14f6b1140f7d45e46c022e4a1c4f60cd775bafbef73ca363a677f278e0eafd1a \
+  --evidence-root "$PRIVATE_EVIDENCE_DIRECTORY" > "$NEW_PRIVATE_HUMAN_LEDGER"
+```
+
+After actual observations populate the ledger, check it by adding
+`--report "$PRIVATE_HUMAN_LEDGER"` to that command and removing the output
+redirection to the ledger. Use a separate new private output file for results;
+never overwrite input evidence. Exit 0 means ready for independent review,
+1 means pending and 2 means invalid. Template generation exits 0 but explicitly
+reports `not_run`. Every output keeps `release_accepted: false` and
+`full_prd_qualified: false`; the root release verdict requires independent live
+verification. No script executes evidence commands or invokes a model/service.
