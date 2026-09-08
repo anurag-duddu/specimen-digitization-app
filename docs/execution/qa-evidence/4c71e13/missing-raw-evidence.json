@@ -1,0 +1,14 @@
+{
+  "case": "missing_raw_blob_at_finalization",
+  "mode": "synthetic-local-SQLite",
+  "injection": "Moved one own temporary raw-response blob to retained quarantine; no DB edits",
+  "missing_before_approval": true,
+  "http": 200,
+  "disposition": "cleared",
+  "reason_codes": [],
+  "expected": "not cleared",
+  "passed": false,
+  "specimen_id": "748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+  "raw_ref": "34367bdcd086 (digest prefix)",
+  "quarantine": "private QA temporary directory/quarantined-raw"
+}

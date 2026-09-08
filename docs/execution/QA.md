@@ -1,6 +1,6 @@
 # Independent acceptance procedure and evidence
 
-Status: acceptance planning complete; integrated product execution pending.
+Status: first-wave local assessment executed; P0 not accepted. See latest ledger below.
 Date: 2026-09-07 America/Chicago.
 Owner: independent QA task, coordinator `01a07f44-7d89-7052-b968-5e96753493ad`.
 Worktree: `/Users/anuragduddu/.codex/worktrees/14dd/specimen-digitization-app`.
@@ -324,3 +324,60 @@ send concrete defects with severity/owner through coordinator, and update this
 report with passed/failed/not-tested/externally-blocked evidence. Keep model
 serving, approved authority access, deployed SQL transport and Phase 0 quality
 acceptance blocked until their respective requirements are satisfied.
+
+
+## Independent first-wave execution — 4c71e13, 2026-09-08
+
+This section supersedes the initial not-tested ledger above. Frozen candidate
+`4c71e133acc9f99c2dae068f4199c806bde8ff5f` was merged into the QA branch;
+`git diff 4c71e13 --exit-code` confirmed an identical tracked tree before execution.
+Evidence lives in `qa-evidence/4c71e13/`. Reproducer scripts record the actual
+local harness and require the private temporary token/path; tokens are excluded.
+These are synthetic correctness tests, not a representative quality evaluation.
+
+| Independent execution | Result and limit |
+|---|---|
+| Canonical `scripts/ci/verify.sh` | Passed: 62 Python, 2 SQL opt-in skips; Flutter analyze, 16 offline tests plus 1 live skip, web release/Wasm dry run. |
+| SQL HTTP process restart | Passed: 2 opt-in tests; API process termination/restart preserves full workspace and exact source bytes over SQL Connect9519/PostgreSQL5569. Synthetic cleared revision18, 2 observations, 28497 source bytes. |
+| `scripts/data/test-postgres.sh` on5570/9520 | Passed executed CAS race, receipt/audit rollback, cross-scope and sensitive denial, revocation, normalized foreign keys and connector restart. Normalized schema tests do not prove runtime normalization. |
+| Java21 `scripts/data/test-storage.sh` | Passed anonymous/authenticated read/list/create/overwrite/delete denial; original unchanged. Admin bypass remains explicit. |
+| Flutter `live_api_test.dart` against TCP8124/SQL9519 | Passed real repository HTTP prefix100-byte resume, source access, unknown field correction, stale409, unreadable transcription persistence, observation retention and reopen. |
+| Independent TCP negative intake | Auth/scope denial, chunk resume/replay, source digest/no-store and no-record corrupt-input cases passed; upload completion receipt and truncated PNG handling failed (B01/B02 below). |
+| Exact UTF-8 aggregate bounds | SQLite and SQL both accept262143/262144 bytes and reject262145. Includes multibyte/escaped content; rejected save leaves prior record intact and rejected create retains no success receipt. |
+| Policy absence probes | All260 probes across20 mandatory fields, six absence states and seven blank/placeholder literals prevent clearance. Default institutional policy and semantics remain unapproved. |
+| SQL-backed roles, actual local HTTP | Viewer/operator approve denied403; available_actions follows role. Sensitive-denied workspace denied409; revoked membership prevents write404 and removes session scope. QA injected identity verifier; no Firebase signature/AppCheck validation claim. |
+| Production-profile semantics, local fixture models | Emulator HTTP approval retains needs_human_review with institutional_policy_unapproved and mandatory_semantics_unconfirmed. QA explicitly injected fixture segmentation to avoid synthetic adapter's intentional production-profile rejection; no live model proof. |
+| Authority boundary, controlled local HTTP | Distinguishes exact/no_match/malformed/ambiguous/429/401 and retains raw digest. Fixed authority URL routed to QA loopback server; no live GBIF acceptance. |
+| Chrome GUI against actual SQL API | Persistent synthetic banner; source/regions, zoom/rotate/reset, separate reading panes, literal-versus-parsed field view. Empty review reason prevented save. Reasoned synthetic approval showed clearedrev18. Unreadable transcription saved and refresh showed reviewrev27 with explicit unresolved reasons. |
+| Browser upload/device/accessibility | Extension file setter denied by browser permission; GUI upload not tested. Native fallback identified an unrelated foreground Chrome window and did not interact. Narrow390x844 screenshot retained; source geometry/accessibility need follow-up. Android/iOS devices, assistive technology and signed distribution not tested. |
+
+The shared API fixture SHA256 independently matches both implementations:
+`9cc65c46bf6c2bdeff42b6186b2949197b1cba8f8b6b2869823470ed04364616`.
+Browser detail requires explicit Refresh evidence to show completed asynchronous
+revalidation. Screenshots show synthetic fixtures only. Large boundary snapshots
+are artificial adapter fixtures without image blobs and are excluded from GUI
+journeys, not counted as product ingestion success.
+
+| Defect | Independent result on frozen candidate |
+|---|---|
+| QA-F01 | Closed for local scope: typed unreadable survives real Flutter HTTP test and GUI save, preserves original observations and prevents clearance. |
+| QA-F02 | Closed for widget regression scope: future enum guard tested; no live backend future-enum response injected. |
+| QA-F03 | Closed for server/action-gating scope: Flutter regressions/source plus SQL-backed viewer/operator denial; no role-specific GUI screenshot. |
+| QA-B01 P2 | Open: completion with same key and changed reason returns200; exact replay returns later snapshot rather than original receipt. Actual TCP/SQL reproduced. |
+| QA-B02 P2 | Open: truncated60-byte valid PNG header returns503 retryable runtime_unavailable and resets the next keepalive request. No specimen created; expected422 with usable connection. Actual TCP/SQL reproduced. |
+| QA-B03 P1 | Open: moving a retained raw response out of owned temporary blob storage before normal approval still returns200 cleared with no reasons. Exact HTTP/TestClient/SQLite repro; copied policy also ignores wrong digest/ref/asset lineage. Baseline SQL/TCP corruption variant not executed. |
+
+Overall P0 remains **not accepted**. Across the20 criteria, local intake,
+provenance, policy, review and persistence portions above have bounded positive
+proof; B03 blocks trusted clearance. Real SAM3/classifier/two-model quality,
+approved authorities and Parties/geography semantics, representative frozen
+quality cohort, institutional policy approval, production authentication/IAM,
+deployed SQL/storage, backup/restore, worker failure coverage at live external
+boundaries, publishing and physical-device accessibility remain unproven or
+unimplemented. No synthetic test changes those acceptance states. CI mobile
+builds were reported green by integration on this candidate but not independently
+inspected here; build success cannot establish device behavior.
+
+Repair candidate `25e83589031cf4d751a7059d07d252287ef2783e` is pending independent
+reproduction. Owner tests alone do not close B01–B03. No production deployment,
+cloud mutation, paid inference, museum data or product code changes by QA.

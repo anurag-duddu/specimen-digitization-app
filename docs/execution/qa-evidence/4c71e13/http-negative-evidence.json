@@ -1,0 +1,303 @@
+{
+  "candidate": "4c71e13 (full SHA in QA.md)",
+  "mode": "synthetic",
+  "transport": "SQL Connect9519/PostgreSQL5569 with local immutable blobs",
+  "specimen_id": "cfc11021-6687-5fa0-b5c0-c69c1f1595ed",
+  "results": [
+    {
+      "case": "session_sql_transport",
+      "actual": "sql_connect",
+      "expected": "sql_connect",
+      "status": "passed"
+    },
+    {
+      "case": "anonymous_session",
+      "actual": 401,
+      "expected": 401,
+      "status": "passed"
+    },
+    {
+      "case": "wrong_bearer",
+      "actual": 401,
+      "expected": 401,
+      "status": "passed"
+    },
+    {
+      "case": "cross_org_list",
+      "actual": 403,
+      "expected": 403,
+      "status": "passed"
+    },
+    {
+      "case": "cross_collection_list",
+      "actual": 403,
+      "expected": 403,
+      "status": "passed"
+    },
+    {
+      "case": "partial_offset",
+      "actual": 137,
+      "expected": 137,
+      "status": "passed"
+    },
+    {
+      "case": "same_chunk_replay",
+      "actual": 137,
+      "expected": 137,
+      "status": "passed"
+    },
+    {
+      "case": "changed_chunk_replay",
+      "actual": 409,
+      "expected": 409,
+      "status": "passed"
+    },
+    {
+      "case": "premature_complete",
+      "actual": 409,
+      "expected": 409,
+      "status": "passed"
+    },
+    {
+      "case": "automatic_background_review",
+      "actual": "needs_human_review",
+      "expected": "needs_human_review",
+      "status": "passed"
+    },
+    {
+      "case": "original_bytes_digest",
+      "actual": "024a5a437f7f (digest prefix)",
+      "expected": "024a5a437f7f (digest prefix)",
+      "status": "passed"
+    },
+    {
+      "case": "original_no_store",
+      "actual": "no-store",
+      "expected": "no-store",
+      "status": "passed"
+    },
+    {
+      "case": "complete_changed_payload_same_key",
+      "actual": 200,
+      "expected": 409,
+      "status": "failed"
+    },
+    {
+      "case": "complete_exact_replay_response",
+      "actual": {
+        "specimen_id": "cfc11021-6687-5fa0-b5c0-c69c1f1595ed",
+        "asset_id": "07a1d644-066d-5375-9273-44dc056db404",
+        "collection_id": "00000000-0000-4000-8000-000000000002",
+        "organization_id": "00000000-0000-4000-8000-000000000001",
+        "revision": 17,
+        "batch_id": "947a8725-8fe8-5380-ba0f-72b5cf58e9bf",
+        "filename": "qa-synthetic.png",
+        "created_at": "2026-09-08T05:24:54.057105+00:00",
+        "active_run_id": "d50adc64-4fcb-4e71-bd6f-eeb620ece0c8",
+        "record_version_id": "d50adc64-4fcb-4e71-bd6f-eeb620ece0c8:17",
+        "status": "completed",
+        "stage": "finalized",
+        "disposition": "needs_human_review",
+        "reason_codes": [
+          "human_approval_required"
+        ],
+        "blocker": null,
+        "profile_id": "zoology_insects",
+        "profile_version": "0.1.0-draft",
+        "synthetic": true,
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "capability_defer"
+        ]
+      },
+      "expected": {
+        "specimen_id": "cfc11021-6687-5fa0-b5c0-c69c1f1595ed",
+        "asset_id": "07a1d644-066d-5375-9273-44dc056db404",
+        "collection_id": "00000000-0000-4000-8000-000000000002",
+        "organization_id": "00000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "batch_id": "947a8725-8fe8-5380-ba0f-72b5cf58e9bf",
+        "filename": "qa-synthetic.png",
+        "created_at": "2026-09-08T05:24:54.057105+00:00",
+        "active_run_id": "d50adc64-4fcb-4e71-bd6f-eeb620ece0c8",
+        "record_version_id": "d50adc64-4fcb-4e71-bd6f-eeb620ece0c8:1",
+        "status": "running",
+        "stage": "ingested",
+        "disposition": null,
+        "reason_codes": [],
+        "blocker": null,
+        "profile_id": "zoology_insects",
+        "profile_version": "0.1.0-draft",
+        "synthetic": true,
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "capability_defer"
+        ]
+      },
+      "status": "failed"
+    },
+    {
+      "case": "truncated_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "truncated_keepalive_survives",
+      "actual": false,
+      "expected": true,
+      "status": "failed"
+    },
+    {
+      "case": "truncated_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "truncated_error_class",
+      "status": "observed",
+      "http": 503,
+      "body": {
+        "error": {
+          "code": "runtime_unavailable",
+          "category": "operational",
+          "message": "Runtime operation failed; inspect server configuration",
+          "retryable": true,
+          "request_id": "a0de0dcb-8b22-45f9-9fe0-4737ca294ee8",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "hash_mismatch_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "hash_mismatch_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "hash_mismatch_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Original checksum mismatch",
+          "retryable": false,
+          "request_id": "bf3e1f0f-792d-405d-a6a8-d5adecfd190f",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "mime_mismatch_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "mime_mismatch_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "mime_mismatch_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Declared image metadata mismatch",
+          "retryable": false,
+          "request_id": "6e65b890-35c9-4bf6-8425-4164f1484f74",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "dimension_mismatch_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "dimension_mismatch_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "dimension_mismatch_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Declared image metadata mismatch",
+          "retryable": false,
+          "request_id": "1cd4c784-d430-4d33-95c9-c68eee1d2cc0",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "random_bytes_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "random_bytes_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "random_bytes_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "cannot identify image file <_io.BytesIO object at 0x114026fc0>",
+          "retryable": false,
+          "request_id": "c063e240-b01e-41f8-afa0-8e08deb35c5d",
+          "details": {}
+        }
+      }
+    }
+  ]
+}

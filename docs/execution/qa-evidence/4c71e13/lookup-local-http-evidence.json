@@ -1,0 +1,64 @@
+{
+  "mode": "synthetic controlled local HTTP authority; not real GBIF",
+  "requests": [
+    "/v2/species/match?scientificName=Danaus+plexippus&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+    "/v2/species/match/metadata",
+    "/v2/species/match?scientificName=Danaus+plexippus&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+    "/v2/species/match?scientificName=Danaus+plexippus&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+    "/v2/species/match/metadata",
+    "/v2/species/match?scientificName=Danaus+plexippus&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+    "/v2/species/match/metadata",
+    "/v2/species/match?scientificName=Danaus+plexippus&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+    "/v2/species/match?scientificName=Danaus+plexippus&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true"
+  ],
+  "results": [
+    {
+      "case": "none",
+      "expected": "no_match",
+      "actual": "no_match",
+      "passed": true,
+      "raw_digest_verified": true,
+      "retry_after": null
+    },
+    {
+      "case": "empty",
+      "expected": "malformed_response",
+      "actual": "malformed_response",
+      "passed": true,
+      "raw_digest_verified": true,
+      "retry_after": null
+    },
+    {
+      "case": "ambiguous",
+      "expected": "ambiguous",
+      "actual": "ambiguous",
+      "passed": true,
+      "raw_digest_verified": true,
+      "retry_after": null
+    },
+    {
+      "case": "success",
+      "expected": "success",
+      "actual": "success",
+      "passed": true,
+      "raw_digest_verified": true,
+      "retry_after": null
+    },
+    {
+      "case": "rate",
+      "expected": "rate_limited",
+      "actual": "rate_limited",
+      "passed": true,
+      "raw_digest_verified": true,
+      "retry_after": 2
+    },
+    {
+      "case": "auth",
+      "expected": "authentication_error",
+      "actual": "authentication_error",
+      "passed": true,
+      "raw_digest_verified": true,
+      "retry_after": null
+    }
+  ]
+}
