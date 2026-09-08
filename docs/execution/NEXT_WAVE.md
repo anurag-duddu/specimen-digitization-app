@@ -523,3 +523,13 @@ The earlier domain timestamp can differ by milliseconds; document the mapping
 change and test exact boundary equality. Canonical UUID text comparison needs the
 reviewed scoped expression index, because native UUID_Filter lacks gt. Backend
 confirmation and actual query/serializer tests remain required before integration.
+
+Backend subsequently confirmed the exact search/time/keyset/current-revision view
+contract and canonical persistence timestamp mapping. Accepted additive filters:
+asset_id and active_run_id exact; risk_min/risk_max inclusive 0–100 with min <= max,
+using the actual uncalibrated run.review_risk.composite. Missing/unmeasured scores
+are not zero and do not match numeric risk predicates. No score-band taxonomy is
+invented; score_band remains explicitly unsupported. Data and Flutter were notified.
+Legacy integer cursor 0 may explicitly restart a fresh search; nonzero old offsets
+return 422 rather than being silently reinterpreted. Flutter confirmation of the
+reset/error behavior and identical response-fixture tests remain integration gates.
