@@ -32,6 +32,7 @@ class PilotLaunch(Record):
     version: str = "authorized-ten-v1"
     evidence_only: bool = False
     evidence_profile_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    sam3_checkpoint_files: dict[str, str] | None = None
     source_manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     authorization_reference: str = Field(min_length=1, max_length=200)
     scope: Scope
@@ -62,6 +63,25 @@ class PilotLaunch(Record):
             raise ValueError("Pilot objects must be unique")
         if 10 * self.per_specimen_cost_limit_micros > self.total_cost_limit_micros:
             raise ValueError("Ten conservative allocations exceed launch budget")
+        if self.sam3_checkpoint_files is not None:
+            import re
+
+            if (
+                not self.sam3_checkpoint_files
+                or len(self.sam3_checkpoint_files) > 64
+                or not any(
+                    name.endswith(".safetensors") for name in self.sam3_checkpoint_files
+                )
+                or any(
+                    not re.fullmatch(
+                        r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.(?:safetensors|json|txt)",
+                        name,
+                    )
+                    or not re.fullmatch(r"[a-f0-9]{64}", value)
+                    for name, value in self.sam3_checkpoint_files.items()
+                )
+            ):
+                raise ValueError("Pinned SAM checkpoint file map required")
         return self
 
 
@@ -281,3 +301,19 @@ def verify_source_manifest(path: Path, launch: PilotLaunch):
         raise OperationalBlock(
             "pilot_source_manifest_not_ready_or_mismatched"
         ) from None
+
+
+def sam3_expectations(manifest, launch, output_bucket):
+    if not launch.sam3_checkpoint_files:
+        raise OperationalBlock("sam3_checkpoint_pins_required")
+    return {
+        item.specimen_id: {
+            "manifest_sha256": launch.source_manifest_sha256,
+            "source": item.source_objects[
+                item.application_source.source_object_index
+            ].model_dump(),
+            "output_bucket": output_bucket,
+            "checkpoint_files": launch.sam3_checkpoint_files,
+        }
+        for item in manifest.specimens
+    }

@@ -421,3 +421,27 @@ def test_mask_content_address_collision_is_verified(monkeypatch, existing):
     else:
         with pytest.raises(ValueError, match="immutable_mask_mismatch"):
             store.put_mask(b"mask")
+
+
+def test_actual_server_response_passes_client_binding_validator(setup):
+    from specimen_digitization.application.sam3_effect import (
+        canonical_sha256,
+        validate_sam3_response,
+    )
+
+    service, client, request, _, engine = setup
+    engine.checkpoint_sha256 = canonical_sha256(engine.checkpoint_files)
+    response = post(client, request)
+    assert response.status_code == 200
+    expected = {
+        "manifest_sha256": service.manifest_sha256,
+        "source": service.manifest.specimens[0].source_objects[0].model_dump(),
+        "output_bucket": "test-output",
+        "checkpoint_files": engine.checkpoint_files,
+    }
+    assert (
+        validate_sam3_response(
+            response.json(), {"request": request, "expected": expected}
+        )
+        == "valid"
+    )

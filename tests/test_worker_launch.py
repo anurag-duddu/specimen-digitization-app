@@ -416,3 +416,37 @@ def test_private_config_rejects_git_via_symlinked_ancestor(tmp_path):
     alias.symlink_to(nested, target_is_directory=True)
     with pytest.raises(ValueError, match="outside Git"):
         read_private(alias / "config.json")
+
+
+def test_sam_expected_binding_comes_only_from_frozen_manifest(tmp_path):
+    from specimen_digitization.application.worker_launch import sam3_expectations
+
+    repo, principal, specimens, launch = fixture(tmp_path)
+    source = {
+        "bucket": "source",
+        "object_name": "one.jpg",
+        "generation": "12",
+        "sha256": launch.specimens[0].asset_sha256,
+        "size_bytes": 100,
+        "crc32c": None,
+        "md5_hash": None,
+    }
+    item = SimpleNamespace(
+        specimen_id=specimens[0].id,
+        source_objects=[SimpleNamespace(model_dump=lambda: source)],
+        application_source=SimpleNamespace(source_object_index=0),
+    )
+    manifest = SimpleNamespace(specimens=[item])
+    with pytest.raises(OperationalBlock, match="checkpoint_pins_required"):
+        sam3_expectations(manifest, launch, "evidence")
+    launch.sam3_checkpoint_files = {
+        "model.safetensors": "f" * 64,
+        "config.json": "e" * 64,
+    }
+    expected = sam3_expectations(manifest, launch, "evidence")[specimens[0].id]
+    assert expected == dict(
+        manifest_sha256=launch.source_manifest_sha256,
+        source=source,
+        output_bucket="evidence",
+        checkpoint_files=launch.sam3_checkpoint_files,
+    )

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from test_application import HEADERS, PREFIX, TOKEN, SYNTHETIC_ORG, intake
 from test_hardening_concurrency import repository
 from test_sam3_runtime import local_sam_effect
+from test_sam3_response_binding import expected_binding, legitimate_body
 
 from specimen_digitization.application.api import create_app, SYNTHETIC_TEXT
 from specimen_digitization.application.collection_runtime import application_registry
@@ -94,7 +95,13 @@ def exercise_profile_variants(tmp_path, monkeypatch, kind):
 
     mask_output = io.BytesIO()
     Image.new("L", (120, 80), 255).save(mask_output, "PNG")
-    mask = blobs.put(mask_output.getvalue())
+    mask_bytes = mask_output.getvalue()
+    mask = blobs.put(mask_bytes)
+    original_get_bounded = blobs.get_bounded
+    # Model the immutable generation contract in this local-only blob fixture.
+    blobs.get_bounded = lambda ref, bound: original_get_bounded(
+        mask if ref == mask + ":29" else ref, bound
+    )
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -104,25 +111,14 @@ def exercise_profile_variants(tmp_path, monkeypatch, kind):
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append(request)
-            raw = json.dumps(
-                {
-                    "model_id": request["model_id"],
-                    "model_revision": request["model_revision"],
-                    "regions": [
-                        {
-                            "asset_id": request["asset_id"],
-                            "x": 0,
-                            "y": 0,
-                            "width": request["width"],
-                            "height": request["height"],
-                            "order": 0,
-                            "method": "sam3",
-                            "version": request["model_revision"],
-                            "mask_ref": mask,
-                        }
-                    ],
-                }
-            ).encode()
+            body = legitimate_body(request, expected_binding(request))
+            body["regions"][0]["mask_ref"] = mask + ":29"
+            body["masks"][0].update(
+                sha256=mask,
+                object_name="application/sha256/" + mask,
+                size_bytes=len(mask_bytes),
+            )
+            raw = json.dumps(body).encode()
             self.send_response(200)
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
@@ -138,7 +134,10 @@ def exercise_profile_variants(tmp_path, monkeypatch, kind):
     class Adapters(SyntheticAdapters):
         def segment(self, specimen):
             return Sam3Service(
-                "https://synthetic.run.app", blobs, effect=local_sam_effect
+                "https://synthetic.run.app",
+                blobs,
+                effect=local_sam_effect,
+                expected=expected_binding({"sha256": specimen.asset.sha256}),
             ).segment(specimen)
 
     def make_app():

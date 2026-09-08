@@ -396,6 +396,8 @@ def production_launch(args):
         args.launch_policy, os.getenv("SPECIMEN_LAUNCH_POLICY_SHA256", "")
     )
     verify_source_manifest(args.source_manifest, launch)
+    if not launch.sam3_checkpoint_files:
+        raise OperationalBlock("sam3_checkpoint_pins_required")
     from datetime import timezone
 
     if (
@@ -515,13 +517,20 @@ def main():
             lambda user: memberships,
         )
     else:
-        from .worker_launch import PilotAdmission
+        from .worker_launch import (
+            PilotAdmission,
+            verify_source_manifest,
+            sam3_expectations,
+        )
 
         user = os.environ["SPECIMEN_WORKER_ACTOR_UID"]
         actor_uid.set(user)
         repository = SqlConnectRepository()
         blobs = GcsBlobs()
-        adapters = ProductionAdapters(blobs)
+        manifest = verify_source_manifest(args.source_manifest, launch)
+        adapters = ProductionAdapters(
+            blobs, sam3_expected=sam3_expectations(manifest, launch, blobs.bucket.name)
+        )
         admission = PilotAdmission(repository, launch)
         if args.evidence_only:
             from .evidence_pilot import EvidencePilotWorkflow
