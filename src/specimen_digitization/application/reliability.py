@@ -57,11 +57,38 @@ def has_active_lease(run, current: datetime | None = None) -> bool:
 
 def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
     import asyncio
-    from pydantic_ai.exceptions import ModelHTTPError
+    from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded
+
+    # UsageLimits checks returned token usage; it does not tell the provider to
+    # stop generation. Bound each initial/retry response at request time too.
+    # Input/image billing and aggregate monetary reservations remain separate.
+    def bounded_settings(ctx):
+        # Pydantic resolves model/agent settings (including callables) before
+        # this per-request layer. Do not evaluate an agent callback a second time.
+        caps = [4096]
+        for settings in (getattr(ctx.model, "settings", None), ctx.model_settings):
+            if settings and settings.get("max_tokens") is not None:
+                caps.append(settings["max_tokens"])
+        limits = ctx.usage_limits
+        if limits.output_tokens_limit is not None:
+            caps.append(limits.output_tokens_limit - ctx.usage.output_tokens)
+        if limits.total_tokens_limit is not None:
+            # The next prompt's input/image tokens are not yet known; this is
+            # a remaining-generation bound, not a total-cost guarantee.
+            caps.append(limits.total_tokens_limit - ctx.usage.total_tokens)
+        output_cap = min(caps)
+        if output_cap <= 0:
+            raise UsageLimitExceeded("No output token allowance remains")
+        return {"max_tokens": output_cap}
 
     async def call():
         return await asyncio.wait_for(
-            agent.run(prompt, usage_limits=usage_limits), timeout=timeout_seconds
+            agent.run(
+                prompt,
+                usage_limits=usage_limits,
+                model_settings=bounded_settings,
+            ),
+            timeout=timeout_seconds,
         )
 
     try:

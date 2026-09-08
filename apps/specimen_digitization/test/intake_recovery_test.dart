@@ -192,8 +192,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('I checked framing and readability'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('I checked framing and readability'));
     await tester.pump();
+    await tester.ensureVisible(find.text('Choose files'));
+    await tester.pumpAndSettle();
     await tester.runAsync(() async {
       await tester.tap(find.text('Choose files'));
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -202,7 +206,11 @@ void main() {
     final checked = tester
         .widget<CheckboxListTile>(find.byType(CheckboxListTile))
         .value;
-    await tester.scrollUntilVisible(find.text('chosen.png'), 300);
+    await tester.scrollUntilVisible(
+      find.text('chosen.png'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('chosen.png'), findsOneWidget);
     expect(checked, isFalse);
     expect(find.text('Measured thumbnail · uncalibrated'), findsOneWidget);
@@ -231,6 +239,8 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Choose files'));
       await tester.pumpAndSettle();
       await tester.runAsync(() async {
         await tester.tap(find.text('Choose files'));

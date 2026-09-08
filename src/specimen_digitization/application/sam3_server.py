@@ -254,11 +254,30 @@ class GCSObjects:
         return self._media(self.output_bucket, name, blob.generation, 1024 * 1024)
 
 
+def offline_checkpoint_digest():
+    """Only the worker owns inference credentials; SAM consumes pinned files."""
+    import re
+    from huggingface_hub import constants
+
+    if not constants.HF_HUB_OFFLINE:
+        raise RuntimeError("sam3_offline_checkpoint_required")
+    if any(os.getenv(key) for key in (
+        "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN",
+    )):
+        raise RuntimeError("sam3_inference_credential_forbidden")
+    expected = os.getenv("SPECIMEN_SAM3_CHECKPOINT_SHA256", "")
+    if not re.fullmatch(r"[a-f0-9]{64}", expected):
+        raise RuntimeError("sam3_checkpoint_digest_required")
+    return expected
+
+
 class Sam3Engine:
     def __init__(self):
         import torch
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import constants, snapshot_download
         from transformers import Sam3Model, Sam3Processor
+
+        expected_digest = offline_checkpoint_digest() if constants.HF_HUB_OFFLINE else None
 
         # Only this immutable checkpoint. Download needs the existing approved
         # HF secret and accepted SAM license; neither is required by local tests.
@@ -267,7 +286,11 @@ class Sam3Engine:
                 repo_id=SAM3_MODEL.repo_id,
                 revision=SAM3_MODEL.revision,
                 allow_patterns=["*.json", "*.safetensors", "*.txt"],
-                token=os.environ["HF_TOKEN"],
+                token=False if constants.HF_HUB_OFFLINE else os.environ["HF_TOKEN"],
+                # Explicitly choose cache lookup. The pinned Hub client's
+                # patterned-snapshot path can otherwise request a remote tree
+                # even when its HTTP transport is in offline mode.
+                local_files_only=constants.HF_HUB_OFFLINE,
             )
         )
         weights = sorted(checkpoint.glob("*.safetensors"))
@@ -287,6 +310,8 @@ class Sam3Engine:
                     stream, "sha256"
                 ).hexdigest()
         self.checkpoint_sha256 = digest(encoded(self.checkpoint_files))
+        if expected_digest is not None and self.checkpoint_sha256 != expected_digest:
+            raise RuntimeError("sam3_checkpoint_digest_mismatch")
         torch.set_num_threads(4)
         self.model = Sam3Model.from_pretrained(
             checkpoint, local_files_only=True, trust_remote_code=False
@@ -556,6 +581,7 @@ def main():
         raise RuntimeError("sam3_requires_authorized_cloud_run_launch")
     if not os.getenv("SPECIMEN_SAM3_BUDGET_AUTHORIZATION"):
         raise RuntimeError("sam3_budget_authorization_required")
+    offline_checkpoint_digest()
     manifest_sha256 = os.environ["SPECIMEN_PILOT_MANIFEST_SHA256"]
     manifest = read_runtime_manifest(materialize=args.materialize_config)
     expiry = float(os.environ["SPECIMEN_SAM3_EXPIRES_UNIX"])
@@ -577,20 +603,27 @@ def main():
             raise ValueError("unapproved caller")
 
     # Shutdown even if no inference is submitted. Never persist an idle model pilot.
-    threading.Timer(expiry - time.time(), lambda: os._exit(0)).start()
-    objects = GCSObjects(
-        storage.Client(project="specimen-digitization"),
-        os.environ["SPECIMEN_SAM3_OUTPUT_BUCKET"],
-    )
-    segmenter = Segmenter(manifest, manifest_sha256, objects, Sam3Engine(), expiry)
-    uvicorn.run(
-        create_app(segmenter, authenticate, hard_deadline=True),
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", "8080")),
-        workers=1,
-        access_log=False,
-        timeout_graceful_shutdown=5,
-    )
+    expiry_timer = threading.Timer(expiry - time.time(), lambda: os._exit(0))
+    # The deadline bounds an active service; it must not keep failed startup or
+    # an already stopped server alive (and billable) until the pilot expires.
+    expiry_timer.daemon = True
+    expiry_timer.start()
+    try:
+        objects = GCSObjects(
+            storage.Client(project="specimen-digitization"),
+            os.environ["SPECIMEN_SAM3_OUTPUT_BUCKET"],
+        )
+        segmenter = Segmenter(manifest, manifest_sha256, objects, Sam3Engine(), expiry)
+        uvicorn.run(
+            create_app(segmenter, authenticate, hard_deadline=True),
+            host="0.0.0.0",
+            port=int(os.getenv("PORT", "8080")),
+            workers=1,
+            access_log=False,
+            timeout_graceful_shutdown=5,
+        )
+    finally:
+        expiry_timer.cancel()
 
 
 if __name__ == "__main__":

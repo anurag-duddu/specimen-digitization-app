@@ -62,13 +62,57 @@ def manifest():
     }
 
 
+CATEGORIES = (
+    "provider", "api", "worker", "sam", "build", "storage", "network",
+    "restore", "identity", "secrets", "telemetry",
+)
+
+
+def budget(root):
+    evidence = root / "budget-fixture.txt"
+    evidence.write_text("Authored budget fixture, not billing evidence.\n")
+    return {
+        "schema_version": "cohort-budget/v1",
+        "currency": "USD",
+        "manifest_sha256": MANIFEST_SHA,
+        "authorization_reference": "fixture-only-shared-authorization",
+        "scope": "entire_first_ten_all_sessions_and_retries",
+        "mode": "live",  # Claimed live only to test validator mechanics.
+        "total_limit_microusd": 5_000_000,
+        "daily_limit_microusd": 5_000_000,
+        "categories": {
+            category: {
+                "reconciled": True,
+                "artifacts": [{"path": evidence.name, "sha256": file_digest(evidence)}],
+            }
+            for category in CATEGORIES
+        },
+        "entries": [
+            {
+                "operation_id": "fixture-reader-1",
+                "category": "provider",
+                "day_utc": "2026-09-08",
+                "state": "settled",
+                "amount_microusd": 1_000_000,
+            },
+            {
+                "operation_id": "fixture-worker-1",
+                "category": "worker",
+                "day_utc": "2026-09-08",
+                "state": "reserved",
+                "amount_microusd": 2_000_000,
+            },
+        ],
+    }
+
+
 def test_all_twenty_and_live_cases_start_pending(tmp_path):
     result = evaluate(
         manifest(), MANIFEST_SHA, skeleton(CANDIDATE, MANIFEST_SHA), tmp_path, CANDIDATE
     )
     assert result["release_accepted"] is False
     assert result["denominator"] == 10
-    assert result["pending"] == list(CASES) + ["DEPLOYMENT-PROVENANCE"]
+    assert result["pending"] == list(CASES) + ["DEPLOYMENT-PROVENANCE", "COHORT-BUDGET"]
 
 
 @pytest.mark.parametrize(
@@ -163,7 +207,7 @@ def test_non_live_evidence_can_never_complete_live_gate(tmp_path, mode):
     for row in report["results"]:
         row["mode"] = mode
     result = evaluate(manifest(), MANIFEST_SHA, report, tmp_path, CANDIDATE)
-    assert result["pending"] == list(CASES) + ["DEPLOYMENT-PROVENANCE"]
+    assert result["pending"] == list(CASES) + ["DEPLOYMENT-PROVENANCE", "COHORT-BUDGET"]
     assert not result["release_accepted"]
 
 
@@ -191,6 +235,7 @@ def test_duplicate_json_keys_fail_closed(tmp_path):
 
 def claimed_live_report(tmp_path):
     report = passing_report(tmp_path)
+    report["budget"] = budget(tmp_path)
     for row in report["results"]:
         row["mode"] = "live"  # Tests validation mechanics, never real evidence.
     report["deployment"] = {
@@ -280,3 +325,10 @@ def test_cli_rejects_changed_manifest_before_emitting_report(
     path.write_text(path.read_text() + "\n")
     assert main() == 2
     assert json.loads(capsys.readouterr().out)["release_accepted"] is False
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_json_evidence_rejects_nonfinite_constants(constant):
+    from acceptance import parse_json
+    with pytest.raises(InvalidEvidence):
+        parse_json('{"cost": ' + constant + '}')

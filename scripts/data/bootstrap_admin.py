@@ -17,6 +17,8 @@ import stat
 from typing import Any
 from uuid import UUID
 
+from specimen_digitization.application.pilot_manifest import read_private
+
 
 # The first UPDATE takes a row lock shared by all bootstrap attempts in this
 # organization. The following query runs after that lock, preventing two distinct
@@ -148,8 +150,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True, help="New private file outside Git; parent mode0700")
     args = parser.parse_args()
     try:
-        request = json.loads(args.request.read_text())
-        auth_record = json.loads(args.auth_record.read_text())
+        request = json.loads(read_private(args.request))
+        auth_record = json.loads(read_private(args.auth_record))
         artifact = prepare_bootstrap(auth_record=auth_record, **request)
         write_private_artifact(args.output, artifact)
     except (ValueError, TypeError, OSError):

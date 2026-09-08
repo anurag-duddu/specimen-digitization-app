@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import json
 from pathlib import Path
 import subprocess
 from unittest.mock import patch
@@ -9,6 +11,30 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("inventory_cloud", ROOT / "scripts/data/inventory_cloud.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+
+
+def test_metadata_inventory_includes_nested_originals_and_noncurrent_generations(tmp_path, capsys):
+    objects = [{"name": "private-fixture/nested/original", "generation": version}
+               for version in ["10", "20"]]
+
+    def query(command, timeout):
+        if command[1:4] == ["storage", "objects", "list"]:
+            # The CLI treats a bare bucket as bucket/* and hides nested paths.
+            result = objects if command[4].endswith("/**") else []
+            assert "--stat" not in command and "--soft-deleted" not in command
+        elif command[1:3] == ["auth", "print-access-token"]:
+            return subprocess.CompletedProcess(command, 0, stdout="synthetic-token", stderr="")
+        else:
+            result = []
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(result), stderr="")
+
+    with patch.object(module, "run_gcloud", side_effect=query), patch.object(
+        module, "urlopen", side_effect=lambda *a, **kw: io.BytesIO(b"{}")
+    ):
+        module.inventory(tmp_path / "private")
+    evidence = json.loads((tmp_path / "private/objects.json").read_bytes())
+    assert evidence["data"] == objects
+    assert "private-fixture" not in capsys.readouterr().out
 
 
 def test_metadata_tool_stops_without_api_enable_auth_prompt_or_private_output(tmp_path, capsys):

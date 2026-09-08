@@ -86,6 +86,7 @@ def local_model_factory(payload):
             def respond(messages, info):
                 pause("model")
                 assert "PEER-CANARY" not in str(messages)
+                assert (info.model_settings or {}).get("max_tokens") == 4096
                 output = (
                     {
                         "verbatim_text": SYNTHETIC_TEXT,

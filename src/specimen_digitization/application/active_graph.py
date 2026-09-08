@@ -146,7 +146,7 @@ def unpack(payload, blobs):
     graph = read_graph(payload, blobs)
     if graph:
         payload = {**payload, "run": graph[1]}
-    return Specimen.model_validate(payload)
+    return Specimen.model_validate(payload, context={"persisted_snapshot": True})
 
 
 def original_run_digest(payload, blobs):

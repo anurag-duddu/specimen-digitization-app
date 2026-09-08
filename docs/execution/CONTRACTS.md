@@ -45,8 +45,8 @@ where a later write uses optimistic concurrency.
 |---|---|---|
 | GET `/v1/session` | verified identity | user ID, authorized organizations/collections and permissions; `mode` (`synthetic`, `emulator`, `production`) and runtime readiness blockers |
 | GET `/collections` | optional parent ID | configurable collection nodes and eligible published profiles; viewer |
-| POST `/batches` | collection_id, display_name, acquisition_method | batch_id and item manifest; operator |
-| POST `/batches/{batch_id}/items` | client_item_id, filename, declared MIME/bytes/dimensions, sha256 | stable specimen_id, asset_id, upload_id, manifest state and duplicate reference if authorized; operator |
+| POST `/batches` | collection_id, display_name, acquisition_method, sensitive (strict boolean, default true) | batch_id and item manifest; operator; sensitive permission when true |
+| POST `/batches/{batch_id}/items` | client_item_id, filename, declared MIME/bytes/dimensions, sha256, sensitive (strict boolean, default true; must match batch) | stable specimen_id, asset_id, upload_id, manifest state and duplicate reference if authorized; operator |
 | GET `/batches/{batch_id}` | cursor | itemized manifest and accepted/duplicate/invalid/uploading/failed states |
 | GET `/uploads/{upload_id}` | none | authoritative upload offset, revision and expiry; owner/scoped operator |
 | PUT `/uploads/{upload_id}/content` | binary bytes and `Upload-Offset` header | updated offset/revision; authenticated scoped operator; backend-mediated transport |
@@ -55,7 +55,7 @@ where a later write uses optimistic concurrency.
 | GET `/specimens` | collection_id, batch_id, state, disposition, date bounds, uploader, score band, issue, profile_version, cursor | authorized specimen summaries |
 | GET `/specimens/{specimen_id}` | none | current summary plus pinned active/latest run, record version and available actions |
 | GET `/specimens/{specimen_id}/workspace` | optional run_id | regions, independent observations, transcription versions, candidates, evidence, validations, decisions, disposition and audit timeline; large raw payloads remain references |
-| GET `/assets/{asset_id}/access` | purpose | short-lived authorized read URL, expiry, immutable asset metadata; sensitive-image permission required |
+| GET `/assets/{asset_id}/access` | purpose | authenticated API read URL and immutable asset metadata; current scoped membership, plus sensitive-image permission for sensitive or legacy-unknown assets |
 | POST `/specimens/{specimen_id}/classification` | expected_revision, collection_id, reason | new pinned run and superseded downstream references; reviewer or permitted operator |
 | POST `/specimens/{specimen_id}/regions` | expected_revision, base_run_id, region edits, reason | new region-set version plus invalidation summary; reviewer |
 | POST `/specimens/{specimen_id}/decisions` | expected_revision, base_record_version_id, kind, target_id, before, after, reason, evidence_ids | append-only decision, new revision and dependent revalidation state; reviewer |
@@ -73,6 +73,46 @@ chunks must either return verified progress or a conflict requiring GET; never
 append repeated bytes. Backend must publish exact chunk response and error
 examples before Flutter completes wiring. Never put permanent download tokens
 in persisted evidence or telemetry.
+
+### Explicit intake sensitivity
+
+New batch and item requests accept `sensitive: true` or `sensitive: false` only.
+Omission defaults to true; numbers, strings and null are invalid. The client
+defaults to Sensitive and submits the user's selection on both creation requests.
+An item must match its retained batch, and resume/retry never reclassifies an
+existing upload. A non-sensitive member must explicitly select false before
+creation; membership never supplies that declaration automatically.
+
+The upload carries the declaration into `asset.sensitive`. Missing legacy
+values always mean sensitive. True is omitted from canonical payloads to retain
+old request and snapshot digests; false is explicit in payloads and responses.
+Source classification may be promoted to sensitive by an authorized writer,
+but sensitive or unknown history cannot be downgraded. There is no public
+reclassification endpoint in this change.
+
+Workspace, source/view pixels, history, active graphs and retained artifacts
+recheck current scope membership and sensitivity. A historical snapshot's own
+sensitive/unknown classification still denies its content even when the current
+record says false. Membership revocation never grants access through a saved
+URL, cached list result, revision, upload handle or idempotency receipt. These
+rules do not grant institutional approval, human approval or clearance.
+
+The SQL repository uses `GetDocumentV2`, `ListDocumentPageV2`,
+`CreateDocumentV2` and `SaveDocumentV2`. Writes include required boolean
+`sensitive`; list pages include `includeSensitive` from fresh scoped membership.
+Returned column and payload classifications must match (missing legacy payload
+field means true). The connector retains active scope, role, CAS and creator-only
+protections for `pilot_launch` and `worker_cursor`, disallows listing control
+documents, and atomically rejects a sensitivity downgrade. Older operations
+cannot bypass these protections. V3 specimen writes bind the actual asset
+classification to the persisted column.
+
+`PilotLaunch.sensitive` likewise defaults to true and is omitted in that case
+to preserve existing launch digests. An explicitly false launch can bind only
+records whose assets are explicitly false; it creates a non-sensitive control
+ledger. A changed launch declaration cannot reset or downgrade an existing
+ledger. Actual source classification must be verified before materializing this
+private launch; the runtime does not infer that the frozen ten are non-sensitive.
 
 ## Domain records
 
@@ -288,8 +328,8 @@ proof; the backend implementation is still in progress.
 | Evidence | Evidence object plus `evidence_id`; image and raw references remain immutable IDs/digests |
 | Validation | `validations` array, not validation_findings; each has rule_id, severity, outcome, reason_code |
 | Timeline | `events` with monotonic sequence; decisions is the review-event subset; no audit_events alias |
-| Batch create input | `collection_id`, `display_name`, `acquisition_method` (default files) |
-| Item create input | `client_item_id`, `filename`, `media_type`, `size_bytes`, `width`, `height`, `sha256` |
+| Batch create input | `collection_id`, `display_name`, `acquisition_method` (default files), `sensitive` (strict boolean, default true) |
+| Item create input | `client_item_id`, `filename`, `media_type`, `size_bytes`, `width`, `height`, `sha256`, `sensitive` (strict boolean, default true; matches retained batch) |
 | Item/upload result | Input metadata plus upload_id, asset_id, specimen_id, batch_id, collection_id, revision, state, offset, upload_url, upload_method; duplicate_specimen_id only for authorized duplicates |
 | Upload content | Authenticated PUT with Upload-Offset and up to 4 MiB binary bytes; returns upload result with new offset/revision. Same retained offset/hash replay returns current result; otherwise 409 and GET to reconcile |
 | Complete | `{expected_revision, reason}` plus Idempotency-Key; returns Summary. Storage generation is server-owned in this transport, not client input |

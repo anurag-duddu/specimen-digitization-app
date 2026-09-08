@@ -2,7 +2,7 @@
   "schema_version": "live-data-plan/v1",
   "status": "proposal_not_applied",
   "project_id": "specimen-digitization",
-  "cloud_state": "not_confirmed_authentication_blocked",
+  "cloud_state": "read_only_inventory_confirmed_live_readiness_not_confirmed",
   "data_connect": {
     "location": "us-east4",
     "service_id": "specimen-digitization-service",
@@ -13,7 +13,7 @@
   "database": {
     "instance_id": "specimen-digitization-instance",
     "database": "specimen-digitization-database",
-    "backup_enabled": null,
+    "backup_enabled": false,
     "pitr_enabled": null,
     "latest_successful_backup_id": null,
     "restore_rehearsal_instance": null,
@@ -49,7 +49,7 @@
     "runtime_object_prefix": "application/sha256/",
     "writes_require_generation_match": 0,
     "reads_require_exact_generation": true,
-    "uniform_access_confirmed": false,
+    "uniform_access_confirmed": true,
     "public_access_prevention_confirmed": false,
     "public_iam_denial_confirmed": false,
     "retention_approval": null,
@@ -60,7 +60,7 @@
     "specimen_limit": 10,
     "allow_expansion": false,
     "ready_manifest_sha256": null,
-    "source_order_confirmed": false,
+    "source_order_confirmed": true,
     "admin_identity_reference": "private_approval_artifact_required"
   },
   "runtime_identity_proposals": [
@@ -99,18 +99,33 @@
   },
   "cost_inputs": {
     "currency": "USD",
-    "approved_total_limit": null,
-    "approved_restore_clone_hours": null,
-    "observed_database_tier": null,
-    "observed_storage_gib": null,
+    "approved_total_limit": 5,
+    "approved_daily_limit": 5,
+    "shared_across_sessions_and_retries": true,
+    "daily_reset_allowed": false,
+    "ordinary_reservation_target": 4,
+    "contingency": 1,
+    "proposed_backup_restore_allocation": 1,
+    "proposed_restore_clone_hours_max": 2,
+    "approved_restore_clone_hours": 2,
+    "observed_database_tier": "db-f1-micro",
+    "observed_storage_gib": 10,
     "observed_backup_gib": null,
     "authorized_source_bytes": null,
-    "restore_clone_hourly_rate": null,
+    "metadata_frozen_source_bytes": 3018274,
+    "restore_clone_hourly_rate": 0.0112,
     "storage_and_backup_gib_month_rates": null,
+    "storage_and_backup_gib_hour_rates": {
+      "ssd": 0.000249178,
+      "standard_backup_used": 0.00011726
+    },
+    "rate_region": "us-east4",
+    "rate_observed_date": "2026-09-08",
+    "rate_source": "https://cloud.google.com/sql/pricing",
     "source_download_egress_rate": null,
     "new_persistent_sql_instances_proposed": 0,
     "isolated_restore_clone_count_proposed": 1,
     "runtime_and_inference_budget_owner": "delivery_and_processing",
-    "estimate_status": "blocked_on_current_metadata_and_approved_budget"
+    "estimate_status": "regional_rates_verified_backup_size_retention_and_total_admission_pending"
   }
 }

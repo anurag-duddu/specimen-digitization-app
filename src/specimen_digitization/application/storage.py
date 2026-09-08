@@ -427,6 +427,12 @@ class SQLiteRepository:
             ).fetchone()
             if (row[0] if row else 0) != expected:
                 raise Conflict("Stale revision")
+            if (
+                row
+                and json.loads(row[1])["asset"].get("sensitive", True) is not False
+                and not specimen.asset.sensitive
+            ):
+                raise Conflict("Sensitive history cannot be downgraded")
             specimen = specimen.model_copy(deep=True)
             specimen.version = expected + 1
             if row and len(specimen.model_dump_json().encode()) > 128 * 1024:
@@ -501,11 +507,19 @@ class SQLiteRepository:
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
-                "SELECT revision FROM documents WHERE scope=? AND kind=? AND id=?",
+                "SELECT revision,payload FROM documents WHERE scope=? AND kind=? AND id=?",
                 (scope.model_dump_json(), kind, ident),
             ).fetchone()
             if (row[0] if row else 0) != expected:
                 raise Conflict("Stale document revision")
+            if type(payload.get("sensitive", True)) is not bool:
+                raise ValueError("Document sensitivity must be boolean")
+            if (
+                row
+                and json.loads(row[1]).get("sensitive", True) is not False
+                and not payload.get("sensitive", True)
+            ):
+                raise Conflict("Sensitive document cannot be downgraded")
             payload = dict(payload, revision=expected + 1)
             db.execute(
                 "INSERT INTO documents VALUES (?,?,?,?,?) ON CONFLICT(scope,kind,id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload",

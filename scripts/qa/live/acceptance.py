@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import hashlib
 import json
 import os
@@ -13,6 +14,18 @@ from uuid import UUID
 
 
 PRD_CASES = tuple(f"PRD-{number:02d}" for number in range(1, 21))
+JOURNEY_CASES = (
+    "UI-SIGN-IN",
+    "UI-INTAKE",
+    "UI-PROCESSING",
+    "UI-IMAGE-REGIONS",
+    "UI-LITERAL-UNCERTAINTY",
+    "UI-SAVE-REOPEN",
+    "UI-SEARCH-QUEUE",
+    "UI-PROVENANCE-HISTORY",
+    "UI-DENIAL-RECOVERY",
+    "UI-NO-SYNTHETIC-FALLBACK",
+)
 LIVE_CASES = (
     "AUTH-IDENTITY",
     "AUTH-APPCHECK",
@@ -30,7 +43,17 @@ LIVE_CASES = (
     "DEPLOY-IDENTITY",
     "BROWSER-E2E",
 )
-CASES = PRD_CASES + LIVE_CASES
+CASES = PRD_CASES + JOURNEY_CASES + LIVE_CASES
+FULL_COHORT_CASES = set(JOURNEY_CASES[1:8]) | {
+    "DATA-TEN",
+    "DATA-GENERATION",
+    "PROVIDER-ACTUAL",
+    "BROWSER-E2E",
+}
+COST_CATEGORIES = {
+    "provider", "api", "worker", "sam", "build", "storage", "network",
+    "restore", "identity", "secrets", "telemetry",
+}
 MODES = {"fixture", "emulator", "owner_report", "live"}
 STATES = {"passed", "failed", "blocked", "not_run"}
 REPOSITORY = "anurag-duddu/specimen-digitization-app"
@@ -74,7 +97,10 @@ def parse_json(raw):
             result[key] = value
         return result
 
-    return json.loads(raw, object_pairs_hook=unique)
+    def finite_constant(value):
+        raise InvalidEvidence("Nonfinite JSON constant")
+
+    return json.loads(raw, object_pairs_hook=unique, parse_constant=finite_constant)
 
 
 def read_json(path):
@@ -236,7 +262,7 @@ def manifest_ids(manifest):
     return identifiers
 
 
-def artifact(root, entry):
+def artifact_path(root, entry):
     require(isinstance(entry, dict), "Invalid artifact descriptor")
     relative = entry.get("path")
     require(nonempty(relative), "Artifact path missing")
@@ -246,6 +272,11 @@ def artifact(root, entry):
     require(resolved.is_relative_to(root.resolve()), "Artifact escapes evidence root")
     require(resolved.is_file(), "Artifact missing")
     require(sha(entry.get("sha256")), "Artifact digest missing")
+    return resolved
+
+
+def artifact(root, entry):
+    resolved = artifact_path(root, entry)
     require(file_digest(resolved) == entry["sha256"], "Artifact digest mismatch")
 
 
@@ -255,6 +286,7 @@ def skeleton(candidate_sha, manifest_sha):
         "candidate_sha": candidate_sha,
         "manifest_sha256": manifest_sha,
         "deployment": {},
+        "budget": {},
         "results": [
             {
                 "case_id": case,
@@ -269,6 +301,71 @@ def skeleton(candidate_sha, manifest_sha):
             for case in CASES
         ],
     }
+
+
+def cohort_budget(budget, manifest_sha, root):
+    """Reconcile a single cumulative ledger; this does not enforce cloud spending."""
+    keys(
+        budget,
+        (
+            "schema_version", "currency", "manifest_sha256",
+            "authorization_reference", "scope", "mode", "total_limit_microusd",
+            "daily_limit_microusd", "categories", "entries",
+        ),
+    )
+    require(budget["schema_version"] == "cohort-budget/v1", "Unknown budget schema")
+    require(budget["currency"] == "USD", "Budget must use USD")
+    require(budget["manifest_sha256"] == manifest_sha, "Budget cohort changed")
+    require(nonempty(budget["authorization_reference"]), "Budget authority missing")
+    require(
+        budget["scope"] == "entire_first_ten_all_sessions_and_retries",
+        "Budget must span all sessions and retries without a reset",
+    )
+    require(budget["mode"] in MODES, "Invalid budget evidence mode")
+    total, daily = budget["total_limit_microusd"], budget["daily_limit_microusd"]
+    require(
+        type(total) is int and type(daily) is int and 0 < daily <= total <= 5_000_000,
+        "Shared total and daily limits must be at most USD 5",
+    )
+    categories = budget["categories"]
+    keys(categories, COST_CATEGORIES)
+    for category in categories.values():
+        keys(category, ("reconciled", "artifacts"))
+        require(category["reconciled"] is True, "Cost category not reconciled")
+        require(
+            isinstance(category["artifacts"], list) and category["artifacts"],
+            "Every cost category needs retained evidence, including zero cost",
+        )
+        for entry in category["artifacts"]:
+            artifact(root, entry)
+    require(isinstance(budget["entries"], list), "Cost entries missing")
+    seen, by_day = set(), {}
+    for entry in budget["entries"]:
+        keys(entry, ("operation_id", "category", "day_utc", "state", "amount_microusd"))
+        ident = entry["operation_id"]
+        require(nonempty(ident) and ident not in seen, "Missing/duplicate cost operation")
+        seen.add(ident)
+        require(entry["category"] in COST_CATEGORIES, "Unknown cost category")
+        require(entry["state"] in {"settled", "reserved", "unknown"}, "Invalid cost state")
+        amount = entry["amount_microusd"]
+        require(type(amount) is int and amount >= 0, "Missing conservative cost amount")
+        require(
+            entry["state"] != "unknown" or amount > 0,
+            "Unknown effects must retain a positive conservative reservation",
+        )
+        day = entry["day_utc"]
+        try:
+            require(
+                isinstance(day, str) and date.fromisoformat(day).isoformat() == day,
+                "Invalid UTC cost day",
+            )
+        except ValueError as exc:
+            raise InvalidEvidence("Invalid UTC cost day") from exc
+        by_day[day] = by_day.get(day, 0) + amount
+    exposure = sum(by_day.values())
+    require(exposure <= total, "Cumulative budget exceeded across all days")
+    require(all(amount <= daily for amount in by_day.values()), "Daily budget exceeded")
+    return exposure
 
 
 def evaluate(manifest, manifest_sha, report, root, candidate_sha):
@@ -323,7 +420,7 @@ def evaluate(manifest, manifest_sha, report, root, candidate_sha):
             )
         if row["status"] != "passed" or row["mode"] != "live":
             pending.append(case)
-        elif case in {"DATA-TEN", "DATA-GENERATION", "PROVIDER-ACTUAL", "BROWSER-E2E"}:
+        elif case in FULL_COHORT_CASES:
             require(set(tested) == ids, "Full ten-specimen coverage required")
     require(
         seen == set(CASES), "Missing acceptance cases; never shrink the denominator"
@@ -360,6 +457,12 @@ def evaluate(manifest, manifest_sha, report, root, candidate_sha):
         or deployment.get("deploy_job_conclusion") != "success"
     ):
         pending.append("DEPLOYMENT-PROVENANCE")
+    budget = report.get("budget")
+    exposure = None
+    if budget:
+        exposure = cohort_budget(budget, manifest_sha, root)
+    if not budget or budget["mode"] != "live":
+        pending.append("COHORT-BUDGET")
     return {
         "schema_version": 1,
         "candidate_sha": candidate_sha,
@@ -369,6 +472,7 @@ def evaluate(manifest, manifest_sha, report, root, candidate_sha):
         if pending
         else "ready_for_independent_review",
         "release_accepted": False,
+        "budget_exposure_microusd": exposure,
         "pending": pending,
         "limitation": "Offline integrity checks do not authenticate claims, approve scope, "
         "establish first-ten selection, or grant institutional quality approval.",

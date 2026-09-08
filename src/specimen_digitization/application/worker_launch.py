@@ -11,7 +11,7 @@ from uuid import NAMESPACE_URL, uuid5, uuid4
 
 from pydantic import Field, model_validator
 
-from .domain import Record, Scope
+from .domain import Record, Scope, StageCostReservations
 from .storage import Missing, digest
 from .workflow import OperationalBlock
 
@@ -29,6 +29,9 @@ class PilotSpecimen(Record):
 
 
 class PilotLaunch(Record):
+    sensitive: bool = Field(
+        default=True, strict=True, exclude_if=lambda value: value is True
+    )
     version: str = "authorized-ten-v1"
     evidence_only: bool = False
     evidence_profile_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
@@ -42,6 +45,9 @@ class PilotLaunch(Record):
     per_specimen_cost_limit_micros: int = Field(gt=0)
     per_specimen_call_limit: int = Field(gt=0, le=1000)
     per_specimen_token_limit: int = Field(gt=0)
+    stage_cost_reservations: StageCostReservations | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     effect_timeout_seconds: float = Field(gt=0, le=120, allow_inf_nan=False)
     hf_secret_resource: str = Field(
         pattern=r"^projects/specimen-digitization/secrets/[a-zA-Z0-9_-]+/versions/[1-9][0-9]*$"
@@ -63,6 +69,16 @@ class PilotLaunch(Record):
             raise ValueError("Pilot objects must be unique")
         if 10 * self.per_specimen_cost_limit_micros > self.total_cost_limit_micros:
             raise ValueError("Ten conservative allocations exceed launch budget")
+        if self.stage_cost_reservations is not None:
+            from ..model_gateway import INITIAL_HUGGINGFACE_ROUTES
+
+            stages = {"segment"} | {
+                "transcribe:" + route for route in INITIAL_HUGGINGFACE_ROUTES
+            }
+            if not self.evidence_only:
+                stages |= {"classify", "parse"}
+            if set(self.stage_cost_reservations.cost_micros) != stages:
+                raise ValueError("Launch requires an exact complete model stage cost map")
         if self.sam3_checkpoint_files is not None:
             import re
 
@@ -122,6 +138,7 @@ class PilotAdmission:
             and specimen.asset.sha256 == binding.asset_sha256
             and specimen.asset.blob_ref == binding.blob_ref
             and not specimen.run.profile.synthetic
+            and (self.launch.sensitive or not specimen.asset.sensitive)
             and (
                 not self.launch.evidence_only
                 or specimen.asset.processing_derivative is None
@@ -135,8 +152,12 @@ class PilotAdmission:
             )
         except Missing:
             value = {"revision": 0, "launch_sha256": self.launch_digest, "runs": {}}
+            if not self.launch.sensitive:
+                value["sensitive"] = False
         if value["launch_sha256"] != self.launch_digest:
             raise OperationalBlock("pilot_launch_changed_requires_reconciliation")
+        if value.get("sensitive", True) != self.launch.sensitive:
+            raise OperationalBlock("pilot_launch_sensitivity_mismatch")
         return value
 
     def _write(self, ledger, **updates):
@@ -152,9 +173,13 @@ class PilotAdmission:
 
     def admit(self, specimen):
         launch, run = self.launch, specimen.run
+        if digest(launch.model_dump(mode="json")) != self.launch_digest:
+            raise OperationalBlock("pilot_launch_changed_requires_reconciliation")
         if not self.binding_matches(specimen):
             raise OperationalBlock("pilot_specimen_binding_mismatch")
         policy = run.profile.execution
+        if policy.stage_cost_reservations != launch.stage_cost_reservations:
+            raise OperationalBlock("pilot_stage_cost_reservations_mismatch")
         if (
             self.clock() + timedelta(seconds=policy.external_timeout_seconds + 5)
             >= launch.expires_at
@@ -164,8 +189,13 @@ class PilotAdmission:
             policy.approved_cost_limit_micros is None
             or policy.approved_cost_limit_micros <= 0
             or policy.approved_cost_limit_micros > launch.per_specimen_cost_limit_micros
-            or policy.request_cost_reservation_micros is None
-            or policy.request_cost_reservation_micros <= 0
+            or (
+                launch.stage_cost_reservations is None
+                and (
+                    policy.request_cost_reservation_micros is None
+                    or policy.request_cost_reservation_micros <= 0
+                )
+            )
             or policy.max_external_calls > launch.per_specimen_call_limit
             or policy.max_tokens > launch.per_specimen_token_limit
             or policy.external_timeout_seconds > launch.effect_timeout_seconds

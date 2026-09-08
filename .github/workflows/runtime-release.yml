@@ -1,0 +1,186 @@
+name: Protected runtime release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: specimen-runtime-release
+  cancel-in-progress: false
+
+jobs:
+  admission:
+    name: Admit the exact runtime release phase
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: runtime-production
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      phase: ${{ steps.admit.outputs.phase }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEPLOYMENT_ENVIRONMENT: runtime-production
+      RELEASE_PROJECT: specimen-digitization
+      RELEASE_SERVICE_ACCOUNT: specimen-runtime-release@specimen-digitization.iam.gserviceaccount.com
+      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
+      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
+      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
+      RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256: ${{ vars.RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256 }}
+    steps:
+      - name: Check out the merged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Verify merged source, all five checks, review, private evidence and cumulative budget
+        id: admit
+        env:
+          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
+          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
+        run: uv run python scripts/ci/deploy_runtime.py --plane runtime --prepare-inputs --packet "$RUNNER_TEMP/runtime-release/packet.json"
+
+  build:
+    name: Publish immutable ${{ matrix.role }} with build-only identity
+    needs: admission
+    if: needs.admission.outputs.phase == 'runtime-prepare/v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: runtime-build-production
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [api, worker, sam]
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEPLOYMENT_ENVIRONMENT: runtime-build-production
+      RELEASE_PROJECT: specimen-digitization
+      RELEASE_SERVICE_ACCOUNT: specimen-runtime-build@specimen-digitization.iam.gserviceaccount.com
+      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
+      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
+      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
+    steps:
+      - name: Check out the merged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Admit exact source and image publication cost before build credentials
+        id: admission
+        env:
+          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
+          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
+        run: uv run python scripts/ci/deploy_runtime.py --plane runtime-build --prepare-inputs --packet "$RUNNER_TEMP/runtime-build/packet.json"
+      - name: Authenticate only the approved registry publisher
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: specimen-digitization
+          workload_identity_provider: ${{ steps.admission.outputs.provider }}
+          service_account: specimen-runtime-build@specimen-digitization.iam.gserviceaccount.com
+      - name: Build once, smoke without network, and publish an immutable digest
+        id: image
+        env:
+          ROLE: ${{ matrix.role }}
+        run: uv run python scripts/ci/deploy_runtime.py --plane runtime-build --publish-role "$ROLE" --packet "$RUNNER_TEMP/runtime-build/packet.json" --output "$RUNNER_TEMP/$ROLE.json"
+      - name: Sign exact image provenance with GitHub keyless identity
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ steps.image.outputs.image }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+      - name: Retain public image receipt only
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-image-${{ matrix.role }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/${{ matrix.role }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Prepare or activate the verified bounded runtime
+    needs: [admission, build]
+    if: always() && needs.admission.result == 'success' && (needs.build.result == 'success' || needs.admission.outputs.phase == 'runtime-activate/v1')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    environment: runtime-production
+    concurrency:
+      group: specimen-protected-mutation
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEPLOYMENT_ENVIRONMENT: runtime-production
+      RELEASE_PROJECT: specimen-digitization
+      RELEASE_SERVICE_ACCOUNT: specimen-runtime-release@specimen-digitization.iam.gserviceaccount.com
+      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
+      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
+      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
+      RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256: ${{ vars.RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256 }}
+    steps:
+      - name: Check out the merged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Revalidate exact source and current shared authority before release credentials
+        id: admission
+        env:
+          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
+          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
+        run: uv run python scripts/ci/deploy_runtime.py --plane runtime --prepare-inputs --packet "$RUNNER_TEMP/runtime-release/packet.json"
+      - name: Download this attempt's immutable image receipts
+        if: needs.admission.outputs.phase == 'runtime-prepare/v1'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: runtime-image-*-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/images
+      - name: Authenticate only the approved runtime releaser
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: specimen-digitization
+          workload_identity_provider: ${{ steps.admission.outputs.provider }}
+          service_account: specimen-runtime-release@specimen-digitization.iam.gserviceaccount.com
+      - name: Verify signed provenance and schema revision, then execute the exact release phase
+        id: apply
+        run: uv run python scripts/ci/deploy_runtime.py --plane runtime --deploy --packet "$RUNNER_TEMP/runtime-release/packet.json" --receipts "$RUNNER_TEMP/images" --output "$RUNNER_TEMP/runtime-receipt.json"
+      - name: Attest the observed runtime receipt
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/runtime-receipt.json
+      - name: Retain the observed runtime receipt without private pilot inputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-receipt-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/runtime-receipt.json
+          if-no-files-found: warn
+          retention-days: 30

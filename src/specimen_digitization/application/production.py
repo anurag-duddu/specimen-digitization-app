@@ -71,10 +71,12 @@ class SqlConnectRepository:
         else:
             if os.getenv("SPECIMEN_SQL_EMULATOR_HOST"):
                 raise ValueError("Production rejects SQL emulator configuration")
-            credentials, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
-            )
-            self.session = session or AuthorizedSession(credentials)
+            if session is None:
+                credentials, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+                session = AuthorizedSession(credentials)
+            self.session = session
             origin = "https://firebasedataconnect.googleapis.com"
         self.url = f"{origin}/v1/projects/{project}/locations/{location}/services/{service}/connectors/{connector}"
 
@@ -137,7 +139,11 @@ class SqlConnectRepository:
                 revision=data["specimen"]["revision"],
             ),
         )["specimenSnapshot"]
-        return self._snapshot(row)
+        specimen = self._snapshot(row)
+        sensitive = data["specimen"].get("sensitive", True)
+        if type(sensitive) is not bool or sensitive != specimen.asset.sensitive:
+            raise Conflict("Specimen sensitivity metadata mismatch")
+        return specimen
 
     def find_checksum(self, scope, checksum, include_sensitive=False):
         return self.execute(
@@ -374,6 +380,9 @@ class SqlConnectRepository:
             return self._snapshot(row)
         specimen = specimen.model_copy(deep=True)
         specimen.version = expected + 1
+        if expected and not specimen.asset.sensitive:
+            if self.version(principal.scope, specimen.id, expected).asset.sensitive:
+                raise Conflict("Sensitive history cannot be downgraded")
         if expected and len(specimen.model_dump_json().encode()) > 128 * 1024:
             specimen = compact_history(
                 specimen, self.version(principal.scope, specimen.id, expected)
@@ -398,7 +407,7 @@ class SqlConnectRepository:
                 in {"retry_scheduled", "paused", "cancelled", "processing_blocked"}
                 else "running"
             ),
-            sensitive=True,
+            sensitive=specimen.asset.sensitive,
             contractVersion="0.1",
             workAvailableAt=work_available_at(specimen),
         )
@@ -420,23 +429,36 @@ class SqlConnectRepository:
 
     def document(self, scope, kind, ident):
         row = self.execute(
-            "GetDocument", dict(self.variables(scope), kind=kind, id=ident)
+            "GetDocumentV2", dict(self.variables(scope), kind=kind, id=ident)
         ).get("auxiliaryDocument")
         if not row:
             raise Missing(ident)
+        if (
+            type(row.get("sensitive")) is not bool
+            or type(row["payload"].get("sensitive", True)) is not bool
+            or row["sensitive"] != row["payload"].get("sensitive", True)
+        ):
+            raise Conflict("Document sensitivity metadata mismatch")
         return row["payload"]
 
     def documents(self, scope, kind):
         results, after, cutoff = [], "", now()
         while True:
+            sensitive = any(
+                m["organization_id"] == scope.organization_id
+                and m["collection_id"] == scope.collection_id
+                and m["can_view_sensitive"]
+                for m in self.memberships(actor_uid.get())
+            )
             rows = self.execute(
-                "ListDocumentPage",
+                "ListDocumentPageV2",
                 dict(
                     self.variables(scope),
                     kind=kind,
                     cutoff=cutoff,
                     afterId=after,
                     limit=100,
+                    includeSensitive=sensitive,
                 ),
             ).get("auxiliaryDocuments", [])
             results.extend(
@@ -448,6 +470,15 @@ class SqlConnectRepository:
 
     def put_document(self, scope, kind, ident, payload, expected):
         payload = dict(payload, revision=expected + 1)
+        sensitive = payload.get("sensitive", True)
+        if type(sensitive) is not bool:
+            raise ValueError("Document sensitivity must be boolean")
+        if (
+            expected
+            and not sensitive
+            and self.document(scope, kind, ident).get("sensitive", True)
+        ):
+            raise Conflict("Sensitive document cannot be downgraded")
         variables = dict(
             self.variables(scope),
             kind=kind,
@@ -456,11 +487,12 @@ class SqlConnectRepository:
             operation=f"{kind}:{ident}",
             idempotencyKey=f"revision:{expected}",
             requestSha256=digest(payload),
+            sensitive=sensitive,
         )
         if expected:
             variables["expectedRevision"] = expected
         self.execute(
-            "SaveDocument" if expected else "CreateDocument", variables, mutation=True
+            "SaveDocumentV2" if expected else "CreateDocumentV2", variables, mutation=True
         )
         return payload
 

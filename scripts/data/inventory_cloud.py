@@ -34,7 +34,9 @@ def inventory(destination: Path):
     queries = {
         "buckets": ["storage", "buckets", "list"],
         "bucket_policy": ["storage", "buckets", "get-iam-policy", "gs://" + BUCKET],
-        "objects": ["storage", "objects", "list", "gs://" + BUCKET],
+        # A bare bucket means bucket/*, omitting nested originals. This CLI
+        # includes live and noncurrent generations by default; do not use stat.
+        "objects": ["storage", "objects", "list", "gs://" + BUCKET + "/**"],
         "sql": ["sql", "instances", "describe", "specimen-digitization-instance"],
         "backups": ["sql", "backups", "list", "--instance=specimen-digitization-instance"],
         "databases": ["sql", "databases", "list", "--instance=specimen-digitization-instance"],

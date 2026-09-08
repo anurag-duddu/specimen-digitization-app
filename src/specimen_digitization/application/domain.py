@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import StrEnum
+from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .reading_declarations import LanguageHandling
 
@@ -100,6 +101,10 @@ class Principal(Record):
 
 
 class Asset(Record):
+    # Omitted legacy classifications stay sensitive without changing old digests.
+    sensitive: bool = Field(
+        default=True, strict=True, exclude_if=lambda value: value is True
+    )
     quality_diagnostics: dict = Field(default_factory=dict)
     view_derivative: dict | None = None
     processing_derivative: dict | None = None
@@ -213,6 +218,55 @@ class Lookup(Record):
     retry_after_seconds: int | None = None
 
 
+class StageCostReservations(Record):
+    """Externally reviewed microdollars per model-stage attempt, including retries.
+
+    Reader entries cover the bounded agent invocation (including its schema
+    retry). A workflow retry reserves the complete entry again. These are
+    allocations supplied by the launch owner, not embedded provider prices.
+    """
+
+    version: Literal["stage-cost-reservations-v1"]
+    cost_micros: dict[str, Annotated[int, Field(strict=True, gt=0, le=2**53 - 1)]] = Field(
+        min_length=1, max_length=64
+    )
+
+    @field_validator("cost_micros", mode="before")
+    @classmethod
+    def restore_persisted_integers(cls, value, info):
+        # SQL Connect's protobuf Struct stores JSON numbers as doubles. Only an
+        # integrity-checked snapshot reader may normalize exact safe integers;
+        # launch/config input remains strict and never accepts float or text.
+        if (info.context or {}).get("persisted_snapshot") is True and isinstance(value, dict):
+            return {
+                key: int(amount)
+                if type(amount) is float and amount.is_integer() and 0 < amount < 2**53
+                else amount
+                for key, amount in value.items()
+            }
+        return value
+
+    @model_validator(mode="after")
+    def valid_stages(self):
+        import re
+
+        if any(
+            stage not in {"segment", "classify", "parse"}
+            and not re.fullmatch(r"transcribe:[a-z0-9][a-z0-9-]{0,99}", stage)
+            for stage in self.cost_micros
+        ):
+            raise ValueError("Unrecognized model cost stage")
+        return self
+
+    def for_step(self, step):
+        if step.startswith("transcribe:"):
+            parts = step.split(":")
+            if len(parts) != 3:
+                return None
+            step = "transcribe:" + parts[2]
+        return self.cost_micros.get(step)
+
+
 class ExecutionPolicy(Record):
     version: str = "execution-safety-v1"
     max_steps: int = Field(default=200, ge=1, le=10000)
@@ -224,6 +278,11 @@ class ExecutionPolicy(Record):
     max_attempts: int = Field(default=3, ge=1, le=10)
     approved_cost_limit_micros: int | None = Field(default=None, ge=0)
     request_cost_reservation_micros: int | None = Field(default=None, ge=0)
+    # Omit absent additions so existing uniform-policy and launch ledger hashes
+    # remain stable across this backward-compatible schema extension.
+    stage_cost_reservations: StageCostReservations | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def timeout_fits_lease(self):

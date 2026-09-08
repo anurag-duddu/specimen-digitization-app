@@ -181,7 +181,11 @@ class Workflow:
         cost = (
             0
             if run.profile.synthetic or not billable
-            else policy.request_cost_reservation_micros
+            else (
+                policy.stage_cost_reservations.for_step(step)
+                if policy.stage_cost_reservations is not None
+                else policy.request_cost_reservation_micros
+            )
         )
         issue = None
         if run.usage.steps >= policy.max_steps:
