@@ -69,7 +69,7 @@ deploy commands added to other automation files.
 
 ### Pull requests
 
-`.github/workflows/ci-cd.yml` runs three independent jobs:
+`.github/workflows/ci-cd.yml` runs the three existing protected checks and two native build matrix entries:
 
 | Required check | What it proves |
 |---|---|
@@ -83,7 +83,7 @@ token and cannot deploy.
 
 ### Pushes to `main`
 
-The same three jobs run again for the actual merged commit. The Flutter job
+The same five checks run again for the actual merged commit. The Flutter job
 restores the encrypted production FlutterFire configuration, builds once, adds
 `deployment.json`, and uploads the artifact. `Deploy Firebase Hosting` then:
 
@@ -379,7 +379,7 @@ gh run watch RUN_ID --exit-status
 gh run view RUN_ID
 ```
 
-The run must show the exact merged commit and all four jobs green, including
+The run must show the exact merged commit and all six job results green, including
 `Deploy Firebase Hosting`. Then independently re-run the public marker smoke:
 
 ```bash
@@ -493,3 +493,25 @@ Any session asked to release or "make it live" must begin by answering:
 
 If any answer is no or unknown, the release is not complete and no substitute
 manual deployment is permitted.
+
+## Credential-free mobile build coverage
+
+The additional `Flutter android build` and `Flutter ios build` jobs compile the
+native clients on Ubuntu 24.04 and macOS 15. They receive no production secrets
+or OIDC permission, upload no distribution artifacts, and cannot deploy. The
+Hosting deploy also waits for both matrix entries. The existing three protected
+check names remain unchanged; any additive branch protection administration is
+a separate reviewed change.
+
+Run `scripts/ci/build_mobile.sh android` or `scripts/ci/build_mobile.sh ios` in a
+clean worktree. The script refuses to overwrite existing ignored Firebase
+configuration, creates clearly synthetic native JSON/plist and the CI Dart
+placeholder, then removes only the files it created on exit. Do not run it
+concurrently with other Flutter verification in the same worktree.
+
+Android compiles a debug APK with JDK 17; it proves native compilation, not
+release signing or store delivery. iOS compiles release mode with `--no-codesign`;
+it requires Xcode/CocoaPods and proves neither device execution nor distribution
+signing. Neither check uses paid inference or authenticates to real Firebase.
+The canonical pre-push gate remains `scripts/ci/verify.sh`; mobile checks are
+additional platform gates and must pass on the integrated candidate.

@@ -39,5 +39,11 @@
       "enabled": true
     },
     "singleProjectMode": true
+  },
+  "dataconnect": {
+    "source": "dataconnect"
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }
