@@ -1,0 +1,30 @@
+{
+  "candidate": "75f2953",
+  "transport": "actualTCP8124SQL9519; compared independently captured originalrawrows before repair",
+  "results": [
+    {
+      "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+      "original_stored_SHA_matches": 28,
+      "original_raw_run_refs_resolve": 28,
+      "passed": true
+    },
+    {
+      "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+      "frozen_page_unchanged_across_new_review": true,
+      "new_review_before_ref_resolves": true,
+      "passed": true
+    },
+    {
+      "specimen_id": "7aced055-21bd-5cb0-86dd-cd5c60ed957b",
+      "original_stored_SHA_matches": 28,
+      "original_raw_run_refs_resolve": 28,
+      "passed": true
+    },
+    {
+      "specimen_id": "7aced055-21bd-5cb0-86dd-cd5c60ed957b",
+      "frozen_page_unchanged_across_new_review": true,
+      "new_review_before_ref_resolves": true,
+      "passed": true
+    }
+  ]
+}
