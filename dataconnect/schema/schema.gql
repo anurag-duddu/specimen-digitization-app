@@ -28,7 +28,8 @@ type CollectionMember @table(key: ["organizationId", "collectionId", "uid"]) {
   canViewSensitive: Boolean!
 }
 type Specimen @table(key: ["organizationId", "collectionId", "id"])
-  @index(fields: ["organizationId", "collectionId", "updatedAt"]) {
+  @index(fields: ["organizationId", "collectionId", "updatedAt"])
+  @index(name: "specimen_due_work", fields: ["organizationId", "collectionId", "state", "workAvailableAt", "id"]) {
   organizationId: UUID!
   collectionId: UUID!
   collection: Collection! @ref(constraintName: "scope_ref_3", fields: ["organizationId", "collectionId"])
@@ -37,6 +38,7 @@ type Specimen @table(key: ["organizationId", "collectionId", "id"])
   state: String!
   disposition: String
   activeRunId: UUID
+  workAvailableAt: Timestamp
   sensitive: Boolean!
   createdBy: String!
   createdAt: Timestamp! @default(expr: "request.time")
@@ -376,4 +378,40 @@ type OutboxEvent @table(key: ["organizationId", "collectionId", "id"]) @unique(i
   deduplicationKey: String!
   payloadReferences: Any!
   createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# UUID_Filter has no ordering operators. Canonical text is a deterministic cursor
+# over the existing immutable UUID, without copying a mutable scan-key column.
+type SpecimenListing @view(sql: """
+  SELECT organization_id, collection_id, id::text COLLATE "C" AS id,
+    revision, state, disposition, active_run_id, sensitive, created_by,
+    created_at, updated_at, work_available_at
+  FROM public.specimen
+""") {
+  organizationId: UUID
+  collectionId: UUID
+  id: String
+  revision: Int
+  state: String
+  disposition: String
+  activeRunId: UUID
+  sensitive: Boolean
+  createdBy: String
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  workAvailableAt: Timestamp
+}
+type DocumentListing @view(sql: """
+  SELECT organization_id, collection_id, kind, id::text COLLATE "C" AS id,
+    revision, created_by, created_at, updated_at
+  FROM public.auxiliary_document
+""") {
+  organizationId: UUID
+  collectionId: UUID
+  kind: String
+  id: String
+  revision: Int
+  createdBy: String
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }
