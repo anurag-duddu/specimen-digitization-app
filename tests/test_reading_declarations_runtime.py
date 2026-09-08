@@ -74,6 +74,7 @@ def test_actual_declarations_keep_mixed_and_conflicting_distinct(
         row = intake(http)
         path = PREFIX + "/specimens/" + row["specimen_id"]
         work = http.get(path + "/workspace", headers=HEADERS).json()
+        assert "reading_metadata" in work["available_actions"]
         label = work["run"]["label_language_handling"]["labels"][0]
         assert label["mixed_declared"] == mixed
         assert label["conflicting_candidates"] == conflicting
@@ -257,3 +258,23 @@ def test_changed_declaration_artifact_blocks_approval(tmp_path):
         assert approved.status_code == 200
         assert approved.json()["disposition"] is None
         assert approved.json()["blocker"] == "evidence_integrity_failure"
+
+
+def test_declaration_action_only_advertised_to_review_roles(tmp_path):
+    from specimen_digitization.application.api import summary
+    from specimen_digitization.application.domain import Scope
+    from test_application import SYNTHETIC_ORG, SYNTHETIC_COLLECTION
+
+    app = app_at(tmp_path)
+    with TestClient(app) as http:
+        row = intake(http)
+        specimen = app.state.workflow.repository.get(
+            Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION),
+            row["specimen_id"],
+        )
+        for role in ("viewer", "operator"):
+            assert (
+                "reading_metadata" not in summary(specimen, role)["available_actions"]
+            )
+        for role in ("reviewer", "manager", "admin"):
+            assert "reading_metadata" in summary(specimen, role)["available_actions"]
