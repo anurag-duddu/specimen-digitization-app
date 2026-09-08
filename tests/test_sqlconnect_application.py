@@ -17,7 +17,11 @@ from specimen_digitization.application.production import (
 )
 from specimen_digitization.application.storage import LocalBlobs, Conflict, digest
 from specimen_digitization.application.workflow import Workflow, SyntheticAdapters
-from specimen_digitization.application.api import SYNTHETIC_TEXT
+from specimen_digitization.application.api import (
+    SYNTHETIC_TEXT,
+    SYNTHETIC_ORG,
+    SYNTHETIC_COLLECTION,
+)
 from specimen_digitization.application.demo import fixture
 
 
@@ -29,12 +33,12 @@ def test_real_sql_adapter_workflow_cas_and_reconstruction(tmp_path):
     repo = SqlConnectRepository(
         project="demo-specimen-data", emulator_host=sql_emulator_host()
     )
-    actor_uid.set("integration-reviewer")
+    actor_uid.set("synthetic-reviewer")
     scope = Scope(
-        organization_id="11111111-1111-4111-8111-111111111111",
-        collection_id="22222222-2222-4222-8222-222222222222",
+        organization_id=SYNTHETIC_ORG,
+        collection_id=SYNTHETIC_COLLECTION,
     )
-    principal = Principal(user_id="integration-reviewer", scope=scope, role="reviewer")
+    principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     assert any(
         m["collection_id"] == scope.collection_id
         for m in repo.memberships(principal.user_id)
