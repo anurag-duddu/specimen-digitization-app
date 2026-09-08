@@ -101,3 +101,15 @@ source policy and budget, real endpoint credentials/configuration, representativ
 quality assessment, cloud IAM/restore/runtime rollout and release evidence remain
 separate gates. Synthetic policy factories are explicit test data. No release is
 claimed by this checkpoint.
+
+## Integrated SQL follow-up
+
+Integration's broader SQL suite exposed one stale assertion in
+`test_sql_authority_review_and_search_metadata`: it expected an unmeasured/null
+risk score to match numeric range 0 through 100 after human approval. The runtime
+correctly excluded NULL. The test now verifies unfiltered discovery retains NULL,
+then verifies the numeric range excludes that record. No runtime or filter logic
+changed, and no frozen fixture bytes changed. Fresh isolated SQL `9609` / PG
+`5659`, entire `tests/test_authority_runtime.py`: **5 passed**, 5.16 seconds;
+`/tmp/specimen-null-risk-sql-tests.log`. This supplements canonical verification
+above rather than claiming the earlier skipped SQL assertion had passed.
