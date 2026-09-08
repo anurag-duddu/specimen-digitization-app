@@ -36,7 +36,7 @@ for(let start=0;start<count;start+=100){
  }
  psql(`INSERT INTO specimen (organization_id,collection_id,id,revision,state,disposition,sensitive,created_by,created_at,updated_at) VALUES ${summaries}; INSERT INTO specimen_snapshot (organization_id,collection_id,specimen_id,revision,contract_version,snapshot,sha256,created_at) VALUES ${snapshots};`);
 }
-let rows=await search({limit:3});assert.equal(rows.length,3);assert.equal(rows[0].synthetic,true);assert.ok(rows[0].createdAt.startsWith('2020-01-01'));assert.equal(rows[0].activeRunId,'run-0');assert.ok(!('snapshot' in rows[0]));
+let rows=await search({limit:3});assert.equal(rows.length,3);assert.equal(rows[0].synthetic,true);assert.ok(rows[0].createdAt.startsWith('2020-01-01'));assert.equal(rows[0].activeRunId,'run-0');assert.equal(rows[0].domainCreatedAt,'1999-01-01T00:00:00Z');assert.ok(!('snapshot' in rows[0]));
 assert.equal((await search({batchId:'historical-only'})).length,0);
 const checks=[['batchId','batch-a',n=>n%2===0],['uploader','uploader-a',n=>n%3===0],['status','completed',n=>n%2===0],['stage','classify',n=>n%2===1],['disposition','cleared',n=>n%2===0],['profileVersion','v1',n=>n%3===0],['reasonCode','reason-a',n=>n%5===0],['blocker','blocker-a',n=>n%7===0],['riskMin',50,n=>n%4===2],['riskMax',0,n=>n%4===1]];
 for(const [key,value,predicate] of checks){rows=await search({[key]:value});assert.equal(rows.length,100,key);for(const r of rows)assert.ok(predicate(parseInt(r.id.slice(-12),16)),key);}

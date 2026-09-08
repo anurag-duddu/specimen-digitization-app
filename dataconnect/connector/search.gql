@@ -50,7 +50,7 @@ query SearchSpecimens(
     {_or: [{allRows: {eq_expr: "vars.riskMin == null"}}, {risk: {ge_expr: "vars.riskMin == null ? 0.0 : vars.riskMin"}}]},
     {_or: [{allRows: {eq_expr: "vars.riskMax == null"}}, {risk: {le_expr: "vars.riskMax == null ? 0.0 : vars.riskMax"}}]}
   ]}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: $limit) {
-    id revision status stage disposition sensitive createdAt updatedAt
+    id revision status stage disposition sensitive createdAt updatedAt domainCreatedAt
     assetId batchId filename uploader activeRunId blocker profileId profileVersion
     reasonCodes risk synthetic
   }
