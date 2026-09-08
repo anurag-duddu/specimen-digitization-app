@@ -1,5 +1,12 @@
 # Product build status
 
+> Current release update (2026-09-08): the user has authorized merging the
+> completed overnight work to main. [Branch reconciliation](BRANCH_RECONCILIATION.md)
+> documents the full audit. Earlier pending merge-authorization and CI statements
+> below are historical snapshots. Current release proof will be recorded in PR 3
+> and the release task after exact-main CI, deployment and public smoke complete.
+> Backend/data rollout and quality-acceptance gates remain separate.
+
 Updated 2026-09-08. This file is maintained by the coordinating task. Detailed commit, command, and test evidence lives in the workstream reports and Git history.
 
 ## Current result

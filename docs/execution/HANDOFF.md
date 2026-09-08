@@ -1,5 +1,12 @@
 # Specimen product review handoff
 
+> Current release update (2026-09-08): the user has authorized merging the
+> completed overnight work to main. [Branch reconciliation](BRANCH_RECONCILIATION.md)
+> documents the full audit. Earlier pending merge-authorization and CI statements
+> below are historical snapshots. Current release proof will be recorded in PR 3
+> and the release task after exact-main CI, deployment and public smoke complete.
+> Backend/data rollout and quality-acceptance gates remain separate.
+
 This branch contains a connected local Insects pilot for review, with Flutter
 web/Android/iOS clients, a scoped API, durable workflow state and immutable source
 evidence. Synthetic execution is explicitly labeled. It does not establish museum
