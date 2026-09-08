@@ -231,3 +231,47 @@ principal and scope. The same paired opt-in command on 9539 now passes both
 tests (2 passed in 4.15s), without additional manual seed or DB repair. Log:
 `/tmp/specimen-integrated-sql-http-fixed.log`. Application code is unchanged
 from the Android/Flutter-live/canonical checks above.
+
+## Independent QA and isolated repairs
+
+The first published candidate `4c71e133acc9f99c2dae068f4199c806bde8ff5f`
+passed all five CI checks, including Android debug and unsigned iOS release,
+in run `34190351787`. Draft PR:
+https://github.com/anurag-duddu/specimen-digitization-app/pull/3.
+Hosting deployment was correctly skipped. QA's independent report `3df98e0`
+is retained with exact first-candidate reproductions and synthetic screenshots.
+It found B01 completion receipt/conflict handling, B02 malformed PNG handling,
+and B03 missing/corrupt evidence clearance defects.
+
+Reviewed isolated owner repairs `7a47b10` and `df73e35` were integrated as
+`0290a4a` and `25e8358`. On `25e83589031cf4d751a7059d07d252287ef2783e`:
+
+- Canonical passed: 76 Python, 16 Flutter, analysis/web and repository checks.
+- Fourteen upload/evidence regressions and both SQL opt-in tests passed locally.
+- Additional real TCP plus SQL probe deleted retained raw observation bytes,
+  observed processing_blocked/null disposition, restored identical bytes,
+  approved a new version, and verified the old blocked receipt was unchanged.
+  Its first attempt reused a checksum from a separate test blob directory and
+  correctly blocked for unavailable evidence; unique synthetic source metadata
+  removed that fixture collision. Log: `/tmp/specimen-repaired-integrity-tcp.log`.
+- Flutter's actual SQL-backed HTTP journey passed again. Log:
+  `/tmp/specimen-repaired-flutter-live.log`. Owned SQL/API processes were stopped.
+- All five CI checks passed in run `34191282215`; Hosting was skipped.
+- QA report `83b4a95` independently closed B01/B02/B03 for local synthetic TCP
+  and SQL scope, including 48 byte-integrity assertions and six persisted
+  wrong-provenance fault cases. The full P0 product remains unaccepted.
+
+Production extraction's missing raw-response checksum was separately repaired
+by source `f0d8ede`, integrated as `76da660`. Full canonical passed on
+`76da6606542201265101193ca831731efd52b319`: 77 Python tests and unchanged Flutter
+analysis/16 tests/web build. This is a retained-byte fixture compatibility test,
+not live model inference. Subsequent QA documentation commits do not modify code.
+
+Open QA-B04: after 11 ordinary HTTP review decisions, the 12th recovery approval
+was rejected at the aggregate bound. At revision 28, the snapshot contained
+244139 UTF-8 bytes, including 223585 audit bytes and a 19853-byte current run;
+previous_runs was empty. Restored evidence could not be reapproved. The boundary
+correctly rejects excess data, but this low-count capacity failure blocks normal
+review/recovery usability. Backend bounded-history work must preserve complete
+versioned evidence and demonstrate this case without weakening the cap or
+truncating audit history. No second-wave implementation is included here.
