@@ -63,6 +63,11 @@ Scores are directional for this product, from 1 (poor fit) to 5 (strong fit). Th
 |---|---:|---:|---:|---:|---:|---|
 | **Pydantic AI + Temporal** | 5 | 5 | 5 | 5 | 3 | Production-reference candidate for fine-grained recovery; not yet selected. |
 | **Pydantic AI + Google Cloud Workflows** | 4 | 5 | 5 | 4 | 4 | Required GCP-native comparator for short, bounded agent stages. |
+| **LangGraph with persistent checkpoints** | 4 | 4 | 5 | 5 | 3 | Strong graph-centric alternative when dynamic branching dominates. |
+| **Google ADK + durable outer workflow** | 3 | 4 | 4 | 4 | 4 | Good when Vertex/Gemini and Google Agent Runtime become strategic. |
+| **OpenAI Agents SDK + durable outer workflow** | 3 | 4 | 3 | 4 | 4 | Good lightweight option when OpenAI is the primary model platform. |
+| **AWS Strands/Bedrock + Step Functions** | 4 | 3 | 3 | 4 | 2 | Deferred alternative for a future explicit AWS-first decision; not in current scope. |
+| **CrewAI or Mastra** | 3 | 3 | 4 | 4 | 4 | Useful prototyping alternatives; require a deeper reliability and governance spike before core use. |
 
 `Operational burden` is scored so 5 means simplest for this Firebase/GCP-oriented team.
 
@@ -110,9 +115,94 @@ Choose this if infrastructure simplicity is more important than fine-grained age
 
 Official references: [Google Cloud Workflows best practices](https://docs.cloud.google.com/workflows/docs/best-practice), [Workflows callbacks](https://docs.cloud.google.com/workflows/docs/creating-callback-endpoints), and [Workflows limits](https://docs.cloud.google.com/workflows/quotas).
 
-## Pruned alternatives
+## Option 3 — LangGraph
 
-LangGraph, Google ADK, OpenAI Agents SDK, AWS Step Functions, CrewAI, and Mastra are not active workflow-engine comparators for Phase 0. Reopen one only if the product's cloud boundary, model strategy, or workflow shape changes materially; do not combine multiple systems that each try to own retries, checkpoints, or human pauses.
+### Strengths
+
+- Explicit state graphs are a good match for collection-specific branching and specialist nodes.
+- Persistent checkpointers support recovery, fault tolerance, time travel, and human-in-the-loop interrupts.
+- Reviewers can pause a graph, edit state, and resume it.
+- Broad LangChain model/tool integrations offer provider flexibility.
+
+### Tradeoffs
+
+- Production checkpointing normally introduces a supported persistent store such as PostgreSQL, which aligns with the selected SQL architecture.
+- The team must define strong schemas and deterministic validation around graph state; flexibility can otherwise become opaque graph logic.
+- If LangGraph is placed inside Temporal, the team must define which layer owns retries, persistence, and human pauses to avoid two competing execution histories.
+
+### Best use here
+
+This is the strongest alternative if the collection harness becomes a highly dynamic reasoning graph and visual graph debugging is more valuable than Pydantic AI's simpler typed-agent model. It should still use application-owned evidence schemas and a durable outer boundary for non-agent image processing.
+
+Official references: [LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence), [LangGraph interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts), and [LangGraph fault tolerance](https://docs.langchain.com/oss/python/langgraph/fault-tolerance).
+
+## Option 4 — Google Agent Development Kit (ADK)
+
+### Strengths
+
+- Strong alignment with Google Cloud and Cloud Run.
+- Supports graph, dynamic, collaborative, sequential, loop, and parallel workflow patterns.
+- Supports deterministic nodes mixed with LLM agents.
+- Offers model connectors for Google and non-Google models, including OpenAI, Ollama, vLLM, and LiteLLM-based integrations.
+- Includes sessions, tools, callbacks, observability, and evaluation concepts.
+
+### Tradeoffs
+
+- Its main advantage is strongest when Google Agent Runtime, Vertex, or Gemini is the strategic center; this product needs provider-neutral BYOK and open-model neutrality.
+- Session/workflow state should not be assumed to replace a crash-proof specimen workflow. Pair it with Google Cloud Workflows or Temporal until recovery behavior is proven.
+- The current ADK surface is broad and evolving, increasing migration and framework-learning risk for a narrowly scoped pilot.
+
+### Best use here
+
+Choose ADK if the organization decides to standardize on Google-hosted agent infrastructure and accepts provider routing through its supported connector layer.
+
+Official references: [ADK agents and deterministic/agent workflows](https://github.com/google/adk-docs/blob/main/docs/agents/index.md), [ADK workflow types](https://github.com/google/adk-docs/blob/main/docs/workflows/index.md), and [ADK model integrations](https://adk.dev/agents/models/).
+
+## Option 5 — OpenAI Agents SDK
+
+### Strengths
+
+- Lightweight Python and TypeScript SDK.
+- Built-in agent loops, specialists-as-tools, handoffs, sessions, guardrails, resumable approvals, and tracing.
+- Server-owned tools and storage can integrate cleanly with the application's evidence model.
+
+### Tradeoffs
+
+- It is most natural for an OpenAI-centered model strategy. Non-OpenAI and self-hosted models would require additional provider/adapter validation.
+- The SDK manages an agent run, but the server still owns deployment, durable business storage, and approval decisions. A separate durable workflow remains necessary for this specimen lifecycle.
+- Default tracing requires a collection data-policy review; sensitive payload capture must be disabled or routed appropriately.
+
+### Best use here
+
+Choose this if OpenAI becomes the primary agent provider and the team wants a small abstraction layer. It is not the first choice for a provider-neutral pilot.
+
+Official reference: [OpenAI Agents SDK](https://developers.openai.com/api/docs/guides/agents).
+
+## Deferred alternative — AWS Strands/Bedrock with Step Functions
+
+### Strengths
+
+- Direct alignment with grant-funded AWS Bedrock deployments.
+- Step Functions supports retry/catch behavior and callback-based human approval.
+- AWS service identities, budgets, and Bedrock access remain inside one cloud boundary for BYOK tenants.
+
+### Tradeoffs
+
+- The application control plane is Firebase/Google Cloud, creating a two-cloud operational, identity, networking, logging, and data-residency design.
+- It makes the platform architecture follow one BYOK provider rather than treating Bedrock as one provider adapter.
+- Open-model and non-AWS routing require more abstraction work.
+
+### Best use here
+
+This is not part of the current implementation scope. Reconsider it only after an explicit decision that the entire processing plane—not just provider credentials and model calls—must run in AWS.
+
+Official references: [AWS guidance on agent frameworks](https://docs.aws.amazon.com/prescriptive-guidance/latest/agentic-ai-frameworks/), [Step Functions error handling](https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html), and [Step Functions human approval](https://docs.aws.amazon.com/step-functions/latest/dg/tutorial-human-approval.html).
+
+## Secondary options
+
+CrewAI and Mastra both document persistent flows and human-in-the-loop suspend/resume behavior. They can produce a fast prototype, but they should not be selected for the evidence-critical core until the same crash, replay, schema, provider, audit, and version-migration tests are run against them. Mastra is TypeScript-first, while most of this processing plane is likely to be Python because of the image/ML workload.
+
+References: [CrewAI documentation](https://docs.crewai.com/), [Mastra workflow snapshots](https://mastra.ai/en/reference/workflows/snapshots), and [Mastra workflows](https://mastra.ai/ai-workflows).
 
 ## Proposed reference architecture
 

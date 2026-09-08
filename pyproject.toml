@@ -5,16 +5,20 @@ description = "Backend processing and agent harnesses for Specimen Digitization"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "logfire>=5.0,<6",
+    "logfire[variables]>=5.0,<6",
     "pydantic-ai-slim[huggingface]>=2.40,<3",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8,<10"]
+dev = [
+    "pydantic-evals[logfire]>=2.40,<3",
+    "pytest>=8,<10",
+]
 
 [project.scripts]
 specimen-logfire-smoke = "specimen_digitization.logfire_smoke:main"
 specimen-huggingface-preflight = "specimen_digitization.huggingface_preflight:main"
+specimen-eval-smoke = "specimen_digitization.evaluation:main"
 
 [build-system]
 requires = ["hatchling"]

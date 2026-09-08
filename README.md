@@ -32,6 +32,7 @@ The SQL Connect service exists in Firebase, but it does not yet have a connector
 - [Product requirements](docs/product-requirements/PRD.md)
 - [Agent harness decision and alternatives](docs/product-requirements/HARNESS_OPTIONS.md)
 - [Validated GBIF integration strategy](docs/GBIF.md)
+- [Observability, prompt, and evaluation architecture](docs/OBSERVABILITY_AND_EVALUATION.md)
 - [Hugging Face model routing](docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md)
 - [CI/CD and Firebase Hosting](docs/DEPLOYMENT.md)
 - [Field Museum EMu Parties and IRN availability check](docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md)
@@ -71,9 +72,19 @@ uv run specimen-logfire-smoke
 ```
 
 The smoke run uses Pydantic AI's deterministic test model, so it does not need a
-model-provider key or send specimen data. Prompt, completion, tool payload,
-model-request-parameter, and binary-image capture are disabled by default;
-enable them only for approved, non-sensitive fixtures.
+model-provider key or send specimen data. Run the synthetic Pydantic Evals
+contract experiment with:
+
+```bash
+uv run specimen-eval-smoke
+```
+
+`LOGFIRE_CAPTURE_MODE=metadata` is the safe default. It records the complete
+trace structure and operational metadata without prompt/output content.
+`approved-content` additionally records text for approved evaluation fixtures;
+binary image bytes are always excluded. See the observability architecture for
+the trace attributes, managed prompt names, dataset strategy, and promotion
+gates.
 
 ## Hugging Face model access
 
@@ -96,6 +107,7 @@ uv run --env-file .env specimen-huggingface-preflight
 ```
 
 Add `--live-route handwriting-qwen` or `--live-route handwriting-muse` plus an
-approved synthetic/public PNG or JPEG through `--image` to make a paid image
-request and verify Pydantic structured output. Never use an unapproved specimen
-image for this smoke test.
+approved PNG or JPEG through `--image` to make a paid image request and verify
+Pydantic structured output. Add `--approved-content` only when prompt and output
+text may be retained in Logfire; image bytes remain excluded. Never use an
+unapproved specimen image for this smoke test.

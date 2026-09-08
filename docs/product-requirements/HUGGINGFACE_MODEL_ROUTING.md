@@ -105,9 +105,12 @@ An explicit live smoke uses only an approved synthetic or public image:
 ```bash
 uv run --env-file .env specimen-huggingface-preflight \
   --live-route handwriting-qwen \
+  --approved-content \
   --image apps/specimen_digitization/web/icons/Icon-192.png
 ```
 
-The smoke validates image input and typed Pydantic output. It does not establish
-transcription quality. Quality approval requires a versioned, representative,
-expert-reviewed handwriting set and field-level error analysis.
+The smoke validates image input and typed Pydantic output. The optional
+`--approved-content` flag records prompt/output text in the Logfire trace while
+still excluding binary image bytes. It does not establish transcription quality.
+Quality approval requires a versioned, representative, expert-reviewed
+handwriting set and field-level error analysis.
