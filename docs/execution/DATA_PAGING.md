@@ -170,3 +170,15 @@ A V2 rollout is additive but still requires tested old/new adapter compatibility
 explicit scheduling projection migration, and reviewed schema/index publication.
 First-wave artifacts remain frozen independently. No institutional acceptance,
 production provisioning, availability claim, deployment or paid effect is implied.
+
+Final verification: implementation commit
+`305a133ff3daf2422e16060ffb4e19666a6df24c` passed canonical verify.sh (repository
+hooks, 33 baseline Python tests, Flutter analysis/widget test/release web build)
+and the real PostgreSQL suite described above. The first canonical attempt only
+normalized an EOF blank line; the subsequent full run passed. Backend accepted
+signatures but is prioritizing first-candidate QA repairs; full new worker
+integration is not yet verified by this data task.
+
+Backend confirmed it was not consuming the new local server. Stopped the owned
+serve-local process/cluster and confirmed loopback5579/9529 closed; preserved
+synthetic logs/data at the printed temporary directory. No idle service is leased.
