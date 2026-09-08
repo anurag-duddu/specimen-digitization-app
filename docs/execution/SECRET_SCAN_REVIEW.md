@@ -162,3 +162,36 @@ credential, an allowed metadata hash in another path, and the exact synthetic
 circuit ID in an unreviewed path. Restored originals pass. No canaries or product
 fixture bytes are included in this scanner dependency; changed fixtures require
 another exact review. Existing four response fixtures are unchanged.
+
+## Runtime response fixture
+
+Reviewed frozen410255-byte fixture SHA256
+`7e44c24bb0d0858aafd69cee665606e9ee6ec739cac023191ab753440a4aaaaf`.
+Exact paths: docs/execution/backend-runtime-wire-examples.json and intended
+apps/specimen_digitization/test/fixtures/backend-runtime-wire-examples.json.
+Reviewed generate_runtime_fixture.py and its injected local model helpers:
+actual synthetic API captures selected profile variants, local TCP SAM masks,
+isolated FunctionModel classifier/transcription/extraction envelopes. No live
+paid inference or credential headers are serialized. All54 distinct retained
+content refs (92 occurrences, including masks and input crops) matched blob bytes.
+
+Detect-secrets1.5.0 finds191 unique values per exact path:189 SHA256 content/policy
+values, one40-hex pinned SAM revision matching existing hub_models.py, and one
+base64 synthetic classifier response. Decoded785-byte response matched its
+SHA256, retained envelope and fixture/classifier FunctionModel structured output.
+Every scanner SHA-1 identifier was verified. Added186 previously absent exact
+metadata-line identifiers under the existing baseline-path AND allowlist; prior
+baseline entries, plugin/filter settings and all prior allowlists are unchanged.
+
+Gitleaks reports24 synthetic circuit identifier occurrences: six unique complete
+storage_key/token_id UUID lines. Added only these exact field/value lines AND
+the two exact runtime fixture paths in a new rule-local allowlist. These are
+synthetic CAS fencing metadata, not authentication credentials. No general UUID,
+field-name, base64, digest or fixture exclusion was added.
+
+Isolated pinned Gitleaks8.30.1 and detect-secrets1.5.0 pass both identical copies
+and reject new credential-shaped canaries in each. Gitleaks rejects a new
+baseline credential, allowed scanner identifier in another path, and exact
+circuit UUID in an unreviewed path. Restored originals pass. No canary or fixture
+bytes are included in this scanner-only dependency. Runtime acceptance remains
+separate; unchanged earlier fixtures and reports need no additional exemptions.
