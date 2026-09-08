@@ -11,7 +11,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"[0-9a-f]{64}")
 IMAGE = re.compile(
     r"us-east4-docker\.pkg\.dev/specimen-digitization/specimen-runtime/"
-    r"(?:api|worker)@sha256:[0-9a-f]{64}"
+    r"(?:api|worker|sam)@sha256:[0-9a-f]{64}"
 )
 CHECKS = {
     "Repository checks",
@@ -35,10 +35,10 @@ def fingerprint(value: object, label: str, pattern: re.Pattern = DIGEST) -> None
         raise ValueError(f"{label}: invalid immutable reference")
 
 
-def validate(packet: object, require_ready: bool = False) -> list[str]:
+def validate(packet: object, require_ready: bool = False, expected_source_sha: str | None = None) -> list[str]:
     p = exact_keys(packet, {
         "version", "repository", "project", "source_sha", "images", "data",
-        "pilot", "checks", "approvals", "public_config_sha256", "rollback_sha256",
+        "pilot", "checks", "approvals", "public_config_sha256", "rollback_sha256", "sam_model",
     }, "packet")
     if type(p["version"]) is not int or p["version"] != 1:
         raise ValueError("unsupported packet version")
@@ -47,10 +47,16 @@ def validate(packet: object, require_ready: bool = False) -> list[str]:
     if p["project"] != "specimen-digitization":
         raise ValueError("wrong project")
     fingerprint(p["source_sha"], "source_sha", SHA)
+    if require_ready and expected_source_sha is None:
+        raise ValueError("readiness requires an independently supplied expected source SHA")
+    if expected_source_sha is not None:
+        fingerprint(expected_source_sha, "expected source", SHA)
+        if p["source_sha"] != expected_source_sha:
+            raise ValueError("packet source does not match expected candidate source")
     gaps = []
     if p["source_sha"] is None:
         gaps.append("source SHA")
-    images = exact_keys(p["images"], {"api", "worker"}, "images")
+    images = exact_keys(p["images"], {"api", "worker", "sam"}, "images")
     for role, image in images.items():
         entry = exact_keys(image, {"reference", "source_sha", "provenance_sha256"}, role)
         fingerprint(entry["reference"], role, IMAGE)
@@ -62,6 +68,13 @@ def validate(packet: object, require_ready: bool = False) -> list[str]:
             raise ValueError(f"{role}: source mismatch")
         if any(v is None for v in entry.values()):
             gaps.append(f"{role} image/provenance")
+    model = exact_keys(p["sam_model"], {"repository", "revision", "artifacts_sha256", "config_sha256"}, "SAM model")
+    if model["repository"] != "facebook/sam3":
+        raise ValueError("unexpected SAM model repository")
+    for key in ("revision", "artifacts_sha256", "config_sha256"):
+        fingerprint(model[key], f"SAM {key}", SHA if key == "revision" else DIGEST)
+        if model[key] is None:
+            gaps.append(f"SAM {key}")
     data = exact_keys(p["data"], {
         "schema_sha256", "connector_sha256", "storage_rules_sha256",
         "backup_restore_evidence_sha256", "compatibility_evidence_sha256",
@@ -111,9 +124,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("packet", type=Path)
     parser.add_argument("--require-ready", action="store_true")
+    parser.add_argument("--expected-source-sha")
     args = parser.parse_args()
     try:
-        gaps = validate(json.loads(args.packet.read_text()), args.require_ready)
+        gaps = validate(json.loads(args.packet.read_text()), args.require_ready, args.expected_source_sha)
     except (ValueError, OSError) as exc:
         parser.exit(1, f"Release packet rejected: {exc}\n")
     print(json.dumps({"structure_valid": True, "missing_evidence": gaps,

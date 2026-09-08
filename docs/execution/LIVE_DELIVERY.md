@@ -304,3 +304,44 @@ Confirmed owner contracts received after implementation freeze:
   `uv run python scripts/data/validate_live_plan.py`. Candidate CI runs it when
   integrated and rejects its absence on main/integration. Plan's explicit
   proposal/unknown states cannot be promoted to observed resource facts.
+
+## Independent QA correction and SAM coverage
+
+QA found a self-consistent stale packet could satisfy structural completeness
+without an independently supplied candidate SHA. Corrected: `--require-ready`
+now requires `--expected-source-sha` and rejects mismatches. The strict entrypoint
+`check_release_readiness.py GENERATED_PACKET_PATH` derives that SHA from the
+actual GitHub runtime-ci workflow context, allows only this repository's main
+push or exact integration PR, and rejects a missing packet, example, omitted
+source or any evidence gap. No eventual deploy path may use the example check
+in place of this strict check plus independent verification of evidence.
+
+The renamed **Runtime candidate structure validation** job explicitly reports
+NOT READY. It is permitted to validate the incomplete example before approval;
+that success is never release acceptance. A ready packet must be generated or
+provided separately, not committed with a self-referential source SHA. No ready
+invocation is claimed here and no deployment command is enabled.
+
+SAM serving now has its own required image/provenance record and model revision,
+checkpoint-file aggregate and configuration hashes in the release packet.
+Candidate CI includes `containers/worker/sam3.Dockerfile` with its hash-locked
+requirements. API, worker and SAM must all build on main/integration; scoped
+branches explicitly report missing owner inputs Not run. Worker/SAM --version
+must report the exact embedded build SHA, independently checked with runtime
+network disabled. These CLI checks do not load a checkpoint or prove inference.
+
+Confirmed owner model contract: facebook/sam3 revision
+`3c879f39826c281e95690f02c7821c4de09afae7`; weights and numeric-version runtime
+secret stay out of image/build arguments/CI logs. Model initialization downloads
+that pinned revision only after approved runtime configuration, records per-file
+and aggregate hashes, and must complete before real service health is available.
+Actual model-loaded server smoke is still an approved runtime acceptance gate.
+
+The worker revised CPU SAM sizing to **4 vCPU/16 GiB**, unmeasured live, because
+model/cache allocation includes about 3.44 GB of files in memory-backed storage.
+This supersedes the earlier 8 GiB illustrative case. For the shared ten times
+120-second SAM scenario, displayed default request-based rates give $0.1632 SAM
+compute; with $0.036 worker and $0.0159 API, illustrative subtotal is ~$0.2151,
+plus startup/download and all separately listed costs. Expiry is bounded to one
+hour from before model download. This is not a region-specific total or budget.
+Actual specimen layouts/region counts and HF reservations remain unconfirmed.

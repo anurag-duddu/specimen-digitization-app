@@ -13,6 +13,11 @@
       "reference": null,
       "source_sha": null,
       "provenance_sha256": null
+    },
+    "sam": {
+      "reference": null,
+      "source_sha": null,
+      "provenance_sha256": null
     }
   },
   "data": {
@@ -60,5 +65,11 @@
     "provider_data_sha256": null
   },
   "public_config_sha256": null,
-  "rollback_sha256": null
+  "rollback_sha256": null,
+  "sam_model": {
+    "repository": "facebook/sam3",
+    "revision": null,
+    "artifacts_sha256": null,
+    "config_sha256": null
+  }
 }

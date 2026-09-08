@@ -16,14 +16,16 @@ concurrency:
 
 jobs:
   packet:
-    name: Runtime release packet validation
+    name: Runtime candidate structure validation
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Validate incomplete public example
-        run: python3 scripts/ci/validate_release_packet.py infra/release/candidate.example.json
+        run: |
+          python3 scripts/ci/validate_release_packet.py infra/release/candidate.example.json
+          echo "Structure check only. Release readiness NOT established: the example intentionally lacks approval and live evidence." >> "$GITHUB_STEP_SUMMARY"
       - name: Install pinned uv for offline data plan checks
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -46,11 +48,17 @@ jobs:
   containers:
     name: Runtime ${{ matrix.target }} image build
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        target: [api, worker]
+        include:
+          - target: api
+            dockerfile: containers/api/Dockerfile
+          - target: worker
+            dockerfile: containers/worker/Dockerfile
+          - target: sam
+            dockerfile: containers/worker/sam3.Dockerfile
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,9 +66,10 @@ jobs:
         id: input
         env:
           TARGET: ${{ matrix.target }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
           CANDIDATE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          if [[ -f "containers/$TARGET/Dockerfile" ]]; then
+          if [[ -f "$DOCKERFILE" ]]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             if [[ "$CANDIDATE_BRANCH" == "main" || "$CANDIDATE_BRANCH" == "codex/live-integration" ]]; then
