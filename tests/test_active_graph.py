@@ -76,6 +76,10 @@ def test_multilabel_graph_beyond_old_cap_restarts_and_preserves_hash_history(
     import test_application
 
     if kind == "sql":
+        import os
+
+        if os.getenv("SPECIMEN_TEST_SQL_EMULATOR") != "true":
+            pytest.skip("Requires explicitly enabled local SQL Connect/PostgreSQL")
         import httpx
         import sys
         import specimen_digitization.application.api as api_module
