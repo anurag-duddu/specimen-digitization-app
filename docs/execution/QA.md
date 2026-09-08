@@ -483,3 +483,16 @@ history fixtures recover through the supported migration/compaction path and
 that old snapshots remain exactly reconstructable. Owner implementation is not
 independent acceptance evidence. B01–B03 remain closed for tested local scope;
 B04 remains open, overall20-criterion P0 remains not accepted, PR must stay draft.
+
+### Visual follow-up QA-F04 P2
+
+The retained390x844 Chrome screenshot shows the1000x520 original squeezed into
+an approximately307x380 image box, visibly changing character proportions.
+Flutter source remains unchanged through76da660: fixed380-height source container,
+constrained AspectRatio/expanded Stack and Image.memory(BoxFit.fill). Reported
+to Flutter and coordinator for intrinsic ratio preservation with aligned overlays
+at narrow/wide widths and every rotation. Open; source pixel integrity on disk
+does not establish faithful display geometry. Independent readings' text was
+visually present but absent from the captured accessibility tree; this remains
+an accessibility follow-up pending deeper semantics verification, not a confirmed
+screen-reader defect. Browser viewport override was reset after QA.
