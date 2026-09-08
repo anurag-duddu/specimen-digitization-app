@@ -554,6 +554,35 @@ application. The following are narrow delegate contracts for new modules and
 their own tests. Coordinator dispatches specialists; this document does not
 authorize infrastructure, paid inference or production mutation.
 
+### Active graph offload proposal acceptance
+
+Backend proposes offloading an exact serialized Run above 96 KiB to an immutable
+blob with a declared 16 MiB maximum. Persisted snapshots retain bounded summary/
+index fields and graph reference, byte hash and canonical Run hash; repositories
+verify and hydrate before policy/workflow use. Architecture accepts this design
+conditionally, not as implementation or test closure. No lazy observation API
+redesign is required. Required checks:
+
+- Final compact snapshot still satisfies the existing 256 KiB guard, including
+  summary/index fields and reference metadata.
+- Bounded reads verify blob length/hash, canonical Run hash and identity/revision
+  linkage after compact snapshot verification. Missing/corrupt graphs fail closed.
+- Full workspace serialization has an exact tested byte cap including aliases,
+  escaping and envelope; an approximate two-times estimate is insufficient.
+  Oversized responses have authorized complete retrieval and actionable recovery;
+  edit/cancel remain reachable for accepted records.
+- Graph-limit failure occurs before commit, preserves the last good revision and
+  supports a small bounded operational-error path. It cannot strand the record.
+- Blob writes preceding failed CAS may leave unreachable objects, but cannot
+  publish the losing graph or delete graphs needed by readers/history. Retention
+  is explicit; eager cleanup must not race references.
+- SQLite restart reuses its durable blob root. B04 history hashes use the exact
+  full canonical Run for offloaded records; old inline behavior stays intact.
+
+Backend tests cover a supported multi-label graph beyond the former inline cap,
+restart/full retrieval, size thresholds, serialized-response bounds and recovery,
+CAS races, tampering, scope authorization and historical hash regressions.
+
 ### Checksum data follow-up
 
 The earlier missing-constraint finding above describes the pre-V3 assembly.
