@@ -231,3 +231,33 @@ state:/tmp/specimen-combined-graph-745127a. Own8123 server stopped.
 This frozen combined graph checkpoint excludes subsequent TRN declaration code.
 Independent atomic-repair and combined graph GUI acceptance remain pending;
 local test success is not a production or institutional acceptance claim.
+
+## Declaration backend checkpoint and independent H01 closure
+
+Reviewed declaration corea6fd15c integrated asb59a1d0, frozen fixture8439b6e as
+950ae11, and advertised review capability6b4b654 as2f007f1. Scanner d3cb125 was
+already included. Backend src/tests/dataconnect/scripts-data/dependency tree is
+exactly equal to6b4b654. Canonical passed271 Python/24 optional skips,58 Flutter/
+five opt-in live skips, analysis/scanners/web. Log:
+/tmp/specimen-wave2-declarations-backend-canonical.log.
+
+Fresh SQL-enabled broad suite including declaration runtime, graph, publication,
+stream limits, duplicate/circuit concurrency, authority, worker, history, upload
+and reconstruction passed61 tests in45.63s. Declaration tests in that suite use
+SQLite; additional integration probes exercised mixed/conflicting/unknown and
+human supersession/replay/stale-CAS/unchanged raw-phase-authority evidence/restart
+through actual TCP API and SQL Connect. All four scenarios passed. Harness:
+/tmp/specimen-declarations-sql-check.py; log:/tmp/specimen-wave2-declarations-real-sql.log.
+The harness was corrected to await asynchronous TCP processing and use distinct
+synthetic request keys; initial setup errors were not product findings. Retained
+blob state: /var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-declarations-sql-kitq2vfq.
+SQL services5589/9539 stopped; retained cluster specimen-data-serve.kwf9q2.
+
+Independent QA original hardening failure8e421b1 integrated as82d7414, followed
+by H01 closure8a405ee integrated as98b3679. Original failure evidence is preserved.
+QA independently verified the minimal906e134+38fa32f+c8001bb repair with barriers,
+empty/corrupt blobs, multiprocess publication and five four-way actual SQL races:
+20 proposals, five winners,15 authorized duplicates,20 exact replay responses.
+H01 is closed in that tested local scope. Incomplete HEIC crop GUI and graph/TRN
+independent acceptance remain separate. Further PRD audit fixes and declaration
+Flutter wiring are pending; this backend checkpoint is not complete-product proof.
