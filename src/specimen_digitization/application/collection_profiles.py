@@ -40,7 +40,10 @@ class CollectionProfile(FrozenRecord):
     validators: tuple[str, ...]
     scoring_policy: str = Field(min_length=1)
     clearance_policy: str = Field(min_length=1)
-    allowed_input_formats: tuple[Literal["JPEG", "PNG", "TIFF"], ...] = ("JPEG", "PNG")
+    allowed_input_formats: tuple[Literal["JPEG", "PNG", "TIFF", "HEIC", "DNG"], ...] = (
+        "JPEG",
+        "PNG",
+    )
     classification_confirmation_required: bool = True
     institutional_policy_approved: bool = False
     semantics_confirmed: bool = False
