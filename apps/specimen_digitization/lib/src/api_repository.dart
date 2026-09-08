@@ -1001,9 +1001,21 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         'collection_id': scope.collectionId,
         'display_name': 'Image intake',
         'acquisition_method': file.method,
+        'sensitive': file.sensitive,
       },
     );
     _checkAccess(epoch, userId);
+    // Omission is the legacy Sensitive declaration, never permission to
+    // downgrade an existing batch after an interrupted creation request.
+    final batchSensitive = batch.containsKey('sensitive')
+        ? batch['sensitive']
+        : true;
+    if (batchSensitive is! bool || batchSensitive != file.sensitive) {
+      throw const ApiFailure(
+        'This batch has a different sensitivity from the selected photograph. Its original classification is unchanged.',
+        code: 'intake_sensitivity_mismatch',
+      );
+    }
     return request(
       'POST',
       '${_root(scope)}/batches/${batch['batch_id']}/items',
@@ -1013,6 +1025,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         'filename': file.name,
         'media_type': file.mimeType,
         'size_bytes': file.bytes.length,
+        'sensitive': file.sensitive,
         if (!serverCoordinates && file.width != null) 'width': file.width,
         if (!serverCoordinates && file.height != null) 'height': file.height,
         'sha256': file.sha256,

@@ -87,6 +87,7 @@ class IntakeFile {
     required this.mimeType,
     required this.sha256,
     required this.method,
+    this.sensitive = true,
     this.width,
     this.height,
   });
@@ -95,6 +96,7 @@ class IntakeFile {
   final String mimeType;
   final String sha256;
   final String method;
+  final bool sensitive;
   final int? width;
   final int? height;
 }

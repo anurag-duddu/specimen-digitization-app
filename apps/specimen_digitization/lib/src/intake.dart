@@ -54,6 +54,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
   final _entries = <ManifestEntry>[];
   bool _busy = false;
   bool _qualityConfirmed = false;
+  bool _newSensitive = true;
   String? _error;
   String get _storageKey =>
       'upload-handles-v1:${widget.userId}:${widget.scope.key}';
@@ -271,16 +272,20 @@ class _IntakeScreenState extends State<IntakeScreen> {
         }
         continue;
       }
+      final old = _entries.where((e) => e.digest == digest).firstOrNull;
       final input = IntakeFile(
         name: file.name,
         bytes: bytes,
         mimeType: mime,
         sha256: digest,
         method: camera ? 'camera' : 'files',
+        // Reselecting a queued file retains its declaration, including a
+        // batch created before an item request was interrupted. A restored
+        // server handle is resumed, never recreated with this local value.
+        sensitive: old?.file?.sensitive ?? _newSensitive,
         width: width,
         height: height,
       );
-      final old = _entries.where((e) => e.digest == digest).firstOrNull;
       if (mounted) {
         setState(() {
           if (old != null) {
@@ -452,6 +457,28 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
+                DropdownButtonFormField<bool>(
+                  key: const ValueKey('intake-sensitivity'),
+                  initialValue: _newSensitive,
+                  decoration: const InputDecoration(
+                    labelText: 'Sensitivity of new photographs',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: true, child: Text('Sensitive')),
+                    DropdownMenuItem(
+                      value: false,
+                      child: Text('Non-sensitive'),
+                    ),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _newSensitive = value!),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Choose Non-sensitive only when these photographs and their label information are suitable for ordinary collection access. This choice applies to photographs added next; existing uploads keep their original classification.',
+                ),
+                const SizedBox(height: 16),
                 const Text(
                   'Local previews depend on this device. HEIC and approved TIFF/DNG families require a configured server codec and collection profile. Files can upload without a local preview; server completion verifies bytes, format and dimensions. A decoder block retains the upload for retry.',
                 ),
@@ -534,6 +561,13 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   ),
                   const SizedBox(height: 8),
                   Semantics(liveRegion: true, child: Text(e.state)),
+                  Text(
+                    e.session != null
+                        ? 'Existing upload · original sensitivity retained'
+                        : e.file?.sensitive == false
+                        ? 'Non-sensitive photograph'
+                        : 'Sensitive photograph',
+                  ),
                   if (e.file != null)
                     Text(
                       '${e.file!.bytes.length} bytes · ${e.file!.width ?? '?'} × ${e.file!.height ?? '?'} px',
