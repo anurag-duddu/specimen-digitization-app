@@ -1,0 +1,67 @@
+# Keyset pages never use an offset or a total-result cap. The API binds cursors to
+# verified scope, filters and a fixed cutoff; each page rechecks current access.
+query ListSpecimenPage(
+  $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!,
+  $cutoff: Timestamp!, $afterId: String!, $limit: Int!, $includeSensitive: Boolean!
+) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid})
+    @check(expr: "this.active && (!vars.includeSensitive || this.canViewSensitive) && vars.limit > 0 && vars.limit <= 100 && (vars.afterId == '' || vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')) && vars.cutoff <= request.time") { active canViewSensitive }
+  specimens: specimenListings(
+    where: {_and: [
+      {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, createdAt: {le: $cutoff}},
+      {id: {gt: $afterId}},
+      {_or: [{sensitive: {eq: false}}, {sensitive: {eq: $includeSensitive}}]}
+    ]}, orderBy: {id: ASC}, limit: $limit
+  ) { id revision state disposition activeRunId sensitive createdBy createdAt updatedAt }
+}
+
+# Read bounded metadata first, then GetSnapshot for a selected immutable version.
+query ListSnapshotHistory(
+  $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!,
+  $afterRevision: Int!, $throughRevision: Int!, $limit: Int!
+) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid})
+    @check(expr: "this.active && vars.limit > 0 && vars.limit <= 100 && vars.afterRevision >= 0 && vars.throughRevision >= vars.afterRevision") { active canViewSensitive }
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id})
+    @check(expr: "(!this.sensitive || response.collectionMember.canViewSensitive) && vars.throughRevision <= this.revision") { revision sensitive }
+  specimenSnapshots(
+    where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, specimenId: {eq: $id}, revision: {gt: $afterRevision, le: $throughRevision}},
+    orderBy: {revision: ASC}, limit: $limit
+  ) { revision sha256 contractVersion createdAt }
+}
+
+query ListDocumentPage(
+  $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!,
+  $cutoff: Timestamp!, $afterId: String!, $limit: Int!
+) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid})
+    @check(expr: "this.active && this.canViewSensitive && vars.limit > 0 && vars.limit <= 100 && (vars.afterId == '' || vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')) && vars.cutoff <= request.time && vars.kind in ['upload', 'batch']") { active canViewSensitive }
+  auxiliaryDocuments: documentListings(
+    where: {_and: [
+      {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, kind: {eq: $kind}, createdAt: {le: $cutoff}},
+      {id: {gt: $afterId}}
+    ]}, orderBy: {id: ASC}, limit: $limit
+  ) { id kind revision createdBy createdAt updatedAt }
+}
+
+query ListDueWork(
+  $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!,
+  $cutoff: Timestamp!, $afterId: String!, $limit: Int!
+) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid})
+    @check(expr: "this.active && this.canViewSensitive && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.limit > 0 && vars.limit <= 100 && (vars.afterId == '' || vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')) && vars.cutoff <= request.time") { active role canViewSensitive }
+  items: specimenListings(
+    where: {_and: [
+      {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, createdAt: {le: $cutoff}, id: {gt: $afterId}, state: {in: ["pending", "running", "retry_scheduled"]}},
+      {_or: [{workAvailableAt: {le: $cutoff}}, {workAvailableAt: {isNull: true}}]}
+    ]}, orderBy: {id: ASC}, limit: $limit
+  ) { id revision state activeRunId workAvailableAt createdAt }
+}

@@ -33,8 +33,13 @@ start_connector() {
 }
 start_connector
 node scripts/data/connector-test.mjs
+"$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -v ON_ERROR_STOP=1 -f dataconnect/sql/paging-indexes.sql
+PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/paging-test.mjs
 kill "$dc_pid"
 wait "$dc_pid" || true
 dc_pid=""
 start_connector
 node scripts/data/restart-test.mjs
+index_count="$("$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -Atc "SELECT count(*) FROM pg_index JOIN pg_class ON pg_class.oid = indexrelid WHERE relname IN ('specimen_text_cursor', 'auxiliary_text_cursor') AND indisvalid")"
+[[ "$index_count" == "2" ]]
+printf 'PASS supplemental keyset indexes remain valid after connector restart\n'
