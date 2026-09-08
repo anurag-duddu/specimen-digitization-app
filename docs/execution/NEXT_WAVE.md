@@ -511,3 +511,15 @@ cursors require an explicit compatibility path and fixture update; never silentl
 interpret them as the new keyset token. Data/backend must confirm exact operation
 variables and projection writes before schema integration. Proposal delivered to
 both owners together so no independent filter semantics are invented.
+
+Data accepted the search filters/keyset proposal and proposed a view joining the
+exact current snapshot on organization/collection/specimen/revision, avoiding
+redundant mutable columns or new Save variables. Architecture accepts that narrow
+projection. Typed SQL Specimen.createdAt is the canonical search/summary created_at
+for filtering, display and cursor; backend must apply the same list/detail mapping
+and equivalent SQLite persistence metadata. Retained snapshot domain creation and
+source acquisition times remain distinct immutable provenance, never rewritten.
+The earlier domain timestamp can differ by milliseconds; document the mapping
+change and test exact boundary equality. Canonical UUID text comparison needs the
+reviewed scoped expression index, because native UUID_Filter lacks gt. Backend
+confirmation and actual query/serializer tests remain required before integration.
