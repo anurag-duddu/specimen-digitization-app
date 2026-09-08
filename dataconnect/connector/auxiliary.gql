@@ -1,12 +1,12 @@
 query GetDocument($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!) @auth(level: NO_ACCESS) {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive") { active role canViewSensitive }
-  auxiliaryDocument(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id}) @check(expr: "this == null || vars.kind != 'worker_cursor' || this.createdBy == vars.actorUid") { id kind revision payload createdBy }
+  auxiliaryDocument(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id}) @check(expr: "this == null || !(vars.kind in ['worker_cursor', 'pilot_launch']) || this.createdBy == vars.actorUid") { id kind revision payload createdBy }
 }
 query GetDocumentVersion($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!, $revision: Int!) @auth(level: NO_ACCESS) {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive") { active role canViewSensitive }
-  auxiliaryVersion(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, documentId: $id, revision: $revision}) { revision payload document @check(optional: true, expr: "vars.kind != 'worker_cursor' || this.createdBy == vars.actorUid") { createdBy } }
+  auxiliaryVersion(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, documentId: $id, revision: $revision}) { revision payload document @check(optional: true, expr: "!(vars.kind in ['worker_cursor', 'pilot_launch']) || this.createdBy == vars.actorUid") { createdBy } }
 }
 query GetDocumentReceipt($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $operation: String!, $idempotencyKey: String!) @auth(level: NO_ACCESS) {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
@@ -16,7 +16,7 @@ query GetDocumentReceipt($organizationId: UUID!, $collectionId: UUID!, $actorUid
 mutation CreateDocument($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!, $payload: Any!, $operation: String!, $idempotencyKey: String!, $requestSha256: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.kind in ['upload', 'batch'] || (vars.kind == 'worker_cursor' && this.role in ['operator', 'reviewer', 'manager', 'admin']))") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.kind in ['upload', 'batch'] || (vars.kind in ['worker_cursor', 'pilot_launch'] && this.role in ['operator', 'reviewer', 'manager', 'admin']))") { active role canViewSensitive }
   }
   auxiliaryDocument_insert(data: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id, revision: 1, payload: $payload, createdBy: $actorUid})
   auxiliaryVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, documentId: $id, revision: 1, payload: $payload})
@@ -25,10 +25,10 @@ mutation CreateDocument($organizationId: UUID!, $collectionId: UUID!, $actorUid:
 mutation SaveDocument($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!, $payload: Any!, $operation: String!, $idempotencyKey: String!, $requestSha256: String!, $expectedRevision: Int!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.kind in ['upload', 'batch'] || (vars.kind == 'worker_cursor' && this.role in ['operator', 'reviewer', 'manager', 'admin']))") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.kind in ['upload', 'batch'] || (vars.kind in ['worker_cursor', 'pilot_launch'] && this.role in ['operator', 'reviewer', 'manager', 'admin']))") { active role canViewSensitive }
   }
   current: query @redact {
-    auxiliaryDocument(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id}) @check(expr: "vars.kind != 'worker_cursor' || this.createdBy == vars.actorUid") { createdBy }
+    auxiliaryDocument(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id}) @check(expr: "!(vars.kind in ['worker_cursor', 'pilot_launch']) || this.createdBy == vars.actorUid") { createdBy }
   }
   auxiliaryDocument_updateMany(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, kind: {eq: $kind}, id: {eq: $id}, revision: {eq: $expectedRevision}}, data: {revision_expr: "vars.expectedRevision + 1", payload: $payload, updatedAt_expr: "request.time"}) @check(expr: "this == 1", message: "revision conflict")
   auxiliaryVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, documentId: $id, revision_expr: "vars.expectedRevision + 1", payload: $payload})

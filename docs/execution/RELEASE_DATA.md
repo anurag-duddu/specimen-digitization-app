@@ -289,3 +289,81 @@ approved release contract; data finalizes actual metadata/cost packet; runtime a
 data agree exact intake/manifest bindings; protected delivery applies approved
 changes; independent QA verifies real recovery/import/identity and public product
 acceptance. Budget and prior PR merge are resolved decisions, not missing inputs.
+
+## Subsequent actual connector integration and metadata checkpoint
+
+The coordinator assigned an actual local SQL Connect stage-cost/launch-ledger
+round trip after runtime source `24e6550` and trusted protobuf snapshot repair
+`d859ac6dfa9c64d7fb68037da03283b823303736`. The new opt-in
+`tests/test_sqlconnect_stage_cost_roundtrip.py` persists only synthetic metadata;
+it constructs no image bytes, blob adapter, model or cloud session.
+
+The real REST connector returns integral JSON numbers. Snapshot get/save/history
+and strict external cost validation passed even before the protobuf repair;
+that test is independent persistence evidence, not a reproduction of the
+protobuf Struct float defect. The runtime owner's separate real-Struct test
+establishes the latter. The actual launch-ledger case failed because
+`CreateDocument`/`SaveDocument` omitted the runtime's `pilot_launch` kind.
+
+The authorized connector correction permits that exact control-document kind
+and applies the existing `worker_cursor` creator restrictions to its read,
+history and save paths. Active org/collection membership, writer role,
+sensitivity, CAS and deny-all direct client checks remain. Both control kinds
+remain excluded from ordinary offset/keyset document lists. The new
+`scripts/data/pilot-ledger-test.mjs` runs in the existing PostgreSQL harness.
+
+Actual connector red: `/tmp/specimen-release-pilot-ledger-red-20260908.log` and
+`/tmp/specimen-release-stage-map-connector-isolated-red-20260908.log` (one snapshot
+pass, one ledger failure). Green:
+`/tmp/specimen-release-pilot-ledger-green-20260908.log` and
+`/tmp/specimen-release-stage-map-connector-green-20260908.log` (two Python cases).
+Checks prove same policy/launch digest and unchanged admission ledger after
+fresh repository reconstruction, immutable history, rejected changed launch/map,
+and rejected external fractional/boolean/string/float costs. The JS suite proves
+creator/client/cross-scope/role/sensitivity denial, stale-CAS rejection and both
+control-list denials. Independent coordinator reviewer found no blocking issue.
+Canonical gate: `/tmp/specimen-release-pilot-ledger-verify-20260908.log`, exit 0,
+805 Python passed / 28 skipped, 120 Flutter passed / 7 skipped, analysis,
+repository/security and release web build. The two new opt-in tests actually ran
+against runtime `d859ac6` separately; they skip on this data-only source checkout.
+
+Fixture uses PostgreSQL 5589 / SQL Connect 9569, retained for the subsequently
+assigned sensitivity contract, so do not stop it from another task. Exact-source
+runtime archives are `/tmp/specimen-stage-map-runtime-red-24e6550/src` and
+`/tmp/specimen-stage-map-runtime-green-d859ac6/src`. Recheck with
+`FIREBASE_DATACONNECT_EMULATOR_HOST=127.0.0.1:9569 node scripts/data/pilot-ledger-test.mjs`
+and `SPECIMEN_TEST_SQL_EMULATOR=true SPECIMEN_SQL_EMULATOR_HOST=127.0.0.1:9569
+PYTHONPATH=/tmp/specimen-stage-map-runtime-green-d859ac6/src .venv/bin/python -m
+pytest -q -s tests/test_sqlconnect_stage_cost_roundtrip.py`.
+
+Cloud metadata is now available: the coordinator successfully reused the same
+existing Firebase CLI account for read-only inventory without changing account
+defaults or printing credentials. Private directory:
+`/Users/anuragduddu/.codex/rollout-state/specimen-live/inventory-20260908-firebase`.
+This supersedes the earlier authentication blocker. Independently read: one
+bucket, 1,000 JPEG records plus one non-image marker, zero backup records, one
+SQL database, two service accounts and one secret metadata record. SQL is
+PostgreSQL 18, Enterprise, db-f1-micro, zonal, 10 GB SSD in us-east4, running;
+backups are disabled. Bucket location is us-east1, uniform access true, inherited
+public-access prevention and seven-day soft deletion. No public member appears
+in the inventoried project or bucket bindings; inherited effective denial and
+native restore remain unproven. No image bytes or cloud writes occurred.
+
+Raw acquisition `subjects_1000.json` remains at
+`/Users/anuragduddu/Documents/Codex/2026-08-13/fin/work/field_museum_fleas_api/subjects_1000.json`,
+SHA256 `631095098ae2785891dddf97ef7b44b66f978a46080d0ed4fcaeda6cc4481c44`.
+Its subject-derived filenames match all 1,000 cloud JPEG basenames exactly;
+every record has exactly one original location and every cloud name one observed
+generation. First ten match preserved page-one order and total 3,018,274 bytes.
+The old CSV is absent; an earlier chat statement overclaimed its presence and
+was corrected after direct filesystem verification. The raw JSON and original
+script provide the surviving source-order evidence. Metadata freeze and current
+cost packet are being prepared; no actual source sensitivity classification is
+established merely by public acquisition provenance.
+
+The user now requires a complete ten-specimen human-review journey, deferring
+automated classification and clearance. Initial administrator sensitive access
+remains false. A separate scoped contract is in progress for explicit new
+non-sensitive intake while retaining default-sensitive legacy evidence,
+creator-only control documents and no downgrade. This ledger correction does
+not relax any sensitivity check or classify actual images.
