@@ -103,3 +103,15 @@ search and restart/index tests also pass. `scripts/ci/verify.sh` passes Python,
 hooks, Flutter analysis/widget and release web build. These are local results;
 backend SQLite/intake conflict mapping and HTTP behavior remain its owner's
 integration proof. No production performance or legacy readiness is inferred.
+
+Code commit: `3daf6c7753601e9db14390bb79845d4cbed24459`.
+Reproduce the complete suite with
+`SPECIMEN_TEST_PG_PORT=5609 SPECIMEN_TEST_DC_PORT=9559 scripts/data/test-postgres.sh`,
+and canonical gates with `scripts/ci/verify.sh`. Full suite logs were retained at
+`/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-test.09SsWp`.
+The final standalone checksum/audit smoke used the same ports and
+`FIREBASE_DATACONNECT_EMULATOR_HOST=127.0.0.1:9559 PSQL_BIN=/opt/homebrew/opt/postgresql@18/bin/psql SPECIMEN_TEST_PG_PORT=5609 node scripts/data/checksum-test.mjs`.
+That disposable cluster is retained at
+`/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.oQmCtW`.
+Both local processes were stopped and ports 5609/9559 verified closed. No active
+backend lease was interrupted. Commits are local for coordinator integration.
