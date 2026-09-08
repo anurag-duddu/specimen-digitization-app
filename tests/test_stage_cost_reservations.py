@@ -169,7 +169,7 @@ def test_revised_launch_map_cannot_reset_the_existing_cohort_ledger(tmp_path, mo
         PilotAdmission(SQLiteRepository(repo.path), launch).admit(specimen)
 
 
-@pytest.mark.parametrize("value", [0, -1, True, 1.2, "17", None])
+@pytest.mark.parametrize("value", [0, -1, True, 1.2, 17.0, "17", None])
 def test_map_values_are_strictly_positive_integer_microdollars(value):
     value_map = cost_map()
     value_map["cost_micros"]["segment"] = value
@@ -198,3 +198,32 @@ def test_legacy_uniform_policy_and_launch_digest_do_not_gain_new_null_field(tmp_
     _, _, _, launch = fixture(tmp_path)
     assert "stage_cost_reservations" not in ExecutionPolicy().model_dump(mode="json")
     assert "stage_cost_reservations" not in launch.model_dump(mode="json")
+
+
+def test_sql_snapshot_restores_exact_integer_costs_after_real_struct_transport(tmp_path, monkeypatch):
+    from google.protobuf import json_format
+    from google.protobuf.struct_pb2 import Struct
+    from specimen_digitization.application.production import SqlConnectRepository
+
+    repo, principal, specimen, launch, workflow, _ = mapped_pilot(tmp_path, monkeypatch)
+    specimen = repo.get(principal.scope, specimen.id)
+    payload = specimen.model_dump(mode="json")
+    transported = json_format.MessageToDict(json_format.ParseDict(payload, Struct()))
+    assert type(transported["run"]["profile"]["execution"]["stage_cost_reservations"]["cost_micros"]["segment"]) is float
+    sql = SqlConnectRepository.__new__(SqlConnectRepository)
+    sql.graph_blobs = None
+    restored = sql._snapshot({"snapshot": transported, "sha256": digest(payload)})
+    assert restored.run.profile.execution.stage_cost_reservations.cost_micros == cost_map()["cost_micros"]
+    assert all(type(value) is int for value in restored.run.profile.execution.stage_cost_reservations.cost_micros.values())
+    workflow.admission.admit(restored)
+    assert digest(restored.run.profile.execution.model_dump(mode="json")) == digest(specimen.run.profile.execution.model_dump(mode="json"))
+
+
+@pytest.mark.parametrize("value", [17.5, True, "17", float("inf"), 2**53])
+def test_stored_cost_normalization_never_accepts_fractional_or_unsafe_values(value):
+    value_map = cost_map()
+    value_map["cost_micros"]["segment"] = value
+    with pytest.raises(ValidationError):
+        ExecutionPolicy.model_validate(
+            {"stage_cost_reservations": value_map}, context={"persisted_snapshot": True}
+        )

@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .reading_declarations import LanguageHandling
 
@@ -223,9 +223,24 @@ class StageCostReservations(Record):
     """
 
     version: Literal["stage-cost-reservations-v1"]
-    cost_micros: dict[str, Annotated[int, Field(strict=True, gt=0)]] = Field(
+    cost_micros: dict[str, Annotated[int, Field(strict=True, gt=0, le=2**53 - 1)]] = Field(
         min_length=1, max_length=64
     )
+
+    @field_validator("cost_micros", mode="before")
+    @classmethod
+    def restore_persisted_integers(cls, value, info):
+        # SQL Connect's protobuf Struct stores JSON numbers as doubles. Only an
+        # integrity-checked snapshot reader may normalize exact safe integers;
+        # launch/config input remains strict and never accepts float or text.
+        if (info.context or {}).get("persisted_snapshot") is True and isinstance(value, dict):
+            return {
+                key: int(amount)
+                if type(amount) is float and amount.is_integer() and 0 < amount < 2**53
+                else amount
+                for key, amount in value.items()
+            }
+        return value
 
     @model_validator(mode="after")
     def valid_stages(self):
