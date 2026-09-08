@@ -23,6 +23,8 @@ blocked, or because a local build succeeds. Fix the gate or report the blocker.
 | Firebase Hosting site | `specimen-digitization` |
 | Production URL | <https://specimen-digitization.web.app> |
 | Workflow | `.github/workflows/ci-cd.yml` |
+| Approved runtime workflow | `.github/workflows/runtime-release.yml` |
+| Approved data workflow | `.github/workflows/data-release.yml` |
 | GitHub environment | `production`, branch policy `main` only |
 | Deployment service account | `github-firebase-hosting@specimen-digitization.iam.gserviceaccount.com` |
 | Firebase CLI in CI | `15.8.0` |
@@ -32,9 +34,10 @@ blocked, or because a local build succeeds. Fix the gate or report the blocker.
 
 Firebase SQL Connect backed by Cloud SQL for PostgreSQL is the application
 database direction. Firestore is not the application database. The current
-pipeline deploys only the static Flutter web artifact to Firebase Hosting; it
+Hosting pipeline deploys only the static Flutter web artifact to Firebase Hosting; it
 does not deploy or migrate SQL Connect, Cloud SQL, Storage, Functions, Cloud
-Run, Temporal, or model workers. AWS is not part of this deployment design.
+Run, Temporal, or model workers. The separately approved runtime/data paths
+below do not change that Hosting boundary. AWS is not part of this design.
 
 ## Non-negotiable rules
 
@@ -49,7 +52,7 @@ Run, Temporal, or model workers. AWS is not part of this deployment design.
 7. Do not change a failed check, branch protection, the `production`
    environment, IAM, Workload Identity Federation, pinned action SHA, test, or
    smoke assertion merely to make a release pass.
-8. Do not give the deploy service account database, Storage, Functions, Cloud
+8. Do not give the Hosting deploy service account database, Storage, Functions, Cloud
    Run, Secret Manager administration, Owner, or Editor permissions.
 9. Never create or store a Google service-account JSON key. CI uses short-lived
    GitHub OIDC credentials through Workload Identity Federation.
@@ -59,11 +62,15 @@ Run, Temporal, or model workers. AWS is not part of this deployment design.
     public site reports the exact merged commit SHA in `/deployment.json`.
 12. If any required proof is unavailable, report the release as incomplete.
 
-The only executable production deploy command lives in
+The only executable Hosting deploy command lives in
 `scripts/ci/deploy_hosting.sh`. That script fails closed unless GitHub provides
 the expected repository, `push` event, `main` ref, workflow identity, commit
 SHA, tested artifact marker, and keyless Google credential file. Tests reject
-deploy commands added to other automation files.
+deploy commands added to unapproved automation files. The only approved backend
+effect entrypoints are `scripts/ci/deploy_runtime.py` and
+`scripts/ci/deploy_data.py`, invoked exclusively by their respective main-push
+workflows under the admission and verification contract below. A policy
+allowlist is not evidence that an entrypoint or its live inputs are ready.
 
 ## Pipeline behavior
 
@@ -228,6 +235,11 @@ uv run --env-file .env specimen-huggingface-preflight
 
 Paid live-route calls require explicit approval and an approved synthetic or
 public image. Never use private specimen material for a smoke test.
+
+These optional smoke commands are distinct from the user-authorized first-ten
+application pilot. The pilot requires its privately frozen originals, pinned
+provider routes, verified identity/data/runtime prerequisites and the shared
+USD 5 reservation ledger. It is never run inside ordinary pull-request CI.
 
 ### Flutter client
 
@@ -516,15 +528,64 @@ signing. Neither check uses paid inference or authenticates to real Firebase.
 The canonical pre-push gate remains `scripts/ci/verify.sh`; mobile checks are
 additional platform gates and must pass on the integrated candidate.
 
-## Live runtime/data contract review
+## Approved runtime/data release contract
 
-The candidate contract in [LIVE_DELIVERY.md](execution/LIVE_DELIVERY.md) is
-review-only. It identifies the explicit amendment needed before separate
-runtime/data release workflows may exist. It grants no deployment or bootstrap
-authority. All existing Hosting-only restrictions and deployment-policy tests
-remain in force until that separate review is complete. The initial cloud sample
-is limited to the data owner's frozen first ten existing specimens; expansion
-requires user review and approval of end-to-end results.
+The user approved release decision packet v1 on 2026-09-08. The bounded,
+current authority is recorded in
+[RELEASE_AUTHORIZATION.md](execution/RELEASE_AUTHORIZATION.md), superseding
+the approval-pending statements in the historical
+[LIVE_DELIVERY.md](execution/LIVE_DELIVERY.md) proposal. It authorizes the
+separate paths below and the documented bounded Google Cloud setup. It does
+not establish cloud readiness or authorize an unspecified expansion. The
+initial sample remains the data owner's frozen first ten existing specimens;
+expansion requires user review and approval of end-to-end results.
+
+- `.github/workflows/runtime-release.yml` and
+  `.github/workflows/data-release.yml` accept only pushes to `main` after a PR
+  merge. No PR/tag/manual/workflow-run deployment route is permitted.
+- Before obtaining Google credentials, independently verify the repository,
+  numeric owner/repository IDs, protected branch, exact workflow/source SHA,
+  merged-PR provenance, latest main, all five successful CI/CD jobs on that
+  exact source, and the applicable reviewed authorization packet. A stale,
+  incomplete, example or unreviewed packet fails closed.
+- Runtime publication and runtime promotion use separate identities and
+  main-only environments (`runtime-build-production` and
+  `runtime-production`), so a publisher cannot inherit deployment authority.
+  Data uses `data-production`. Exact WIF resources and effective permissions
+  must be verified after inventory; never infer their existence or a project
+  number from an example. Restrict each provider to the correct repository IDs,
+  push/main, environment and workflow. Keep Hosting's provider and identity
+  unchanged. No long-lived service-account keys.
+- Build the exact merged source once, retain immutable image digests and trusted
+  provenance, and deploy those same digests. Publication credentials are limited
+  to the named registry; deployment credentials have only the reviewed resource
+  permissions. No mutable tag, arbitrary command or user-supplied script is a
+  substitute for a typed, reviewed release operation.
+- Verify current backup and isolated restore proof before compatible data
+  changes. Keep writers quiesced when uniqueness protection could be absent;
+  restore and independently verify supplemental indexes after reconciliation.
+  Do not create or upgrade a source SQL instance as a side effect of deployment.
+  Preserve source data and object generations. Bootstrap the approved initial
+  administrator only after verified identity/scope, with sensitive access off.
+- Verify compatible deployed data before promoting runtimes. Enforce the
+  approved API/worker/SAM resource, expiry, scope and cumulative cost limits.
+  Build admission precedes images; data admission precedes data apply; runtime
+  promotion follows data readiness; public acceptance follows deployment.
+  Do not create circular prerequisites or confuse preflight with acceptance.
+- Serialize production transitions without cancellation. Quiesce on failure;
+  retain previous known revisions and evidence. Runtime rollback uses a reviewed
+  main PR and compatible data; never delete original data to simulate recovery.
+- Completion requires the exact main workflow/deploy results, public Hosting
+  marker, matching runtime/data revisions and authenticated full-cohort product
+  evidence. An evidence-only intermediate run is not full-pipeline acceptance.
+
+The coordinator may perform only the approved, independently reviewed setup
+actions after live inventory and recording the exact bounded action packet.
+Check the complete conservative cost reservation before each billable action;
+unknown costs are not zero. The USD 5 limit is cumulative across all sessions
+and retries. Stop if costs do not fit or an action exceeds the recorded scope.
+Only the newly created restore clone may be removed, by its two-hour expiry,
+after verification evidence is retained. Existing data and source SQL remain.
 
 The candidate CI workflow `runtime-ci.yml` builds committed container inputs
 without credentials or registry publication. Scoped PRs report absent owner
@@ -535,7 +596,9 @@ Main web builds accept the approved public repository variables
 `SPECIMEN_API_BASE_URL` and `SPECIMEN_RECAPTCHA_SITE_KEY` together. Both unset
 preserve the setup screen; partial or unsafe configuration fails the build.
 `build_web.sh` never forwards these variables for PR/manual/native builds. This
-wiring does not authorize changing repository variables or App Check registration.
+wiring alone grants no authority. Release decision packet v1 separately
+authorizes configuring the verified API URL and App Check registration/site key
+for this live app after target verification and access-denial checks.
 
 Release completeness is separate from candidate structure CI. The strict
 non-deploying preflight `scripts/ci/check_release_readiness.py` accepts a real

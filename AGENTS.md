@@ -27,8 +27,16 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
 
 ## Deployment rules
 
-- Production deployments MUST be performed only by
-  `.github/workflows/ci-cd.yml` after a pull request is merged to `main`.
+- Hosting production deployments MUST use `.github/workflows/ci-cd.yml` after
+  a pull request is merged to `main`. Runtime and data production deployments
+  MUST use only `.github/workflows/runtime-release.yml` and
+  `.github/workflows/data-release.yml`, respectively, after a pull request is
+  merged to `main` and the approved contract in `docs/DEPLOYMENT.md` is met.
+  Each plane uses a separate main-only environment and keyless identity,
+  all five successful checks on the exact merged source, independent review,
+  immutable provenance and verified readiness. The Hosting identity remains
+  isolated. The bounded authority is recorded in
+  `docs/execution/RELEASE_AUTHORIZATION.md`; missing evidence fails closed.
 - Never run `firebase deploy`, a Hosting channel deploy, or a `gcloud ... deploy`
   command from a workstation or an agent shell.
 - Never deploy SQL Connect schemas, database migrations, Storage rules,

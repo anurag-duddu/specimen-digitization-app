@@ -135,8 +135,8 @@ Do not provision Temporal or claim the incomplete Workflows comparison is passed
 | G0 Baseline | Live Git/GitHub/marker reconciliation and safe work ownership | Verified for starting SHA above |
 | G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | In progress |
 | G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | Blocked: fresh Google credential refresh requires interactive reauthentication; remaining evidence Not confirmed |
-| G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, approved total/daily budget and hard execution bounds | USD 5 total budget supplied; current Hosting-only rule and exact action/cost verification remain gates |
-| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Pending G3; no executable alternate deploy path permitted yet |
+| G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, approved total/daily budget and hard execution bounds | Both user approvals granted; exact live inventory/action/cost evidence still required |
+| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | In progress under granted authority; no live deployment or readiness implied |
 | G5 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback | Pending authorized cloud work |
 | G6 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart | Pending G4/G5 |
 | G7 Integrated release | `scripts/ci/verify.sh`, runtime container CI, all five platform checks on exact PR head; merge through GitHub | Pending candidate and cloud readiness |
@@ -147,16 +147,16 @@ Use local synthetic fixtures to develop tests, then real isolated data/services,
 then the authorized first-ten live cohort. These are separate evidence levels.
 Do not use private data or paid inference inside ordinary pull-request CI.
 
-## Concrete release-policy decision
+## Approved release-policy decision
 
-`AGENTS.md` currently says production deployments **MUST** occur only through
-`.github/workflows/ci-cd.yml`; it also forbids runtime/data deployment through
-that Hosting workflow. `docs/DEPLOYMENT.md` requires an explicit reviewed
-amendment before a separate runtime/data workflow exists. Therefore the current
-contract cannot deliver the required backend. No active rule is changed by this
-plan.
+The user submitted both decisions in release decision packet v1: protected
+backend/data deployment workflows and the bounded Google Cloud setup. The
+authoritative scope is now recorded in
+[RELEASE_AUTHORIZATION.md](RELEASE_AUTHORIZATION.md), with a private copy and
+digest alongside the execution decisions. These approvals are no longer missing.
+`AGENTS.md` and `docs/DEPLOYMENT.md` are being amended through the release PR.
 
-Proposed narrow replacement for the first deployment rule, for user review:
+Approved replacement for the first deployment rule:
 
 > Hosting production deployments MUST use `.github/workflows/ci-cd.yml` after
 > a pull request is merged to `main`. Runtime and data production changes MUST
@@ -170,8 +170,10 @@ Proposed narrow replacement for the first deployment rule, for user review:
 
 Review the matching runbook and negative tests with that change. Preserve pinned
 actions, required checks, branch protection, environment restrictions and
-Hosting isolation. This policy decision authorizes no unspecified resource/IAM
-change or spend. The concrete data/runtime action packet must be reviewed too.
+Hosting isolation. The separately approved bounded resource/IAM scope allows
+routine names/configuration to be resolved by the coordinator after live
+inventory and independent review. Record the exact action packet before action;
+do not expand scope or infer an unverified cost as zero.
 
 The resource design being reconciled is the existing `LIVE_PILOT_COST.md`:
 one scale-to-zero API, one bounded worker execution, one CPU SAM service, existing
@@ -215,6 +217,20 @@ quiesce workers and retain evidence on failure. No destructive database rollback
 - 2026-09-08 later: Started reauthentication for the existing Google account;
   the CLI is waiting for account-owner password entry in its terminal. No
   password is requested in chat, account switched or cloud resource changed.
+- 2026-09-08 decision packet v1: User submitted both approvals. Recorded protected
+  workflow and bounded setup authority in `RELEASE_AUTHORIZATION.md` and the
+  private decision artifact. Stop requesting those approvals; discover identity,
+  source, resource, price and readiness facts after authentication.
+- 2026-09-08 after approval: Cancelled the idle terminal-password flow and opened
+  a fresh browser authorization flow for the same existing Google account.
+  Successful Google sign-in remains Not confirmed; the old terminal is no longer
+  the action to complete.
+- 2026-09-08 after approval: Added bounded helper agent
+  `/root/protected_release_delivery` on coordinator branch `V0.1`, inheriting the
+  coordinator model/effort. It owns the two workflows and their executable
+  admission/build/apply tests while root owns policy, integration and reviews.
+  It has no cloud-write, paid-call, GitHub-admin, push or deploy authority.
+  Existing `/root/budget_guard_review` independently reviews data repairs.
 
 ## Validation and next checkpoint
 
@@ -265,8 +281,9 @@ quiesce workers and retain evidence on failure. No destructive database rollback
 - After account-owner reauthentication, data owner performs one read-only refresh,
   then prepares the exact freeze/bootstrap/restore packet. Do not repeat failed
   credential probes or enable APIs simply to make inventory succeed.
-- Next irreversible phase waits for the specific policy/resource/cost authority;
-  locally authorized tests, fixes and review may continue meanwhile.
+- Policy/resource authority is granted within the recorded limits. Dependent
+  cloud work still waits for verified authentication, exact inventory/action
+  packet, independent review and a conservative cost reservation within USD 5.
 - Before pruning the old `codex/live-*` branches at the user's cleanup request,
   reconcile and preserve their ignored evidence, append owner closeouts, and
   confirm all source is reachable from main. The unfinished real-model worktree
