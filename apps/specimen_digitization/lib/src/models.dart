@@ -34,11 +34,13 @@ class CollectionScope {
     required this.collectionId,
     required this.name,
     this.permissions = const [],
+    this.configuration = const {},
   });
   final String organizationId;
   final String collectionId;
   final String name;
   final List<String> permissions;
+  final Json configuration;
   String get key => '$organizationId/$collectionId';
 }
 
@@ -83,6 +85,28 @@ class IntakeFile {
   final int? height;
 }
 
+enum ArtifactKind {
+  phase,
+  readingMetadata,
+  authority,
+  disagreement,
+  observationRaw,
+  authorityRaw,
+}
+
+class ArtifactRequest {
+  const ArtifactRequest(this.kind, this.id, {this.fieldKey, this.sha256});
+  final ArtifactKind kind;
+  final String id;
+  final String? fieldKey, sha256;
+}
+
+class SpecimenPage {
+  const SpecimenPage(this.items, {this.nextCursor});
+  final List<Specimen> items;
+  final String? nextCursor;
+}
+
 class HistoryPage {
   const HistoryPage({
     required this.items,
@@ -104,6 +128,16 @@ abstract class SpecimenRepository {
     String query = '',
     String status = '',
   });
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const {},
+    String? cursor,
+  });
+  Future<Json> artifact(
+    CollectionScope scope,
+    Specimen specimen,
+    ArtifactRequest artifact,
+  );
   Future<Specimen> specimen(CollectionScope scope, String id);
   Future<HistoryPage> historyPage(
     CollectionScope scope,
@@ -118,6 +152,7 @@ abstract class SpecimenRepository {
     String? runId,
     String? runSha256,
   });
+  Future<Json> preflight(CollectionScope scope, IntakeFile file);
   Future<Json> createIntake(CollectionScope scope, IntakeFile file, String key);
   Future<Json> resumeIntake(CollectionScope scope, String id);
   Future<void> upload(

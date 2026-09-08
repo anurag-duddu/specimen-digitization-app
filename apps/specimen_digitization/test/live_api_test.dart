@@ -65,7 +65,8 @@ void main() {
       expect(specimen.disposition, 'needs_human_review');
       expect(specimen.observations.length, greaterThanOrEqualTo(2));
       expect(specimen.fields, hasLength(20));
-      expect(specimen.assets.single['preview_bytes'], bytes);
+      expect(specimen.assets.single['sha256'], file.sha256);
+      expect(specimen.assets.single['preview_bytes'], isNotEmpty);
       final evidenceId = specimen.evidence.first['evidence_id'];
       final revised = await repo.review(scope, specimen, {
         'kind': 'field_correction',

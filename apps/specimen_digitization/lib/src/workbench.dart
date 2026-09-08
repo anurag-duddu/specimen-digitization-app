@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 import 'region_editor.dart';
 import 'audit_history.dart';
+import 'review_context.dart';
+import 'operational_panel.dart';
+import 'evidence_panel.dart';
+import 'reading_alignment.dart';
+import 'source_pixels.dart';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -16,9 +21,11 @@ class ReviewWorkbench extends StatefulWidget {
     this.canReview = true,
     this.canOperate = true,
     this.loadHistoryPage,
+    this.loadArtifact,
     this.loadHistoricalRevision,
   });
   final Specimen specimen;
+  final Future<Json> Function(ArtifactRequest)? loadArtifact;
   final Future<void> Function(Json change) onChange;
   final Future<void> Function(String reason) onRetry;
   final VoidCallback onRefresh;
@@ -47,6 +54,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       );
   bool get _retryBlocked =>
       widget.busy ||
+      (DateTime.tryParse(
+            textOf(objectOf(widget.specimen.data['run'])['lease_until'], ''),
+          )?.isAfter(DateTime.now()) ??
+          false) ||
       !widget.canOperate ||
       !(widget.specimen.data['available_actions'] as List? ?? []).contains(
         'retry',
@@ -280,72 +291,23 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   Future<void> _classification() async {
-    String? collection = widget.specimen.data['collection_id'];
-    if (!widget.collections.any((c) => c.collectionId == collection)) {
-      collection = widget.collections.firstOrNull?.collectionId;
-    }
-    final reason = TextEditingController();
-    final form = GlobalKey<FormState>();
-    final result = await showDialog<Json>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Correct collection classification'),
-        content: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Choose an authorized collection. The server validates its published profile and supersedes affected results.',
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: collection,
-                isExpanded: true,
-                items: widget.collections
-                    .map(
-                      (c) => DropdownMenuItem(
-                        value: c.collectionId,
-                        child: Text(c.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => collection = v,
-                decoration: const InputDecoration(labelText: 'Collection'),
-                validator: (v) => v == null ? 'Choose a collection.' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: reason,
-                decoration: const InputDecoration(
-                  labelText: 'Classification reason',
-                ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'A reason is required.'
-                    : null,
-              ),
-            ],
+    final scope = widget.collections
+        .where((c) => c.collectionId == widget.specimen.data['collection_id'])
+        .firstOrNull;
+    if (scope == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Collection configuration is unavailable. Refresh collection access.',
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (form.currentState!.validate()) {
-                Navigator.pop(context, <String, dynamic>{
-                  'kind': 'classification_correction',
-                  'value': collection,
-                  'reason': reason.text.trim(),
-                });
-              }
-            },
-            child: const Text('Select profile and rerun'),
-          ),
-        ],
-      ),
+      );
+      return;
+    }
+    final result = await showDialog<Json>(
+      context: context,
+      builder: (_) =>
+          ClassificationDialog(specimen: widget.specimen, scope: scope),
     );
     if (result != null && mounted) await widget.onChange(result);
   }
@@ -425,13 +387,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     final asset = specimen.assets.isEmpty
         ? <String, dynamic>{}
         : specimen.assets.first;
-    final selected = specimen.regions
+    final legacyOrientation =
+        asset['media_type'] != null && asset['preview_is_derivative'] != true;
+    final selected = (legacyOrientation ? <Json>[] : specimen.regions)
         .where((r) => r['region_id'] == _region)
         .firstOrNull;
     final crop = (selected?['bbox'] as List?)?.cast<num>();
     final width = (asset['width'] as num?)?.toDouble() ?? 1;
     final height = (asset['height'] as num?)?.toDouble() ?? 1;
     return _section('Source image', [
+      if (legacyOrientation)
+        const Text(
+          'Legacy source has no verified orientation derivative. Preview orientation may differ from original coordinates; region correction and overlays require a verified derivative.',
+        ),
       Wrap(
         spacing: 8,
         children: [
@@ -478,7 +446,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   maxScale: 12,
                   child: Center(
                     child: RotatedBox(
-                      quarterTurns: _rotation,
+                      quarterTurns:
+                          _rotation +
+                          (crop == null
+                              ? 0
+                              : (selected?['rotation_quarter_turns'] as int? ??
+                                    0)),
                       child: AspectRatio(
                         aspectRatio: crop == null
                             ? width / height
@@ -500,9 +473,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                           top: -crop[1].toDouble(),
                                           width: width,
                                           height: height,
-                                          child: Image.memory(
-                                            asset['preview_bytes'],
-                                            fit: BoxFit.fill,
+                                          child: SourcePixels(
+                                            asset: asset,
                                             semanticLabel:
                                                 'Source pixels for selected label region',
                                           ),
@@ -513,18 +485,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                 ),
                               )
                             else
-                              Image.memory(
-                                asset['preview_bytes'],
-                                fit: BoxFit.fill,
+                              SourcePixels(
+                                asset: asset,
                                 semanticLabel:
                                     'Immutable original specimen image',
-                                errorBuilder: (_, _, _) => const Center(
-                                  child: Text(
-                                    'Source access expired or unavailable. Refresh to retry.',
-                                  ),
-                                ),
                               ),
-                            if (_region == null)
+                            if (_region == null && !legacyOrientation)
                               ...specimen.regions.map((r) {
                                 final box = (r['bbox'] as List?)?.cast<num>();
                                 if (box == null || box.length != 4) {
@@ -614,7 +580,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         style: Theme.of(context).textTheme.bodySmall,
       ),
       TextButton.icon(
-        onPressed: _blocked('regions')
+        onPressed: legacyOrientation || _blocked('regions')
             ? null
             : () async {
                 final result = await showDialog<Json>(
@@ -640,6 +606,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     Widget observation(Json o) {
       final literal = textOf(o['literal_text'], textOf(o['verbatim_text']));
       final differs = literal != reference;
+      final referenceRunes = reference.runes.toList();
       return Card.outlined(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -661,28 +628,66 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               SelectionArea(
                 child: Text.rich(
                   TextSpan(
-                    children: literal
-                        .split('')
-                        .indexed
-                        .map(
-                          (e) => TextSpan(
-                            text: e.$2,
-                            style:
-                                differs &&
-                                    (e.$1 >= reference.length ||
-                                        reference[e.$1] != e.$2)
-                                ? const TextStyle(
-                                    decoration: TextDecoration.underline,
-                                    fontWeight: FontWeight.w700,
-                                    backgroundColor: Color(0xffffe7a3),
-                                  )
-                                : null,
-                          ),
-                        )
-                        .toList(),
+                    children: literal.length > 4000
+                        ? [TextSpan(text: literal)]
+                        : literal.runes.indexed
+                              .map(
+                                (e) => TextSpan(
+                                  text: String.fromCharCode(e.$2),
+                                  style:
+                                      differs &&
+                                          (e.$1 >= referenceRunes.length ||
+                                              referenceRunes[e.$1] != e.$2)
+                                      ? const TextStyle(
+                                          decoration: TextDecoration.underline,
+                                          fontWeight: FontWeight.w700,
+                                          backgroundColor: Color(0xffffe7a3),
+                                        )
+                                      : null,
+                                ),
+                              )
+                              .toList(),
                   ),
                 ),
               ),
+              if (widget.loadArtifact != null && o['raw_ref'] != null)
+                LazyEvidence(
+                  key: ValueKey(
+                    'raw:${widget.specimen.id}:${widget.specimen.revision}:${o['id']}',
+                  ),
+                  label: 'Read raw observation',
+                  load: () => widget.loadArtifact!(
+                    ArtifactRequest(
+                      ArtifactKind.observationRaw,
+                      textOf(o['id'], textOf(o['observation_id'])),
+                      sha256: o['raw_sha256'] as String?,
+                    ),
+                  ),
+                  render: (raw) => EvidenceDetails(
+                    title: 'Raw observation response',
+                    value: raw,
+                  ),
+                ),
+              if (widget.loadArtifact != null &&
+                  objectOf(
+                        objectOf(
+                          widget.specimen.data['run'],
+                        )['reading_metadata'],
+                      )[o['id']] !=
+                      null)
+                LazyEvidence(
+                  key: ValueKey(
+                    'metadata:${widget.specimen.id}:${widget.specimen.revision}:${o['id']}',
+                  ),
+                  label: 'Read language and script metadata',
+                  load: () => widget.loadArtifact!(
+                    ArtifactRequest(
+                      ArtifactKind.readingMetadata,
+                      textOf(o['id']),
+                    ),
+                  ),
+                  render: (metadata) => ReadingMetadataView(metadata: metadata),
+                ),
               ExpansionTile(
                 title: const Text(
                   'Observation provenance and raw response reference',
@@ -702,7 +707,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       children: [
         _section('Independent readings', [
           const Text(
-            'Each observation is retained unchanged. Differing characters are underlined; alternatives remain visible.',
+            'Each observation is retained unchanged. Short readings show differing characters underlined; use the retained comparison for exact alignment and limits.',
           ),
           const SizedBox(height: 12),
           if (observations.isEmpty)
@@ -725,6 +730,38 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
         ]),
         _section('Disagreements & adjudication', [
+          if (widget.loadArtifact != null)
+            for (final d in objects(
+              objectOf(widget.specimen.data['run'])['disagreements'],
+            ))
+              LazyEvidence(
+                key: ValueKey(
+                  'alignment:${widget.specimen.id}:${widget.specimen.revision}:${d['region_id']}',
+                ),
+                label: 'Read comparison for region ${d['region_id']}',
+                load: () => widget.loadArtifact!(
+                  ArtifactRequest(
+                    ArtifactKind.disagreement,
+                    textOf(d['region_id']),
+                  ),
+                ),
+                render: (alignment) {
+                  String? retained(String side) =>
+                      observations
+                              .where(
+                                (o) =>
+                                    o['id'] ==
+                                    objectOf(alignment[side])['observation_id'],
+                              )
+                              .firstOrNull?['literal_text']
+                          as String?;
+                  return ReadingAlignmentView(
+                    alignment: alignment,
+                    leftText: retained('left'),
+                    rightText: retained('right'),
+                  );
+                },
+              ),
           ...objects(widget.specimen.data['disagreements']).map(
             (d) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -926,11 +963,23 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                             context: context,
                             builder: (context) => AlertDialog(
                               title: const Text('Retry from checkpoint'),
-                              content: TextField(
-                                controller: controller,
-                                decoration: const InputDecoration(
-                                  labelText: 'Reason for retry',
-                                ),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (textOf(
+                                    objectOf(s.data['run'])['blocker'],
+                                    '',
+                                  ).contains('external_outcome_unknown'))
+                                    const Text(
+                                      'This request may already have executed. Reconcile the unknown external outcome before explicitly requesting another attempt.',
+                                    ),
+                                  TextField(
+                                    controller: controller,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Reason for retry',
+                                    ),
+                                  ),
+                                ],
                               ),
                               actions: [
                                 TextButton(
@@ -951,7 +1000,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                               ],
                             ),
                           );
-                          if (reason != null) await widget.onRetry(reason);
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 250),
+                          );
+                          controller.dispose();
+                          if (reason != null && mounted) {
+                            await widget.onRetry(reason);
+                          }
                         },
                   icon: const Icon(Icons.replay),
                   label: const Text('Retry processing'),
@@ -959,6 +1014,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               ],
             ),
           ]),
+          ReviewContext(specimen: s),
+          OperationalPanel(
+            specimen: s,
+            canOperate: widget.canOperate,
+            busy: widget.busy,
+            onAction: widget.onChange,
+          ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -974,7 +1036,17 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
           const SizedBox(height: 12),
           if (_tab == 0) _readings(),
-          if (_tab == 1) _fields(),
+          if (_tab == 1) ...[
+            _fields(),
+            if (widget.loadArtifact != null)
+              EvidencePanel(
+                key: ValueKey('evidence:${s.id}:${s.revision}'),
+                specimen: s,
+                load: widget.loadArtifact!,
+                onChange: widget.onChange,
+                canReview: !_blocked('authority_resolution'),
+              ),
+          ],
           if (_tab == 2)
             AuditHistoryPanel(
               key: ValueKey('${s.id}:${s.revision}'),

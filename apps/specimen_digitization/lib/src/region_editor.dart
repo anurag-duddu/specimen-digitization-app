@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'source_pixels.dart';
 
 /// All edits stay in original pixel coordinates. The API validates and versions them.
 class RegionEditor extends StatefulWidget {
@@ -16,10 +17,12 @@ class _RegionEditorState extends State<RegionEditor> {
         (r) => <String, dynamic>{
           ...r,
           'bbox': List<num>.from(r['bbox'] ?? [0, 0, 1, 1]),
+          'rotation_quarter_turns': r['rotation_quarter_turns'] ?? 0,
         },
       )
       .toList();
   int _selected = 0;
+  int _coordinateVersion = 0;
   String? _error;
   final _invalidCoordinates = <String>{};
   final _reason = TextEditingController();
@@ -37,6 +40,7 @@ class _RegionEditorState extends State<RegionEditor> {
         'region_id': 'new-${DateTime.now().microsecondsSinceEpoch}',
         'bbox': [0, 0, width, height],
         'order': _regions.length,
+        'rotation_quarter_turns': 0,
       });
       _selected = _regions.length - 1;
     });
@@ -58,7 +62,7 @@ class _RegionEditorState extends State<RegionEditor> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Add missed labels, resize bounds, reorder, or merge adjacent regions. Coordinates refer to the unmodified original. Saving supersedes affected observations.',
+                'Add missed labels, resize bounds, rotate a label reading, reorder, or merge adjacent regions. Coordinates refer to the unmodified original. Saving supersedes affected observations.',
               ),
               const SizedBox(height: 12),
               Text(
@@ -80,6 +84,69 @@ class _RegionEditorState extends State<RegionEditor> {
               ),
               if (selected != null) ...[
                 const SizedBox(height: 16),
+                if (widget.asset['preview_bytes'] != null)
+                  SizedBox(
+                    height: 180,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio:
+                            (widget.asset['width'] as num) /
+                            (widget.asset['height'] as num),
+                        child: LayoutBuilder(
+                          builder: (context, c) => Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              SourcePixels(
+                                asset: widget.asset,
+                                semanticLabel:
+                                    'Unmodified source for region correction',
+                              ),
+                              if (box[2] > box[0] && box[3] > box[1])
+                                Positioned(
+                                  left:
+                                      box[0] /
+                                      (widget.asset['width'] as num) *
+                                      c.maxWidth,
+                                  top:
+                                      box[1] /
+                                      (widget.asset['height'] as num) *
+                                      c.maxHeight,
+                                  width:
+                                      (box[2] - box[0]) /
+                                      (widget.asset['width'] as num) *
+                                      c.maxWidth,
+                                  height:
+                                      (box[3] - box[1]) /
+                                      (widget.asset['height'] as num) *
+                                      c.maxHeight,
+                                  child: IgnorePointer(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.amber,
+                                          width: 3,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Text(
+                  'Label reading rotation: ${(selected['rotation_quarter_turns'] as int) * 90}° clockwise. Original coordinates stay unchanged.',
+                ),
+                TextButton.icon(
+                  onPressed: () => setState(
+                    () => selected['rotation_quarter_turns'] =
+                        ((selected['rotation_quarter_turns'] as int) + 1) % 4,
+                  ),
+                  icon: const Icon(Icons.rotate_right),
+                  label: const Text('Rotate label reading 90 degrees'),
+                ),
                 Wrap(
                   spacing: 12,
                   runSpacing: 12,
@@ -89,7 +156,7 @@ class _RegionEditorState extends State<RegionEditor> {
                           width: 140,
                           child: TextFormField(
                             key: ValueKey(
-                              '${selected['region_id']}-${e.$1}-${box[e.$1]}',
+                              '${selected['region_id']}-${e.$1}-$_coordinateVersion',
                             ),
                             initialValue: '${box[e.$1]}',
                             keyboardType: TextInputType.number,
@@ -99,7 +166,7 @@ class _RegionEditorState extends State<RegionEditor> {
                                   '${selected['region_id']}-${e.$1}';
                               final n = int.tryParse(v);
                               if (n != null) {
-                                box[e.$1] = n;
+                                setState(() => box[e.$1] = n);
                                 _invalidCoordinates.remove(coordinateKey);
                               } else {
                                 _error =
@@ -118,7 +185,10 @@ class _RegionEditorState extends State<RegionEditor> {
                   children: [
                     TextButton.icon(
                       onPressed: () => setState(() {
-                        _regions.removeAt(_selected);
+                        final removed = _regions.removeAt(_selected);
+                        _invalidCoordinates.removeWhere(
+                          (key) => key.startsWith('${removed['region_id']}-'),
+                        );
                         _selected = 0;
                       }),
                       icon: const Icon(Icons.delete_outline),
@@ -146,9 +216,13 @@ class _RegionEditorState extends State<RegionEditor> {
                       onPressed: _selected >= _regions.length - 1
                           ? null
                           : () => setState(() {
-                              final next =
-                                  _regions.removeAt(_selected + 1)['bbox']
-                                      as List<num>;
+                              final removed = _regions.removeAt(_selected + 1);
+                              _invalidCoordinates.removeWhere(
+                                (key) =>
+                                    key.startsWith('${removed['region_id']}-'),
+                              );
+                              final next = removed['bbox'] as List<num>;
+                              _coordinateVersion++;
                               selected['bbox'] = [
                                 box[0] < next[0] ? box[0] : next[0],
                                 box[1] < next[1] ? box[1] : next[1],

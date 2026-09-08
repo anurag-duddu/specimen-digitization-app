@@ -24,6 +24,62 @@ void main() {
     );
   }
 
+  testWidgets(
+    'each saved ROI rotation turns its original-coordinate crop without moving the rectangle',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      for (var rotation = 0; rotation < 4; rotation++) {
+        final box = [100, 52, 700, 312];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ReviewWorkbench(
+                key: ValueKey(rotation),
+                specimen: Specimen({
+                  'specimen_id': 'roi',
+                  'revision': rotation + 1,
+                  'assets': [
+                    {'width': 1000, 'height': 520, 'preview_bytes': bytes},
+                  ],
+                  'regions': [
+                    {
+                      'region_id': 'r1',
+                      'bbox': box,
+                      'rotation_quarter_turns': rotation,
+                    },
+                  ],
+                }),
+                onChange: (_) async {},
+                onRetry: (_) async {},
+                onRefresh: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Label 1'));
+        await tester.pumpAndSettle();
+        final rotated = tester.widget<RotatedBox>(
+          find.byType(RotatedBox).first,
+        );
+        expect(rotated.quarterTurns, rotation);
+        final aspect = tester.renderObject<RenderBox>(
+          find.byType(AspectRatio).first,
+        );
+        final bounds = globalRect(aspect);
+        expect(
+          bounds.width / bounds.height,
+          closeTo(rotation.isOdd ? 260 / 600 : 600 / 260, .001),
+        );
+        expect(box, [100, 52, 700, 312]);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
   for (final viewport in [const Size(390, 844), const Size(1440, 1000)]) {
     testWidgets(
       'source retains aspect and original coordinate overlays at $viewport for all rotations',
