@@ -554,6 +554,26 @@ application. The following are narrow delegate contracts for new modules and
 their own tests. Coordinator dispatches specialists; this document does not
 authorize infrastructure, paid inference or production mutation.
 
+### Checksum data follow-up
+
+The earlier missing-constraint finding above describes the pre-V3 assembly.
+Data subsequently handed off code `3daf6c7753601e9db14390bb79845d4cbed24459`
+and report `5f15bc1f805c2ce5a0786d69aa6ad1f59a238bd4` from worktree 39c2.
+Architecture inspected `DATA_CHECKSUM.md` and confirmed the nullable
+`sourceChecksum` field and scoped `specimen_scope_checksum` constraint in that
+schema. Data reports an actual PostgreSQL race with different specimen IDs and
+idempotency keys: one full commit, uniqueness failure for the loser, and no loser
+side effects. Architecture has not independently rerun that suite.
+
+`FindSpecimenByChecksum` takes organizationId, collectionId, actorUid, checksum
+and includeSensitive and returns only id/revision, limit two. Backend must adopt
+both `CreateSpecimenV3` (V2 variables plus required sourceChecksum) and
+`SaveSpecimenV3` (V2 variables, immutable nonnull checksum check), canonicalize
+returned UUIDs and prove scoped conflict mapping through actual HTTP intake.
+SQLite/intake integration remains backend-owned and unverified by this handoff.
+Legacy V1/V2 writers and unaudited null rows remain explicit rollout gates;
+the audit is read-only and no backfill or production rollout has occurred.
+
 ### Persistent provider circuit module
 
 HAR-009 (PRD line 330) requires circuits; a worker-local delay is insufficient for
