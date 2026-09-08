@@ -261,3 +261,25 @@ empty/corrupt blobs, multiprocess publication and five four-way actual SQL races
 H01 is closed in that tested local scope. Incomplete HEIC crop GUI and graph/TRN
 independent acceptance remain separate. Further PRD audit fixes and declaration
 Flutter wiring are pending; this backend checkpoint is not complete-product proof.
+
+## Frozen combined declaration UI checkpoint
+
+Flutter941cf38 integrated as3dfb478469a7b78ad88c29332dfec34488018939.
+Empty diffs verify backend source/tests/data/dependencies exactly6b4b654 and
+Flutter exactly941cf38. Canonical passed271 Python/24 optional skips,64 Flutter/
+six opt-in live skips, analysis/scanners/web. Log:
+/tmp/specimen-wave2-declarations-combined-canonical.log.
+
+Actual Flutter live_declarations_test.dart passed against fresh synthetic local
+API/SQLite: specimen748c44fa-b2f2-5c32-80cd-2cdb5269aa45 from revision20 to23,
+with initial approval then French and Italian human declarations. Verified
+supersession, exact same-key replay, stale CAS rejection, approval invalidation,
+unchanged model observations/raw/phase/authority evidence, and historical20
+provenance with no later human entries. Log:
+/tmp/specimen-wave2-combined-declarations-live.log. State:
+/tmp/specimen-combined-declarations-941cf38; own8123 server stopped.
+
+This is a frozen intermediate candidate for independent combined QA. Published
+policy/runtime/risk/observation metadata/legacy comparison/classifier follow-ups
+remain pending; neither this checkpoint nor its synthetic tests closes external
+quality, production, device or full-P0 gates. No push or deployment occurred.
