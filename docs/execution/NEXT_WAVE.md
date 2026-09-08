@@ -260,3 +260,66 @@ implementation observations, not newly reproduced defects or production claims.
 Only this planning document changes. No inference, cloud mutation, code edit or
 deployment. `git diff --check` and document commit hooks are the applicable checks;
 canonical verification remains mandatory before any later push.
+
+## Urgent first-candidate repair: B04 audit amplification
+
+Reviewed frozen QA candidate `25e8358` and the backend reliability worktree after
+QA reported eleven ordinary review actions yielding 223,585 audit bytes in a
+244,139-byte snapshot; the twelfth action returned 413. Those measurements are
+QA-reported, not rerun in this architecture pass. Static cause is confirmed:
+`api.py:811` captures `s.run.model_dump(mode="json")`, then lines 953–958 embed
+that entire run in every review AuditEvent. `Run` does not contain `audit`, so
+this is repeated full-run payload duplication, not recursive nesting of events.
+The current repair worktree retained the same pattern at inspection.
+
+Recommended minimal design, sent directly to backend:
+
+- Retain event ID, sequence, actor, timestamp, action, reason, target and source
+  context. Store a small server-computed changed-target delta where bounded;
+  never trust the client's `before` as authoritative audit evidence.
+- Persist full before/after payloads with the existing immutable BlobStore. A
+  versioned reference includes kind, specimen/run ID, base/result revision,
+  immutable blob reference and SHA-256. Avoid unbounded arbitrary client `after`
+  dictionaries; validate by decision type and offload retained payloads as needed.
+- Add an authorized event-detail read resolving only a reference reached through
+  the authorized specimen/event. Recheck current organization/collection and
+  sensitive permission, verify digest, and return complete retained values.
+  No arbitrary blob-reference read endpoint or permanent public URL. Existing
+  inline events remain readable; this is an additive reference representation.
+- Before size validation on a successful next write, compact existing legacy
+  inline audit payloads in memory into verified references, preserving original
+  event IDs/order/content. Thus a near-cap existing record can make progress;
+  fixing only newly appended events is insufficient. Leave old immutable SQL
+  snapshots and idempotency receipts unchanged.
+- Write/verify blobs before the existing snapshot+CAS+receipt transaction.
+  Failed CAS may leave an unreferenced immutable object; it must not create an
+  audit event or receipt or overwrite retained evidence. No separate SQL schema
+  or database mutation outside the application is needed.
+
+Payload offloading removes the immediate amplification. An indefinitely growing
+inline event array still eventually reaches the cap: use bounded immutable audit
+pages with a digest-linked predecessor and a bounded current tail when needed,
+reachable from the same snapshot reference. Persist global sequence/count and
+paginate events without flattening all pages into the aggregate. This can use
+existing blob storage without a new relational schema. Every archived event must
+remain retrievable, including after process restart. Do not describe an inline
+array with smaller entries as unbounded-history support. Previous-runs graph
+amplification is a related next-wave issue; do not silently truncate it as part
+of the first-candidate repair.
+
+Alternative: references to already-retained scoped immutable record revisions
+(SQLite versions / SQL GetSnapshot) can reconstruct full before/after state if
+backend adds a consistent authorized get_version interface. Prefer whichever
+backend can prove with fewer changes; do not implement two competing archives.
+Do not make first-candidate recovery depend on the second-wave schema rollout.
+
+Acceptance for the minimal repair: repeat QA's exact HTTP approval/integrity-
+restore sequence beyond its former failure; recover a legacy near-cap snapshot
+through ordinary authorized API writes; retrieve and compare every event's full
+before/after bytes or canonical digest; verify event IDs/order/reasons and raw
+observation hashes survive restart; stale CAS and duplicate keys leave exactly
+one decision; cross-scope/event/reference substitution denied; missing/corrupt
+blob fails explicitly; 256 KiB gate remains enforced. If audit paging is included,
+force page rollover under a small test threshold and verify all event pages.
+No direct SQL repair, raised cap, missing history or mutation of old snapshots
+can count as B04 resolved. Architecture advice is not implementation/test proof.
