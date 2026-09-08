@@ -108,3 +108,21 @@ Official [macOS 15 arm64 runner manifest](https://github.com/actions/runner-imag
 Canonical verification after native CI changes completed successfully: all
 repository hooks, 33 Python tests, Flutter analysis, one widget test and release
 web build passed. No push or GitHub matrix execution has occurred yet.
+
+## Documentation assembly
+
+Reviewed and cherry-picked authorized documentation handoffs without conflicts:
+
+| Owner source commit | Integrated commit | Content |
+|---|---|---|
+| c92bd87 | aa8acbe | Shared plan and status |
+| 68c3cbe | 9cfe34b | Coordination/QA roster update |
+| 41e8f29 | 3b5c6d1 | Architecture, contract v0.1, all-20 P0 acceptance |
+| 1e69fa8 | 2c96aa7 | Independent QA procedures and baseline |
+| 7a203ca | e627e69 | QA section-11 coverage cross-check |
+
+The copied STATUS.md is an owner-authored historical snapshot; obtain later
+coordinator updates before final handoff. Contract upload-transport delta is
+pending architect commit. Executable backend/data/Flutter handoffs remain
+outstanding. This documentation assembly does not change the last tested product
+code and does not establish integrated P0 acceptance.
