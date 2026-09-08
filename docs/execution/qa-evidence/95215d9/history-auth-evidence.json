@@ -1,0 +1,61 @@
+{
+  "candidate": "95215d9",
+  "boundary": "actualTCP SQL memberships + injected QA verifier; no Firebase cryptography claim; own snapshot digest fault restored",
+  "results": [
+    {
+      "case": "viewer_historical_read",
+      "http": 200,
+      "passed": true
+    },
+    {
+      "case": "viewer_historical_page",
+      "http": 200,
+      "passed": true
+    },
+    {
+      "case": "anonymous_history",
+      "http": 401,
+      "passed": true
+    },
+    {
+      "case": "wrong_organization_history",
+      "http": 404,
+      "passed": true
+    },
+    {
+      "case": "sensitive_permission_removed",
+      "http": 409,
+      "passed": true
+    },
+    {
+      "case": "sensitive_permission_restored",
+      "http": 200,
+      "passed": true
+    },
+    {
+      "case": "membership_revoked_version",
+      "http": 404,
+      "passed": true
+    },
+    {
+      "case": "membership_revoked_page",
+      "http": 404,
+      "passed": true
+    },
+    {
+      "case": "SQL_snapshot_checksum_tamper_denied",
+      "http": 409,
+      "passed": true
+    },
+    {
+      "case": "SQL_tampered_snapshot_page_denied",
+      "http": 409,
+      "passed": true
+    },
+    {
+      "case": "SQL_snapshot_checksum_restored",
+      "http": 200,
+      "passed": true
+    }
+  ]
+}

@@ -110,6 +110,39 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  mobile:
+    name: Flutter ${{ matrix.target }} build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: android
+            runner: ubuntu-24.04
+          - target: ios
+            runner: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Select runner JDK 17 for Android
+        if: matrix.target == 'android'
+        run: |
+          test -n "$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+
+      - name: Build with temporary synthetic native configuration
+        run: scripts/ci/build_mobile.sh "${{ matrix.target }}"
+
   deploy-hosting:
     name: Deploy Firebase Hosting
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -117,6 +150,7 @@ jobs:
       - repository-checks
       - python
       - flutter
+      - mobile
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

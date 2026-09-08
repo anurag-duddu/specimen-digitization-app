@@ -1,0 +1,32 @@
+{
+  "mixed": {
+    "initial_revision": 20,
+    "final_revision": 24,
+    "invalid_cases_no_mutation": 7,
+    "human_history": 3,
+    "raw_model_phases_authority_preserved": true,
+    "approval_invalidated": true,
+    "viewer_operator_write_denied": true,
+    "current_and_historical_revocation": true
+  },
+  "conflicting": {
+    "initial_revision": 20,
+    "final_revision": 24,
+    "invalid_cases_no_mutation": 7,
+    "human_history": 3,
+    "raw_model_phases_authority_preserved": true,
+    "approval_invalidated": true,
+    "viewer_operator_write_denied": true,
+    "current_and_historical_revocation": true
+  },
+  "unknown": {
+    "initial_revision": 20,
+    "final_revision": 24,
+    "invalid_cases_no_mutation": 7,
+    "human_history": 3,
+    "raw_model_phases_authority_preserved": true,
+    "approval_invalidated": true,
+    "viewer_operator_write_denied": true,
+    "current_and_historical_revocation": true
+  }
+}

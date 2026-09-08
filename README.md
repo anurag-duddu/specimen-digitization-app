@@ -6,7 +6,11 @@ Firebase remains the product and data platform. Phase 0 will compare Temporal wi
 
 ## Current status
 
-Product definition, architecture setup, initial Python observability scaffolding, and a Firebase-configured Flutter shell for Web, iOS, and Android. SQL Connect schema and connector implementation are the next database milestone.
+A connected Flutter intake/review client, scoped Python API and worker, immutable
+evidence storage, and SQL Connect schema/operations are implemented and tested
+locally. Synthetic demonstrations use declared fixtures; production processing,
+institutional quality acceptance and deployment remain gated. Start with the
+[reviewer handoff and runnable demo](docs/execution/HANDOFF.md).
 
 ## Workflow-engine status
 
@@ -25,10 +29,14 @@ flutter test
 flutter run
 ```
 
-The SQL Connect service exists in Firebase, but it does not yet have a connector. Define and review the schema, operations, and connector before running `firebase dataconnect:sdk:generate`; do not make the Flutter client connect directly to PostgreSQL.
+The committed SQL Connect schema and named server operations are exercised with
+an isolated PostgreSQL-backed emulator. Their production rollout is separate
+from Hosting and is not performed by this PR. Flutter calls the scoped API;
+it does not connect directly to PostgreSQL.
 
 ## Documentation
 
+- [Runnable handoff, architecture and evidence index](docs/execution/HANDOFF.md)
 - [Product requirements](docs/product-requirements/PRD.md)
 - [Agent harness decision and alternatives](docs/product-requirements/HARNESS_OPTIONS.md)
 - [Validated GBIF integration strategy](docs/GBIF.md)

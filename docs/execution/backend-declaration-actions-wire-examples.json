@@ -1,0 +1,57 @@
+{
+  "fixture_kind": "synthetic_actual_http_field_projection",
+  "responses": {
+    "summary": {
+      "request_path": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+      "status": 200,
+      "body_projection": {
+        "specimen_id": "748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+        "revision": 20,
+        "record_version_id": "f059b45d-2ab6-44a1-939c-379008f9d989:20",
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "reading_metadata",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "authority_resolution",
+          "capability_defer"
+        ]
+      }
+    },
+    "workspace": {
+      "request_path": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/748c44fa-b2f2-5c32-80cd-2cdb5269aa45/workspace",
+      "status": 200,
+      "body_projection": {
+        "specimen_id": "748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+        "revision": 20,
+        "record_version_id": "f059b45d-2ab6-44a1-939c-379008f9d989:20",
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "reading_metadata",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "authority_resolution",
+          "capability_defer"
+        ]
+      }
+    }
+  }
+}

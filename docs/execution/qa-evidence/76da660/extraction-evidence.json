@@ -1,0 +1,10 @@
+{
+  "candidate": "76da660",
+  "boundary": "actual extract_with_agent and real PydanticAI Agent with TestModel; local retained blobs, no live provider",
+  "production_profile": true,
+  "response_bytes": 901,
+  "computed_digest_matches_retained_bytes": true,
+  "positive_integrity_passed": true,
+  "corrupt_extraction_blocked": true,
+  "restored_extraction_passed": true
+}

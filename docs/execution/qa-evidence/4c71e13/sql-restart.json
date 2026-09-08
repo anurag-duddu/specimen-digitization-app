@@ -1,0 +1,11 @@
+{
+  "mode": "synthetic",
+  "persistence": "SQL Connect emulator + PostgreSQL18",
+  "api_process_restart": true,
+  "reconstructed_equal": true,
+  "specimen_id": "c868cd61-71e0-5e3c-b9ec-206a629f16e1",
+  "revision": 18,
+  "disposition": "cleared",
+  "observations": 2,
+  "source_bytes": 28497
+}

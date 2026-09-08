@@ -32,6 +32,7 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
         # Generated Flutter and Xcode revision identifiers are not credentials.
         exclude: ^apps/specimen_digitization/(\.metadata|ios/Runner\.xcodeproj/xcshareddata/xcschemes/Runner\.xcscheme)$
 

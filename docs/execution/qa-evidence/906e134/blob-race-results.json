@@ -1,0 +1,9 @@
+{
+  "candidate": "906e134",
+  "reproduced_defect": true,
+  "injected_schedule": "pause first writer after exclusive create and before write; second actual put receives identical bytes",
+  "destination_visible_size_before_write": 0,
+  "second_writer_result": "Immutable blob content mismatch",
+  "first_writer_and_final_bytes_valid": true,
+  "impact": "same-byte concurrency falsely conflicts before SQL duplicate resolution; a crash before complete write can retain partial hash-named file"
+}

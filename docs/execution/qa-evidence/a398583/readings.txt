@@ -1,0 +1,53 @@
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- button "Authorized collection Insects"
+- generic: Local synthetic reviewer
+- button "Queue Tab 1 of 2"
+- button "Intake Tab 2 of 2"
+- button "Back to queue"
+- generic: synthetic-label.png
+- textbox [disabled]
+- button "Refresh evidence"
+- 'group "Source image Asset: 72c320fa-801b-5257-93ac-533fb9699780 Pan, pinch, or use zoom controls. View rotation does not alter the original."':
+  - button "Rotate view 90 degrees"
+  - button "Zoom in"
+  - button "Reset image view"
+  - button "Original"
+  - img "Immutable original specimen image"
+  - button "Label region 2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb 2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb"
+  - checkbox "Label 1"
+  - textbox [disabled]
+  - button "Correct label regions"
+- 'group "Record status cleared Profile synthetic-v1 · Revision 50 Stage: finalized · Attempts: {segment: 1, transcribe:2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb:handwriting-qwen: 1, transcribe:2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb:handwriting-muse: 1, lookup: 1, authority:0:parties: 1}"':
+  - button "Confirm label coverage"
+  - button "Record review approval"
+  - button "Correct classification"
+  - button "Retry processing"
+- button "Server image check valid · 800 × 600 pixels Brightness 228.0164794921875 · Contrast 33.088427091623615 Detail signal 7.777305428384565 · thumbnail-luminance-gradient-v1 Uncalibrated measurements. A valid image is not proof of readable labels or complete coverage. uncalibrated quality metrics focus glare framing occlusion not determined no heic or raw decoder Image measurements and orientation"
+- group "Classification and pinned profile completed · synthetic fixture only Synthetic classifier output Scores are uncalibrated; they do not establish correctness. insects · Score 1 synthetic fixture only Profile zoology_insects · Version synthetic-v1 Schema insects-v1 · Policy insects-clearance-v1 Profile policy approved in this environment Field semantics confirmed in this environment Classification corrections create a new run and supersede affected downstream results. Prior records remain in history.":
+  - button "Classification provenance"
+  - button "Pinned profile dependencies and field rules"
+  - button "Recorded classification decision"
+- 'group "Processing and recovery Stage: finalized Steps 16 / 200 · External requests 5 / 32 Tokens 0 · Reserved tokens 0 · Limit 160000 Active time 0.17176920804195106 seconds · Reserved time 0 seconds Actual cost: 0 micro-units · Reserved cost 0 micro-units Execution policy, usage and attempts"':
+  - button "Pause processing"
+  - button "Resume processing"
+  - button "Cancel processing"
+  - button "Start new run"
+- checkbox "Readings" [checked] [active]
+- checkbox "Fields & evidence"
+- checkbox "History"
+- group "Independent readings Each observation is retained unchanged. Short readings show differing characters underlined; use the retained comparison for exact alignment and limits.":
+  - 'group "synthetic-handwriting-qwen Independent observation fmnh_ins_number: FMNH-INS 1001 collection_code: SYNTHETIC country: United States province_state: Illinois county: Cook city: Chicago precise_location: Synthetic teaching garden elevation_from_m: 180 elevation_to_m: 181 elevation_from_ft: 590.55 elevation_to_ft: 593.83 habitat: Synthetic grassland collection_method: Synthetic net date_visited_from: 2020-06-01 date_visited_to: 2020-06-01 collectors: Synthetic Collector verbatim_dts: Synthetic D/T/S taxon: Danaus plexippus identified_by_irn: Synthetic Collector date_identified: 2020-06-02 Language: unknown · Script: unknown"':
+    - button "Read raw observation"
+    - button "Declared language, script and heuristic limits"
+    - button "Observation provenance and raw response reference"
+  - 'group "synthetic-handwriting-muse Independent observation fmnh_ins_number: FMNH-INS 1001 collection_code: SYNTHETIC country: United States province_state: Illinois county: Cook city: Chicago precise_location: Synthetic teaching garden elevation_from_m: 180 elevation_to_m: 181 elevation_from_ft: 590.55 elevation_to_ft: 593.83 habitat: Synthetic grassland collection_method: Synthetic net date_visited_from: 2020-06-01 date_visited_to: 2020-06-01 collectors: Synthetic Collector verbatim_dts: Synthetic D/T/S taxon: Danaus plexippus identified_by_irn: Synthetic Collector date_identified: 2020-06-02"':
+    - button "Read raw observation"
+    - button "Read language and script metadata"
+    - button "Observation provenance and raw response reference"
+- group "Disagreements & adjudication Exact retained readings agree exact raw text agreement not correctness No disagreement details recorded. This does not establish label coverage.":
+  - button "Comparison provenance and bounds"
+  - 'button "Adjudicated literal transcription fmnh_ins_number: FMNH-INS 1001 collection_code: SYNTHETIC country: United States province_state: Illinois county: Cook city: Chicago precise_location: Synthetic teaching garden elevation_from_m: 180 elevation_to_m: 181 elevation_from_ft: 590.55 elevation_to_ft: 593.83 habitat: Synthetic grassland collection_method: Synthetic net date_visited_from: 2020-06-01 date_visited_to: 2020-06-01 collectors: Synthetic Collector verbatim_dts: Synthetic D/T/S taxon: Danaus plexippus identified_by_irn: Synthetic Collector date_identified: 2020-06-02"'
+  - button "Adjudicate literal transcription"

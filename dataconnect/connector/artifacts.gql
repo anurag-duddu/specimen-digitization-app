@@ -1,0 +1,92 @@
+# Append-only server operations. API must validate typed domain and verified actor.
+mutation AppendProfileVersion($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $profileKey: String!, $version: String!, $configObject: String!, $configSha256: String!, $approvedBy: String, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  profileVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, profileKey: $profileKey, version: $version, configObject: $configObject, configSha256: $configSha256, approvedBy: $approvedBy})
+}
+mutation AppendSourceAsset($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $specimenId: UUID!, $kind: String!, $parentAssetId: UUID, $bucket: String!, $objectName: String!, $generation: String!, $sha256: String!, $mimeType: String!, $byteSize: Int64!, $width: Int!, $height: Int!, $acquisitionMethod: String!, $uploaderUid: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  sourceAsset_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, specimenId: $specimenId, kind: $kind, parentAssetId: $parentAssetId, bucket: $bucket, objectName: $objectName, generation: $generation, sha256: $sha256, mimeType: $mimeType, byteSize: $byteSize, width: $width, height: $height, acquisitionMethod: $acquisitionMethod, uploaderUid: $uploaderUid})
+}
+mutation AppendPipelineRun($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $specimenId: UUID!, $profileVersionId: UUID!, $supersedesRunId: UUID, $pinnedVersions: Any!, $inputSha256: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  pipelineRun_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, specimenId: $specimenId, profileVersionId: $profileVersionId, supersedesRunId: $supersedesRunId, pinnedVersions: $pinnedVersions, inputSha256: $inputSha256})
+}
+mutation AppendLabelRegion($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $sourceAssetId: UUID!, $cropAssetId: UUID!, $geometry: Any!, $ordinal: Int!, $regionType: String!, $segmentationVersion: String!, $supersedesRegionId: UUID, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  labelRegion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, sourceAssetId: $sourceAssetId, cropAssetId: $cropAssetId, geometry: $geometry, ordinal: $ordinal, regionType: $regionType, segmentationVersion: $segmentationVersion, supersedesRegionId: $supersedesRegionId})
+}
+mutation AppendModelObservation($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $regionId: UUID!, $rawAssetId: UUID!, $stepKey: String!, $provider: String!, $modelVersion: String!, $promptVersion: String!, $inputSha256: String!, $parameters: Any!, $literalText: String!, $outcome: String!, $independent: Boolean!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  modelObservation_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, regionId: $regionId, rawAssetId: $rawAssetId, stepKey: $stepKey, provider: $provider, modelVersion: $modelVersion, promptVersion: $promptVersion, inputSha256: $inputSha256, parameters: $parameters, literalText: $literalText, outcome: $outcome, independent: $independent})
+}
+mutation AppendTranscriptionVersion($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $literalText: String!, $spans: Any!, $alternatives: Any!, $unresolved: Boolean!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  transcriptionVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, literalText: $literalText, spans: $spans, alternatives: $alternatives, unresolved: $unresolved})
+}
+mutation AppendEvidenceItem($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $source: String!, $sourceVersion: String!, $adapterVersion: String!, $query: Any!, $outcome: String!, $locator: String!, $responseSha256: String!, $capturedAt: Timestamp!, $rawAssetId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  evidenceItem_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, source: $source, sourceVersion: $sourceVersion, adapterVersion: $adapterVersion, query: $query, outcome: $outcome, locator: $locator, responseSha256: $responseSha256, capturedAt: $capturedAt, rawAssetId: $rawAssetId})
+}
+mutation AppendFieldCandidate($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $fieldKey: String!, $state: String!, $literalValue: String, $parsedValue: Any, $normalizedValue: Any, $authorityId: String, $derivation: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  fieldCandidate_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, fieldKey: $fieldKey, state: $state, literalValue: $literalValue, parsedValue: $parsedValue, normalizedValue: $normalizedValue, authorityId: $authorityId, derivation: $derivation})
+}
+mutation AppendCandidateEvidence($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $candidateId: UUID!, $evidenceId: UUID!, $relation: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  candidateEvidence_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, candidateId: $candidateId, evidenceId: $evidenceId, relation: $relation})
+}
+mutation AppendRecordVersion($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $predecessorId: UUID, $disposition: String, $policyVersion: String!, $reasonCodes: [String!]!, $summary: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  recordVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, predecessorId: $predecessorId, disposition: $disposition, policyVersion: $policyVersion, reasonCodes: $reasonCodes, summary: $summary})
+}
+mutation AppendResolvedField($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $recordVersionId: UUID!, $candidateId: UUID, $fieldKey: String!, $state: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  resolvedField_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, recordVersionId: $recordVersionId, candidateId: $candidateId, fieldKey: $fieldKey, state: $state})
+}
+mutation AppendValidationFinding($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $recordVersionId: UUID!, $ruleId: String!, $ruleVersion: String!, $severity: String!, $outcome: String!, $fieldKey: String, $reasonCode: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  validationFinding_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, recordVersionId: $recordVersionId, ruleId: $ruleId, ruleVersion: $ruleVersion, severity: $severity, outcome: $outcome, fieldKey: $fieldKey, reasonCode: $reasonCode})
+}
+mutation AppendCheckpoint($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $stepKey: String!, $inputSha256: String!, $state: String!, $attempt: Int!, $nextRetryAt: Timestamp, $blockerCode: String, $outputReferences: Any!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.canViewSensitive && this.role in ['reviewer', 'manager', 'admin']") { active role canViewSensitive }
+  }
+  checkpoint_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, stepKey: $stepKey, inputSha256: $inputSha256, state: $state, attempt: $attempt, nextRetryAt: $nextRetryAt, blockerCode: $blockerCode, outputReferences: $outputReferences})
+}

@@ -1,0 +1,14 @@
+{
+  "pass": true,
+  "persistence": "actual SQL Connect/PostgreSQL worker_cursor CAS under same synthetic owner identity",
+  "independent_interpreters": 4,
+  "synchronized_initial_load": true,
+  "half_open_permitted": 1,
+  "half_open_busy": 3,
+  "fresh_interpreter_state_retained": true,
+  "expired_probe_reopens": true,
+  "late_probe_success_rejected": true,
+  "probe_success_closes": true,
+  "provider_minimum_600s_preserved": true,
+  "all_child_processes_reaped": true
+}

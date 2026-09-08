@@ -1,0 +1,25 @@
+{
+  "pass": true,
+  "scopes": 13,
+  "initial_rows": 39,
+  "healthy_exactly_once": 38,
+  "poison_isolated": true,
+  "per_tick_scope_budget": 8,
+  "per_scope_step_budget": 2,
+  "restart_persisted_cursor": true,
+  "future_due_behind_cursor_recovered_once": true,
+  "membership_outage_no_work": true,
+  "health": {
+    "ticks": 14,
+    "attempted": 1,
+    "conflicts": 0,
+    "record_errors": 2,
+    "scope_errors": 0,
+    "membership_errors": 1,
+    "last_success_at": "2026-09-08T07:18:55.608628+00:00",
+    "oldest_due_at": null,
+    "blocked_scopes": {
+      "{\"organization_id\":\"qa-org\",\"collection_id\":\"qa-0\"}:00000000-0000-0000-0000-000000000002": "record_unavailable"
+    }
+  }
+}

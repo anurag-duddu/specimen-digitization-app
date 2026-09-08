@@ -1,0 +1,32 @@
+{
+  "api_supervisor": [
+    "state = running",
+    "pid = 25874",
+    "state = active",
+    "state = active",
+    "properties = keepalive | inferred program"
+  ],
+  "web_supervisor": [
+    "state = running",
+    "pid = 29049",
+    "state = active",
+    "state = active",
+    "properties = keepalive | inferred program"
+  ],
+  "marker": {
+    "source_sha": "26317ab",
+    "mode": "synthetic",
+    "api_base_url": "http://127.0.0.1:8000",
+    "delivery": "local-static-no-store",
+    "production": false,
+    "ci_status": "local auth repair; full candidate CI pending"
+  },
+  "marker_cache": "no-store, no-cache, must-revalidate",
+  "served_js_matches_marker": true,
+  "js_cache": "no-store, no-cache, must-revalidate",
+  "authorized_api": {
+    "status": 200,
+    "mode": "synthetic",
+    "memberships_count": 1
+  }
+}

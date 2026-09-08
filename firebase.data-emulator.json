@@ -1,0 +1,10 @@
+{
+  "dataconnect": {"source": "dataconnect"},
+  "storage": {"rules": "storage.rules"},
+  "emulators": {
+    "dataconnect": {"host": "127.0.0.1", "port": 9499, "postgresPort": 5549},
+    "storage": {"host": "127.0.0.1", "port": 9299},
+    "ui": {"enabled": false},
+    "singleProjectMode": true
+  }
+}

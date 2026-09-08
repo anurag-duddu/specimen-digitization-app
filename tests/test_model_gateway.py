@@ -89,3 +89,13 @@ def test_gateway_respects_an_explicit_empty_route_set() -> None:
     gateway = HuggingFaceModelGateway(token="hf_test", routes={})
 
     assert gateway.routes == {}
+
+
+def test_explicit_gateway_credential_does_not_require_environment(monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    gateway = HuggingFaceModelGateway(token="synthetic-test-credential")
+    model = gateway.model_for("handwriting-qwen")
+    assert model.model_name == "Qwen/Qwen3-VL-30B-A3B-Instruct"
+    import os
+
+    assert "HF_TOKEN" not in os.environ

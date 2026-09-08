@@ -8,7 +8,9 @@ import logfire
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Agent, BinaryContent
 
+from .application.reading_declarations import DeclarationCandidates
 from .model_gateway import HuggingFaceModelGateway
+from .provider_privacy import PrivateProviderModel, private_instrumentation
 from .prompts import (
     CollectionPromptInputs,
     PromptName,
@@ -20,7 +22,7 @@ from .tracing import SpecimenTraceContext
 SupportedImageMediaType = Literal["image/jpeg", "image/png"]
 
 
-class LiteralTranscription(BaseModel):
+class LiteralTranscription(DeclarationCandidates):
     """Faithful visual reading before any field normalization or enrichment."""
 
     model_config = ConfigDict(frozen=True)
@@ -64,12 +66,14 @@ def build_literal_transcription_agent(
     prompt: ResolvedPrompt,
 ) -> Agent[None, LiteralTranscription]:
     """Build a stably named agent for the Logfire Agents view."""
-    return Agent(
-        gateway.model_for(route_id),
+    agent = Agent(
+        PrivateProviderModel(gateway.model_for(route_id)),
         name=_agent_name(route_id),
         output_type=LiteralTranscription,
         instructions=prompt.text,
     )
+    agent.instrument = private_instrumentation()
+    return agent
 
 
 def transcribe_label_image(

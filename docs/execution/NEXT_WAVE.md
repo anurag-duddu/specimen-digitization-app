@@ -1,0 +1,692 @@
+# Next implementation wave after the first integrated slice
+
+Status: dispatch-ready planning, 2026-09-08 America/Chicago; no code or cloud
+change. Architecture worktree `969e`, branch `codex/architecture-contracts`.
+Baseline reviewed: backend implementation `80b432eab35e97c04b6776373563a3128bf4b702`
+via immutable Git reads, its current BACKEND.md handoff in worktree `3782`, and
+integration RUNTIME_PROPOSAL.md in `80e6`. The latter is a proposal, not deployed
+infrastructure evidence. Flutter's current FLUTTER.md in `6b01` was consulted for
+remaining client dependencies. Full PRD v0.6 and the prior architecture/acceptance
+contract govern this comparison. Shared PLAN.md was reread for this pass.
+
+The first integrated candidate is an independent QA baseline. It is not the
+finished product. Continue three bounded workstreams while QA tests that candidate;
+keep QA fixes separate from new-feature integration so evidence names an exact SHA.
+
+## Immediate recommendation
+
+1. Keep the existing backend owner on reliability and shared integration. Fix
+   concrete scanner/lease/retry/budget gaps; preserve the working checkpoint path.
+2. Start a collection-profile, image-quality and classification module task.
+3. Start an authority/evidence-phase and explainable-risk module task.
+
+The existing data owner supplies named paginated queries and history/projection
+operations. The existing Flutter owner consumes additive contracts after the
+module fixtures land. Backend alone changes shared workflow/domain/API files.
+No new broker, workflow engine selection or paid service is needed to implement
+these improvements locally. Deployment, real-model evaluation and institutional
+approval remain separate gates; code that can be built now is not externally
+blocked merely because final acceptance needs those gates.
+
+## What the existing reliability implementation actually covers
+
+| Concern | Evidence at backend 80b432e | Remaining work, without overstating absence |
+|---|---|---|
+| API exits after intake or review | `worker.py` scans retained specimens and calls one workflow step; SQL/SQLite snapshots retain next stage | Supervise a separate process in eventual runtime. Do not depend on API BackgroundTasks or request-billed background CPU |
+| Duplicate logical work | `workflow.py` commits intent before external stage, records completed steps, uses aggregate revision CAS for result | Preserve this; test all crash/race boundaries through actual SQL, not only concurrent final writes |
+| Concurrent provider calls | A persisted five-minute lease makes another worker return while work is in flight | No heartbeat/duration policy. Define maximum call duration below lease, or renewal with fencing; test expiry and slow provider explicitly |
+| Crash after possibly executed external effect | Expired intent becomes processing_blocked/external_outcome_unknown; explicit retry required | Correct conservative behavior. Do not introduce automatic repeat of unknown paid effects or claim exactly-once billing |
+| Known taxonomy transient failures | 429/timeout/provider-error schedule persisted retry time and block after three attempts | Generalize typed behavior to other adapters, honor Retry-After safely, add jitter/circuit and run-level budgets |
+| Scanner completeness | `SqlConnectRepository.list` loops offset pages of 100 only to 10,000, reconstructing every full snapshot; worker repeats each second | Due-work summary/keyset paging, no silent truncation, fairness across scopes, bounded requests; mutable offset order is not a stable work cursor |
+| Worker resilience | Worker catches Conflict, refreshes production memberships each loop | Storage/membership/unhandled step errors can terminate loop; isolate records/scopes, bounded control-plane backoff, health/stop semantics and supervised restart |
+| Cancel/retry while old worker runs | Revision changes reject old logical commit | Current retry/resume clears blocker without checking active lease. Prevent overlapping retry of still-running effect; cancellation fences results but cannot promise remote request cancellation |
+| Atomic dispatch | Data operations persist outbox with snapshots; worker discovers state by scanning | Outbox consumer is not necessary to recover jobs while correct scanning exists. Consume/prune outbox only when it provides measured dispatch/audit value; do not add a second authoritative scheduler |
+| Long history | Immutable snapshot reconstruction and 256 KiB rejection already work | Repeated previous_runs/audit copies can exceed bound; paginated immutable history/projections needed for sustained review, never truncate old evidence |
+| Runtime deployment | API/worker local commands and production adapters exist | Container binding/PORT, supervision, identities, transport readiness and approved delivery absent. A successfully built API container alone cannot host the complete processing plane |
+
+Evidence of passing SQL/TCP restart, raw-request independence and 54 Python tests
+is reported by BACKEND.md; this planning pass inspected source and reports, and
+did not rerun those tests. Polling/leases are real application reliability
+mechanisms. They do not satisfy the mandatory Temporal versus Google Workflows
+comparison or establish production service availability. The runtime proposal's
+phrase “implement durable worker dispatch/lease behavior” should be narrowed to
+hardening/validating existing dispatch and leases plus selecting their hosting,
+not interpreted as a requirement to replace working code with an unproven engine.
+
+## Prioritized gap map against the full PRD
+
+| Priority | Implementable gap | PRD / acceptance | Owner path |
+|---|---|---|---|
+| First | Scanner loss/starvation, active-effect retry races, worker exception isolation, bounded budgets/retries | HAR-009, OPS-001/002/003, §16.1; P0-09/13/17/20 | Task 1 with data support |
+| First | Immutable run dependency resolution; current production transcriber resolves managed prompt on each call | PRF-002/003, TRN-005, §10.2/14.4; P0-05/16/17 | Task 1 integrates Task 2 profile contract |
+| First | Configurable taxonomy/profile selection and real ranked classifier adapter; classify currently marks intake selection only | CLS-001/002/003/005; P0-03 | Task 2 modules, Task 1 wiring |
+| First | Executable image quality feedback, orientation transforms, missed/overlap/zero-region checks | ING-005/007, SEG-002/003/005; P0-01/04 | Task 2 modules, Flutter later |
+| First | Phase implementations/applicability evidence; plan/resolve/normalize/validate currently advance labels, while actual validators run in finalize | HAR-001..010/019; P0-07/08/10/12/16 | Task 3 modules, Task 1 wiring |
+| First | Qualified Parties identity and evidence rules; draft semantics flags currently prevent real clearance but are not a complete authority contract | §12.4, QUE-002; P0-10/11/16 | Task 3; institutional approval remains separate |
+| Next within wave | Explicit field candidates/alternatives and supported geographic transformations; no automatic institutional source precedence | HAR-004/005/010, REV-003; P0-07/08/16 | Task 3 |
+| Next within wave | Span/line/field disagreement and language/script metadata, explainable label/specimen risk | TRN-006/007/009, SCR-001..004; P0-05/06 | Task 3; quality components from Task 2 |
+| Next within wave | Normalized projections, bounded current snapshot, paginated history and all search dimensions | EXP-001, §14/16; P0-16/17/20 | Task 1 + data, Flutter later |
+| Client follow-through | Region rotation/polygon/mask interactions, raw response retrieval, date/uploader/risk filters and automated capture feedback | SEG-004, REV-001..007, EXP-001; P0-01/04/06/15/19 | Existing Flutter owner, backend endpoints from Task 1 |
+| Client/decoder follow-through | HEIC and profile-approved RAW/TIFF decode, lost-camera-result recovery, real device permission/resume behavior | ING-001/005, §16.4; P0-01/19 | Flutter + Task 2 decoder proposal; actual devices/format rights separately checked |
+
+Do not silently reclassify P0 work as future production hardening. Some recovery
+and correction features labelled P1 in section 11 are explicitly required by
+section 19 and stay acceptance requirements. Conversely folder/cloud-URL intake,
+advanced historical reasoning, BYOK administration and EMu export are not reasons
+to delay these P0 fixes. Keep later-phase features on a separate backlog.
+
+## Task 1 — harden persisted execution and bounded product history
+
+Suggested branch `codex/runtime-recovery-next`; existing backend owner. Start from
+the coordinator's clean integrated candidate including first-wave QA repairs.
+
+Exclusive shared ownership: `application/worker.py`, `workflow.py`, `storage.py`,
+`production.py`, `api.py`, `domain.py`, existing `harness.py`, `policy.py`, `lookup.py`,
+Python dependency files and existing backend tests. Own new
+`tests/test_worker_recovery.py`, `tests/test_history_paging.py` and
+`docs/execution/RELIABILITY_NEXT.md`. This owner is the sole composition point for
+Tasks 2/3. Data owner alone changes `dataconnect/` and its tests; send reviewed
+operation contracts before changing the adapter. No parallel edits to shared files.
+
+Bounded deliverables:
+
+- Replace all-record/full-snapshot scan with bounded eligible-run summary pages.
+  Publish `list_due_runs(scope, now, cursor, limit)` returning stable run/specimen
+  IDs, expected revision, due time and next_cursor; fetch snapshot only for work
+  attempted. Cursor scope/filters and deterministic tie-break order are explicit.
+  Re-scan safely so changes cannot permanently strand work; no fixed silent cap.
+- Isolate record/scope failures and back off on SQL/auth outages without hot loops.
+  Preserve revoked membership denial and stop new effects for affected scope.
+  Expose safe worker health, oldest due item, attempts and blocker counters.
+- Define lease policy and guarded retry/resume. A still-valid lease cannot be
+  cleared into a concurrent provider request. Late results after correction or
+  cancellation fail CAS. Either constrain external timeout below lease with margin
+  or implement fenced renewal; choose one from measured adapters, not both by
+  default. Keep outcome-unknown reconciliation explicit.
+- Persist run time/tool/request/token and approved cost budget state; reserve/check
+  before effect and record actual usage after. Existing extractor's two-request,
+  16,000-token cap is a useful local bound, not a whole-run budget. Unknown cost
+  availability is not zero cost. Add typed safe retries/jitter/circuit with tests;
+  no real paid call needed. Never set an institutional spending limit implicitly.
+- Pin resolved prompts/profile/adapter dependencies before eligible effects so
+  resume does not resolve a new managed label silently. Coordinate Task 2 output.
+- Move historical graph/audit growth behind immutable referenced versions with
+  paginated reads and bounded current summary, using existing data tables where
+  practical. Keep old snapshot readers/migration compatibility and digest checks.
+  Data supplies indexes/operations for due-work, history and search projections.
+  Do not populate unused tables merely to claim normalization; project the fields
+  needed by work discovery, retained history and PRD search.
+
+Acceptance: multi-process SQL races, interruption before/after intent/result/ack,
+active-lease retry rejection, expired unknown outcome without extra provider call,
+late completion rejection, one poisoned record among healthy work, temporary SQL
+failure and recovery, due work beyond 10,000 without omission, bounded query counts,
+correct retry time/budget exhaustion, and history exceeding former aggregate bound
+without evidence loss. Run same scenario through actual HTTP and SQL emulator;
+freeze shared response fixture changes. No broker is an acceptance requirement.
+
+## Task 2 — collection profiles, classification and image quality
+
+Suggested branch `codex/collection-quality-next`; new independent worktree task.
+Own NEW modules `application/collection_profiles.py`, `classification.py`,
+`image_quality.py`; matching new `test_collection_profiles.py`,
+`test_classification.py`, `test_image_quality.py`; report COLLECTION_QUALITY.md.
+Read shared modules but do not edit them, Flutter, SQL, dependencies or workflow.
+Request dependency changes through Task 1; pure existing-library implementations
+are preferred where sufficient.
+
+Publish first: immutable `ProfileDefinition`, `ClassificationResult` and
+`ImageQualityResult` models in owned modules. Profile includes taxonomy node,
+version/digest, field requirements/semantics status, approved route/prompt/rule
+references, input policy and applicability. Classification includes ranked
+candidates, evidence/provenance, selected/missing mapping and required review.
+Quality includes original dimensions/orientation, algorithm version, measurements,
+reason codes and diagnostics with unknown/unmeasured states. Task 1 maps these
+additively into the API and invokes named handlers.
+
+Implement configurable immutable published-profile resolution and two distinct
+synthetic profile fixtures to prove correction/invalidation, without inventing a
+second museum collection or moving a specimen across permission scopes. Separate
+classification node selection from storage tenancy; if transfer changes collection
+scope it needs explicit source/destination authorization and preserved history.
+Real prediction uses an application-owned adapter plus replay fixtures; a fixed
+Insects default or manual choice cannot be labelled a model prediction.
+
+Implement deterministic bounded blur/exposure/resolution and geometry/overlap
+checks, orientation-corrected derivative transforms and a format capability matrix.
+Glare/focus/framing indicators require stated measurement limits; return unmeasured
+rather than pretend a heuristic verifies all label coverage. Define full-image
+coverage-check adapter and reviewer interaction; validate offline fixtures now,
+real SAM 3/quality calibration later. Propose HEIC/RAW decoder work with actual
+license/runtime/fixture checks before dependencies are added.
+
+Acceptance: missing/ambiguous mappings fail closed, immutable version edits are
+rejected, profile change invalidates dependencies, no cross-scope escalation,
+rotated source-to-crop round trip, out-of-bounds/missed/overlapping/zero regions,
+small corrupt files and bounded decode limits, quality signals respond to
+controlled synthetic degradations and expose unmeasured components. A handler
+exists for real classification without making paid calls; calibration and real
+prediction quality remain explicitly unaccepted. Task 1 wires these into the
+running application; Flutter exposes results and correction after fixture freeze.
+
+## Task 3 — typed evidence phases and authoritative candidates
+
+Suggested branch `codex/evidence-authorities-next`; new independent worktree task.
+Own NEW modules `application/evidence_harness.py`, `authority_registry.py`,
+`parties.py`, `geography.py`, `review_risk.py` and matching new tests; report
+EVIDENCE_NEXT.md. Do not modify existing workflow/domain/policy/harness/lookup/API,
+SQL or Flutter. Task 1 reconciles integration with existing GBIF and extraction;
+no duplicate model gateway or second clearance policy.
+
+Publish first: typed phase input/result (`phase/version`, candidates, evidence,
+findings, tool outcomes, applicability and budget usage), authority request/result,
+qualified Parties identity and versioned risk components. Use shared disposition
+semantics; a phase only proposes, the existing deterministic policy commits.
+Preserve candidates separately from selected values and preserve temporal/literal
+geography and unsupported alternatives.
+
+Implement explicit parse/plan/lookup/resolve/normalize/validate/finalize handlers
+or justified non-applicable results; do not mark a no-op label as a completed
+validation. Reuse current exact-source extraction and GBIF result evidence.
+Add typed allow-listed registry for adapters with all PRD failure outcomes and
+captured query/source/version/digest/rights metadata. Build Parties matching over
+a clearly synthetic or approved read-only export adapter; confirmed identity must
+include system, tenant, environment, eparties module and IRN. No catalogue IRN or
+name-only match can satisfy that gate. Geography adapter contracts and local
+fixtures can preserve conflicting/historical/modern candidates now, while live
+Google/Mapcarta access, terms and precedence remain gated.
+
+Add line/span/field disagreement evidence and language/script candidate metadata,
+plus versioned explainable label/specimen review-risk components. Uncalibrated
+risk is triage, never accuracy or clearance authority. External lookups enrich
+separate candidates without replacing literals. Unknown date/elevation/Parties
+semantics remain failed gates, even when the code can represent them.
+
+Acceptance: candidate alternatives preserved, provenance traversable to pixels,
+phase applicability persisted, wrong-module IRN rejected, ambiguous person not
+selected, unknown semantics cannot clear, geography conflict retained, no-match
+versus 429/auth/malformed distinguished, source snippet insufficient, exact replay
+without external calls, budget exhaustion abstains, minority numeral and script
+uncertainty visible, component scores cannot override hard gates. Include actual
+local HTTP adapter harness tests with injected responses rather than assertions
+only on constructed enums. Live institution/provider acceptance stays separate.
+
+## Cross-task merge contract
+
+Tasks 2 and 3 may work concurrently because they add separate modules/tests and
+publish serializable handler models. They do not edit shared state or product API.
+Task 1 integrates handlers in small reviewed commits; data owns query contracts
+and schema changes, Flutter owns client integration. If domain schema extension
+is required, send Task 1 an exact field/schema/example proposal first. Do not copy
+a shared file into both branches and hope final merge resolves semantic conflicts.
+
+Keep v0.1 canonical response names; additive versioned quality/classification/
+candidates/risk/history fields get executable fixtures generated by the backend.
+Flutter tests the identical file. Breaking history/persistence schema changes
+need explicit compatibility readers and migrations, locally tested without
+production schema writes. Existing QA regression failures take priority over new
+capabilities; tests retain the candidate that failed and the commit that fixes it.
+
+Every owner reads shared PLAN/AGENTS/DEPLOYMENT, uses an isolated codex branch,
+reports actual paths, commits only owned files and runs canonical verification
+before any push. Coordinator dispatches the user-visible tasks. This architecture
+pass does not spawn or execute them.
+
+## External gates and bounded work possible now
+
+| Gate | Concrete work now | Evidence/authority still needed |
+|---|---|---|
+| Real SAM 3 and HF runs | Validate adapter requests, masks/transforms, route allowlists, synthetic/replay/failure cases | Approved license/model/serving/region/budget and representative data; real quality/latency results |
+| Parties/geography institutional policy | Typed adapters, synthetic authority fixtures, qualified identity and abstention | Field IT read-only authority/export and permitted fields; collection matching/source precedence/date/elevation/DTS policy |
+| Durable engine choice | Prepare one deterministic failure scenario consuming existing step/checkpoint interfaces; local Temporal trial if assigned | Same scenario in Google Workflows under approved resources/spend, compare recovery/versioning/effort; do not select via document or polling success |
+| API/worker containers and runtime | Build proposal and local container/PORT/readiness/auth tests in later release-owned scope | Separate reviewed delivery contract, Cloud Run/registry/API enablement, identities/ingress/budget and supervised worker hosting |
+| Data launch | Emulator migration compatibility, history queries, restore procedure on disposable local DB | Approved connector/rules publication, actual IAM tests, backups/PITR and restore objectives/proof; no inferred paid HA requirement |
+| Quality/accessibility/device acceptance | Frozen synthetic regressions, semantics/keyboard tests and explicit device matrix | Approved expert cohort/thresholds, staff review, screen reader/device camera/App Check evidence |
+| Production | Local integration and PR/CI evidence | Authorized merge and full Hosting SHA/deploy/public smoke plus separate runtime/connector proof |
+
+The engine comparison remains required before final production engine selection,
+but does not block independent application P0 work above. Outbox consumption and
+normalization must be justified by concrete access patterns; no new broker,
+Firestore, AWS, warehouse, arbitrary browser agent or EMu write path is proposed.
+
+## Planning verification
+
+This pass read exact backend source for workflow, scanner, SQL persistence,
+production adapters, action endpoints, extraction, policy and test inventory,
+plus the handoff/runtime/client reports. Source locators: `Workflow._step` and
+`next_step`; `worker.main`; `SqlConnectRepository.list/_commit`; API `action`;
+`ProductionAdapters.transcribe`; `extract_with_agent`. Findings are static
+implementation observations, not newly reproduced defects or production claims.
+Only this planning document changes. No inference, cloud mutation, code edit or
+deployment. `git diff --check` and document commit hooks are the applicable checks;
+canonical verification remains mandatory before any later push.
+
+## Urgent first-candidate repair: B04 audit amplification
+
+Reviewed frozen QA candidate `25e8358` and the backend reliability worktree after
+QA reported eleven ordinary review actions yielding 223,585 audit bytes in a
+244,139-byte snapshot; the twelfth action returned 413. Those measurements are
+QA-reported, not rerun in this architecture pass. Static cause is confirmed:
+`api.py:811` captures `s.run.model_dump(mode="json")`, then lines 953–958 embed
+that entire run in every review AuditEvent. `Run` does not contain `audit`, so
+this is repeated full-run payload duplication, not recursive nesting of events.
+The current repair worktree retained the same pattern at inspection.
+
+Recommended minimal design, sent directly to backend:
+
+- Retain event ID, sequence, actor, timestamp, action, reason, target and source
+  context. Store a small server-computed changed-target delta where bounded;
+  never trust the client's `before` as authoritative audit evidence.
+- Persist full before/after payloads with the existing immutable BlobStore. A
+  versioned reference includes kind, specimen/run ID, base/result revision,
+  immutable blob reference and SHA-256. Avoid unbounded arbitrary client `after`
+  dictionaries; validate by decision type and offload retained payloads as needed.
+- Add an authorized event-detail read resolving only a reference reached through
+  the authorized specimen/event. Recheck current organization/collection and
+  sensitive permission, verify digest, and return complete retained values.
+  No arbitrary blob-reference read endpoint or permanent public URL. Existing
+  inline events remain readable; this is an additive reference representation.
+- Before size validation on a successful next write, compact existing legacy
+  inline audit payloads in memory into verified references, preserving original
+  event IDs/order/content. Thus a near-cap existing record can make progress;
+  fixing only newly appended events is insufficient. Leave old immutable SQL
+  snapshots and idempotency receipts unchanged.
+- Write/verify blobs before the existing snapshot+CAS+receipt transaction.
+  Failed CAS may leave an unreferenced immutable object; it must not create an
+  audit event or receipt or overwrite retained evidence. No separate SQL schema
+  or database mutation outside the application is needed.
+
+Payload offloading removes the immediate amplification. An indefinitely growing
+inline event array still eventually reaches the cap: use bounded immutable audit
+pages with a digest-linked predecessor and a bounded current tail when needed,
+reachable from the same snapshot reference. Persist global sequence/count and
+paginate events without flattening all pages into the aggregate. This can use
+existing blob storage without a new relational schema. Every archived event must
+remain retrievable, including after process restart. Do not describe an inline
+array with smaller entries as unbounded-history support. Previous-runs graph
+amplification is a related next-wave issue; do not silently truncate it as part
+of the first-candidate repair.
+
+Alternative: references to already-retained scoped immutable record revisions
+(SQLite versions / SQL GetSnapshot) can reconstruct full before/after state if
+backend adds a consistent authorized get_version interface. Prefer whichever
+backend can prove with fewer changes; do not implement two competing archives.
+Do not make first-candidate recovery depend on the second-wave schema rollout.
+
+Acceptance for the minimal repair: repeat QA's exact HTTP approval/integrity-
+restore sequence beyond its former failure; recover a legacy near-cap snapshot
+through ordinary authorized API writes; retrieve and compare every event's full
+before/after bytes or canonical digest; verify event IDs/order/reasons and raw
+observation hashes survive restart; stale CAS and duplicate keys leave exactly
+one decision; cross-scope/event/reference substitution denied; missing/corrupt
+blob fails explicitly; 256 KiB gate remains enforced. If audit paging is included,
+force page rollover under a small test threshold and verify all event pages.
+No direct SQL repair, raised cap, missing history or mutation of old snapshots
+can count as B04 resolved. Architecture advice is not implementation/test proof.
+
+### B04 selected repair: existing retained snapshots
+
+Coordinator/backend selected the retained-revision alternative above. This
+supersedes the blob-archive recommendation for this first-candidate repair; do
+not implement a parallel archive. Backend proposes audit.before references to
+exact immutable revision plus run digest, compaction of exact already-retained
+audit/previous-run prefixes at 128 KiB, an explicit history-through marker and
+bounded fixed-revision GetSnapshot retrieval. Architecture accepts this subject
+to these invariants and executable proof:
+
+- Reference scoped specimen ID, exact older revision, run ID and canonical run
+  digest. Verify stored snapshot integrity and selected run digest; never resolve
+  against the mutable current run. References must strictly decrease revision.
+- Remove only a canonically identical prefix proven retained in that older
+  snapshot, not an arbitrary slice or run-ID-only match. Preserve global event
+  sequence/count, event IDs, history-through revision and bounded current tail.
+  Reconstruct without omission/duplication. Previous-run content must match the
+  complete retained version before replacing it with a reference.
+- History pagination fixes its revision boundary, authenticates current scope and
+  sensitivity, bounds traversal, and rejects malformed/cyclic references. Old
+  snapshots and idempotency receipts remain immutable; no schema rollout needed.
+- Compact legacy near-cap state before adding/checking the next event, while the
+  resulting state still commits through the unchanged CAS/receipt transaction.
+  A failed/stale write cannot publish a new history marker or partial event.
+- Prove at least 100 ordinary HTTP review actions, recovery of the QA legacy
+  near-cap shape, complete before/after and prior-run retrieval after restart,
+  stable sequence/order/digests, duplicate receipt behavior and authorization.
+  The 128 KiB threshold is a compaction trigger, not a higher acceptance cap.
+
+Flutter's older-history UI is part of the chosen retrieval path; backend-only
+retention cannot substitute for accessible complete review history. Architecture
+has sent these conditions directly to backend. B04 remains unresolved until
+independent QA verifies the chosen implementation on its repaired candidate.
+
+## Progress refresh: first repair 290a2a7 and reliability WIP
+
+Coordinator reports B04/F04 independent closure and all five CI checks green for
+290a2a7. The reliability report covers tested checkpoint a63ab1a; architecture
+also inspected current dirty `3782` files, which must not be described as that
+committed checkpoint or a passing integrated candidate. Shared STATUS.md has
+historical entries; later explicit coordinator/owner messages supersede old rows.
+
+Existing worker progress is material: bounded due metadata sweeps, persisted
+cursor, fair scope rotation, error isolation/backoff, explicit budgets, deadlines,
+lease guards, pinned prompts/routes and retry jitter are reported implemented and
+tested in the checkpoint. Provider-wide circuits, remaining SAM/auth deadlines,
+API search projections and current graph growth remain owned backend work.
+
+Current WIP adds `collection_runtime.py` and `evidence_runtime.py`. Workflow now
+executes classification/profile selection, quality_check, authority planning and
+checkpointed typed authority calls. parse/plan/lookup/resolve/normalize/validate
+invoke `execute_phase`, which persists digest-verified PhaseResult artifacts;
+finalize recomputes evidence phases and applies phase gates alongside existing
+policy. The earlier label-only stage finding applies to the old baseline, not
+this WIP. Acceptance must still inspect actual phase proposals/transformations,
+not infer full HAR coverage from calls or stored phase names.
+
+### Additive Flutter integration contract to freeze now
+
+Existing backend is the serializer owner. Flutter completion starts from repaired
+290a2a7 and must consume a new shared generated response fixture, retaining v0.1
+field names and old-fixture compatibility. WIP currently exposes additions inside
+`run`, plus asset diagnostics:
+
+| Information | Current WIP location / next contract requirement |
+|---|---|
+| Classification/profile | run.classification, classification_selection, profile_snapshot and registry/dependency versions; expose candidates, selection/review reason and immutable profile display |
+| Image quality | asset.quality_diagnostics; distinguish measurements, failures and unmeasured diagnostics; processing-time output is not pre-submission capture feedback |
+| Seven phases | run.phase_results metadata; GET specimen/phases/{phase} retrieves verified artifact with historical revision selection; display applicability/findings/proposals |
+| Authorities | run.authority_plan/results/receipts; authority_resolution action needs exact source_id/field/identifier/evidence contract and current revision; show ambiguous candidates and operational failures distinctly |
+| Disagreement | run.disagreements artifact refs; provide authorized bounded content access, then render text/span/field alternatives without color-only encoding |
+| Review risk | run.review_risk; display version/components/reasons and uncalibrated label; quality/coverage/lookup components must be explicit rather than silently missing |
+| Raw model/evidence | Existing immutable references are not usable URLs; add scoped specimen/run/artifact lookup and verified content, including old revisions; never expose arbitrary blob retrieval |
+| History | Keep repaired fixed-boundary history/audit offsets/references and source access rules; new artifact selection must pin the same historical run |
+
+Backend and Flutter were directly asked for exact additive examples and action
+schemas. Architecture has not frozen unstated endpoint names or approved direct
+client blob access. Require identical-file decoding plus a real SQL/HTTP UI
+journey: classify/correct, inspect diagnostics, inspect all applicable phase
+outputs, select retained authority candidate, rerun dependent validation, inspect
+risk/disagreement and reopen historical evidence. Unsupported phase/action
+versions must render an actionable state, not disappear or trigger guessed writes.
+
+### Implementable gaps without an explicit active owner
+
+These are dispatch recommendations, not claims that the named owners have already
+accepted new scope. Parent should assign them explicitly; avoid a new framework
+or duplicate API owner.
+
+1. **HEIC and approved RAW decoding plus quality preflight:** extend existing
+   collection task with bounded decoder capability/fixture/license proposal and
+   diagnostic preflight contract. Backend owns endpoint/decoder composition;
+   Flutter owns pre-submission capture display and lost-camera-result handling.
+   Current post-upload quality_check does not satisfy ING-005 by itself. Native
+   permission/camera verification needs actual devices; decoder code and fixtures
+   can proceed independently. TIFF client preview capability remains separately
+   testable from server decode.
+2. **Language/script and disagreement/risk completeness:** extend evidence owner
+   with additive observation/script candidates and uncertainty, label+field+span
+   disagreement fixtures, and explicit bounded/unmeasured risk states. Backend
+   integrates extraction and API artifact access; Flutter renders. Current WIP
+   ignores readings longer than 8,000 characters in risk difference computation;
+   return a visible computation-limited reason rather than imply no disagreement.
+   Risk refresh currently uses only disagreement/hard-finding signals; connect
+   measured quality/coverage/lookup components or label them unmeasured. Human-
+   resolved differences must not be named unresolved merely because originals
+   differ. TRN-006/007 and SCR-001..004 are implementable P0, not model-cost gates.
+3. **Full EXP-001 filters:** explicitly assign backend+data bounded projected
+   search by stable ID/batch/collection/state/queue/date/uploader/score-band/issue/
+   profile-version, with Flutter controls. Existing due-work paging does not
+   automatically implement user-facing search. Avoid full hydrated list fetching
+   followed by UI-only filtering. Use scoped cursor/positive and negative tests.
+4. **Review source geometry and raw evidence UI:** explicitly include region
+   rotation and reproducible transforms, complete permitted raw-body access and
+   authority/phase content in Flutter completion. Existing edit/zoom/history
+   implementation does not prove all these operations. Backend/collection own
+   geometry contracts and derivative storage; no new independent Flutter owner.
+
+The current backend/evidence authority plan also needs a semantic repair/check:
+`authority_query` returning no source literal causes an operational block in WIP.
+Absent/unreadable label evidence should be a typed unresolved result and final
+review after required attempts; an unavailable/denied configured service is the
+operational case. Send this through existing backend owner rather than spawning
+a new task. Preserve qualified Parties identity and never fill an unknown IRN.
+
+### Owned but not yet accepted
+
+Backend owns handler assembly, API artifacts, persistent circuits/deadlines,
+budgets and current graph bounds; data owns SQL queries/indexes and normalized
+projection support; Flutter owns complete interactive use and accessibility;
+QA owns independent repaired/second-wave candidate testing; integration owns
+canonical/CI and later runtime delivery preparation. None of these WIP additions
+should be mixed into the first repaired candidate's acceptance claims.
+
+External gates remain approved collection semantics/authority access, representative
+quality and provider data/spend permissions, real SAM3/model serving, production
+App Check/IAM/connector/runtime rollout, managed-engine comparison and signed/device
+acceptance. Prepare local adapters/tests and comparison fixtures now, but do not
+claim these gates pass or provision resources from this planning pass.
+
+Planning verification: read current report and exact handler/serializer source,
+compared section 11 P0 and all 20 acceptance criteria, sent concrete gaps/contracts
+to backend, Flutter and coordinator. Only documentation changed; no product tests
+or cloud calls run. Commit hooks and diff checks validate this documentation pass.
+
+### Ownership assignments confirmed after refresh
+
+Coordinator assigned the gaps above to existing owners: collection is active on
+`codex/collection-codecs-preflight` in 23ec (new optional image_codecs.py and
+image_preflight.py); evidence owns a new reading_evidence extension; data is active
+on `codex/data-search-projections`; backend integrates shared dependencies/API and
+Flutter is on workflow completion. These items are now owned, not orphaned. Their
+implementation and integrated acceptance remain pending.
+
+Collection boundary confirmed: bounded isolated decoder with CPU/time/memory/output
+limits, original digest/bytes preserved, explicit transform/codec provenance;
+HEIC/DNG fixture success does not establish all RAW families. Client-local versus
+server preflight is explicit and never creates a specimen; intake verifies the
+actual image/digest again. Backend owns optional dependency extras and runtime
+configuration. No production codec availability or device success is inferred.
+
+### Minimal search contract sent to data/backend for immediate agreement
+
+Keep scoped GET `/v1/organizations/{organization_id}/specimens`, required
+collection_id, and `{items,next_cursor}`. Add exact filters specimen_id, batch_id,
+uploader_id (verified original uploader), state (existing summary.status), stage,
+disposition, profile_id, profile_version, reason_code (exact array membership),
+blocker (exact code), created_from (inclusive UTC), created_before (exclusive UTC).
+Combine supplied filters with AND; validate malformed/unsupported filters rather
+than ignore them. Status and stage remain distinct. Return existing canonical
+summary fields; projected metadata includes filename, current revision/run and
+authorized organization/collection as well as each supported filter field.
+
+Use ascending `(created_at,id)` keyset with fixed scan-start created_at cutoff;
+opaque cursor binds scope, filters, cutoff and last key. Default 50, maximum 100.
+Current mutable state/reason filters may change during traversal: this is a live
+search with a creation cutoff, not transactionally frozen state. A fresh search
+reconsiders eligibility changes. Tests cover identical timestamps, changed state,
+concurrent insert, revoked membership and cursor/filter substitution.
+
+Until a real versioned risk projection exists, supplied score_band returns typed
+422 unsupported_filter. Do not create a fake zero or silently accept the filter.
+This is an explicit remaining EXP-001 gap, not a waiver. Existing numeric offset
+cursors require an explicit compatibility path and fixture update; never silently
+interpret them as the new keyset token. Data/backend must confirm exact operation
+variables and projection writes before schema integration. Proposal delivered to
+both owners together so no independent filter semantics are invented.
+
+Data accepted the search filters/keyset proposal and proposed a view joining the
+exact current snapshot on organization/collection/specimen/revision, avoiding
+redundant mutable columns or new Save variables. Architecture accepts that narrow
+projection. Typed SQL Specimen.createdAt is the canonical search/summary created_at
+for filtering, display and cursor; backend must apply the same list/detail mapping
+and equivalent SQLite persistence metadata. Retained snapshot domain creation and
+source acquisition times remain distinct immutable provenance, never rewritten.
+The earlier domain timestamp can differ by milliseconds; document the mapping
+change and test exact boundary equality. Canonical UUID text comparison needs the
+reviewed scoped expression index, because native UUID_Filter lacks gt. Backend
+confirmation and actual query/serializer tests remain required before integration.
+
+Backend subsequently confirmed the exact search/time/keyset/current-revision view
+contract and canonical persistence timestamp mapping. Accepted additive filters:
+asset_id and active_run_id exact; risk_min/risk_max inclusive 0–100 with min <= max,
+using the actual uncalibrated run.review_risk.composite. Missing/unmeasured scores
+are not zero and do not match numeric risk predicates. No score-band taxonomy is
+invented; score_band remains explicitly unsupported. Data and Flutter were notified.
+Legacy integer cursor 0 may explicitly restart a fresh search; nonzero old offsets
+return 422 rather than being silently reinterpreted. Flutter confirmation of the
+reset/error behavior and identical response-fixture tests remain integration gates.
+
+## Bounded remaining requirements and specialist module contracts
+
+Source pointers below refer to the inspected backend assembly in worktree 3782,
+not implementation present on this documentation branch. Line numbers are audit
+locators and can move during integration. All acceptance here is local; it does
+not establish production availability or institutional quality approval.
+
+| Gap and source | Classification | Minimum acceptance and ownership |
+| --- | --- | --- |
+| Current graph cap: `application/storage.py:38`, `production.py:345`; PRD line 649 | Mandatory bounded, recoverable processing and complete provenance; unlimited workload support is not required | Backend externalizes large current evidence/raw payloads into immutable verified references, or enforces declared supported-input limits before acceptance. A supported multi-label fixture beyond the old inline cap must retain all evidence through retrieval, restart and concurrent-write checks. Limit failure must be atomic and actionable; no dropped labels or stranded accepted record. Keep the 256 KiB guard. Historical B04 closure is not reopened. |
+| Duplicate precheck: `application/api.py:627`; ING-008, PRD line 261 | Scoped idempotency and duplicate warning mandatory; indexed precheck is a scalability enhancement unless measured supported-load bounds fail | Backend/data can replace full aggregate hydration with a scoped checksum metadata query. Verify the agreed concurrent-upload behavior, authorized duplicate response, and cross-scope isolation. A claimed `Specimen.sourceChecksum` unique constraint is absent from the actual schema according to coordinator reconciliation; race protection remains unverified until owners reconcile the schema and demonstrate an actual PostgreSQL concurrency test. Flutter keeps the existing duplicate response flow. No warehouse search expansion. |
+| Codec intake: `application/api.py:724`, allowlist at 728; ING-001, PRD line 254 | JPEG/PNG/HEIC mandatory; RAW/TIFF conditional on profile approval | Backend must connect approved decoding to actual upload and worker paths; isolated preflight is insufficient. Preserve immutable originals, derivative/codec provenance and EXIF/crop transforms. Test an actual approved synthetic codec fixture through upload, processing, retrieval and restart in a permitted runtime. Flutter advertises only actual supported intake and presents actionable blocks. HEIC runtime approval remains an explicit gate, not an implicit PRD waiver; no all-RAW claim. |
+| Raw memory bound: `application/api.py:904,929`, `storage.py:126`, `production.py:445`; PRD sections 14 and 16 | Mandatory resource bound; streaming viewer enhancement optional | Backend adds a bounded blob read that stops at cap plus one before full allocation, pins object generation, and verifies the complete hash only for accepted payloads. Untrusted size metadata cannot bypass the bound. Use separate caps by artifact type, not the viewer's 1 MiB cap for originals. Test dishonest size, overshoot, tamper, cleanup and authorization. Flutter handles typed too-large errors without rendering unbounded content. |
+
+Backend remains sole editor/integrator of shared workflow, domain, API, storage,
+production and dependency files. Data owns schema/query changes; Flutter owns its
+application. The following are narrow delegate contracts for new modules and
+their own tests. Coordinator dispatches specialists; this document does not
+authorize infrastructure, paid inference or production mutation.
+
+### Active graph offload proposal acceptance
+
+Backend proposes offloading an exact serialized Run above 96 KiB to an immutable
+blob with a declared 16 MiB maximum. Persisted snapshots retain bounded summary/
+index fields and graph reference, byte hash and canonical Run hash; repositories
+verify and hydrate before policy/workflow use. Architecture accepts this design
+conditionally, not as implementation or test closure. No lazy observation API
+redesign is required. Required checks:
+
+- Final compact snapshot still satisfies the existing 256 KiB guard, including
+  summary/index fields and reference metadata.
+- Bounded reads verify blob length/hash, canonical Run hash and identity/revision
+  linkage after compact snapshot verification. Missing/corrupt graphs fail closed.
+- Full workspace serialization has an exact tested byte cap including aliases,
+  escaping and envelope; an approximate two-times estimate is insufficient.
+  Oversized responses have authorized complete retrieval and actionable recovery;
+  edit/cancel remain reachable for accepted records.
+- Graph-limit failure occurs before commit, preserves the last good revision and
+  supports a small bounded operational-error path. It cannot strand the record.
+- Blob writes preceding failed CAS may leave unreachable objects, but cannot
+  publish the losing graph or delete graphs needed by readers/history. Retention
+  is explicit; eager cleanup must not race references.
+- SQLite restart reuses its durable blob root. B04 history hashes use the exact
+  full canonical Run for offloaded records; old inline behavior stays intact.
+
+Backend tests cover a supported multi-label graph beyond the former inline cap,
+restart/full retrieval, size thresholds, serialized-response bounds and recovery,
+CAS races, tampering, scope authorization and historical hash regressions.
+
+### TRN-006 declaration contract
+
+Backend proposes bounded optional language/script candidates in actual structured
+model output, retained with original provider bytes and immutable Observation
+declarations. Human `reading_metadata` decisions target an observation and append
+separate audited declaration history; they never rewrite model observations.
+Architecture accepts this direction subject to the following requirements:
+
+- TRN-006 (PRD line 299) also requires label-level aggregation and versioned
+  profile-defined handling for mixed-language labels. Per-observation metadata
+  alone is insufficient. Explicit review/unmeasured handling is valid without
+  guessing institutional language policy or automatically deferring records.
+- Multiple alternative candidates do not establish a mixed-language label.
+  Represent mixed-language evidence separately from disagreement between readings;
+  missing declarations mean unmeasured, not monolingual.
+- Bound candidate count and string sizes. Define identifiers or explicitly treat
+  labels as opaque; do not imply standards validation that is not implemented.
+  Preserve model/prompt/raw hashes and human provenance; invent no confidence.
+- Server derives actor/time/audit provenance. Apply existing authorization, CAS
+  and idempotency; append/supersede human decisions without erasing prior values.
+  Bind targets to observation/region/run lineage and reject obsolete targets
+  after resegmentation. Recompute dependent profile handling, validation and
+  disposition while preserving immutable history.
+- Test mixed text versus conflicting alternatives, missing declarations, human
+  supersession/replay/stale writes, resegmentation, restart, unchanged raw hashes
+  and visible reasons from a versioned mixed-language rule. Old observations
+  remain readable. Supply additive actual HTTP fixtures to Flutter.
+
+Backend's `BACKEND_ACTIVE_GRAPH.md` now reports implementation and local tests
+for offload, actual PostgreSQL/SQLite restart/hash/CAS, adversarial integrity,
+16 MiB atomic recovery and a 4 MiB serialized workspace cap. Architecture read
+the report but did not rerun those tests. HTTP 413 includes `mutation_committed`;
+Flutter must prove it avoids repeating a committed mutation and offers complete
+artifact retrieval plus reachable controls. This remains an integration gate.
+
+### Checksum data follow-up
+
+The earlier missing-constraint finding above describes the pre-V3 assembly.
+Data subsequently handed off code `3daf6c7753601e9db14390bb79845d4cbed24459`
+and report `5f15bc1f805c2ce5a0786d69aa6ad1f59a238bd4` from worktree 39c2.
+Architecture inspected `DATA_CHECKSUM.md` and confirmed the nullable
+`sourceChecksum` field and scoped `specimen_scope_checksum` constraint in that
+schema. Data reports an actual PostgreSQL race with different specimen IDs and
+idempotency keys: one full commit, uniqueness failure for the loser, and no loser
+side effects. Architecture has not independently rerun that suite.
+
+`FindSpecimenByChecksum` takes organizationId, collectionId, actorUid, checksum
+and includeSensitive and returns only id/revision, limit two. Backend must adopt
+both `CreateSpecimenV3` (V2 variables plus required sourceChecksum) and
+`SaveSpecimenV3` (V2 variables, immutable nonnull checksum check), canonicalize
+returned UUIDs and prove scoped conflict mapping through actual HTTP intake.
+SQLite/intake integration remains backend-owned and unverified by this handoff.
+Legacy V1/V2 writers and unaudited null rows remain explicit rollout gates;
+the audit is read-only and no backfill or production rollout has occurred.
+
+### Persistent provider circuit module
+
+HAR-009 (PRD line 330) requires circuits; a worker-local delay is insufficient for
+systemic failures across workers. The evidence specialist owns new
+`application/provider_circuit.py` and its matching tests. Define typed closed,
+open and half-open states; an injected-clock deterministic admission/outcome
+reducer; and a store protocol with revision-aware compare-and-swap. Circuit keys
+identify the approved provider connection, capability/route and relevant policy
+scope so one tenant cannot poison an unrelated tenant's circuit. Never put
+credentials in keys or reports.
+
+State includes failure count, next eligible time and expiring single-probe lease.
+Tests cover two workers competing for one half-open probe, stale outcomes,
+expired crash leases, scope isolation and no provider dispatch while open.
+Admission denial returns an operational block and next eligible time, never a
+biological disposition. Authentication failures require configuration recovery;
+no-match/ambiguity are semantic outcomes, not automatic systemic failures.
+After dispatch, an unknown outcome must retain its uncertainty and existing
+idempotency/reconciliation rules.
+
+Backend integrates admission before dispatch/budget effects and maps persistence
+to the existing `worker_cursor` load/CAS operations. Data verifies that contract;
+the mapping is not evidence of completed persistence tests. An in-memory
+implementation alone does not close cross-worker persistence. Specialist must not edit shared
+workflow/storage files or introduce a new orchestration engine.
+
+### SAM service total-deadline module
+
+PRD line 694 requires explicit stage timeouts. In `application/production.py`,
+`Sam3Service` starts at 597, synchronous identity-token fetch at 632 precedes the
+HTTPX client at 633. An HTTPX per-operation timeout does not prove a total deadline
+including credential acquisition. The collection specialist owns new
+`application/bounded_effect.py` and matching tests. The dispatched contract uses
+a spawned process around the whole trusted authentication and HTTP effect,
+with an absolute monotonic deadline, bounded result bytes and deterministic
+cleanup. Backend owns the top-level SAM helper invoked by this boundary. There
+is no separate `sam3_transport.py` task.
+
+The deadline must include identity acquisition, connection, response body and
+decode, with margin inside the worker lease. The credential adapter must actually
+cancel or terminate blocked work; timing out a thread while it continues does not
+satisfy this contract. The dispatched spawned-process boundary must pass platform
+cleanup tests for the synchronous SDK effect. Do not log tokens or alter
+global credentials. Preserve existing pinned model, endpoint and response
+validation in the backend-owned wrapper.
+
+Local stalled credential and TCP-response tests must prove elapsed bounds and
+absence of orphan work. Distinguish known failure before dispatch from unknown
+outcome after dispatch; do not blindly retry an unknown effect. Tests need no live
+credentials or GPU service. Backend owns integration with reservations, leases,
+idempotency and circuits. This transport contract does not implement or approve
+a SAM serving service.

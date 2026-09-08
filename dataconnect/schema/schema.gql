@@ -1,0 +1,419 @@
+# Composite scope keys make cross-organization/collection references invalid.
+# Only named server operations are exposed; no client generated SDK.
+type Organization @table(key: "id") {
+  id: UUID! @default(expr: "uuidV4()")
+  name: String!
+}
+type OrganizationMember @table(key: ["organizationId", "uid"]) {
+  organizationId: UUID!
+  organization: Organization!
+  uid: String!
+  active: Boolean!
+}
+type Collection @table(key: ["organizationId", "id"]) {
+  organizationId: UUID!
+  organization: Organization!
+  id: UUID! @default(expr: "uuidV4()")
+  name: String!
+  parentId: UUID
+  parent: Collection @ref(constraintName: "scope_ref_1", fields: ["organizationId", "parentId"])
+}
+type CollectionMember @table(key: ["organizationId", "collectionId", "uid"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_2", fields: ["organizationId", "collectionId"])
+  uid: String!
+  active: Boolean!
+  role: String!
+  canViewSensitive: Boolean!
+}
+type Specimen @table(key: ["organizationId", "collectionId", "id"])
+  @unique(indexName: "specimen_scope_checksum", fields: ["organizationId", "collectionId", "sourceChecksum"])
+  @index(fields: ["organizationId", "collectionId", "updatedAt"])
+  @index(name: "specimen_due_work", fields: ["organizationId", "collectionId", "state", "workAvailableAt", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_3", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  revision: Int!
+  state: String!
+  disposition: String
+  activeRunId: UUID
+  workAvailableAt: Timestamp
+  sourceChecksum: String
+  sensitive: Boolean!
+  createdBy: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+type SpecimenSnapshot @table(key: ["organizationId", "collectionId", "specimenId", "revision"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  specimenId: UUID!
+  specimen: Specimen! @ref(constraintName: "scope_ref_4", fields: ["organizationId", "collectionId", "specimenId"])
+  revision: Int!
+  contractVersion: String!
+  snapshot: Any!
+  sha256: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+type RequestReceipt @table(key: ["organizationId", "collectionId", "actorUid", "operation", "idempotencyKey"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  actorUid: String!
+  operation: String!
+  idempotencyKey: String!
+  requestSha256: String!
+  specimenId: UUID!
+  specimen: Specimen! @ref(constraintName: "scope_ref_5", fields: ["organizationId", "collectionId", "specimenId"])
+  revision: Int!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ProfileVersion @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_6", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  profileKey: String!
+  version: String!
+  configObject: String!
+  configSha256: String!
+  approvedBy: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type SourceAsset @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName", "generation"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_7", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  specimenId: UUID!
+  specimen: Specimen! @ref(constraintName: "scope_ref_8", fields: ["organizationId", "collectionId", "specimenId"])
+  kind: String!
+  parentAssetId: UUID
+  parentAsset: SourceAsset @ref(constraintName: "scope_ref_9", fields: ["organizationId", "collectionId", "parentAssetId"])
+  bucket: String!
+  objectName: String!
+  generation: String!
+  sha256: String!
+  mimeType: String!
+  byteSize: Int64!
+  width: Int!
+  height: Int!
+  acquisitionMethod: String!
+  uploaderUid: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type PipelineRun @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_10", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  specimenId: UUID!
+  specimen: Specimen! @ref(constraintName: "scope_ref_11", fields: ["organizationId", "collectionId", "specimenId"])
+  profileVersionId: UUID!
+  profileVersion: ProfileVersion! @ref(constraintName: "scope_ref_12", fields: ["organizationId", "collectionId", "profileVersionId"])
+  supersedesRunId: UUID
+  pinnedVersions: Any!
+  inputSha256: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type LabelRegion @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_13", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(constraintName: "scope_ref_14", fields: ["organizationId", "collectionId", "runId"])
+  sourceAssetId: UUID!
+  sourceAsset: SourceAsset! @ref(constraintName: "scope_ref_15", fields: ["organizationId", "collectionId", "sourceAssetId"])
+  cropAssetId: UUID!
+  cropAsset: SourceAsset! @ref(constraintName: "scope_ref_16", fields: ["organizationId", "collectionId", "cropAssetId"])
+  geometry: Any!
+  ordinal: Int!
+  regionType: String!
+  segmentationVersion: String!
+  supersedesRegionId: UUID
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ModelObservation @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_2", fields: ["organizationId", "collectionId", "runId", "stepKey"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_17", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(constraintName: "scope_ref_18", fields: ["organizationId", "collectionId", "runId"])
+  regionId: UUID!
+  region: LabelRegion! @ref(constraintName: "scope_ref_19", fields: ["organizationId", "collectionId", "regionId"])
+  rawAssetId: UUID!
+  rawAsset: SourceAsset! @ref(constraintName: "scope_ref_20", fields: ["organizationId", "collectionId", "rawAssetId"])
+  stepKey: String!
+  provider: String!
+  modelVersion: String!
+  promptVersion: String!
+  inputSha256: String!
+  parameters: Any!
+  literalText: String!
+  outcome: String!
+  independent: Boolean!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type TranscriptionVersion @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_21", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(constraintName: "scope_ref_22", fields: ["organizationId", "collectionId", "runId"])
+  literalText: String!
+  spans: Any!
+  alternatives: Any!
+  unresolved: Boolean!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type EvidenceItem @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_23", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(constraintName: "scope_ref_24", fields: ["organizationId", "collectionId", "runId"])
+  source: String!
+  sourceVersion: String!
+  adapterVersion: String!
+  query: Any!
+  outcome: String!
+  locator: String!
+  responseSha256: String!
+  capturedAt: Timestamp!
+  rawAssetId: UUID!
+  rawAsset: SourceAsset! @ref(constraintName: "scope_ref_25", fields: ["organizationId", "collectionId", "rawAssetId"])
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type FieldCandidate @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_26", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(constraintName: "scope_ref_27", fields: ["organizationId", "collectionId", "runId"])
+  fieldKey: String!
+  state: String!
+  literalValue: String
+  parsedValue: Any
+  normalizedValue: Any
+  authorityId: String
+  derivation: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type CandidateEvidence @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_28", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  candidateId: UUID!
+  candidate: FieldCandidate! @ref(constraintName: "scope_ref_29", fields: ["organizationId", "collectionId", "candidateId"])
+  evidenceId: UUID!
+  evidence: EvidenceItem! @ref(constraintName: "scope_ref_30", fields: ["organizationId", "collectionId", "evidenceId"])
+  relation: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ReviewDecision @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_31", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  specimenId: UUID!
+  specimen: Specimen! @ref(constraintName: "scope_ref_32", fields: ["organizationId", "collectionId", "specimenId"])
+  actorUid: String!
+  baseRevision: Int!
+  resultingRevision: Int!
+  reason: String!
+  correction: Any!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type AuditEvent @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_33", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  specimenId: UUID!
+  specimen: Specimen! @ref(constraintName: "scope_ref_34", fields: ["organizationId", "collectionId", "specimenId"])
+  actorUid: String!
+  action: String!
+  revision: Int!
+  requestSha256: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type Checkpoint @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_3", fields: ["organizationId", "collectionId", "runId", "stepKey", "attempt"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_35", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(constraintName: "scope_ref_36", fields: ["organizationId", "collectionId", "runId"])
+  stepKey: String!
+  inputSha256: String!
+  state: String!
+  attempt: Int!
+  nextRetryAt: Timestamp
+  blockerCode: String
+  outputReferences: Any!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ProviderConnection @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(constraintName: "scope_ref_37", fields: ["organizationId", "collectionId"])
+  id: UUID! @default(expr: "uuidV4()")
+  provider: String!
+  secretVersionResource: String!
+  enabled: Boolean!
+  allowedDataClasses: [String!]!
+  allowedRegions: [String!]!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Bounded upload-session and batch metadata; never bytes or bearer session URLs.
+type AuxiliaryDocument @table(key: ["organizationId", "collectionId", "kind", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "aux_scope")
+  kind: String!
+  id: UUID!
+  revision: Int!
+  payload: Any!
+  createdBy: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}
+type AuxiliaryVersion @table(key: ["organizationId", "collectionId", "kind", "documentId", "revision"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  kind: String!
+  documentId: UUID!
+  document: AuxiliaryDocument! @ref(fields: ["organizationId", "collectionId", "kind", "documentId"], constraintName: "aux_version_parent")
+  revision: Int!
+  payload: Any!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+type AuxiliaryReceipt @table(key: ["organizationId", "collectionId", "actorUid", "operation", "idempotencyKey"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  actorUid: String!
+  operation: String!
+  idempotencyKey: String!
+  kind: String!
+  documentId: UUID!
+  document: AuxiliaryDocument! @ref(fields: ["organizationId", "collectionId", "kind", "documentId"], constraintName: "aux_receipt_parent")
+  revision: Int!
+  requestSha256: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type RecordVersion @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "recordversion_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "record_run")
+  predecessorId: UUID
+  disposition: String
+  policyVersion: String!
+  reasonCodes: [String!]!
+  summary: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ResolvedField @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "resolvedfield_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  recordVersionId: UUID!
+  recordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "recordVersionId"], constraintName: "resolved_record")
+  candidateId: UUID
+  candidate: FieldCandidate @ref(fields: ["organizationId", "collectionId", "candidateId"], constraintName: "resolved_candidate")
+  fieldKey: String!
+  state: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ValidationFinding @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "validationfinding_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  recordVersionId: UUID!
+  recordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "recordVersionId"], constraintName: "validation_record")
+  ruleId: String!
+  ruleVersion: String!
+  severity: String!
+  outcome: String!
+  fieldKey: String
+  reasonCode: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type OutboxEvent @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_4", fields: ["organizationId", "collectionId", "specimenId", "aggregateRevision"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "outboxevent_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  specimenId: UUID!
+  specimen: Specimen! @ref(fields: ["organizationId", "collectionId", "specimenId"], constraintName: "outbox_specimen")
+  aggregateRevision: Int!
+  eventType: String!
+  deduplicationKey: String!
+  payloadReferences: Any!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# UUID_Filter has no ordering operators. Canonical text is a deterministic cursor
+# over the existing immutable UUID, without copying a mutable scan-key column.
+type SpecimenListing @view(sql: """
+  SELECT organization_id, collection_id, id::text COLLATE "C" AS id,
+    revision, state, disposition, active_run_id, sensitive, created_by,
+    created_at, updated_at, work_available_at
+  FROM public.specimen
+""") {
+  organizationId: UUID
+  collectionId: UUID
+  id: String
+  revision: Int
+  state: String
+  disposition: String
+  activeRunId: UUID
+  sensitive: Boolean
+  createdBy: String
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  workAvailableAt: Timestamp
+}
+type DocumentListing @view(sql: """
+  SELECT organization_id, collection_id, kind, id::text COLLATE "C" AS id,
+    revision, created_by, created_at, updated_at
+  FROM public.auxiliary_document
+""") {
+  organizationId: UUID
+  collectionId: UUID
+  kind: String
+  id: String
+  revision: Int
+  createdBy: String
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}

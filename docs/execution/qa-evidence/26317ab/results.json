@@ -1,0 +1,30 @@
+{
+  "auth_source": "26317ab",
+  "runner_review_source": "1d292e0",
+  "focused_auth_tests": 6,
+  "runner_guard_tests": 4,
+  "fatal_info_analysis": "pass",
+  "browser_cases": {
+    "wrong_token": "stays signed out; explicit rejected token",
+    "offline_login": "stays signed out; explicit unavailable",
+    "correct_token": "queue and Intake usable",
+    "offline_after_signin": "unavailable; no false role denial",
+    "initial_scope_503": "access unverified; no false role denial",
+    "scope_recovery": "Check access again restores queue",
+    "synthetic_labeling": "present in tested states"
+  },
+  "isolation": {
+    "qa_ports": [
+      8128,
+      3004
+    ],
+    "qa_tab": 8,
+    "user_ports": [
+      8000,
+      3000
+    ],
+    "user_tab_untouched": 1
+  },
+  "full_captures": "/tmp/specimen-qa-auth-browser",
+  "production_acceptance": false
+}

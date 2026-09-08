@@ -1,0 +1,105 @@
+{
+  "candidate": "76da660",
+  "transport": "actual TCP8124 SQL9519 PG5569",
+  "case": "ordinary_approvals_without_fault_injection",
+  "accepted_decisions": 11,
+  "specimen_id": "7aced055-21bd-5cb0-86dd-cd5c60ed957b",
+  "growth": [
+    {
+      "attempt": 1,
+      "http": 200,
+      "snapshot_bytes": 43561,
+      "audit_bytes": 23056,
+      "audit_entries": 14,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 2,
+      "http": 200,
+      "snapshot_bytes": 63587,
+      "audit_bytes": 43082,
+      "audit_entries": 15,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 3,
+      "http": 200,
+      "snapshot_bytes": 83613,
+      "audit_bytes": 63108,
+      "audit_entries": 16,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 4,
+      "http": 200,
+      "snapshot_bytes": 103639,
+      "audit_bytes": 83134,
+      "audit_entries": 17,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 5,
+      "http": 200,
+      "snapshot_bytes": 123665,
+      "audit_bytes": 103160,
+      "audit_entries": 18,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 6,
+      "http": 200,
+      "snapshot_bytes": 143691,
+      "audit_bytes": 123186,
+      "audit_entries": 19,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 7,
+      "http": 200,
+      "snapshot_bytes": 163717,
+      "audit_bytes": 143212,
+      "audit_entries": 20,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 8,
+      "http": 200,
+      "snapshot_bytes": 183743,
+      "audit_bytes": 163238,
+      "audit_entries": 21,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 9,
+      "http": 200,
+      "snapshot_bytes": 203769,
+      "audit_bytes": 183264,
+      "audit_entries": 22,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 10,
+      "http": 200,
+      "snapshot_bytes": 223795,
+      "audit_bytes": 203290,
+      "audit_entries": 23,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 11,
+      "http": 200,
+      "snapshot_bytes": 243821,
+      "audit_bytes": 223316,
+      "audit_entries": 24,
+      "previous_runs": 0
+    },
+    {
+      "attempt": 12,
+      "http": 413,
+      "snapshot_bytes": 243821,
+      "audit_bytes": 223316,
+      "audit_entries": 24,
+      "previous_runs": 0
+    }
+  ]
+}
