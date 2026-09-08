@@ -240,6 +240,11 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         ),
     }
 
+    if run.blocker == "external_outcome_unknown":
+        result["available_actions"] = [
+            action for action in result["available_actions"]
+            if action not in {"retry", "resume", "reprocess"}
+        ]
     if "evidence_pilot" in run.dependencies:
         result["available_actions"] = (
             ["field", "transcription", "reading_metadata", "coverage"]
@@ -1340,11 +1345,9 @@ def create_app(
             encode_cursor(bound, cutoff, items[-1]) if len(items) == limit else None
         )
         for item in items:
-            item["available_actions"] = (
-                ["retry", "resume", "pause", "cancel", "reprocess"]
-                if p.role in {"operator", "reviewer", "manager", "admin"}
-                else []
-            )
+            # Metadata rows lack pilot pins and lease state. Fetch scoped detail/
+            # workspace before offering mutations; do not reconstruct paged graphs.
+            item["available_actions"] = []
         return {"items": items, "next_cursor": following, "cutoff": cutoff}
 
     @app.get(prefix + "/specimens/{specimen_id}")

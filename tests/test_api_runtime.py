@@ -538,6 +538,8 @@ def test_pilot_http_corrections_persist_without_restart_or_clearance(tmp_path):
     client = TestClient(app)
     created = intake(client)
     ident = created["specimen_id"]
+    normal = client.get(PREFIX + "/specimens/" + ident, headers=HEADERS).json()
+    assert {"retry", "resume", "reprocess"}.issubset(normal["available_actions"])
     principal = Principal(
         user_id="synthetic-reviewer",
         scope=Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION),
@@ -589,6 +591,16 @@ def test_pilot_http_corrections_persist_without_restart_or_clearance(tmp_path):
         "reading_metadata",
         "coverage",
     ]
+    listed = client.get(
+        PREFIX + "/specimens",
+        params={"collection_id": SYNTHETIC_COLLECTION},
+        headers=HEADERS,
+    ).json()
+    assert all(item["available_actions"] == [] for item in listed["items"])
+    assert (
+        client.get(url, headers=HEADERS).json()["available_actions"]
+        == workspace["available_actions"]
+    )
     revision = specimen.version
     app.state.workflow.drain = Mock(
         side_effect=AssertionError("No pilot inference permitted")
@@ -719,6 +731,35 @@ def test_pilot_http_corrections_persist_without_restart_or_clearance(tmp_path):
             ]
             == []
         )
+        assert restarted.get(url, headers=HEADERS).json()["available_actions"] == []
+        listed = restarted.get(
+            PREFIX + "/specimens",
+            params={"collection_id": SYNTHETIC_COLLECTION},
+            headers=HEADERS,
+        ).json()
+        assert all(item["available_actions"] == [] for item in listed["items"])
+
+    unknown = repo.get(principal.scope, ident)
+    unknown.run.dependencies.pop("evidence_pilot")
+    unknown.run.blocker = "external_outcome_unknown"
+    unknown = repo.save(
+        principal, unknown, unknown.version, "unknown-fixture", digest("unknown")
+    )
+    controls = restarted.get(url, headers=HEADERS).json()["available_actions"]
+    assert not {"retry", "resume", "reprocess"}.intersection(controls)
+    assert {"pause", "cancel"}.issubset(controls)
+    for action in ("retry", "resume", "reprocess"):
+        response = restarted.post(
+            PREFIX + "/runs/" + unknown.run.id + "/actions",
+            headers=HEADERS,
+            json={
+                "action": action,
+                "expected_revision": unknown.version,
+                "reason": "fixture review",
+            },
+        )
+        assert response.status_code == 409
+    assert repo.get(principal.scope, ident).version == unknown.version
 
 
 @pytest.mark.parametrize("target", ["raw", "source", "crop"])

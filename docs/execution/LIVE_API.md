@@ -216,3 +216,19 @@ QA validates real issued Firebase/App Check tokens, authorized first ten objects
 worker/review/restart flow and deployed provenance after coordinator authorization.
 No production deployment, merge, provider call, secret value, cloud specimen read,
 IAM mutation, schema migration or local port3000/8000 change occurred here.
+
+
+Independent QA follow-up: metadata-only specimen list rows now expose no mutation
+actions because they lack pilot pins and lease state; detail/workspace remains the
+scoped action authority. This avoids advertising forbidden pilot controls without
+loading paginated full graphs. Nonpilot external_outcome_unknown detail also omits
+retry/resume/reprocess, matching the server denial. List/detail/workspace valid and
+malformed-pilot consistency is covered by the runtime HTTP regression.
+The final PR head supersedes the first implementation/container checkpoint above;
+rebuild at the combined integration SHA remains required for release provenance.
+
+QA repair validation: focused API+search 41 passed; canonical verify exited 0
+again with 394 Python passes/26 opt-in skips and repository/Flutter gates green.
+Log: `/tmp/specimen-live-api-verify-qa-repair.log`. Positive normal-detail controls,
+valid/malformed pilot projection, and unknown-outcome control/409 behavior are
+covered. The task's final handoff records the corrective head and rebuilt image.
