@@ -468,3 +468,46 @@ Planning verification: read current report and exact handler/serializer source,
 compared section 11 P0 and all 20 acceptance criteria, sent concrete gaps/contracts
 to backend, Flutter and coordinator. Only documentation changed; no product tests
 or cloud calls run. Commit hooks and diff checks validate this documentation pass.
+
+### Ownership assignments confirmed after refresh
+
+Coordinator assigned the gaps above to existing owners: collection is active on
+`codex/collection-codecs-preflight` in 23ec (new optional image_codecs.py and
+image_preflight.py); evidence owns a new reading_evidence extension; data is active
+on `codex/data-search-projections`; backend integrates shared dependencies/API and
+Flutter is on workflow completion. These items are now owned, not orphaned. Their
+implementation and integrated acceptance remain pending.
+
+Collection boundary confirmed: bounded isolated decoder with CPU/time/memory/output
+limits, original digest/bytes preserved, explicit transform/codec provenance;
+HEIC/DNG fixture success does not establish all RAW families. Client-local versus
+server preflight is explicit and never creates a specimen; intake verifies the
+actual image/digest again. Backend owns optional dependency extras and runtime
+configuration. No production codec availability or device success is inferred.
+
+### Minimal search contract sent to data/backend for immediate agreement
+
+Keep scoped GET `/v1/organizations/{organization_id}/specimens`, required
+collection_id, and `{items,next_cursor}`. Add exact filters specimen_id, batch_id,
+uploader_id (verified original uploader), state (existing summary.status), stage,
+disposition, profile_id, profile_version, reason_code (exact array membership),
+blocker (exact code), created_from (inclusive UTC), created_before (exclusive UTC).
+Combine supplied filters with AND; validate malformed/unsupported filters rather
+than ignore them. Status and stage remain distinct. Return existing canonical
+summary fields; projected metadata includes filename, current revision/run and
+authorized organization/collection as well as each supported filter field.
+
+Use ascending `(created_at,id)` keyset with fixed scan-start created_at cutoff;
+opaque cursor binds scope, filters, cutoff and last key. Default 50, maximum 100.
+Current mutable state/reason filters may change during traversal: this is a live
+search with a creation cutoff, not transactionally frozen state. A fresh search
+reconsiders eligibility changes. Tests cover identical timestamps, changed state,
+concurrent insert, revoked membership and cursor/filter substitution.
+
+Until a real versioned risk projection exists, supplied score_band returns typed
+422 unsupported_filter. Do not create a fake zero or silently accept the filter.
+This is an explicit remaining EXP-001 gap, not a waiver. Existing numeric offset
+cursors require an explicit compatibility path and fixture update; never silently
+interpret them as the new keyset token. Data/backend must confirm exact operation
+variables and projection writes before schema integration. Proposal delivered to
+both owners together so no independent filter semantics are invented.
