@@ -20,7 +20,7 @@ from .model_gateway import (
     HuggingFaceInferenceRoute,
     HuggingFaceModelGateway,
 )
-from .observability import configure_observability
+from .observability import CaptureMode, configure_observability
 
 ROUTER_MODELS_URL = "https://router.huggingface.co/v1/models"
 REQUIRED_RUNTIME_PERMISSIONS = frozenset(
@@ -142,18 +142,28 @@ def run_live_image_smoke(
 
     agent = Agent(
         gateway.model_for(route_id),
+        name=f"huggingface_route_smoke_{route.route_id.replace('-', '_')}",
         output_type=SyntheticImageObservation,
         instructions=(
             "Inspect this synthetic/public test image. Return only the requested "
             "short factual description and whether it contains readable text."
         ),
     )
-    result = agent.run_sync(
-        [
-            "Describe this test image without inferring any private information.",
-            BinaryContent(data=image_path.read_bytes(), media_type=media_type),
-        ]
-    )
+    with logfire.span(
+        "Run Hugging Face route smoke",
+        **{
+            "specimen.run.kind": "approved-fixture-smoke",
+            "specimen.model.route_id": route.route_id,
+            "specimen.model.id": route.model_id,
+            "specimen.model.upstream_provider": route.provider,
+        },
+    ):
+        result = agent.run_sync(
+            [
+                "Describe this test image without inferring any private information.",
+                BinaryContent(data=image_path.read_bytes(), media_type=media_type),
+            ]
+        )
     return {
         "route_id": route.route_id,
         "model_id": route.model_id,
@@ -222,7 +232,15 @@ def main() -> None:
     parser.add_argument(
         "--image",
         type=Path,
-        help="PNG or JPEG synthetic/public image used by --live-route.",
+        help="PNG or JPEG approved fixture used by --live-route.",
+    )
+    parser.add_argument(
+        "--approved-content",
+        action="store_true",
+        help=(
+            "Export prompt and output text for this approved fixture. Binary image "
+            "content remains excluded."
+        ),
     )
     args = parser.parse_args()
 
@@ -231,7 +249,11 @@ def main() -> None:
         parser.error("HF_TOKEN is not set.")
 
     if args.live_route:
-        configure_observability()
+        configure_observability(
+            capture_mode=(
+                CaptureMode.APPROVED_CONTENT if args.approved_content else None
+            )
+        )
     try:
         report = run_preflight(
             token=token,

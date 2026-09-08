@@ -15,6 +15,7 @@ def run_synthetic_harness() -> str:
     """Exercise agent instrumentation without external model credentials."""
     agent = Agent(
         TestModel(),
+        name="synthetic_observability_smoke",
         instructions="Return a deterministic result for an observability check.",
     )
     with logfire.span(

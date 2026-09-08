@@ -12,6 +12,7 @@ from specimen_digitization.huggingface_preflight import (
     validate_route,
 )
 from specimen_digitization.model_gateway import INITIAL_HUGGINGFACE_ROUTES
+from specimen_digitization.observability import CaptureMode
 
 
 def test_token_permissions_merge_global_and_scoped_permissions() -> None:
@@ -127,6 +128,7 @@ def test_live_cli_configures_and_flushes_logfire(monkeypatch) -> None:
             "handwriting-qwen",
             "--image",
             "fixture.png",
+            "--approved-content",
         ],
     )
     monkeypatch.setattr(huggingface_preflight, "configure_observability", configure)
@@ -135,6 +137,6 @@ def test_live_cli_configures_and_flushes_logfire(monkeypatch) -> None:
 
     huggingface_preflight.main()
 
-    configure.assert_called_once_with()
+    configure.assert_called_once_with(capture_mode=CaptureMode.APPROVED_CONTENT)
     flush.assert_called_once_with()
     assert run_preflight.call_args.kwargs["image_path"] == Path("fixture.png")
