@@ -69,7 +69,7 @@ deploy commands added to other automation files.
 
 ### Pull requests
 
-`.github/workflows/ci-cd.yml` runs three independent jobs:
+`.github/workflows/ci-cd.yml` runs the three existing protected checks and two native build matrix entries:
 
 | Required check | What it proves |
 |---|---|
@@ -83,7 +83,7 @@ token and cannot deploy.
 
 ### Pushes to `main`
 
-The same three jobs run again for the actual merged commit. The Flutter job
+The same five checks run again for the actual merged commit. The Flutter job
 restores the encrypted production FlutterFire configuration, builds once, adds
 `deployment.json`, and uploads the artifact. `Deploy Firebase Hosting` then:
 
@@ -379,7 +379,7 @@ gh run watch RUN_ID --exit-status
 gh run view RUN_ID
 ```
 
-The run must show the exact merged commit and all four jobs green, including
+The run must show the exact merged commit and all six job results green, including
 `Deploy Firebase Hosting`. Then independently re-run the public marker smoke:
 
 ```bash

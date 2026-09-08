@@ -180,3 +180,47 @@ emulators, not the combined application HTTP journey or production data rollout.
 Full normalized projection and outbox dispatch/leases remain incomplete as the
 data report states. Runtime delivery proposal is in RUNTIME_PROPOSAL.md and grants
 no provisioning or deployment authority.
+
+## First combined candidate verification (2026-09-08)
+
+Integrated backend `80b432e` as `36e218e`, Flutter `31120e7` as `20c86b9`,
+data `790a9f9` as `14e7361`, and isolated-port fix `03eaefc` as `8f0d18a`.
+Owner reports, reviewed architecture through `160fb65`, and coordinator status
+through `43065e3` are included. Second-wave implementation is excluded from this
+first QA baseline. Earlier sections above are historical checkpoints.
+
+On combined application code `8f0d18a`:
+
+- Canonical `scripts/ci/verify.sh` passed: 62 Python tests, two explicit SQL
+  opt-ins skipped; Flutter analysis, 16 offline tests (live test opt-in skipped),
+  release web build, repository hooks and secret scanners passed. Log:
+  `/tmp/specimen-final-canonical.log`.
+- With our isolated PostgreSQL/SQL Connect at 5589/9539,
+  `SPECIMEN_SQL_EMULATOR_HOST=127.0.0.1:9539 SPECIMEN_TEST_SQL_EMULATOR=true
+  uv run pytest tests/test_http_process_restart.py -q` passed in the paired
+  opt-in invocation. The API exited and a new process reconstructed the exact
+  retained workspace and authenticated source bytes without reseeding/DB repair.
+  The paired standalone adapter test failed because its expected
+  integration-reviewer scope was not seeded by the documented serve-local
+  command. This is an explicit reproducibility defect sent to backend, not a
+  passing test or application failure inferred from absent seed data.
+- Flutter's real HTTP intake/resume/evidence/correction/stale-write/abstention
+  test passed against this worktree's own SQL-backed synthetic API on 8123,
+  with a newly generated local bearer and temporary blob directory. Log:
+  `/tmp/specimen-integrated-flutter-live.log`. API was terminated after the test.
+- `scripts/ci/build_mobile.sh android` passed on the combined candidate; debug
+  APK only. Log: `/tmp/specimen-integrated-android.log`. Temporary synthetic
+  Firebase configuration was removed by the script.
+- Local iOS remains unverified: installed Xcode lacks its required generic iOS
+  platform component. The strict macOS-15 CI job must supply exact candidate
+  build evidence; no local platform download, signing or device claim is made.
+
+Backend and Flutter canonical response fixtures have identical SHA-256
+`9cc65c46bf6c2bdeff42b6186b2949197b1cba8f8b6b2869823470ed04364616`.
+The narrow scanner metadata baseline is separately audited in SECRET_SCAN_REVIEW.md.
+No institutional data or paid inference was used. The worker already uses
+persisted scanning, CAS and five-minute leases; outbox consumption is absent,
+but is not necessary for scanner recovery. NEXT_WAVE.md names remaining
+reliability/history/profile/evidence work. None of these local results accepts
+all P0 criteria or proves production identity, provider quality, device behavior,
+data launch readiness or deployed runtime availability.
