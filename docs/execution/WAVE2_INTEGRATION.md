@@ -163,3 +163,30 @@ Log: /tmp/specimen-wave2-combined-codec-live.log. State retained at
 Independent QA received this exact frozen combined SHA for hardening and actual
 HEIC browser verification. Subsequent graph/TRN work is excluded. This checkpoint
 is local and unpushed; production memory isolation and rollout gates remain open.
+
+## Graph follow-up and open verification failures
+
+Graph core0fc9cd0 integrated asa13ba6c with exact backend source/test/data tree
+parity; frozen response fixture/generator d78a45e integrated asf1a87b8. Scanner
+d77038b was already present and not duplicated. This is separate from codec
+QA's frozen906e134. Canonical passed253 Python/24 optional skips,54 Flutter/four
+live skips, analysis/scanners/web; /tmp/specimen-wave2-graph-core-canonical.log.
+Client large-workspace recovery is not yet integrated.
+
+The combined SQL graph/history/application/restart run FAILED:17 passed, one
+failed at test_real_sql_adapter_workflow_cas_and_reconstruction. Its unconfigured
+fresh repository list traversed a graph row retained by another test in their
+shared synthetic scope; graph_blobs was None, so integrity failed closed. Owner
+is repairing test scope/store configuration, not suppressing integrity. Preserve
+/tmp/specimen-wave2-graph-sql-http.log. Owned5589/9539 stopped; retained cluster
+/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.dTg9if.
+
+Independently, QA found and deterministically reproduced a real LocalBlobs.put
+publication race on frozen906e134: an identical concurrent put can see the newly
+created final pathname before bytes are written and return409 Immutable blob
+content mismatch. Prior passing concurrency runs do not close this intermittent
+failure. QA log /tmp/specimen-qa-906e134-sql.log and deterministic harness
+/tmp/specimen-hardening-blob-race.py are retained. Backend owns a minimal atomic
+publication repair and repeated multiprocess/HTTP SQL verification. Same-key
+completion replay passed; changed-key409 was intentional and is not a defect.
+No hardening acceptance or push is authorized while the real race remains open.
