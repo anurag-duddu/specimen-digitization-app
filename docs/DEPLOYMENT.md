@@ -515,3 +515,24 @@ it requires Xcode/CocoaPods and proves neither device execution nor distribution
 signing. Neither check uses paid inference or authenticates to real Firebase.
 The canonical pre-push gate remains `scripts/ci/verify.sh`; mobile checks are
 additional platform gates and must pass on the integrated candidate.
+
+## Live runtime/data contract review
+
+The candidate contract in [LIVE_DELIVERY.md](execution/LIVE_DELIVERY.md) is
+review-only. It identifies the explicit amendment needed before separate
+runtime/data release workflows may exist. It grants no deployment or bootstrap
+authority. All existing Hosting-only restrictions and deployment-policy tests
+remain in force until that separate review is complete. The initial cloud sample
+is limited to the data owner's frozen first ten existing specimens; expansion
+requires user review and approval of end-to-end results.
+
+The candidate CI workflow `runtime-ci.yml` builds committed container inputs
+without credentials or registry publication. Scoped PRs report absent owner
+inputs as Not run; main/integration fail if either container or the data-plan
+validator is absent. This is additive coverage, not a runtime release workflow.
+
+Main web builds accept the approved public repository variables
+`SPECIMEN_API_BASE_URL` and `SPECIMEN_RECAPTCHA_SITE_KEY` together. Both unset
+preserve the setup screen; partial or unsafe configuration fails the build.
+`build_web.sh` never forwards these variables for PR/manual/native builds. This
+wiring does not authorize changing repository variables or App Check registration.
