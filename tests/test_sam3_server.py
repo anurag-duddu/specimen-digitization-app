@@ -299,7 +299,10 @@ def test_busy_refuses_before_claim(setup):
     assert not objects.data and not engine.calls
 
 
-def test_engine_pins_checkpoint_and_uses_only_local_model_files(monkeypatch, tmp_path):
+@pytest.mark.parametrize("offline", [False, True])
+def test_engine_pins_checkpoint_and_uses_only_local_model_files(
+    monkeypatch, tmp_path, offline
+):
     import sys
     from types import SimpleNamespace
     from specimen_digitization.application.sam3_server import Sam3Engine
@@ -331,7 +334,12 @@ def test_engine_pins_checkpoint_and_uses_only_local_model_files(monkeypatch, tmp
         sys.modules, "torch", SimpleNamespace(set_num_threads=lambda _: None)
     )
     monkeypatch.setitem(
-        sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=download)
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(
+            snapshot_download=download,
+            constants=SimpleNamespace(HF_HUB_OFFLINE=offline),
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -341,6 +349,7 @@ def test_engine_pins_checkpoint_and_uses_only_local_model_files(monkeypatch, tmp
     engine = Sam3Engine()
     assert calls["download"]["revision"] == SAM3_MODEL.revision
     assert calls["download"]["repo_id"] == "facebook/sam3"
+    assert calls["download"]["local_files_only"] is offline
     for key in ("model", "processor"):
         assert calls[key] == {"local_files_only": True, "trust_remote_code": False}
     assert (
