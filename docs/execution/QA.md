@@ -1,0 +1,224 @@
+# Independent acceptance procedure and evidence
+
+Status: acceptance planning complete; integrated product execution pending.
+Date: 2026-09-07 America/Chicago.
+Owner: independent QA task, coordinator `01a07f44-7d89-7052-b968-5e96753493ad`.
+Worktree: `/Users/anuragduddu/.codex/worktrees/14dd/specimen-digitization-app`.
+Branch: `codex/independent-acceptance-review`.
+Inspected product baseline: `82fd60eff90684d2c630a37c59e1250604ad1cae`.
+Integration task: `01a07f48-a57c-71b0-9642-c9430886049c`.
+
+## Authority and limits
+
+Read repository AGENTS.md, full DEPLOYMENT.md, full PRD v0.6 and architect
+CONTRACTS.md v0.1 in worktree `969e`. Read the shared coordination PLAN.md before
+planning and again before defining the acceptance procedure. The contract is a
+specification, not implemented endpoint evidence. This report owns QA only;
+implementation defects go through the coordinator to their owners.
+
+No cloud mutation, deployment, production merge, paid inference or restricted
+museum data is authorized. A reported existing Cloud SQL instance is not proof
+of a deployed connector or functioning application transport. Connector deployment
+remains unauthorized. No substitute SAM 3 fixture earns model acceptance.
+
+Use these result states independently for each environment and criterion:
+
+- **Passed:** the stated observable behavior was independently reproduced on the
+  recorded commit and transport; includes evidence and limits.
+- **Failed:** an executed check contradicted its expected result, or static
+  inspection establishes a missing required implementation; cite reproduction.
+- **Not tested:** executable proof has not been attempted or completed.
+- **Externally blocked:** a named authorization, approved resource, dataset,
+  institutional decision or device is required. A local missing implementation
+  is a product gap, not an external blocker.
+
+Never collapse unit, local synthetic HTTP, Firebase emulator, deployed SQL
+Connect, live provider and representative museum acceptance into one result.
+An emulator can establish local authorization behavior, not production IAM.
+SQLite persistence can establish local restart behavior, not SQL Connect
+transactions, grants, constraints or durability. A build is not a device test.
+
+## Integration handoff required to execute
+
+Integration must provide an immutable full SHA, clean status, merged contract
+version, canonical verification result, supported mode/transport matrix, exact
+API/worker/Flutter/emulator commands, ports, disposable local data paths,
+synthetic fixture provenance, and supported failure-injection controls. It must
+identify any fixture-only endpoint and every unimplemented capability.
+
+Preserve this QA commit before incorporating the reviewed candidate in this
+worktree. Verify the commit exists with `git show --no-patch FULL_SHA`; inspect
+its diff and ancestry; merge the agreed candidate into this QA branch only
+when clean and safe. Do not read uncommitted implementation files as the tested
+candidate. Record candidate SHA separately from the QA documentation commit.
+
+Run from this worktree, capturing exit code and sanitized output:
+
+```bash
+git status --short --branch
+git rev-parse HEAD
+scripts/ci/verify.sh
+```
+
+Run integration's documented local startup commands only after verifying they
+use disposable local storage, explicit synthetic/emulator mode and no provider
+credentials. Obtain test identities through the supported local auth setup;
+never invent a production token or place bearer tokens in evidence. Open Flutter
+against the actual local API. Check the browser network path/session mode and
+that changing the server record is reflected by refresh. A demo repository
+injected into a widget does not prove HTTP wiring.
+
+## Frozen synthetic cohort and evidence protocol
+
+Create a manifest before execution with case ID, fixture provenance/license,
+SHA-256, byte length, real decoded dimensions and MIME, expected outcomes and
+approved mode. Use authored synthetic labels and controlled local responses;
+never use museum images or copy real Parties identities. Label synthetic
+authority IDs and policy approvals explicitly. A test-only approved profile
+may exercise a positive clearance control but cannot approve the Insects policy.
+Keep failed and excluded cases in the denominator with reasons.
+
+Cases: valid one-label PNG/JPEG; two labels with a deliberately missed region;
+rotated label; competing numeral/date readings; unreadable and absent mandatory
+values; all-supported test-only profile; exhausted capability limitation;
+429/timeout/authentication failure; and malicious/corrupted uploads. For every
+mandatory key vary null, empty/whitespace, placeholder, unknown, unreadable,
+not-present, not-applicable, ambiguous and unsupported asserted value. Include
+partial dates, elevation bounds and a catalogue IRN incorrectly offered as an
+eparties identifier. Never infer missing field semantics to complete a case.
+
+For each executed case retain: tested SHA; UTC start/end; command and exit;
+mode and actual backend/storage transport; fixture digest; synthetic actor role
+and scope; request method/path and redacted payload; response status/body;
+specimen/run/asset/decision IDs; persisted counts and digests before/after;
+expected/actual result; screenshots or accessible-state observations; result
+state; defect ID. Retain raw evidence under a unique QA output directory and
+commit only reviewed sanitized summaries or small synthetic evidence artifacts.
+Do not store secrets, signed URLs or private content in Git.
+
+## All 20 section 19 acceptance criteria
+
+All rows below are **Not tested on an integrated candidate**. Each procedure has
+a positive control and a negative/failure observation; all applicable rows must
+also run on the approved representative dataset before P0 acceptance.
+
+| P0 | Procedure and expected observable result | Evidence and limits |
+|---|---|---|
+| 01 Capture/upload and interruption | Upload valid files through Flutter. Interrupt binary transfer, close/reopen client, resume from server progress. Retry create/complete with same key; change payload under same key. Expect stable IDs, one accepted manifest entry/job, 409 for changed payload. Exercise camera on Android/iOS devices separately. | Manifest, actual byte digest, progress, job counts, browser/device record. A picker mock or retrying a whole POST is not proof of resumable binary transfer. |
+| 02 Immutable original | Fetch authorized original and independently hash bytes; compare declared and verified metadata. Try overwrite/delete, mismatched hash/generation, derivative overwrite and cross-scope asset substitution through supported interfaces. Original remains identical; invalid completion cannot enqueue. | Storage rule/API results and immutable generation/digests before/after. Read the actual stored object, not echoed metadata. |
+| 03 Classification/profile | Observe ranked candidates and provenance; correct to a different configured collection/profile. Verify new pinned run, successor links and supersession of dependent outputs; old history still opens. Submit stale correction and an unauthorized target collection. | Both workspace versions, profile digests, conflict/authorization responses, unchanged unaffected evidence. A selected label in UI alone is insufficient. |
+| 04 SAM 3/region correction | With authorized serving available, submit fixed source/settings/revision; reproduce geometries and crop transforms within an explicitly recorded tolerance. Add/delete/reorder/resize/rotate/merge regions through review; verify coordinates in original raster space and retained old crops. Exercise zero/missed/overlapping/out-of-bounds regions. | Real SAM 3 call and model revision, mask/crop hashes, overlay screenshots and invalidation. Synthetic region fixtures test contracts only; actual SAM 3 currently externally blocked. |
+| 05 Independent observations | For every required label inspect initial model requests and stored raw envelopes. Confirm two distinct configured routes, no peer output in either initial context, pinned versions, input digests and usage/errors. Interrupt after first observation and resume. | Provider-boundary request captures in synthetic mode plus immutable raw bytes. Route-name assertions alone do not prove independence or live model capability. |
+| 06 Disagreement/adjudication | Use a known numeral/date disagreement and unreadable span. Inspect side-by-side alternatives before and after adjudication; retain minority reading and source-span links. Attempt adjudication before all required observations persist. | UI/accessibility observations, raw hashes unchanged, adjudication ordering and unresolved reasons. Consensus-only display fails. |
+| 07 Separate layers | Follow a historical spelling and literal elevation/date through parse and normalization. Correct resolved value; literal text and original observation stay unchanged. | Distinct record IDs, derivation/evidence links and before/after payloads. Equal copied strings in unrelated columns are insufficient lineage. |
+| 08 Typed lookup outcomes | Drive a controlled local HTTP authority through success, no-match, ambiguity, empty, 429 with Retry-After, timeout, 401, 403, malformed response and provider error. Verify typed outcomes, complete query/version/digest evidence, bounded attempts, no invented candidate. | Actual adapter HTTP captures, retry timestamps and stored lookup rows. A constructed result enum alone is insufficient. Live authority behavior remains separate. |
+| 09 Checkpoint/retry | Kill worker after dispatch intent, after external response but before checkpoint, and after checkpoint before acknowledgment. Restart new process against same persistence. Deliver duplicate jobs; expire lease and race stale/new worker. | Before/after counts of observations/results/outbox, checkpoint/fencing revisions. Unknown external effect must be recorded/reconciled, not falsely called exactly-once. Repeat against actual SQL transport when authorized. |
+| 10 Critical gates | Starting from a synthetic positive control, remove one critical gate at a time: coverage, independent passes, adjudication, evidence, schema, hard finding, approval, semantics. Set highest agreement/completeness score and request clearance directly. | Policy findings and API refusal/no-cleared snapshot; each mutation independently named. Test all gates, not only one boolean. |
+| 11 Mandatory fields | Parameterize all 20 Insects keys over empty and unresolved states. Complete configured attempts; expect explicit field reason and review, or operational block when the attempt could not execute. | Full case count and field-to-reason map. No unknown/not-applicable/zero-as-placeholder or coerced value satisfies a mandatory field. |
+| 12 Abstention under pressure | Submit instructions demanding every field be filled despite missing evidence; supply plausible unsupported Parties/catalogue ID, search snippet, unknown D/T/S semantics and inferred missing units/dates. | Persisted abstention, untouched literal layer and denied clearance. Test fixture text and caller assertions must not authorize policy or create evidence. |
+| 13 Operational != Deferred | Inject 429, credentials failure, timeout, outage, malformed response, code error and exhausted temporary budget; exhaust retry limit and invoke replay. | Null final disposition while blocked, actionable reason/next action, bounded retry/dead-letter/replay timeline. An error string with a final Deferred value fails. |
+| 14 Legitimate Deferred | Exhaust all approved viable alternatives for a synthetic unsupported capability; include attempts, capability reason and future retry predicate. Try premature deferral and one available unattempted approved fallback. | Versioned decision and attempts; negatives cannot defer. Test capability outcome is not evidence of actual model limitations. |
+| 15 Review/revalidation | Two independent reviewer sessions load same revision. Save a reasoned correction in A; observe dependent revalidation and updated disposition. Save stale B, retry A with same key, then alter A payload under same key. | One decision/audit/version effect, 409 conflicts, actor from verified identity, refreshed UI. Old observations survive; unaffected stages do not rerun. |
+| 16 Field traceability | For every selected field traverse source asset/region/span, independent or human observation, candidate parents, transformations, lookup capture and policy decision. Remove/substitute/cross-scope one reference and rerun finalization. | Independently fetched bytes/digests and graph traversal result. Nonempty evidence IDs or self-reported provenance-complete flag are insufficient. |
+| 17 Persistent reconstruction | Produce all three outcomes using synthetic-approved controls. Stop API/workers/browser; start fresh processes and a fresh client using only documented persistence. Reopen historical versions and reconstruct fields/timeline/crops. | Before/after semantic snapshots and byte hashes. No reseeding or manual DB repair. SQLite and SQL Connect get separate results. |
+| 18 Authorization/isolation | Run the threat matrix below against API, direct object transport and actual connector operations. Test logged-out, wrong tenant/collection, wrong role, revoked member, invalid/expired token and client-forged actor/scope. | Denial with no data/side effect; success control in same transport. A frontend-hidden button, synthetic principal or schema directive is not production auth proof. |
+| 19 Accessibility/security/recovery/quality | Execute keyboard, screen-reader/semantics, touch, viewport/text scale and non-color disagreement checks; run threat/restart suites. Apply approved quality protocol only when supplied. | Per-platform results, screenshots, defects and expert dataset metrics. WCAG 2.2 AA and institutional quality cannot be declared passed from a widget test or absent Phase 0 thresholds. |
+| 20 Complete journey | In one recorded session intake through classification, real segmentation, independent transcription, adjudication, lookup, validation, review and persisted final reopening. Close client during processing. Use only product UI/API actions. | Correlated IDs/timeline plus durable records and transport identity, no DB edits or reseeding. Local fixture journey is synthetic integration evidence; production-like/model and representative acceptance remain separate gates. |
+
+## Threat and corruption matrix
+
+Use at least organizations A/B, collections A1/A2/B1, and operator, reviewer,
+viewer, revoked and anonymous identities. A reviewer in A1 must not acquire A2
+permissions by changing a URL, body, pagination cursor, referenced evidence ID,
+upload ID, run ID or asset path. Check every read/write endpoint, list counts,
+filters, events, audit and asset access; include a positive authorized control.
+
+Try expired/wrong-audience/wrong-issuer/invalid-signature tokens and explicit
+production mode with emulator credentials. Verify no fallback to synthetic
+identity on auth failure. Revoke membership between read and commit. Confirm
+role and actor come from verified server identity; idempotency keys bind actor,
+organization and operation and cannot replay another user's response.
+
+Check Storage and SQL Connect directly using their actual supported local client
+transport. Attempt direct creation of cleared records, overwrite of raw evidence,
+cross-scope reads and audit edits. Check the backend service-account path
+separately because privileged SDK access may bypass client rules. Verify signed
+URL scope/expiry locally if implemented; do not promise immediate revocation of
+already issued URLs unless the architecture enforces it. Inspect redacted logs
+and Flutter build artifacts for synthetic canary secret values only.
+
+Upload negatives: MIME/extension mismatch, truncated image, empty file, changed
+bytes after checksum declaration, false dimensions, over-limit byte count,
+decompression-bomb metadata, invalid path/traversal filename, duplicate and
+cross-tenant duplicate checksum. Use bounded tiny synthetic malformed fixtures;
+do not allocate huge images. No invalid image may become accepted or produce a
+processing job. Error details and duplicate references must not disclose another
+tenant's specimen. If URL intake is exposed, test a local harness for redirect,
+loopback/link-local and content-size policy; never probe real metadata services.
+
+## Flutter usability procedure
+
+Verify actual API mode and sign-in/sign-out/error recovery first. Through the
+rendered application, upload, inspect per-file failures, navigate queue filters,
+open original/crops, zoom/pan/rotate, compare readings, inspect field evidence,
+record correction/reason, recover stale revision and confirm new disposition.
+Refresh and reopen the result from a new session.
+
+Run at desktop, tablet and narrow mobile viewport; repeat core actions at 200%
+text scaling. Use keyboard only for focus order, dialogs, field edits, save and
+error recovery; verify visible focus and no trap. Inspect assistive semantics
+for controls, images/crops, status changes and errors. Confirm non-color labels
+for differences, readable contrast and reduced-motion behavior. Record what was
+actually observed with screen reader versus semantics inspection. Android/iOS
+camera permissions, denial/retry, capture quality feedback, rotation, interrupted
+network and background/resume require separately recorded device/emulator runs.
+
+## Baseline independent test inspection and false-positive risks
+
+The baseline has eight Python test files and one Flutter widget test. It has no
+application API, persistence/review journey or Storage authorization test in the
+inspected test inventory. These are baseline gaps, not findings against unseen
+integration changes.
+
+| Existing test | What it establishes | What it cannot establish |
+|---|---|---|
+| `test_transcription.py` | Line reconstruction validation and stable agent name | Pixel reading, two independent calls, raw persistence, adjudication |
+| `test_model_gateway.py` | Explicit route config and mocked constructor arguments | Paid route availability, request isolation or valid output |
+| `test_huggingface_preflight.py` | Handwritten catalog parsing and mocked CLI orchestration | Live SAM 3, actual credentials/transport or model execution |
+| `test_evaluation.py` | Metric mechanics and two contract cases execute | Gold-set quality: candidate equals expected and task returns candidate; case count does not assert an acceptance threshold |
+| `test_prompts.py` | Fake prompt resolver retains version metadata | Immutable published profile or persisted request provenance |
+| `test_observability.py`, `test_tracing.py` | Synthetic metadata spans and selected content exclusions | Complete redaction under malicious errors or production telemetry/audit durability |
+| `test_deployment_policy.py` | Required text fragments and bounded command scanning | Live branch protection/IAM, executable fail-closed behavior or a deployed matching artifact |
+| Flutter `widget_test.dart` | App title and configured-platform text render | Auth, file intake, API wiring, evidence/review, accessible workflows or device behavior |
+
+Reject additional false positives in candidate tests: reopening the same in-memory
+object as a restart; sequential writes described as CAS races; assertions only
+against response echoes; seeded dispositions bypassing policy; fake HTTP clients
+described as integration; SQL text inspection described as executed transaction
+proof; automatic retries hiding a lost external effect; and tests disabling
+semantics/evidence gates without preserving an explicit synthetic-only boundary.
+
+## Execution ledger and next dependency
+
+Initial independent commands: test/source inventory and full document reads.
+No integrated or live journey has run.
+
+| Check on baseline above | Independently observed result |
+|---|---|
+| `uv sync --frozen && uv run pytest -q` | Exit 0; 33 passed in 1.47 seconds, Python 3.11.16 local environment |
+| `scripts/ci/verify.sh` | Exit 0; repository hooks/secret scans/actionlint/shellcheck passed, 33 Python tests passed, Flutter analyze found no issues, 1 widget test passed, release web build succeeded |
+| Flutter build scope | Credential-free CI configuration, web release and Wasm dry run; no Android/iOS device test or production connection |
+| Independent source inspection | Baseline lacks application API and end-to-end intake/review/persistence coverage; evaluation smoke is an identity task, not a quality benchmark |
+| Integration handoff state | Integration confirmed baseline `82fd60e`, no runnable API, awaiting owner commits |
+
+Canonical verification is baseline regression evidence only. All integrated P0
+criteria remain not tested and overall P0 is **not accepted**. No files were
+changed outside QA documentation; no push or deployment was performed.
+
+Next dependency: integration's immutable candidate SHA and local startup/fixture
+handoff. Send this plan to integration and coordinator now. After candidate
+handoff, run canonical verification, independently reproduce applicable rows,
+send concrete defects with severity/owner through coordinator, and update this
+report with passed/failed/not-tested/externally-blocked evidence. Keep model
+serving, approved authority access, deployed SQL transport and Phase 0 quality
+acceptance blocked until their respective requirements are satisfied.
