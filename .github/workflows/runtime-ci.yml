@@ -1,0 +1,86 @@
+name: Runtime candidate CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packet:
+    name: Runtime candidate structure validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate incomplete public example
+        run: |
+          python3 scripts/ci/validate_release_packet.py infra/release/candidate.example.json
+          echo "Structure check only. Release readiness NOT established: the example intentionally lacks approval and live evidence." >> "$GITHUB_STEP_SUMMARY"
+      - name: Install pinned uv for offline data plan checks
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - name: Validate owner data resource plan
+        env:
+          CANDIDATE_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [[ -f scripts/data/validate_live_plan.py ]]; then
+            uv sync --frozen
+            uv run python scripts/data/validate_live_plan.py
+          elif [[ "$CANDIDATE_BRANCH" == "main" || "$CANDIDATE_BRANCH" == "codex/live-integration" ]]; then
+            echo "Required integrated data validator is absent." >&2
+            exit 1
+          else
+            echo "Not run: data owner validator absent on scoped branch." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  containers:
+    name: Runtime ${{ matrix.target }} image build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: api
+            dockerfile: containers/api/Dockerfile
+          - target: worker
+            dockerfile: containers/worker/Dockerfile
+          - target: sam
+            dockerfile: containers/worker/sam3.Dockerfile
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Locate owner image input
+        id: input
+        env:
+          TARGET: ${{ matrix.target }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          CANDIDATE_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [[ -f "$DOCKERFILE" ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            if [[ "$CANDIDATE_BRANCH" == "main" || "$CANDIDATE_BRANCH" == "codex/live-integration" ]]; then
+              echo "Required integrated image input is absent: $TARGET" >&2
+              exit 1
+            fi
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Not run: $TARGET Dockerfile absent on this scoped branch. Integration must contain both images." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build and smoke image without credentials or network access at runtime
+        if: steps.input.outputs.present == 'true'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: scripts/ci/build_runtime_image.sh "$TARGET"

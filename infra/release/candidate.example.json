@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "repository": "anurag-duddu/specimen-digitization-app",
+  "project": "specimen-digitization",
+  "source_sha": null,
+  "images": {
+    "api": {
+      "reference": null,
+      "source_sha": null,
+      "provenance_sha256": null
+    },
+    "worker": {
+      "reference": null,
+      "source_sha": null,
+      "provenance_sha256": null
+    },
+    "sam": {
+      "reference": null,
+      "source_sha": null,
+      "provenance_sha256": null
+    }
+  },
+  "data": {
+    "schema_sha256": null,
+    "connector_sha256": null,
+    "storage_rules_sha256": null,
+    "backup_restore_evidence_sha256": null,
+    "compatibility_evidence_sha256": null
+  },
+  "pilot": {
+    "specimen_count": 10,
+    "manifest_sha256": null
+  },
+  "checks": {
+    "Repository checks": {
+      "source_sha": null,
+      "conclusion": "not_run",
+      "run_url": null
+    },
+    "Python tests": {
+      "source_sha": null,
+      "conclusion": "not_run",
+      "run_url": null
+    },
+    "Flutter checks and web build": {
+      "source_sha": null,
+      "conclusion": "not_run",
+      "run_url": null
+    },
+    "Flutter android build": {
+      "source_sha": null,
+      "conclusion": "not_run",
+      "run_url": null
+    },
+    "Flutter ios build": {
+      "source_sha": null,
+      "conclusion": "not_run",
+      "run_url": null
+    }
+  },
+  "approvals": {
+    "contract_sha256": null,
+    "bootstrap_sha256": null,
+    "budget_sha256": null,
+    "provider_data_sha256": null
+  },
+  "public_config_sha256": null,
+  "rollback_sha256": null,
+  "sam_model": {
+    "repository": "facebook/sam3",
+    "revision": null,
+    "artifacts_sha256": null,
+    "config_sha256": null
+  }
+}
