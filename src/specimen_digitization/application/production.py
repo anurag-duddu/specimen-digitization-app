@@ -71,10 +71,12 @@ class SqlConnectRepository:
         else:
             if os.getenv("SPECIMEN_SQL_EMULATOR_HOST"):
                 raise ValueError("Production rejects SQL emulator configuration")
-            credentials, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
-            )
-            self.session = session or AuthorizedSession(credentials)
+            if session is None:
+                credentials, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+                session = AuthorizedSession(credentials)
+            self.session = session
             origin = "https://firebasedataconnect.googleapis.com"
         self.url = f"{origin}/v1/projects/{project}/locations/{location}/services/{service}/connectors/{connector}"
 
