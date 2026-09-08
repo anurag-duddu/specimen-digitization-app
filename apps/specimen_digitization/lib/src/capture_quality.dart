@@ -145,7 +145,7 @@ class CaptureQualityView extends StatelessWidget {
                 ),
               ] else
                 const Text(
-                  'This device could not measure the image. The server must validate its approved format and quality.',
+                  'This device could not preview or measure the image. Inspect the original in a compatible viewer before confirming readability. Upload preserves the original; the server must decode it with an approved codec and establish its dimensions. Decoder or runtime blocks remain actionable upload errors.',
                 ),
               const Text(
                 'Focus, glare, framing and label coverage are not determined automatically. Check the smallest text, reflections and every label; retake the photograph if needed.',

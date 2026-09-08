@@ -19,7 +19,9 @@ class SourcePixels extends StatelessWidget {
     Widget image() => Image.memory(
       asset['preview_bytes'],
       fit: BoxFit.fill,
-      semanticLabel: semanticLabel,
+      semanticLabel: asset['processing_derivative'] is Map
+          ? 'Decoded source preview; original file retained'
+          : semanticLabel,
       errorBuilder: (_, _, _) => const Center(
         child: Text('Source preview unavailable. Refresh to retry.'),
       ),
@@ -64,6 +66,34 @@ class SourcePixels extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class SourceBasisNotice extends StatelessWidget {
+  const SourceBasisNotice({super.key, required this.asset});
+  final Json asset;
+  @override
+  Widget build(BuildContext context) {
+    final processing = objectOf(asset['processing_derivative']);
+    if (processing.isEmpty) return const SizedBox.shrink();
+    final basis = textOf(asset['pixel_basis']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          basis == 'decoded_heif_primary_pixel_edges'
+              ? 'Coordinates use the decoded HEIF primary image after container orientation. The original HEIC file is retained; mapping to its encoded grid is unavailable.'
+              : 'Source coordinate basis: ${labelOf(basis)}. The preview is a decoded derivative; original file bytes are retained.',
+        ),
+        Text(
+          'Decoder: ${textOf(processing['codec'])} ${textOf(processing['codec_version'])} · Conversion: ${processing['conversion'] ?? 'Not recorded'}',
+        ),
+        EvidenceDetails(
+          title: 'Codec and source coordinate provenance',
+          value: {'pixel_basis': basis, 'processing_derivative': processing},
+        ),
+      ],
     );
   }
 }

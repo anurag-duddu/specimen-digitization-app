@@ -149,3 +149,57 @@ codepoint 25 / UTF-8 byte 43 / UTF-16 unit 26 points to the retained Arabic nume
 The UI rejects a reported span that does not match its retained source text.
 Fatal-info analysis and all 50 Flutter tests passed (3 gated live tests skipped).
 This follow-up does not change the frozen fixtures or claim HEIC intake acceptance.
+
+### Verified server-codec intake follow-up
+
+This supersedes the earlier local-decoder dimension gate. Paired width/height
+claims are optional under the frozen codec contract; partial pairs are rejected.
+HEIC/HEIF and approved DNG uploads omit both claims even if a local preview can be
+decoded, because the server establishes the HEIF primary-image or RAW active-area
+coordinate basis. JPEG/PNG/TIFF retain available paired local dimension claims
+for server verification. No fabricated dimensions or preflight quality pass is
+used. Upload completion redecodes the hash-verified original on the server.
+
+The viewer and region editor disclose the recorded pixel basis, decoder version,
+conversion and original-file retention. HEIF coordinates refer to the primary
+image after container orientation; encoded-grid mapping is explicitly unavailable.
+Decoded-preview quality measurements are distinguished from the codec itself.
+An `image_codec_*` completion block retains the upload handle and gives a codec,
+profile/runtime configuration remedy. It never marks the upload Accepted.
+
+Frozen codec fixture:
+`test/fixtures/backend-codec-wire-examples.json`, SHA-256
+`8dc736071fc530260097279cee0a09fab35a7c67420ef2b3dcf7271fee673e7d`.
+Generated synthetic HEIC and its exact retained PNG derivative are committed as
+`synthetic-orientation6.heic` and `synthetic-heic-derived.png`. They contain no
+museum record data. Scanner dependency `5868705` was cherry-picked as `cd745f0`;
+integration already owns this dependency and must not duplicate it.
+
+Actual Flutter HTTP proof used immutable backend
+`d6be7a083d3198ebd7e9e1b52170828dfd300c13`, owned by backend at port 8016,
+with explicit synthetic codec/profile enablement and the documented local-test
+memory-enforcement exception. This is not production runtime approval. Source
+`874a1af9-ed96-51d1-8f88-0b1eea373cfa` uploaded without client dimensions,
+completed to Review at revision 20, established 64 × 96
+`decoded_heif_primary_pixel_edges`, returned original bytes byte-for-byte, and
+returned a digest-verified PNG preview. A fresh authenticated repository reopened
+identical retained source metadata and pixels. Saving clockwise quarter-turn 1
+kept the original-basis rectangle and source hash unchanged; later processing
+settled at revision 36. The browser exposed the recorded basis/conversion and
+performed a separate review approval, reaching revision 37 Cleared.
+
+`test/live_codec_test.dart` passed against that actual HTTP service. New tests
+cover omitted/partial dimension claims, source/derivative digest mismatch,
+coordinate disclosure and blocked-codec upload retention. All 54 Flutter tests
+passed (4 gated live tests skipped in the ordinary suite). This proves the local
+HEIC path under the explicit test policy. Arbitrary RAW/device support, production
+codec approval, camera-device acceptance and independent combined QA remain open.
+
+Codec checkpoint canonical verification passed: 81 Python tests (3 optional skips),
+54 Flutter tests (4 gated live skips), fatal-info analysis, both secret scanners,
+web release build and Wasm dry run. Log `/tmp/flutter-codec-gates.log`; real HEIC
+HTTP log `/tmp/flutter-codec-live.log`. Final browser artifacts:
+`/tmp/flutter-codec-evidence/heic-review.png` and `heic-review-ax.txt` (Cleared
+revision 37, explicit decoded-source accessible label and coordinate limitations).
+The local web 3002 lease is released after verification; API 8016 remains owned
+by backend and is released by notification, not by killing another task's process.

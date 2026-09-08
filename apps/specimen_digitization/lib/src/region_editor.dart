@@ -62,12 +62,13 @@ class _RegionEditorState extends State<RegionEditor> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Add missed labels, resize bounds, rotate a label reading, reorder, or merge adjacent regions. Coordinates refer to the unmodified original. Saving supersedes affected observations.',
+                'Add missed labels, resize bounds, rotate a label reading, reorder, or merge adjacent regions. Coordinates follow the recorded source basis. Saving supersedes affected observations.',
               ),
               const SizedBox(height: 12),
               Text(
-                'Original dimensions: ${widget.asset['width']} × ${widget.asset['height']} pixels',
+                'Source coordinate dimensions: ${widget.asset['width']} × ${widget.asset['height']} pixels',
               ),
+              SourceBasisNotice(asset: widget.asset),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -137,7 +138,7 @@ class _RegionEditorState extends State<RegionEditor> {
                     ),
                   ),
                 Text(
-                  'Label reading rotation: ${(selected['rotation_quarter_turns'] as int) * 90}° clockwise. Original coordinates stay unchanged.',
+                  'Label reading rotation: ${(selected['rotation_quarter_turns'] as int) * 90}° clockwise. Source coordinates stay unchanged.',
                 ),
                 TextButton.icon(
                   onPressed: () => setState(

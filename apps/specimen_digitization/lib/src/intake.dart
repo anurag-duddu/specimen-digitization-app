@@ -409,7 +409,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
         if (mounted) {
           setState(
             () => entry.state = e is ApiFailure
-                ? e.message
+                ? e.message.startsWith('image_codec_')
+                      ? 'Server decoding is blocked (${labelOf(e.message.substring(12))}). The uploaded original is retained. Ask an administrator to check the approved codec, collection profile and runtime, then retry completion.'
+                      : e.message
                 : 'Interrupted — retry to resume from the server checkpoint',
           );
         }
@@ -450,7 +452,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'JPEG and PNG previews supported. HEIC, TIFF and RAW require an approved server decoder and profile; unsupported files receive a validation reason.',
+                  'Local previews depend on this device. HEIC and approved TIFF/DNG families require a configured server codec and collection profile. Files can upload without a local preview; server completion verifies bytes, format and dimensions. A decoder block retains the upload for retry.',
                 ),
                 const SizedBox(height: 16),
                 Wrap(

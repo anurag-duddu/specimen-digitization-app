@@ -71,7 +71,12 @@ class ReviewContext extends StatelessWidget {
                     Text('• ${labelOf(issue.toString())}'),
                   for (final limitation
                       in quality['limitations'] as List? ?? [])
-                    Text(labelOf(limitation.toString())),
+                    Text(
+                      limitation == 'no_heic_or_raw_decoder' &&
+                              asset['processing_derivative'] is Map
+                          ? 'Quality measurements use the decoded preview. This measurement stage does not decode HEIC or RAW itself.'
+                          : labelOf(limitation.toString()),
+                    ),
                   EvidenceDetails(
                     title: 'Image measurements and orientation',
                     value: quality,
