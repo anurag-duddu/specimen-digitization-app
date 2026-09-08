@@ -269,3 +269,68 @@ HTTP tests separately verify complete historical artifact retrieval and stale CA
 No browser viewport override or QA-owned port was changed. Both temporary graph
 API 8018 and Flutter web 3002 were stopped after verification; persisted synthetic
 state and immutable backend checkout remain available for independent reproduction.
+
+### Actual reading declarations and versioned language handling
+
+The separate declaration checkpoint uses immutable backend
+`6b4b654737d4d6bf7d26a749f431c15312c9a33b` (core `a6fd15c`, frozen fixture
+`8439b6e`, and explicit action-capability repair `6b4b654`). The original frozen
+433,475-byte `backend-declarations-wire-examples.json` is unchanged at SHA-256
+`1afb38f43da024ab8e8f45d70d5b28bb564d2d8cb90618e1b41fb9bb1fdb6eed`.
+A separate captured field projection, `backend-declaration-actions-wire-examples.json`
+(SHA-256 `d6971acad82a319b17ac690e392ee208dd60f442faef831640e91146726a045b`),
+records the added `reading_metadata` capability without rewriting the earlier
+fixture. Scanner dependency original `d3cb125` is carried as `57405a1`; integration
+already owns it. Backend code is not included in this Flutter checkpoint.
+
+The readings view displays per-label language/script candidates, mixed declarations,
+conflicting interpretations, unmeasured confidence, review requirements and the
+exact versioned policy. Unknown declarations remain unknown; Unicode diagnostics
+are not promoted into language or script classifications. A separate authenticated
+provenance read pins revision and verifies run/observation/region/raw identity. It
+shows retained model output, each human declaration, server-recorded actor/reason/
+time and explicit supersession lineage.
+
+Human editing requires both reviewer permission and the exact server-advertised
+`reading_metadata` action. It never aliases another permission. The form uses one
+opaque candidate per line, at most eight distinct candidates per language/script
+list and at most 100 Unicode codepoints per candidate. Co-occurring or alternative
+language relationships require two distinct languages. A reason is required;
+empty lists explicitly record no declaration. The client supplies no actor,
+confidence or provenance. Current CAS and record-version identity accompany the
+existing decisions endpoint. Model/raw evidence remains immutable, prior human
+entries remain in history, and approval is invalidated rather than inferred.
+
+Six focused wire/widget tests pass: exact request/CAS, pinned authenticated
+provenance and mismatch rejection, mixed/conflicting/unknown policy states,
+model/human supersession separation, authoritative action plus reviewer gating,
+and required reason/relationship validation. The canonical gate passes 81 Python
+(3 optional skips), 64 Flutter (6 gated live tests skipped), fatal-info analysis,
+both secret scanners, web release build and Wasm dry run. Log:
+`/tmp/flutter-declarations-gates.log`.
+
+Actual Flutter HTTP proof used the immutable backend with fresh mixed-declaration
+SQLite state `/tmp/specimen-flutter-declarations-state-6b4b654b`, synthetic-only
+API 8018. Specimen `748c44fa-b2f2-5c32-80cd-2cdb5269aa45` starts at revision 20;
+separate approval reaches 21, French declaration 22 and superseding Italian 23.
+Each declaration invalidates approval, preserves observations/raw bytes and the
+immediately preceding phase/authority evidence, reconciles an identical-key replay
+without another revision, and rejects stale CAS. Historical revision 20 retains
+its original model declaration with no human entries. Log:
+`/tmp/flutter-declarations-live.log`; reproducible gated client test requires a
+fresh explicitly seeded synthetic record. An initial assertion compared phase
+artifacts from before the separate approval action; it was corrected to isolate
+the declaration mutation and rerun against fresh state.
+
+After a real server restart, Chrome loaded the retained model and both human
+entries, verified the required-reason form, and saved an explicit English/German
+co-occurring declaration at revision 24. The policy now reports mixed=true,
+conflicting=false, review_required=true and unmeasured confidence. A separate
+HTTP read verified the exact saved candidates, three-entry supersession chain,
+unchanged model/raw digest and `human_approved=false`. Browser evidence and proof:
+`/tmp/flutter-declarations-evidence/declaration-form.png`, `saved-lineage.png`,
+`saved-policy-ax.txt`, `saved-lineage-ax.txt`, `browser-save-http-proof.json`.
+Both temporary API 8018 and Flutter web 3002 were stopped; QA ports and browser
+viewport/settings were untouched. Independent combined QA, institutional policy
+approval, real-language quality calibration and production acceptance remain open.
+Later nullable disagreement/observation-measurement contracts are separate work.

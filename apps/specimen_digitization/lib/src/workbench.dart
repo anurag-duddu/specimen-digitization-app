@@ -9,6 +9,7 @@ import 'evidence_panel.dart';
 import 'reading_alignment.dart';
 import 'source_pixels.dart';
 import 'large_record.dart';
+import 'reading_declarations.dart';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -706,6 +707,26 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   ),
                   render: (metadata) => ReadingMetadataView(metadata: metadata),
                 ),
+              if (widget.loadArtifact != null &&
+                  o['declaration_evidence'] is Map)
+                LazyEvidence(
+                  key: ValueKey(
+                    'declaration:${widget.specimen.id}:${widget.specimen.revision}:${o['id']}',
+                  ),
+                  label: 'Read declaration provenance',
+                  load: () => widget.loadArtifact!(
+                    ArtifactRequest(
+                      ArtifactKind.readingDeclarations,
+                      textOf(o['id']),
+                    ),
+                  ),
+                  render: (value) => ReadingDeclarationView(
+                    provenance: value,
+                    onChange: _blocked('reading_metadata')
+                        ? null
+                        : widget.onChange,
+                  ),
+                ),
               ExpansionTile(
                 title: const Text(
                   'Observation provenance and raw response reference',
@@ -723,6 +744,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (objectOf(widget.specimen.data['run'])['label_language_handling']
+            is Map)
+          LabelLanguagePolicy(
+            handling: objectOf(
+              objectOf(widget.specimen.data['run'])['label_language_handling'],
+            ),
+          ),
         _section('Independent readings', [
           const Text(
             'Each observation is retained unchanged. Short readings show differing characters underlined; use the retained comparison for exact alignment and limits.',
