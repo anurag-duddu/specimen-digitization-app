@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Protocol
 from .domain import Principal, Scope, Specimen, WorkItem, WorkPage, now
@@ -113,14 +114,26 @@ class LocalBlobs:
     def put(self, data: bytes) -> str:
         ref = hashlib.sha256(data).hexdigest()
         path = self.root / ref
+        # Publish only a fully written inode. Linking atomically creates the digest
+        # name without replacing an existing immutable object.
+        descriptor, temporary = tempfile.mkstemp(prefix=".blob-", dir=self.root)
         try:
-            with path.open("xb") as f:
-                f.write(data)
-                f.flush()
-                os.fsync(f.fileno())
-        except FileExistsError:
-            if path.read_bytes() != data:
-                raise Conflict("Immutable blob content mismatch")
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                if self.get_bounded(ref, max(1, len(data))) != data:
+                    raise Conflict("Immutable blob content mismatch")
+            directory = os.open(self.root, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
         return ref
 
     def get(self, ref: str) -> bytes:
