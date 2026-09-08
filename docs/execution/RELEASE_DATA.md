@@ -426,3 +426,87 @@ that revision additionally fixes supplied-session authentication reuse.
 Preserve the owned 5589/9569 fixture until the reviewer finishes its remaining
 runtime repeat. Native Cloud SQL recovery, effective IAM, current
 cohort classification and production acceptance remain separate live gates.
+
+## Frozen metadata, regional costs and database access checkpoint
+
+Sensitivity source commit is `0fb70aa5e26e421e68e64a7f550a20d77e65e30a`.
+The independent reviewer reconciled the reviewed file hashes to that commit and
+reran all four runtime cases successfully; log
+`/tmp/specimen-runtime-data-roundtrip-independent-20260908.log`. Its fixture
+access is released. This later checkpoint changes observations and documentation,
+not the reviewed sensitivity implementation or actual cohort classification.
+
+Metadata-only freeze is complete and has been delivered privately to coordinator.
+The surviving raw acquisition JSON/script/page-one order reconciles all 1,000
+cloud JPEG basenames; the first ten have one original/generation each and total
+3,018,274 bytes. The original CSV remains absent. All three private output files
+are 0600 under `/tmp/specimen-first-ten-metadata-20260908/`:
+
+| Artifact | SHA256 |
+| --- | --- |
+| ordered-catalog.json | `f2b472d8b005ebd6c23743cdfcb3c005bfe87be58b2672e90f83f4fb4d2893f1` |
+| metadata-frozen.json | `5865f62c4b3d869ac2b516d78c23ceb0701f796cbf6c7f054c5e22ce79037e2b` |
+| reconciliation.json | `56b4d7f9b17155643ac8864352a37676dac27ae85e28c470cd0fa576576c4fcd` |
+
+These are source metadata and grouping evidence, not `specimen-pilot/v1` runtime
+readiness. No image bytes have been read; source SHA256 values, verified imports,
+admin UID/scope and actual classification remain pending coordinator execution.
+The coordinator must retain the files in its durable private evidence location.
+
+The plan now reflects pinned inventory observations: backups disabled, bucket
+uniform access true, source order confirmed, and existing SQL tier/disk known.
+It remains `proposal_not_applied`, with no ready-manifest hash or native restore
+proof. The current SQL Connect service uses this Google Cloud SQL PostgreSQL
+database; these are API and storage layers of the same configured application.
+[Firebase SQL Connect CLI reference](https://firebase.google.com/docs/sql-connect/cli-reference#cloud-sql-management-commands).
+
+On 2026-09-08, the rendered official pricing page was inspected after selecting
+Northern Virginia (us-east4). Published USD rates are db-f1-micro $0.0112/hour,
+SSD $0.000249178/GiB-hour, and standard backup used storage $0.00011726/GiB-hour.
+Two hours of a 10 GiB zonal restore target therefore costs $0.02738356 for compute
+and disk. An illustrative 10 GiB backup retained seven days adds $0.1969968;
+30 days adds $0.844272. These are component estimates, excluding transfer,
+operations and extra copies. Actual backup size and retention must be admitted
+to the shared USD 5 ledger. No retention schedule or deletion beyond the approved
+new clone was authorized here. [Cloud SQL pricing](https://cloud.google.com/sql/pricing).
+
+The region selector updates the storage and instance tables together. The
+generic $0.0105 rate belongs to the Iowa default; $0.018 in search results was
+extended-support pricing. Neither establishes this PostgreSQL 18 restore rate.
+Browser content export was unsupported, so the observed selected-region table
+is retained in task tool evidence; no exported raw-price artifact is claimed.
+
+IAM access remains a distinct prerequisite. Existing IAM authentication does not
+grant database privileges; newly registered IAM users initially have none.
+Use only the exact approved maintenance service account's database identity,
+`specimen-data-release@specimen-digitization.iam`, with scoped Cloud SQL login
+and connector permissions. [Cloud SQL IAM logins](https://docs.cloud.google.com/sql/docs/postgres/iam-logins).
+Inventory/dump requires CONNECT on the named database, public-schema USAGE and
+SELECT on relevant tables/sequences. MAINTAIN supports ANALYZE/REINDEX but does
+not grant new-index creation. Exact supplemental DDL needs verified table-owner
+rights, supplied through a separately reviewed existing owner or narrow owner
+membership; do not infer those rights from project IAM.
+[PostgreSQL privileges](https://www.postgresql.org/docs/18/ddl-priv.html).
+
+Installed Firebase CLI 15.8.0 source establishes that `dataconnect:sql:setup` and
+`dataconnect:sql:grant` can create/update passworded `firebasesuperuser`, create
+additional IAM database users, and transfer ownership. These helpers must not
+be substituted for the approved narrow bootstrap. The provider's ordinary setup
+flow is broader than this release's authorized maintenance boundary. The live
+login-user listing does not expose every internal NOLOGIN role, and ephemeral
+schema metadata does not prove an empty database.
+
+Read-only catalog packet `/tmp/specimen-data-iam-catalog-20260908.sql`, SHA256
+`879c20f058f44e462c92f41c40fbe608d48af9d169fda3dae8dbddb241db039a`, was delivered
+to root. It uses a read-only transaction, exact database guard and bounded
+timeouts, then reads schema/table owners and relevant role grants/capabilities.
+It passed syntax validation on local PostgreSQL 18; it has not run against live
+SQL. Capture future owner/role output privately. Root owns the prerequisite IAM
+database registration and any subsequent exact grants; DATA made no cloud writes.
+
+After reviewer release and coordinator notice, the owned 5589/9569 fixture was
+stopped and both listener ports verified unused. The observation-only plan update
+passed the offline validator and all 28 plan regressions; implementation remains
+the independently reviewed sensitivity commit. The user's empty Firebase console
+observation is recorded for the initial-setup assessment, pending actual catalog
+proof. No other local service, cloud resource or source image was changed.
