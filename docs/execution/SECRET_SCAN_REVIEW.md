@@ -130,3 +130,35 @@ Gitleaks also rejected a new baseline credential and an allowed hash placed in
 an unreviewed path. No canary, general exemption or fixture code was committed.
 A changed fixture requires renewed review; this does not move the frozen codec
 QA target or approve active-graph product behavior.
+
+## Declaration response fixture
+
+Reviewed frozen433475-byte fixture SHA256
+`1afb38f43da024ab8e8f45d70d5b28bb564d2d8cb90618e1b41fb9bb1fdb6eed`.
+Paths: docs/execution/backend-declarations-wire-examples.json and intended exact
+apps/specimen_digitization/test/fixtures/backend-declarations-wire-examples.json.
+Reviewed generate_declarations_fixture.py: actual local synthetic TestClient
+mixed/conflicting/unknown workspaces and two human metadata supersession requests
+and responses. Source/model output is synthetic; authentication headers are not
+serialized. Independently verified all44 distinct retained content references
+(148 occurrences including source/evidence refs) against original retained blobs.
+This provenance audit does not establish language inference quality or acceptance.
+
+Detect-secrets1.5.0 reports92 unique Hex High Entropy String findings per exact
+path. Every value is64 lowercase hex and each SHA-1 finding identifier was
+verified. Added87 previously absent exact SHA-1 metadata lines to the existing
+rule-local baseline allowlist. All prior entries/plugins/filters/thresholds stay.
+
+Gitleaks additionally flagged30 occurrences across the two copies: four unique
+exact storage_key/token_id UUID lines under synthetic circuit admission. Reviewed
+provider_circuit.py establishes these as persisted CAS fencing identifiers, not
+authentication credentials. Added a separate rule-local AND allowlist matching
+only those four complete field/value lines AND the two exact declaration paths.
+No generic UUID, field-name or whole-fixture exemption was added.
+
+Isolated pinned Gitleaks8.30.1 and detect-secrets1.5.0 pass both exact copies and
+reject new credential-shaped canaries in each. Gitleaks rejects a new baseline
+credential, an allowed metadata hash in another path, and the exact synthetic
+circuit ID in an unreviewed path. Restored originals pass. No canaries or product
+fixture bytes are included in this scanner dependency; changed fixtures require
+another exact review. Existing four response fixtures are unchanged.
