@@ -5,6 +5,11 @@ web/Android/iOS clients, a scoped API, durable workflow state and immutable sour
 evidence. Synthetic execution is explicitly labeled. It does not establish museum
 quality, approved production processing, physical-device behavior or deployment.
 
+For the restored running demo, use the [local review incident and supervised
+startup guide](LOCAL_REVIEW_INCIDENT.md). The original task-owned demo processes
+did not remain available after handoff; supervised restoration and the separate
+synthetic sign-in repair are documented there.
+
 ## Candidate and verification
 
 Independently reviewed runtime source: `ee4bec83715bf262deb9c7bff4598ad9211ddd44`.
@@ -80,7 +85,8 @@ flutter run -d web-server --web-port 3000 \
   --dart-define=SPECIMEN_LOCAL_SYNTHETIC=true
 ```
 
-Open http://localhost:3000. Use any test email and the local bearer as the password.
+Open http://localhost:3000. Use any test email as a label and put the local bearer
+in the **Fixture token** field. The server must verify that token before sign-in.
 The client restricts this mode to a loopback API and shows a synthetic banner.
 The CI Firebase placeholder is credential-free and ignored when copied. Remove
 only a placeholder you created after the demo; preserve any pre-existing config.
