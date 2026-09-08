@@ -142,8 +142,34 @@ removed only those jobs while retaining the token and database. Evidence:
 by those tests. The check artifact explicitly recorded its dirty worktree state;
 it was not presented as a final verified release.
 
-Independent QA uses isolated outage-test ports, preserving the user's restored
-services and retained state. The patch still requires independent UI checks,
-exact-head canonical verification, an updated PR and all five current-head CI
-jobs. No production authentication change or paid inference is authorized by
-this repair.
+Independent QA reports `567e7dc` and `b81fefb` were imported as `ba21c70` and
+`ec1a7f4`. Six focused auth tests, four runner guards and fatal-info analysis
+passed independently. Actual isolated browser checks passed wrong-token denial,
+offline-before-login refusal, valid queue/Intake access, offline-after-login
+feedback, initial collection-service failure and recovery. Synthetic context
+remained visible. The user services were not used for outage injection. The
+full canonical suite at `1d292e0` passed 355 Python tests with 26 gated skips,
+76 Flutter tests with seven live skips, analysis, scanners and web build.
+
+After those QA snapshots, integration performed a **static-files-only** update
+to the clean artifact built at `8351761a2fd2f625949e67c6d863f494ea60f6b6`.
+The application `main.dart.js` was proven byte-identical to the already reviewed
+auth artifact. Only bootstrap, empty service-worker file, build ID and provenance
+marker differed; each was replaced atomically, with originals retained privately.
+Direct HTTP verified the new marker, matching JavaScript digest and zero-byte
+service worker. The API and both existing supervised processes were left running;
+there was no supervisor migration or token/data change. This final static readback
+is integration evidence, distinct from QA's earlier 26317ab snapshots.
+
+The running jobs still use the private incident helpers. The repository runner
+is available for a deliberate future migration or fresh local instance. Existing
+browser tabs can retain an older active worker until reload/reopen; actual visible
+Fixture token behavior remains the browser verification, not the marker alone.
+The served artifact SHA differs from later documentation-only PR heads; its app
+source is the exact reviewed auth repair. The private ACCESS note records the
+current serving paths and actual job controls.
+
+Final exact-head canonical verification and all five current-head CI jobs remain
+publication gates; the PR description records their completed results without
+creating recursive post-CI documentation commits. No production authentication
+change, merge, cloud deployment or paid inference is authorized by this repair.
