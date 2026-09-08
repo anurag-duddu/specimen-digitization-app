@@ -134,3 +134,118 @@ Cross-cutting EXP-001 filters require explicit backend/data projection and Flutt
 ownership, beyond UI filtering an unbounded fetched list. Not all twenty rows are
 blocked by external decisions: substantial listed code and local end-to-end work
 can proceed now. See NEXT_WAVE.md's ownership-gap assignments and UI contract gate.
+
+## Final bounded audit at backend 6b4b654 / Flutter 57405a1
+
+This 2026-09-08 audit supersedes the earlier ownership-progress refresh above.
+Backend worktree 3782 was clean at `6b4b654`; Flutter worktree 6b01 was at
+`57405a1` with declaration UI changes uncommitted and still owner-in-progress.
+Architecture independently ran `uv run pytest -q` in backend worktree 3782:
+**271 passed, 24 skipped, 7 warnings in 60.10 seconds**. The final advertised
+declaration-action test explains the increase from the earlier 270-test report.
+SQL/optional-codec skips are not passes. Warnings concerned deprecations and
+unconfigured local Logfire; no live telemetry or production evidence is inferred.
+
+Architecture read backend HARDENING, ACTIVE_GRAPH, READING_DECLARATIONS and
+RELIABILITY_NEXT reports, data DATA_CHECKSUM, and Flutter UI_P0. Actual SQL,
+optional-codec, Flutter HTTP/browser and canonical results below are attributed
+to those owners, not independently rerun here. Older report open-item lists may
+be stale; the exact source checkpoint and findings below govern this audit.
+
+The table states **local subcondition evidence**, not release acceptance. Section
+19 requires an agreed representative dataset: no row receives final release Pass
+from synthetic testing. `Pass subset` is tested local behavior; `Fail` identifies
+specific missing code; `Not tested` identifies absent combined/external proof.
+Backend test paths below are under `tests/`; Flutter paths under
+`apps/specimen_digitization/test/`. Q must independently verify the final combined
+candidate after the remaining fixes. The original twenty test specifications
+above remain the acceptance contract.
+
+| ID | Current local state and concrete evidence | Remaining owner/gate |
+| --- | --- | --- |
+| P0-01 | Pass subset: `test_application.py::test_http_upload_restart_transcribe_review_clear_and_reconstruct`, `test_upload_completion_http.py`; owner-reported `test_codec_runtime.py::test_real_optional_codec_intake_worker_crop_and_restart`; Flutter `live_codec_test.dart`, `capture_quality_test.dart` | F+Q real mobile/tablet camera and interruption acceptance Not tested; approved codec runtime/families external. Assisted feedback interpretation below avoids unnecessary detector scope. |
+| P0-02 | Pass subset: `test_blob_publication.py`, `test_blob_limits.py`, `test_hardening_concurrency.py::test_same_source_concurrent_http_completion_is_authorized_duplicate` (SQLite rerun, SQL owner-reported) | D+B+Q final V3/Storage integration; legacy V1/V2 writers/null rows and deployed IAM remain rollout gates. |
+| P0-03 | Pass correction subset: `test_collection_runtime.py::test_versioned_profile_correction_preserves_scope_source_and_history`, `test_classification.py`; Flutter `live_next_workflow_test.dart` | B production classifier adapter absent beyond injectable protocol/synthetic/unconfigured paths; M approved model/calibration separate. Manual correction is not automatic classifier proof. |
+| P0-04 | Pass geometry/deadline subset: `test_collection_runtime.py::test_original_coordinate_crop_and_four_clockwise_rotations`, `test_sam3_runtime.py`; Flutter `region_editor_test.dart`, `source_geometry_test.dart`, `source_transform_test.dart` | Fail profile SAM settings runtime wiring, B. Real pinned SAM regions/masks/quality and service approval external. Mock service is not inference. |
+| P0-05 | Pass independence subset: `test_application.py::test_production_transcriber_does_not_receive_peer_observations`, `test_reading_declarations_runtime.py` | Fail parsed latency/finish/parameters provenance and published language-rule wiring, B+collection owner. F declaration UI active. Approved live two-route inference/quality external. |
+| P0-06 | Pass bounded evidence subset: `test_reading_evidence.py`, `test_reading_runtime.py`, `test_application.py::test_http_transcription_abstention_preserves_readings_and_blocks_clear`; Flutter `reading_alignment_test.dart` | Fail legacy workflow's unbounded SequenceMatcher; B. Q final visible minority-reading/adjudication journey. |
+| P0-07 | Pass local: `test_evidence_harness.py::test_all_phases_keep_candidates_and_meaningful_failed_gates`, `test_contradictory_normalized_sources_are_never_selected`; Flutter `next_wire_test.dart`, `live_next_workflow_test.dart` | Q combined correction/restart; M approved source semantics. |
+| P0-08 | Pass local: `test_application.py::test_lookup_http_failure_taxonomy`, `test_lookup_timeout_and_malformed`, `test_authority_runtime.py`, `test_parties.py`, `test_geography.py` | B+D+Q combined actual HTTP/SQL replay; live approved authority access/response validation external. |
+| P0-09 | Pass local: `test_worker_recovery.py`, `test_provider_circuit.py`, `test_bounded_effect.py`, `test_sam3_runtime.py`, `test_hardening_concurrency.py`; SQL owner-reported | Q final crash/CAS matrix. Unknown remote effects remain explicit; no exactly-once remote execution claim. |
+| P0-10 | Pass hard-gate subset: `test_application.py::test_mandatory_gate_every_field_and_semantics`, `test_whitespace_and_unbacked_normalization_cannot_clear`, `test_evidence_integrity.py` | B+Q rerun after profile-policy wiring; M real approval policy. |
+| P0-11 | Pass local: `test_application.py::test_mandatory_gate_every_field_and_semantics`, `test_authority_runtime.py::test_missing_authority_literal_is_review_not_provider_failure` | Q final exhaustive matrix; M institution-specific semantics including unresolved D/T/S. |
+| P0-12 | Pass local: `test_application.py::test_extraction_rejects_coerced_value_and_retains_supported_candidates`, `test_evidence_harness.py::test_search_snippet_without_captured_authority_response_cannot_normalize` | Q final adversarial abstention. No synthetic approval promotion. |
+| P0-13 | Pass local: `test_application.py::test_deferred_requires_capability_attempts_and_never_operational`, `test_worker_recovery.py::test_unpriced_production_effect_is_not_treated_as_zero_cost`; Flutter `workflow_controls_test.dart` | Q new classifier/policy failure taxonomy and final UI actions. |
+| P0-14 | Pass synthetic gate subset: `test_application.py::test_deferred_requires_capability_attempts_and_never_operational` | Q retained attempts/retry predicates after policy fixes; M legitimate capability cohort/approved alternatives. |
+| P0-15 | Pass local: `test_authority_runtime.py::test_parties_requires_qualified_selection_and_persists_intent_before_tcp`, `test_source_correction_invalidates_authority_and_retains_old_revision`; declaration replay/supersession tests; Flutter `live_next_workflow_test.dart` | F declaration UI remains active; Q combined CAS/role/selective-invalidation journey. |
+| P0-16 | Pass local: `test_evidence_integrity.py`, `test_active_graph.py::test_graph_reconstruction_rejects_identity_and_content_faults`; Flutter `graph_wire_test.dart`, `live_graph_test.dart` | Q full field/source/authority trace on combined candidate; actual SAM masks/source quality external. |
+| P0-17 | Pass subset: `test_history_paging.py`, `test_http_process_restart.py`, `test_active_graph.py`; SQL owner-reported; Flutter `audit_history_test.dart`, `live_graph_test.dart` | Q reconstruct all three queues on final SQL candidate; D+R restore drill separate. |
+| P0-18 | Pass local: `test_application.py::test_auth_scope_stale_write_and_concurrent_cas`, `test_history_paging.py::test_history_current_authorization_and_stored_snapshot_digest`, declaration role and graph scope tests; data security owner-reported | Q final surfaces/scanners; D+R deployed identity/IAM/signed links and privacy review external. |
+| P0-19 | Not tested as a whole; Flutter geometry/reading/history/graph widget/browser subsets and first-candidate accessibility repairs reported | F+Q final assistive/device checks; M approved cohort/quality/privacy; D+R recovery objectives/restore. |
+| P0-20 | Pass synthetic subsets: application HTTP/restart test above, `test_sqlconnect_application.py`, `test_http_process_restart.py`; Flutter live next/codec/graph owner-reported | R+Q freeze combined candidate and prove actual HTTP/SQL/UI without hidden repair after fixes. Configured plane, representative acceptance and release remain separate. |
+
+### Remaining implementable P0 work
+
+Coordinator has assigned the following narrow fixes: core backend owns runtime
+wiring, parsed provenance and bounded legacy adjudication; collection owner owns
+published language/scoring fields; evidence owner owns label risk/policy resolver.
+No new delegation is requested by this audit.
+
+- **TRN-007:** workflow adjudication still calls unbounded
+  `SequenceMatcher(None, texts[0], texts[-1]).ratio()` with default autojunk.
+  Use the bounded comparison contract and explicit unmeasured/review fallback;
+  test repetitive long readings through the actual workflow.
+- **SCR-001 / PRF-001:** `CollectionProfile.scoring_policy` is stored, while
+  `refresh_review_evidence` calls default `review_risk(signals)` and emits only
+  specimen risk. Resolve pinned profile weights and emit per-label components.
+  Test two policy versions and restart; no calibrated accuracy claim needed.
+- **TRN-006 / PRF-001:** application Profile has a default language rule but
+  published CollectionProfile lacks that configuration, and selection rebuilds
+  defaults. Wire immutable published handling and reject unknown policies.
+- **SEG-001 / PRF-001:** published segmentation_policy is retained while the SAM
+  request uses hard-coded prompt/settings. Resolve/pin profile service settings;
+  test exact request and drift rejection without live inference.
+- **TRN-005:** parsed Observation lacks per-call latency, finish state and
+  parameters despite full raw retention. Record actual execution/provider values;
+  unavailable values stay unknown/null and old observations remain readable.
+- **CLS-002:** only injected protocol, SyntheticClassifier and
+  UnconfiguredClassifier were found. B must distinguish runnable adapter work
+  from M's approved route/calibration gate. A fail-closed adapter boundary is not
+  proof that a production classifier exists. Sent to B/coordinator for ownership.
+
+### ING-005 and EXP-001 scope interpretation
+
+ING-005 requires feedback before submission; it does not require an automated
+focus/glare detector or calibrated pass/fail algorithm. Inspected Flutter
+`capture_quality.dart` provides bounded preview, exposure/detail statistics and
+specific smallest-text, reflections, all-label inspection and retake guidance,
+alongside readability confirmation. Accept this as **assisted feedback** code
+coverage. Automated focus/glare/framing are explicitly unmeasured; do not claim
+otherwise. Real mobile/tablet capture, accessible interaction and representative
+usability acceptance remain Not tested. No new detector or guessed thresholds
+are mandatory from this wording. This supersedes preliminary audit messages
+that treated absent automated measurement as a required code gap.
+
+EXP-001's score band can be a user-defined inclusive numeric interval:
+`risk_min`/`risk_max`. Existing bounds validation, missing-score exclusion,
+cursor binding and Flutter controls cover this functional dimension. No named
+low/medium/high taxonomy or new `score_band` API is required. Scores remain
+uncalibrated. This supersedes earlier NEXT_WAVE notes treating absence of a named
+parameter as an open requirement.
+
+Other inspected section 11 P0 groups have local paths/tests: immutable registry,
+region controls, seven harness phases, evidence layers, three disposition gates,
+reasoned review/CAS, timeline/dead-letter actions, scoped server search and
+artifact/history retrieval. That does not certify all edge cases or a combined
+product. Known verified graph/codecs/circuit work is not reopened by this audit.
+
+### External and final-candidate gates
+
+M supplies representative cohort, critical-field/profile/language/authority
+semantics, rights/provider permissions, calibration and expert approval. D+B+R
+own configured optional codecs, SAM/model services, credentials/pricing, deployed
+identity/storage and V3 writer cutover/legacy audit. F+Q own real device and
+assistive-technology acceptance. R+D+Q own recovery objectives/restore, frozen
+combined candidate, canonical checks and independent SQL/HTTP/UI demonstration.
+Production needs the separate PR/CI/deployment-marker/public-smoke evidence and
+authorization; no deployment or cloud mutation occurred in this audit.
