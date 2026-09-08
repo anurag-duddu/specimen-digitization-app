@@ -131,6 +131,9 @@ outputs/
 tmp/
 temp/
 
+# Internal research notes may contain candid, unattributed stakeholder context.
+docs/internal-research/
+
 # -----------------------------------------------------------------------------
 # Logs, editors, and operating systems
 # -----------------------------------------------------------------------------
