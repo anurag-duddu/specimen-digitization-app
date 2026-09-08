@@ -76,4 +76,121 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  Future<void> openSmallEditor(
+    WidgetTester tester,
+    void Function(Json?) saved,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async => saved(
+                await showDialog<Json>(
+                  context: context,
+                  builder: (_) => const RegionEditor(
+                    regions: [
+                      {
+                        'region_id': 'small',
+                        'bbox': [5, 7, 45, 57],
+                        'order': 0,
+                        'rotation_quarter_turns': 1,
+                      },
+                    ],
+                    asset: {'width': 64, 'height': 96},
+                  ),
+                ),
+              ),
+              child: const Text('Edit small region'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Edit small region'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'coordinate parse errors clear only after every input is valid and preserve saved geometry',
+    (tester) async {
+      Json? decision;
+      await openSmallEditor(tester, (value) => decision = value);
+      final reason = find.widgetWithText(
+        TextField,
+        'Reason for segmentation correction',
+      );
+      await tester.ensureVisible(reason);
+      await tester.enterText(reason, 'Synthetic coordinate replacement');
+      final left = find.widgetWithText(TextFormField, 'Left x');
+      final top = find.widgetWithText(TextFormField, 'Top y');
+      await tester.ensureVisible(left);
+      await tester.enterText(left, '');
+      await tester.pump();
+      expect(
+        find.text('Coordinates must be whole pixel numbers.'),
+        findsOneWidget,
+      );
+      await tester.enterText(top, '');
+      await tester.enterText(left, '5');
+      await tester.pump();
+      expect(
+        find.text('Coordinates must be whole pixel numbers.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Save region version'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Correct invalid pixel coordinates before saving.'),
+        findsOneWidget,
+      );
+      expect(decision, isNull);
+      await tester.ensureVisible(top);
+      await tester.enterText(top, '7');
+      await tester.pump();
+      expect(
+        find.text('Coordinates must be whole pixel numbers.'),
+        findsNothing,
+      );
+      expect(
+        find.text('Correct invalid pixel coordinates before saving.'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Save region version'));
+      await tester.pumpAndSettle();
+      expect(decision?['regions'][0]['bbox'], [5, 7, 45, 57]);
+      expect(decision?['regions'][0]['rotation_quarter_turns'], 1);
+      expect(decision?['reason'], 'Synthetic coordinate replacement');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'correcting numeric input does not erase an unrelated validation error',
+    (tester) async {
+      Json? decision;
+      await openSmallEditor(tester, (value) => decision = value);
+      await tester.tap(find.text('Save region version'));
+      await tester.pumpAndSettle();
+      expect(find.text('A reason is required.'), findsOneWidget);
+      final left = find.widgetWithText(TextFormField, 'Left x');
+      await tester.ensureVisible(left);
+      await tester.enterText(left, '');
+      await tester.pump();
+      expect(
+        find.text('Coordinates must be whole pixel numbers.'),
+        findsOneWidget,
+      );
+      await tester.enterText(left, '5');
+      await tester.pump();
+      expect(
+        find.text('Coordinates must be whole pixel numbers.'),
+        findsNothing,
+      );
+      expect(find.text('A reason is required.'), findsOneWidget);
+      await tester.tap(find.text('Save region version'));
+      await tester.pumpAndSettle();
+      expect(decision, isNull);
+    },
+  );
 }

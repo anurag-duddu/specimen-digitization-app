@@ -25,6 +25,12 @@ class _RegionEditorState extends State<RegionEditor> {
   int _coordinateVersion = 0;
   String? _error;
   final _invalidCoordinates = <String>{};
+  bool _coordinateSubmitAttempted = false;
+  String? get _visibleError => _invalidCoordinates.isEmpty
+      ? _error
+      : _coordinateSubmitAttempted
+      ? 'Correct invalid pixel coordinates before saving.'
+      : 'Coordinates must be whole pixel numbers.';
   final _reason = TextEditingController();
   @override
   void dispose() {
@@ -166,14 +172,15 @@ class _RegionEditorState extends State<RegionEditor> {
                               final coordinateKey =
                                   '${selected['region_id']}-${e.$1}';
                               final n = int.tryParse(v);
-                              if (n != null) {
-                                setState(() => box[e.$1] = n);
-                                _invalidCoordinates.remove(coordinateKey);
-                              } else {
-                                _error =
-                                    'Coordinates must be whole pixel numbers.';
-                                _invalidCoordinates.add(coordinateKey);
-                              }
+                              setState(() {
+                                _coordinateSubmitAttempted = false;
+                                if (n != null) {
+                                  box[e.$1] = n;
+                                  _invalidCoordinates.remove(coordinateKey);
+                                } else {
+                                  _invalidCoordinates.add(coordinateKey);
+                                }
+                              });
                             },
                           ),
                         ),
@@ -253,10 +260,10 @@ class _RegionEditorState extends State<RegionEditor> {
                   labelText: 'Reason for segmentation correction',
                 ),
               ),
-              if (_error != null)
+              if (_visibleError != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: Text(_error!),
+                  child: Text(_visibleError!),
                 ),
             ],
           ),
@@ -270,10 +277,7 @@ class _RegionEditorState extends State<RegionEditor> {
         FilledButton(
           onPressed: () {
             if (_invalidCoordinates.isNotEmpty) {
-              setState(
-                () =>
-                    _error = 'Correct invalid pixel coordinates before saving.',
-              );
+              setState(() => _coordinateSubmitAttempted = true);
               return;
             }
             final width = (widget.asset['width'] as num?)?.toDouble() ?? 0;
