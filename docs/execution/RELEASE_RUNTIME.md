@@ -370,3 +370,67 @@ and shutdown.
 Do not add a paid qualification execution, discard regions, reset the cohort
 ledger or imply that ten records must clear. Finish live review/clearance checks
 only against the actual evidence and authorized reviewer decisions.
+
+## Explicit sensitivity through intake, persistence and human review
+
+The actual connector investigation identified another first-release blocker:
+`SqlConnectRepository._commit` always wrote `sensitive=True`, every auxiliary
+document operation required sensitive permission, and API history and image
+access denied non-sensitive members unconditionally. The approved initial admin
+has no sensitive-data elevation. Coordinator authorized a bounded correction to
+preserve declared non-sensitive records while leaving legacy evidence protected.
+
+Runtime implementation is `e7f4985064c5b6a778b556852c0e4d0d247f456d`, separate
+from the earlier budget/SAM work. It changes domain/API/repository code,
+`worker_launch.py`, `tests/test_sensitivity_runtime.py` and `CONTRACTS.md` only:
+
+- Batch and item creation accept strict boolean `sensitive`, default true. The
+  item must match its retained batch. False must be explicit; membership never
+  supplies it. Upload completion retains that declaration on the Asset.
+- Default true is omitted from serialization, preserving legacy request,
+  snapshot and launch digests. Absent, malformed or unknown legacy classification
+  cannot grant non-sensitive access. Only the literal boolean false qualifies.
+- V3 writes pass the actual asset sensitivity. Current SQL metadata must match
+  the retained Asset. SQLite and SQL save paths reject downgrading sensitive or
+  unknown history. The data connector must enforce the same constraint atomically,
+  including older save versions; local checks do not replace that dependency.
+- The repository calls `GetDocumentV2`, `ListDocumentPageV2`, `CreateDocumentV2`
+  and `SaveDocumentV2`; list sensitivity derives from fresh scoped membership,
+  and returned column/payload classifications must agree exactly. Data owns the
+  default-sensitive column, V2 authorization/CAS/creator rules, and all legacy
+  operation guards. No data or Flutter file was changed by this runtime task.
+- Current workspace, source/view images, history, active graphs, retained
+  artifacts and exact run lookups recheck scope and classification. Requested
+  historical content checks its own Asset as well as the current record.
+  Revocation during metadata lookup cannot expose the resulting event stream.
+- An explicitly false `PilotLaunch` admits only explicitly false source Assets
+  and creates a false control ledger. The declaration participates in the launch
+  digest and cannot reset or downgrade an existing ledger. Default launches and
+  generic worker cursors remain sensitive.
+
+TDD evidence: six initial intake/history/repository regressions failed before
+implementation. Three additional tests reproduced current-column disagreement,
+numeric false in auxiliary metadata, and membership revocation during event
+lookup. Two further legacy cases showed that null and zero passed a truthiness
+check; the final guard now permits only literal false. An early test used the
+wrong specimen action URL and was corrected to the existing run action route.
+A simulated historical fixture initially triggered the existing current-snapshot
+integrity check; advancing the current revision allowed the test to isolate
+historical sensitivity without weakening that check.
+
+Final canonical `scripts/ci/verify.sh` exited zero with **837 Python passed /
+26 opt-in skipped; 120 Flutter passed / 7 skipped**, analysis, repository/security
+checks and release web build. The 21 new tests include real local HTTP
+upload/save/reopen/history/pixel reads, revocation and negative classification
+cases. Final implementation commit hooks passed. Logs are
+`/tmp/specimen-runtime-sensitivity-red-20260908.log`,
+`/tmp/specimen-runtime-sensitivity-binding-red-20260908.log`,
+`/tmp/specimen-runtime-sensitivity-unknown-red-20260908.log` and
+`/tmp/specimen-runtime-sensitivity-canonical-20260908.log`.
+
+Independent exact-commit review and actual V2 connector integration were requested
+from acceptance/data and are separate gates. Their completion is Not confirmed
+in this paragraph. The data owner's newly available real object inventory has
+not established non-sensitive classification of the actual cohort. These tests
+demonstrate a guarded capability; they do not classify real source images,
+elevate the administrator, or substitute local fixture records for the frozen ten.
