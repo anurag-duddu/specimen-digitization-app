@@ -105,3 +105,28 @@ exact copies. Both scanners rejected a new credential-shaped canary in each
 copy. Gitleaks rejected a new baseline credential and an allowed metadata hash
 in an unreviewed path. Restored files passed again. No general exemption or
 canary was committed. This scanner-only dependency precedes owner fixture code.
+
+## Active graph response fixture
+
+Reviewed exact backend bytes on2026-09-08: SHA256
+`8e9238d5582fabc4eea8265740a6bb19df58e548c7eb834644199d9c8b779715`.
+Paths: docs/execution/backend-graph-wire-examples.json and intended identical
+apps/specimen_digitization/test/fixtures/backend-graph-wire-examples.json.
+Reviewed /tmp/generate_graph_wire.py: actual local TestClient responses after
+explicit synthetic large-reading injection, including GET413, committed mutation
+413 and cancellation200. This is a response contract fixture, not provider output
+or full graph integrity acceptance. Authorization headers are not serialized.
+Both referenced graph SHA256 values and lengths independently matched retained
+revision57/58 graph bytes in specimen-graph-wire-jatgvajs. The full graph stays
+outside Git; only response metadata is in this fixture.
+
+Added two exact Hex High Entropy String findings per path, each a64-character
+content digest with independently verified SHA-1 scanner identifier, and two
+exact Gitleaks metadata-line patterns under the existing rule-local AND policy.
+All prior baseline entries and detector/filter/threshold settings are unchanged.
+Isolated detect-secrets1.5.0 and pinned Gitleaks8.30.1 passed both exact copies,
+rejected new credential-shaped canaries in each, and passed restored files.
+Gitleaks also rejected a new baseline credential and an allowed hash placed in
+an unreviewed path. No canary, general exemption or fixture code was committed.
+A changed fixture requires renewed review; this does not move the frozen codec
+QA target or approve active-graph product behavior.
