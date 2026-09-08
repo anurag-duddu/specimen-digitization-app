@@ -8,6 +8,7 @@ import 'operational_panel.dart';
 import 'evidence_panel.dart';
 import 'reading_alignment.dart';
 import 'source_pixels.dart';
+import 'large_record.dart';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -22,9 +23,12 @@ class ReviewWorkbench extends StatefulWidget {
     this.canOperate = true,
     this.loadHistoryPage,
     this.loadArtifact,
+    this.loadHistoricalArtifact,
     this.loadHistoricalRevision,
   });
   final Specimen specimen;
+  final Future<Json> Function(Specimen, ArtifactRequest)?
+  loadHistoricalArtifact;
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
   final Future<void> Function(Json change) onChange;
   final Future<void> Function(String reason) onRetry;
@@ -905,6 +909,37 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final s = widget.specimen;
+      if (s.data['artifact_receipt'] is Map) {
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(s.title, style: Theme.of(context).textTheme.headlineSmall),
+            Text('${s.status} · Revision ${s.revision}'),
+            TextButton(
+              onPressed: widget.busy ? null : widget.onRefresh,
+              child: const Text('Refresh current record'),
+            ),
+            LargeRecordEvidence(
+              key: ValueKey('graph:${s.id}:${s.revision}'),
+              specimen: s,
+              load: widget.loadArtifact,
+            ),
+            OperationalPanel(
+              specimen: s,
+              canOperate: widget.canOperate,
+              busy: widget.busy,
+              onAction: widget.onChange,
+            ),
+            AuditHistoryPanel(
+              key: ValueKey('history:${s.id}:${s.revision}'),
+              specimen: s,
+              loadPage: widget.loadHistoryPage,
+              loadRevision: widget.loadHistoricalRevision,
+              loadArtifact: widget.loadHistoricalArtifact,
+            ),
+          ],
+        );
+      }
       final wide = constraints.maxWidth >= 1000;
       final content = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1067,6 +1102,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               specimen: s,
               loadPage: widget.loadHistoryPage,
               loadRevision: widget.loadHistoricalRevision,
+              loadArtifact: widget.loadHistoricalArtifact,
             ),
         ],
       );

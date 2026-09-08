@@ -101,6 +101,9 @@ class ApiSpecimenRepository implements SpecimenRepository {
           textOf(error['message'], 'The request failed. Please retry.'),
           code: textOf(error['code'], 'request_failed'),
           status: response.statusCode,
+          details: error['details'] is Map
+              ? Map<String, dynamic>.from(error['details'])
+              : const {},
         );
       }
       return result;
@@ -129,8 +132,24 @@ class ApiSpecimenRepository implements SpecimenRepository {
         code: 'invalid_evidence',
       );
     }
+    if (artifact.kind == ArtifactKind.activeGraph) {
+      final receipt = specimen.data['artifact_receipt'];
+      final size = receipt is Map ? receipt['artifact_size_bytes'] : null;
+      if (receipt is! Map ||
+          size is! int ||
+          size < 1 ||
+          size > 16777216 ||
+          artifact.sha256 != receipt['artifact_sha256'] ||
+          !RegExp(r'^[a-f0-9]{64}$').hasMatch(artifact.sha256 ?? '')) {
+        throw const ApiFailure(
+          'The complete graph reference is unavailable or exceeds the 16 MiB retrieval limit. Refresh the current record.',
+          code: 'invalid_evidence',
+        );
+      }
+    }
     final id = Uri.encodeComponent(artifact.id);
     final suffix = switch (artifact.kind) {
+      ArtifactKind.activeGraph => 'active-graph',
       ArtifactKind.phase => 'phases/$id',
       ArtifactKind.authority => 'authority-results/$id',
       ArtifactKind.authorityRaw => 'authority-results/$id/raw',
@@ -145,6 +164,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
       'field_key': ?artifact.fieldKey,
     };
     if (![
+      ArtifactKind.activeGraph,
       ArtifactKind.authorityRaw,
       ArtifactKind.observationRaw,
     ].contains(artifact.kind)) {
@@ -169,16 +189,22 @@ class ApiSpecimenRepository implements SpecimenRepository {
     req.headers.addAll({
       'Authorization': 'Bearer $bearer',
       'X-Firebase-AppCheck': ?check,
-      'Accept': 'text/plain',
+      'Accept': artifact.kind == ArtifactKind.activeGraph
+          ? 'application/json'
+          : 'text/plain',
     });
     try {
       return await (() async {
         final response = await _client.send(req);
+        final graph = artifact.kind == ArtifactKind.activeGraph;
+        final limit = graph ? 16777216 : 1048576;
         final bytes = BytesBuilder(copy: false);
         await for (final chunk in response.stream) {
-          if (bytes.length + chunk.length > 1048576) {
-            throw const ApiFailure(
-              'Raw evidence exceeds the 1 MiB display limit. No partial response is shown.',
+          if (bytes.length + chunk.length > limit) {
+            throw ApiFailure(
+              graph
+                  ? 'The complete graph exceeds the 16 MiB retrieval limit. No partial evidence is shown. Current summary and run controls remain available.'
+                  : 'Raw evidence exceeds the 1 MiB display limit. No partial response is shown.',
               code: 'evidence_limit',
             );
           }
@@ -198,6 +224,29 @@ class ApiSpecimenRepository implements SpecimenRepository {
             'Raw evidence does not match the retained digest. Refresh evidence.',
             code: 'evidence_digest',
           );
+        }
+        if (graph) {
+          final receipt = specimen.data['artifact_receipt'] as Map? ?? const {};
+          final decoded = jsonDecode(utf8.decode(data));
+          if (data.length != receipt['artifact_size_bytes'] ||
+              response.headers['x-content-sha256'] != digest ||
+              response.headers['x-specimen-revision'] !=
+                  '${specimen.revision}' ||
+              decoded is! Map ||
+              decoded['contract_version'] != 'active-run-v1' ||
+              decoded['specimen_id'] != specimen.id ||
+              decoded['revision'] != specimen.revision ||
+              decoded['scope'] is! Map ||
+              decoded['scope']['organization_id'] != scope.organizationId ||
+              decoded['scope']['collection_id'] != scope.collectionId ||
+              decoded['run'] is! Map ||
+              decoded['run']['id'] != specimen.data['active_run_id']) {
+            throw const ApiFailure(
+              'The complete graph does not match its retained scope, revision or size. Refresh evidence.',
+              code: 'invalid_evidence',
+            );
+          }
+          return Map<String, dynamic>.from(decoded);
         }
         return <String, dynamic>{
           'text': utf8.decode(data),
@@ -341,13 +390,82 @@ class ApiSpecimenRepository implements SpecimenRepository {
     );
   }
 
+  Future<Specimen> _artifactSummary(
+    CollectionScope scope,
+    String id,
+    ApiFailure failure, {
+    bool historical = false,
+  }) async {
+    final receipt = failure.details;
+    final revision = receipt['revision'];
+    final version = receipt['record_version_id'];
+    final valid =
+        revision is int &&
+        revision > 0 &&
+        version is String &&
+        version.endsWith(':$revision') &&
+        version.length > ':$revision'.length;
+    if (!valid) throw failure;
+    final runId = version.substring(0, version.lastIndexOf(':'));
+    Json summary = {};
+    String? summaryError;
+    try {
+      if (historical) {
+        return Specimen({
+          'specimen_id': id,
+          'revision': revision,
+          'active_run_id': runId,
+          'record_version_id': version,
+          'artifact_receipt': receipt,
+          'available_actions': <String>[],
+        });
+      }
+      summary = await request(
+        'GET',
+        '${_root(scope)}/specimens/${Uri.encodeComponent(id)}',
+      );
+      if (summary['specimen_id'] != id ||
+          summary['organization_id'] != scope.organizationId ||
+          summary['collection_id'] != scope.collectionId ||
+          summary['revision'] != revision ||
+          summary['record_version_id'] != version ||
+          summary['active_run_id'] != runId) {
+        throw const ApiFailure(
+          'The current summary changed. Refresh to load its current revision.',
+          code: 'summary_changed',
+        );
+      }
+    } catch (e) {
+      summary = {};
+      summaryError = e is ApiFailure
+          ? e.message
+          : 'Summary unavailable. Refresh to check current access and revision.';
+    }
+    return Specimen({
+      ...summary,
+      'specimen_id': id,
+      'revision': revision,
+      'active_run_id': runId,
+      'latest_record_version_id': version,
+      'artifact_receipt': receipt,
+      'artifact_summary_error': ?summaryError,
+      // A receipt alone grants no actions; only a matching authenticated summary does.
+      'available_actions': summary['available_actions'] ?? <String>[],
+    });
+  }
+
   @override
   Future<Specimen> specimen(CollectionScope scope, String id) async {
-    final result = await request(
-      'GET',
-      '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/workspace',
-    );
-    return _workspace(result, scope);
+    try {
+      final result = await request(
+        'GET',
+        '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/workspace',
+      );
+      return _workspace(result, scope);
+    } on ApiFailure catch (e) {
+      if (!e.artifactRequired) rethrow;
+      return _artifactSummary(scope, id, e);
+    }
   }
 
   @override
@@ -435,11 +553,22 @@ class ApiSpecimenRepository implements SpecimenRepository {
         code: 'invalid_history_reference',
       );
     }
-    final result = await request(
-      'GET',
-      '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/history/$revision',
-      query: {'run_id': ?runId, 'run_sha256': ?runSha256},
-    );
+    Json result;
+    try {
+      result = await request(
+        'GET',
+        '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/history/$revision',
+        query: {'run_id': ?runId, 'run_sha256': ?runSha256},
+      );
+    } on ApiFailure catch (e) {
+      if (!e.artifactRequired ||
+          e.details['revision'] != revision ||
+          (runId != null &&
+              e.details['record_version_id'] != '$runId:$revision')) {
+        rethrow;
+      }
+      return _artifactSummary(scope, id, e, historical: true);
+    }
     if (result['specimen_id'] != id || result['revision'] != revision) {
       throw const ApiFailure(
         'The returned historical record does not match the requested revision.',
@@ -680,6 +809,27 @@ class ApiSpecimenRepository implements SpecimenRepository {
 
   @override
   Future<Specimen> review(
+    CollectionScope scope,
+    Specimen specimen,
+    Json change,
+    String key,
+  ) async {
+    try {
+      final result = await _review(scope, specimen, change, key);
+      if (result.data['artifact_receipt'] is Map) {
+        return Specimen({...result.data, 'mutation_saved': true});
+      }
+      return result;
+    } on ApiFailure catch (e) {
+      if (!e.artifactRequired || e.details['mutation_committed'] != true) {
+        rethrow;
+      }
+      final result = await _artifactSummary(scope, specimen.id, e);
+      return Specimen({...result.data, 'mutation_saved': true});
+    }
+  }
+
+  Future<Specimen> _review(
     CollectionScope scope,
     Specimen specimen,
     Json change,
