@@ -1,0 +1,20 @@
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- button "Authorized collection Insects"
+- generic: Collection queue
+- generic: Review the evidence. Resolve uncertainty. Keep every decision traceable.
+- textbox "Search specimens"
+- checkbox "All records" [checked]
+- checkbox "Needs human review"
+- checkbox "Cleared"
+- checkbox "Deferred"
+- checkbox "Processing blocked"
+- checkbox "Processing"
+- button "Filters (1)" [active]
+- generic: 1 matching records loaded
+- 'button "synthetic-label.png needs human review Profile synthetic-v1 · 2026-09-08T07:27:32.645415+00:00 Risk: 50 / 100 · Uncalibrated"'
+- tablist:
+  - tab "Queue" [selected]
+  - tab "Intake Intake"

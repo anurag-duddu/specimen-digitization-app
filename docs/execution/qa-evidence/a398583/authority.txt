@@ -1,0 +1,132 @@
+- generic: Expanded
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- button "Authorized collection Insects"
+- generic: Local synthetic reviewer
+- button "Queue Tab 1 of 2"
+- button "Intake Tab 2 of 2"
+- button "Back to queue"
+- generic: synthetic-label.png
+- textbox [disabled]
+- button "Refresh evidence"
+- 'group "Source image Asset: 72c320fa-801b-5257-93ac-533fb9699780 Pan, pinch, or use zoom controls. View rotation does not alter the original."':
+  - button "Rotate view 90 degrees"
+  - button "Zoom in"
+  - button "Reset image view"
+  - button "Original"
+  - img "Immutable original specimen image"
+  - button "Label region 2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb 2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb"
+  - checkbox "Label 1"
+  - textbox [disabled]
+  - button "Correct label regions"
+- 'group "Record status needs human review Profile synthetic-v1 · Revision 48 Stage: finalized · Attempts: {segment: 1, transcribe:2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb:handwriting-qwen: 1, transcribe:2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb:handwriting-muse: 1, lookup: 1, authority:0:parties: 1} • human approval required • candidate resolution requires review:identified by irn • parties identity resolution required:identified by irn"':
+  - button "Confirm label coverage"
+  - button "Record review approval"
+  - button "Correct classification"
+  - button "Retry processing"
+- button "Server image check valid · 800 × 600 pixels Brightness 228.0164794921875 · Contrast 33.088427091623615 Detail signal 7.777305428384565 · thumbnail-luminance-gradient-v1 Uncalibrated measurements. A valid image is not proof of readable labels or complete coverage. uncalibrated quality metrics focus glare framing occlusion not determined no heic or raw decoder Image measurements and orientation"
+- group "Classification and pinned profile completed · synthetic fixture only Synthetic classifier output Scores are uncalibrated; they do not establish correctness. insects · Score 1 synthetic fixture only Profile zoology_insects · Version synthetic-v1 Schema insects-v1 · Policy insects-clearance-v1 Profile policy approved in this environment Field semantics confirmed in this environment Classification corrections create a new run and supersede affected downstream results. Prior records remain in history.":
+  - button "Classification provenance"
+  - button "Pinned profile dependencies and field rules"
+  - button "Recorded classification decision"
+- 'group "Processing and recovery Stage: finalized Steps 16 / 200 · External requests 5 / 32 Tokens 0 · Reserved tokens 0 · Limit 160000 Active time 0.17176920804195106 seconds · Reserved time 0 seconds Actual cost: 0 micro-units · Reserved cost 0 micro-units Execution policy, usage and attempts"':
+  - button "Pause processing"
+  - button "Resume processing"
+  - button "Cancel processing"
+  - button "Start new run"
+- checkbox "Readings"
+- checkbox "Fields & evidence" [checked]
+- checkbox "History"
+- group "Required fields & validation Literal text, candidates, resolved values and authority evidence are separate. Missing mandatory values block clearance.":
+  - generic: human_approval_required Record · hard · human_approval_required
+  - generic: candidate_resolution_requires_review:identified_by_irn Record · hard · candidate_resolution_requires_review:identified_by_irn
+  - generic: parties_identity_resolution_required:identified_by_irn Record · hard · parties_identity_resolution_required:identified_by_irn
+  - button "fmnh ins number * supported · FMNH-INS 1001"
+  - button "collection code * supported · SYNTHETIC"
+  - button "country * supported · United States"
+  - button "province state * supported · Illinois"
+  - button "county * supported · Cook"
+  - button "city * supported · Chicago"
+  - button "precise location * supported · Synthetic teaching garden"
+  - button "elevation from m * supported · 180"
+  - button "elevation to m * supported · 181"
+  - button "elevation from ft * supported · 590.55"
+  - button "elevation to ft * supported · 593.83"
+  - button "habitat * supported · Synthetic grassland"
+  - button "collection method * supported · Synthetic net"
+  - button "date visited from * supported · 2020-06-01"
+  - button "date visited to * supported · 2020-06-01"
+  - button "collectors * supported · Synthetic Collector"
+  - button "verbatim dts * supported · Synthetic D/T/S"
+  - button "taxon * supported · Danaus plexippus"
+  - button "identified by irn * supported · Synthetic Collector"
+  - button "date identified * supported · 2020-06-02"
+- group "Authority evidence & lookups":
+  - button "label · Not recorded 62da1e2b-c827-47f1-957f-311a7859da04"
+  - button "label · Not recorded 25408e6a-cc3a-4afc-9e8b-9226f1056971"
+  - button "label · Not recorded 6cb0d815-f55a-41f6-ba7a-9f4c8f4529bf"
+  - button "label · Not recorded c5e6d7ee-9061-4b81-aa21-87596675c8ba"
+  - button "label · Not recorded 803ad2ae-69f2-49af-a41e-9c4a6854df72"
+  - button "label · Not recorded 1a0b7f62-1a7e-4cbd-ac03-4cc64cc5030c"
+  - button "label · Not recorded 0a9c3f88-9a79-46bf-8300-ad1269b7d20f"
+  - button "label · Not recorded 2d655f61-37e8-4e7b-a46e-383ae241396d"
+  - button "label · Not recorded 08f94f87-4ac3-4ea4-8f8a-a0e74fb7455b"
+  - button "label · Not recorded ed18be32-2858-4f09-bdd7-43b0287698ae"
+  - button "label · Not recorded 802e2a9b-0c7e-492c-a861-9dc50d3293fb"
+  - button "label · Not recorded 8fb9719f-fd03-4dda-9020-e9e7df8b61c9"
+  - button "label · Not recorded a842abec-cc47-4f98-9d16-c60548cb9fe0"
+  - button "label · Not recorded edde47ac-d994-4fdd-bbe3-f2aabffd5edf"
+  - button "label · Not recorded 9d1815f3-6a92-4824-b1a1-61f3c39a737b"
+  - button "label · Not recorded fa914b54-ccf7-46db-89b0-97729bcacf30"
+  - button "label · Not recorded 2e6000df-7330-41c1-b23c-92fadbde8fef"
+  - button "label · Not recorded 367fc0e2-8085-4da4-a839-64fe5a207595"
+  - button "label · Not recorded 753c2884-1d11-437c-8c6a-2c2e9ca3bedb"
+  - button "label · Not recorded 80329197-7b53-43ab-8f15-da1d47824e37"
+  - button "synthetic_taxonomy · Not recorded 42a22edd-0c9b-41c4-8d9b-6d4a013f3cc2"
+  - button "synthetic_taxonomy · success bee150ec-46da-45f8-9618-0b6228cd4b75"
+- 'button "Review risk (uncalibrated) 50 / 100 Prioritization only. Scores never override coverage, evidence or validation gates. hard validation · 2 · Contribution 50 Unmeasured: [language, script] Risk components, versions and calibration"'
+- generic: Evidence phases
+- group "parse · applied evidence phase completed":
+  - button "Read parse evidence"
+- group "plan · applied evidence phase completed":
+  - button "Read plan evidence"
+- group "lookup · applied evidence phase completed":
+  - generic: "fmnh ins number Literal: FMNH-INS 1001 Candidate: FMNH-INS 1001 supports: Verified retained transcript literal"
+  - generic: "collection code Literal: SYNTHETIC Candidate: SYNTHETIC supports: Verified retained transcript literal"
+  - generic: "country Literal: United States Candidate: United States supports: Verified retained transcript literal"
+  - generic: "province state Literal: Illinois Candidate: Illinois supports: Verified retained transcript literal"
+  - generic: "county Literal: Cook Candidate: Cook supports: Verified retained transcript literal"
+  - generic: "city Literal: Chicago Candidate: Chicago supports: Verified retained transcript literal"
+  - generic: "precise location Literal: Synthetic teaching garden Candidate: Synthetic teaching garden supports: Verified retained transcript literal"
+  - generic: "elevation from m Literal: 180 Candidate: 180 supports: Verified retained transcript literal"
+  - generic: "elevation to m Literal: 181 Candidate: 181 supports: Verified retained transcript literal"
+  - generic: "elevation from ft Literal: 590.55 Candidate: 590.55 supports: Verified retained transcript literal"
+  - generic: "elevation to ft Literal: 593.83 Candidate: 593.83 supports: Verified retained transcript literal"
+  - generic: "habitat Literal: Synthetic grassland Candidate: Synthetic grassland supports: Verified retained transcript literal"
+  - generic: "collection method Literal: Synthetic net Candidate: Synthetic net supports: Verified retained transcript literal"
+  - generic: "date visited from Literal: 2020-06-01 Candidate: 2020-06-01 supports: Verified retained transcript literal"
+  - generic: "date visited to Literal: 2020-06-01 Candidate: 2020-06-01 supports: Verified retained transcript literal"
+  - generic: "collectors Literal: Synthetic Collector Candidate: Synthetic Collector supports: Verified retained transcript literal"
+  - generic: "verbatim dts Literal: Synthetic D/T/S Candidate: Synthetic D/T/S supports: Verified retained transcript literal"
+  - generic: "taxon Literal: Danaus plexippus Candidate: Danaus plexippus supports: Verified retained transcript literal"
+  - generic: "identified by irn Literal: Synthetic Collector Candidate: Synthetic Collector supports: Verified retained transcript literal"
+  - generic: "date identified Literal: 2020-06-02 Candidate: 2020-06-02 supports: Verified retained transcript literal"
+  - generic: "taxon Literal: Danaus plexippus Candidate: Danaus plexippus supports: Retained taxonomy lookup; ambiguity needs explicit selection"
+  - generic: "identified by irn Literal: Synthetic Collector Candidate: Synthetic Collector supports: Authority name observation; person identity selection requires corroboration or reviewer decision"
+  - button "Complete lookup result"
+- 'group "resolve · applied alternatives retained no automatic authority selection hard: candidate resolution requires review identified_by_irn"':
+  - button "Read resolve evidence"
+- group "normalize · applied evidence phase completed":
+  - button "Read normalize evidence"
+- 'group "validate · applied evidence gates only core policy must apply remaining validators hard: candidate resolution requires review identified_by_irn hard: parties identity resolution required identified_by_irn"':
+  - button "Read validate evidence"
+- 'group "finalize · applied evidence gates only core policy must apply remaining validators hard: candidate resolution requires review identified_by_irn hard: parties identity resolution required identified_by_irn"':
+  - button "Read finalize evidence"
+- 'group "identified by irn · parties · ambiguous ambiguous · Source parties · synthetic-source-v1 Retrieved 2026-09-08T07:28:28.991563+00:00 · Adapter emu-parties-search-1 Literal input: Synthetic Collector { \"text\": \"{\\\"hits\\\": 1, \\\"matches\\\": [{\\\"id\\\": \\\"emu:/fmnh/eparties/7\\\", \\\"version\\\": 1, \\\"data\\\": {\\\"NamFullName\\\": \\\"Synthetic Collector\\\"}}]}\", \"sha256\": \"2fe1c0c[digest abbreviated]\", \"size_bytes\": 118 }"':
+  - 'group "Synthetic Collector emu:/fmnh/eparties/7 supports: Authority name observation; person identity selection requires corroboration or reviewer decision { \"identifier\": \"emu:/fmnh/eparties/7\", \"name\": \"Synthetic Collector\", \"source_version\": \"1\", \"relation\": \"supports\", \"reason\": \"Authority name observation; person identity selection requires corroboration or reviewer decision\", \"evidence_ids\": [ \"753c2884-1d11-437c-8c6a-2c2e9ca3bedb\" ], \"identity\": { \"source_system\": \"emu\", \"connection_id\": \"synthetic-read\", \"tenant\": \"fmnh\", \"environment\": \"synthetic\", \"module\": \"eparties\", \"irn\": 7 }, \"context_json\": \"{}\" }"':
+    - button "Candidate identity, context and support" [active]
+    - button "Select this candidate"
+  - button "Authority query and captured evidence"
+  - button "Raw authority response"

@@ -1,0 +1,18 @@
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- button "Authorized collection Insects"
+- generic: Local synthetic reviewer
+- button "Queue Tab 1 of 2"
+- button "Intake Tab 2 of 2"
+- 'group "synthetic-wide-label.png Duplicate — existing record retained 18043 bytes · 1000 × 520 px Optional server preflight sends this original image to the collection service for decoding checks. It creates no specimen and makes no external provider call. Local measurements stay on this device until you choose an action. Server preflight requires memory-limit enforcement on an approved runtime. Ask the service administrator to configure it. Changing this image format will not resolve that block; ordinary supported-image intake is checked separately. Server preflight: blocked. Manual quality review remains required. memory limit unavailable Unmeasured: [focus, glare, framing, label_coverage, museum_quality_acceptance]"':
+  - button "Before-upload image check Measured thumbnail · uncalibrated"
+  - button "Send image for server preflight"
+  - button "Server codec capabilities and preflight evidence"
+  - textbox [disabled]
+- group "synthetic-label.png Accepted 27240 bytes · 800 × 600 px Optional server preflight sends this original image to the collection service for decoding checks. It creates no specimen and makes no external provider call. Local measurements stay on this device until you choose an action.":
+  - button "Before-upload image check Measured thumbnail · uncalibrated" [active]
+  - button "Send image for server preflight"
+  - textbox [disabled]
+- button "Upload / resume selected files" [disabled]
