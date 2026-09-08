@@ -23,6 +23,11 @@ PLACEHOLDERS = {
 
 def evaluate(run: Run) -> list[str]:
     failures = []
+    for label in run.label_language_handling.get("labels", []):
+        if label.get("review_required") and not run.human_approved:
+            failures.extend(
+                reason + ":" + label["region_id"] for reason in label["reasons"]
+            )
     if not run.profile.institutional_policy_approved:
         failures.append("institutional_policy_unapproved")
     if not run.profile.semantics_confirmed:

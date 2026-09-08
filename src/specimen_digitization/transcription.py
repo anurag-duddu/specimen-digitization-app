@@ -8,6 +8,7 @@ import logfire
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Agent, BinaryContent
 
+from .application.reading_declarations import DeclarationCandidates
 from .model_gateway import HuggingFaceModelGateway
 from .prompts import (
     CollectionPromptInputs,
@@ -20,7 +21,7 @@ from .tracing import SpecimenTraceContext
 SupportedImageMediaType = Literal["image/jpeg", "image/png"]
 
 
-class LiteralTranscription(BaseModel):
+class LiteralTranscription(DeclarationCandidates):
     """Faithful visual reading before any field normalization or enrichment."""
 
     model_config = ConfigDict(frozen=True)

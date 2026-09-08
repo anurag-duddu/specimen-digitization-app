@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .reading_declarations import LanguageHandling
+
 
 def uid() -> str:
     return str(uuid4())
@@ -130,6 +132,7 @@ class Region(Record):
 
 
 class Observation(Record):
+    declaration_evidence: dict | None = None
     id: str = Field(default_factory=uid)
     region_id: str
     route_id: str
@@ -230,6 +233,7 @@ class BudgetUsage(Record):
 
 
 class Profile(Record):
+    language_handling: LanguageHandling = Field(default_factory=LanguageHandling)
     execution: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
     id: str = "zoology_insects"
     version: str = "0.1.0-draft"
@@ -243,6 +247,8 @@ class Profile(Record):
 
 
 class Run(Record):
+    reading_declarations: list[dict] = Field(default_factory=list)
+    label_language_handling: dict = Field(default_factory=dict)
     authority_unresolved: dict = Field(default_factory=dict)
     authority_plan: list[dict] = Field(default_factory=list)
     authority_receipts: dict = Field(default_factory=dict)

@@ -41,6 +41,7 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
         for metadata in [
             *run.phase_results.values(),
             *run.reading_metadata.values(),
+            *run.reading_declarations,
             *run.disagreements,
             *run.authority_receipts.values(),
             *run.authority_results.values(),
@@ -103,6 +104,9 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                 require(observation.region_id in regions)
                 require(bool(observation.raw_sha256))
                 read(observation.raw_ref, observation.raw_sha256)
+                from .reading_declarations import effective_declarations
+
+                effective_declarations(specimen, observation, blobs)
                 expected_input = (
                     asset.sha256
                     if run.profile.synthetic
