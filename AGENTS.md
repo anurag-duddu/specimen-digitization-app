@@ -3,6 +3,25 @@
 These instructions apply to every branch, worktree, and Codex session in this
 repository.
 
+## Session closeout ritual
+
+Every Codex session that changes, reviews, coordinates, or releases this
+repository must use [`docs/SESSION_LEARNINGS.md`](docs/SESSION_LEARNINGS.md) as
+the shared, append-only closeout log.
+
+- Before a handoff, merge, archive, branch deletion, or worktree removal, append
+  the session's outcome, durable evidence, reusable learnings, failed approaches,
+  and unresolved follow-ups.
+- Name the task ID, branch/worktree, relevant commits and pull requests, and the
+  validation actually run. Use `Not confirmed` when evidence is unavailable.
+- Do not rewrite or delete another session's entry. Correct an earlier entry by
+  appending a dated correction that links back to it.
+- A coordinating session may prune only after it has reconciled the entry with
+  live Git/GitHub state and confirmed that no uncommitted or unmerged work will
+  be lost.
+
+This is a required repository ritual, not optional handoff prose.
+
 Before changing CI, release configuration, Firebase Hosting, Google Cloud IAM,
 GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
 
