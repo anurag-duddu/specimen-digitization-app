@@ -279,6 +279,29 @@ semantics/evidence gates without preserving an explicit synthetic-only boundary.
 
 ## Execution ledger and next dependency
 
+### Pre-commit Flutter source review, 2026-09-08
+
+Flutter owner explicitly requested read-only review before commit. Inspected
+current files in `6b01` (auth, intake, models, HTTP repository, workspace and
+review dialog) and the corresponding transcription handler in `3782`. These
+are uncommitted source findings, not immutable candidate/browser reproductions.
+No other worktree was modified. Shared all findings with Flutter and coordinator;
+sent the transcription contract mismatch to backend as well.
+
+| Defect | Severity and observed source behavior | Required regression / status |
+|---|---|---|
+| QA-F01 | P2: `workbench.dart` permits transcription unknown/unreadable selection, then emits null value. `api_repository.dart` sends only `after.text`, discarding state. Backend `api.py` transcription handler requires nonempty string and sets resolved true. The permitted UI absence action cannot save. | Region adjudication with absence state and reason must either persist typed abstention under an agreed contract or explicitly show unsupported action; never coerce absent text into supported transcription. Open, owner repair pending. |
+| QA-F02 | P2: Field correction passes arbitrary server field state as dropdown initialValue; fixed dropdown items contain seven values. Unknown future state can trigger invalid dropdown selection/assertion instead of safe unsupported state. | Actual workspace fixture with unknown future field enum must render safely, preserve raw state and disable unsafe decision. Open, owner repair pending. |
+| QA-F03 | P2 usability: Workspace carries `available_actions`, but review controls in inspected workbench do not consume it; busy state controls edit/approve availability. Viewer/operator can be shown prohibited reviewer controls. This is not evidence of backend authorization bypass. | Compare real viewer/operator/reviewer workspace responses; controls follow server actions and direct forbidden writes remain denied. Open, owner repair pending. |
+
+Reported SQL HTTP restart, Flutter browser clearance and duplicate retention
+remain owner-reported results pending immutable integration execution. Data owner
+candidate is `790a9f936299de9770d66dc79563fb530625f9cf`; QA's planned isolated
+PostgreSQL/SQL Connect ports are 5569/9519. Do not interrupt backend's leased
+5549/9499. Worker claims to verify: five-minute persisted external-call lease,
+revision fencing, three safe lookup retries/dead-letter, expired unfinished call
+outcome-unknown, and snapshot polling recovery rather than an outbox consumer.
+
 Initial independent commands: test/source inventory and full document reads.
 No integrated or live journey has run.
 
