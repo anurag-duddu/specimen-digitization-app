@@ -19,10 +19,18 @@ List<Json> objects(dynamic value) => value is List
 String labelOf(String value) => value.replaceAll('_', ' ');
 
 class ApiFailure implements Exception {
-  const ApiFailure(this.message, {this.code = 'unavailable', this.status});
+  const ApiFailure(
+    this.message, {
+    this.code = 'unavailable',
+    this.status,
+    this.details = const {},
+  });
   final String message;
   final String code;
   final int? status;
+  final Json details;
+  bool get artifactRequired =>
+      status == 413 && code == 'workspace_artifact_required';
   bool get conflict => status == 409 || status == 412;
   @override
   String toString() => message;
@@ -86,6 +94,7 @@ class IntakeFile {
 }
 
 enum ArtifactKind {
+  activeGraph,
   phase,
   readingMetadata,
   authority,

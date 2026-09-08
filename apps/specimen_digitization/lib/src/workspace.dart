@@ -450,6 +450,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                       historySpecimen!,
                       artifact,
                     ),
+                    loadHistoricalArtifact: (record, artifact) => widget
+                        .repository
+                        .artifact(historyScope!, record, artifact),
                     loadHistoryPage: (after, through) =>
                         widget.repository.historyPage(
                           historyScope!,

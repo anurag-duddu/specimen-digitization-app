@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'large_record.dart';
 
 /// Historical snapshots are read-only and never replace the active review model.
 class AuditHistoryPanel extends StatefulWidget {
@@ -9,8 +10,10 @@ class AuditHistoryPanel extends StatefulWidget {
     required this.specimen,
     this.loadPage,
     this.loadRevision,
+    this.loadArtifact,
   });
   final Specimen specimen;
+  final Future<Json> Function(Specimen, ArtifactRequest)? loadArtifact;
   final Future<HistoryPage> Function(int afterRevision, int throughRevision)?
   loadPage;
   final Future<Specimen> Function(
@@ -186,49 +189,59 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
       Text(
         'Earlier history through revision ${record.data['history_through_revision']} is retained in the revision browser below.',
       ),
-    ExpansionTile(
-      title: const Text('Source asset and pinned run evidence'),
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: _json({
-            'asset': record.data['asset'],
-            'run': record.data['run'],
-          }),
-        ),
-      ],
-    ),
-    ExpansionTile(
-      title: const Text('Independent readings and transcriptions'),
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: _json({
-            'observations': record.observations,
-            'transcriptions': record.data['transcriptions'],
-          }),
-        ),
-      ],
-    ),
-    ExpansionTile(
-      title: const Text('Fields, authority evidence and validation'),
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: _json({
-            'fields': record.fields,
-            'evidence': record.evidence,
-            'validations': record.findings,
-          }),
-        ),
-      ],
-    ),
-    ExpansionTile(
-      title: const Text('Complete retained workspace'),
-      children: [
-        Padding(padding: const EdgeInsets.all(12), child: _json(record.data)),
-      ],
-    ),
+    if (record.data['artifact_receipt'] is Map)
+      LargeRecordEvidence(
+        key: ValueKey('historical:${record.id}:${record.revision}'),
+        specimen: record,
+        load: widget.loadArtifact == null
+            ? null
+            : (request) => widget.loadArtifact!(record, request),
+      )
+    else ...[
+      ExpansionTile(
+        title: const Text('Source asset and pinned run evidence'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _json({
+              'asset': record.data['asset'],
+              'run': record.data['run'],
+            }),
+          ),
+        ],
+      ),
+      ExpansionTile(
+        title: const Text('Independent readings and transcriptions'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _json({
+              'observations': record.observations,
+              'transcriptions': record.data['transcriptions'],
+            }),
+          ),
+        ],
+      ),
+      ExpansionTile(
+        title: const Text('Fields, authority evidence and validation'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: _json({
+              'fields': record.fields,
+              'evidence': record.evidence,
+              'validations': record.findings,
+            }),
+          ),
+        ],
+      ),
+      ExpansionTile(
+        title: const Text('Complete retained workspace'),
+        children: [
+          Padding(padding: const EdgeInsets.all(12), child: _json(record.data)),
+        ],
+      ),
+    ],
     const SizedBox(height: 12),
     Text(
       'Retained audit events · revision ${record.revision}',
