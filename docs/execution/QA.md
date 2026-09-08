@@ -866,3 +866,41 @@ receipt/cancel snapshots, screenshots and original artifact are retained at
 `/tmp/specimen-qa-745127a-{canonical,sql,live}.log`.
 This closes the tested >4MiB local graph/UI path. It does not promote production,
 scientific quality, cloud/provider limits or all20 P0 requirements to accepted.
+
+## 2026-09-08 — frozen TRN declarations independent checkpoint
+
+Frozen combined target `3dfb478469a7b78ad88c29332dfec34488018939` (backend6b4b654,
+Flutter941cf38), exact product tree verified. QA preserved its cumulative report
+when resolving the documentation-only import conflict. Independent canonical:
+271 Python passed,24 optional skips;64 Flutter passed,6 gated live skips;
+analysis, scanners and web build passed. Later profile/risk/telemetry/classifier
+followups remain excluded.
+
+Three fresh QA fixtures independently covered mixed, conflicting and unknown
+model declarations. Their flags remained distinct; confidence stayed null and
+unmeasured. Across those fixtures21 invalid reason/provenance/confidence/bounds/
+duplicate/relation submissions returned422 with no revision advance. Nine valid
+human submissions, including non-ASCII and empty candidate lists, retained exact
+observations, model/raw evidence, phase results and authority receipts. All
+invalidated prior approval; exact idempotent replay and stale CAS rejection passed.
+Three-entry supersession chains and original model-only pinned history survived
+repository reconstruction. Injected local identity/current membership probes
+rejected viewer/operator writes and denied current and historical declarations
+after membership revocation; restoration recovered exact historical content.
+These are local authorization tests, not Firebase or production IAM certification.
+
+Actual Flutter HTTP: revision20→approval21→French22→Italian23, with exact raw/model
+preservation, supersession, historical20 and stale CAS verified. Actual browser
+blocked an empty reason. Automation initially appended to prefilled candidates,
+which was honestly retained at24 and flagged conflicting. QA explicitly replaced
+text, verified DOM input values, then saved English/German cooccurring at25.
+Independent HTTP confirmed mixed=true, conflicting=false, unmeasured=true,
+review_required=true, approval=false. All four human entries remain; historical20
+still contains the exact original model declaration. This input automation issue
+is not classified as a product defect or hidden from the evidence.
+
+Evidence scripts/results: `qa-evidence/3dfb478/`. Full browser form/validation/
+lineage captures and persisted state: `/tmp/specimen-qa-3dfb478-trn`.
+Logs: `/tmp/specimen-qa-3dfb478-{canonical,independent,live}.log`.
+This is a bounded local declarations checkpoint; no scientific-quality,
+production, final-followup or complete P0 acceptance is implied.
