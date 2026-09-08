@@ -332,5 +332,8 @@ Log: /tmp/specimen-wave2-runtime-live.log. State:
 hard-child execution evidence comes from the runtime SQL/SQLite tests, not these
 readback adapters. No live provider call or institutional acceptance is claimed.
 
-Final combined canonical and independent runtime QA remain pending at this
-documentation checkpoint. Wave2 remains unpushed; first repair PR3 is preserved.
+Final combined canonical at f815fa6b647ce5040114b07da522c6c15a92469c passed:
+351 Python tests / 26 gated skips, 68 Flutter tests / seven live skips, analysis,
+scanners and web build. Log: /tmp/specimen-wave2-runtime-combined-canonical.log.
+Own readback API and SQL servers were stopped. Independent runtime QA remains
+pending. Wave2 remains unpushed; first repair PR3 is preserved.
