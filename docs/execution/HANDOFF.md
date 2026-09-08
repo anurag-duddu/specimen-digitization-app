@@ -13,6 +13,9 @@ Canonical verification at `f815fa6b647ce5040114b07da522c6c15a92469c` passed
 analysis, repository/secret checks and release web build. An independent fresh
 SQL database suite passed 71 tests; actual Flutter HTTP readback preserved exact
 runtime policy revisions and captured telemetry. Skipped opt-ins are not passes.
+The final source also passed local credential-free Android debug compilation;
+log: `/tmp/specimen-wave2-final-android.log`. Latest-candidate unsigned iOS CI
+and physical-device/signing evidence remain separate pending gates.
 See [integration evidence](WAVE2_INTEGRATION.md) for commands, logs and provenance.
 
 Final independent runtime QA and latest-head remote CI are pending. Earlier

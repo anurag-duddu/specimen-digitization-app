@@ -13,7 +13,9 @@ service/database and Storage bucket. Propose one Cloud Run API service and a
 separate worker delivery design, with keyless identities. Keep the existing
 Hosting workflow static-only. Do not deploy the polling worker as a background
 thread in a request-billed API. Persisted scanning, revision CAS and five-minute
-leases already exist. Harden and validate those mechanisms, select supervised
+leases already exist. Local failure tests now cover publication races, shared
+circuits, durable unknown outcomes and hard child-process deadlines. Validate
+those mechanisms with production identities and storage, select supervised
 worker hosting and complete the required engine comparison before production
 processing; an outbox consumer is not required for correct scanner recovery.
 
@@ -149,9 +151,10 @@ versions, source/raw digests and known external-effect ambiguity.
 
 Implementation prerequisites before a container can be deployed: commit/review
 an immutable container build; bind HTTP server to 0.0.0.0 and supplied PORT
-(current local CLI binds loopback); validate production rejects emulator transport
-and synthetic profile; harden existing scanning/lease behavior, validate its
-failure boundaries and complete the engine/hosting decision; verify runtime readiness can represent unavailable components;
+(current local CLI binds loopback); verify production rejection of emulator transport
+and synthetic profiles under real identities; validate the locally tested
+scanning/lease/effect boundaries in the selected hosting model and complete the
+engine/hosting decision; verify runtime readiness can represent unavailable components;
 verify no secret access by API or frontend; exercise new-process SQL reconstruction
 and production-profile semantics refusal. These gaps must be tested, not hidden
 by a successful image build.
