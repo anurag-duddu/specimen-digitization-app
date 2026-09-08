@@ -56,6 +56,18 @@ At **assumed** 10,000 input/image tokens and 4,096 output tokens per request,
 Actual region/input counts, extraction/classification and other model stages
 must be accounted for; the scenario does not establish a complete run quote.
 
+The runtime audit subsequently identified why that illustration cannot yet be
+used as an admission reservation. Reserving 131,072 input tokens and 4,096
+output tokens on each of two requests costs USD 0.0581632 for Qwen and
+USD 0.0884736 for Muse per reading stage. The current profile has one uniform
+per-effect cost reservation, also applied to SAM. Rounding that reservation to
+USD 0.09 consumes USD 4.50 across ten specimens with just two label regions
+each: ten times one SAM plus four reading stages. This leaves only USD 0.50
+for the independently accounted infrastructure envelope. It does not prove the
+complete pilot fits. Runtime is checking enforceable input bounds and stage
+reservations; actual source/region counts remain unknown. Do not discard regions
+or replace source specimens to make the budget pass.
+
 Coordinator TDD found that Pydantic usage totals are checked after responses;
 they do not cap provider generation. A candidate repair supplies a per-request
 maximum of 4,096 output tokens to the shared bounded runtime agent helper,

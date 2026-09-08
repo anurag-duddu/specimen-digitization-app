@@ -238,9 +238,30 @@ quiesce workers and retain evidence on failure. No destructive database rollback
   web build; log `/tmp/specimen-five-dollar-verify-20260908.log`. This succeeds
   the earlier 781-test baseline for the candidate. No paid inference or cloud
   data test is implied.
-- Specialist tasks are active but currently report `waitingOnApproval`: runtime
-  and data at their initial coordinator handoff tool calls; acceptance at public
-  browser inspection. Pending approval is not a test result or a rejection.
+- Candidate `2964e7b8288ab2e9baf195955519389e67e8b644` is published in draft
+  [PR 15](https://github.com/anurag-duddu/specimen-digitization-app/pull/15).
+  All five platform checks passed in
+  [CI/CD 34277824497](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34277824497),
+  as did all three runtime image builds and candidate structure validation in
+  [runtime CI 34277824350](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34277824350).
+  Hosting was correctly skipped on the pull request. This is not a merged or
+  deployed release, and structure validation does not establish runtime readiness.
+- All three specialist initial reports arrived. Runtime reproduced a SAM expiry
+  timer lifecycle defect and is repairing it with process tests. Acceptance
+  confirmed the public client says its application API is not configured and is
+  adding separate journey and cohort-budget evidence requirements. Data is
+  reviewing manifest completeness. Some local commands encountered sandbox
+  restrictions; those failures are not application regressions or test passes.
+- Coordinator executed the data owner's unchanged baseline harness with
+  `SPECIMEN_TEST_PG_PORT=5579 SPECIMEN_TEST_DC_PORT=9549
+  scripts/data/test-postgres.sh`: **passed, exit 0**. Actual local PostgreSQL and
+  SQL Connect emulator checks covered scoped paging/search, concurrent CAS/admin
+  bootstrap, isolated backup/restore, two restored connector restarts, and exact
+  schema/data/index equality after explicit, idempotent post-schema index repair.
+  Log: `/tmp/specimen-release-data-postgres-coordinator-20260908.log`; retained
+  evidence: `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-test.CwKNiR`.
+  These used synthetic fixtures and local services; live restoration remains
+  Not confirmed. The script stopped its own temporary services on completion.
 - After account-owner reauthentication, data owner performs one read-only refresh,
   then prepares the exact freeze/bootstrap/restore packet. Do not repeat failed
   credential probes or enable APIs simply to make inventory succeed.
