@@ -1,0 +1,7 @@
+# Production delivery controls are owned by the repository owner.
+/.github/workflows/ @anurag-duddu
+/scripts/ci/ @anurag-duddu
+/firebase.json @anurag-duddu
+/.firebaserc @anurag-duddu
+/docs/DEPLOYMENT.md @anurag-duddu
+/AGENTS.md @anurag-duddu
