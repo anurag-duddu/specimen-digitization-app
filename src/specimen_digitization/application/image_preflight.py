@@ -64,6 +64,8 @@ def preflight_image(
         if status == "blocked"
         else ("choose_valid_image",)
     )
+    if status == "blocked" and decoded.reason == "memory_limit_unavailable":
+        actions = ("configure_runtime_memory_enforcement",)
     if derivative is not None:
         derived_limits = policy.limits.model_copy(
             update={"max_bytes": policy.max_output_bytes, "allowed_formats": ("PNG",)}
