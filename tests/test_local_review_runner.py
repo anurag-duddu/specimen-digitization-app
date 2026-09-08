@@ -18,6 +18,9 @@ def test_retained_token_is_private_never_rotated_and_not_printed(tmp_path, capsy
     root = tmp_path / "review"
     token = runner.private_token(root)
     assert token and runner.private_token(root) == token
+    runner.write_access(root, {"web_port": 3000, "api_port": 8000, "source_sha": "test"})
+    assert "Fixture token:" in (root / "ACCESS.md").read_text()
+    assert (root / "ACCESS.md").stat().st_mode & 0o077 == 0
     assert (root / "token").stat().st_mode & 0o077 == 0
     assert token not in capsys.readouterr().out
     (root / "token").write_text("")

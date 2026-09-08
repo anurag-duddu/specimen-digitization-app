@@ -83,7 +83,7 @@ def write_access(root, info):
         f"API: http://127.0.0.1:{info['api_port']}\n"
         f"Source: {info['source_sha']}\n"
         "Email: reviewer@example.test\n"
-        f"Password: {token}\n\n"
+        f"Fixture token: {token}\n\n"
         "This local fixture bearer is not a Firebase or provider credential. "
         "Do not put it in a URL, Git, or chat.\n\n"
         f"Clipboard shortcut for the operator: `pbcopy < {root / 'token'}`\n\n"
