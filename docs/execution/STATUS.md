@@ -1,92 +1,103 @@
-# Live coordination status
+# Product build status
 
-Baseline: 82fd60e. Initial workstreams dispatched 2026-09-07 evening America/Chicago.
+Updated 2026-09-08. This file is maintained by the coordinating task. Detailed commit, command, and test evidence lives in the workstream reports and Git history.
 
-| Workstream | Task | Worktree / branch | State |
+## Current result
+
+The complete local application candidate is assembled at **ee4bec83715bf262deb9c7bff4598ad9211ddd44**. Documentation-equivalent integration head: **da3a9788cd90a3876a6076b93dd3eecd74ab33bf**.
+
+Integration verification passed:
+
+- Canonical repository checks, secret scans, Python tests: **351 passed; 26 explicitly gated tests skipped**.
+- Flutter: **68 passed; 7 live tests skipped**, analysis and release web build passed.
+- Separate fresh PostgreSQL/SQL Connect integration suite: **71 passed**.
+- Separate actual Flutter HTTP runtime test: passed.
+
+Independent final QA is running against the exact source candidate. Its fresh 71-test SQL suite passed. It generated its own runtime fixture and verified profile-specific policies and SAM request settings, nullable scoring, policy-tamper rejection, model observation provenance, and blocked classifier configurations. Final browser checks and the final acceptance report remain pending.
+
+**The product is not yet accepted for production.** Final independent QA, the complete PR update, and current-head remote CI are still required. Production configuration, representative model-quality approval, institutional semantics, and operational acceptance are separate gates.
+
+## Git and release state
+
+- Repository: `anurag-duddu/specimen-digitization-app`.
+- Existing draft PR: https://github.com/anurag-duddu/specimen-digitization-app/pull/3.
+- Published first-candidate head: `a11724aed21914bf718d83b43ef531fa6bc7ac2d`; all five checks passed in run `34194874601`, including Android and unsigned iOS. Those checks do not establish CI status for the newer local candidate.
+- Later work is assembled locally on `codex/product-wave2`; it has not yet been pushed.
+- Production remains at `82fd60eff90684d2c630a37c59e1250604ad1cae`. Integration freshly verified remote main, public deployment marker, and title smoke against that SHA.
+- No production merge, cloud provisioning, database/rules deployment, or paid inference was performed.
+- Before the full PR update: complete QA corrections, run the canonical verification gate, push without force, and wait for every current-head check. Production merges remain unauthorized pending the user's answer.
+
+## Coordination and ownership
+
+The parent task plans, coordinates, documents, and reviews. Product implementation occurs in separate tasks and worktrees. The first candidate and later implementation branches are retained independently.
+
+| Workstream | Task ID | Worktree suffix | Latest state |
 |---|---|---|---|
-| Coordinator | 01a07f44-7d89-7052-b968-5e96753493ad | /Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-coordination / codex/product-coordination | Plan written; coordination only |
-| Architecture | 01a07f47-c8a6-7983-9d45-adfccf0971a9 | /Users/anuragduddu/.codex/worktrees/969e/specimen-digitization-app / codex/architecture-contracts | All20 audit complete; final owned implementation gaps tracked |
-| Backend | 01a07f47-f5cc-7c10-bc1f-571b086e9cd2 | /Users/anuragduddu/.codex/worktrees/3782/specimen-digitization-app / codex/backend-reliability | Final code and fixture handed off through25bac56; available for independent final QA findings |
-| Flutter | 01a07f48-2c8e-72b1-99bc-d81f2729c429 | /Users/anuragduddu/.codex/worktrees/6b01/specimen-digitization-app / codex/flutter-workflow-completion | Final06f7616 runtime display handed off; final combined browser QA in progress |
-| Data | 01a07f48-6017-7af2-930d-ac2edda9ad9e | /Users/anuragduddu/.codex/worktrees/39c2/specimen-digitization-app / codex/data-platform-foundation | Existing cloud metadata verified; schemas/contracts underway |
-| CI/CD integration | 01a07f48-a57c-71b0-9642-c9430886049c | /Users/anuragduddu/.codex/worktrees/80e6/specimen-digitization-app / codex/product-wave2 | Final sourceee4bec8/docsda3a978 canonical351Python68Flutter+SQL71 green; preparing coherent PR and handoff, final QA pending |
-| Independent QA | 01a07f4a-f674-7243-a6c8-f91cd82c1d27 | /Users/anuragduddu/.codex/worktrees/14dd/specimen-digitization-app / codex/independent-acceptance-review | Finalee4bec8 freshSQL71 and new policy/model fixture checks pass; canonical/live client/browser ongoing |
+| Architecture | `01a07f47-c8a6-7983-9d45-adfccf0971a9` | `969e` | All 20 acceptance criteria mapped; final code gaps assigned and handed off |
+| Backend | `01a07f47-f5cc-7c10-bc1f-571b086e9cd2` | `3782` | Final runtime and test follow-up handed off through `25bac56`; available for QA repairs |
+| Flutter | `01a07f48-2c8e-72b1-99bc-d81f2729c429` | `6b01` | Final client `06f7616` handed off; available for QA repairs |
+| Data | `01a07f48-6017-7af2-930d-ac2edda9ad9e` | `39c2` | Schema, storage, paging, search, and V3 checksum handoffs complete |
+| Integration | `01a07f48-a57c-71b0-9642-c9430886049c` | `80e6` | Final local candidate verified; preparing PR and handoff documentation |
+| Independent QA | `01a07f4a-f674-7243-a6c8-f91cd82c1d27` | `14dd` | Final immutable-candidate assessment underway |
+| Collection profiles/codecs | `01a07f6f-fd00-7011-827b-c03257df69bf` | `23ec` | Profile rules, codecs, preflight, and process boundary handoffs complete |
+| Evidence/risk/circuits | `01a07f70-854b-7b50-be5a-9d19ab8747c0` | `5178` | Authority, reading, risk-policy, and circuit handoffs complete |
+| HF classifier | `01a0801b-caea-7232-9947-f73ac93f205a` | `36e1` | Configured adapter handed off and integrated; live quality unverified |
 
-## Decisions and communications
+Worktree suffixes expand to `/Users/anuragduddu/.codex/worktrees/<suffix>/specimen-digitization-app`.
 
-- User confirms configured access and authorizes use of local CLIs, computer and browser. Tasks should inspect existing resources before claiming missing access.
-- Spending cap, provisioning and production merge question remains pending; proceed with implementation, read-only existing resource inspection and local/emulator verification.
-- Architecture/backend/Flutter task IDs and preliminary API requirements distributed directly among owners.
-- Architect published v0.1 contract at /Users/anuragduddu/.codex/worktrees/969e/specimen-digitization-app/docs/execution/CONTRACTS.md; distributed to all implementation owners. Backend remains executable schema owner; deviations must be reconciled before integration.
-- Production database remains SQL Connect. Any SQLite adapter is explicitly local/synthetic, not a production substitution.
-- Critical environment finding: default gcloud project is fm-specimen-pipeline, not this project. Every cloud request must explicitly target specimen-digitization; relayed to data/backend/release.
-- Data owner verified existing PostgreSQL 18 instance/service in us-east4, no listed SQL Connect connectors, Storage bucket in US-EAST1, and Hugging Face Secret Manager metadata. No secret values inspected.
-- Release owner found JDK17 through Android toolchain; connected data owner for emulator setup.
-- Heartbeat coordinate-specimen-product-build created every 15 minutes for continued coordination; quiet unless meaningful change/action. Pause when completed or only user-dependent work remains.
+Coordinator task: `01a07f44-7d89-7052-b968-5e96753493ad`. Shared planning worktree: `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-coordination`, branch `codex/product-coordination`.
 
-## Evidence
+The `coordinate-specimen-product-build` heartbeat runs every 15 minutes to resume coordination. It should stay quiet without meaningful changes and be paused when all actionable work is complete or requires user input.
 
-- Initial working tree clean; origin fetched; no open PRs.
-- Latest baseline main workflow 34185255766 was completed/success. Public marker independently pending release task.
-- Release task subsequently verified all four jobs green, public marker/title smoke matching full SHA 82fd60eff90684d2c630a37c59e1250604ad1cae, strict branch checks/admin protections/main-only environment/exact WIF/least-privilege Hosting identity. Baseline 33 Python tests and 1 widget test pass; web build in progress at report.
-- No new product completion, production deployment, real inference, or cross-platform verification claimed yet.
-- Integration baseline report committed as 84d80e8 on codex/product-integration. Canonical scripts/ci/verify.sh fully passed, including release web build. Integration awaits reviewed component commits; native CI preparation depends on Flutter credential-free configuration strategy. Report: /Users/anuragduddu/.codex/worktrees/80e6/specimen-digitization-app/docs/execution/INTEGRATION.md.
-- Native preparation: integration reports Android debug APK build and temporary-config preservation tests pass. Local unsigned iOS blocked by missing iOS 26.5 platform/generic destination; CI runner compatibility must be verified. No signed/device acceptance claimed.
-- QA procedure published at /Users/anuragduddu/.codex/worktrees/14dd/specimen-digitization-app/docs/execution/QA.md, all 20 P0 criteria mapped. Reviewer identified baseline echo-evaluation/title-widget/mock-route false-positive risks and was asked to send them to owners. Final acceptance awaits immutable integrated candidate.
-- Architect completed whole-codebase/requirements audit and published ARCHITECTURE.md and ACCEPTANCE.md beside CONTRACTS.md in architecture worktree. Includes all 20 section-19 criteria plus section-11 P0 obligations. Documentation verification/commit pending; wire transport agreement still needs owner confirmation.
-- Native CI preparation committed locally as 7e168b6 on integration branch; canonical verification passes, Android build/cleanup fault tests pass. Integration verified exact macos-15 architecture mapping against official runner reference. Actual PR native CI remains untested until candidate push; no deployment or merge.
-- Architecture documentation verified commit 41e8f29 ready; integration notified. Flutter/backend agreed offset-based authenticated upload PUT /v1/organizations/{org}/uploads/{id}/content, GET offset and versioned complete. Data compiled seven named CRUD/membership/receipt operations. Follow-up delta ledger pending; backend exact serialized session/workspace/mutation fixtures still required.
-- Architecture final HEAD 6a19fa9 integrated through integration HEAD bcdb81c. Naming/projection settled; real HTTP workspace/upload response fixtures and identical-file Flutter parsing remain executable acceptance gates. QA notified about valid-empty outcomes, unresolved values and bounded snapshots.
-- Data reports 25+ compiled operations and emulator checks passing CAS/stale rollback/history/isolation/sensitivity/revocation/client denial/upload shape/outbox/audit. Concurrent writers exposed bundled PGlite connection failure; owner retaining regression and preparing isolated local PostgreSQL18 test cluster. Storage rules test Java21 acquired locally with vendor checksum. These are component reports, not integrated or deployed acceptance.
-- Backend reports 14 new behavioral tests pass, full synthetic HTTP intake/two readings/review/clearance/restart/chunks; initial Python SQL Connect adapter operations pass on PostgreSQL18-backed emulator. Full SQL journey, production adapters and final canonical check still pending.
-- Flutter reports analysis and 9 offline tests including actual backend fixture pass, real HTTP test and browser login/queue/source/review pass in explicit synthetic mode. UI polish/canonical commit pending; production API/App Check setup is a distinct gate.
-- Latest QA addenda 71f5af7 and 5ac3798 specify exact UTF8 size boundaries, actual shared fixtures, fresh-process SQL recovery and synthetic/production clearance separation. Integration notified; independent execution awaits immutable integrated candidate.
-- Data final790a9f936299de9770d66dc79563fb530625f9cf integrated as14e7361. Integration independently reran PG18.6 connector race/restart and Storage denial suites exit0 on isolated5589/9539. Runtime provisioning proposal prepared in integration docs/execution/RUNTIME_PROPOSAL.md; approval/spend still pending.
-- Backend reports real TCP SQL HTTP complete synthetic journey and API kill/restart with identical workspace/original bytes. Worker uses persisted5min external-call leases/revision fencing, three safe lookup retries/deadletter and snapshot polling; no outbox consumer or selected managed engine. Final canonical rerun/commit pending and QA notified to independently verify.
-- Production config inspection found empty repo/environment build variables and SERVICE_DISABLED for AppCheck and CloudRun APIs. Alternative runtime not ruled out. Missing API/AppCheck setup must produce actionable production UI state, never synthetic fallback.
-- Backend final implementation80b432eab35e97c04b6776373563a3128bf4b702/report034d806c30b21e2b1d031ac6c84b6c80637088e8 ready and relayed integration. Canonical54Python and baselineFlutter pass;2opt-in SQL/TCP restart tests pass. F01 typed abstention/F03 role actions fixed with HTTP regression. Full production gaps remain in BACKEND.md.
-- Exact generated fixture digest scanner findings resolved by integration30d6f99 with individually audited values and credential-canary rejection; defaults preserved. Flutter canonical/native handoff pending.
-- Architecture task resumed for NEXT_WAVE.md planning: prioritize remaining implementable P0 work versus externally gated production/model/institutional validation; propose2-3 bounded tasks. Parent continues coordination, no product implementation.
-- Flutter final31120e7d88ce053c465e890718d5fc21fc898322/report57a070cf4c6dd835cf2ae9be0ced442dc9187bd1 integrated through63ecf8c; exact fixture parity verified integration.16Flutter regressions and realHTTP pass owner; Android debug passes, local iOS SDK missing. QA-F01/F02/F03 fixes included. Mutable3000/8000/8001 task services stopped.
-- Backend isolation patch03eaefcd950de7f0994614355021e4c91465dec0 canonical62Python passes; first branch frozen, next branch codex/backend-reliability active3782. Data first services stopped and report1a9bce8 ready; codex/data-work-paging active39c2. First integrated canonical+SQL verification underway before QA freeze.
+## Implemented and locally exercised
 
-## Second wave active
+The candidate includes the responsive Flutter intake/review product, resumable uploads and duplicate reconciliation, SQL Connect persistence, immutable object provenance, independent transcription paths, review corrections, deterministic final dispositions, recovery and history, versioned profiles, configured HF classification, segmentation adapters, authority/evidence phases, language/script declarations, scoped risk assessments, search, and observability.
 
-- Collection profiles, classification and image quality: task01a07f6f-fd00-7011-827b-c03257df69bf, worktree /Users/anuragduddu/.codex/worktrees/23ec/specimen-digitization-app, codex/collection-quality at backend034d806 baseline. Own new collection_profiles.py/classification.py/image_quality.py plus matching tests/report only.
-- Evidence/authority harness: task01a07f70-854b-7b50-be5a-9d19ab8747c0, worktree /Users/anuragduddu/.codex/worktrees/5178/specimen-digitization-app, codex/evidence-authorities at034d806. Own new evidence_harness.py/authority_registry.py/parties.py/geography.py/review_risk.py plus matching tests/report only.
-- Backend remains sole core workflow/domain/API/shared harness integrator; data owns due-work pagination/history SQL ops/indexes. Exact handler contracts exchanged directly. No managed engine/broker selection required for local reliability fixes.
-- Independent QA evaluates frozen first-wave candidate; unfinished second-wave code excluded. Later integrate reviewed second-wave changes and repeat impacted QA. Externally blocked production/institutional/model acceptance remains separate.
-- First-wave QA baseline frozen4c71e133acc9f99c2dae068f4199c806bde8ff5f; integration confirms SQL adapter+TCP restart2tests pass using canonical seed, Flutter against integrated SQL API passes, Android passes and fixture parity holds. QA received exact launch handoff and parent instructed independent execution. Final canonical prepush/draft PR/remote CI pending. No secondwave code or production merge included.
-- Draft PR3 https://github.com/anurag-duddu/specimen-digitization-app/pull/3 opened at4c71e13. CI34190351787 all5checks SUCCESS including Android+unsignediOS; Hosting deploy correctly skipped. CI does not imply product acceptance.
-- Independent QA reproduced B01 completed-upload idempotency payload/replay violation and B02 truncatedPNG503/keepalive reset; other canonical/PG/Storage/SQLrestart/FlutterSQL checks pass. Backend repairing in isolated /tmp/specimen-upload-completion-repair codex/upload-completion-repair based frozen4c71e13; reliability tree preserved.
-- Collection quality final5023f235304b4fe819f899ceb8afd9334b4a006d canonical82Python including28new passes; backend integration dependency7a39834, do not duplicate. Evidence authority owner reports40new tests including localTCP/provenance/budgets/replay pass; final canonical pending.
-- Secondwave data paging reports10037due rows/102boundedrequests, schedule races/nextsweep recovery, scope/revocation/history/index/restart checks passing realPG. V2Create/Save/ListDueWork contract accepted backend; final canonical/commit pending.
-- Independent QA B03(P1): missing raw observation object still permitted HTTP clearance; actual stored ref/digest/association integrity gate required. Backend isolated repair prioritized; PR risk text updated. B01/B02 repair7a47b10 canonical64Python passes, integrated locally0290a4a; push held for B03/combined rerun.
-- Evidence final0da144de081cf7a28154ec2c1cd90fbea9834064 canonical95Python/41new tests passes; backend to carry in secondwave. Data paging final305a133ff3daf2422e16060ffb4e19666a6df24c+584aac728b9b8b043df7964f1d7a255973ad2db9 ready; backend to consume after priorityQA fix. Local5579/9529 services stopped.
-- QA independently passed SQLrole denial/revocation, unapproved production-profile clearance refusal via emulatorHTTP, typed authority localHTTP outcomes, snapshot exactUTF8limits/atomicreject and mandatory absence probes. Browser source/review/approval/unreadable revalidation verified. GUIfilechooser setter blocked extension permission; native chooser fallback suggested without permission changes. No Firebasecrypto/liveinference claim.
-- B01/B02/B03 independently closed on25e8358 testedlocalTCP+SQL; all5CIgreen34191282215. Checksumfollowupf0d8ede integrated76da660, canonical77Python and independent actualPydanticTestModel retainedraw SHA/corruptrestore passes. No liveinference proof.
-- B04newP2:11normal approvals copiedfullrun(~20k/event),12th413 prevented recovery. Minimal backend4bea6c9 integrated95215d9 uses immutablepriorrevision/run digest references, provenprefix compaction at128KiB, complete scoped history API; no256KiBcap increase. Flutterhistory4d00421 integrated4fc34d2. F04 narrowimage aspect repair separately pending.
-- Independent B04backendQA95215d9 originalnearcaprecords recovered,211/101newapprovals incl110faultrestore, currentmax130668/88283bytes;239/129versions235/125auditsequence complete,56legacyrawrows unchanged. Auth/revocation/tamper409/processrestart pass. Historypage displayedsha reconstructeddefaults mismatch vs retainedbytes remains focusedbackend followup; rawstoredintegrity itself passed.
-- Integration independently passed250reviewSQLfixture+Flutterhistorypaging/readonly/fixedboundary/digest/CAS. Finalallcandidate awaits historicalhashfollowup+F04geometry; QAUI final checks pending.
-- Reliabilitysubset checkpointa63ab1a committed secondwave, canonical160Python16Flutter passes; actualSQLdueworker/failurebudgetlease12tests and SQLTCP/history6tests pass. Sharedcircuits/SAMdeadline/profileauthorityassembly/discovery remain; not finalwave handoff.
-- Final firstrepair application290a2a7c6c713d39b1fefc9b88298bbe7b5f86bc includes originalhashc99d1b2+Flutterhistory4d00421/F04AX4794b0. Exactcanonical81Python26Flutter, integrationSQL250reviewhistory and all5remoteCI34193537794 pass. No Hostingdeploy.
-- Independent QA final7746975 (afterfcf8f7b) closesB01-B04/F01-F04 onlytestedlocal scope; originalnearcapfullhistory/restart/auth/sourceprovenance/geometry/AX proven. OverallP0NOTaccepted. GUIchooser independently nottested due extensionpermission/targetwindow; allownedQAservices stopped, legacycluster/evidence retained. Integration notified to include report.
-- Flutter newcodex/flutter-workflow-completion from290a2a7 active for additive realquality/classification/authority/raw/regions/recovery contracts; backend sharedcore integration continues.
-- Additional explicitP0 work assigned: collectioncodex/collection-codecs-preflight (optionalHEIC/RAW boundeddecoders and presubmissioncontract; syntheticDNG actualdecode verified isolatedoptionalenv), evidencecodex/reading-evidence-metadata (newreading_evidence.py exactUnicodeoffsets/uncertainty/longinputbounds), datacodex/data-search-projections (agreedscopedserverfilters/keyset notclient10kscan). No productiondependency/config claim until integratedtested.
-- Architect94bce42+followup updatedall20acceptanceowners/currentWIPrealphasehandlers and minimumEXP001filterproposal. Backend warned missingliteral mustoperationallyblock and longreading mustnot silentlyskiprisk. These are openwaveintegration requirements, not acceptedproductionfeatures.
-- Secondwave reading17a585a,codecseef106f/preflighthintcb96849,search12bd103+9df1955 delivered and assembled backend026d0b9 with206Python13explicitoptionalskips+realSQL/API/TCPauthoritytests. Integrationmappedapplicatione963811/docse2cd076, actualSQL26tests passed. Flutter16826ac combineda398583 passed47widgets+liveHTTP.
-- Independent QA backendreport e371a7c passed63HTTP/SQLassertions,4HTTPUnicode+300oraclecases,13scopeworkerfairness/restart,artifactrevocation/cursorbinding. GUIreport a587dfb independentlyprovedactualbrowserPNGpicker/upload,sourcebyteexact,preflightzeroDBeffects,duplicate,classify/qualifiedauthoritydecision/separateapproval,history,ROIrotation,ANDsearch/responsive390/1440. No new scopeddefect; overallP0notaccepted. Prior independentchooser gap nowclosed for testedpath.
-- Flutter1e18d14 staleROIreset/metadataoffset/preflightconsent followup integratedb53a9ec afterQA froze GUIevidence; exactcanonical206Python50Flutter passes. Wave2unpublished; firstPRa11724a all5CIgreen remains productionunmerged.
-- Corrected earlier mistakenSQLchecksumclaim: SQLiteonlyhadunique. Data V3fix3daf6c7+5f15bc1 adds scopedchecksumunique+CreateV3/SaveV3typedguard/Findmetadata; actualPGsamebytesdifferentID/keyrace1fullcommit loserzeroeffects/fullregressions pass. Backendadoptedbothwriters inhardeningWIP, actualHTTPSQLite/SQLrace testsreportedpass. LegacyV1V2/nullrows externalrolloutgate, no productionapply.
-- Provider circuit19997c7+lease681d1e0 and boundedeffecte0dd0aa+profileformat effb708 handedbackend withactualSQLiteCAS/restart/subprocessTCP tests. HardeningWIP reports actualsharedSQLcircuit/singleprobe, SAMauthdeadline/drip/durableunknown, boundedrawreads, realHEIC+DNG4orientations/intake/crop/restart tests pass. Full reviewedcheckpoint notyetready; graph96KiBoffload/16MiBcaps and actualTRNlanguage/scriptcapture remaining.
-- Codecfixture scanner5868705 auditedexactcopies8dc736... withbothscannercanaries, defaults intact. Architecture562ad74 documents conditional activegraphproposal only; mandatoryhash/auth/responsecap/recovery/CAS/legacyhistory tests remain backendowned. No remoteSAM/providerquality/productionacceptance claimed.
-- Hardeningcore d6be7a0 + clientcodec f10eb79 combined906e134 passedcanonical243Python54Flutter; integrationactualSQL30+optionalHEIC/DNG9passed. QA independentlyfoundH01LocalBlobs partialpublicationrace despite earlierpass. Minimal38fa32f+c8001bb atomictemp/fsync/createonlypublish/emptyedgefix independentlyclosed8a405ee after originalfailure8e421b1: barriers,emptycorrupt,5fourwaySQLraces20IDs/5winners15duplicates20exactreplays. No integrity weakening.
-- Activegraph0fc9cd0 + scope/optin3aca16f/3bd7f64 + CORS7dc87cc + client36ae5c1 combined745127a: independentQA9405374 canonical259Python58Flutter, freshSQL49pass, all377GUIpages reconstructed20observations/4,515,728JSONchars,4,828,563byteartifact SHA/auth/scope/receipts/history/corruption/restart pass. Compactrow12,897bytes. Report integrated2b8bc70; exactscope closed, no productionacceptance.
-- TRN backend6b4b654/corea6fd15c/fixture8439b6e+client941cf38 combined3dfb478: independentQAec3da7c canonical271Python64Flutter,3mixed/conflicting/unknownfixtures21invalidzeroeffects/9valid declarations/supersession/replay/CAS/approvalinvalidation/modelraw+phase+authorityimmutability/currentauthrevocation pass; actualHTTP/browserform+provenance pass. Report sentintegration; laterpolicy/riskfollowups excluded.
-- Final wholePRDaudit ef86f7e explicitly identified assigned remaining implementation gaps: publishedlanguage/scoring/SAMpolicy wiring, per-labelrisk, actualparsedobservation latency/finish/parameters, boundedlegacyadjudication/authorityreads and runnableHFclassifier. ING005 assistedpreflight feedback sufficient; automaticqualitydetector notrequired and noneadded. EXP001 numericriskintervals accepted, no inventedbands.
-- Specialists finalprofilec892e0e (explicit immutable runtime rules, legacyJSON/hashpreserved), risk51fb6f (exactpolicyresolver+label/field/specimenunmeasured), HFclassifierfd72c33 (48tests, exactModelResponseprovenance, wholecallboundedtrustedfactorycontract, humanconfirmation/calibrationNone) deliveredbackend. Newclassifier task01a0801b-caea-7232-9947-f73ac93f205a at /Users/anuragduddu/.codex/worktrees/36e1/specimen-digitization-app, codex/hf-collection-classifier. Backend sharedcore wiring/finalcohesivefixture ongoing.
-- All production/spend/merge authorization questions remain unanswered. No productionmerge, provisioning, paidinference, or schema/rule deployment occurred. FirstPR3 publisheda11724a all5CIgreen; laterwave changes retainedlocally pending finalhandoff/QA/CI. Existingruntime/AppCheck/SQLmigration/backuprestore/providerquality/institutional/device gates remain explicit.
-- Final backend originals after6b4b654:64c5420,51fb6f,c892e0e,fd72c33,a45643f,scanner42dd95a,b60d9f fixture,test-only25bac56. Implements exact publishedlanguage/risk/SAMpolicy resolution, label/field/specimen nullable assessment, actualobservationtelemetry, boundedlegacy/authoritypaths, configuredHFclassifier and wholeprocess transcription/extraction/SAM boundaries. Finalclient06f7616 adds exact nullable/provenance rendering, frozen410255byte7e44c24 fixture. No scientificquality or productionapproval implied.
-- Final combined product sourceee4bec83715bf262deb9c7bff4598ad9211ddd44, docs-equivalentda3a9788cd90a3876a6076b93dd3eecd74ab33bf. Integrationcanonical351Python26gatedskips/68Flutter7liveskips/analyze/scanners/web PASS; freshSQL71 PASS and actualruntimeFlutterHTTP PASS. Earlier failure was staleNULLrisk expectation(test-only corrected) then reusedfixtureDB duplicate; freshsuitepassed without filter/constraint weakening.
-- Independent FINAL QA executing exactee4bec8, allpriorfixturebytes unchanged. FreshisolatedSQL71 passed85.59s; independentlygenerated newAPI+SAMTCP+configuredmodelchild fixture, notownerstate. Verified profile20/40pins/SAMprompts/measured40/60contributions/allNULLscopedcomposites, fourpolicytamperclassblock, actualtwoobservationsrawSHA/latency/basis/finish, classifierunapproved/unconfigurednochild. Finalcanonical/liveFlutter/browser+remainingHEICcropGUI checks underway; no finalall20acceptance yet.
-- Integration preparing HANDOFF.md/README/docsindex/dataflow/runcommands and precise resource/cost approvalproposal. Read-onlyprodmain+deploymentmarker still82fd60eff90684d2c630a37c59e1250604ad1cae, marker/title smoke freshlypasses. Fullreviewedwave2 update toexistingPR3 will occur afterfinalQA/gates, without forcepush orproductionmerge. Finalpush/remoteCI stillrequired; localcandidate success is not releasecompletion.
+Important implementation details and limits:
+
+- SQL V3 create/save operations enforce scoped checksum uniqueness and immutable source hashes. Real PostgreSQL races demonstrated one complete winner and no partial loser effects. Legacy nullable rows and pre-V3 writers require a reviewed migration/retirement plan before production rollout.
+- Provider circuits and model/SAM child-process boundaries preserve leases, fenced outcomes, and unknown external-call results. Local subprocess and SQL workflow tests are not production worker/ADC rollout evidence.
+- Actual HEIC/DNG fixtures were decoded, uploaded, processed, reopened, and reviewed in an explicitly permitted local codec environment. Optional codec licensing, runtime memory enforcement, arbitrary RAW families, and physical-device behavior remain separately qualified.
+- Large active graphs are stored as verified immutable artifacts while current rows remain bounded. Complete history and evidence stay retrievable; oversize responses distinguish a committed mutation from a failed action.
+- Published language, scoring, and segmentation settings resolve explicitly. Missing or unsupported policies fail closed. Unmeasured risk is not zero and never grants clearance.
+- Model observations retain actual provenance and telemetry. Human language/script declarations supersede separately, preserve model evidence, and invalidate approval as required.
+- The classifier adapter is runnable when appropriately configured, but calibration is absent and human confirmation remains required. Test models and local authority fixtures are never represented as approved museum inference.
+
+## Independent QA milestones and repairs
+
+Each result applies only to its recorded candidate and tested local scope. Reports retain original failures and reproducible evidence.
+
+| Candidate/report | Independent result |
+|---|---|
+| First candidate `4c71e13` | Found upload replay, malformed-image, evidence-integrity, and audit-capacity defects |
+| Repairs through `290a2a7` | Closed B01-B04 and F01-F04 in local scope; verified source geometry, accessibility, complete history, and unchanged legacy snapshots |
+| Backend/UI `a398583` | Verified actual browser picker/upload, exact source bytes, classification, qualified authority selection, separate approval, history, rotated regions, filters, and responsive layouts |
+| Hardening `906e134` | Found H01: local blob filename exposed before write completion |
+| `906e134` + `38fa32f` + `c8001bb`; report `8a405ee` | Closed H01 with deterministic barriers, empty/corrupt cases, and five four-way SQL HTTP races: five winners, fifteen duplicates, twenty exact replays |
+| Graph `745127a`; report `9405374` | Reconstructed all 377 GUI pages and 20 observations exactly; verified a 4.8 MB artifact, hashes, authorization, committed-action recovery, history, corruption rejection, and restart; compact row about 13 KB |
+| Declarations `3dfb478`; report `ec3da7c` | Verified mixed/conflicting/unknown cases, invalid requests without effects, supersession, replay, stale writes, approval invalidation, immutable model evidence, revocation, and actual browser forms |
+| Final source `ee4bec8` | Independent SQL and fresh policy/model probes passed; final canonical/browser assessment in progress |
+
+The final report must distinguish independent passes, integration passes, owner-only evidence, explicitly skipped tests, and externally blocked criteria. No historical passing CI run substitutes for final-head checks.
+
+## Authorization and external gates
+
+The user confirmed configured CLI, browser, and computer access. The team used existing resources and local tooling; access is not treated as approval for new spending or production mutation.
+
+Still unanswered: overnight spending cap, cloud provisioning permission, and production merge authorization. Existing web/Android/iOS targets were used provisionally; unsigned native build success is not signing, store distribution, or physical-device acceptance.
+
+Verified production gaps and decisions to resolve:
+
+- API/runtime and App Check build configuration are not established. Relevant API inspections returned `SERVICE_DISABLED`; alternative runtime presence was not assumed either way.
+- SQL schemas/connectors, Storage rules, worker runtime, IAM, and indexes require reviewed delivery separate from Hosting. No workstation deployment is permitted.
+- Existing SQL backups were disabled at inspection; backup/restore acceptance is a hard launch gate. Zonal deployment and different SQL/Storage regions are owner tradeoffs, not automatic migration mandates.
+- Representative data, quality thresholds, approved model/provider routes, institutional field semantics and Parties authority access remain acceptance dependencies. Synthetic profile approval cannot leak into production policy.
+- Production secrets must remain server-side and use the documented keyless/Secret Manager boundaries. No secret values belong in Git, client configuration, fixtures, or trace output.
+
+The default local gcloud project points to `fm-specimen-pipeline`; every command for this product must explicitly target `specimen-digitization`.
+
+## Final handoff requirements
+
+Integration is preparing `HANDOFF.md`, a README refresh, a documentation index/dataflow, verified startup and demo commands, and a concrete runtime proposal. Preserve the existing `AGENTS.md` and complete `docs/DEPLOYMENT.md` contract.
+
+Before reporting completion, provide the final PR/head, current-head CI, independently tested user journeys, exact local startup instructions, supported/tested platform distinctions, and remaining owner actions. Do not describe the full production product as complete while external release and institutional gates remain open.
