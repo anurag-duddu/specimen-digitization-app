@@ -1,0 +1,74 @@
+[
+  {
+    "scenario": "exact",
+    "pass": true,
+    "outcome": "complete",
+    "cap": 8,
+    "application_bytes_read": 8,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "overshoot",
+    "pass": true,
+    "outcome": "BlobTooLarge",
+    "cap": 257,
+    "application_bytes_read": 258,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "declared_oversize",
+    "pass": true,
+    "outcome": "BlobTooLarge",
+    "cap": 257,
+    "application_bytes_read": 0,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "underdeclared",
+    "pass": true,
+    "outcome": "Conflict",
+    "cap": 8,
+    "application_bytes_read": 3,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "digest_mismatch",
+    "pass": true,
+    "outcome": "Conflict",
+    "cap": 8,
+    "application_bytes_read": 8,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "invalid_length",
+    "pass": true,
+    "outcome": "OperationalBlock",
+    "cap": 8,
+    "application_bytes_read": 0,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "redirect",
+    "pass": true,
+    "outcome": "OperationalBlock",
+    "cap": 8,
+    "application_bytes_read": 0,
+    "requests": 1,
+    "response_closed": true
+  },
+  {
+    "scenario": "missing",
+    "pass": true,
+    "outcome": "Missing",
+    "cap": 8,
+    "application_bytes_read": 0,
+    "requests": 1,
+    "response_closed": true
+  }
+]

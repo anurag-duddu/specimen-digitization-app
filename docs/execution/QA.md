@@ -741,3 +741,62 @@ API8124, SQL9519 and PostgreSQL5569 services were stopped. SQLite/blob evidence 
 retained at `/tmp/specimen-qa-a398583-authority`; the fresh SQL cluster is retained
 under the temporary `specimen-data-serve.qVpvwg` directory. No push, PR merge,
 production connection or deployment was performed.
+
+## 2026-09-08 — frozen hardening checkpoint906e134, atomic repair pending
+
+Candidate `906e1348e71a0e800bfb260fa1125d67239b0e0e`, exact backendd6be7a0 and
+Flutterf10eb79. Independent canonical243 Python passed/23 optional skips,
+54 Flutter passed/4 live skips, analysis/scanners/web passed. Fresh SQL suite
+**29 passed,1 failed**: same-source concurrent completion returned409 Immutable
+blob content mismatch and200, rather than200/200 acceptance/duplicate.
+
+**H01 open: LocalBlobs publishes an incomplete final pathname.** A deterministic
+QA-only scheduling hook pauses the first writer after exclusive create, before
+writing. Its final hash-named path is visible at size0. A second actual put of
+identical bytes falsely raises Immutable blob content mismatch. The first write
+then completes and reads correctly. This reproduces the spontaneous SQL/HTTP
+failure and is not excused by a later retry. A process crash in this window can
+also retain an incomplete hash-named file. Backend and integration received the
+reproducer immediately. No product edit was made to this frozen tree.
+
+Other independent checks passed:
+
+- Four actual HTTP completions synchronized before real CreateSpecimenV3 writes:
+  four distinct IDs/keys, one committed specimen, three authorized duplicates,
+  exact same-key receipts, changed-key409 as intentionally bound by contract.
+  Invalid checksum SaveSpecimenV3 left revision1; valid save reached2. No legacy
+  create/save operation was used. This proves SQL uniqueness, not local blob
+  publication correctness.
+- Real patterned HEIC120×80 with orientation6, explicit null dimensions, actual
+  HTTP intake and codec child: verified80×120 decoded primary basis, byte-exact
+  original, canonical pixels matching an independent decoder, partial crop
+  5,7,40,50 and clockwise rotations1/3 matching NumPy pixel oracles. Restart with
+  codec disabled and decode calls forbidden still processes retained pixels.
+  Optional owner suite9 tests also passed; no arbitrary RAW/device claim.
+- SAM child fixtures: slow authentication and drip TCP completed deadline handling
+  in3.03/3.01 seconds for a3-second budget. Oversize output and401 fail closed.
+  Children were reaped, private IPC cleaned, unknown outcomes retained, and three
+  fresh workflow/repository calls after lease expiry issued no additional request.
+- Actual local TCP through GCS streaming adapter: eight exact/oversize/header/
+  digest/redirect/missing cases.257-byte cap consumed258 application bytes on
+  overflow; oversized declared length consumed0. All responses closed, generation
+  pinned, no redirects followed. GCS auth/stream wall-clock bounds remain excluded.
+- Four fresh Python interpreters synchronized their initial SQL circuit read:
+  exactly one half-open permit and three busy responses. Restart state, expired
+  probe reopening, late-result fencing, successful closure and600-second provider
+  minimum were verified through actual SQL Connect worker_cursor CAS.
+
+Evidence and reproducible scripts: `qa-evidence/906e134/`; full private synthetic
+captures resolve via `/tmp/specimen-qa-hardening-path`. Canonical and optional
+logs are `/tmp/specimen-qa-906e134-{canonical,codecs}.log`. Actual Flutter HEIC
+HTTP test independently passed. GUI selected/uploaded a fresh patterned HEIC
+without local dimensions and showed honest80×120 decoded source provenance.
+GUI crop/approval completion is **not yet established**: one post-resize click
+sequence saved an empty region list; server refused clearance. Stable-viewport
+keyboard rotation retained a region but the temporary browser tab closed before
+that edit was saved. This is unresolved automation-versus-UI evidence, not a
+confirmed second product defect. No crop-GUI pass is inferred.
+
+Preserving this failed checkpoint before the separately reviewed minimal atomic
+repair38fa32f+c8001bb. Graph/TRN are excluded. No production work or full P0
+acceptance is implied.

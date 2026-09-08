@@ -1,0 +1,50 @@
+[
+  {
+    "scenario": "auth_delay",
+    "pass": true,
+    "actual_tcp_requests": 0,
+    "elapsed_seconds": 3.0268505839922,
+    "isolated_status": "deadline_exceeded",
+    "worker_reaped": true,
+    "private_ipc_cleaned": true,
+    "retained_blocker": "external_outcome_unknown",
+    "restart_after_lease_no_repeat": true,
+    "external_calls_reserved": 1
+  },
+  {
+    "scenario": "drip",
+    "pass": true,
+    "actual_tcp_requests": 1,
+    "elapsed_seconds": 3.0148499170027208,
+    "isolated_status": "deadline_exceeded",
+    "worker_reaped": true,
+    "private_ipc_cleaned": true,
+    "retained_blocker": "external_outcome_unknown",
+    "restart_after_lease_no_repeat": true,
+    "external_calls_reserved": 1
+  },
+  {
+    "scenario": "oversize",
+    "pass": true,
+    "actual_tcp_requests": 1,
+    "elapsed_seconds": 0.9283043750037905,
+    "isolated_status": "worker_failed",
+    "worker_reaped": true,
+    "private_ipc_cleaned": true,
+    "retained_blocker": "external_outcome_unknown",
+    "restart_after_lease_no_repeat": true,
+    "external_calls_reserved": 1
+  },
+  {
+    "scenario": "http_401",
+    "pass": true,
+    "actual_tcp_requests": 1,
+    "elapsed_seconds": 0.9459469169960357,
+    "isolated_status": "completed",
+    "worker_reaped": true,
+    "private_ipc_cleaned": true,
+    "retained_blocker": "sam3_http_error",
+    "restart_after_lease_no_repeat": true,
+    "external_calls_reserved": 1
+  }
+]
