@@ -34,6 +34,14 @@ from .collection_runtime import application_registry
 from .image_quality import ImageLimits, orientation_view
 from .classification import ManualSelection
 from .evidence_runtime import phase_artifact, refresh_review_evidence, apply_phase_gate
+from .active_graph import (
+    GraphTooLarge,
+    WorkspaceTooLarge,
+    WORKSPACE_LIMIT,
+    GRAPH_LIMIT,
+    encoded,
+    save_recoverably,
+)
 from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
@@ -333,6 +341,14 @@ def create_app(
             message = str(exc)
         if isinstance(exc, SnapshotTooLarge):
             status, code, category = 413, "snapshot_too_large", "policy"
+        if isinstance(exc, (GraphTooLarge, WorkspaceTooLarge)):
+            status, code, category = (
+                413,
+                "workspace_artifact_required"
+                if isinstance(exc, WorkspaceTooLarge)
+                else "active_graph_limit_exceeded",
+                "policy",
+            )
         return JSONResponse(
             status_code=status,
             content={
@@ -342,7 +358,9 @@ def create_app(
                     "message": message,
                     "retryable": status == 503,
                     "request_id": uid(),
-                    "details": {},
+                    "details": exc.details
+                    if isinstance(exc, WorkspaceTooLarge)
+                    else {},
                 }
             },
         )
@@ -913,6 +931,29 @@ def create_app(
             raise Conflict("Historical run digest mismatch")
         return render_workspace(retained, p)
 
+    @app.get(prefix + "/specimens/{specimen_id}/active-graph")
+    def active_graph_output(
+        organization_id: str,
+        specimen_id: str,
+        revision: int | None = None,
+        user=Depends(identity),
+    ):
+        p, current = history_access(user, organization_id, specimen_id)
+        selected = revision if revision is not None else current.version
+        raw = repository.graph_bytes(p.scope, specimen_id, selected)
+        if len(raw) > GRAPH_LIMIT:
+            raise GraphTooLarge("Active graph exceeds supported retrieval limit")
+        return Response(
+            raw,
+            media_type="application/json",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Specimen-Revision": str(selected),
+                "X-Content-SHA256": hashlib.sha256(raw).hexdigest(),
+            },
+        )
+
     @app.get(prefix + "/specimens/{specimen_id}/phases/{phase}")
     def phase_output(
         organization_id: str,
@@ -1070,7 +1111,7 @@ def create_app(
             p.scope, filters, cutoff or now(), after_created, after_id, limit, sensitive
         )
 
-    def render_workspace(specimen, p):
+    def render_workspace(specimen, p, mutation_committed=False):
         from .search import SearchFilters
 
         result = workspace(specimen, p.role)
@@ -1081,6 +1122,24 @@ def create_app(
             raise Missing(specimen.id)
         result["created_at"] = metadata[0]["created_at"]
         result["domain_created_at"] = specimen.created_at
+        result["active_graph"] = specimen.active_graph
+        result["active_graph_url"] = (
+            f"/v1/organizations/{p.scope.organization_id}/specimens/{specimen.id}/active-graph?revision={specimen.version}"
+        )
+        if len(encoded(result)) > WORKSPACE_LIMIT:
+            raise WorkspaceTooLarge(
+                {
+                    "revision": specimen.version,
+                    "record_version_id": result["record_version_id"],
+                    "summary_url": f"/v1/organizations/{p.scope.organization_id}/specimens/{specimen.id}",
+                    "artifact_url": result["active_graph_url"],
+                    "mutation_committed": mutation_committed,
+                    "workspace_max_bytes": WORKSPACE_LIMIT,
+                    "graph_max_bytes": GRAPH_LIMIT,
+                    "artifact_sha256": specimen.active_graph["sha256"],
+                    "artifact_size_bytes": specimen.active_graph["size_bytes"],
+                }
+            )
         return result
 
     def exact_records(p, user, **filters):
@@ -1477,7 +1536,8 @@ def create_app(
                 after=body.after,
             )
         )
-        s = repository.save(
+        s = save_recoverably(
+            repository,
             p,
             s,
             body.expected_revision,
@@ -1485,7 +1545,7 @@ def create_app(
             digest(body.model_dump()),
         )
         schedule_local(p, s, background_tasks)
-        return render_workspace(s, p)
+        return render_workspace(s, p, mutation_committed=True)
 
     @app.post(prefix + "/specimens/{specimen_id}/regions")
     def regions(
@@ -1544,7 +1604,7 @@ def create_app(
             digest(body.model_dump()),
         )
         schedule_local(p, saved, background_tasks)
-        return render_workspace(saved, p)
+        return render_workspace(saved, p, mutation_committed=True)
 
     @app.post(prefix + "/specimens/{specimen_id}/classification")
     def classification(
@@ -1598,7 +1658,7 @@ def create_app(
             digest(body.model_dump()),
         )
         schedule_local(p, saved, background_tasks)
-        return render_workspace(saved, p)
+        return render_workspace(saved, p, mutation_committed=True)
 
     @app.post(prefix + "/runs/{run_id}/actions")
     def action(
@@ -1691,7 +1751,7 @@ def create_app(
         @app.post(prefix + "/specimens/{specimen_id}/process")
         def process(organization_id: str, specimen_id: str, user=Depends(identity)):
             p, s = find(user, organization_id, specimen_id)
-            return render_workspace(workflow.drain(p, s.id), p)
+            return render_workspace(workflow.drain(p, s.id), p, mutation_committed=True)
 
     app.state.workflow = workflow
     return app

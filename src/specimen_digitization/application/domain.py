@@ -299,6 +299,7 @@ class AuditEvent(Record):
 
 
 class Specimen(Record):
+    active_graph: dict | None = None
     audit_offset: int = Field(default=0, ge=0)
     history_through_revision: int | None = None
     id: str = Field(default_factory=uid)
