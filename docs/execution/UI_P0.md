@@ -334,3 +334,69 @@ Both temporary API 8018 and Flutter web 3002 were stopped; QA ports and browser
 viewport/settings were untouched. Independent combined QA, institutional policy
 approval, real-language quality calibration and production acceptance remain open.
 Later nullable disagreement/observation-measurement contracts are separate work.
+
+### Scoped runtime risk, published policy pins and measured observation details
+
+This additive UI checkpoint uses exact runtime fixture
+`backend-runtime-wire-examples.json`, 410,255 bytes, SHA-256
+`7e44c24bb0d0858aafd69cee665606e9ee6ec739cac023191ab753440a4aaaaf`.
+Earlier fixtures remain unchanged. Scanner original
+`42dd95a959f8f8d7ccc15808184aceba7f25a492` is carried as `3088165`; integration
+already owns that dependency. Read the risk module's `PROFILE_LABEL_RISK.md`
+contract and waited for the actual HTTP fixture and immutable backend before
+verification. Backend source/fixture reference is full immutable
+`b60d9f219b9a9cbc12bef2fc9bdeb186bd59d0d5`, core `a45643f`.
+The later `25bac56` correction changes a backend SQL test/report, not this API.
+
+The evidence view exposes specimen, label and field assessments with explicit
+status, nullable composite, exact policy ID/version/digest, registry/feature
+versions, resolution state, component counts/weights/contributions, reasons,
+unmeasured dimensions and retained evidence details. Label/field details expand
+individually and reset when their input digest changes. A blocked, unmeasured or
+incomplete assessment never displays a composite, including a contradictory zero
+in a negative presentation probe. Measured component contributions remain visible;
+no local composite calculation or named risk bands are introduced. Prioritization
+never becomes a clearance badge or overrides validation. Published policy
+resolution/definition is inspectable; existing pinned-profile details retain the
+language, scoring and segmentation settings supplied by the backend.
+
+Observation details distinguish configured and reported model identities and show
+actual retained latency/basis, finish/completion states, token counts and input
+asset/crop lineage. Missing latency and parameters are explicitly unmeasured/not
+reported, never fabricated zeros. Completion describes processing, not correctness.
+The retained-transcription detail distinguishes measured disagreement fractions
+from unavailable/policy-blocked comparison; agreement does not certify accuracy.
+Separate semantic containers expose risk and telemetry text accessibly. No new API
+routes, inference calls, profile defaults or classification thresholds were added.
+
+Four focused tests pass for the two published synthetic policy variants (numeral
+weight 20 versus 40, both composites null), scoped expansion/pins/unmeasured
+dimensions, blocked/partial zero rejection, real captured versus absent telemetry,
+and measured versus unavailable comparison. Final canonical verification passes
+81 Python tests (3 optional skips), 68 Flutter tests (7 separately gated live tests
+skipped), fatal-info analysis, both secret scanners, web release build and Wasm
+dry run. Log `/tmp/flutter-runtime-final-gates.log`.
+
+Actual Flutter HTTP readback passed against the immutable backend in
+`/tmp/specimen-flutter-runtime-a45643f` checked out at full `b60d9f2`, using private
+copies of the backend's captured `policies` and `telemetry` SQLite/blob states:
+`/tmp/specimen-flutter-runtime-state-policies` and
+`/tmp/specimen-flutter-runtime-state-telemetry`. API ports 8018/8019 were scoped to
+loopback. No processing POST was made with the readback adapters; this verifies
+current authenticated UI/repository retrieval of captured execution evidence,
+not a fresh model execution. The backend owner separately verified hard-child,
+SAM/classifier and SQL execution. The client read current profile revision 40 and
+historical revision 20 with exact retained profile/risk pins, confirmed all label/
+field/specimen composites and the queue risk remain null, and read telemetry
+revision 21 matching the actual fixture. Log `/tmp/flutter-runtime-live.log`;
+gated test `test/live_runtime_test.dart`.
+
+Chrome on web 3002 confirmed queue Unmeasured, the policy-pinned weight-40 label
+assessment with measured components and no composite, and both observations'
+exact latency/token/crop lineage with missing parameters explicitly reported.
+Final screenshot/AX evidence is `/tmp/flutter-runtime-evidence/risk.png`,
+`risk-ax.txt`, `telemetry.png` and `telemetry-ax.txt`. The risk and telemetry blocks
+are separately exposed in AX. Browser use was read-only. Both temporary APIs and
+web server were stopped after verification; QA ports, viewport and browser
+settings were untouched. Independent final combined QA and institutional policy/
+calibration/production acceptance remain open.
