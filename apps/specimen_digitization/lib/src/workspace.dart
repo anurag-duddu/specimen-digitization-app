@@ -37,12 +37,25 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   bool _mutating = false;
   int _page = 0;
   int _generation = 0;
+  StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
   Timer? _search;
   final _searchController = TextEditingController();
   @override
   void initState() {
     super.initState();
+    final repository = widget.repository;
+    if (repository is AccessFailureSource) {
+      _accessSubscription = (repository as AccessFailureSource).accessFailures
+          .listen((failure) {
+            if (!mounted) return;
+            setState(() {
+              _error = _message(failure);
+              _loading = false;
+              _loadingMore = false;
+            });
+          });
+    }
     _initialize();
     _poll = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!_mutating &&
@@ -59,6 +72,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
 
   @override
   void dispose() {
+    _accessSubscription?.cancel();
     _poll?.cancel();
     _search?.cancel();
     _searchController.dispose();
@@ -76,9 +90,10 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
       _selected = null;
       ++_generation;
     });
+    final generation = _generation;
     try {
       final scopes = await widget.repository.scopes();
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _scopesVerified = true;
         _scopes = scopes;
@@ -87,7 +102,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
       });
       if (_scope != null) await _refresh();
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(() {
           _error = _message(e);
           _loading = false;
@@ -249,6 +264,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   final Map<String, String> _mutationKeys = {};
   Future<void> _mutate(Json? change, String? retryReason) async {
     if (_selected == null || _mutating) return;
+    final generation = _generation;
     final current = _selected!;
     final payload =
         '${current.id}:${current.revision}:${change ?? retryReason}';
@@ -264,14 +280,14 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
       final result = change != null
           ? await widget.repository.review(_scope!, current, change, key)
           : await widget.repository.retry(_scope!, current, retryReason!, key);
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(() {
           _selected = result;
           _mutationKeys.remove(payload);
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(
           () => _error = e is ApiFailure && e.conflict
               ? 'This record changed while you were reviewing. Your decision was not saved. Refresh evidence and compare the current version before trying again.'

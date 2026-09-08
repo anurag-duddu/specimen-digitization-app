@@ -34,7 +34,73 @@ class PreflightRepository extends TestRepository {
   }
 }
 
+class DeniedIntakeRepository extends TestRepository {
+  int attempts = 0;
+  @override
+  Future<Json> createIntake(
+    CollectionScope scope,
+    IntakeFile file,
+    String key,
+  ) async {
+    attempts++;
+    throw const ApiFailure('Collection access denied.', status: 403);
+  }
+}
+
 void main() {
+  testWidgets('first denied upload stops remaining selected files', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 2500));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final repo = DeniedIntakeRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: IntakeScreen(
+            repository: repo,
+            scope: const CollectionScope(
+              organizationId: 'o',
+              collectionId: 'c',
+              name: 'Fixture',
+            ),
+            userId: 'u',
+            onComplete: () => fail('No item accepted'),
+            pickImages: (_) async => [
+              for (final name in [
+                'synthetic-label.png',
+                'synthetic-wide-label.png',
+              ])
+                XFile.fromData(
+                  File('test/fixtures/$name').readAsBytesSync(),
+                  path: name,
+                  name: name,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Choose files'));
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Upload manifest · 2 items'), findsOneWidget);
+    await tester.tap(find.text('I checked framing and readability'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Upload / resume selected files'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Upload / resume selected files'));
+    await tester.pumpAndSettle();
+    expect(repo.attempts, 1);
+  });
+
   const scope = CollectionScope(
     organizationId: 'org',
     collectionId: 'insects',

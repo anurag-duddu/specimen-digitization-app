@@ -60,8 +60,8 @@ void main() {
           }
           if (unavailable) {
             return http.Response(
-              '{"error":{"code":"forbidden","message":"Access changed"}}',
-              403,
+              '{"error":{"code":"forbidden","message":"Summary unavailable"}}',
+              503,
             );
           }
           return http.Response(
@@ -83,7 +83,7 @@ void main() {
       expect(saved.revision, 58);
       expect(saved.data['mutation_saved'], true);
       expect(saved.data['available_actions'], isEmpty);
-      expect(saved.data['artifact_summary_error'], 'Access changed');
+      expect(saved.data['artifact_summary_error'], 'Summary unavailable');
     },
   );
   test(
@@ -169,11 +169,6 @@ void main() {
           isA<ApiFailure>().having((e) => e.code, 'code', 'invalid_evidence'),
         ),
       );
-      fault = 'access';
-      await expectLater(
-        read(),
-        throwsA(isA<ApiFailure>().having((e) => e.status, 'status', 403)),
-      );
       fault = 'limit';
       await expectLater(
         read(),
@@ -181,6 +176,19 @@ void main() {
           isA<ApiFailure>().having((e) => e.code, 'code', 'evidence_limit'),
         ),
       );
+      fault = 'access';
+      await expectLater(
+        read(),
+        throwsA(isA<ApiFailure>().having((e) => e.status, 'status', 403)),
+      );
+      fault = '';
+      await expectLater(
+        read(),
+        throwsA(
+          isA<ApiFailure>().having((e) => e.status, 'latched denial', 403),
+        ),
+      );
+      repo.close();
     },
   );
   test('historical 413 stays pinned and grants no current controls', () async {

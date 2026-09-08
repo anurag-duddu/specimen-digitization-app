@@ -35,6 +35,20 @@ void main() {
         if (r.url.path == '/v1/session') {
           return http.Response(jsonEncode(fixture['session']), 200);
         }
+        if (r.url.path.endsWith('/collections')) {
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {
+                  'collection_id':
+                      fixture['session']['memberships'][0]['collection_id'],
+                  'display_name': 'Synthetic collection',
+                },
+              ],
+            }),
+            200,
+          );
+        }
         if (r.url.path.endsWith('/content')) {
           return http.Response.bytes([1, 2, 3], 200);
         }

@@ -415,6 +415,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
                 : 'Interrupted — retry to resume from the server checkpoint',
           );
         }
+        if (e is ApiFailure && (e.status == 401 || e.status == 403)) break;
       }
     }
     if (mounted) setState(() => _busy = false);
