@@ -323,3 +323,37 @@ blob fails explicitly; 256 KiB gate remains enforced. If audit paging is include
 force page rollover under a small test threshold and verify all event pages.
 No direct SQL repair, raised cap, missing history or mutation of old snapshots
 can count as B04 resolved. Architecture advice is not implementation/test proof.
+
+### B04 selected repair: existing retained snapshots
+
+Coordinator/backend selected the retained-revision alternative above. This
+supersedes the blob-archive recommendation for this first-candidate repair; do
+not implement a parallel archive. Backend proposes audit.before references to
+exact immutable revision plus run digest, compaction of exact already-retained
+audit/previous-run prefixes at 128 KiB, an explicit history-through marker and
+bounded fixed-revision GetSnapshot retrieval. Architecture accepts this subject
+to these invariants and executable proof:
+
+- Reference scoped specimen ID, exact older revision, run ID and canonical run
+  digest. Verify stored snapshot integrity and selected run digest; never resolve
+  against the mutable current run. References must strictly decrease revision.
+- Remove only a canonically identical prefix proven retained in that older
+  snapshot, not an arbitrary slice or run-ID-only match. Preserve global event
+  sequence/count, event IDs, history-through revision and bounded current tail.
+  Reconstruct without omission/duplication. Previous-run content must match the
+  complete retained version before replacing it with a reference.
+- History pagination fixes its revision boundary, authenticates current scope and
+  sensitivity, bounds traversal, and rejects malformed/cyclic references. Old
+  snapshots and idempotency receipts remain immutable; no schema rollout needed.
+- Compact legacy near-cap state before adding/checking the next event, while the
+  resulting state still commits through the unchanged CAS/receipt transaction.
+  A failed/stale write cannot publish a new history marker or partial event.
+- Prove at least 100 ordinary HTTP review actions, recovery of the QA legacy
+  near-cap shape, complete before/after and prior-run retrieval after restart,
+  stable sequence/order/digests, duplicate receipt behavior and authorization.
+  The 128 KiB threshold is a compaction trigger, not a higher acceptance cap.
+
+Flutter's older-history UI is part of the chosen retrieval path; backend-only
+retention cannot substitute for accessible complete review history. Architecture
+has sent these conditions directly to backend. B04 remains unresolved until
+independent QA verifies the chosen implementation on its repaired candidate.
