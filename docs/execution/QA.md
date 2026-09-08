@@ -1110,13 +1110,20 @@ reboot/login installation, backup and production operation are not claimed.
 normal reload and the fixed form on the second, then verified wrong-token rejection
 in the user tab. Integration independently exercised the new runner's isolated
 start/status/idempotent-start/stop lifecycle and an empty service-worker artifact
-from `--pwa-strategy=none`. At this evidence checkpoint, the user service still
-serves the earlier auth artifact; integration is preparing its migration to the
-committed runner and cache setting. That final switch requires a separate served
-marker and supervisor readback. The earlier hash/supervisor capture is retained as
-`durable-before-final-migration.json` and must not be mistaken for that later check.
+from `--pwa-strategy=none`. The user service still serves the patched 26317ab auth artifact with its earlier
+offline-first bootstrap. The parent chose to keep those running services unchanged;
+the prepared cache-disabled build was not promoted. That future switch would
+require a separate served marker and supervisor readback. The hash/supervisor
+capture is retained as `durable-before-final-migration.json`; its filename describes
+a proposed migration, not evidence that a migration occurred. The later 8351761
+runner followup changes only the private access-note label and its guard assertion;
+its reported four-test result remains owner-attributed.
 
 No independently identified auth/outage blocker remains in this bounded pass.
 The all20 map and its external/device/quality/institutional/IAM/restore/configured
 processing-plane and production release gates remain unchanged and unaccepted.
 No push, merge, cloud change, paid inference or deployment was performed by QA.
+
+After QA service cleanup, a new independent process again verified user API and
+web launchd jobs running with keepalive, and marker source 26317ab unchanged.
+The owner confirmed no user-port interruption or artifact promotion.
