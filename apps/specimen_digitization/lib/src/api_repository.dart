@@ -583,12 +583,20 @@ class ApiSpecimenRepository implements SpecimenRepository {
     IntakeFile file,
     String key,
   ) async {
-    if (file.width == null || file.height == null) {
+    if ((file.width == null) != (file.height == null)) {
       throw const ApiFailure(
-        'This format cannot be decoded on this device. Retain the original and use a supported intake workstation.',
-        code: 'decoder_unavailable',
+        'Image dimension claims must include both width and height, or neither.',
+        code: 'invalid_dimensions',
       );
     }
+    // HEIF primary-image and RAW active-area bases are established by the
+    // approved server codec, even when the client can show a local preview.
+    final serverCoordinates = {
+      'image/heic',
+      'image/heif',
+      'image/dng',
+      'image/x-adobe-dng',
+    }.contains(file.mimeType);
     final batch = await request(
       'POST',
       '${_root(scope)}/batches',
@@ -608,8 +616,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
         'filename': file.name,
         'media_type': file.mimeType,
         'size_bytes': file.bytes.length,
-        'width': file.width,
-        'height': file.height,
+        if (!serverCoordinates && file.width != null) 'width': file.width,
+        if (!serverCoordinates && file.height != null) 'height': file.height,
         'sha256': file.sha256,
       },
     );

@@ -439,7 +439,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
           TextButton(
             onPressed: () => setState(() => _region = null),
-            child: const Text('Original'),
+            child: const Text('Whole image'),
           ),
         ],
       ),
@@ -587,6 +587,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             .toList(),
       ),
       const SizedBox(height: 12),
+      SourceBasisNotice(asset: asset),
       Text('Asset: ${textOf(asset['asset_id'])}'),
       SelectableText(
         'SHA-256: ${textOf(asset['sha256'])}',
