@@ -555,3 +555,57 @@ History Python regressions:4 passed,1 SQL opt-in skip in2.30s, supplemented by t
 actual SQL checks above. Backend B04 proof remains passed; final B04 GUI closure
 and F04 geometry still await the assembled browser candidate. Overall P0 remains
 not accepted; no production/cloud/model deployment occurred.
+
+
+## Final combined local repair assessment — 290a2a7
+
+Exact candidate `290a2a7c6c713d39b1fefc9b88298bbe7b5f86bc`; tracked tree identical
+before execution. Independently reran canonical verification: exit0,81 Python
+passed/3 SQL opt-in skips,26 Flutter passed/2 live opt-in skips, analysis clean,
+web release and Wasm dry run passed. Prior independent TCP/SQL evidence above
+covers the opt-in boundaries; skipped tests are not counted as new passes.
+Fresh owned API and Flutter processes served this candidate against the preserved
+QA SQL database. No production connection or deployment.
+
+**B04 closed for tested local backend and browser scope.** Chrome opened the
+original recovered near-cap specimen98b3eac6… at current revision241. Browsed three
+pages of retained revisions1–30 and opened original revision28: explicitly
+read-only, historical processing_blocked status retained, original observations
+and24 audit events available. Current review remains revision241. Opened current
+review event237 and followed its retained run/hash reference to revision240,
+again read-only with current241 unchanged. Independent HTTP confirms persisted
+current revision241 after all GUI history browsing. The earlier312-decision,
+full-sequence, exact56-row preservation, stored-hash, permission, tamper, receipt,
+CAS and restart evidence remains applicable; no backend code changed afterward.
+
+**F04 and the observed reading-text accessibility defect closed locally.** Chrome
+at390x844 and1440x1000 displayed all four rotations. Screenshots retain the full
+source and full-image region border; independent raster bounds measure310x161
+and198x380 at narrow width,608x316 and198x380 at wide width, within2 pixels of
+1000:520 or520:1000. Source character proportions remain faithful. Non-full-region
+overlay coordinate offsets are additionally exercised by the canonical geometry
+widget tests; the live browser fixture has a full-image region. Both model groups
+now expose their complete independent literal text in the accessibility tree.
+This is not a complete screen-reader/device/WCAG acceptance claim.
+
+Evidence: `qa-evidence/290a2a7/` includes eight rotation screenshots, historical
+read-only screenshot, accessible-text captures, raster measurements and result
+manifest. Text captures abbreviate raw digests to avoid redundant full hashes;
+original retained hash comparisons are independently recorded in75f2953 evidence.
+Viewport testing initially changed device pixel ratio; reloaded at fixed DPR1
+before final captures. Clipped accessibility rectangles were unsuitable for
+rotation measurement, so the final checks use fully visible screenshot pixels.
+
+GUI file selection remains **not tested**. The extension file setter is blocked
+by file-URL permission. A bounded native fallback inspected the connected Chrome
+window/tab list, but the agent QA tab was not exposed there; no safe native picker
+could be operated. No browser permissions were changed and no user file uploaded.
+The original native window was restored, viewport override reset and QA tab closed.
+HTTP/Flutter repository upload proof remains valid and distinct from GUI upload.
+
+All reported B01–B04 and F01–F04 defects are closed within their stated local
+scopes. Overall20-criterion P0 remains **not accepted**: real provider/SAM3 behavior,
+representative quality thresholds/cohort, institutional policy and field semantics,
+full production security/deployment, device/accessibility and the untested portions
+of the criterion matrix remain open. This is a local repair verification result,
+not production or scientific acceptance. No PR merge/deployment was performed.
