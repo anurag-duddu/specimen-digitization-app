@@ -254,6 +254,7 @@ void main() {
         'order': 0,
         'method': 'human',
         'version': 'review-v1',
+        'rotation_quarter_turns': 0,
       });
       expect(body?['base_run_id'], 'r');
     },

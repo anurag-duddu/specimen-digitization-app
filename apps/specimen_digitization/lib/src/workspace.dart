@@ -4,6 +4,7 @@ import 'auth.dart';
 import 'intake.dart';
 import 'models.dart';
 import 'workbench.dart';
+import 'search_filters.dart';
 
 class CollectionWorkspace extends StatefulWidget {
   const CollectionWorkspace({
@@ -25,6 +26,10 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   List<Specimen> _items = [];
   Specimen? _selected;
   String _query = '';
+  Map<String, String> _filters = {};
+  String? _nextCursor;
+  final _seenCursors = <String>{};
+  bool _loadingMore = false;
   String _filter = '';
   String? _error;
   bool _loading = true;
@@ -43,7 +48,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
           !_loading &&
           _scope != null &&
           _page == 0 &&
-          _selected == null) {
+          _selected == null &&
+          _seenCursors.isEmpty &&
+          !_loadingMore) {
         _refresh(quiet: true);
       }
     });
@@ -84,6 +91,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
     final scope = _scope;
     if (scope == null) return;
     final generation = ++_generation;
+    _nextCursor = null;
+    _seenCursors.clear();
+    _loadingMore = false;
     if (!quiet) {
       setState(() {
         _loading = true;
@@ -91,17 +101,18 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
       });
     }
     try {
-      final items = await widget.repository.specimens(
+      final page = await widget.repository.specimenPage(
         scope,
-        query: _query,
-        status: _filter,
+        filters: _activeFilters,
       );
+      final items = page.items;
       final selected = _selected == null
           ? null
           : await widget.repository.specimen(scope, _selected!.id);
       if (mounted && generation == _generation) {
         setState(() {
           _items = items;
+          _nextCursor = page.nextCursor;
           _selected = selected;
           _loading = false;
           _error = null;
@@ -113,6 +124,65 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
           _error = _message(e);
           _loading = false;
         });
+      }
+    }
+  }
+
+  Map<String, String> get _activeFilters => {
+    ..._filters,
+    if (_query.trim().isNotEmpty) 'specimen_id': _query.trim(),
+    if (_filter.isNotEmpty)
+      (['cleared', 'needs_human_review', 'deferred'].contains(_filter)
+              ? 'disposition'
+              : 'state'):
+          _filter,
+  };
+  Future<void> _loadMore() async {
+    final scope = _scope;
+    final cursor = _nextCursor;
+    if (scope == null || cursor == null || _loadingMore || _loading) return;
+    final generation = _generation;
+    setState(() {
+      _loadingMore = true;
+      _error = null;
+    });
+    try {
+      final page = await widget.repository.specimenPage(
+        scope,
+        filters: _activeFilters,
+        cursor: cursor,
+      );
+      if (!mounted || generation != _generation) return;
+      if (_seenCursors.contains(cursor) ||
+          page.nextCursor == cursor ||
+          (page.nextCursor != null && _seenCursors.contains(page.nextCursor))) {
+        throw const ApiFailure(
+          'Page cursor repeated. Refresh the queue.',
+          code: 'pagination',
+        );
+      }
+      final ids = _items.map((s) => s.id).toSet();
+      if (page.items.any((s) => !ids.add(s.id))) {
+        throw const ApiFailure(
+          'Records changed across pages. Refresh the queue.',
+          code: 'pagination',
+        );
+      }
+      setState(() {
+        _items.addAll(page.items);
+        _seenCursors.add(cursor);
+        _nextCursor = page.nextCursor;
+      });
+    } catch (e) {
+      if (mounted && generation == _generation) {
+        setState(() {
+          _error = '${_message(e)} Refresh the queue to restart this search.';
+          _nextCursor = null;
+        });
+      }
+    } finally {
+      if (mounted && generation == _generation) {
+        setState(() => _loadingMore = false);
       }
     }
   }
@@ -201,11 +271,16 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
         controller: _searchController,
         decoration: const InputDecoration(
           labelText: 'Search specimens',
-          hintText: 'Identifier, batch, issue or profile',
+          hintText: 'Exact specimen ID; use Filters for other criteria',
           prefixIcon: Icon(Icons.search),
         ),
         onChanged: (q) {
           _query = q;
+          ++_generation;
+          setState(() {
+            _nextCursor = null;
+            _loadingMore = false;
+          });
           _search?.cancel();
           _search = Timer(const Duration(milliseconds: 350), _refresh);
         },
@@ -235,6 +310,23 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                 )
                 .toList(),
       ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.filter_list),
+          label: Text('Filters (${_filters.length})'),
+          onPressed: () async {
+            final values = await showDialog<Map<String, String>>(
+              context: context,
+              builder: (_) => SearchFilters(initial: _filters),
+            );
+            if (values != null && mounted) {
+              setState(() => _filters = values);
+              _refresh();
+            }
+          },
+        ),
+      ),
       const SizedBox(height: 20),
       Text(
         '${_items.length} matching records loaded',
@@ -250,7 +342,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                 const Icon(Icons.inventory_2_outlined, size: 40),
                 const SizedBox(height: 16),
                 Text(
-                  _filter.isEmpty && _query.isEmpty
+                  _filter.isEmpty && _query.isEmpty && _filters.isEmpty
                       ? 'Your collection starts with a photograph'
                       : 'No records match these filters',
                   style: Theme.of(context).textTheme.titleLarge,
@@ -288,7 +380,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '${s.status}\nProfile ${s.profile} · ${textOf(s.data['updated_at'], textOf(s.data['created_at']))}',
+                '${s.status}\nProfile ${s.profile} · ${textOf(s.data['updated_at'], textOf(s.data['created_at']))}\nRisk: ${s.data['risk'] == null ? 'Unmeasured' : '${s.data['risk']} / 100'}${s.data['risk_calibrated'] == true ? '' : ' · Uncalibrated'}',
               ),
             ),
             trailing: const Icon(Icons.chevron_right),
@@ -296,6 +388,11 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
           ),
         ),
       ),
+      if (_nextCursor != null)
+        OutlinedButton(
+          onPressed: _loadingMore || _loading ? null : _loadMore,
+          child: Text(_loadingMore ? 'Loading more…' : 'Load more records'),
+        ),
     ],
   );
   @override
@@ -348,6 +445,11 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                   child: ReviewWorkbench(
                     key: ValueKey('${_scope!.key}:${_selected!.id}'),
                     specimen: _selected!,
+                    loadArtifact: (artifact) => widget.repository.artifact(
+                      historyScope!,
+                      historySpecimen!,
+                      artifact,
+                    ),
                     loadHistoryPage: (after, through) =>
                         widget.repository.historyPage(
                           historyScope!,
