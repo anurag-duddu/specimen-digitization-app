@@ -347,3 +347,39 @@ Cleared journey without direct database edits; architecture did not independentl
 rerun that journey. Missing response-fixture generation is resolved. Flutter's
 identical-fixture decode test and independent integrated HTTP/SQL acceptance
 remain required, with exact candidate SHA and test evidence in their reports.
+
+## Assembly fixture audit milestone
+
+Architecture read BACKEND_ASSEMBLY.md and the frozen
+backend-next-wire-examples.json in backend worktree 3782, independently recomputed
+its SHA-256 and matched the digest supplied in the backend handoff. Inspected
+current API source for phase, authority, raw observation, reading metadata and
+disagreement readers. This is a bounded source/fixture audit during the final
+gate, not independent HTTP execution or whole-product acceptance.
+
+Canonical outer workspace fields remain compatible. Seven phase entries,
+authority result metadata, risk/unmeasured structure and search persistence/domain
+timestamps are present. Authority selection uses kind authority_resolution,
+target_id equal to after.field_key, and after.tool_id/identifier naming one
+retained candidate. Artifact readers take optional exact revision, authorize via
+current specimen history access and resolve only retained artifact references.
+No wire-format blocker was found in the inspected surfaces.
+
+New artifact paths below are under the existing scoped specimen path:
+`/phases/{phase}`, `/authority-results/{tool_id}` and its `/raw` suffix with
+field_key when needed, `/observations/{observation_id}/raw`,
+`/observations/{observation_id}/metadata`, `/disagreements/{region_id}`.
+Clients preserve explicit Unicode offset conventions and current historical
+revision. Raw text is not executable HTML. New fixture standalone Unicode and
+bounded examples remain labelled separately from actual application responses.
+
+Limits relayed to owners: the 1 MiB raw response check follows blob retrieval, so
+it is not a read-memory limit. Default PNG server preflight can report
+memory_limit_unavailable; changing image format does not repair that runtime
+condition, and preflight refusal must not be confused with the independent
+validated JPEG/PNG/TIFF intake capability. Optional codecs still are not full
+intake/worker support. Current model adapters supply no language/script declaration;
+unknown metadata is honest but does not complete TRN-006. Shared circuits,
+SAM3/auth deadline proof, oversized active evidence graph and duplicate precheck
+scale remain explicitly open in BACKEND_ASSEMBLY.md. Flutter fixture parity and
+independent integrated SQL/HTTP acceptance are still required.
