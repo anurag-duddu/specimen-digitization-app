@@ -9,7 +9,13 @@ Scope: `apps/specimen_digitization/` and this report only.
 Branch: `codex/live-client`.
 Worktree: `/Users/anuragduddu/.codex/worktrees/ac08/specimen-digitization-app`.
 Baseline: `a53f855e963b457c3ee2065f387609a193bb6f32`.
-Candidate SHA/PR/CI: pending initial verification and commit below.
+Implementation SHA: `ac6053b078bad85c2098e683973a074a78eccc52`.
+PR: [5](https://github.com/anurag-duddu/specimen-digitization-app/pull/5).
+Initial CI run: [34259362976](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34259362976).
+This follow-up also clarifies the confirmed evidence-only pilot blocker. The
+[PR checks](https://github.com/anurag-duddu/specimen-digitization-app/pull/5/checks)
+are authoritative for the current head, including this report revision; do not
+substitute checks from the initial implementation run for the final head.
 
 ## Decisions and contracts
 
@@ -75,7 +81,11 @@ not live acceptance evidence. Canonical log: `/tmp/live-client-verify.log`.
 New files were staged and repository hooks rerun successfully after fixing a
 scanner-detected synthetic basic-auth URL by using a username-only userinfo test;
 no scanner rules or allowlists changed. Hook log: `/tmp/live-client-hooks.log`.
-PR and all five remote platform jobs: pending.
+PR is open and unmerged. Remote verification was queued when this report was
+committed; the owner continues watching Repository checks, Python tests, Flutter
+checks and web build, Flutter android build, and Flutter ios build on the exact
+latest PR head. Final SHA/job outcomes will be sent to the coordinator; the
+current head/run links remain available through PR checks above.
 No persistent fixture port reserved; HTTP tests bind ephemeral loopback ports.
 Existing ports 3000/8000 were not changed or restarted.
 
@@ -112,3 +122,38 @@ or region view with pan/zoom, touch pinch and keyboard/button equivalents. Evide
 must remain accessible without hover and return state must be predictable.
 Existing zoom and selected-region reading linkage need design review. This is
 captured only; it is outside this connection PR and is not final UX approval.
+
+
+## Evidence-only pilot coordination
+
+Coordinator described a separately gated first-ten evidence-only pilot with real
+SAM and two blind readings retained, `processing_blocked`,
+`pilot_evidence_review_required`, no disposition and blocked/unmeasured risk.
+Processing owner confirmed the exact run blocker and evidence-pilot-v1 dependency
+marker. The operational panel explains this blocker as evidence review needed,
+unmeasured risk and blocked clearance; no new state is introduced. API owner confirmed pilot `available_actions`: field, transcription,
+reading_metadata, coverage for authorized reviewers/managers/admins. Geometry,
+classification, approval, defer and lifecycle actions are denied because geometry
+currently starts new inference. Original blocker and null disposition persist
+after retained-evidence corrections. Regions remain viewable, not editable. Existing workbench gates edits on server
+`available_actions` and renders blocked/unmeasured risk without a numeric
+composite. This pilot is not a completed or cleared production pipeline.
+
+API owner is separately validating Firebase App Check numeric project audience;
+client token issuer/provider configuration is unchanged. Live attestation remains
+an acceptance gate, not inferred from successful token transport fixtures.
+
+## Frozen follow-up verification
+
+The second canonical gate passed: 355 Python passed/26 skipped; Flutter 83
+passed/7 skipped; clean analysis; release web build succeeded in 25.6 seconds.
+Log: `/tmp/live-client-final-verify.log`. After the coordinator requested an
+explicit no-geometry/no-clearance case, the pilot widget tests passed 2/2,
+including actual workbench disabled controls with permitted coverage review.
+Log: `/tmp/live-client-pilot.log`. This supplementary test initially needed the
+credential-free CI options file after canonical cleanup, then a button-subclass
+finder correction; no product permission was changed to make it pass.
+Retained raw model observations are untouched by this PR. Permitted human edits
+cannot authorize model replay or unblock finalization. Final exact head/all-five
+remote results are recorded in the PR body and coordinator handoff to avoid a
+self-referential sequence of report-only commits.
