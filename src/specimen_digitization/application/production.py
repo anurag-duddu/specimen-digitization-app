@@ -540,7 +540,8 @@ class GcsBlobs:
 
 
 class ProductionAdapters:
-    def __init__(self, blobs, *, model_effect=None):
+    def __init__(self, blobs, *, model_effect=None, sam3_expected=None):
+        self.sam3_expected = sam3_expected or {}
         self.model_effect = model_effect
         self.blobs = blobs
         self.taxonomy = GbifTaxonomy(blobs)
@@ -579,6 +580,7 @@ class ProductionAdapters:
             "prompts": prompts,
             "routes": routes,
             "adapter_version": "production-v2",
+            "sam3_expected_sha256": digest(getattr(self, "sam3_expected", {})),
             "classifier": self.classifier.pin(run) if self.classifier else None,
             "segmentation": {
                 "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
@@ -589,7 +591,9 @@ class ProductionAdapters:
 
     def segment(self, specimen):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
-            raise OperationalBlock("provider_data_policy_and_spending_approval_required")
+            raise OperationalBlock(
+                "provider_data_policy_and_spending_approval_required"
+            )
         # A deployment-specific SAM3 endpoint must implement the reviewed adapter.
         # No rectangle substitution, no hidden Hub download or paid execution.
         endpoint = os.getenv("SPECIMEN_SAM3_ENDPOINT")
@@ -604,7 +608,9 @@ class ProductionAdapters:
             raise OperationalBlock(
                 "sam3_serving_contract_not_configured_use_reviewed_regions"
             )
-        return Sam3Service(endpoint, self.blobs).segment(specimen)
+        return Sam3Service(
+            endpoint, self.blobs, expected=self.sam3_expected.get(specimen.id)
+        ).segment(specimen)
 
     def transcribe(self, specimen, region, route):
         from .model_runtime import invoke_model
@@ -723,7 +729,7 @@ class Sam3Service:
     service is provisioned by the application or substituted by a fixture.
     """
 
-    def __init__(self, endpoint: str, blobs, effect=None):
+    def __init__(self, endpoint: str, blobs, effect=None, *, expected=None):
         from urllib.parse import urlparse
 
         parsed = urlparse(endpoint)
@@ -740,6 +746,7 @@ class Sam3Service:
             )
         self.endpoint = endpoint.rstrip("/")
         self.blobs = blobs
+        self.expected = expected
         from .sam3_effect import sam3_request
 
         self.effect = effect or sam3_request
@@ -764,8 +771,11 @@ class Sam3Service:
         import base64
         from .domain import Region
         from .bounded_effect import run_isolated
+        from .sam3_effect import canonical_sha256, validate_expected_binding
         from ..hub_models import SAM3_MODEL
 
+        if not self.expected:
+            raise OperationalBlock("sam3_provenance_configuration_required")
         revision = settings.model_revision
         if revision != SAM3_MODEL.revision:
             raise OperationalBlock("segmentation_model_revision_unsupported")
@@ -786,11 +796,16 @@ class Sam3Service:
             "adapter_version": settings.adapter_version,
             "settings_version": settings.version,
         }
+        if not validate_expected_binding(
+            {"request": request, "expected": self.expected}
+        ):
+            raise OperationalBlock("sam3_provenance_configuration_invalid")
         result = run_isolated(
             self.effect,
             {
                 "endpoint": self.endpoint,
                 "request": request,
+                "expected": self.expected,
                 "timeout_seconds": specimen.run.profile.execution.external_timeout_seconds,
                 "max_response_bytes": 1024 * 1024,
             },
@@ -812,9 +827,7 @@ class Sam3Service:
             "http_status": envelope["http_status"],
             "validation": envelope["validation"],
             "settings": settings.model_dump(mode="json"),
-            "request_sha256": hashlib.sha256(
-                json.dumps(request, sort_keys=True).encode()
-            ).hexdigest(),
+            "request_sha256": canonical_sha256(request),
             "elapsed_seconds": result.elapsed_seconds,
         }
         if envelope["validation"] != "valid":

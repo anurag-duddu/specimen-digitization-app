@@ -5,7 +5,8 @@ Coordinator: `01a07f48-a57c-71b0-9642-c9430886049c`.
 Baseline: `a53f855e963b457c3ee2065f387609a193bb6f32`.
 Branch: `codex/live-processing`.
 Worktree: `/Users/anuragduddu/.codex/worktrees/908e/specimen-digitization-app`.
-Implementation SHA: `e497d949657b74270d21f932ac179a72644ed189`.
+Initial implementation SHA (superseded by SAM provenance correction below):
+`e497d949657b74270d21f932ac179a72644ed189`.
 PR head includes this code plus report-only handoff updates; use the PR checks page
 for current exact-head CI, avoiding a self-referential report-commit SHA.
 GitHub main advanced externally to `1d297db520a6e31021e7bfa5e5f81b77e90cf618`
@@ -397,3 +398,120 @@ Local OCI manifest list:
 Build log `/tmp/processing-worker-candidate-build.log`. No image publication or
 cloud run occurred. Delivery must rebuild from its final integrated commit;
 local image proof does not qualify the future combined candidate.
+
+## Independent QA correction: SAM response provenance
+
+QA reproduced a P2 in the initial frozen implementation: the client accepted
+valid-looking region geometry while ignoring missing/wrong request, manifest,
+source and checkpoint metadata, and accepted a noncanonical mask reference.
+That could allow paid reading of stale or unbound SAM regions. Initial image/test
+proof above does not erase that finding; this corrective commit supersedes it.
+
+The client now refuses outbound SAM work without an expected binding constructed
+only from the private frozen ready manifest, worker evidence bucket and launch
+policy. `PilotLaunch.sam3_checkpoint_files` is now required at production startup:
+a reviewed exact filename-to-SHA256 map for model weights AND processor/config
+JSON/text files, including at least one safetensors file. The map is part of the
+pinned launch-policy digest and runtime dependency digest. It cannot be learned
+from the untrusted response. No checkpoint hashes are guessed; generating and
+approving that immutable model-artifact manifest is a remaining launch gate.
+
+Server and client share compact, sorted, non-NaN canonical JSON hashing. A valid
+response must match the submitted request hash, frozen manifest, exact source
+bucket/object/generation/hash/size, fixed model revision/implementation, expected
+checkpoint file map and its aggregate hash, and pinned thresholds. Each region
+must have deterministic ID/order/asset/geometry and canonical immutable mask
+reference matching output-bucket/path/hash/generation/size/encoding metadata.
+Missing fields, malformed/duplicate-key JSON, forged self-consistent checkpoint
+maps, wrong metadata or mask bindings stop processing before transcription.
+The raw rejected response is retained with its rejection state; local input
+identity is never represented as accepted model provenance when validation fails.
+
+The normal production adapter also requires explicit expected SAM provenance;
+it no longer accepts a configuration-free geometry-only service response.
+No credentials, model artifacts, source samples, deployments or paid calls were
+used to reproduce or correct the issue. Corrective local gates and exact-head CI
+are reported via the PR checks and coordinator handoff.
+
+## QA response-binding correction
+
+The SAM client previously accepted a model ID/revision and region shape without
+binding the response to the request, manifest, source or checkpoint artifacts.
+`sam3_effect.validate_sam3_response` now requires all of those bindings. The trusted
+launch supplies the exact manifest SHA, original bucket/name/generation/hash/size,
+worker evidence bucket, and checkpoint artifact map. Missing expected bindings
+prevent an outbound HTTP call. The returned checkpoint map must equal the trusted
+map, including model safetensors and downloaded configuration/tokenizer JSON/text
+files; a self-consistent forged map and aggregate hash are rejected. Client,
+server and stored request provenance share canonical JSON byte serialization.
+
+Responses also require canonical content-addressed mask paths and SHA/generation
+references, matching evidence bucket, bounded size, fixed thresholds, finite scores,
+ordered original-pixel geometry and deterministic region identities. Rejected raw
+response bytes remain retained while region/transcription progression is blocked.
+
+Validation: `uv run pytest -q tests/test_sam3_response_binding.py
+ tests/test_sam3_server.py tests/test_sam3_runtime.py` passed **71 tests in 10.69s**.
+This includes an actual localhost HTTP reply through the isolated transport and
+Workflow: forged request hash remains retained, creates no regions/observations,
+remains blocked after restart, and makes zero transcription calls. A separate
+fixture drives the actual server response into the client validator. All model
+and cloud data in these checks are fixtures; no live model or cloud call ran.
+Focused pre-commit checks and `git diff --check` passed. Container/source SHA from
+the earlier SAM checkpoint is superseded by this source change and must be rebuilt
+by the processing/delivery owner on the final committed candidate.
+
+Corrective focused suites:104 passed in11.17s. This includes71 SAM
+server/response/runtime cases, a legitimate full server-to-client fixture,
+missing/wrong request/source/manifest/checkpoint/mask provenance, and an actual
+local HTTP forged response through Workflow. That run retained the rejected raw
+body, stayed blocked with no regions/observations, and did not call SAM or a
+reader after restart. These remain zero-model, zero-cloud fixtures.
+
+Delivery's first combined SAM build used Docker's ARM64 host default and rejected
+an ARM64 MarkupSafe wheel against the Linux AMD64 lock. Previous successful SAM
+builds explicitly selected `--platform linux/amd64`. No hash was relaxed or vendor
+hash silently added. The target now checks TARGETARCH=amd64 before installation.
+Torch2.8.0+cpu and Torchvision0.23.0+cpu use exact official CPython3.13 LinuxAMD64
+wheel URLs with SHA256 hashes; all other packages resolve only from PyPI.
+The broad extra index and unsafe-best-match resolver option were removed.
+The ordinary transitive package versions are unchanged. Both wheel URLs/hashes
+were verified against the official PyTorch CPU indexes on2026-09-08.
+The corrected container is being rebuilt before the corrective freeze.
+
+The first corrective canonical run exposed one stale test fixture:
+`test_profile_runtime` returned the old geometry-only SAM envelope and therefore
+correctly blocked with `sam3_provenance_configuration_required`. Result was
+457 passed,1 failed,26 skipped. The fixture now models the complete expected
+response and immutable mask generation; the original profile/history assertions
+are unchanged. Its targeted check passed (1 pass,1 explicit SQL skip). The full
+canonical gate is rerun below before push; no response check was relaxed.
+
+Corrected Linux AMD64 SAM image build passed with isolated package sources;
+local review OCI `sha256:170fd73665810c7ea72c4146e0f6322990e89818e56f8643341b0189968e82a4`.
+It is a working-tree review build labeled with prior head8e889dc; final release
+images must use the actual committed/integrated source SHA. No model was loaded.
+
+Runtime input materialization is owned by delivery after the corrective freeze:
+`runtime_input_materialization.py` will copy explicitly mounted, hash-pinned
+read-only inputs into UID10001-owned0600 files in a0700 directory, preserving raw
+bytes, exclusive creation and cleanup. Delivery owns optional worker/SAM startup
+wiring and real AMD64 non-root mount tests in the combined candidate. Existing
+strict readers are unchanged; unmaterialized root0444 mounts remain rejected.
+
+Corrective canonical `scripts/ci/verify.sh` passed after the fixture repair:
+458 Python tests passed,26 skipped; Flutter analysis,76 Flutter tests (7 skipped),
+release web build, repository and security gates all passed. Log:
+`/tmp/processing-correction-final-verify.log`. Corrected SAM Linux AMD64
+network-disabled imports and version smoke passed; no model was loaded.
+
+A concrete model pin candidate is available privately at
+`/Users/anuragduddu/.codex/private/live-rollout/processing/sam3-checkpoint-candidate-20260908.json`
+(mode0600). It hashes eight existing cached model/config/text files; every cached
+HF download metadata record matched the exact pinned SAM revision. No weights
+were downloaded and no source image was read. Aggregate model-artifact SHA:
+`9089029b241c8342be41225b51531bf0457f2db0c3b9896c844b22b3487ac9b8`;
+private candidate file SHA:
+`05f4e3e81d9e4a2cc645b433a4dbafff6b1fc0e262adc03a953adc4269b26c2b`.
+Status remains cached model artifact candidate requiring review; this does not
+approve inference, establish license/access today or replace the frozen-ten gate.

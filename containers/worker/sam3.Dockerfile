@@ -1,8 +1,10 @@
 # Opt-in CPU SAM target; no checkpoint, credential or pilot image enters build.
 FROM python:3.13-bookworm@sha256:62eafe52c91cad83c2c74e630bfde917da8c253673e695665d454def84fc9a13
 WORKDIR /app
+ARG TARGETARCH
+RUN test "$TARGETARCH" = "amd64"
 COPY containers/worker/sam3-requirements.lock /tmp/requirements.lock
-RUN pip install --no-cache-dir --require-hashes --extra-index-url https://download.pytorch.org/whl/cpu -r /tmp/requirements.lock
+RUN pip install --no-cache-dir --require-hashes --index-url https://pypi.org/simple -r /tmp/requirements.lock
 COPY src/specimen_digitization /app/specimen_digitization
 RUN useradd --uid 10001 --create-home worker
 ARG SOURCE_SHA

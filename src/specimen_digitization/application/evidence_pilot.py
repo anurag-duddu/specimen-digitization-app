@@ -65,9 +65,11 @@ class EvidencePilotAdapters:
         if not specimen.run.dependencies.get("evidence_pilot"):
             raise OperationalBlock("evidence_pilot_binding_required")
         endpoint = specimen.run.dependencies["segmentation"]["endpoint"]
-        return Sam3Service(endpoint, self.blobs)._segment_with_settings(
-            specimen, self.settings
-        )
+        return Sam3Service(
+            endpoint,
+            self.blobs,
+            expected=self.production.sam3_expected.get(specimen.id),
+        )._segment_with_settings(specimen, self.settings)
 
     def transcribe(self, specimen, region, route):
         return self.production.transcribe(specimen, region, route)

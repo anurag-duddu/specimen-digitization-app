@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ..hub_models import SAM3_MODEL
 from .collection_profiles import SegmentationSettings
 from .domain import Region
+from .sam3_effect import canonical_bytes
 
 SAM3_IMPLEMENTATION = "transformers/5.14.0;torch/2.8.0;cpu"
 MAX_PIXELS = 16_000_000
@@ -39,9 +40,7 @@ def digest(raw: bytes) -> str:
 
 
 def encoded(value) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode()
+    return canonical_bytes(value)
 
 
 class Strict(BaseModel):
@@ -275,7 +274,14 @@ class Sam3Engine:
         if not weights:
             raise RuntimeError("sam3_checkpoint_missing")
         self.checkpoint_files = {}
-        for path in weights:
+        artifacts = sorted(
+            path
+            for path in checkpoint.iterdir()
+            if path.suffix in {".safetensors", ".json", ".txt"}
+        )
+        if len(artifacts) > 64:
+            raise RuntimeError("sam3_checkpoint_artifact_limit")
+        for path in artifacts:
             with path.open("rb") as stream:
                 self.checkpoint_files[path.name] = hashlib.file_digest(
                     stream, "sha256"
