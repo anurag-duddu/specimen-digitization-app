@@ -240,3 +240,28 @@ retained byte-for-byte for backend/Flutter fixture parity. Their behavior is cov
 by newer real HTTP tests. The release owner's reviewed scanner-baseline dependency
 was cherry-picked as `74b9278` (source commit `30d6f99`); it permits only the exact
 reviewed synthetic digest values, retaining both scanners and their default rules.
+
+### Reviewed implementation commit and final checks
+
+Implementation commit: `80b432eab35e97c04b6776373563a3128bf4b702`.
+Scanner dependency: `74b9278` (equivalent to integration owner's `30d6f99`).
+Data dependency for SQL mode: `790a9f936299de9770d66dc79563fb530625f9cf`.
+
+On the final implementation candidate, `scripts/ci/verify.sh` passed all repository
+and secret checks, **54 Python tests** (two explicit emulator tests skipped in the
+ordinary suite), Flutter analysis, widget test and release web build. The two
+emulator tests were separately enabled and **both passed**, including real TCP
+SQL-backed HTTP intake/review and full API process restart. Ruff undefined/unused
+checks and `git diff --check` passed. The only warnings were the installed Starlette
+AnyIO deprecation and unconfigured Logfire in unit tests; executable API/worker
+entry points configure metadata-only instrumentation.
+
+Review-triggered work now schedules automatically in synthetic mode as well as
+initial upload work. The abstention HTTP regression checks the subsequent GET
+without invoking the synthetic `/process` driver, proving that dependent validation
+runs automatically. Production remains on the independent polling worker.
+
+Cherry-pick the implementation commit and this documentation follow-up into the
+integration branch after its scanner dependency. Do not copy unrelated worktree
+state or deploy runtime/data resources through Hosting. Full product acceptance
+remains constrained by the numbered production gates above.
