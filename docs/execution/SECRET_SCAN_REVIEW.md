@@ -35,3 +35,46 @@ provenance review rather than blind baseline regeneration. Gitleaks and the
 other repository secret/sensitive-path checks remain enabled.
 
 The final fixture was recopied and parity confirmed by Flutter after additive session/lease/retry fields. Gitleaks flagged the scanner metadata key `hashed_secret`; `.gitleaks.toml` extends all default rules and allows only exact reviewed SHA-1 identifier lines AND the `.secrets.baseline` path, within the generic-api-key rule. Inline detect-secrets annotations apply only to those exact TOML identifier lines. New credential-shaped baseline values are rejected. No whole-file or global path exclusion was introduced.
+
+## Frozen second-wave fixture
+
+Reviewed separately on 2026-09-08. Backend and Flutter copies independently match
+SHA-256 `6d1bf6bf4eab1b47defdafcc8c99c10dd51dc15dc28f46a18c65782b3dfbb07f`:
+
+- `docs/execution/backend-next-wire-examples.json`
+- `apps/specimen_digitization/test/fixtures/backend-next-wire-examples.json`
+
+The generator uses actual synthetic API responses and a local TCP authority
+fixture, with explicit standalone Unicode/bounded-alignment examples. Reviewed
+`/tmp/export_backend_next.py` and its recorded retained-state path; the owner
+subsequently added a fresh-output-only generator under docs/execution. The frozen
+file was not regenerated. Request authorization headers/tokens are not serialized.
+The fixture has no credential-bearing field; requires_authorization is boolean.
+Independently resolved all 24 distinct retained blob references (75 occurrences)
+in the original generation state and matched each byte stream to its SHA-256
+content reference. This is local synthetic provenance, not live provider proof.
+
+Detect-secrets 1.5.0 finds 66 unique Hex High Entropy String values per exact copy.
+Every finding is a 64-character lowercase hexadecimal value and its hashed_secret
+matches SHA-1 of that value. First detected field counts: input_sha25619,
+blob_ref19, output_sha25614, raw_response_ref1, registry_sha2561,
+connection_sha2561, profile_snapshot_sha2561, raw_ref3, text_sha2563,
+comparison_sha2562 and run_sha2562. JSON graph inspection places these in
+source/derivative, phase, authority, reading, profile and immutable-run provenance.
+
+Added only these exact-path/exact-hash findings with is_secret=false. Existing
+first-wave entries, detector plugins, filters and thresholds remain unchanged.
+Added 65 previously absent exact SHA-1 metadata-line patterns to the existing
+Gitleaks rule-local AND allowlist; one finding identifier was already reviewed.
+There is no global/path-wide/field-name exclusion and no generated fixture change.
+
+In an isolated temporary Git repository, both frozen copies pass detect-secrets
+and pinned Gitleaks8.30.1. New credential-shaped canaries inside either fixture
+are rejected by both scanners. A new credential-shaped field in .secrets.baseline
+is rejected by Gitleaks, as is an already-reviewed metadata hash placed in an
+unreviewed path. Restoring exact fixture/config bytes makes both scanners pass.
+The initial audit scan report itself was also rejected outside the allowed
+baseline path; it was moved outside the test repository, not exempted. All
+canaries were randomly generated synthetic strings and were not committed here.
+This scanner-only dependency may precede the owner fixture commits; it does not
+approve new product code or relax future changed-fixture review requirements.
