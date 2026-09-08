@@ -284,7 +284,7 @@ def test_policy_malformed_state_and_invalid_calls_are_explicit(setup):
     )
     for delay in (-1, float("inf"), float("nan"), True, 86401):
         assert circuit.record_failure(token, "timeout", delay).status == "blocked"
-    for lease in (0, -1, float("nan"), True, 301):
+    for lease in (0, -1, float("nan"), True, 901):
         assert circuit.admit(key(), lease).reason == "invalid_probe_lease"
     revision, state = store.load(key().storage_key)
     state["state"] = "HALF_OPEN"
@@ -394,3 +394,17 @@ def test_outcome_contention_is_bounded_and_read_failure_is_typed(setup):
         ProviderCircuit(Unavailable(store.path), clock).admit(key(), 20).reason
         == "circuit_storage_unavailable"
     )
+
+
+def test_900_second_probe_lease_preserves_full_application_effect_lease(setup):
+    store, clock, circuit = setup
+    trip(circuit)
+    clock.advance(30)
+    probe = circuit.admit(key(), 900)
+    assert probe.status == "permitted" and probe.token.probe
+    clock.advance(899)
+    assert circuit.admit(key(), 900).status == "busy"
+    assert circuit.record_success(probe.token).status == "recorded"
+    assert circuit.admit(key(), 901).reason == "invalid_probe_lease"
+    with pytest.raises(ValidationError):
+        CircuitPolicy(max_lease_seconds=901)
