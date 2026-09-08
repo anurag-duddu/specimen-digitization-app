@@ -75,6 +75,27 @@ def test_multilabel_graph_beyond_old_cap_restarts_and_preserves_hash_history(
 ):
     import test_application
 
+    if kind == "sql":
+        import httpx
+        import sys
+        import specimen_digitization.application.api as api_module
+        from specimen_digitization.application.production import sql_emulator_host
+
+        collection = str(uuid4())
+        host = sql_emulator_host()
+        assert host and (host.startswith("127.0.0.1:") or host.startswith("localhost:"))
+        query = f'''mutation @transaction {{
+          collection_insert(data:{{organizationId:"{SYNTHETIC_ORG}",id:"{collection}",name:"Isolated graph test"}})
+          collectionMember_insert(data:{{organizationId:"{SYNTHETIC_ORG}",collectionId:"{collection}",uid:"synthetic-reviewer",active:true,role:"reviewer",canViewSensitive:true}})
+        }}'''
+        seeded = httpx.post(
+            f"http://{host}/v1/projects/demo-specimen-data/locations/us-east4/services/specimen-digitization-service:executeGraphql",
+            json={"query": query},
+        ).json()
+        assert not seeded.get("errors") and not seeded.get("code"), seeded
+        for module in (test_application, api_module, sys.modules[__name__]):
+            monkeypatch.setattr(module, "SYNTHETIC_COLLECTION", collection)
+
     original = image_bytes() + str(uuid4()).encode()
     monkeypatch.setattr(test_application, "image_bytes", lambda: original)
     repo = repository(tmp_path, kind)
@@ -145,6 +166,38 @@ def test_multilabel_graph_beyond_old_cap_restarts_and_preserves_hash_history(
         assert (
             restored["observations"][0]["literal_text"]
             == data["observations"][0]["literal_text"]
+        )
+    if kind == "sql":
+        import subprocess
+        import sys
+
+        code = """
+import json,sys
+from pathlib import Path
+from specimen_digitization.application.production import SqlConnectRepository,sql_emulator_host,actor_uid
+from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.domain import Scope
+actor_uid.set('synthetic-reviewer')
+repo=SqlConnectRepository(project='demo-specimen-data',emulator_host=sql_emulator_host(),graph_blobs=LocalBlobs(Path(sys.argv[1])))
+rows=repo.list(Scope(organization_id=sys.argv[2],collection_id=sys.argv[3]))
+assert len(rows)==1 and rows[0].id==sys.argv[4]
+assert len(rows[0].run.observations)==20 and rows[0].run.disposition.value=='cleared'
+print(rows[0].version)
+"""
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                code,
+                str(tmp_path / "blobs"),
+                SYNTHETIC_ORG,
+                SYNTHETIC_COLLECTION,
+                before.id,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
 
 
