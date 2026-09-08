@@ -205,7 +205,7 @@ def sqlite_search(
     clauses = ["org=?", "collection=?", "created_at<=?"]
     values = [scope.organization_id, scope.collection_id, cutoff]
     if not include_sensitive:
-        clauses.append("COALESCE(json_extract(payload,'$.asset.sensitive'),0)=0")
+        clauses.append("COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0")
     if after_created:
         clauses.append("(created_at>? OR (created_at=? AND id>?))")
         values.extend((after_created, after_created, after_id))
@@ -242,7 +242,7 @@ def sqlite_search(
         row = dict(zip(projections, values))
         row.update(scope.model_dump())
         row["reason_codes"] = json.loads(row["reason_codes"] or "[]")
-        row["sensitive"] = bool(row["sensitive"])
+        row["sensitive"] = row["sensitive"] is None or bool(row["sensitive"])
         row["synthetic"] = bool(row["synthetic"])
         row["record_version_id"] = f"{row['active_run_id']}:{row['revision']}"
         row["risk_calibrated"] = False
