@@ -2,7 +2,7 @@
 
 A Flutter and Firebase application for converting natural-history specimen images into evidence-backed, reviewable digital records. Firebase SQL Connect backed by Cloud SQL for PostgreSQL is the application database. The first pilot targets the Field Museum Insects subcollection.
 
-Firebase remains the product and data platform. Phase 0 will compare Temporal with Google Cloud Workflows as an additive durable workflow layer; Pydantic AI is the first typed, collection-specific agent-harness candidate. No Temporal Cloud resources should be provisioned until the comparative failure-injection spike passes its decision gates.
+Firebase remains the product and data platform. Phase 0 will compare Temporal with Google Cloud Workflows as an additive durable workflow layer; Pydantic AI is the first typed, collection-specific agent-harness candidate. No Temporal Cloud resources should be provisioned until the bounded comparative failure-injection spike passes its decision gates.
 
 ## Current status
 
@@ -12,7 +12,7 @@ Product definition, architecture setup, initial Python observability scaffolding
 
 Firebase Authentication, App Check, SQL Connect/Cloud SQL, Cloud Storage, and short event handlers remain responsible for identity, authorization, product records, large artifacts, and request handling. A durable workflow engine would coordinate the multi-stage specimen-processing lifecycle across worker crashes, provider retries, parallel model calls, deployments, cancellation, and human-review waits; it would not replace Firebase or store specimen business data.
 
-Temporal is the fine-grained recovery candidate because Pydantic AI supports it directly. Google Cloud Workflows is the simpler GCP-native comparator when agent runs can stay short and every meaningful step can be externalized. The final choice must be based on the same local failure-injection scenario, including a worker termination, provider `429`, human pause/resume, replay, and duplicate-side-effect checks. See [Agent harness and durable workflow options](docs/product-requirements/HARNESS_OPTIONS.md).
+Temporal is the fine-grained recovery candidate because Pydantic AI supports it directly. Google Cloud Workflows is the simpler GCP-native comparator when agent runs can stay short and every meaningful step can be externalized. The final choice must be based on the same failure-injection scenario, including a worker termination, provider `429`, human pause/resume, replay, and duplicate-side-effect checks. See [Agent harness and durable workflow options](docs/product-requirements/HARNESS_OPTIONS.md).
 
 ## Flutter client
 

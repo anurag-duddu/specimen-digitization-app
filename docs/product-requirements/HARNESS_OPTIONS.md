@@ -23,7 +23,7 @@ This is the strongest current fit because the application needs both kinds of ca
 
 The workflow engine is responsible for **when and whether work executes**. Pydantic AI is responsible for **how a bounded agent reasons and calls approved tools inside an agentic stage**. Firebase SQL Connect backed by Cloud SQL for PostgreSQL remains the product-facing record and status store; Cloud Storage holds images and large immutable payloads. A workflow engine owns execution history, not specimen business data.
 
-The workflow-engine selection must be validated with a short local technical spike before any Temporal Cloud resource is provisioned or production implementation expands. The same approved Insects scenario must run against Temporal and Google Cloud Workflows and include a provider rate limit, process crash, human pause, replay, provider-authenticated call, typed lookup failure, and idempotency test.
+The workflow-engine selection must be validated with a short, bounded technical spike before any Temporal Cloud resource is provisioned or production implementation expands. Exercise Temporal locally first, then run the same approved Insects scenario against Temporal and Google Cloud Workflows, including a provider rate limit, process crash, human pause, replay, provider-authenticated call, typed lookup failure, and idempotency test.
 
 ## What a workflow engine adds to Firebase
 
@@ -193,7 +193,7 @@ Build the same narrow scenario with the top two options before final selection:
 | Use Temporal for the production-reference spike | Accepted | Strongest fine-grained recovery and replay candidate; this does not select it for production. |
 | Test Google Cloud Workflows with the same scenario | Accepted | It aligns with Firebase/GCP and has native callback/human-review patterns. |
 | Treat Temporal as a replacement for Firebase | Rejected | Firebase remains the identity, product-data, object-storage, and UI-state platform. |
-| Provision Temporal Cloud before the local comparison passes | Rejected | Cloud setup creates another billable service before its value is demonstrated. |
+| Provision Temporal Cloud before the bounded comparison passes | Rejected | Cloud setup creates another billable service before its value is demonstrated. |
 | Select the final stack without a failure-injection spike | Rejected | Documentation alone cannot establish behavior under this application's evidence and replay requirements. |
 | Use Hugging Face as the initial platform model gateway | Accepted for spike | One server-side token supports explicit Qwen and Muse routes; representative quality, privacy, and failure testing remain required. |
 | Allow Hugging Face automatic provider routing in published profiles | Rejected | Versioned runs must pin and record the infrastructure provider; fallback cannot happen silently. |

@@ -420,7 +420,7 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 
 The collection profile is the main extension point. It should be declarative where possible and reference tested code modules only where reasoning or integration requires them.
 
-The accepted architecture boundary separates a durable outer workflow from the typed inner agent harness. Pydantic AI is the first harness candidate; Temporal is the production-reference workflow candidate and Google Cloud Workflows is the required Firebase/GCP-native comparator. The final workflow engine is not selected until both run the same Insects failure-injection spike. Do not provision Temporal Cloud before that local comparison passes. See [Durable Workflow and Agent Harness Decision](./HARNESS_OPTIONS.md).
+The accepted architecture boundary separates a durable outer workflow from the typed inner agent harness. Pydantic AI is the first harness candidate; Temporal is the production-reference workflow candidate and Google Cloud Workflows is the required Firebase/GCP-native comparator. The final workflow engine is not selected until both run the same Insects failure-injection spike. Do not provision Temporal Cloud before that bounded comparison passes. See [Durable Workflow and Agent Harness Decision](./HARNESS_OPTIONS.md).
 
 ### 12.1 Minimum profile contents
 
