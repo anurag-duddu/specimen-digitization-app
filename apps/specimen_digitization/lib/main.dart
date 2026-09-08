@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'src/api_repository.dart';
 import 'src/auth.dart';
+import 'src/connection_config.dart';
+import 'src/email_verification.dart';
 import 'src/models.dart';
 import 'src/workspace.dart';
 
@@ -16,9 +18,15 @@ Future<void> main() async {
   String? setupMessage;
   const apiUrl = String.fromEnvironment('SPECIMEN_API_BASE_URL');
   const localSynthetic = bool.fromEnvironment('SPECIMEN_LOCAL_SYNTHETIC');
+  const config = ConnectionConfig(
+    apiUrl: apiUrl,
+    siteKey: String.fromEnvironment('SPECIMEN_RECAPTCHA_SITE_KEY'),
+    synthetic: localSynthetic,
+    authEmulatorHost: String.fromEnvironment('SPECIMEN_AUTH_EMULATOR_HOST'),
+  );
   try {
     if (localSynthetic) {
-      final uri = Uri.parse(apiUrl);
+      final uri = config.validate(web: kIsWeb);
       if (!['localhost', '127.0.0.1', '::1', '10.0.2.2'].contains(uri.host)) {
         throw StateError('Synthetic access is restricted to a local API');
       }
@@ -37,6 +45,7 @@ Future<void> main() async {
         setupMessage =
             'The application API is not configured. Set SPECIMEN_API_BASE_URL in the approved build configuration.';
       } else {
+        final uri = config.validate(web: kIsWeb);
         await Firebase.initializeApp(options: options);
         const siteKey = String.fromEnvironment('SPECIMEN_RECAPTCHA_SITE_KEY');
         if (kIsWeb && siteKey.isEmpty) {
@@ -46,20 +55,18 @@ Future<void> main() async {
           providerWeb: kIsWeb ? ReCaptchaV3Provider(siteKey) : null,
         );
         final auth = FirebaseAuth.instance;
-        const emulatorHost = String.fromEnvironment(
-          'SPECIMEN_AUTH_EMULATOR_HOST',
-        );
-        if (emulatorHost.isNotEmpty) {
-          await auth.useAuthEmulator(emulatorHost, 9099);
-        }
         session = FirebaseSession(auth);
         repository = ApiSpecimenRepository(
-          baseUrl: Uri.parse(apiUrl),
+          baseUrl: uri,
+          expectedMode: 'production',
+          expectedUserId: () => auth.currentUser?.uid ?? '',
           token: session.token,
           appCheckToken: () => FirebaseAppCheck.instance.getToken(),
         );
       }
     }
+  } on FormatException catch (error) {
+    setupMessage = error.message;
   } catch (_) {
     setupMessage = localSynthetic
         ? 'Local synthetic setup could not be completed. Check the demo API configuration.'
@@ -156,10 +163,13 @@ class SpecimenDigitizationApp extends StatelessWidget {
             stream: session!.changes,
             initialData: session!.signedIn,
             builder: (context, snapshot) => snapshot.data == true
-                ? CollectionWorkspace(
-                    key: ValueKey(session!.userId),
-                    repository: repository!,
+                ? EmailVerificationGate(
                     session: session!,
+                    child: CollectionWorkspace(
+                      key: ValueKey(session!.userId),
+                      repository: repository!,
+                      session: session!,
+                    ),
                   )
                 : SignInScreen(session: session!),
           ),

@@ -70,6 +70,11 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
       _loading = true;
       _error = null;
       _scopesVerified = false;
+      _scopes = [];
+      _scope = null;
+      _items = [];
+      _selected = null;
+      ++_generation;
     });
     try {
       final scopes = await widget.repository.scopes();
@@ -92,6 +97,16 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   }
 
   String _message(Object error) {
+    if (error is ApiFailure && (error.status == 401 || error.status == 403)) {
+      // Do not retain an editable workspace after current access is denied.
+      _scopesVerified = false;
+      _scopes = [];
+      _scope = null;
+      _items = [];
+      _selected = null;
+      _nextCursor = null;
+      ++_generation;
+    }
     if (widget.session is LocalFixtureSession && error is ApiFailure) {
       if (error.status == 401 || error.status == 403) {
         return 'The local server did not authorize this request. Sign out and sign in with the current fixture token. Collection access has not been verified.';
@@ -436,9 +451,11 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                       _loading
                           ? 'Checking collection access…'
                           : _scopesVerified
-                          ? 'No collection access is available. Ask your administrator to grant a collection role.'
+                          ? 'Your account has no assigned collection. Ask your administrator to grant a collection role, then check access again.'
                           : 'Collection access could not be verified. Reconnect or sign in again, then retry.',
                     ),
+                    const SizedBox(height: 12),
+                    Text('Account: ${widget.session.displayName}'),
                     TextButton(
                       onPressed: _loading ? null : _initialize,
                       child: const Text('Check access again'),

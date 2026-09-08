@@ -16,11 +16,17 @@ abstract class SessionAccess {
   Future<void> resetPassword(String email);
 }
 
-class FirebaseSession implements SessionAccess {
+abstract class VerifiedEmailAccess {
+  bool get emailVerified;
+  Future<void> refreshVerification();
+  Future<void> sendVerification();
+}
+
+class FirebaseSession implements SessionAccess, VerifiedEmailAccess {
   FirebaseSession(this.auth);
   final FirebaseAuth auth;
   @override
-  Stream<bool> get changes => auth.authStateChanges().map((u) => u != null);
+  Stream<bool> get changes => auth.userChanges().map((u) => u != null);
   @override
   bool get signedIn => auth.currentUser != null;
   @override
@@ -28,7 +34,32 @@ class FirebaseSession implements SessionAccess {
   @override
   String get displayName => auth.currentUser?.email ?? 'Signed in';
   @override
-  Future<String?> token() async => auth.currentUser?.getIdToken();
+  Future<String?> token() async {
+    if (!emailVerified) {
+      throw const ApiFailure(
+        'Verify your email address before opening a collection.',
+        code: 'email_unverified',
+        status: 403,
+      );
+    }
+    return auth.currentUser?.getIdToken();
+  }
+
+  @override
+  bool get emailVerified => auth.currentUser?.emailVerified == true;
+  @override
+  Future<void> refreshVerification() async {
+    await auth.currentUser?.reload();
+    await auth.currentUser?.getIdToken(true);
+  }
+
+  @override
+  Future<void> sendVerification() async {
+    final user = auth.currentUser;
+    if (user == null) throw StateError('Sign in again.');
+    await user.sendEmailVerification();
+  }
+
   @override
   Future<void> signIn(String email, String password) async {
     await auth.signInWithEmailAndPassword(
@@ -58,6 +89,7 @@ class _SignInScreenState extends State<SignInScreen> {
   String? _message;
   bool _busy = false;
   bool _obscure = true;
+  bool _resetting = false;
   @override
   void dispose() {
     _email.dispose();
@@ -72,6 +104,7 @@ class _SignInScreenState extends State<SignInScreen> {
     }
     setState(() {
       _busy = true;
+      _resetting = reset;
       _message = null;
     });
     try {
@@ -92,7 +125,7 @@ class _SignInScreenState extends State<SignInScreen> {
           () => _message =
               widget.session is LocalFixtureSession && error is ApiFailure
               ? error.message
-              : 'Sign-in could not be completed. Check your credentials and connection, or contact your administrator.',
+              : authErrorMessage(error, reset: reset),
         );
       }
     } finally {
@@ -189,8 +222,19 @@ class _SignInScreenState extends State<SignInScreen> {
                   const SizedBox(height: 24),
                   FilledButton(
                     onPressed: _busy ? null : () => _submit(),
-                    child: Text(_busy ? 'Signing in…' : 'Sign in'),
+                    child: Text(
+                      _busy
+                          ? (_resetting ? 'Requesting reset…' : 'Signing in…')
+                          : 'Sign in',
+                    ),
                   ),
+                  if (widget.session is! LocalFixtureSession)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: Text(
+                        'Need an account or collection access? Ask your collection administrator to provide an account and assign a collection role. This app does not create accounts or grant roles.',
+                      ),
+                    ),
                   if (widget.session is! LocalFixtureSession)
                     TextButton(
                       onPressed: _busy ? null : () => _submit(reset: true),
@@ -310,4 +354,24 @@ class LocalFixtureSession implements SessionAccess {
   @override
   Future<void> resetPassword(String email) async =>
       throw UnsupportedError('Local fixture access has no password reset.');
+}
+
+String authErrorMessage(Object error, {bool reset = false}) {
+  final action = reset ? 'Password reset' : 'Sign-in';
+  if (error is FirebaseAuthException) {
+    return switch (error.code) {
+      'network-request-failed' =>
+        '$action could not reach the sign-in service. Check your connection and retry.',
+      'too-many-requests' =>
+        'Too many attempts. Wait a few minutes before trying again.',
+      'operation-not-allowed' =>
+        '$action is not enabled for this app. Contact your administrator.',
+      'invalid-email' => 'Enter a valid email address.',
+      'user-disabled' =>
+        'This account cannot sign in. Contact your administrator.',
+      _ =>
+        '$action could not be completed. Check your account details or contact your administrator.',
+    };
+  }
+  return '$action could not be completed. Check your connection and retry.';
 }
