@@ -49,6 +49,7 @@ def prepare(directory):
     manifest_raw = encode(manifest)
     launch = {
         "source_manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
+        "sam3_checkpoint_files": {"synthetic.safetensors": "e" * 64},
         "authorization_reference": manifest["authorization_reference"],
         "scope": {"organization_id": str(UUID(int=101)), "collection_id": str(UUID(int=102))},
         "specimens": [{
@@ -125,11 +126,13 @@ def verify(directory, target):
                                evidence_only=False, evidence_profile=None)
         with materialized_worker_args(args) as private_args:
             launch = read_launch(private_args.launch_policy, os.environ["SPECIMEN_LAUNCH_POLICY_SHA256"])
-            verify_source_manifest(private_args.source_manifest, launch)
+            manifest = verify_source_manifest(private_args.source_manifest, launch)
+            assert len(manifest.specimens) == 10
             copies = [private_args.launch_policy, private_args.source_manifest]
             assert all(path.stat().st_uid == 10001 for path in copies)
             assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in copies)
         assert all(not path.exists() for path in copies)
+        verify_worker_construction(args, launch)
     else:
         from specimen_digitization.application.sam3_server import read_runtime_manifest
 
@@ -140,6 +143,54 @@ def verify(directory, target):
     print(json.dumps({"status": "passed", "target": target, "runtime_uid": os.getuid(),
                       "root_readonly_mount": True, "strict_readers": True, "cleanup": True,
                       "synthetic_only": True, "live_services_verified": False}))
+
+
+def verify_worker_construction(args, launch):
+    """Traverse actual production startup, stopping before the first work effect.
+
+    Only external SQL/Storage constructors and telemetry are substituted. The
+    launch/manifest readers, provenance map, adapters, admission, workflow and
+    worker constructors execute unchanged inside the network-disabled container.
+    """
+    from unittest.mock import patch
+    from specimen_digitization.application import worker
+    from specimen_digitization.hub_models import SAM3_MODEL
+
+    class Constructed(Exception):
+        pass
+
+    def stop_before_effect(instance, stop):
+        expected = instance.workflow.adapters.sam3_expected
+        assert len(expected) == 10
+        assert all(row["manifest_sha256"] == launch.source_manifest_sha256 for row in expected.values())
+        assert all(row["checkpoint_files"] == launch.sam3_checkpoint_files for row in expected.values())
+        raise Constructed()
+
+    environment = {
+        "SPECIMEN_APPROVED_INFERENCE": "true",
+        "HF_TOKEN": "synthetic-offline-placeholder",  # pragma: allowlist secret - no credential
+        "SPECIMEN_HF_SECRET_RESOURCE": launch.hf_secret_resource,
+        "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision,
+        "SPECIMEN_SAM3_ENDPOINT": "https://synthetic-offline.run.app",
+        "SPECIMEN_WORKER_ACTOR_UID": "synthetic-offline-actor",
+    }
+    args.check_config = False
+    args.once = True
+    args.max_seconds = 1
+    repository = SimpleNamespace(memberships=lambda uid: [])
+    blobs = SimpleNamespace(bucket=SimpleNamespace(name="demo-synthetic-output"))
+    with patch.dict(os.environ, environment), \
+         patch.object(worker, "SqlConnectRepository", return_value=repository), \
+         patch.object(worker, "GcsBlobs", return_value=blobs), \
+         patch("specimen_digitization.observability.configure_observability"), \
+         patch.object(worker.PilotWorker, "tick", stop_before_effect):
+        try:
+            with worker.materialized_worker_args(args) as staged:
+                worker._run(staged)
+        except Constructed:
+            pass
+        else:
+            raise AssertionError("Worker construction boundary was not reached")
 
 
 if __name__ == "__main__":

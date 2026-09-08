@@ -15,8 +15,8 @@ combined PR body to avoid changing the commit being verified.
 | Client repair PR11 | 3bc8c4d7f237424443bbcd67c611398470ec5a98 | All five CI34262652657 passed; independent QA47 passed; both access findings closed |
 | API PR10 | 1c04fe7d8bc0007efb0778f44fe88aecac46c2d7 | All five CI checks passed, run34262161948; independent QA41 passed; list-action finding closed |
 | Data PR8 | 3d60a1b87027c7321d409be8617a73401cc82b3b | All five CI checks passed, run34260978476; independently reproduced SQL rehearsal |
-| Processing PR9 | c8b10eba77877ecf425ac74552157eaa3e49f647 | Corrective provenance/lock source frozen; independent review and CI pending |
-| QA PR7 | e9f75d4e035007e552baf439b823b8664cbc9e15 | All five CI checks passed, run34260268109 |
+| Processing PR9 | 75f5763699ba02bb6903b04f6c27662e3486266a | Provenance correction reviewed; actual startup negative before fix and positive after fix verified |
+| QA PR7 | fb6585cc0aa9b0497c6dcffab513be19b4fcbfd0 | Three-runtime descriptor57 tests plus72 independent malformed-input probes passed |
 
 Committed coordination documents are handoff snapshots. The active authority is
 coordinator-owned in worktree80e6. No private identity, approval configuration,
@@ -54,12 +54,20 @@ network access, credentials, checkpoint downloads or paid inference. Preliminary
 ARM64 API/worker smoke does not establish the required runtime ABI. Preliminary
 SAM ARM64 hash rejection was preserved; the supported AMD64 build passed.
 See [Cloud Run's runtime contract](https://docs.cloud.google.com/run/docs/container-contract).
-Final source-level and actual-container evidence remains required after repairs.
+At preliminary962d9aa, all three AMD64 images built and embedded source checks
+passed. Worker and SAM root-owned0444 mount to UID10001 private-copy checks passed.
+Independent QA then exposed a missing manifest return in worker construction;
+that preliminary source is not an accepted candidate. An expanded smoke reproduced
+the failure and passed after75f5763. Final source and image receipts are retained
+in the combined PR after all corrective owner inputs are imported.
 
 Startup materialization copies independently digest-pinned approved read-only
 mounts into fresh runtime-owned0700 directories with0600 files, bounded reads,
 exclusive creation and cleanup. Existing strict manifest/launch/profile readers
-remain the authority. Both worker and SAM require explicit opt-in to this copy
+remain the authority. The worker smoke continues through the actual verified
+manifest, expected SAM provenance, adapters, admission, workflow and worker
+construction. SQL/Storage constructors and telemetry are controlled fixtures;
+the first worker effect is intercepted before execution. Both worker and SAM require explicit opt-in to this copy
 step. A root-owned0444 synthetic mount must be tested inside the actual AMD64
 UID10001 images; helper unit tests alone are insufficient. The copy step grants
 no cloud, data-policy, inference or budget authorization.
