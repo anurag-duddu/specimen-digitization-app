@@ -10,6 +10,7 @@ type SpecimenSearch @view(sql: """
     s.sensitive,
     s.created_at,
     s.updated_at,
+    v.snapshot ->> 'created_at' AS domain_created_at,
     v.snapshot #>> '{asset,id}' AS asset_id,
     v.snapshot #>> '{batch_id}' AS batch_id,
     v.snapshot #>> '{asset,filename}' AS filename,
@@ -36,6 +37,7 @@ type SpecimenSearch @view(sql: """
   sensitive: Boolean
   createdAt: Timestamp
   updatedAt: Timestamp
+  domainCreatedAt: String
   assetId: String
   batchId: String
   filename: String
