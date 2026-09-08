@@ -6,7 +6,7 @@ Connect the web login/upload/review path to verified Firebase identity and serve
 collection roles. Preserve native compilation and isolated local synthetic mode.
 Owner task: `01a08219-3044-7c91-9907-5c3bc7d95548`.
 Scope: `apps/specimen_digitization/` and this report only.
-Branch: `codex/live-client`.
+Branch: `codex/live-client-auth-repair` (preserved from `codex/live-client`).
 Worktree: `/Users/anuragduddu/.codex/worktrees/ac08/specimen-digitization-app`.
 Baseline: `a53f855e963b457c3ee2065f387609a193bb6f32`.
 Implementation SHA: `ac6053b078bad85c2098e683973a074a78eccc52`.
@@ -81,7 +81,7 @@ not live acceptance evidence. Canonical log: `/tmp/live-client-verify.log`.
 New files were staged and repository hooks rerun successfully after fixing a
 scanner-detected synthetic basic-auth URL by using a username-only userinfo test;
 no scanner rules or allowlists changed. Hook log: `/tmp/live-client-hooks.log`.
-PR is open and unmerged. Remote verification was queued when this report was
+PR 5 was open and unmerged at this checkpoint. Remote verification was queued when this report was
 committed; the owner continues watching Repository checks, Python tests, Flutter
 checks and web build, Flutter android build, and Flutter ios build on the exact
 latest PR head. Final SHA/job outcomes will be sent to the coordinator; the
@@ -157,3 +157,66 @@ Retained raw model observations are untouched by this PR. Permitted human edits
 cannot authorize model replay or unblock finalization. Final exact head/all-five
 remote results are recorded in the PR body and coordinator handoff to avoid a
 self-referential sequence of report-only commits.
+
+
+## Corrective authorization boundary after PR 5 merge
+
+Confirmed by coordinator and fetched origin/main: PR 5 was merged by the user at
+2026-09-08T17:58:22Z as `1d297db520a6e31021e7bfa5e5f81b77e90cf618`, while
+independent QA's P2 repair was in progress. The prior freeze is superseded.
+Work was preserved on `codex/live-client-auth-repair`; the corrective PR targets
+current main. No agent merge, reset or hand deployment occurred.
+
+QA found that an authorized record followed by denied source-image access could
+return editable data; child evidence/history/intake catches also hid denials from
+the workspace. Repair introduces a repository access-denial signal and latch:
+401/403 or failed App Check invalidates workspace regardless of child handling;
+subsequent protected calls are suppressed. Intake stops its remaining file loop.
+Image non-auth failures retain a local preview error and remain retryable.
+
+Requests bind to access epoch and Firebase UID. Late responses from an older
+verification or user neither restore access nor deny a new verified session.
+A recheck does not clear the latch early: only a complete same-user/mode/session
+and collection request sequence unlocks it; failed or partial checks stay locked.
+Workspace generations also discard late initialization/mutation responses.
+Already transmitted requests cannot be recalled; their stale responses are
+rejected and no automatic mutation retry is introduced.
+
+Confirmed local repair tests: 30 passed across protected_access_http_test,
+access_generation_http_test, access_recovery_test and intake_recovery_test;
+analysis clean. Actual HTTP tests cover record200 then image401/403/AppCheck
+failure, historical/raw/complete-graph/history/intake denials despite local
+catches, no following protected request, successful explicit recovery,
+failed/partial/in-progress rechecks, late200/403 and changed Firebase UID.
+Widget tests verify parent invalidation from child denial and no second upload
+attempt after the first denied file. Logs: `/tmp/live-client-repair-tests.log`,
+`/tmp/live-client-auth-analyze.log`. Canonical corrective gate and independent QA
+are required before acceptance; final exact SHA/PR/CI goes to the coordinator and
+PR body after the new head is frozen. Actual live Firebase/browser/ten-specimen
+acceptance remains unperformed by this client task.
+
+
+Repair validation expanded to broken-connection versus HTTP503 image recovery,
+first-chunk upload denial after a successful offset read, and collection200
+responses missing the assigned collection. The full Flutter suite and analysis
+passed before the final canonical rerun. Earlier canonical runs caught the old
+graph post-denial reuse expectation and then a test-matrix variable scoping error;
+both were corrected in tests without weakening authorization or scanners.
+Artifacts: `/tmp/live-client-repair-flutter.log`,
+`/tmp/live-client-repair-analyze.log`, `/tmp/live-client-auth-repair-canonical.log`.
+
+Independent follow-up QA found a composed fallback race: an old preview transport
+failure, or summary fallback after an artifact receipt, could return an old
+record after a successful newer access recheck. The corrective batch now checks
+context after preview fallback and before summary/committed-receipt success;
+summary 401/403/access_changed is rethrown. Historical receipt and retry/review
+follow-ups retain their original context. New composite_access_http_test holds
+preview and summary HTTP requests, rechecks access, then disconnects or denies
+the old request and asserts the complete specimen future rejects without
+invalidating the new session. Direct summary401/403 cannot become a receipt.
+The existing committed-receipt recovery test uses non-auth503 so harmless
+summary unavailability is still verified independently of authorization failure.
+Full Flutter result after this fix: 120 passed, 7 skipped; analysis clean.
+Logs: `/tmp/live-client-composite-flutter.log`,
+`/tmp/live-client-composite-analyze.log`,
+`/tmp/live-client-corrective-canonical.log` (final required rerun).

@@ -1,5 +1,11 @@
 import 'dart:typed_data';
 
+/// Protected-access denials must reach the workspace even when a child panel
+/// handles its own request failure. Only an explicit role recheck recovers.
+abstract interface class AccessFailureSource {
+  Stream<ApiFailure> get accessFailures;
+}
+
 typedef Json = Map<String, dynamic>;
 const knownFieldStates = {
   'supported',
