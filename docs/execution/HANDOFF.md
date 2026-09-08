@@ -7,26 +7,35 @@ quality, approved production processing, physical-device behavior or deployment.
 
 ## Candidate and verification
 
-Product source checkpoint: `ee4bec83715bf262deb9c7bff4598ad9211ddd44`.
+Independently reviewed runtime source: `ee4bec83715bf262deb9c7bff4598ad9211ddd44`.
+The additive coordinate-message repair is integrated at
+`c144c05f5a3217208d6aab09e68ff3cdd2ddefa4`; its only product changes are the
+region editor and its tests. Backend, data and dependency files are unchanged.
 Canonical verification at `f815fa6b647ce5040114b07da522c6c15a92469c` passed
 351 Python tests with 26 gated skips, 68 Flutter tests with seven live skips,
 analysis, repository/secret checks and release web build. An independent fresh
 SQL database suite passed 71 tests; actual Flutter HTTP readback preserved exact
 runtime policy revisions and captured telemetry. Skipped opt-ins are not passes.
-The final source also passed local credential-free Android debug compilation;
+The runtime checkpoint also passed local credential-free Android debug compilation;
 log: `/tmp/specimen-wave2-final-android.log`. Latest-candidate unsigned iOS CI
 and physical-device/signing evidence remain separate pending gates.
 See [integration evidence](WAVE2_INTEGRATION.md) for commands, logs and provenance.
 
-Final independent runtime QA and latest-head remote CI are pending. Earlier
+Independent runtime QA is recorded in `ca693d7`, including its own fresh SQL,
+model/SAM execution, browser evidence and HEIC crop pixel-oracle/reopen proof.
+N01 is independently closed on `c144c05`: browser valid/empty/recovery and
+multiple-invalid handling, unrelated required-reason feedback, rejected writes
+without effects, and corrected save/reopen at revision 52 all passed. Crop pixels,
+original bytes and historical assets remained exact. Earlier
 independent reviews cover intake/review, Unicode reading evidence, authority
 decisions, atomic publication, large graphs and human language declarations in
 their explicitly recorded local scope. See [QA](QA.md); earlier checkpoint
 results must not be presented as verification of later changes.
 
 Draft [PR #3](https://github.com/anurag-duddu/specimen-digitization-app/pull/3)
-still contains first-repair head `a11724a` while this candidate awaits final QA.
-Its five green CI jobs do not cover the later candidate. No merge is authorized.
+is the review surface. Its description records the published head and corresponding
+CI run; every one of the five checks must pass on that head. Historical green
+checks on first-repair `a11724a` do not cover later changes. No merge is authorized.
 Read-only verification on 2026-09-08 confirmed public Hosting and remote `main`
 remain `82fd60eff90684d2c630a37c59e1250604ad1cae`; public marker/title smoke passed.
 

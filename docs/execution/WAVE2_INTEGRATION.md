@@ -337,3 +337,25 @@ Final combined canonical at f815fa6b647ce5040114b07da522c6c15a92469c passed:
 scanners and web build. Log: /tmp/specimen-wave2-runtime-combined-canonical.log.
 Own readback API and SQL servers were stopped. Independent runtime QA remains
 pending. Wave2 remains unpushed; first repair PR3 is preserved.
+
+## Final independent review and N01 closure
+
+Final runtime QA ca693d7 integrated as bcfe7e2: independent canonical351/26 and
+Flutter68/7, fresh SQL71, optional codecs9, newly executed runtime fixtures and
+actual Flutter HTTP/browser proof. Its all20 gate map preserves external limits.
+The previous HEIC crop GUI gap is closed with saved/reopened original-basis
+geometry and an independent pixel oracle; source bytes/history remain exact.
+
+N01, a stale coordinate-error message after corrected input, was repaired by
+owner21b3e6b integrated as c144c05f5a3217208d6aab09e68ff3cdd2ddefa4. Only the
+region editor and its tests changed from the runtime product freeze. Independent
+closure b7dba99 integrated as406d26e verifies error lifecycle, multiple-invalid
+fields, unrelated reason feedback, rejected writes without effects and exact
+save/reopen at52. No local blocker remains in the tested independent scope.
+This is not overall P0, deployed-runtime, device or institutional acceptance.
+
+Handoff/README updates, coordinator STATUS through0985c8d, and runtime/cost proposal
+clarifications are included. The fresh CLI demo cleared synthetic revision21;
+runtime-source Android debug compilation passed. Final exact-head canonical,
+PR3 fast-forward and all five current-head CI jobs are the next release-review
+gates. No production merge, paid call or cloud provisioning is authorized.
