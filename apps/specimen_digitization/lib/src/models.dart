@@ -97,6 +97,7 @@ enum ArtifactKind {
   activeGraph,
   phase,
   readingMetadata,
+  readingDeclarations,
   authority,
   disagreement,
   observationRaw,
