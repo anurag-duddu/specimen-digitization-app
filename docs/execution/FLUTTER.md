@@ -247,3 +247,38 @@ retains the existing firebase_core_web compatibility override.
   (two opt-in SQL tests skipped), Flutter analysis, 23 offline Flutter tests
   (two opt-in live tests skipped) and release web build. Actual live-history
   test separately passed against the newer B04 backend as described above.
+
+## QA-F04 source geometry and confirmed reading semantics (2026-09-08)
+
+- Separate follow-up to B04 commit `4d00421`. A centered loose layout now lets
+  the source aspect ratio fit inside the 380-pixel viewer at every rotation.
+  The original stays whole; region overlays use the same original-pixel
+  coordinate transform. Existing explicit region-crop selection remains.
+- Two geometry regressions use a generated 1000 x 520 synthetic PNG with a
+  circular fiducial, corner text and an interior box. At 390 x 844 and
+  1440 x 1000, every quarter turn asserts source aspect ratio, full containment
+  within the viewer, overlay extent and original-coordinate origin alignment.
+- Confirmed QA's independent-reading accessibility observation in Chrome:
+  before repair, both independent observation groups exposed an empty disabled
+  textbox while visible literal text existed. Replaced `SelectableText.rich`
+  with `SelectionArea(Text.rich)`; selectable text and character differences
+  remain. Widget semantics now include each complete distinct reading. The
+  post-repair browser accessibility snapshot contains complete literals under
+  both independent model groups.
+- Actual Chrome inspection at 390 x 844 and 1440 x 1000 confirmed undistorted
+  full source images, with a narrow 90-degree rotation check. Narrow original
+  source bounds were 310 x 161.2 CSS pixels (1000:520 ratio); letterboxing is
+  intentional. Temporary evidence: `/tmp/flutter-f04-evidence/narrow-0.png`,
+  `narrow-90.png`, `wide-0.png`, and `readings-ax.txt`. These are local artifacts,
+  not committed release evidence. QA will independently capture its candidate.
+- Browser also fetched the bounded history index and opened historical revision
+  1 read only while current review stayed at 17 (`history-ax.txt`). The fixture
+  was accepted through authenticated local HTTP because Chrome extension file
+  URL permission blocked file-chooser injection; no browser setting changed.
+- Canonical `scripts/ci/verify.sh` passed with scanners/hooks, 77 Python tests
+  (two opt-in SQL skips), Flutter analysis, 26 offline Flutter tests (two
+  opt-in live skips) and release web build. The three new focused geometry and
+  semantics tests also passed separately. No native behavior/platform changes;
+  prior iOS platform-component limitation remains.
+- Owned web port 3000 and API 8012 stopped; browser viewport overrides reset and
+  own test tab closed. SQL emulator lease returned to backend. No deployment.

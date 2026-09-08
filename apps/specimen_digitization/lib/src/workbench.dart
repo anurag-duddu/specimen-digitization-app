@@ -476,96 +476,99 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   transformationController: _transform,
                   minScale: .2,
                   maxScale: 12,
-                  child: RotatedBox(
-                    quarterTurns: _rotation,
-                    child: AspectRatio(
-                      aspectRatio: crop == null
-                          ? width / height
-                          : (crop[2] - crop[0]) / (crop[3] - crop[1]),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (crop != null)
-                            FittedBox(
-                              fit: BoxFit.contain,
-                              child: SizedBox(
-                                width: (crop[2] - crop[0]).toDouble(),
-                                height: (crop[3] - crop[1]).toDouble(),
-                                child: ClipRect(
-                                  child: Stack(
-                                    children: [
-                                      Positioned(
-                                        left: -crop[0].toDouble(),
-                                        top: -crop[1].toDouble(),
-                                        width: width,
-                                        height: height,
-                                        child: Image.memory(
-                                          asset['preview_bytes'],
-                                          fit: BoxFit.fill,
-                                          semanticLabel:
-                                              'Source pixels for selected label region',
+                  child: Center(
+                    child: RotatedBox(
+                      quarterTurns: _rotation,
+                      child: AspectRatio(
+                        aspectRatio: crop == null
+                            ? width / height
+                            : (crop[2] - crop[0]) / (crop[3] - crop[1]),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (crop != null)
+                              FittedBox(
+                                fit: BoxFit.contain,
+                                child: SizedBox(
+                                  width: (crop[2] - crop[0]).toDouble(),
+                                  height: (crop[3] - crop[1]).toDouble(),
+                                  child: ClipRect(
+                                    child: Stack(
+                                      children: [
+                                        Positioned(
+                                          left: -crop[0].toDouble(),
+                                          top: -crop[1].toDouble(),
+                                          width: width,
+                                          height: height,
+                                          child: Image.memory(
+                                            asset['preview_bytes'],
+                                            fit: BoxFit.fill,
+                                            semanticLabel:
+                                                'Source pixels for selected label region',
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              Image.memory(
+                                asset['preview_bytes'],
+                                fit: BoxFit.fill,
+                                semanticLabel:
+                                    'Immutable original specimen image',
+                                errorBuilder: (_, _, _) => const Center(
+                                  child: Text(
+                                    'Source access expired or unavailable. Refresh to retry.',
                                   ),
                                 ),
                               ),
-                            )
-                          else
-                            Image.memory(
-                              asset['preview_bytes'],
-                              fit: BoxFit.fill,
-                              semanticLabel:
-                                  'Immutable original specimen image',
-                              errorBuilder: (_, _, _) => const Center(
-                                child: Text(
-                                  'Source access expired or unavailable. Refresh to retry.',
-                                ),
-                              ),
-                            ),
-                          if (_region == null)
-                            ...specimen.regions.map((r) {
-                              final box = (r['bbox'] as List?)?.cast<num>();
-                              if (box == null || box.length != 4) {
-                                return const SizedBox.shrink();
-                              }
-                              return LayoutBuilder(
-                                builder: (context, c) => Stack(
-                                  children: [
-                                    Positioned(
-                                      left: box[0] / width * c.maxWidth,
-                                      top: box[1] / height * c.maxHeight,
-                                      width:
-                                          (box[2] - box[0]) /
-                                          width *
-                                          c.maxWidth,
-                                      height:
-                                          (box[3] - box[1]) /
-                                          height *
-                                          c.maxHeight,
-                                      child: Semantics(
-                                        label: 'Label region ${r['region_id']}',
-                                        button: true,
-                                        child: InkWell(
-                                          onTap: () => setState(
-                                            () => _region = r['region_id']
-                                                .toString(),
-                                          ),
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              border: Border.all(
-                                                color: Colors.amber,
-                                                width: 3,
-                                              ),
+                            if (_region == null)
+                              ...specimen.regions.map((r) {
+                                final box = (r['bbox'] as List?)?.cast<num>();
+                                if (box == null || box.length != 4) {
+                                  return const SizedBox.shrink();
+                                }
+                                return LayoutBuilder(
+                                  builder: (context, c) => Stack(
+                                    children: [
+                                      Positioned(
+                                        left: box[0] / width * c.maxWidth,
+                                        top: box[1] / height * c.maxHeight,
+                                        width:
+                                            (box[2] - box[0]) /
+                                            width *
+                                            c.maxWidth,
+                                        height:
+                                            (box[3] - box[1]) /
+                                            height *
+                                            c.maxHeight,
+                                        child: Semantics(
+                                          label:
+                                              'Label region ${r['region_id']}',
+                                          button: true,
+                                          child: InkWell(
+                                            onTap: () => setState(
+                                              () => _region = r['region_id']
+                                                  .toString(),
                                             ),
-                                            child: Align(
-                                              alignment: Alignment.topLeft,
-                                              child: Container(
-                                                color: Colors.black87,
-                                                child: Text(
-                                                  textOf(r['region_id']),
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: Colors.amber,
+                                                  width: 3,
+                                                ),
+                                              ),
+                                              child: Align(
+                                                alignment: Alignment.topLeft,
+                                                child: Container(
+                                                  color: Colors.black87,
+                                                  child: Text(
+                                                    textOf(r['region_id']),
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -573,12 +576,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                        ],
+                                    ],
+                                  ),
+                                );
+                              }),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -655,27 +658,29 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              SelectableText.rich(
-                TextSpan(
-                  children: literal
-                      .split('')
-                      .indexed
-                      .map(
-                        (e) => TextSpan(
-                          text: e.$2,
-                          style:
-                              differs &&
-                                  (e.$1 >= reference.length ||
-                                      reference[e.$1] != e.$2)
-                              ? const TextStyle(
-                                  decoration: TextDecoration.underline,
-                                  fontWeight: FontWeight.w700,
-                                  backgroundColor: Color(0xffffe7a3),
-                                )
-                              : null,
-                        ),
-                      )
-                      .toList(),
+              SelectionArea(
+                child: Text.rich(
+                  TextSpan(
+                    children: literal
+                        .split('')
+                        .indexed
+                        .map(
+                          (e) => TextSpan(
+                            text: e.$2,
+                            style:
+                                differs &&
+                                    (e.$1 >= reference.length ||
+                                        reference[e.$1] != e.$2)
+                                ? const TextStyle(
+                                    decoration: TextDecoration.underline,
+                                    fontWeight: FontWeight.w700,
+                                    backgroundColor: Color(0xffffe7a3),
+                                  )
+                                : null,
+                          ),
+                        )
+                        .toList(),
+                  ),
                 ),
               ),
               ExpansionTile(
