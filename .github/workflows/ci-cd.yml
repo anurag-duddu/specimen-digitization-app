@@ -97,7 +97,10 @@ jobs:
         run: flutter test
 
       - name: Build Flutter web release
-        run: flutter build web --release
+        env:
+          SPECIMEN_API_BASE_URL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_API_BASE_URL || '' }}
+          SPECIMEN_RECAPTCHA_SITE_KEY: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_RECAPTCHA_SITE_KEY || '' }}
+        run: ../../scripts/ci/build_web.sh
 
       - name: Stamp release with its source revision
         run: ../../scripts/ci/write_deployment_metadata.sh build/web
