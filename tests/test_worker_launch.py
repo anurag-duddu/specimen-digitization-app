@@ -210,7 +210,27 @@ def test_manifest_and_configuration_fail_closed_before_credentials(
     source.write_text(json.dumps(manifest))
     source.chmod(0o600)
     launch.source_manifest_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
-    verify_source_manifest(source, launch)
+    # Exercise the real private-file validator through the production startup
+    # expectation builder; a successful validator must return its parsed input.
+    from specimen_digitization.application.worker_launch import sam3_expectations
+    from specimen_digitization.application.production import ProductionAdapters
+    from specimen_digitization.application.storage import LocalBlobs
+
+    launch.sam3_checkpoint_files = {
+        "model.safetensors": "f" * 64,
+        "config.json": "e" * 64,
+    }
+    validated = verify_source_manifest(source, launch)
+    expected = sam3_expectations(validated, launch, "evidence")
+    adapters = ProductionAdapters(LocalBlobs(tmp_path / "startup-blobs"), sam3_expected=expected)
+    assert list(adapters.sam3_expected) == [s.specimen_id for s in launch.specimens]
+    for item in validated.specimens:
+        assert adapters.sam3_expected[item.specimen_id] == {
+            "manifest_sha256": launch.source_manifest_sha256,
+            "source": item.source_objects[0].model_dump(),
+            "output_bucket": "evidence",
+            "checkpoint_files": launch.sam3_checkpoint_files,
+        }
     manifest["status"] = "metadata_frozen"
     source.write_text(json.dumps(manifest))
     source.chmod(0o600)

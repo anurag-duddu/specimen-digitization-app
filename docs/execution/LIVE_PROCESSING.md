@@ -515,3 +515,11 @@ private candidate file SHA:
 `05f4e3e81d9e4a2cc645b433a4dbafff6b1fc0e262adc03a953adc4269b26c2b`.
 Status remains cached model artifact candidate requiring review; this does not
 approve inference, establish license/access today or replace the frozen-ten gate.
+
+Independent QA subsequently found that the validated source manifest was not
+returned to startup's SAM expectation builder. The corrective follow-up returns
+that validated model and extends the actual private ready-ten fixture through
+the expectation builder and ProductionAdapters construction for all ten sources.
+The fixture still checks rejected manifest states and missing launch inputs.
+This supersedes c8b10eb's startup readiness; delivery must include the follow-up
+before its final combined validation and image build.

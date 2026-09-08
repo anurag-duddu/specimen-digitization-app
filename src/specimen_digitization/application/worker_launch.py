@@ -297,6 +297,7 @@ def verify_source_manifest(path: Path, launch: PilotLaunch):
             )
         ):
             raise ValueError("Source binding mismatch")
+        return manifest
     except (OSError, ValueError):
         raise OperationalBlock(
             "pilot_source_manifest_not_ready_or_mismatched"
