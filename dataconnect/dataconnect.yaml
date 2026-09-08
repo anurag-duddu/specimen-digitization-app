@@ -1,0 +1,12 @@
+specVersion: "v1"
+serviceId: specimen-digitization-service
+location: us-east4
+schema:
+  source: ./schema
+  datasource:
+    postgresql:
+      database: specimen-digitization-database
+      cloudSql:
+        instanceId: specimen-digitization-instance
+connectorDirs:
+  - ./connector
