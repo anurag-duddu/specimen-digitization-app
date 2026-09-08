@@ -1,0 +1,51 @@
+# Current immutable snapshot only; scoped join prevents historical or tenant leakage.
+# createdAt is the typed persistence timestamp, not snapshot domain provenance.
+type SpecimenSearch @view(sql: """
+  SELECT true AS all_rows, s.organization_id,
+    s.collection_id,
+    s.id::text COLLATE "C" AS id,
+    s.revision,
+    s.state AS status,
+    s.disposition,
+    s.sensitive,
+    s.created_at,
+    s.updated_at,
+    v.snapshot #>> '{asset,id}' AS asset_id,
+    v.snapshot #>> '{batch_id}' AS batch_id,
+    v.snapshot #>> '{asset,filename}' AS filename,
+    v.snapshot #>> '{asset,uploader}' AS uploader,
+    v.snapshot #>> '{run,id}' AS active_run_id,
+    v.snapshot #>> '{run,stage}' AS stage,
+    v.snapshot #>> '{run,blocker}' AS blocker,
+    v.snapshot #>> '{run,profile,id}' AS profile_id,
+    v.snapshot #>> '{run,profile,version}' AS profile_version,
+    ARRAY(SELECT value #>> '{}' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.snapshot #> '{run,reasons}') = 'array' THEN v.snapshot #> '{run,reasons}' ELSE '[]'::jsonb END) WHERE jsonb_typeof(value) = 'string') AS reason_codes,
+    CASE WHEN jsonb_typeof(v.snapshot #> '{run,review_risk,composite}') = 'number' THEN CASE WHEN (v.snapshot #>> '{run,review_risk,composite}')::numeric BETWEEN 0 AND 100 THEN (v.snapshot #>> '{run,review_risk,composite}')::double precision END END AS risk,
+    CASE WHEN jsonb_typeof(v.snapshot #> '{run,profile,synthetic}') = 'boolean' THEN (v.snapshot #>> '{run,profile,synthetic}')::boolean END AS synthetic
+  FROM public.specimen s JOIN public.specimen_snapshot v
+    ON v.organization_id = s.organization_id AND v.collection_id = s.collection_id
+    AND v.specimen_id = s.id AND v.revision = s.revision
+""") {
+  allRows: Boolean
+  organizationId: UUID
+  collectionId: UUID
+  id: String
+  revision: Int
+  status: String
+  disposition: String
+  sensitive: Boolean
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  assetId: String
+  batchId: String
+  filename: String
+  uploader: String
+  activeRunId: String
+  stage: String
+  blocker: String
+  profileId: String
+  profileVersion: String
+  reasonCodes: [String]
+  risk: Float
+  synthetic: Boolean
+}
