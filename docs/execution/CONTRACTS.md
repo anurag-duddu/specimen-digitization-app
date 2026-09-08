@@ -266,3 +266,54 @@ both serializers. Unimplemented provenance obligations remain acceptance gaps,
 not waived by compact serialization. The data-owner snapshot bound is provisional
 until the adapter enforces it. No later contract delta may weaken clearance or
 turn institutional unknowns into approved values.
+
+## Canonical wire freeze: v0.1 integration amendment
+
+This section supersedes the pending serializer choices above. The architect
+inspected backend `application/api.py`'s `summary`, `workspace`, request models
+and route functions and adopts those explicit HTTP serializers. Do not expose
+the compact internal Specimen object directly or have Flutter guess aliases.
+Backend must retain a shared generated fixture and Flutter must test that same
+fixture before integration acceptance. Source inspection is not HTTP execution
+proof; the backend implementation is still in progress.
+
+| Surface | Canonical shape |
+|---|---|
+| Session | `user_id`, `mode`, `memberships: [{organization_id, collection_id, role, can_view_sensitive}]`, `runtime_blockers: [string]`, `synthetic_token_required: boolean` |
+| Summary | `specimen_id`, `asset_id`, `organization_id`, `collection_id`, `revision`, `batch_id`, `filename`, `created_at`, `active_run_id`, `record_version_id`, `status`, `stage`, `disposition`, `reason_codes`, `blocker`, `profile_id`, `profile_version`, `synthetic`, `available_actions` |
+| Workspace | Summary fields plus singular `asset`, `run`, `regions`, `observations`, `transcriptions`, keyed-object `fields`, `evidence`, `validations`, `decisions`, `events` |
+| Region | Internal `id`, `asset_id`, `x`, `y`, `width`, `height`, `order`, `method`, `version`, crop/mask references, plus wire `region_id` and `[x,y,x+width,y+height]` `bbox` |
+| Observation | Internal provenance fields plus wire `observation_id` and `verbatim_text`; literal_text is an internal-compatible alias |
+| Field | Fields object keyed by mandatory key; each value has `value_state`, `literal`, `parsed`, `normalized`, `authority_id`, `evidence_ids`, `reason`; internal-compatible `state` may also appear |
+| Evidence | Evidence object plus `evidence_id`; image and raw references remain immutable IDs/digests |
+| Validation | `validations` array, not validation_findings; each has rule_id, severity, outcome, reason_code |
+| Timeline | `events` with monotonic sequence; decisions is the review-event subset; no audit_events alias |
+| Batch create input | `collection_id`, `display_name`, `acquisition_method` (default files) |
+| Item create input | `client_item_id`, `filename`, `media_type`, `size_bytes`, `width`, `height`, `sha256` |
+| Item/upload result | Input metadata plus upload_id, asset_id, specimen_id, batch_id, collection_id, revision, state, offset, upload_url, upload_method; duplicate_specimen_id only for authorized duplicates |
+| Upload content | Authenticated PUT with Upload-Offset and up to 4 MiB binary bytes; returns upload result with new offset/revision. Same retained offset/hash replay returns current result; otherwise 409 and GET to reconcile |
+| Complete | `{expected_revision, reason}` plus Idempotency-Key; returns Summary. Storage generation is server-owned in this transport, not client input |
+| Review request | expected_revision, base_record_version_id, kind, target_id, before, after, reason, evidence_ids; field/transcription/approve/coverage kinds; returns Workspace |
+| Region replacement request | expected_revision, base_run_id, regions array, reason; returns Workspace with successor run |
+| Asset access | `{url, requires_authorization: true, asset}`; relative URL is authenticated API content route; Flutter fetches bytes with bearer credentials, not unauthenticated Image.network |
+
+`revision` explicitly maps internal `Specimen.version`. `record_version_id` is
+currently the opaque token `<run_id>:<revision>`; clients preserve it unchanged.
+Source asset uses `id`, `media_type`, `size_bytes`, `blob_ref`, hash/dimensions and
+uploader metadata inside the singular `asset` field. Do not infer an assets array.
+Lookup ambiguity is `ambiguous`. Scope IDs stay UUID strings; backend must
+normalize SQL's hyphenless UUID responses before comparison/HTTP serialization.
+
+Authenticated content endpoints are an accepted private-image alternative to
+short-lived signed URLs. Authorization is rechecked per read, with no-store
+responses; Flutter must fetch bytes without leaking bearer headers to unrelated
+origins. The backend's current diagnostic generic errors need custom handlers
+for validation/401 to satisfy the common error envelope; test all paths rather
+than assuming the generic exception handler wraps framework-generated errors.
+
+Current code acceptance gaps remain separate: not every requested search filter
+is implemented; classification cannot yet select a different published profile;
+profile and runtime readiness are not fully configurable; raw schema does not
+supply every provenance obligation; history growth needs pagination; all supplied
+available_actions must be filtered by actual actor permission. These are concrete
+backend/QA obligations, not wire aliases or newly waived requirements.
