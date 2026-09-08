@@ -317,3 +317,21 @@ profile and runtime readiness are not fully configurable; raw schema does not
 supply every provenance obligation; history growth needs pagination; all supplied
 available_actions must be filtered by actual actor permission. These are concrete
 backend/QA obligations, not wire aliases or newly waived requirements.
+
+Backend owner subsequently confirmed the outer projection above as canonical and
+published `docs/execution/backend-openapi.json` and
+`docs/execution/backend-wire-examples.json` in its implementation worktree. The
+architect read the latter: it contains a synthetic session example and generated
+item/decision request schemas; workspace/upload are still descriptive notes.
+Backend must add actual generated response fixtures from the HTTP journey for
+Flutter's identical-fixture test. That test requirement remains open; the wire
+naming decision is settled. Backend also confirmed adding `unresolved` as a field
+state, correcting valid-empty lookup semantics and adopting the 256 KiB snapshot
+bound. Independent QA must verify these changes on the committed implementation.
+
+Current implementation fixture locations (read-only cross-task references):
+`/Users/anuragduddu/.codex/worktrees/3782/specimen-digitization-app/docs/execution/backend-openapi.json`
+and
+`/Users/anuragduddu/.codex/worktrees/3782/specimen-digitization-app/docs/execution/backend-wire-examples.json`.
+Integration retains the files under repository-relative docs/execution paths so
+the contract survives removal of temporary worktrees.
