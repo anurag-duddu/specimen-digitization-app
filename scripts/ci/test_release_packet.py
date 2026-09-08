@@ -19,7 +19,7 @@ def candidate():
 
 def test_example_is_explicitly_incomplete():
     assert MODULE.validate(candidate())
-    with pytest.raises(ValueError, match="incomplete candidate"):
+    with pytest.raises(ValueError, match="expected source SHA"):
         MODULE.validate(candidate(), require_ready=True)
 
 
@@ -73,6 +73,7 @@ def complete_structure():
     for group in [p["data"], p["approvals"]]:
         for key in group:
             group[key] = "d" * 64
+    p["sam_model"].update(revision="c" * 40, artifacts_sha256="c" * 64, config_sha256="d" * 64)
     p["pilot"]["manifest_sha256"] = "e" * 64
     p["public_config_sha256"] = p["rollback_sha256"] = "f" * 64
     for entry in p["checks"].values():
@@ -81,7 +82,7 @@ def complete_structure():
 
 
 def test_complete_structure_does_not_claim_live_verification():
-    assert MODULE.validate(complete_structure(), require_ready=True) == []
+    assert MODULE.validate(complete_structure(), require_ready=True, expected_source_sha="a" * 40) == []
 
 
 @pytest.mark.parametrize("conclusion", ["skipped", "cancelled", "failure", "not_run"])
@@ -89,4 +90,29 @@ def test_no_non_success_check_counts_as_complete(conclusion):
     p = complete_structure()
     p["checks"]["Flutter android build"]["conclusion"] = conclusion
     with pytest.raises(ValueError, match="incomplete candidate"):
-        MODULE.validate(p, require_ready=True)
+        MODULE.validate(p, require_ready=True, expected_source_sha="a" * 40)
+
+
+def test_reject_self_consistent_stale_packet_against_expected_source():
+    with pytest.raises(ValueError, match="expected candidate source"):
+        MODULE.validate(complete_structure(), require_ready=True, expected_source_sha="b" * 40)
+
+
+def test_readiness_requires_independent_source_even_for_complete_packet():
+    with pytest.raises(ValueError, match="expected source SHA"):
+        MODULE.validate(complete_structure(), require_ready=True)
+
+
+@pytest.mark.parametrize("group,key", [("approvals", "budget_sha256"), ("data", "backup_restore_evidence_sha256"), ("sam_model", "artifacts_sha256")])
+def test_missing_approval_data_or_model_evidence_blocks_readiness(group, key):
+    p = complete_structure()
+    p[group][key] = None
+    with pytest.raises(ValueError, match="incomplete candidate"):
+        MODULE.validate(p, require_ready=True, expected_source_sha="a" * 40)
+
+
+def test_missing_sam_image_blocks_readiness():
+    p = complete_structure()
+    p["images"]["sam"]["reference"] = None
+    with pytest.raises(ValueError, match="incomplete candidate"):
+        MODULE.validate(p, require_ready=True, expected_source_sha="a" * 40)

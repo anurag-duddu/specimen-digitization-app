@@ -536,3 +536,12 @@ Main web builds accept the approved public repository variables
 preserve the setup screen; partial or unsafe configuration fails the build.
 `build_web.sh` never forwards these variables for PR/manual/native builds. This
 wiring does not authorize changing repository variables or App Check registration.
+
+Release completeness is separate from candidate structure CI. The strict
+non-deploying preflight `scripts/ci/check_release_readiness.py` accepts a real
+generated/private packet only in the expected GitHub main/integration workflow
+context, derives the expected source SHA from that context and rejects missing,
+incomplete, example or stale packets. No future deploy implementation may replace
+this with example/schema validation. API, worker and CPU SAM image provenance,
+pinned model artifact hashes, data restoration and approval evidence are required;
+actual evidence verification and cloud authorization remain additional gates.
