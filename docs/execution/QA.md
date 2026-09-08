@@ -830,3 +830,39 @@ writer calls were observed. Evidence: `qa-evidence/c8001bb/`; focused log
 This bounded repair result was sent to parent/integration before broader GUI
 completion. It does not close the incomplete HEIC crop GUI case or imply graph,
 production, GCS wall-clock, codec memory-isolation or complete P0 acceptance.
+
+## 2026-09-08 — frozen graph independent checkpoint
+
+Frozen target `745127a1a326473a1aa93794bc7ae07f58591ba3`, exact product tree
+verified after importing onto QA atomic closure. Canonical independent run:
+259 Python passed,24 optional skips;58 Flutter passed,5 gated live skips;
+analysis, scanners and web build passed. Fresh isolated PostgreSQL/SQL Connect
+suite:49 passed. TRN changes are excluded from this checkpoint.
+
+QA constructed a synthetic storage fixture with20 observations, including a
+4,320,000-character marked reading. Complete artifact4,828,563 bytes; workspace
+returns413 with retrieval metadata. Actual HTTP verified complete artifact size,
+SHA header and scope/specimen/revision identity; missing authentication and wrong
+organization were denied. This oversized synthetic fixture proves storage and UI
+behavior, not transcription accuracy or scientific clearance.
+
+In the actual Flutter browser, complete-artifact verification succeeded. QA
+visited **all377 observation pages** using the Next control, captured every full
+rendered text node, concatenated4,515,728 characters and parsed JSON. It equals
+all20 observations in the independently retrieved original artifact exactly;
+there is no missing page or truncation in this tested section.
+
+Actual Flutter HTTP test passed coverage57→58 with committed receipt, exact
+historical57 retrieval, stale CAS rejection and current cancel58→59. Browser
+then applied pause59→60 and cancel60→61. Both displayed the explicit saved
+revision and do-not-repeat acknowledgment. Current snapshot stayed12,897 bytes.
+Historical57 artifact remained byte-exact after those mutations and a separate
+server-process restart. Current artifact corruption returned409, restoration
+recovered exact bytes and revision stayed61. No product changes were made.
+
+Evidence scripts/results: `qa-evidence/745127a/`. Full browser page capture,
+receipt/cancel snapshots, screenshots and original artifact are retained at
+`/tmp/specimen-qa-745127a-graph`. Logs:
+`/tmp/specimen-qa-745127a-{canonical,sql,live}.log`.
+This closes the tested >4MiB local graph/UI path. It does not promote production,
+scientific quality, cloud/provider limits or all20 P0 requirements to accepted.

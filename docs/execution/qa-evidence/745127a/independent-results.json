@@ -1,0 +1,13 @@
+{
+  "all_browser_pages": 377,
+  "browser_reconstructed_characters": 4515728,
+  "observations_exact": 20,
+  "literal_text_characters": 4320000,
+  "artifact_bytes": 4828563,
+  "final_revision": 61,
+  "compact_snapshot_bytes": 12897,
+  "historical_artifact_exact": true,
+  "corruption_status": 409,
+  "restored_bytes_exact": true,
+  "no_revision_advance": true
+}
