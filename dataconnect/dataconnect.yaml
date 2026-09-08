@@ -8,5 +8,6 @@ schema:
       database: specimen-digitization-database
       cloudSql:
         instanceId: specimen-digitization-instance
+        schemaValidation: "COMPATIBLE"
 connectorDirs:
   - ./connector

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
@@ -17,7 +18,43 @@ class RevokedRepository extends TestRepository {
   }
 }
 
+class ChildDeniedRepository extends TestRepository
+    implements AccessFailureSource {
+  final controller = StreamController<ApiFailure>.broadcast(sync: true);
+  @override
+  Stream<ApiFailure> get accessFailures => controller.stream;
+}
+
 void main() {
+  testWidgets('child-local evidence denial still clears parent workspace', (
+    tester,
+  ) async {
+    final session = TestSession();
+    final repo = ChildDeniedRepository();
+    addTearDown(session.controller.close);
+    addTearDown(repo.controller.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CollectionWorkspace(repository: repo, session: session),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Collection queue'), findsOneWidget);
+    // Child panels may catch their own exception; this independent boundary
+    // must still remove all collection context and editing surfaces.
+    repo.controller.add(
+      const ApiFailure('Evidence access denied.', status: 403),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Collection queue'), findsNothing);
+    expect(find.text('Authorized collection'), findsNothing);
+    expect(
+      find.textContaining('Collection access could not be verified'),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'authorization denial removes collection and allows access recheck',
     (tester) async {

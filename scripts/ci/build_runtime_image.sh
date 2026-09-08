@@ -37,4 +37,28 @@ else
   docker run --rm --platform linux/amd64 --network none --read-only --cap-drop ALL --security-opt no-new-privileges "$image" --version | \
     python3 -c 'import json,sys; assert json.load(sys.stdin)["source_sha"] == sys.argv[1]' "$source_sha"
 fi
+if [[ "$target" != "api" ]]; then
+  # The preparation process writes only synthetic fixtures as root. Verification
+  # uses the image's configured UID with the volume read-only and no network.
+  smoke_dir="$(mktemp -d "${TMPDIR:-/tmp}/specimen-runtime-smoke.XXXXXX")"
+  smoke_volume="specimen-runtime-smoke-$target-$(basename "$smoke_dir" | tr '[:upper:]' '[:lower:]')"
+  cleanup_runtime_smoke() {
+    docker volume rm "$smoke_volume" >/dev/null 2>&1 || true
+    rm -rf "$smoke_dir"
+  }
+  trap cleanup_runtime_smoke EXIT HUP INT TERM
+  git show "$source_sha:scripts/ci/smoke_runtime_inputs.py" > "$smoke_dir/verify.py"
+  chmod 0444 "$smoke_dir/verify.py"
+  docker volume create "$smoke_volume" >/dev/null
+  docker run --rm --platform linux/amd64 --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges --user 0 \
+    --mount "type=bind,src=$smoke_dir/verify.py,dst=/verify.py,readonly" \
+    --mount "type=volume,src=$smoke_volume,dst=/inputs" \
+    --entrypoint python "$image" /verify.py --prepare
+  docker run --rm --platform linux/amd64 --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges --env PYTHONPATH=/app --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+    --mount "type=bind,src=$smoke_dir/verify.py,dst=/verify.py,readonly" \
+    --mount "type=volume,src=$smoke_volume,dst=/inputs,readonly" \
+    --entrypoint python "$image" /verify.py --target "$target"
+fi
 printf 'Built and CLI-smoked %s at %s; no cloud release or inference.\n' "$target" "$source_sha"

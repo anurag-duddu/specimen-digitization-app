@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 import 'models.dart';
 
-class ApiSpecimenRepository implements SpecimenRepository {
+class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
   ApiSpecimenRepository({
     required this.baseUrl,
     required this.token,
@@ -42,25 +42,83 @@ class ApiSpecimenRepository implements SpecimenRepository {
   String mode = 'production';
   @override
   List<dynamic> blockers = [];
-  void close() => _client.close();
+  final _accessFailures = StreamController<ApiFailure>.broadcast(sync: true);
+  ApiFailure? _accessFailure;
+  int _accessEpoch = 0;
+  bool _rechecking = false;
+  bool _hasVerifiedSession = false;
+  String? _verifiedUserId;
+  @override
+  Stream<ApiFailure> get accessFailures => _accessFailures.stream;
+  bool _current(int epoch, String? userId) =>
+      epoch == _accessEpoch && expectedUserId?.call() == userId;
+  ApiFailure _deny(ApiFailure failure, int epoch, String? userId) {
+    if (_current(epoch, userId) &&
+        (failure.status == 401 || failure.status == 403) &&
+        _accessFailure == null) {
+      _accessFailure = failure;
+      if (!_accessFailures.isClosed) _accessFailures.add(failure);
+    }
+    return failure;
+  }
+
+  void _checkAccess(int epoch, String? userId, {bool verification = false}) {
+    if (!_current(epoch, userId)) {
+      // An old response cannot restore access or revoke a newer session.
+      throw const ApiFailure(
+        'Collection access changed. Check access again.',
+        code: 'access_changed',
+        status: 403,
+      );
+    }
+    if (!verification) {
+      if (_accessFailure != null) throw _accessFailure!;
+      if (_rechecking || (_hasVerifiedSession && _verifiedUserId != userId)) {
+        throw const ApiFailure(
+          'Collection access must be verified before continuing.',
+          code: 'access_not_verified',
+          status: 403,
+        );
+      }
+    }
+  }
+
+  void close() {
+    _client.close();
+    _accessFailures.close();
+  }
+
   String _root(CollectionScope scope) =>
       '/v1/organizations/${Uri.encodeComponent(scope.organizationId)}';
-  Future<Map<String, String>> _credentials() async {
+  Future<Map<String, String>> _credentials(
+    int epoch,
+    String? userId, {
+    bool verification = false,
+  }) async {
+    _checkAccess(epoch, userId, verification: verification);
     String? bearer;
     try {
       bearer = await token().timeout(const Duration(seconds: 30));
     } catch (_) {
-      throw const ApiFailure(
-        'Your sign-in could not be refreshed. Check your connection or sign in again.',
-        code: 'unauthenticated',
-        status: 401,
+      throw _deny(
+        const ApiFailure(
+          'Your sign-in could not be refreshed. Check your connection or sign in again.',
+          code: 'unauthenticated',
+          status: 401,
+        ),
+        epoch,
+        userId,
       );
     }
     if (bearer == null || bearer.isEmpty) {
-      throw const ApiFailure(
-        'Your session expired. Sign in again.',
-        code: 'unauthenticated',
-        status: 401,
+      throw _deny(
+        const ApiFailure(
+          'Your session expired. Sign in again.',
+          code: 'unauthenticated',
+          status: 401,
+        ),
+        epoch,
+        userId,
       );
     }
     String? check;
@@ -70,20 +128,29 @@ class ApiSpecimenRepository implements SpecimenRepository {
           const Duration(seconds: 30),
         );
       } catch (_) {
-        throw const ApiFailure(
-          'App verification could not be completed. Check your connection and retry. If it persists, ask your administrator to check App Check for this app.',
-          code: 'app_check_unavailable',
-          status: 403,
+        throw _deny(
+          const ApiFailure(
+            'App verification could not be completed. Check your connection and retry. If it persists, ask your administrator to check App Check for this app.',
+            code: 'app_check_unavailable',
+            status: 403,
+          ),
+          epoch,
+          userId,
         );
       }
       if (check == null || check.isEmpty) {
-        throw const ApiFailure(
-          'App verification is unavailable. Retry or contact your administrator. Collection access has not been verified.',
-          code: 'app_check_unavailable',
-          status: 403,
+        throw _deny(
+          const ApiFailure(
+            'App verification is unavailable. Retry or contact your administrator. Collection access has not been verified.',
+            code: 'app_check_unavailable',
+            status: 403,
+          ),
+          epoch,
+          userId,
         );
       }
     }
+    _checkAccess(epoch, userId, verification: verification);
     return {'Authorization': 'Bearer $bearer', 'X-Firebase-AppCheck': ?check};
   }
 
@@ -95,14 +162,21 @@ class ApiSpecimenRepository implements SpecimenRepository {
     Map<String, String>? query,
     Uint8List? bytes,
     Map<String, String>? headers,
+    int? verificationEpoch,
   }) async {
+    final epoch = verificationEpoch ?? _accessEpoch;
+    final userId = expectedUserId?.call();
     final uri = baseUrl.replace(
       path: '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}$path',
       queryParameters: query,
     );
     final request = http.Request(method, uri)..followRedirects = false;
     request.headers.addAll({
-      ...await _credentials(),
+      ...await _credentials(
+        epoch,
+        userId,
+        verification: verificationEpoch != null,
+      ),
       'Accept': 'application/json',
       'Idempotency-Key': ?key,
       ...?headers,
@@ -119,6 +193,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
       final response = await http.Response.fromStream(
         await _client.send(request).timeout(const Duration(seconds: 30)),
       ).timeout(const Duration(seconds: 30));
+      _checkAccess(epoch, userId, verification: verificationEpoch != null);
       Json result = {};
       try {
         if (response.body.isNotEmpty) {
@@ -145,6 +220,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
         );
       }
       return result;
+    } on ApiFailure catch (failure) {
+      throw _deny(failure, epoch, userId);
     } on TimeoutException {
       throw const ApiFailure(
         'The request timed out. Retry to reconcile the saved server state.',
@@ -231,6 +308,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
       }
       return result;
     }
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     final req = http.Request(
       'GET',
       baseUrl.replace(
@@ -239,7 +318,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
       ),
     )..followRedirects = false;
     req.headers.addAll({
-      ...await _credentials(),
+      ...await _credentials(epoch, userId),
       'Accept': artifact.kind == ArtifactKind.activeGraph
           ? 'application/json'
           : 'text/plain',
@@ -247,6 +326,19 @@ class ApiSpecimenRepository implements SpecimenRepository {
     try {
       return await (() async {
         final response = await _client.send(req);
+        _checkAccess(epoch, userId);
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          await response.stream.listen(null).cancel();
+          throw _deny(
+            ApiFailure(
+              'Evidence access was denied. Check your account and collection access.',
+              code: 'access_denied',
+              status: response.statusCode,
+            ),
+            epoch,
+            userId,
+          );
+        }
         final graph = artifact.kind == ArtifactKind.activeGraph;
         final limit = graph ? 16777216 : 1048576;
         final bytes = BytesBuilder(copy: false);
@@ -261,6 +353,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
           }
           bytes.add(chunk);
         }
+        _checkAccess(epoch, userId);
         final data = bytes.takeBytes();
         if (response.statusCode != 200) {
           throw ApiFailure(
@@ -305,6 +398,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
           'size_bytes': data.length,
         };
       })().timeout(const Duration(seconds: 30));
+    } on ApiFailure catch (failure) {
+      throw _deny(failure, epoch, userId);
     } on TimeoutException {
       throw const ApiFailure(
         'Evidence request timed out. Retry to read the same revision.',
@@ -325,83 +420,134 @@ class ApiSpecimenRepository implements SpecimenRepository {
 
   @override
   Future<List<CollectionScope>> scopes() async {
+    final epoch = ++_accessEpoch;
     final userId = expectedUserId?.call();
-    final result = await request('GET', '/v1/session');
-    bool nonempty(dynamic value) => value is String && value.trim().isNotEmpty;
-    final rows = result['memberships'];
-    if (!nonempty(result['user_id']) ||
-        (expectedUserId != null &&
-            (userId == null ||
-                userId.isEmpty ||
-                result['user_id'] != userId ||
-                expectedUserId!() != userId)) ||
-        rows is! List ||
-        rows.any(
-          (row) =>
-              row is! Map ||
-              !nonempty(row['organization_id']) ||
-              !nonempty(row['collection_id']) ||
-              !nonempty(row['role']) ||
-              (row['permissions'] != null &&
-                  (row['permissions'] is! List ||
-                      (row['permissions'] as List).any((p) => !nonempty(p)))),
-        )) {
-      throw const ApiFailure(
-        'The server could not verify your account and collection roles. Sign in again or contact your administrator.',
-        code: 'invalid_session',
-        status: 403,
-      );
-    }
-    mode = textOf(result['mode'], 'unsupported');
-    blockers = result['runtime_blockers'] as List? ?? [];
-    if (!['production', 'emulator', 'synthetic'].contains(mode) ||
-        (expectedMode != null && mode != expectedMode)) {
-      throw const ApiFailure(
-        'The server environment does not match this build. Check configuration before continuing.',
-        code: 'mode_mismatch',
-      );
-    }
-    final memberships = objects(rows);
-    final keys = <String>{};
-    if (memberships.any(
-      (m) => !keys.add('${m['organization_id']}/${m['collection_id']}'),
-    )) {
-      throw const ApiFailure(
-        'The server returned conflicting collection roles. Contact your administrator.',
-        code: 'invalid_session',
-        status: 403,
-      );
-    }
-    final collections = <String, Json>{};
-    for (final org
-        in memberships.map((m) => m['organization_id'].toString()).toSet()) {
-      final data = await request(
+    _rechecking = true;
+    try {
+      final result = await request(
         'GET',
-        '/v1/organizations/${Uri.encodeComponent(org)}/collections',
+        '/v1/session',
+        verificationEpoch: epoch,
       );
-      for (final c in objects(data['items'])) {
-        collections['$org/${c['collection_id']}'] = c;
+      bool nonempty(dynamic value) =>
+          value is String && value.trim().isNotEmpty;
+      final rows = result['memberships'];
+      if (!nonempty(result['user_id']) ||
+          (expectedUserId != null &&
+              (userId == null ||
+                  userId.isEmpty ||
+                  result['user_id'] != userId ||
+                  expectedUserId!() != userId)) ||
+          rows is! List ||
+          rows.any(
+            (row) =>
+                row is! Map ||
+                !nonempty(row['organization_id']) ||
+                !nonempty(row['collection_id']) ||
+                !nonempty(row['role']) ||
+                (row['permissions'] != null &&
+                    (row['permissions'] is! List ||
+                        (row['permissions'] as List).any((p) => !nonempty(p)))),
+          )) {
+        throw const ApiFailure(
+          'The server could not verify your account and collection roles. Sign in again or contact your administrator.',
+          code: 'invalid_session',
+          status: 403,
+        );
       }
-    }
-    return memberships
-        .map(
-          (m) => CollectionScope(
-            organizationId: m['organization_id'].toString(),
-            collectionId: m['collection_id'].toString(),
-            name: textOf(
-              collections['${m['organization_id']}/${m['collection_id']}']?['display_name'],
-              m['collection_id'].toString(),
+      mode = textOf(result['mode'], 'unsupported');
+      blockers = result['runtime_blockers'] as List? ?? [];
+      if (!['production', 'emulator', 'synthetic'].contains(mode) ||
+          (expectedMode != null && mode != expectedMode)) {
+        throw const ApiFailure(
+          'The server environment does not match this build. Check configuration before continuing.',
+          code: 'mode_mismatch',
+        );
+      }
+      final memberships = objects(rows);
+      final keys = <String>{};
+      if (memberships.any(
+        (m) => !keys.add('${m['organization_id']}/${m['collection_id']}'),
+      )) {
+        throw const ApiFailure(
+          'The server returned conflicting collection roles. Contact your administrator.',
+          code: 'invalid_session',
+          status: 403,
+        );
+      }
+      final collections = <String, Json>{};
+      for (final org
+          in memberships.map((m) => m['organization_id'].toString()).toSet()) {
+        final data = await request(
+          'GET',
+          '/v1/organizations/${Uri.encodeComponent(org)}/collections',
+          verificationEpoch: epoch,
+        );
+        if (data['items'] is! List ||
+            (data['items'] as List).any(
+              (c) => c is! Map || !nonempty(c['collection_id']),
+            )) {
+          throw const ApiFailure(
+            'Collection configuration could not be verified. Check access again.',
+            code: 'invalid_collections',
+            status: 403,
+          );
+        }
+        for (final c in objects(data['items'])) {
+          collections['$org/${c['collection_id']}'] = c;
+        }
+      }
+      if (memberships.any(
+        (m) => !collections.containsKey(
+          '${m['organization_id']}/${m['collection_id']}',
+        ),
+      )) {
+        throw const ApiFailure(
+          'An assigned collection is unavailable. Ask your administrator to check collection access.',
+          code: 'invalid_collections',
+          status: 403,
+        );
+      }
+      final scopes = memberships
+          .map(
+            (m) => CollectionScope(
+              organizationId: m['organization_id'].toString(),
+              collectionId: m['collection_id'].toString(),
+              name: textOf(
+                collections['${m['organization_id']}/${m['collection_id']}']?['display_name'],
+                m['collection_id'].toString(),
+              ),
+              configuration:
+                  collections['${m['organization_id']}/${m['collection_id']}'] ??
+                  {},
+              permissions: [
+                m['role'].toString(),
+                ...(m['permissions'] as List? ?? []).map((p) => p.toString()),
+              ],
             ),
-            configuration:
-                collections['${m['organization_id']}/${m['collection_id']}'] ??
-                {},
-            permissions: [
-              m['role'].toString(),
-              ...(m['permissions'] as List? ?? []).map((p) => p.toString()),
-            ],
+          )
+          .toList();
+      _checkAccess(epoch, userId, verification: true);
+      _verifiedUserId = userId;
+      _hasVerifiedSession = true;
+      _accessFailure = null;
+      _rechecking = false;
+      return scopes;
+    } catch (_) {
+      if (_current(epoch, userId)) {
+        _rechecking = false;
+        _deny(
+          const ApiFailure(
+            'Collection access could not be verified. Check access again.',
+            code: 'access_not_verified',
+            status: 403,
           ),
-        )
-        .toList();
+          epoch,
+          userId,
+        );
+      }
+      rethrow;
+    }
   }
 
   @override
@@ -483,6 +629,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
     ApiFailure failure, {
     bool historical = false,
   }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     final receipt = failure.details;
     final revision = receipt['revision'];
     final version = receipt['record_version_id'];
@@ -523,11 +671,16 @@ class ApiSpecimenRepository implements SpecimenRepository {
         );
       }
     } catch (e) {
+      if (e is ApiFailure &&
+          (e.status == 401 || e.status == 403 || e.code == 'access_changed')) {
+        rethrow;
+      }
       summary = {};
       summaryError = e is ApiFailure
           ? e.message
           : 'Summary unavailable. Refresh to check current access and revision.';
     }
+    _checkAccess(epoch, userId);
     return Specimen({
       ...summary,
       'specimen_id': id,
@@ -543,14 +696,18 @@ class ApiSpecimenRepository implements SpecimenRepository {
 
   @override
   Future<Specimen> specimen(CollectionScope scope, String id) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     try {
       final result = await request(
         'GET',
         '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/workspace',
       );
+      _checkAccess(epoch, userId);
       return _workspace(result, scope);
     } on ApiFailure catch (e) {
       if (!e.artifactRequired) rethrow;
+      _checkAccess(epoch, userId);
       return _artifactSummary(scope, id, e);
     }
   }
@@ -626,6 +783,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
     String? runId,
     String? runSha256,
   }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     if (revision < 1) {
       throw const ApiFailure(
         'Choose a retained record revision.',
@@ -654,8 +813,10 @@ class ApiSpecimenRepository implements SpecimenRepository {
               e.details['record_version_id'] != '$runId:$revision')) {
         rethrow;
       }
+      _checkAccess(epoch, userId);
       return _artifactSummary(scope, id, e, historical: true);
     }
+    _checkAccess(epoch, userId);
     if (result['specimen_id'] != id || result['revision'] != revision) {
       throw const ApiFailure(
         'The returned historical record does not match the requested revision.',
@@ -681,6 +842,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
         : <String, dynamic>{};
     asset['asset_id'] = asset['id'];
     if (loadImage && asset['id'] != null) {
+      final epoch = _accessEpoch;
+      final userId = expectedUserId?.call();
       try {
         final derivative = asset['view_derivative'] is Map;
         final uri = baseUrl.replace(
@@ -689,10 +852,22 @@ class ApiSpecimenRepository implements SpecimenRepository {
               '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_root(scope)}/assets/${Uri.encodeComponent(asset['id'])}/content',
         );
         final req = http.Request('GET', uri)..followRedirects = false;
-        req.headers.addAll(await _credentials());
+        req.headers.addAll(await _credentials(epoch, userId));
         final response = await http.Response.fromStream(
           await _client.send(req).timeout(const Duration(seconds: 30)),
         ).timeout(const Duration(seconds: 30));
+        _checkAccess(epoch, userId);
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          throw _deny(
+            ApiFailure(
+              'Source image access was denied. Check your account and collection access.',
+              code: 'access_denied',
+              status: response.statusCode,
+            ),
+            epoch,
+            userId,
+          );
+        }
         if (response.statusCode == 200) {
           final derivativeInfo = derivative
               ? Map<String, dynamic>.from(asset['view_derivative'])
@@ -711,9 +886,15 @@ class ApiSpecimenRepository implements SpecimenRepository {
           asset['preview_error'] =
               'Source image access is unavailable. Refresh or check collection permissions.';
         }
+      } on ApiFailure catch (failure) {
+        if (failure.status == 401 || failure.status == 403) {
+          throw _deny(failure, epoch, userId);
+        }
+        asset['preview_error'] = failure.message;
       } catch (_) {
         asset['preview_error'] = 'Image request interrupted. Refresh to retry.';
       }
+      _checkAccess(epoch, userId);
     }
     final run = result['run'] is Map
         ? Map<String, dynamic>.from(result['run'])
@@ -810,6 +991,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
       'image/dng',
       'image/x-adobe-dng',
     }.contains(file.mimeType);
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     final batch = await request(
       'POST',
       '${_root(scope)}/batches',
@@ -820,6 +1003,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
         'acquisition_method': file.method,
       },
     );
+    _checkAccess(epoch, userId);
     return request(
       'POST',
       '${_root(scope)}/batches/${batch['batch_id']}/items',
@@ -846,7 +1030,10 @@ class ApiSpecimenRepository implements SpecimenRepository {
     IntakeFile file,
     void Function(double) progress,
   ) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     var state = await resumeIntake(scope, session['upload_id']);
+    _checkAccess(epoch, userId);
     var offset = (state['offset'] as num?)?.toInt() ?? 0;
     if (offset < 0 || offset > file.bytes.length) {
       throw const ApiFailure(
@@ -856,6 +1043,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
     }
     const chunkSize = 1024 * 1024;
     while (offset < file.bytes.length) {
+      _checkAccess(epoch, userId);
       final end = (offset + chunkSize).clamp(0, file.bytes.length);
       state = await request(
         'PUT',
@@ -864,6 +1052,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
         headers: {'Upload-Offset': '$offset'},
         bytes: Uint8List.sublistView(file.bytes, offset, end),
       );
+      _checkAccess(epoch, userId);
       final next = (state['offset'] as num?)?.toInt();
       if (next == null || next <= offset || next > file.bytes.length) {
         throw const ApiFailure(
@@ -882,7 +1071,10 @@ class ApiSpecimenRepository implements SpecimenRepository {
     String id,
     String key,
   ) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     final current = await resumeIntake(scope, id);
+    _checkAccess(epoch, userId);
     return request(
       'POST',
       '${_root(scope)}/uploads/${Uri.encodeComponent(id)}/complete',
@@ -898,8 +1090,11 @@ class ApiSpecimenRepository implements SpecimenRepository {
     Json change,
     String key,
   ) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     try {
       final result = await _review(scope, specimen, change, key);
+      _checkAccess(epoch, userId);
       if (result.data['artifact_receipt'] is Map) {
         return Specimen({...result.data, 'mutation_saved': true});
       }
@@ -908,7 +1103,9 @@ class ApiSpecimenRepository implements SpecimenRepository {
       if (!e.artifactRequired || e.details['mutation_committed'] != true) {
         rethrow;
       }
+      _checkAccess(epoch, userId);
       final result = await _artifactSummary(scope, specimen.id, e);
+      _checkAccess(epoch, userId);
       return Specimen({...result.data, 'mutation_saved': true});
     }
   }
@@ -919,6 +1116,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
     Json change,
     String key,
   ) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     final kind = change['kind'];
     if (kind == 'run_action') {
       final action = change['action'];
@@ -938,6 +1137,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
           'reason': change['reason'],
         },
       );
+      _checkAccess(epoch, userId);
       return this.specimen(scope, specimen.id);
     }
 
@@ -1014,6 +1214,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
         },
       },
     );
+    _checkAccess(epoch, userId);
     return this.specimen(scope, specimen.id);
   }
 
@@ -1024,6 +1225,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
     String reason,
     String key,
   ) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
     await request(
       'POST',
       '${_root(scope)}/runs/${Uri.encodeComponent(specimen.data['active_run_id'])}/actions',
@@ -1034,6 +1237,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
         'reason': reason,
       },
     );
+    _checkAccess(epoch, userId);
     return this.specimen(scope, specimen.id);
   }
 }

@@ -128,6 +128,63 @@ class ActionInput(RevisionInput):
     action: str
 
 
+def pilot_corrections_allowed(run):
+    """A malformed pilot marker never falls through to normal processing."""
+    import re
+
+    marker = run.dependencies.get("evidence_pilot")
+    return (
+        isinstance(marker, dict)
+        and marker.get("version") == "evidence-pilot-v1"
+        and set(marker) == {"version", "launch_sha256", "source_manifest_sha256", "profile_sha256", "runtime_pins_sha256"}
+        and all(
+            isinstance(marker.get(key), str)
+            and re.fullmatch(r"[a-f0-9]{64}", marker[key])
+            for key in ("launch_sha256", "source_manifest_sha256", "profile_sha256", "runtime_pins_sha256")
+        )
+        and digest({k: v for k, v in run.dependencies.items() if k != "evidence_pilot"}) == marker["runtime_pins_sha256"]
+        and run.stage == "processing_blocked"
+        and not run.profile_rules
+        and run.risk_policy_snapshot.get("status") == "blocked"
+        and not run.profile.institutional_policy_approved
+        and not run.profile.semantics_confirmed
+        and not run.human_approved
+        and run.disposition is None
+        and not has_active_lease(run)
+    )
+
+
+def verify_pilot_observation(specimen, observation, blobs):
+    """Validate retained source bindings for a declaration, without clearance policy."""
+    from .reading_declarations import effective_declarations
+    from .workflow import crop_bytes
+
+    try:
+        if specimen.asset.processing_derivative:
+            raise ValueError("Pilot requires original source pixels")
+        region = next(r for r in specimen.run.regions if r.id == observation.region_id)
+        if region.asset_id != specimen.asset.id:
+            raise ValueError("Wrong source")
+        raw = blobs.get(observation.raw_ref)
+        if hashlib.sha256(raw).hexdigest() != observation.raw_sha256:
+            raise ValueError("Changed observation")
+        original = blobs.get(specimen.asset.blob_ref)
+        if hashlib.sha256(original).hexdigest() != specimen.asset.sha256:
+            raise ValueError("Changed source")
+        expected = specimen.asset.sha256 if specimen.run.profile.synthetic else hashlib.sha256(
+            crop_bytes(blobs, specimen, region)
+        ).hexdigest()
+        if observation.input_sha256 != expected:
+            raise ValueError("Wrong observation input")
+        if observation.input_asset_id not in {None, specimen.asset.id}:
+            raise ValueError("Wrong observation asset")
+        if observation.input_crop_ref and hashlib.sha256(blobs.get(observation.input_crop_ref)).hexdigest() != expected:
+            raise ValueError("Changed input crop")
+        effective_declarations(specimen, observation, blobs)
+    except Exception as exc:
+        raise EvidenceIntegrityError("evidence_integrity_failure") from exc
+
+
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
     run = specimen.run
     status = (
@@ -140,7 +197,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             else "running"
         )
     )
-    return {
+    result = {
         "specimen_id": specimen.id,
         "asset_id": specimen.asset.id,
         "collection_id": specimen.scope.collection_id,
@@ -183,6 +240,21 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         ),
     }
 
+    if run.blocker == "external_outcome_unknown":
+        result["available_actions"] = [
+            action for action in result["available_actions"]
+            if action not in {"retry", "resume", "reprocess"}
+        ]
+    if "evidence_pilot" in run.dependencies:
+        result["available_actions"] = (
+            ["field", "transcription", "reading_metadata", "coverage"]
+            if role in {"reviewer", "manager", "admin"}
+            and pilot_corrections_allowed(run)
+            and not specimen.asset.processing_derivative
+            else []
+        )
+    return result
+
 
 def workspace(specimen: Specimen, role: str = "viewer") -> dict:
     run = specimen.run
@@ -191,7 +263,8 @@ def workspace(specimen: Specimen, role: str = "viewer") -> dict:
         history_through_revision=specimen.history_through_revision,
         audit_offset=specimen.audit_offset,
         history_url=f"/v1/organizations/{specimen.scope.organization_id}/specimens/{specimen.id}/history",
-        asset=specimen.asset.model_dump(),
+        asset=dict(specimen.asset.model_dump(), view_derivative=None)
+        if "evidence_pilot" in run.dependencies else specimen.asset.model_dump(),
         run=run.model_dump(mode="json"),
         regions=[
             dict(
@@ -260,9 +333,48 @@ def create_app(
         or isinstance(adapters, SyntheticAdapters)
     ):
         raise ValueError("Synthetic adapters forbidden in production")
+    if mode == "production":
+        from .runtime_config import exact_origins
+
+        exact_origins(origins or [])
+        if (
+            identity_verifier is None
+            or memberships is None
+            or isinstance(blobs, LocalBlobs)
+        ):
+            raise ValueError(
+                "Production requires identity, membership and cloud storage adapters"
+            )
     if mode == "synthetic" and not token:
         raise ValueError("Synthetic bearer token required")
-    app = FastAPI(title="Specimen Digitization", version="0.1")
+    app = FastAPI(
+        title="Specimen Digitization",
+        version="0.1",
+        docs_url=None if mode == "production" else "/docs",
+        redoc_url=None if mode == "production" else "/redoc",
+        openapi_url=None if mode == "production" else "/openapi.json",
+    )
+    if mode == "production":
+
+        @app.middleware("http")
+        async def require_allowed_origin(request, call_next):
+            origin = request.headers.get("origin")
+            if origin is not None and origin not in origins:
+                return JSONResponse(
+                    status_code=403,
+                    headers={"Cache-Control": "no-store"},
+                    content={"error": {
+                        "code": "access_denied",
+                        "category": "authorization",
+                        "message": "Origin rejected",
+                        "retryable": False,
+                        "request_id": uid(),
+                        "details": {},
+                    }},
+                )
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            return response
     if origins:
         app.add_middleware(
             CORSMiddleware,
@@ -320,6 +432,11 @@ def create_app(
                 "authorization",
                 "Access denied",
             )
+            from .runtime_auth import EmailVerificationRequired
+
+            if isinstance(exc, EmailVerificationRequired):
+                code = "email_verification_required"
+                message = "Verify your email and sign in again"
         elif isinstance(exc, Missing):
             status, code, category, message = (
                 404,
@@ -512,7 +629,7 @@ def create_app(
             else "sql_connect",
             "runtime_blockers": []
             if mode == "synthetic"
-            else ["sam3_serving_not_configured", "institutional_policy_unapproved"],
+            else ["worker_readiness_not_verified", "institutional_policy_unapproved"],
             "synthetic_token_required": mode == "synthetic",
         }
 
@@ -1228,11 +1345,9 @@ def create_app(
             encode_cursor(bound, cutoff, items[-1]) if len(items) == limit else None
         )
         for item in items:
-            item["available_actions"] = (
-                ["retry", "resume", "pause", "cancel", "reprocess"]
-                if p.role in {"operator", "reviewer", "manager", "admin"}
-                else []
-            )
+            # Metadata rows lack pilot pins and lease state. Fetch scoped detail/
+            # workspace before offering mutations; do not reconstruct paged graphs.
+            item["available_actions"] = []
         return {"items": items, "next_cursor": following, "cutoff": cutoff}
 
     @app.get(prefix + "/specimens/{specimen_id}")
@@ -1277,9 +1392,10 @@ def create_app(
                         "url": f"/v1/organizations/{organization_id}/assets/{asset_id}/content",
                         "requires_authorization": True,
                         "view_url": f"/v1/organizations/{organization_id}/assets/{asset_id}/content?view=true"
-                        if s.asset.view_derivative
+                        if s.asset.view_derivative and "evidence_pilot" not in s.run.dependencies
                         else None,
-                        "asset": s.asset.model_dump(),
+                        "asset": dict(s.asset.model_dump(), view_derivative=None)
+                        if "evidence_pilot" in s.run.dependencies else s.asset.model_dump(),
                     }
         raise Missing(asset_id)
 
@@ -1296,6 +1412,8 @@ def create_app(
             for s in exact_records(p, user, asset_id=asset_id):
                 if s.asset.id == asset_id:
                     if view:
+                        if "evidence_pilot" in s.run.dependencies:
+                            raise Missing("Pilot review uses the frozen original image")
                         if not s.asset.view_derivative:
                             raise Missing("Oriented view unavailable")
                         derived = s.asset.view_derivative
@@ -1308,6 +1426,8 @@ def create_app(
                             raise OperationalBlock("view_integrity_failure")
                     else:
                         content = blobs.get(s.asset.blob_ref)
+                        if hashlib.sha256(content).hexdigest() != s.asset.sha256:
+                            raise OperationalBlock("source_integrity_failure")
                     return Response(
                         content,
                         media_type="image/png" if view else s.asset.media_type,
@@ -1351,6 +1471,15 @@ def create_app(
     ):
         p, s = find(user, organization_id, specimen_id)
         principal(user, organization_id, p.scope.collection_id, review=True)
+        pilot = "evidence_pilot" in s.run.dependencies
+        pilot_blocker = s.run.blocker
+        pilot_risk = dict(s.run.review_risk)
+        if pilot and (
+            body.kind not in {"field", "transcription", "reading_metadata", "coverage"}
+            or not pilot_corrections_allowed(s.run)
+            or s.asset.processing_derivative
+        ):
+            raise Conflict("Evidence pilot permits retained-evidence corrections only")
         key(idempotency_key)
         if not body.reason.strip():
             raise ValueError("Review reason required")
@@ -1557,17 +1686,27 @@ def create_app(
                     "Reading metadata requires a current observation target"
                 )
             candidates = DeclarationCandidates.model_validate(body.after)
-            verify_evidence(s, blobs)
+            if pilot:
+                verify_pilot_observation(s, observation, blobs)
+            else:
+                verify_evidence(s, blobs)
             record_human(s, observation, candidates, user, body.reason, blobs)
             s.run.human_approved = False
-            refresh_review_evidence(s, blobs, metadata_only=True)
+            if not pilot:
+                refresh_review_evidence(s, blobs, metadata_only=True)
         elif body.kind == "approve":
             s.run.human_approved = True
         elif body.kind == "coverage":
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:
             raise ValueError("Unsupported review decision")
-        if s.run.stage == "finalized" or body.kind in {"approve", "capability_defer"}:
+        if pilot:
+            s.run.stage = "processing_blocked"
+            s.run.blocker = pilot_blocker
+            s.run.disposition = None
+            s.run.human_approved = False
+            s.run.review_risk = pilot_risk
+        if not pilot and (s.run.stage == "finalized" or body.kind in {"approve", "capability_defer"}):
             try:
                 verify_evidence(s, blobs)
                 if s.run.blocker == "evidence_integrity_failure":
@@ -1613,6 +1752,8 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p, s = find(user, organization_id, specimen_id)
+        if "evidence_pilot" in s.run.dependencies:
+            raise Conflict("Evidence pilot permits retained-evidence corrections only")
         if has_active_lease(s.run):
             raise Conflict(
                 "An external effect is still leased; wait for its result or lease expiry"
@@ -1674,6 +1815,8 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p, s = find(user, organization_id, specimen_id)
+        if "evidence_pilot" in s.run.dependencies:
+            raise Conflict("Evidence pilot permits retained-evidence corrections only")
         if has_active_lease(s.run):
             raise Conflict(
                 "An external effect is still leased; wait for its result or lease expiry"
@@ -1734,6 +1877,10 @@ def create_app(
             for s in exact_records(p, user, active_run_id=run_id):
                 if s.run.id != run_id:
                     continue
+                if "evidence_pilot" in s.run.dependencies:
+                    raise Conflict("Evidence pilot permits retained-evidence corrections only")
+                if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess"}:
+                    raise Conflict("Unknown external outcome requires operator reconciliation")
                 if not body.reason.strip():
                     raise ValueError("Action reason required")
                 if body.action in {"retry", "resume", "reprocess"} and has_active_lease(
@@ -1809,6 +1956,8 @@ def create_app(
         @app.post(prefix + "/specimens/{specimen_id}/process")
         def process(organization_id: str, specimen_id: str, user=Depends(identity)):
             p, s = find(user, organization_id, specimen_id)
+            if "evidence_pilot" in s.run.dependencies:
+                raise Conflict("Evidence pilot permits retained-evidence corrections only")
             return render_workspace(workflow.drain(p, s.id), p, mutation_committed=True)
 
     app.state.workflow = workflow

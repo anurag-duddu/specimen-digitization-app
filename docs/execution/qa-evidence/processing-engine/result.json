@@ -1,0 +1,18 @@
+[
+  {
+    "mode": "unguarded",
+    "worker_killed": true,
+    "server_killed": true,
+    "result": "completed",
+    "effects": 2,
+    "history_events": 11
+  },
+  {
+    "mode": "guarded",
+    "worker_killed": true,
+    "server_killed": true,
+    "result": "blocked:external_outcome_unknown",
+    "effects": 1,
+    "history_events": 11
+  }
+]

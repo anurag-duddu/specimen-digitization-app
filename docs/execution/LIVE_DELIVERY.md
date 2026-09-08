@@ -231,25 +231,13 @@ of OCI labels. Worker embedded provenance and real HTTP `/version` remain owner
 handoff/integration gates. Build context is now a whitelist Git archive at the
 exact source SHA, excluding ignored credentials, specimens and uncommitted files.
 
-## Minimal resource and cost proposal (not spend authorization)
+## Current resource and cost proposal
 
-Propose one existing-project API service (1 vCPU/1 GiB, minimum 0, maximum 2,
-concurrency 8, 60-second request timeout), one worker Job execution (1 vCPU/1
-GiB, one task, parallelism 1, retries 0, 1,800-second platform timeout and
-1,500-second application deadline), and CPU SAM only if owner tests validate
-4 vCPU/8 GiB, minimum 0/maximum 1 and ten-image completion. GPU remains excluded
-from this initial proposal. Budget and live region/resource approval are pending.
-
-Illustrative compute arithmetic using the pricing page's displayed default USD
-rates before free tiers: 1,800 seconds of worker CPU/RAM at 0.000018/vCPU-second
-and 0.000002/GiB-second = $0.036. Assuming API 600 active seconds and SAM ten bounded 120-second requests, API at
-0.000024/vCPU-second + 0.0000025/GiB-second = $0.0159; CPU SAM at the same
-request-billed rates for 1,200 seconds = $0.1392. This ~$0.191 subtotal is **not** a pilot quote or
-spend ceiling: actual us-east4 SKUs, model startup time, provider tokens, existing
-SQL, backup/restore, registry/build/storage, networking, logging and App Check
-must be priced separately. No free-tier availability assumed. See [Cloud Run
-pricing](https://cloud.google.com/run/pricing), checked 2026-09-08. Runtime
-instance limits do not cap overall account or provider spend.
+The consolidated first-ten proposal is [LIVE_PILOT_COST.md](LIVE_PILOT_COST.md).
+It combines API, worker, CPU SAM4vCPU/16GiB, token/request reservations,
+startup/download/build/network/storage, existing SQL and a temporary restore
+clone. Its illustrative compute subtotal is not a total quote or spending cap;
+unknown rates, workload measurements and user budget remain explicit.
 
 Data index clarification: inspected paging/search SQL contains four non-unique
 indexes. Their disappearance proves a performance/query-contract gap, not
@@ -337,11 +325,7 @@ that pinned revision only after approved runtime configuration, records per-file
 and aggregate hashes, and must complete before real service health is available.
 Actual model-loaded server smoke is still an approved runtime acceptance gate.
 
-The worker revised CPU SAM sizing to **4 vCPU/16 GiB**, unmeasured live, because
-model/cache allocation includes about 3.44 GB of files in memory-backed storage.
-This supersedes the earlier 8 GiB illustrative case. For the shared ten times
-120-second SAM scenario, displayed default request-based rates give $0.1632 SAM
-compute; with $0.036 worker and $0.0159 API, illustrative subtotal is ~$0.2151,
-plus startup/download and all separately listed costs. Expiry is bounded to one
-hour from before model download. This is not a region-specific total or budget.
-Actual specimen layouts/region counts and HF reservations remain unconfirmed.
+The current CPU SAM resource/cost scenario is consolidated in
+[LIVE_PILOT_COST.md](LIVE_PILOT_COST.md); it supersedes earlier 8 GiB sizing.
+Actual specimen layouts/region counts, startup memory and HF reservations remain
+unconfirmed. No full quote or spending authorization exists.
