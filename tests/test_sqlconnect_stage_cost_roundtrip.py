@@ -13,6 +13,7 @@ import os
 from uuid import uuid4
 
 import pytest
+import requests
 from pydantic import ValidationError
 
 from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG
@@ -34,8 +35,27 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize("include_admission", [False, True], ids=["snapshot", "launch-ledger"])
-def test_connector_preserves_stage_policy_and_launch_ledger_after_reconstruction(include_admission):
+@pytest.mark.parametrize("sensitive", [True, False], ids=["legacy-sensitive", "explicit-ordinary"])
+def test_connector_preserves_stage_policy_and_launch_ledger_after_reconstruction(include_admission, sensitive):
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    if not sensitive:
+        # A separate synthetic scope has no sensitive capability. Never change
+        # the shared fixture or derive classification from source provenance.
+        scope = Scope(organization_id=str(uuid4()), collection_id=str(uuid4()))
+        result = requests.post(
+            "http://" + sql_emulator_host()
+            + "/v1/projects/demo-specimen-data/locations/us-east4/services/"
+            "specimen-digitization-service:executeGraphql",
+            headers={"Authorization": "Bearer owner"},
+            json={"query": f'''mutation @transaction {{
+              organization_insert(data:{{id:"{scope.organization_id}",name:"Synthetic classification"}})
+              collection_insert(data:{{organizationId:"{scope.organization_id}",id:"{scope.collection_id}",name:"Synthetic classification"}})
+              organizationMember_insert(data:{{organizationId:"{scope.organization_id}",uid:"synthetic-reviewer",active:true}})
+              collectionMember_insert(data:{{organizationId:"{scope.organization_id}",collectionId:"{scope.collection_id}",uid:"synthetic-reviewer",active:true,role:"reviewer",canViewSensitive:false}})
+            }}'''},
+            timeout=10,
+        ).json()
+        assert not result.get("errors") and not result.get("code"), result
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     context = actor_uid.set(principal.user_id)
     repositories = []
@@ -66,7 +86,8 @@ def test_connector_preserves_stage_policy_and_launch_ledger_after_reconstruction
             id=binding["specimen_id"], scope=scope,
             asset=Asset(sha256=binding["asset_sha256"], blob_ref=binding["blob_ref"],
                         media_type="image/png", size_bytes=1, width=1, height=1,
-                        filename="synthetic-metadata-only.png", uploader=principal.user_id),
+                        filename="synthetic-metadata-only.png", uploader=principal.user_id,
+                        **({"sensitive": False} if not sensitive else {})),
             run=Run(profile=Profile(synthetic=False, execution=policy)),
         )
         launch = PilotLaunch(
@@ -78,6 +99,7 @@ def test_connector_preserves_stage_policy_and_launch_ledger_after_reconstruction
             total_cost_limit_micros=10000, per_specimen_cost_limit_micros=1000,
             per_specimen_call_limit=32, per_specimen_token_limit=160000,
             effect_timeout_seconds=120, stage_cost_reservations=costs,
+            **({"sensitive": False} if not sensitive else {}),
             hf_secret_resource="/".join(
                 ["projects", "specimen-digitization", "secrets", "synthetic-unused", "versions", "1"]
             ),
@@ -96,6 +118,7 @@ def test_connector_preserves_stage_policy_and_launch_ledger_after_reconstruction
 
         fresh = connect()
         restored = fresh.get(scope, specimen.id)
+        assert restored.asset.sensitive is sensitive
         restored_policy = restored.run.profile.execution
         assert restored_policy.model_dump(mode="json") == expected_policy
         assert all(type(value) is int for value in restored_policy.stage_cost_reservations.cost_micros.values())
@@ -132,6 +155,7 @@ def test_connector_preserves_stage_policy_and_launch_ledger_after_reconstruction
         restarted.admit(restarted_repo.get(scope, specimen.id))
         assert restarted.launch_digest == launch_sha
         assert restarted_repo.document(scope, "pilot_launch", restarted.ledger_id) == ledger
+        assert ledger.get("sensitive", True) is sensitive
 
         changed = deepcopy(costs)
         changed["cost_micros"]["segment"] = 18

@@ -294,6 +294,7 @@ type AuxiliaryDocument @table(key: ["organizationId", "collectionId", "kind", "i
   kind: String!
   id: UUID!
   revision: Int!
+  sensitive: Boolean! @default(value: true)
   payload: Any!
   createdBy: String!
   createdAt: Timestamp! @default(expr: "request.time")
@@ -405,7 +406,7 @@ type SpecimenListing @view(sql: """
 }
 type DocumentListing @view(sql: """
   SELECT organization_id, collection_id, kind, id::text COLLATE "C" AS id,
-    revision, created_by, created_at, updated_at
+    revision, sensitive, created_by, created_at, updated_at
   FROM public.auxiliary_document
 """) {
   organizationId: UUID
@@ -413,6 +414,7 @@ type DocumentListing @view(sql: """
   kind: String
   id: String
   revision: Int
+  sensitive: Boolean
   createdBy: String
   createdAt: Timestamp
   updatedAt: Timestamp

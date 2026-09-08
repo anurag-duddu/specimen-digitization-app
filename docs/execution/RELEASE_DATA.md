@@ -367,3 +367,62 @@ remains false. A separate scoped contract is in progress for explicit new
 non-sensitive intake while retaining default-sensitive legacy evidence,
 creator-only control documents and no downgrade. This ledger correction does
 not relax any sensitivity check or classify actual images.
+
+## Explicit classification connector follow-up
+
+The separate sensitivity candidate adds an auxiliary-document column with a true
+default and seven named V2 operations for explicitly classified metadata. New
+ordinary records require literal false in both the column and payload. Scoped
+membership is checked on every read, history, receipt, list and write; historical
+access follows the current parent classification. Controls remain creator-only
+and cannot appear in ordinary lists. Promotion needs sensitive capability, and
+no operation permits downgrade. Legacy auxiliary writes also bind the payload
+to the protected column. All specimen create/save versions bind the snapshot
+asset classification to the column, treating omission as sensitive.
+
+This supports the runtime owner's separately committed strict domain/API path
+without changing the initial administrator capability. It makes no classification
+decision about actual source images. The repository's protected separate data
+delivery still owns migration and publication; no local deployment occurred.
+
+Validation: initial real connector tests failed on missing V2 operation and on
+an older specimen create accepting unknown classification as non-sensitive.
+Version-specific test variables were corrected before final validation; denial
+assertions now reject INVALID_ARGUMENT false positives. Final real connector
+suite passes legacy/default, explicit false, malformed classification, writer,
+scope, client, creator, CAS, no-downgrade, both membership revocations and history
+after promotion. Logs: `/tmp/specimen-release-sensitivity-red-20260908.log`,
+`/tmp/specimen-release-sensitivity-specimen-red-20260908.log`, and
+`/tmp/specimen-release-sensitivity-complete-green-20260908.log`.
+
+Full PostgreSQL 18.6 / connector 3.2.0 suite passed on owned ports 5599/9579,
+including 27 tables and 26,512 synthetic rows (22,151 specimens), two restored
+restarts and four schema/data/index equality comparisons. Log:
+`/tmp/specimen-release-sensitivity-postgres-20260908.log`. Proof:
+`/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-test.Qyo5Fj/backup-restore-proof.json`,
+SHA256 `5292c664181d331d21d3603e2613443dd22b9961bb193a1876517e3407aeb70b`.
+That harness stopped its own processes after completing.
+
+The stage-map/launch-ledger opt-in test now covers four actual round trips:
+snapshot and ledger, each with legacy sensitive and explicitly ordinary metadata.
+The ordinary cases use separate synthetic scopes with canViewSensitive=false.
+All four pass against runtime source `e7f4985064c5b6a778b556852c0e4d0d247f456d`;
+log `/tmp/specimen-release-sensitivity-runtime-roundtrip-20260908.log`.
+REST still returns integer costs; no protobuf-float reproduction is claimed.
+Canonical `scripts/ci/verify.sh` exit 0: 805 Python passed / 30 skipped, 120
+Flutter passed / 7 skipped, analysis, web build and repository/security checks;
+log `/tmp/specimen-release-sensitivity-verify-20260908.log`. The four opt-in
+tests skipped on this data-only checkout and actually ran separately as above.
+
+Independent runtime-owner review passed with no blocking finding. It reran the
+suite and added 217 separate result/denial checks, including malformed legacy/V2
+saves, CAS rollback, receipt/history after promotion and sensitivity revocation,
+privileged-peer controls and keyset membership revocation. Reviewed source hashes
+were unchanged; logs `/tmp/specimen-runtime-data-sensitivity-independent-20260908.log`
+and `/tmp/specimen-runtime-data-extra-review-20260908.log`. A final four-case
+runtime repeat against immutable archive `86e8eec37fd72cbdd94d69c91e57edc2fb6aeb03`
+also passed in `/tmp/specimen-release-sensitivity-runtime-pinned-20260908.log`;
+that revision additionally fixes supplied-session authentication reuse.
+Preserve the owned 5589/9569 fixture until the reviewer finishes its remaining
+runtime repeat. Native Cloud SQL recovery, effective IAM, current
+cohort classification and production acceptance remain separate live gates.
