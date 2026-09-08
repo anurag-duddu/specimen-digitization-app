@@ -36,7 +36,7 @@ the adapter/worker parses an HTTP date before calling this module.
 
 Default policy is three transient failures, local cooldown 30 seconds doubling
 on repeated openings to a 300-second cap, four CAS attempts, 128 maximum in-flight
-permits, and at most 300 seconds per permit lease. All durations and counts are
+permits, and at most 900 seconds per permit lease. All durations and counts are
 validated; malformed policy construction fails explicitly. Persisted policy
 fingerprints must match. A policy change belongs under a new sanitized config
 fingerprint, not a reinterpretation of existing circuit history.
@@ -124,3 +124,17 @@ separate required gate. This module provides HAR-009/OPS-002 component behavior;
 it does not replace workflow retries, claim exactly-once external effects, select
 a durable engine or complete production acceptance. No private data, provider,
 paid, cloud, provisioning, push, merge or deployment action occurs in this task.
+
+## Application lease compatibility follow-up
+
+The lease default and ceiling are 900 seconds to accommodate the backend's
+600-second maximum external timeout plus its effect-lease margin. The local
+exponential cooldown cap remains 300 seconds. The circuit must receive the full
+application lease; it must not clamp a still-running effect to a shorter probe
+lease. A regression holds a 900-second probe busy at second 899 and rejects 901.
+This changes the persisted policy digest: an existing circuit must use the
+backend's new configuration fingerprint rather than reinterpret prior state.
+
+Follow-up verification: 16 circuit tests passed. Canonical `scripts/ci/verify.sh`
+passed with 134 Python tests, two existing emulator skips, repository/secret
+checks and Flutter analysis/widget/web build. Ruff F checks and diff checks passed.

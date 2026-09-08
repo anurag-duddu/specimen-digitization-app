@@ -48,7 +48,7 @@ class CircuitPolicy(Frozen):
     max_cooldown_seconds: int = Field(default=300, ge=1, le=300, strict=True)
     max_cas_attempts: int = Field(default=4, ge=1, le=4, strict=True)
     max_inflight: int = Field(default=128, ge=1, le=128, strict=True)
-    max_lease_seconds: int = Field(default=300, ge=1, le=300, strict=True)
+    max_lease_seconds: int = Field(default=900, ge=1, le=900, strict=True)
 
     @model_validator(mode="after")
     def ordered_cooldown(self):
