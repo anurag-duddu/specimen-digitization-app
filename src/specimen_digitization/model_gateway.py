@@ -123,5 +123,7 @@ class HuggingFaceModelGateway:
             bill_to=self._bill_to or None,
             **timeout_options,
         )
-        provider = HuggingFaceProvider(hf_client=client)
+        provider = HuggingFaceProvider(
+            hf_client=client, api_key=self._token.get_secret_value()
+        )
         return HuggingFaceModel(route.model_id, provider=provider)

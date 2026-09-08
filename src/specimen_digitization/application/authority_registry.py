@@ -183,7 +183,7 @@ class CapturedResponse(Frozen):
 def read_authority(
     source: AuthoritySource,
     blobs: BlobWriter,
-    client: httpx.Client,
+    client: httpx.Client | None,
     *,
     method: str = "GET",
     params: dict | None = None,
@@ -195,6 +195,40 @@ def read_authority(
     No redirects, response links, provider-supplied URLs or executable code are followed.
     Oversize evidence captures the bounded prefix and is explicitly marked truncated.
     """
+    if client is None:
+        from .http_effect import bounded_http
+        from .reliability import retry_after
+
+        captured = bounded_http(
+            source.endpoint,
+            timeout_seconds=source.timeout_seconds,
+            max_bytes=source.max_response_bytes,
+            method=method,
+            params=params,
+            data=data,
+            headers=headers,
+        )
+        raw = captured["body"]
+        status = {
+            200: LookupStatus.SUCCESS,
+            401: LookupStatus.AUTHENTICATION,
+            403: LookupStatus.AUTHORIZATION,
+            429: LookupStatus.RATE_LIMITED,
+        }.get(captured["status_code"], LookupStatus.PROVIDER)
+        if captured["failure"] == "timeout":
+            status = LookupStatus.TIMEOUT
+        if captured["truncated"] or captured.get("unsupported_encoding"):
+            status = LookupStatus.MALFORMED
+        return CapturedResponse(
+            status=status,
+            body=raw,
+            raw_ref=blobs.put(raw) if raw else None,
+            response_sha256=digest(raw) if raw else None,
+            retry_after_seconds=retry_after(captured["retry_after"]),
+            truncated=captured["truncated"],
+        )
+    # Explicit injected clients are test transports; default production I/O above
+    # runs in a killable process rather than relying on chunk/read inactivity.
     started = time.monotonic()
     body = bytearray()
     try:

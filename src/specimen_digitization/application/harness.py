@@ -69,12 +69,15 @@ def extract_with_agent(gateway, blobs, specimen):
     prompt = ResolvedPrompt.model_validate(
         run.dependencies["prompts"][PromptName.STRUCTURED_EXTRACTION.value]
     )
+    from ..provider_privacy import PrivateProviderModel, private_instrumentation
+
     agent = Agent(
-        gateway.model_for(run.profile.routes[0]),
+        PrivateProviderModel(gateway.model_for(run.profile.routes[0])),
         output_type=ExtractionOutput,
         instructions=prompt.text,
         name="insects_bounded_extractor",
     )
+    agent.instrument = private_instrumentation()
     source = {t.region_id: t.text for t in run.transcripts if t.resolved and t.text}
     import json
 

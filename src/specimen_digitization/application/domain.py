@@ -260,6 +260,8 @@ class Profile(Record):
 
 
 class Run(Record):
+    profile_rules: dict = Field(default_factory=dict)
+    risk_policy_snapshot: dict = Field(default_factory=dict)
     reading_declarations: list[dict] = Field(default_factory=list)
     label_language_handling: dict = Field(default_factory=dict)
     authority_unresolved: dict = Field(default_factory=dict)

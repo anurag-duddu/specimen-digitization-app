@@ -540,9 +540,13 @@ class GcsBlobs:
 
 
 class ProductionAdapters:
-    def __init__(self, blobs):
+    def __init__(self, blobs, *, model_effect=None):
+        self.model_effect = model_effect
         self.blobs = blobs
         self.taxonomy = GbifTaxonomy(blobs)
+        from .classifier_runtime import configured_classifier
+
+        self.classifier = configured_classifier(blobs)
         from .authority_registry import AuthorityRegistry
         from .parties import PartiesAdapter
         from .geography import GeographyAdapter
@@ -575,6 +579,7 @@ class ProductionAdapters:
             "prompts": prompts,
             "routes": routes,
             "adapter_version": "production-v2",
+            "classifier": self.classifier.pin(run) if self.classifier else None,
             "segmentation": {
                 "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
                 "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
@@ -600,6 +605,11 @@ class ProductionAdapters:
         return Sam3Service(endpoint, self.blobs).segment(specimen)
 
     def transcribe(self, specimen, region, route):
+        from .model_runtime import invoke_model
+
+        return invoke_model(self, specimen, "transcribe", region=region, route=route)
+
+    def _transcribe_direct(self, specimen, region, route):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
             raise OperationalBlock(
                 "provider_data_policy_and_spending_approval_required"
@@ -677,6 +687,11 @@ class ProductionAdapters:
         )
 
     def extract(self, specimen):
+        from .model_runtime import invoke_model
+
+        return invoke_model(self, specimen, "extract")
+
+    def _extract_direct(self, specimen):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
             raise OperationalBlock(
                 "provider_data_policy_and_spending_approval_required"
@@ -733,7 +748,20 @@ class Sam3Service:
         from .bounded_effect import run_isolated
         from ..hub_models import SAM3_MODEL
 
-        revision = SAM3_MODEL.revision
+        from .collection_profiles import SegmentationSettings
+        from .profile_runtime import pinned_risk_resolution
+
+        if pinned_risk_resolution(specimen.run).status != "resolved":
+            raise OperationalBlock("segmentation_profile_rules_unresolved")
+        try:
+            settings = SegmentationSettings.model_validate(
+                specimen.run.profile_rules["segmentation_settings"]
+            )
+        except (KeyError, ValueError) as exc:
+            raise OperationalBlock("segmentation_settings_unresolved") from exc
+        revision = settings.model_revision
+        if revision != SAM3_MODEL.revision:
+            raise OperationalBlock("segmentation_model_revision_unsupported")
         request = {
             "run_id": specimen.run.id,
             "asset_id": specimen.asset.id,
@@ -741,9 +769,12 @@ class Sam3Service:
             "sha256": specimen.asset.sha256,
             "width": specimen.asset.width,
             "height": specimen.asset.height,
-            "model_id": "facebook/sam3",
+            "model_id": settings.model_id,
             "model_revision": revision,
-            "prompt": "label",
+            "prompt": settings.prompt,
+            "parameters": settings.parameters.model_dump(),
+            "adapter_version": settings.adapter_version,
+            "settings_version": settings.version,
         }
         result = run_isolated(
             self.effect,
@@ -770,6 +801,10 @@ class Sam3Service:
             "input_sha256": specimen.asset.sha256,
             "http_status": envelope["http_status"],
             "validation": envelope["validation"],
+            "settings": settings.model_dump(mode="json"),
+            "request_sha256": hashlib.sha256(
+                json.dumps(request, sort_keys=True).encode()
+            ).hexdigest(),
             "elapsed_seconds": result.elapsed_seconds,
         }
         if envelope["validation"] != "valid":

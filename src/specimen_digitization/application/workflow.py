@@ -65,6 +65,7 @@ class Workflow:
         monotonic=None,
         random_value=None,
         profile_registry=None,
+        risk_registry=None,
         classifier=None,
         authority_tools=None,
         authority_cost_reservations=None,
@@ -76,7 +77,12 @@ class Workflow:
         self.monotonic = monotonic or time.monotonic
         self.random_value = random_value
         self.profile_registry = profile_registry
-        self.classifier = classifier
+        self.risk_registry = risk_registry
+        self.classifier = (
+            classifier
+            if classifier is not None
+            else getattr(adapters, "classifier", None)
+        )
         self.authority_tools = (
             authority_tools
             if authority_tools is not None
@@ -277,6 +283,8 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
+                if self.classifier is not None and hasattr(self.classifier, "pin"):
+                    run.dependencies["classifier"] = self.classifier.pin(run)
                 run.dependencies["authority_pins"] = self.authority_pins()
                 run.dependencies["profile_snapshot_sha256"] = digest(
                     run.profile_snapshot
@@ -291,13 +299,17 @@ class Workflow:
                 classifier = self.classifier or (
                     SyntheticClassifier(self.blobs) if run.profile.synthetic else None
                 )
+                if classifier is not None and hasattr(classifier, "bind"):
+                    classifier = classifier.bind(specimen, registry)
                 if run.profile.synthetic and run.classification_selection is None:
                     run.classification_selection = {
                         "collection_id": registry.nodes[0].id,
                         "actor_id": principal.user_id,
                         "reason": "Explicit synthetic fixture intake selection",
                     }
-                issue = classify_and_select(specimen, registry, classifier, self.blobs)
+                issue = classify_and_select(
+                    specimen, registry, classifier, self.blobs, self.risk_registry
+                )
                 if issue:
                     raise OperationalBlock("classification_review_required:" + issue)
                 # Resolve prompts again for the selected immutable profile, before inference.

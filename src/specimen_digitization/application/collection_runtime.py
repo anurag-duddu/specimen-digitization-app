@@ -66,7 +66,7 @@ class SyntheticClassifier:
         )
 
 
-def classify_and_select(specimen, registry, classifier, blobs):
+def classify_and_select(specimen, registry, classifier, blobs, risk_registry=None):
     request = ClassificationRequest(
         asset_id=specimen.asset.id,
         input_sha256=specimen.asset.sha256,
@@ -95,9 +95,16 @@ def classify_and_select(specimen, registry, classifier, blobs):
     if resolved.status != "selected" or resolved.profile is None:
         return resolved.reason
     published = resolved.profile
+    from .profile_runtime import bind_profile_rules
+
+    try:
+        language_handling = bind_profile_rules(specimen, published, risk_registry)
+    except ValueError as exc:
+        return str(exc)
     specimen.run.profile_snapshot = published.model_dump(mode="json")
     specimen.run.profile_registry_version = registry.version
     specimen.run.profile = Profile(
+        language_handling=language_handling,
         execution=specimen.run.profile.execution,
         id=published.id,
         version=published.version,
