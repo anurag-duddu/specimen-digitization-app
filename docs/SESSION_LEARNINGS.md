@@ -609,3 +609,26 @@ If any answer is no or unknown, retain the item and record the exact blocker.
 - Durable learnings: Bind the complete externally priced stage map into both immutable run policy and launch digests; never fall back to a cheaper uniform rate or reset a cohort ledger after a map change. Reserve each workflow attempt before effects and retain unknown outcomes across restart. Omit absent optional fields to preserve existing persisted digests. SQL Connect's protobuf Struct uses doubles, so distinguish strict configuration input from integrity-checked persisted values and enforce the exact safe integer range. Test HTTP persistence and protobuf conversion separately: data's actual emulator REST snapshot/get/history case preserved integers and passed even at 24e6550; it did not reproduce the float failure. Offline SAM needs explicit local cache lookup, no provider token and a verified aggregate before model construction; immutable mounted weights must stay outside images.
 - Failed approaches and integration discovery: The initial offline test still accessed `HF_TOKEN`; missing/changed checkpoint pins previously did not reject construction. The new guards repaired both. The first strict stage map passed SQLite but failed the actual Struct transport until d859ac6. Data's actual connector admission test exposed a separate pre-existing `CreateDocument(kind=pilot_launch)` whitelist denial in `auxiliary.gql` (one snapshot case passed / one ledger case failed). The coordinator authorized the data owner to permit that control kind narrowly with creator, membership, sensitivity, role and CAS protections; runtime did not bypass the connector. Its completed repair and integrated green evidence are Not confirmed in this entry.
 - Remaining follow-ups: Integrate both runtime code commits with the coordinator's generation cap and data's reviewed pilot-launch connector repair; rerun exact combined gates and rebuild immutable API/worker/SAM images. Confirm the same SQL endpoint, real cloud auth/App Check and storage permissions, frozen-ten bindings, complete remaining all-cost/shutdown packet, native SAM receipts, both readers for every retained region, and all ten human-review correction/save/reopen/history journeys. Keep the deferred normal-pipeline configuration and clearance findings in `docs/execution/RELEASE_RUNTIME.md`. Preserve the separate real-model-integration checkout and its four untracked paths. No cloud mutation, paid provider call, extra image inference, push, merge, archive or prune occurred in this follow-up.
+
+## 2026-09-08 — Independent stage-cost and protobuf compatibility review
+
+- Acceptance task `01a082b4-a9bc-7413-a3c5-5077dd5c3a9f`, branch
+  `codex/release-acceptance`, worktree ac0d, following acceptance commit `610c75e`.
+  Reviewed runtime candidate `24e6550a` in owner worktree 7471; initial 86 tests
+  passed and independent old/new policy/launch JSON/digest comparison passed.
+- Found a transport blocker after that first pass: genuine protobuf Struct turns
+  cost integers into doubles; the SQL snapshot digest passed but strict stage
+  map validation failed. Reproduced through actual `_snapshot`, not cloud SQL.
+  Explicitly withdrew the initial pass and notified runtime owner/coordinator.
+- Independently reviewed correction `d859ac6dfa9c64d7fb68037da03283b823303736`:
+  normalize only safe exact persisted numeric values, retaining strict external
+  config. Regression: 103 passed/1 opt-in skipped, no remaining scoped finding.
+  Log `/tmp/specimen-ac0d-runtime-persistence-review-20260908.log`.
+- Reusable learning: strict config validation must coexist with protobuf numeric
+  transport and historical canonical digest compatibility. SQLite-only passing
+  tests cannot establish SQL Connect serialization behavior. Actual cloud
+  connector/native SAM timing/full first-ten budget acceptance remain Not
+  confirmed. No images, models, providers or cloud resources were invoked.
+- This follow-up changes review documentation only; canonical acceptance gate
+  remains the prior verified 816 Python/26 skips and 120 Flutter/7 skips. No push,
+  PR, merge, deployment or pruning. Coordinator owns integrated release checks.

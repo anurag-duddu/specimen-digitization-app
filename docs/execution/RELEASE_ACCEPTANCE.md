@@ -188,3 +188,37 @@ local SAM result exceeded the 120-second serving deadline (132.388 seconds on
 emulated AMD64); native target timing remains a launch gate. It has zero cohort
 credit and was not rerun here. No mask-quality or production-serving claim is
 inferred from lifecycle tests.
+
+## Follow-up runtime budget and persistence review
+
+Reviewed runtime stage-cost/offline candidate
+`24e6550a10b6cc02d0dd319ada22c2bff9c54885`. Initial independent suite passed
+86 tests; an additional direct old/new serializer comparison confirmed absent
+stage maps preserve exact default/nondefault policy and concrete ten-source
+launch JSON/digests. New mapped stage costs reserve before effects, retain full
+known retries and unknown liabilities, and cannot reset the cohort ledger.
+Offline SAM requires the approved checkpoint digest before loading model files.
+
+A subsequent transport review found a blocker: genuine protobuf Struct changed
+integer costs to `17.0`-style numbers. The production SQL snapshot reader accepted
+the canonical digest and then rejected all three strict stage-cost values.
+This was reproduced through `SqlConnectRepository._snapshot`; no real SQL/cloud
+request was made. The initial candidate review pass was withdrawn pending repair.
+
+Runtime correction `d859ac6dfa9c64d7fb68037da03283b823303736` normalizes only
+positive exact safe integer-valued floats under explicit persisted-snapshot
+validation context. Direct config still rejects floats, booleans, strings,
+fractions and unsafe integers. It copies the cost map; it does not alter receipt
+bytes or digest validation. Independently reviewed this correction and ran stage
+costs, SAM lifecycle/server, worker launch, evidence pilot and active graph tests:
+**103 passed / 1 opt-in skipped**, 3 existing warnings, exit 0 in 16.64 seconds.
+Log: `/tmp/specimen-ac0d-runtime-persistence-review-20260908.log`.
+No blocking scoped finding remains in these two commits. The skipped real SQL
+integration is not proof of deployed connector behavior.
+
+Delivery must provision the identical approved map in each retained run policy
+and the launch; the worker deliberately rejects mismatches. It must supply
+`SPECIMEN_SAM3_CHECKPOINT_SHA256` and the offline cache, enforce the shared full
+USD 5 budget, and qualify native SAM timing. No real model, image, cloud or paid
+call was made during this independent follow-up. Runtime owner canonical checks
+and exact integrated release checks remain separate from this focused review.
