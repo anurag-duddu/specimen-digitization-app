@@ -670,3 +670,74 @@ circuits, SAM3/auth total deadlines, SQL V3 checksum wiring, optional codec inta
 and language/script propagation remain the explicitly known pending work. No
 claim is made about representative scientific accuracy, approved authority policy,
 production security, real model behavior or complete PRD acceptance.
+
+## 2026-09-08 — combined second-wave GUI checkpoint a398583
+
+**No new defect found in the observed combined flows. Overall P0 is not accepted.**
+Frozen application `a3985830c75fc9242a241ad9f621387e00612b75`; backend source,
+tests, SQL and scripts remain identical to the independently tested e963811.
+Imported into the QA branch after committing backend report `e371a7c` and verified
+application-tree parity. Later owner followups are excluded from this checkpoint.
+
+Independent canonical rerun passed206 Python/13 optional skips,47 Flutter/3 opt-in
+live skips, analysis, scanners and release web build. The opt-in Flutter
+`live_next_workflow_test.dart` separately passed through actual HTTP against a
+fresh local API, SQLite and TCP mock Parties: synthetic specimen64a3b4b0…
+revision24→26. Logs: `/tmp/specimen-qa-a398583-canonical.log` and
+`/tmp/specimen-qa-a398583-live.log`. These are local synthetic results.
+
+**GUI PNG intake is now tested in the Codex in-app browser.** Its supported file
+chooser selected only repository synthetic fixtures; no browser permission was
+changed. Local preview showed uncalibrated brightness/contrast/detail and explicit
+limits. The server received preflight only after clicking its action. It reported
+the macOS memory-enforcement block with the correct runtime remedy and retained
+manual review guidance. All database counts remained1 record/26 versions/26
+receipts/2 documents. Adding a second image reset the checked manual-quality
+confirmation. Explicit upload reconciled `synthetic-wide-label.png` as a duplicate
+and accepted the new27240-byte800×600 `synthetic-label.png`. This resolves the prior
+picker gap for this browser. Final disk verification matched both retained source
+blobs byte-for-byte to their selected repository fixtures. Chrome-extension and physical camera/device behavior
+are separate, untested boundaries.
+
+Browser-uploaded specimen `68cb3d4f-d8a1-5094-a3e9-d243ec3f74dd`:
+
+- Classification rejected an empty reason, then accepted the returned published
+  synthetic profile. Revision24→48 created a different run while independent HTTP
+  verified the same authorized collection and immutable source.
+- Opened lookup-phase proposals, the retained authority candidate and its
+  identity/context, and118-byte raw authority text. Selected qualified
+  `emu:/fmnh/eparties/7`: revision49 remained needs_human_review. A separate review
+  approval produced cleared revision50. HTTP confirms the original literal and
+  full system/connection/tenant/environment/module/IRN identity were preserved.
+- Reading metadata explicitly displayed language/script unknown. Opened the
+  retained comparison. Browsed three history pages and opened original completed
+  revision24, explicitly read only with current review still50.
+- At390×844, the scrollable region dialog retained original800×600 dimensions.
+  Required reason validation prevented an empty save. A clockwise quarter-turn
+  was saved with bounds0,0,800,600 unchanged. Independent HTTP verifies
+  rotation_quarter_turns1, unchanged source digest, revision70 and renewed review.
+- Named asset filtering returned one record; AND Cleared returned an honest empty
+  state; clearing filters restored two records. Desktop1440×1000 and narrow390×844
+  screenshots show source containment and readable responsive controls. No
+  captured browser error logs were present.
+
+Evidence: `qa-evidence/a398583/` contains screenshots, accessible UI captures and
+independent HTTP summaries. Full unabridged captures remain in
+`/tmp/specimen-qa-a398583-browser-evidence`; committed text abbreviates digests.
+Some Flutter semantic `fill` calls did not visibly update narrow text fields;
+verified focused keyboard input before saving. These tooling attempts were not
+reported as product defects. No product source or scanner rule was changed.
+
+The long-reading blocked state, nontrivial Unicode spans, queue multi-page UI and
+all EXIF transformations were not additionally exercised in this GUI session;
+backend/Flutter tests above are the evidence for those boundaries. The owner’s
+known stale-selected-ROI followup `1e18d14` is not in frozen a398583 and is not
+closed by this result. Known SQL V3, graph/streaming, circuit/deadline, codec and
+language/script propagation work and institutional/scientific/production gates
+remain open. No new release approval is implied.
+
+QA signed out, reset the viewport and closed its browser tab. Owned web3000,
+API8124, SQL9519 and PostgreSQL5569 services were stopped. SQLite/blob evidence is
+retained at `/tmp/specimen-qa-a398583-authority`; the fresh SQL cluster is retained
+under the temporary `specimen-data-serve.qVpvwg` directory. No push, PR merge,
+production connection or deployment was performed.

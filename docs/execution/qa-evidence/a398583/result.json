@@ -1,0 +1,40 @@
+{
+  "candidate": "a398583",
+  "canonical": {
+    "python_pass": 206,
+    "python_optional_skip": 13,
+    "flutter_pass": 47,
+    "flutter_optional_skip": 3,
+    "analyze": "pass",
+    "web_release": "pass"
+  },
+  "live_flutter_workflow": "passed against actual loopback API, SQLite and TCP Parties",
+  "browser": "Codex in-app browser",
+  "viewports": [
+    [
+      390,
+      844
+    ],
+    [
+      1440,
+      1000
+    ]
+  ],
+  "gui_upload": "fresh PNG accepted; prior PNG duplicate reconciled",
+  "preflight": "explicit click, memory enforcement blocked honestly, database counts unchanged",
+  "classification": "revision24 to48, new run, same source and scope",
+  "authority": "revision49 needs review, literal preserved, qualified identity selected",
+  "approval": "separate action revision50 cleared",
+  "history": "revision24 read only, current50",
+  "roi": "clockwise quarter turn saved, original bounds unchanged, revision70 needs review",
+  "filters": "asset match1; AND cleared match0; clear filters2",
+  "captured_console_errors": 0,
+  "not_tested_in_gui": [
+    "long-reading policy block and nontrivial Unicode offsets",
+    "all EXIF transformations",
+    "queue more than one page",
+    "device camera/HEIC/RAW"
+  ],
+  "known_followup_not_in_candidate": "stale selected ROI on active run change, owner followup1e18d14",
+  "overall_p0": "not accepted"
+}

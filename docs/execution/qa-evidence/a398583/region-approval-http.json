@@ -1,0 +1,32 @@
+{
+  "current_revision": 70,
+  "disposition": "needs_human_review",
+  "regions": [
+    {
+      "rotation_quarter_turns": 1,
+      "id": "2d9b1cb2-03f0-4d1e-8856-a76ae616d7fb",
+      "asset_id": "72c320fa-801b-5257-93ac-533fb9699780",
+      "x": 0,
+      "y": 0,
+      "width": 800,
+      "height": 600,
+      "order": 0,
+      "method": "human",
+      "version": "review-v1",
+      "crop_ref": null,
+      "mask_ref": null
+    }
+  ],
+  "selection_revision_49_disposition": "needs_human_review",
+  "approval_revision_50_disposition": "cleared",
+  "literal_preserved": true,
+  "authority_identity": {
+    "source_system": "emu",
+    "connection_id": "synthetic-read",
+    "tenant": "fmnh",
+    "environment": "synthetic",
+    "module": "eparties",
+    "irn": 7
+  },
+  "source_unchanged": true
+}
