@@ -10,6 +10,7 @@ import 'reading_alignment.dart';
 import 'source_pixels.dart';
 import 'large_record.dart';
 import 'reading_declarations.dart';
+import 'risk_assessment.dart';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -727,6 +728,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                         : widget.onChange,
                   ),
                 ),
+              if (o.containsKey('latency_seconds') ||
+                  o.containsKey('completion_state'))
+                ObservationExecutionDetails(observation: o),
               ExpansionTile(
                 title: const Text(
                   'Observation provenance and raw response reference',
@@ -827,6 +831,11 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               ),
               subtitle: Text(textOf(t['verbatim_text'], textOf(t['text']))),
               children: [
+                if (t.containsKey('alignment_status'))
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: TranscriptionComparisonSummary(transcription: t),
+                  ),
                 Padding(padding: const EdgeInsets.all(12), child: _record(t)),
               ],
             ),

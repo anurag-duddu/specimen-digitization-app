@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'risk_assessment.dart';
 import 'review_context.dart';
 
 class LazyEvidence extends StatefulWidget {
@@ -237,42 +238,9 @@ class EvidencePanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (risk.isNotEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Review risk${risk['calibrated'] == true ? '' : ' (uncalibrated)'}',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  Text(
-                    risk['composite'] == null
-                        ? 'Unmeasured'
-                        : '${risk['composite']} / 100',
-                  ),
-                  const Text(
-                    'Prioritization only. Scores never override coverage, evidence or validation gates.',
-                  ),
-                  for (final component in objects(risk['components']))
-                    Builder(
-                      builder: (context) {
-                        final signal = objectOf(component['signal']);
-                        return Text(
-                          '${labelOf(textOf(signal['code']))} · ${signal['count'] ?? 'Unmeasured'} · Contribution ${component['contribution'] ?? 'Unmeasured'}\n${textOf(signal['reason'], '')}',
-                        );
-                      },
-                    ),
-                  if (risk['unmeasured'] != null)
-                    Text('Unmeasured: ${risk['unmeasured']}'),
-                  EvidenceDetails(
-                    title: 'Risk components, versions and calibration',
-                    value: risk,
-                  ),
-                ],
-              ),
-            ),
+          ReviewRiskPanel(
+            risk: risk,
+            policy: objectOf(run['risk_policy_snapshot']),
           ),
         if (phases.isNotEmpty)
           Text(
