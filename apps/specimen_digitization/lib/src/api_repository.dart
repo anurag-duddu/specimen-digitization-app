@@ -12,15 +12,20 @@ class ApiSpecimenRepository implements SpecimenRepository {
     http.Client? client,
     this.expectedMode,
     this.appCheckToken,
+    this.expectedUserId,
   }) : _client = client ?? http.Client() {
-    if (baseUrl.scheme != 'https' &&
-        !(baseUrl.scheme == 'http' &&
-            [
-              'localhost',
-              '127.0.0.1',
-              '::1',
-              '10.0.2.2',
-            ].contains(baseUrl.host))) {
+    if (baseUrl.host.isEmpty ||
+        baseUrl.userInfo.isNotEmpty ||
+        baseUrl.hasQuery ||
+        baseUrl.hasFragment ||
+        (baseUrl.scheme != 'https' &&
+            !(baseUrl.scheme == 'http' &&
+                [
+                  'localhost',
+                  '127.0.0.1',
+                  '::1',
+                  '10.0.2.2',
+                ].contains(baseUrl.host)))) {
       throw const ApiFailure(
         'The API must use HTTPS. Local emulator hosts may use HTTP.',
         code: 'configuration',
@@ -29,6 +34,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
   }
   final Future<String?> Function()? appCheckToken;
   final String? expectedMode;
+  final String Function()? expectedUserId;
   final Uri baseUrl;
   final Future<String?> Function() token;
   final http.Client _client;
@@ -39,6 +45,48 @@ class ApiSpecimenRepository implements SpecimenRepository {
   void close() => _client.close();
   String _root(CollectionScope scope) =>
       '/v1/organizations/${Uri.encodeComponent(scope.organizationId)}';
+  Future<Map<String, String>> _credentials() async {
+    String? bearer;
+    try {
+      bearer = await token().timeout(const Duration(seconds: 30));
+    } catch (_) {
+      throw const ApiFailure(
+        'Your sign-in could not be refreshed. Check your connection or sign in again.',
+        code: 'unauthenticated',
+        status: 401,
+      );
+    }
+    if (bearer == null || bearer.isEmpty) {
+      throw const ApiFailure(
+        'Your session expired. Sign in again.',
+        code: 'unauthenticated',
+        status: 401,
+      );
+    }
+    String? check;
+    if (appCheckToken != null || expectedMode == 'production') {
+      try {
+        check = await appCheckToken?.call().timeout(
+          const Duration(seconds: 30),
+        );
+      } catch (_) {
+        throw const ApiFailure(
+          'App verification could not be completed. Check your connection and retry. If it persists, ask your administrator to check App Check for this app.',
+          code: 'app_check_unavailable',
+          status: 403,
+        );
+      }
+      if (check == null || check.isEmpty) {
+        throw const ApiFailure(
+          'App verification is unavailable. Retry or contact your administrator. Collection access has not been verified.',
+          code: 'app_check_unavailable',
+          status: 403,
+        );
+      }
+    }
+    return {'Authorization': 'Bearer $bearer', 'X-Firebase-AppCheck': ?check};
+  }
+
   Future<Json> request(
     String method,
     String path, {
@@ -48,23 +96,13 @@ class ApiSpecimenRepository implements SpecimenRepository {
     Uint8List? bytes,
     Map<String, String>? headers,
   }) async {
-    final bearer = await token();
-    if (bearer == null || bearer.isEmpty) {
-      throw const ApiFailure(
-        'Your session expired. Sign in again.',
-        code: 'unauthenticated',
-        status: 401,
-      );
-    }
     final uri = baseUrl.replace(
       path: '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}$path',
       queryParameters: query,
     );
     final request = http.Request(method, uri)..followRedirects = false;
-    final check = await appCheckToken?.call();
     request.headers.addAll({
-      'X-Firebase-AppCheck': ?check,
-      'Authorization': 'Bearer $bearer',
+      ...await _credentials(),
       'Accept': 'application/json',
       'Idempotency-Key': ?key,
       ...?headers,
@@ -193,14 +231,6 @@ class ApiSpecimenRepository implements SpecimenRepository {
       }
       return result;
     }
-    final bearer = await token();
-    if (bearer == null || bearer.isEmpty) {
-      throw const ApiFailure(
-        'Your session expired. Sign in again.',
-        code: 'unauthenticated',
-        status: 401,
-      );
-    }
     final req = http.Request(
       'GET',
       baseUrl.replace(
@@ -208,10 +238,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
         queryParameters: query,
       ),
     )..followRedirects = false;
-    final check = await appCheckToken?.call();
     req.headers.addAll({
-      'Authorization': 'Bearer $bearer',
-      'X-Firebase-AppCheck': ?check,
+      ...await _credentials(),
       'Accept': artifact.kind == ArtifactKind.activeGraph
           ? 'application/json'
           : 'text/plain',
@@ -297,7 +325,33 @@ class ApiSpecimenRepository implements SpecimenRepository {
 
   @override
   Future<List<CollectionScope>> scopes() async {
+    final userId = expectedUserId?.call();
     final result = await request('GET', '/v1/session');
+    bool nonempty(dynamic value) => value is String && value.trim().isNotEmpty;
+    final rows = result['memberships'];
+    if (!nonempty(result['user_id']) ||
+        (expectedUserId != null &&
+            (userId == null ||
+                userId.isEmpty ||
+                result['user_id'] != userId ||
+                expectedUserId!() != userId)) ||
+        rows is! List ||
+        rows.any(
+          (row) =>
+              row is! Map ||
+              !nonempty(row['organization_id']) ||
+              !nonempty(row['collection_id']) ||
+              !nonempty(row['role']) ||
+              (row['permissions'] != null &&
+                  (row['permissions'] is! List ||
+                      (row['permissions'] as List).any((p) => !nonempty(p)))),
+        )) {
+      throw const ApiFailure(
+        'The server could not verify your account and collection roles. Sign in again or contact your administrator.',
+        code: 'invalid_session',
+        status: 403,
+      );
+    }
     mode = textOf(result['mode'], 'unsupported');
     blockers = result['runtime_blockers'] as List? ?? [];
     if (!['production', 'emulator', 'synthetic'].contains(mode) ||
@@ -307,7 +361,17 @@ class ApiSpecimenRepository implements SpecimenRepository {
         code: 'mode_mismatch',
       );
     }
-    final memberships = objects(result['memberships']);
+    final memberships = objects(rows);
+    final keys = <String>{};
+    if (memberships.any(
+      (m) => !keys.add('${m['organization_id']}/${m['collection_id']}'),
+    )) {
+      throw const ApiFailure(
+        'The server returned conflicting collection roles. Contact your administrator.',
+        code: 'invalid_session',
+        status: 403,
+      );
+    }
     final collections = <String, Json>{};
     for (final org
         in memberships.map((m) => m['organization_id'].toString()).toSet()) {
@@ -618,7 +682,6 @@ class ApiSpecimenRepository implements SpecimenRepository {
     asset['asset_id'] = asset['id'];
     if (loadImage && asset['id'] != null) {
       try {
-        final bearer = await token();
         final derivative = asset['view_derivative'] is Map;
         final uri = baseUrl.replace(
           queryParameters: derivative ? {'view': 'true'} : null,
@@ -626,9 +689,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
               '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_root(scope)}/assets/${Uri.encodeComponent(asset['id'])}/content',
         );
         final req = http.Request('GET', uri)..followRedirects = false;
-        req.headers['Authorization'] = 'Bearer $bearer';
-        final check = await appCheckToken?.call();
-        if (check != null) req.headers['X-Firebase-AppCheck'] = check;
+        req.headers.addAll(await _credentials());
         final response = await http.Response.fromStream(
           await _client.send(req).timeout(const Duration(seconds: 30)),
         ).timeout(const Duration(seconds: 30));

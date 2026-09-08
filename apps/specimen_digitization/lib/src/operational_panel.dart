@@ -103,6 +103,10 @@ class OperationalPanel extends StatelessWidget {
               'Stage: ${labelOf(textOf(run['stage'], textOf(specimen.data['stage'])))}',
             ),
             if (blocker.isNotEmpty) Text('Blocked: ${labelOf(blocker)}'),
+            if (blocker == 'pilot_evidence_review_required')
+              const Text(
+                'Pilot evidence review needed. Inspect the retained regions and independent readings. Risk is unmeasured and clearance is blocked; only corrections permitted by the server are available.',
+              ),
             if (blocker.contains('external_outcome_unknown'))
               const Text(
                 'The last external request may have executed. Its outcome is unknown. An authorized operator must reconcile that request before deliberately retrying; the client never repeats it automatically.',
