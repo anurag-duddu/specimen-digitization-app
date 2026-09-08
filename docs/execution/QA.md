@@ -529,3 +529,29 @@ This is not evidence of lost history; it is a precise hash-meaning limitation.
 F04 responsive source geometry remains open until browser verification. Overall
 P0 remains not accepted; all live-provider/institutional/production limits above
 still apply.
+
+
+## Original stored hashes and Flutter HTTP history — 75f2953
+
+Exact candidate `75f295385da27919d2f87000ba8aaa4febbe6f7b` includes the retained-hash
+fix and Flutter history client; only prior owned QA artifacts differ. Independent
+actual HTTP comparisons now match all56 original raw snapshot hashes captured
+before repair. All56 raw-run references resolve with the original stored run
+hash. Fixed-bound history pages remain exactly stable across new current review
+writes; new review-before links resolve. The earlier hash-meaning limitation is
+closed locally. Metadata now denotes the original retained digest.
+
+Repeated actual SQL membership/revocation and stored-checksum fault checks pass
+on this candidate, including409 for a tampered exact version and metadata page,
+and200 after restoration. No stored history was rewritten to obtain the match.
+Evidence: `qa-evidence/75f2953/`.
+
+Independently ran Flutter `test/live_history_test.dart` against API8124/SQL9519
+with original recovered compacted record98b3eac6…: one passed in3s. It paginates
+all bounded revisions, loads historical evidence into a read-only client model,
+validates reference mismatch409, retains current CAS for review, and denies a
+stale review. This is real Flutter repository HTTP behavior, not a GUI result.
+History Python regressions:4 passed,1 SQL opt-in skip in2.30s, supplemented by the
+actual SQL checks above. Backend B04 proof remains passed; final B04 GUI closure
+and F04 geometry still await the assembled browser candidate. Overall P0 remains
+not accepted; no production/cloud/model deployment occurred.
