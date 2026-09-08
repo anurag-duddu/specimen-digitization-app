@@ -135,6 +135,16 @@ class SqlConnectRepository:
         )["specimenSnapshot"]
         return self._snapshot(row)
 
+    def find_checksum(self, scope, checksum, include_sensitive=False):
+        return self.execute(
+            "FindSpecimenByChecksum",
+            dict(
+                self.variables(scope),
+                checksum=checksum,
+                includeSensitive=include_sensitive,
+            ),
+        ).get("specimens", [])
+
     def search(
         self,
         scope,
@@ -371,8 +381,10 @@ class SqlConnectRepository:
                 disposition=specimen.run.disposition,
                 action="checkpoint_or_review",
             )
+        if not expected:
+            variables["sourceChecksum"] = specimen.asset.sha256
         self.execute(
-            "SaveSpecimenV2" if expected else "CreateSpecimenV2",
+            "SaveSpecimenV3" if expected else "CreateSpecimenV3",
             variables,
             mutation=True,
         )
@@ -443,19 +455,60 @@ class GcsBlobs:
         return f"{checksum}:{blob.generation}"
 
     def get(self, ref):
-        checksum, generation = ref.split(":")
+        from .blob_limits import ORIGINAL_BYTES
+
+        return self.get_bounded(ref, ORIGINAL_BYTES)
+
+    def get_bounded(self, ref, max_bytes):
+        from urllib.parse import quote
+        from .blob_limits import read_limited, verify_digest, BlobTooLarge
+
+        try:
+            checksum, generation = ref.split(":")
+        except ValueError as exc:
+            raise Missing("Invalid object reference") from exc
         if (
             len(checksum) != 64
             or not all(c in "0123456789abcdef" for c in checksum)
             or not generation.isdigit()
         ):
             raise Missing("Invalid object reference")
-        data = self.bucket.blob(
-            "application/sha256/" + checksum, generation=int(generation)
-        ).download_as_bytes()
-        if hashlib.sha256(data).hexdigest() != checksum:
-            raise Conflict("Object digest mismatch")
-        return data
+        # AuthorizedSession streams the generation-pinned media response. Reading
+        # raw in requested chunks avoids download_as_bytes allocation and survives
+        # a dishonest Content-Length or an ignored Range response without truncation.
+        url = (
+            "https://storage.googleapis.com/storage/v1/b/"
+            + quote(self.bucket.name, safe="")
+            + "/o/"
+            + quote("application/sha256/" + checksum, safe="")
+        )
+        response = self.bucket.client._http.get(
+            url,
+            params={"alt": "media", "generation": generation},
+            stream=True,
+            headers={"Accept-Encoding": "identity"},
+            allow_redirects=False,
+            timeout=30,
+        )
+        with response:
+            if response.status_code == 404:
+                raise Missing("Object generation not found")
+            if response.status_code != 200:
+                raise OperationalBlock("object_storage_unavailable")
+            declared = response.headers.get("Content-Length")
+            if declared is not None:
+                try:
+                    declared = int(declared)
+                except ValueError as exc:
+                    raise OperationalBlock("invalid_object_length") from exc
+                if declared < 0:
+                    raise OperationalBlock("invalid_object_length")
+                if declared > max_bytes:
+                    raise BlobTooLarge("Evidence exceeds the configured byte limit")
+            data = read_limited(
+                lambda count: response.raw.read(count, decode_content=False), max_bytes
+            )
+        return verify_digest(data, checksum)
 
 
 class ProductionAdapters:
@@ -601,7 +654,7 @@ class Sam3Service:
     service is provisioned by the application or substituted by a fixture.
     """
 
-    def __init__(self, endpoint: str, blobs, session=None):
+    def __init__(self, endpoint: str, blobs, effect=None):
         from urllib.parse import urlparse
 
         parsed = urlparse(endpoint)
@@ -618,49 +671,56 @@ class Sam3Service:
             )
         self.endpoint = endpoint.rstrip("/")
         self.blobs = blobs
-        self.session = session
+        from .sam3_effect import sam3_request
+
+        self.effect = effect or sam3_request
 
     def segment(self, specimen):
-        import httpx
-        from google.auth.transport.requests import Request
-        from google.oauth2.id_token import fetch_id_token
+        import base64
         from .domain import Region
-
+        from .bounded_effect import run_isolated
         from ..hub_models import SAM3_MODEL
 
         revision = SAM3_MODEL.revision
-        bearer = fetch_id_token(Request(), self.endpoint)
-        client = self.session or httpx.Client(timeout=120, follow_redirects=False)
-        response = client.post(
-            self.endpoint + "/v1/segment",
-            headers={
-                "Authorization": "Bearer " + bearer,
-                "Idempotency-Key": specimen.run.id + ":segment",
+        request = {
+            "run_id": specimen.run.id,
+            "asset_id": specimen.asset.id,
+            "blob_ref": specimen.asset.blob_ref,
+            "sha256": specimen.asset.sha256,
+            "width": specimen.asset.width,
+            "height": specimen.asset.height,
+            "model_id": "facebook/sam3",
+            "model_revision": revision,
+            "prompt": "label",
+        }
+        result = run_isolated(
+            self.effect,
+            {
+                "endpoint": self.endpoint,
+                "request": request,
+                "timeout_seconds": specimen.run.profile.execution.external_timeout_seconds,
+                "max_response_bytes": 1024 * 1024,
             },
-            json={
-                "run_id": specimen.run.id,
-                "asset_id": specimen.asset.id,
-                "blob_ref": specimen.asset.blob_ref,
-                "sha256": specimen.asset.sha256,
-                "width": specimen.asset.width,
-                "height": specimen.asset.height,
-                "model_id": "facebook/sam3",
-                "model_revision": revision,
-                "prompt": "label",
-            },
+            specimen.run.profile.execution.external_timeout_seconds,
+            2 * 1024 * 1024,
         )
-        if response.status_code != 200:
-            raise OperationalBlock("sam3_service_failed")
-        payload = response.json()
-        if (
-            payload.get("model_revision") != revision
-            or payload.get("model_id") != "facebook/sam3"
-        ):
-            raise OperationalBlock("sam3_unpinned_response")
-        regions = [Region.model_validate(r) for r in payload["regions"]]
-        if any(
-            r.method != "sam3" or r.version != revision or not r.mask_ref
-            for r in regions
-        ):
-            raise OperationalBlock("sam3_missing_mask_provenance")
-        return regions
+        if result.status != "completed" or not result.cleanup_complete:
+            # The remote service may have accepted a timed-out request. The outer
+            # retained intent/lease remains fenced, and no automatic retry occurs.
+            raise OperationalBlock("external_outcome_unknown")
+        envelope = json.loads(result.value)
+        raw = base64.b64decode(envelope["body_base64"], validate=True)
+        specimen.run.segmentation = {
+            "blob_ref": self.blobs.put(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "model_id": "facebook/sam3",
+            "model_revision": revision,
+            "input_sha256": specimen.asset.sha256,
+            "http_status": envelope["http_status"],
+            "validation": envelope["validation"],
+            "elapsed_seconds": result.elapsed_seconds,
+        }
+        if envelope["validation"] != "valid":
+            raise OperationalBlock("sam3_" + envelope["validation"])
+        payload = json.loads(raw)
+        return [Region.model_validate(item) for item in payload["regions"]]

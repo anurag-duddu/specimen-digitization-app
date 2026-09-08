@@ -358,9 +358,18 @@ def test_operational_retry_resumes_without_duplicate_observations(tmp_path):
     ids = [o.id for o in s.run.observations]
     s.run.next_retry_at = "2000-01-01T00:00:00+00:00"
     repo.save(p, s, s.version, "clock-fixture", digest({"clock": True}))
-    s = Workflow(SQLiteRepository(tmp_path / "state.sqlite3"), blobs, adapters).drain(
-        p, s.id
-    )
+    restarted_repo = SQLiteRepository(tmp_path / "state.sqlite3")
+    s = Workflow(restarted_repo, blobs, adapters).drain(p, s.id)
+    assert s.run.blocker.startswith("provider_circuit:")
+    assert adapters.calls == 1  # A forced record retry cannot bypass shared backoff.
+    from datetime import datetime, timezone, timedelta
+
+    s = Workflow(
+        restarted_repo,
+        blobs,
+        adapters,
+        clock=lambda: datetime.now(timezone.utc) + timedelta(seconds=31),
+    ).drain(p, s.id)
     assert s.run.disposition == Disposition.REVIEW
     assert [o.id for o in s.run.observations] == ids
     assert len(s.run.lookups) == 2

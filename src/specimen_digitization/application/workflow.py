@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 import hashlib
-import io
 import time
 from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
 from typing import Protocol
-from PIL import Image
 import logfire
 from .domain import (
     AuditEvent,
@@ -211,6 +209,36 @@ class Workflow:
                 f"budget:{revision}",
                 digest({"budget": issue}),
             )
+        circuit = permit = None
+        circuit_failure = None
+        circuit_retry_after = None
+        if external:
+            from .circuit_runtime import circuit_for
+
+            circuit, circuit_key = circuit_for(self, principal, run, step)
+            admission = circuit.admit(circuit_key, policy.lease_seconds)
+            run.circuit = {
+                "storage_key": circuit_key.storage_key,
+                "provider": circuit_key.provider,
+                "admission": admission.model_dump(mode="json"),
+            }
+            if admission.status != "permitted":
+                run.blocker = "provider_circuit:" + admission.reason
+                run.disposition = None
+                run.stage = (
+                    "retry_scheduled" if admission.retry_at else "processing_blocked"
+                )
+                run.next_retry_at = (
+                    admission.retry_at.isoformat() if admission.retry_at else None
+                )
+                return self.repository.save(
+                    principal,
+                    specimen,
+                    revision,
+                    f"circuit:{revision}",
+                    digest(run.circuit),
+                )
+            permit = admission.token
         run.usage.steps += 1
         if external:
             run.usage.external_calls += external_weight
@@ -462,6 +490,8 @@ class Workflow:
             if step != "finalize":
                 run.stage = self.next_step(run).split(":")[0]
         except AdapterFailure as exc:
+            circuit_failure = exc.status.value
+            circuit_retry_after = exc.retry_after_seconds
             run.blocker = (
                 "external_outcome_unknown" if exc.outcome_unknown else exc.code
             )
@@ -474,6 +504,7 @@ class Workflow:
             }:
                 self.schedule_retry(run, step, exc.retry_after_seconds)
         except OperationalBlock as exc:
+            circuit_failure = str(exc).removeprefix("taxonomy_")
             run.blocker = str(exc)
             run.stage = "processing_blocked"
             run.disposition = None
@@ -484,6 +515,7 @@ class Workflow:
             }:
                 self.schedule_retry(run, step, run.lookups[-1].retry_after_seconds)
         except Exception:
+            circuit_failure = "provider_error"
             # Do not expose raw exceptions containing provider headers or source text.
             run.blocker = (
                 "external_outcome_unknown"
@@ -494,6 +526,7 @@ class Workflow:
             run.disposition = None
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > policy.external_timeout_seconds:
+            circuit_failure = "timeout"
             specimen = reserved
             run = specimen.run
             run.blocker = "external_outcome_unknown"
@@ -519,13 +552,33 @@ class Workflow:
                 after={"stage": run.stage, "blocker": run.blocker},
             )
         )
-        return self.repository.save(
+        saved = self.repository.save(
             principal,
             specimen,
             revision,
             f"result:{revision}",
             digest({"step": step, "run": run.id}),
         )
+        if circuit is not None and permit is not None:
+            if circuit_failure is None:
+                circuit.record_success(permit)
+            else:
+                known = {
+                    "rate_limited",
+                    "timeout",
+                    "provider_error",
+                    "authentication_error",
+                    "authorization_error",
+                    "policy_blocked",
+                    "malformed_response",
+                }
+                failure = (
+                    circuit_failure if circuit_failure in known else "policy_blocked"
+                )
+                if step == "lookup" and run.lookups:
+                    circuit_retry_after = run.lookups[-1].retry_after_seconds
+                circuit.record_failure(permit, failure, circuit_retry_after)
+        return saved
 
     def schedule_retry(self, run, step, provider_seconds=None):
         if run.attempts.get(step, 0) < run.profile.execution.max_attempts:
@@ -685,5 +738,7 @@ class SyntheticAdapters:
 
 
 def crop_bytes(blobs: BlobStore, specimen: Specimen, region: Region) -> bytes:
-    with Image.open(io.BytesIO(blobs.get(specimen.asset.blob_ref))) as image:
+    from .source_pixels import source_image
+
+    with source_image(specimen.asset, blobs) as image:
         return region_png(image, region)

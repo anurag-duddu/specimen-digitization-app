@@ -118,6 +118,23 @@ def quality_check(specimen, blobs):
             "allowed_input_formats", ("JPEG", "PNG", "TIFF")
         )
     )
+    if specimen.asset.processing_derivative:
+        metadata = specimen.asset.processing_derivative
+        if metadata["actual_format"] not in formats:
+            return "image_format_not_approved_by_profile"
+        raw = blobs.get_bounded(metadata["blob_ref"], 25 * 1024 * 1024)
+        if (
+            hashlib.sha256(raw).hexdigest() != metadata["derivative_sha256"]
+            or metadata["original_sha256"] != specimen.asset.sha256
+        ):
+            return "canonical_pixels_digest_mismatch"
+        diagnostics = diagnose_image(raw, ImageLimits(allowed_formats=("PNG",)))
+        specimen.asset.quality_diagnostics = dict(
+            diagnostics.model_dump(mode="json"),
+            original_sha256=specimen.asset.sha256,
+            pixel_basis=specimen.asset.pixel_basis,
+        )
+        return None if diagnostics.status == "valid" else "image_quality_rejected"
     diagnostics = diagnose_image(
         blobs.get(specimen.asset.blob_ref), ImageLimits(allowed_formats=formats)
     )

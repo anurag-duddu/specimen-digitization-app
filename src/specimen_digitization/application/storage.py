@@ -124,12 +124,18 @@ class LocalBlobs:
         return ref
 
     def get(self, ref: str) -> bytes:
+        from .blob_limits import ORIGINAL_BYTES
+
+        return self.get_bounded(ref, ORIGINAL_BYTES)
+
+    def get_bounded(self, ref: str, max_bytes: int) -> bytes:
+        from .blob_limits import read_limited, verify_digest
+
         if len(ref) != 64 or any(c not in "0123456789abcdef" for c in ref):
             raise Missing("Invalid blob reference")
-        data = (self.root / ref).read_bytes()
-        if hashlib.sha256(data).hexdigest() != ref:
-            raise Conflict("Blob integrity failure")
-        return data
+        with (self.root / ref).open("rb") as source:
+            data = read_limited(source.read, max_bytes)
+        return verify_digest(data, ref)
 
 
 class SQLiteRepository:
@@ -206,6 +212,21 @@ class SQLiteRepository:
                 tuple(scope.model_dump().values()),
             ).fetchall()
         return [Specimen.model_validate_json(r[0]) for r in rows]
+
+    def find_checksum(self, scope, checksum, include_sensitive=False):
+        if len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum):
+            raise ValueError("Canonical source checksum required")
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id,revision FROM records WHERE org=? AND collection=? AND checksum=? AND (? OR COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0) LIMIT 2",
+                (
+                    scope.organization_id,
+                    scope.collection_id,
+                    checksum,
+                    include_sensitive,
+                ),
+            ).fetchall()
+        return [{"id": row[0], "revision": row[1]} for row in rows]
 
     def search(
         self,

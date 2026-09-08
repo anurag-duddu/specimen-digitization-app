@@ -1,6 +1,7 @@
 """Bind pure evidence phases to verified application sources and immutable artifacts."""
 
 import hashlib
+from .blob_limits import BlobTooLarge
 
 from .authority_registry import (
     AuthorityResult,
@@ -138,12 +139,14 @@ def taxonomy_results(specimen, literals):
     return tuple(results)
 
 
-def read_artifact(metadata, blobs):
+def read_artifact(metadata, blobs, max_bytes=4 * 1024 * 1024):
     try:
-        raw = blobs.get(metadata["blob_ref"])
+        raw = blobs.get_bounded(metadata["blob_ref"], max_bytes)
         if hashlib.sha256(raw).hexdigest() != metadata["sha256"]:
             raise ValueError("Artifact checksum mismatch")
         return raw
+    except BlobTooLarge:
+        raise
     except Exception as exc:
         raise EvidenceIntegrityError("evidence_artifact_unavailable") from exc
 
