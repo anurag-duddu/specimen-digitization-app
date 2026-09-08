@@ -212,3 +212,22 @@ Backend src/tests/data/dependency tree exactly matches owner3bd7f64.
 QA is independently verifying the minimal906e134+38fa32f+c8001bb repair candidate;
 this local combined pass alone does not close its publication-race finding.
 Client large-graph fallback remains pending, as does TRN declaration work.
+
+## Frozen combined graph UI checkpoint
+
+Flutter36ae5c1 integrated as745127a1a326473a1aa93794bc7ae07f58591ba3.
+CORS7dc87cc is included asd9d25b5, exposing only two artifact verification headers
+to existing allowed origins; targeted publication/CORS suite passed six tests.
+Canonical on745127a passed259 Python/24 optional skips,58 Flutter/five opt-in
+live skips, analysis/scanners/web. Log:/tmp/specimen-wave2-graph-combined-canonical.log.
+
+Actual Flutter live_graph_test.dart passed against fresh synthetic API/SQLite.
+Specimen748c44fa-b2f2-5c32-80cd-2cdb5269aa45 revision57 retained a2605715-byte
+graph. A committed coverage action returned413 at58 and was recognized as saved,
+pinned historical57 evidence remained identical, stale CAS was rejected, and
+cancel succeeded at59. Log:/tmp/specimen-wave2-combined-graph-live.log; retained
+state:/tmp/specimen-combined-graph-745127a. Own8123 server stopped.
+
+This frozen combined graph checkpoint excludes subsequent TRN declaration code.
+Independent atomic-repair and combined graph GUI acceptance remain pending;
+local test success is not a production or institutional acceptance claim.
