@@ -28,5 +28,6 @@ export FIREBASE_DATACONNECT_EMULATOR_HOST="127.0.0.1:$dc_port"
 dc_pid=$!
 node scripts/data/wait-local.mjs
 node scripts/data/seed-integration.mjs
+"$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -v ON_ERROR_STOP=1 -f dataconnect/sql/paging-indexes.sql
 printf 'Synthetic SQL Connect ready at %s; Ctrl-C stops only this cluster.\n' "$FIREBASE_DATACONNECT_EMULATOR_HOST"
 wait "$dc_pid"
