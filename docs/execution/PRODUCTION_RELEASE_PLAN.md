@@ -24,8 +24,11 @@ existing cloud specimens, with every associated source object generation and
 digest frozen privately before image reads. No substitutes or expansion. An
 honest review-required or blocked quality disposition is valid; fabricated text,
 synthetic production output, invented mandatory values and automatic clearance
-without an approved profile are failures. The evidence-only pilot must remain
-clearly labeled and must not be reported as fully qualified automatic processing.
+without an approved profile are failures. The human-review first release is
+explicitly approved in [HUMAN_REVIEW_RELEASE.md](HUMAN_REVIEW_RELEASE.md).
+Automated classification and clearance are deferred; real processing, comparison,
+corrections and persisted review for all ten remain required. Evidence must not
+be reported as fully qualified automatic processing.
 EMu writes, universal collection support, institutional quality approval, and
 signed mobile distribution are outside this release's first-ten acceptance.
 
@@ -134,18 +137,31 @@ Do not provision Temporal or claim the incomplete Workflows comparison is passed
 |---|---|---|
 | G0 Baseline | Live Git/GitHub/marker reconciliation and safe work ownership | Verified for starting SHA above |
 | G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | In progress |
-| G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | Blocked: fresh Google credential refresh requires interactive reauthentication; remaining evidence Not confirmed |
+| G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | Cloud metadata access verified through existing Firebase connection; exact approved Auth account absent and frozen source manifest pending |
 | G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, approved total/daily budget and hard execution bounds | Both user approvals granted; exact live inventory/action/cost evidence still required |
 | G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | In progress under granted authority; no live deployment or readiness implied |
-| G5 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback | Pending authorized cloud work |
-| G6 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart | Pending G4/G5 |
-| G7 Integrated release | `scripts/ci/verify.sh`, runtime container CI, all five platform checks on exact PR head; merge through GitHub | Pending candidate and cloud readiness |
+| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | Pending complete candidate; this makes the approved data/runtime workflows available and is not product acceptance |
+| G6 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback through the protected data workflow | Pending G2/G3/G5 |
+| G7 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart through the protected runtime workflow | Pending G6 and verified runtime admission |
 | G8 Public acceptance | Green main deploy, exact public marker, matching runtime/data revisions, actual ten-source processing/review/save/reopen and recovery | Not confirmed |
 | G9 Closeout | Record complete release receipt, limitations, stop/rollback instructions and append-only learnings; preserve evidence before pruning | Pending G8 |
 
 Use local synthetic fixtures to develop tests, then real isolated data/services,
 then the authorized first-ten live cohort. These are separate evidence levels.
 Do not use private data or paid inference inside ordinary pull-request CI.
+
+The source merge necessarily precedes data/runtime deployment; cloud readiness
+must not be required to create the workflow that establishes it. Each effect
+still requires its own verified admission. Once actual main-push run IDs and
+attempts exist, bind reviewed private inputs to those identities and the shared
+cumulative ledger. A rerun of that original main-push workflow may consume newly
+verified inputs; it must reserve previous unknown or incurred costs and the new
+attempt together. It must not introduce another trigger or silently replay an
+effect. Data readiness precedes runtime activation. If verified API/App Check
+public settings require a subsequent client build, use another protected PR and
+main Hosting deployment, then reconcile the source and data/runtime compatibility
+before public acceptance. A static Hosting deploy during this sequence is only
+an intermediate milestone.
 
 ## Approved release-policy decision
 
@@ -231,6 +247,24 @@ quiesce workers and retain evidence on failure. No destructive database rollback
   admission/build/apply tests while root owns policy, integration and reviews.
   It has no cloud-write, paid-call, GitHub-admin, push or deploy authority.
   Existing `/root/budget_guard_review` independently reviews data repairs.
+- 2026-09-08 first-release scope: After discovery of missing institutional
+  profile/clearance configuration, the user selected complete human review of
+  all ten and explicitly deferred automated classification and clearance.
+  [HUMAN_REVIEW_RELEASE.md](HUMAN_REVIEW_RELEASE.md) records the exact choice and
+  private artifact digest. No infrastructure, cohort or spending limit changed.
+  Acceptance preserves full-PRD status separately from the approved human-review
+  release; actual processing and saved/reopened evidence are still mandatory.
+- 2026-09-08 access update: Newly available Firebase MCP successfully read the
+  correct live project. The existing same-account Firebase CLI credential then
+  completed all twelve read-only metadata inventory queries using a temporary
+  private short-lived access-token file and explicit per-command authentication.
+  No global gcloud account/project changed; the token file was removed and the
+  unused browser gcloud login cancelled. No further Google login is required for
+  this observed metadata access. Effective release/runtime IAM remains unverified.
+- 2026-09-08 identity update: Exact approved-email lookup returned no matching
+  Firebase Auth user. No UID, account or membership was invented. The first
+  administrator must sign into the configured application before verified
+  bootstrap; this is distinct from the working cloud-administration connection.
 
 ## Validation and next checkpoint
 
@@ -278,12 +312,25 @@ quiesce workers and retain evidence on failure. No destructive database rollback
   evidence: `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-test.CwKNiR`.
   These used synthetic fixtures and local services; live restoration remains
   Not confirmed. The script stopped its own temporary services on completion.
-- After account-owner reauthentication, data owner performs one read-only refresh,
-  then prepares the exact freeze/bootstrap/restore packet. Do not repeat failed
-  credential probes or enable APIs simply to make inventory succeed.
+- Data owner is reviewing the successful private inventory at
+  `inventory-20260908-firebase` under the existing rollout-state directory and
+  preparing the exact freeze/bootstrap/restore packet. Inventory found 1,001
+  object records, one database and no recorded backups. This is object metadata,
+  not specimen count or image reads. No API was enabled to make inventory pass.
 - Policy/resource authority is granted within the recorded limits. Dependent
-  cloud work still waits for verified authentication, exact inventory/action
+  cloud work still waits for the verified exact inventory/action
   packet, independent review and a conservative cost reservation within USD 5.
+- Coordinator integrated the independently reviewed SAM lifecycle/cache repair
+  as `e573458`, its owner report as `becd4f9`, the 45-case acceptance and shared
+  budget harness as `db7a0b7`, and data guard repairs as `accbaed`. Each owner's
+  closeout is preserved in the shared append-only log. No integrated full-suite
+  pass is claimed until the protected workflow implementation is complete.
+- Follow-up stage-specific reservations and credential-free SAM loading passed
+  their scoped independent review at runtime commit `24e6550`. A subsequent
+  real protobuf Struct probe found integer amounts become integral floats at
+  the storage boundary. Integration is held for the runtime repair and an
+  independent real SQL Connect emulator round trip; external launch validation
+  remains strict. This is a local compatibility finding, not a live cloud result.
 - Before pruning the old `codex/live-*` branches at the user's cleanup request,
   reconcile and preserve their ignored evidence, append owner closeouts, and
   confirm all source is reachable from main. The unfinished real-model worktree
