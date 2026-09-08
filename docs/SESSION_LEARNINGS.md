@@ -859,3 +859,34 @@ If any answer is no or unknown, retain the item and record the exact blocker.
   changed here, and no live acceptance is claimed. The user asked whether SQL
   Connect was being used; the current data inventory/report confirms reuse of
   the existing running Cloud SQL instance through Firebase SQL Connect.
+
+### Bounded-read/strict-JSON correction following `3dbd834`
+
+- Same acceptance task, branch and worktree. Coordinator accepted byte-integrity
+  and approved-SAM repairs, then requested descriptor-bounded reading and strict
+  JSON constants. JSON evidence now uses one checked regular descriptor and a
+  16 MiB plus one byte read cap; shared parser rejects NaN and both infinities.
+  Existing case/status rules and valid evidence behavior remain unchanged.
+- TDD: five actual failures before repair; final focused 154 passed, one existing
+  warning in 2.11 seconds. Logs
+  `/tmp/specimen-ac0d-human-bounded-strict-red-20260908.log` and
+  `/tmp/specimen-ac0d-human-bounded-strict-green-20260908.log`. Canonical completion
+  is appended below before handoff.
+- Failed approach: instrumentation double-wrapped a stream through fdopen/open,
+  causing one false test failure. A premature green coordination message was
+  immediately withdrawn, the instrument fixed, and completed output verified.
+  Reusable lesson: inspect completed evidence before sending a pass verdict.
+- No live acceptance, production/SQL change, images, models, paid calls, push,
+  merge or deployment. Final independent review and live integration remain
+  coordinator follow-ups.
+
+- Coordinator final source-review confirmation: bounded descriptor/nonfinite
+  parsing and earlier SAM/byte-integrity repairs pass, with no further scoped
+  source finding. Integrate `3dbd834` with this follow-up; final live integration
+  remains unqualified.
+- Final required canonical: exit 0; 878 Python passed/26 skipped, 120 Flutter
+  passed/7 skipped, static analysis, repository/security hooks and release web
+  build19.9 seconds passed. Evidence:
+  `/tmp/specimen-ac0d-human-bounded-strict-canonical-20260908.log`.
+  This completes the scoped corrections; coordinator owns integration of both
+  commits and actual production acceptance. No push/merge/deployment performed.

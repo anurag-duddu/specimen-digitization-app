@@ -320,21 +320,16 @@ def test_missing_run_identity_cannot_claim_persistence(tmp_path):
         check(tmp_path, source, report)
 
 
-def test_json_bytes_changed_between_integrity_check_and_parse_are_rejected(tmp_path, monkeypatch):
-    from pathlib import Path
-    source, report = packet(tmp_path)
-    target = (tmp_path / report["human_records"][0]["before_review"]["path"]).resolve()
-    original = Path.read_bytes
-    def changed(path):
-        raw = original(path)
-        if path.resolve() == target:
-            payload = json.loads(raw)
-            payload["changed_after_digest_check"] = True
-            return json.dumps(payload).encode()
-        return raw
-    monkeypatch.setattr(Path, "read_bytes", changed)
-    with pytest.raises(InvalidEvidence):
-        check(tmp_path, source, report)
+def test_json_parses_verified_bytes_even_when_path_changes_after_hash(tmp_path, monkeypatch):
+    import human_review
+    entry = write(tmp_path, "original.json", {"original": True})
+    original_hash = hashlib.sha256
+    def changed(raw):
+        result = original_hash(raw)
+        (tmp_path / entry["path"]).write_text('{"swapped": true}')
+        return result
+    monkeypatch.setattr(hashlib, "sha256", changed)
+    assert human_review.json_artifact(tmp_path, entry) == {"original": True}
 
 
 def test_matching_report_and_receipts_cannot_change_the_approved_sam_revision(tmp_path):
@@ -357,3 +352,42 @@ def test_retained_regions_must_use_the_approved_sam_method_and_revision(tmp_path
     mutate_file(tmp_path, report, "sam_receipt", lambda p: p["regions"][0].update(change))
     with pytest.raises(InvalidEvidence):
         check(tmp_path, source, report)
+
+
+def test_json_artifact_never_requests_an_unbounded_read(tmp_path, monkeypatch):
+    import io
+    import os
+    from human_review import json_artifact
+    entry = write(tmp_path, "bounded.json", {"retained": True})
+    observed = []
+    class CheckedRead:
+        def __init__(self, stream):
+            self.stream = stream
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+        def read(self, size=-1):
+            observed.append(size)
+            assert 0 <= size <= 16 * 1024 * 1024 + 1, "Unbounded evidence read"
+            return self.stream.read(size)
+    original_open, original_fdopen = io.open, os.fdopen
+    def wrap(stream):
+        return stream if isinstance(stream, CheckedRead) else CheckedRead(stream)
+    monkeypatch.setattr(io, "open", lambda *a, **k: wrap(original_open(*a, **k)))
+    monkeypatch.setattr(os, "fdopen", lambda *a, **k: wrap(original_fdopen(*a, **k)))
+    assert json_artifact(tmp_path, entry) == {"retained": True}
+    assert len(observed) == 1
+
+
+def test_json_artifact_checks_open_descriptor_is_regular_before_read(tmp_path, monkeypatch):
+    import os
+    import stat
+    from types import SimpleNamespace
+    from human_review import json_artifact
+    entry = write(tmp_path, "replaced.json", {"retained": True})
+    monkeypatch.setattr(os, "fstat", lambda fd: SimpleNamespace(st_mode=stat.S_IFIFO))
+    with pytest.raises(InvalidEvidence, match="regular"):
+        json_artifact(tmp_path, entry)

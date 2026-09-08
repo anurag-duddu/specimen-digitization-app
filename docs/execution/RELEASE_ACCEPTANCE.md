@@ -367,3 +367,35 @@ The existing full-gate implementation and Flutter source are unchanged in this
 commit. Coordinator confirmation of the final source-review repairs, integration
 with runtime/data/client changes and actual candidate-bound live evidence remain
 separate follow-ups. These local passes do not change either release verdict.
+
+### Final coordinator-requested bounded-read and strict-JSON follow-up
+
+After commit `3dbd834`, coordinator source review accepted the byte-integrity and
+SAM pin repairs and requested two contract corrections. JSON artifacts now open
+once with no-follow/nonblocking flags, require the opened descriptor to be a
+regular file, and read at most 16 MiB plus one byte before rejecting oversize
+input. The same consumed bytes are hashed and parsed. Shared descriptor/path
+validation is factored without changing its existing restrictions. Shared JSON
+parsing now rejects the non-JSON constants `NaN`, `Infinity` and `-Infinity` as
+well as duplicate keys. Valid evidence and the full gate's case/status rules are
+unchanged.
+
+Five actual regressions failed before repairs; final focused suite **154 passed**
+with one existing warning in 2.11 seconds. Logs:
+`/tmp/specimen-ac0d-human-bounded-strict-red-20260908.log` and
+`/tmp/specimen-ac0d-human-bounded-strict-green-20260908.log`.
+An interim test wrapper instrumented the same stream twice through `os.fdopen`
+and `io.open`, producing one false test failure; the instrument now wraps each
+stream once. An early green message sent before inspecting that output was
+immediately withdrawn and corrected. Final canonical results follow below.
+
+Coordinator independently reviewed the final bounded descriptor, strict JSON,
+same-byte parsing and approved SAM deployment/region checks and reported no
+remaining source finding. Integration is to carry `3dbd834` and this follow-up
+together. This source-review pass does not authenticate any live evidence.
+
+Final required canonical validation exited 0: **878 Python passed / 26 skipped**,
+**120 Flutter passed / 7 skipped**, static analysis, all repository/security
+hooks and release web build (19.9 seconds) passed. Log:
+`/tmp/specimen-ac0d-human-bounded-strict-canonical-20260908.log`.
+No further source changes or repeat testing are required for this scoped handoff.

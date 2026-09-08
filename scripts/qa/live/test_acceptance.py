@@ -325,3 +325,10 @@ def test_cli_rejects_changed_manifest_before_emitting_report(
     path.write_text(path.read_text() + "\n")
     assert main() == 2
     assert json.loads(capsys.readouterr().out)["release_accepted"] is False
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_json_evidence_rejects_nonfinite_constants(constant):
+    from acceptance import parse_json
+    with pytest.raises(InvalidEvidence):
+        parse_json('{"cost": ' + constant + '}')

@@ -97,7 +97,10 @@ def parse_json(raw):
             result[key] = value
         return result
 
-    return json.loads(raw, object_pairs_hook=unique)
+    def finite_constant(value):
+        raise InvalidEvidence("Nonfinite JSON constant")
+
+    return json.loads(raw, object_pairs_hook=unique, parse_constant=finite_constant)
 
 
 def read_json(path):
@@ -259,7 +262,7 @@ def manifest_ids(manifest):
     return identifiers
 
 
-def artifact(root, entry):
+def artifact_path(root, entry):
     require(isinstance(entry, dict), "Invalid artifact descriptor")
     relative = entry.get("path")
     require(nonempty(relative), "Artifact path missing")
@@ -269,6 +272,11 @@ def artifact(root, entry):
     require(resolved.is_relative_to(root.resolve()), "Artifact escapes evidence root")
     require(resolved.is_file(), "Artifact missing")
     require(sha(entry.get("sha256")), "Artifact digest missing")
+    return resolved
+
+
+def artifact(root, entry):
+    resolved = artifact_path(root, entry)
     require(file_digest(resolved) == entry["sha256"], "Artifact digest mismatch")
 
 

@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 
 from specimen_digitization.hub_models import SAM3_MODEL
 
 from acceptance import (
-    InvalidEvidence, JOURNEY_CASES, LIVE_CASES, MODES, STATES, artifact,
+    InvalidEvidence, JOURNEY_CASES, LIVE_CASES, MODES, STATES, artifact, artifact_path,
     evaluate as full_evaluate, keys, manifest_ids, nonempty, private_manifest,
     parse_json, read_json, require, sha, skeleton as full_skeleton,
 )
@@ -63,11 +65,12 @@ def skeleton(candidate_sha, manifest_sha):
 
 
 def json_artifact(root, entry):
-    artifact(root, entry)
-    path = (root / entry["path"]).resolve()
-    require(path.is_relative_to(root.resolve()), "Artifact escapes evidence root")
-    require(path.stat().st_size <= 16 * 1024 * 1024, "JSON evidence exceeds size bound")
-    raw = path.read_bytes()
+    path = artifact_path(root, entry)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode),
+                "JSON evidence must be a regular file")
+        raw = stream.read(16 * 1024 * 1024 + 1)
     require(len(raw) <= 16 * 1024 * 1024, "JSON evidence exceeds size bound")
     require(hashlib.sha256(raw).hexdigest() == entry["sha256"], "Parsed evidence bytes changed")
     return parse_json(raw)
