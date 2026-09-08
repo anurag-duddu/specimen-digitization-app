@@ -190,3 +190,25 @@ failure. QA log /tmp/specimen-qa-906e134-sql.log and deterministic harness
 publication repair and repeated multiprocess/HTTP SQL verification. Same-key
 completion replay passed; changed-key409 was intentional and is not a defect.
 No hardening acceptance or push is authorized while the real race remains open.
+
+## Atomic publication and graph fixture repairs
+
+38fa32f integrated as8416892; independent integration found duplicate empty
+blob regression, fixed by ownerc8001bb integrated as96caa27. Both use private
+fully synced temporary files and atomic create-only hardlinks; hash checks stay
+strict. Graph SQL fixture isolation3aca16f integrated asb23a9d0. Its initial
+canonical run attempted SQL seeding before the opt-in guard; owner3bd7f64,
+integrated ascd90ade, restores the guard before any setup network call.
+
+Fresh SQL combined graph/publication/limits/concurrency/authority/worker/history/
+upload/reconstruction/restart suite passed48 tests in45.20s, resolving the prior
+combined graph fixture failure. Log:/tmp/specimen-wave2-graph-atomic-sql.log.
+Owned5589/9539 services stopped; cluster retained at
+/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.GRJDIp.
+Canonical oncd90ade passed258 Python/24 optional skips,54 Flutter/four live skips,
+analysis/scanners/web. Log:/tmp/specimen-wave2-graph-atomic-final-canonical.log.
+Backend src/tests/data/dependency tree exactly matches owner3bd7f64.
+
+QA is independently verifying the minimal906e134+38fa32f+c8001bb repair candidate;
+this local combined pass alone does not close its publication-race finding.
+Client large-graph fallback remains pending, as does TRN declaration work.
