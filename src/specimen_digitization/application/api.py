@@ -30,6 +30,7 @@ from .domain import (
     Specimen,
     uid,
 )
+from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
 from .production import actor_uid
 from .storage import (
@@ -934,14 +935,19 @@ def create_app(
             s.run.capability_reason = reason_code
             s.run.retry_eligibility = retry
             s.run.completed_steps.append("capability_attempts_exhausted")
-            finalize(s.run)
         elif body.kind == "approve":
             s.run.human_approved = True
         elif body.kind == "coverage":
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:
             raise ValueError("Unsupported review decision")
-        if s.run.stage == "finalized":
+        if s.run.stage == "finalized" or body.kind in {"approve", "capability_defer"}:
+            try:
+                verify_evidence(s, blobs)
+                if s.run.blocker == "evidence_integrity_failure":
+                    s.run.blocker = None
+            except EvidenceIntegrityError:
+                s.run.blocker = "evidence_integrity_failure"
             finalize(s.run)
         s.audit.append(
             AuditEvent(
