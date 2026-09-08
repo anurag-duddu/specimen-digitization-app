@@ -189,7 +189,7 @@ def test_duplicate_json_keys_fail_closed(tmp_path):
         read_json(path)
 
 
-def test_claimed_live_evidence_requires_full_cohort_and_still_needs_reviewer(tmp_path):
+def claimed_live_report(tmp_path):
     report = passing_report(tmp_path)
     for row in report["results"]:
         row["mode"] = "live"  # Tests validation mechanics, never real evidence.
@@ -198,22 +198,61 @@ def test_claimed_live_evidence_requires_full_cohort_and_still_needs_reviewer(tmp
         "hosting_commit_sha": CANDIDATE,
         "api_commit_sha": CANDIDATE,
         "worker_commit_sha": CANDIDATE,
+        "sam_commit_sha": CANDIDATE,
+        "sam_model_id": "facebook/sam3",
+        "sam_model_revision": "c" * 40,
+        "sam_checkpoint_sha256": "d" * 64,
+        "sam_config_sha256": "e" * 64,
         "main_workflow_conclusion": "success",
         "deploy_job_conclusion": "success",
         "main_workflow_url": "fixture",
         "deploy_job_url": "fixture",
-        "api_image_digest": "fixture",
-        "worker_image_digest": "fixture",
+        "api_image_digest": "sha256:" + "f" * 64,
+        "worker_image_digest": "sha256:" + "f" * 64,
+        "sam_image_digest": "sha256:" + "f" * 64,
         "connector_revision": "fixture",
         "storage_rules_revision": "fixture",
         "runtime_workflow_url": "fixture",
     }
+    return report
+
+
+def test_claimed_live_evidence_requires_full_cohort_and_still_needs_reviewer(tmp_path):
+    report = claimed_live_report(tmp_path)
     result = evaluate(manifest(), MANIFEST_SHA, report, tmp_path, CANDIDATE)
     assert result["evidence_preflight"] == "ready_for_independent_review"
     assert not result["release_accepted"]
     report["results"][-1]["specimen_ids"].pop()
     with pytest.raises(InvalidEvidence, match="Full ten"):
         evaluate(manifest(), MANIFEST_SHA, report, tmp_path, CANDIDATE)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("sam_image_digest", None),
+        ("sam_image_digest", "latest"),
+        ("worker_image_digest", "latest"),
+        ("api_image_digest", "latest"),
+        ("sam_commit_sha", "b" * 40),
+        ("sam_model_id", "unapproved-model"),
+        ("sam_model_revision", None),
+        ("sam_model_revision", "main"),
+        ("sam_checkpoint_sha256", None),
+        ("sam_checkpoint_sha256", "unknown"),
+        ("sam_config_sha256", None),
+        ("sam_config_sha256", "unknown"),
+    ],
+)
+def test_missing_or_unpinned_runtime_provenance_blocks_preflight(
+    tmp_path, field, value
+):
+    report = claimed_live_report(tmp_path)
+    report["deployment"][field] = value
+    result = evaluate(manifest(), MANIFEST_SHA, report, tmp_path, CANDIDATE)
+    assert result["pending"] == ["DEPLOYMENT-PROVENANCE"]
+    assert result["evidence_preflight"] == "incomplete"
+    assert result["release_accepted"] is False
 
 
 def test_cli_rejects_changed_manifest_before_emitting_report(

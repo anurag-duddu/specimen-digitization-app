@@ -138,7 +138,7 @@ not proof of the current rollout or institutional acceptance.
 |---|---|---|
 | `git rev-parse HEAD` | Confirmed exact a53f855 baseline | Product source unchanged |
 | `uv sync --frozen` | Exit 0 | Locked local environment; Python 3.11.16 (CI uses 3.12) |
-| `uv run pytest -q scripts/qa/live` | Exit 0, 45 passed | Authored adversarial gate and probe failure/provenance tests; no live claim |
+| `uv run pytest -q scripts/qa/live` | Exit 0, 57 passed after the third-runtime provenance update | Authored adversarial gate and probe failure/provenance tests; no live claim |
 | `uv run python scripts/qa/live/local_probe.py --output docs/execution/qa-evidence/live-rollout/baseline-local.json` | Exit 0, 24 checks passed | ASGI/SQLite/injected membership only; initial failed timing assertion preserved in experiments.md |
 | Production `cli.py` identity inspection | Not confirmed live: no `email_verified` requirement in baseline | Repro: inspect verify closure after SDK success; returns claims uid regardless of verification field. API owner notified. No product patch by QA. |
 | `scripts/ci/verify.sh` | Exit 0 after all independent harness fixes | Repository/scanners, locked Python, Flutter analysis/tests/release web build passed; no deployment |
@@ -232,6 +232,18 @@ is compared with an exact-commit build context; worker embedded provenance was
 pending. No unauthorized deploy path was found: output explicitly denies
 deployment authorization/live verification. Sent findings to delivery and
 coordinator. No actual container build, cloud call or deployment executed by QA.
+
+## Third-runtime evidence contract
+
+The combined implementation now requires a separate SAM runtime. Offline
+preflight therefore requires its image digest, matching source commit, pinned
+model revision, checkpoint aggregate and serving-configuration digest alongside
+API and worker identities. All three images require immutable SHA-256 digest
+syntax. Twelve regression cases keep preflight incomplete for absent, stale or
+unpinned runtime evidence. This change does not grant approval or establish real
+SAM serving; complete live case evidence and independent review are still
+required. Subsequent exact owner-review closures and CI results are retained in
+the PR body so historical candidate observations are not silently relabeled.
 
 ## Recovery and rollback
 
