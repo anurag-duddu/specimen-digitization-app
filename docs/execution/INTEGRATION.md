@@ -74,3 +74,37 @@ Hosting remains static-only. Data schema/migrations, Storage rules, API/worker r
 Canonical baseline `scripts/ci/verify.sh` completed successfully, including release web build (20.4 seconds compilation). Temporary Firebase Dart placeholder was removed by the script. No production configuration was used or changed.
 
 Read architecture CONTRACTS.md v0.1 completely. Adopt its scoped `/v1`, identity/revision/idempotency, explicit synthetic mode, three final dispositions and checkpoint/evidence boundaries for integration verification; no release-owned wire deviations proposed. Data requested root Firebase source/rules references; accepted for application after reviewed data files arrive. Sent Android configuration prerequisite to Flutter owner and verified JDK path to data owner. Independent QA will receive the integrated candidate SHA and exact runnable commands after component handoffs.
+
+## Native CI preparation
+
+Added `scripts/ci/build_mobile.sh` and two matrix jobs: Android debug APK on
+Ubuntu 24.04/JDK 17, unsigned iOS release on macOS 15. Existing action SHAs,
+three protected checks, environment and permissions are preserved. Hosting now
+also waits for the entire mobile matrix. No mobile artifacts are published and
+no distribution/signing pathway is added. Flutter owner agreed to this script's
+temporary synthetic native configuration; no Gradle property change is needed.
+
+Verification:
+
+- Baseline Android debug APK compiled successfully (Gradle 22.0 seconds).
+- Isolated temporary-worktree fault checks passed: build exit 23 removes all
+  created configuration; each preexisting configuration is preserved and causes
+  refusal; broken symlink is also preserved and refused.
+- Relevant repository hooks, actionlint, shellcheck and secret scans passed.
+- Local unsigned iOS build failed before compilation: Xcode reports no generic
+  iOS destination because iOS 26.5 platform component is not installed. Although
+  `xcodebuild -showsdks` lists iphoneos26.5, that does not establish a usable
+  destination. No device build success is claimed. CI must run the unsigned
+  build on its macOS runner; do not skip it to mask this local limitation.
+- Script cleanup after both native attempts confirmed no ignored Firebase
+  configuration left behind. Local tooling/build outputs remain untracked.
+
+These native results apply to the baseline Flutter dependencies only; repeat
+against the integrated candidate. Canonical verification for this CI change is
+recorded with the commit handoff.
+
+Official [macOS 15 arm64 runner manifest](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md), inspected 2026-09-08 UTC, lists image 20260829.0321.1, default Xcode 16.4 and iOS 18.5 SDK, plus CocoaPods 1.17.0. This supports the proposed unsigned build environment by documentation; actual CI compilation on the candidate is still required. Runner image availability is not a passing build.
+
+Canonical verification after native CI changes completed successfully: all
+repository hooks, 33 Python tests, Flutter analysis, one widget test and release
+web build passed. No push or GitHub matrix execution has occurred yet.
