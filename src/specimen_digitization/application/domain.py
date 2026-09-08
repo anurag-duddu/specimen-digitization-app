@@ -132,6 +132,14 @@ class Region(Record):
 
 
 class Observation(Record):
+    latency_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    latency_basis: str | None = None
+    finish_state: str | None = None
+    completion_state: str | None = None
+    parameters: dict | None = None
+    provider_model_id: str | None = None
+    input_asset_id: str | None = None
+    input_crop_ref: str | None = None
     declaration_evidence: dict | None = None
     id: str = Field(default_factory=uid)
     region_id: str
@@ -158,7 +166,12 @@ class Transcript(Record):
     resolved: bool
     actor: str | None = None
     reason: str | None = None
-    disagreement_ratio: float = 0
+    disagreement_ratio: float | None = Field(
+        default=None, ge=0, le=1, allow_inf_nan=False
+    )
+    alignment_status: str | None = None
+    alignment_algorithm: str | None = None
+    alignment_reasons: list[str] = Field(default_factory=list)
 
 
 class Evidence(Record):

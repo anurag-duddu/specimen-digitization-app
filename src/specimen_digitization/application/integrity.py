@@ -113,6 +113,10 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     else input_hashes[observation.region_id]
                 )
                 require(observation.input_sha256 == expected_input)
+                if observation.input_asset_id is not None:
+                    require(observation.input_asset_id == asset.id)
+                if observation.input_crop_ref is not None:
+                    read(observation.input_crop_ref, observation.input_sha256)
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
                 require(bool(transcript.observation_ids))

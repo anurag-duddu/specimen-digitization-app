@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timezone, timedelta
-from difflib import SequenceMatcher
 from typing import Protocol
 import logfire
 from .domain import (
@@ -331,8 +330,28 @@ class Workflow:
                 for region in run.regions:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
+                    from .reading_evidence import ReadingEvidenceInput, align_readings
+
+                    alignment = None
+                    if len(readings) == 2:
+                        alignment = align_readings(
+                            *(
+                                ReadingEvidenceInput(
+                                    observation_id=o.id,
+                                    region_id=region.id,
+                                    source_ref=o.raw_ref,
+                                    source_sha256=o.raw_sha256,
+                                    text=o.literal_text,
+                                )
+                                for o in readings
+                            )
+                        )
+                    measured = (
+                        alignment is not None and alignment.status != "policy_blocked"
+                    )
                     resolved = (
-                        len(texts) == 1
+                        measured
+                        and len(texts) == 1
                         and bool(texts[0].strip())
                         and not any(o.unreadable_spans for o in readings)
                     )
@@ -343,10 +362,19 @@ class Workflow:
                             observation_ids=[o.id for o in readings],
                             alternatives=texts,
                             resolved=resolved,
-                            disagreement_ratio=1
-                            - SequenceMatcher(None, texts[0], texts[-1]).ratio()
-                            if texts
-                            else 1,
+                            disagreement_ratio=(
+                                alignment.edit_distance
+                                / max(1, *(len(o.literal_text) for o in readings))
+                            )
+                            if measured
+                            else None,
+                            alignment_status=alignment.status
+                            if alignment
+                            else "policy_blocked",
+                            alignment_algorithm="bounded-levenshtein-fraction-v1",
+                            alignment_reasons=list(alignment.reasons)
+                            if alignment
+                            else ["independent_pair_incomplete"],
                         )
                     )
             elif step == "parse":

@@ -436,6 +436,8 @@ def test_production_transcriber_does_not_receive_peer_observations(
     def model(messages, info):
         captured.append(messages)
         return ModelResponse(
+            model_name="synthetic-observation-model",
+            finish_reason="stop",
             parts=[
                 ToolCallPart(
                     info.output_tools[0].name,
@@ -448,7 +450,7 @@ def test_production_transcriber_does_not_receive_peer_observations(
                         "language_relation": "cooccurring",
                     },
                 )
-            ]
+            ],
         )
 
     class Gateway:
@@ -476,6 +478,28 @@ def test_production_transcriber_does_not_receive_peer_observations(
     for route in specimen.run.profile.routes:
         observation = adapter.transcribe(specimen, specimen.run.regions[0], route)
         assert observation.literal_text == "Independent source"
+        assert observation.finish_state == "stop"
+        import json
+
+        assert (
+            observation.provider_model_id
+            == json.loads(blobs.get(observation.raw_ref))[-1]["model_name"]
+        )
+        assert observation.completion_state == "validated_output"
+        assert (
+            observation.latency_seconds is not None and observation.latency_seconds >= 0
+        )
+        assert observation.latency_basis == "validated_agent_call_wall_seconds"
+        assert (
+            observation.parameters is None
+        )  # No sampling settings were explicitly supplied.
+        assert observation.input_asset_id == specimen.asset.id
+        import hashlib
+
+        assert (
+            hashlib.sha256(blobs.get(observation.input_crop_ref)).hexdigest()
+            == observation.input_sha256
+        )
         from specimen_digitization.application.reading_declarations import checked_value
 
         declaration = checked_value(observation.declaration_evidence, blobs)

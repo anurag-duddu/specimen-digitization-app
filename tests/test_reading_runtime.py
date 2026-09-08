@@ -58,3 +58,35 @@ def test_reading_artifacts_preserve_utf16_and_long_uncertainty(
             == work["observations"][0]["raw_sha256"]
         )
         assert metadata["language_state"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    "left,right", [("a" * 9000, "b" * 9000), ("same" * 26000, "same" * 26000)]
+)
+def test_legacy_adjudication_is_bounded_and_unknown_is_not_agreement(
+    tmp_path, left, right
+):
+    import time
+
+    blobs = LocalBlobs(tmp_path / "blobs")
+    app = create_app(
+        mode="synthetic",
+        repository=SQLiteRepository(tmp_path / "state.db"),
+        blobs=blobs,
+        adapters=SyntheticAdapters(blobs, left, right),
+        token=TOKEN,
+    )
+    started = time.monotonic()
+    with TestClient(app) as http:
+        row = intake(http)
+        work = http.get(
+            PREFIX + "/specimens/" + row["specimen_id"] + "/workspace", headers=HEADERS
+        ).json()
+        transcript = work["run"]["transcripts"][0]
+        assert transcript["disagreement_ratio"] is None
+        assert transcript["alignment_status"] == "policy_blocked"
+        assert transcript["alignment_reasons"] and not transcript["resolved"]
+        assert transcript["text"] is None
+        assert transcript["alternatives"] == list(dict.fromkeys([left, right]))
+        assert work["disposition"] == "needs_human_review"
+    assert time.monotonic() - started < 8

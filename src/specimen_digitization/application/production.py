@@ -7,6 +7,7 @@ from .active_graph import original_run_digest, unpack
 import json
 import os
 import re
+import time
 from uuid import UUID
 
 import google.auth
@@ -624,6 +625,7 @@ class ProductionAdapters:
             gateway, route_id=route, prompt=prompt
         )
         image = crop_bytes(self.blobs, specimen, region)
+        started = time.monotonic()
         result = run_agent_bounded(
             agent,
             [
@@ -633,6 +635,7 @@ class ProductionAdapters:
             timeout_seconds=specimen.run.profile.execution.external_timeout_seconds,
             usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
         )
+        latency_seconds = time.monotonic() - started
         # Preserve every provider response (including retries), excluding image-bearing requests.
         responses = [m for m in result.all_messages() if m.kind == "response"]
         raw = ModelMessagesTypeAdapter.dump_json(responses)
@@ -641,7 +644,16 @@ class ProductionAdapters:
         raw_ref = self.blobs.put(raw)
         raw_sha256 = hashlib.sha256(raw).hexdigest()
         prompt_version = hashlib.sha256(prompt.text.encode()).hexdigest()
+        last_response = responses[-1] if responses else None
         return Observation(
+            latency_seconds=latency_seconds,
+            latency_basis="validated_agent_call_wall_seconds",
+            finish_state=getattr(last_response, "finish_reason", None),
+            completion_state="validated_output",
+            parameters=agent.model_settings,
+            provider_model_id=getattr(last_response, "model_name", None),
+            input_asset_id=specimen.asset.id,
+            input_crop_ref=self.blobs.put(image),
             declaration_evidence=model_evidence(
                 self.blobs,
                 result.output,
