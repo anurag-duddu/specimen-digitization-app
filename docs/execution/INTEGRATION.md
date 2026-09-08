@@ -224,3 +224,10 @@ but is not necessary for scanner recovery. NEXT_WAVE.md names remaining
 reliability/history/profile/evidence work. None of these local results accepts
 all P0 criteria or proves production identity, provider quality, device behavior,
 data launch readiness or deployed runtime availability.
+
+Seed mismatch resolution: backend's isolated test-only fix `68be8ee` was
+reviewed and integrated as `18a1276`; it uses the canonical seeded synthetic
+principal and scope. The same paired opt-in command on 9539 now passes both
+tests (2 passed in 4.15s), without additional manual seed or DB repair. Log:
+`/tmp/specimen-integrated-sql-http-fixed.log`. Application code is unchanged
+from the Android/Flutter-live/canonical checks above.
