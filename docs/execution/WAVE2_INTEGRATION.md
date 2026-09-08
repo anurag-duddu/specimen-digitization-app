@@ -141,3 +141,25 @@ at this checkpoint. Legacy V1/V2/null checksum rollout, institutional semantics,
 provider/device and production approvals remain separate gates. GCS byte reads
 are bounded; total GCS authentication/stream wall-clock time is not established.
 No push, deployment, cloud mutation or paid inference occurred.
+
+## Frozen combined codec checkpoint
+
+Flutter f10eb79 is integrated as906e1348e71a0e800bfb260fa1125d67239b0e0e.
+Empty diffs confirm backend tree parity withd6be7a0 and complete Flutter tree
+parity withf10eb79. Existing scanner5868705 was not duplicated. Both codec
+fixture copies remain SHA2568dc736071fc530260097279cee0a09fab35a7c67420ef2b3dcf7271fee673e7d.
+Canonical passed243 Python/23 optional skips and54 Flutter/four opt-in live
+skips, plus analysis/scanners/web. Log: /tmp/specimen-wave2-codec-combined-canonical.log.
+
+The actual Flutter live_codec_test.dart passed against a fresh local codec API
+with pinned optional extras and the explicit local memory-enforcement exception.
+Specimen cc3502a9-fedc-5ea1-b893-4f73532034c4 reached review at revision20;
+ROI correction returned revision23 with the same bounds, quarter-turn1 and exact
+source digest. Test verified original bytes,64x96 decoded HEIF primary basis,
+derivative SHA and a fresh authenticated repository reopening retained evidence.
+Log: /tmp/specimen-wave2-combined-codec-live.log. State retained at
+/tmp/specimen-combined-codec-906e134; own8123 server stopped.
+
+Independent QA received this exact frozen combined SHA for hardening and actual
+HEIC browser verification. Subsequent graph/TRN work is excluded. This checkpoint
+is local and unpushed; production memory isolation and rollout gates remain open.
