@@ -29,6 +29,9 @@ class PilotSpecimen(Record):
 
 
 class PilotLaunch(Record):
+    sensitive: bool = Field(
+        default=True, strict=True, exclude_if=lambda value: value is True
+    )
     version: str = "authorized-ten-v1"
     evidence_only: bool = False
     evidence_profile_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
@@ -135,6 +138,7 @@ class PilotAdmission:
             and specimen.asset.sha256 == binding.asset_sha256
             and specimen.asset.blob_ref == binding.blob_ref
             and not specimen.run.profile.synthetic
+            and (self.launch.sensitive or not specimen.asset.sensitive)
             and (
                 not self.launch.evidence_only
                 or specimen.asset.processing_derivative is None
@@ -148,8 +152,12 @@ class PilotAdmission:
             )
         except Missing:
             value = {"revision": 0, "launch_sha256": self.launch_digest, "runs": {}}
+            if not self.launch.sensitive:
+                value["sensitive"] = False
         if value["launch_sha256"] != self.launch_digest:
             raise OperationalBlock("pilot_launch_changed_requires_reconciliation")
+        if value.get("sensitive", True) != self.launch.sensitive:
+            raise OperationalBlock("pilot_launch_sensitivity_mismatch")
         return value
 
     def _write(self, ledger, **updates):

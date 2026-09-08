@@ -101,6 +101,10 @@ class Principal(Record):
 
 
 class Asset(Record):
+    # Omitted legacy classifications stay sensitive without changing old digests.
+    sensitive: bool = Field(
+        default=True, strict=True, exclude_if=lambda value: value is True
+    )
     quality_diagnostics: dict = Field(default_factory=dict)
     view_derivative: dict | None = None
     processing_derivative: dict | None = None

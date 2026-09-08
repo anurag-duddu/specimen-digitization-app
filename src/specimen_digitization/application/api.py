@@ -85,12 +85,18 @@ SYNTHETIC_TEXT = "\n".join(f"{k}: {v}" for k, v in SYNTHETIC_VALUES.items())
 
 
 class BatchInput(Record):
+    sensitive: bool = Field(
+        default=True, strict=True, exclude_if=lambda value: value is True
+    )
     collection_id: str
     display_name: str = Field(min_length=1, max_length=200)
     acquisition_method: str = "files"
 
 
 class ItemInput(Record):
+    sensitive: bool = Field(
+        default=True, strict=True, exclude_if=lambda value: value is True
+    )
     client_item_id: str = Field(min_length=1, max_length=100)
     filename: str = Field(min_length=1, max_length=255)
     media_type: str
@@ -590,13 +596,28 @@ def create_app(
             role=row["role"],
         )
 
+    def sensitivity_access(user, p, sensitive):
+        matching = [
+            m
+            for m in member_rows(user)
+            if m["organization_id"] == p.scope.organization_id
+            and m["collection_id"] == p.scope.collection_id
+        ]
+        if not matching or (
+            sensitive is not False
+            and not any(m.get("can_view_sensitive") is True for m in matching)
+        ):
+            raise PermissionError("Current membership does not permit this classification")
+
     def find(user, org, ident):
         for member in member_rows(user):
             if member["organization_id"] != org:
                 continue
             p = principal(user, org, member["collection_id"])
             try:
-                return p, repository.get(p.scope, ident)
+                specimen = repository.get(p.scope, ident)
+                sensitivity_access(user, p, specimen.asset.sensitive)
+                return p, specimen
             except Missing:
                 pass
         raise Missing(ident)
@@ -606,7 +627,9 @@ def create_app(
             if member["organization_id"] == org:
                 p = principal(user, org, member["collection_id"])
                 try:
-                    return p, repository.document(p.scope, kind, ident)
+                    document = repository.document(p.scope, kind, ident)
+                    sensitivity_access(user, p, document.get("sensitive", True))
+                    return p, document
                 except Missing:
                     pass
         raise Missing(ident)
@@ -691,6 +714,7 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p = principal(user, organization_id, body.collection_id, write=True)
+        sensitivity_access(user, p, body.sensitive)
         ident = str(
             uuid5(
                 NAMESPACE_URL, organization_id + user + "batch" + key(idempotency_key)
@@ -713,10 +737,17 @@ def create_app(
     @app.get(prefix + "/batches/{batch_id}")
     def batch(organization_id: str, batch_id: str, user=Depends(identity)):
         p, document = find_document(user, organization_id, "batch", batch_id)
+        can_view_sensitive = any(
+            m["organization_id"] == p.scope.organization_id
+            and m["collection_id"] == p.scope.collection_id
+            and m.get("can_view_sensitive") is True
+            for m in member_rows(user)
+        )
         document["items"] = [
             u
             for u in repository.documents(p.scope, "upload")
             if u["batch_id"] == batch_id
+            and (can_view_sensitive or u.get("sensitive", True) is False)
         ]
         return document
 
@@ -742,6 +773,8 @@ def create_app(
     ):
         p, batch = find_document(user, organization_id, "batch", batch_id)
         principal(user, organization_id, p.scope.collection_id, write=True)
+        if body.sensitive != batch.get("sensitive", True):
+            raise ValueError("Item sensitivity must match its retained batch")
         key(idempotency_key)
         if (body.width is None) != (body.height is None):
             raise ValueError("Declare both pixel dimensions or omit both")
@@ -963,6 +996,7 @@ def create_app(
             batch_id=doc["batch_id"],
             run=Run(profile=profile),
             asset=Asset(
+                sensitive=doc.get("sensitive", True),
                 id=doc["asset_id"],
                 view_derivative=view,
                 processing_derivative=processing,
@@ -1007,15 +1041,6 @@ def create_app(
 
     def history_access(user, organization_id, specimen_id):
         p, current = find(user, organization_id, specimen_id)
-        if not any(
-            m["organization_id"] == p.scope.organization_id
-            and m["collection_id"] == p.scope.collection_id
-            and m.get("can_view_sensitive")
-            for m in member_rows(user)
-        ):
-            raise PermissionError(
-                "Historical evidence requires current sensitive-data permission"
-            )
         return p, current
 
     @app.get(prefix + "/specimens/{specimen_id}/history")
@@ -1045,6 +1070,7 @@ def create_app(
     ):
         p, _ = history_access(user, organization_id, specimen_id)
         retained = repository.version(p.scope, specimen_id, revision)
+        sensitivity_access(user, p, retained.asset.sensitive)
         retained_info = repository.version_info(p.scope, specimen_id, revision)
         if run_id is not None and retained_info["run_id"] != run_id:
             raise Conflict("Historical run reference mismatch")
@@ -1061,6 +1087,12 @@ def create_app(
     ):
         p, current = history_access(user, organization_id, specimen_id)
         selected = revision if revision is not None else current.version
+        retained = (
+            current
+            if revision is None
+            else repository.version(p.scope, specimen_id, selected)
+        )
+        sensitivity_access(user, p, retained.asset.sensitive)
         raw = repository.graph_bytes(p.scope, specimen_id, selected)
         if len(raw) > GRAPH_LIMIT:
             raise GraphTooLarge("Active graph exceeds supported retrieval limit")
@@ -1089,17 +1121,20 @@ def create_app(
             if revision is not None
             else current
         )
+        sensitivity_access(user, p, selected.asset.sensitive)
         if phase not in selected.run.phase_results:
             raise Missing(phase)
         return phase_artifact(selected, phase, blobs).model_dump(mode="json")
 
     def artifact_specimen(user, organization_id, specimen_id, revision):
         p, current = history_access(user, organization_id, specimen_id)
-        return (
+        selected = (
             repository.version(p.scope, specimen_id, revision)
             if revision is not None
             else current
         )
+        sensitivity_access(user, p, selected.asset.sensitive)
+        return selected
 
     def authority_metadata(selected, tool_id, field_key):
         matches = [
@@ -1301,7 +1336,10 @@ def create_app(
         from .search import SearchFilters
 
         rows = search_metadata(p, user, SearchFilters(**filters), limit=2)
-        return [repository.get(p.scope, row["specimen_id"]) for row in rows]
+        selected = [repository.get(p.scope, row["specimen_id"]) for row in rows]
+        for specimen in selected:
+            sensitivity_access(user, p, specimen.asset.sensitive)
+        return selected
 
     @app.get(prefix + "/specimens")
     def specimens(
@@ -1381,13 +1419,12 @@ def create_app(
     @app.get(prefix + "/assets/{asset_id}/access")
     def asset_access(organization_id: str, asset_id: str, user=Depends(identity)):
         for m in member_rows(user):
-            if m["organization_id"] != organization_id or not m.get(
-                "can_view_sensitive"
-            ):
+            if m["organization_id"] != organization_id:
                 continue
             p = principal(user, organization_id, m["collection_id"])
             for s in exact_records(p, user, asset_id=asset_id):
                 if s.asset.id == asset_id:
+                    sensitivity_access(user, p, s.asset.sensitive)
                     return {
                         "url": f"/v1/organizations/{organization_id}/assets/{asset_id}/content",
                         "requires_authorization": True,
@@ -1404,13 +1441,12 @@ def create_app(
         organization_id: str, asset_id: str, view: bool = False, user=Depends(identity)
     ):
         for m in member_rows(user):
-            if m["organization_id"] != organization_id or not m.get(
-                "can_view_sensitive"
-            ):
+            if m["organization_id"] != organization_id:
                 continue
             p = principal(user, organization_id, m["collection_id"])
             for s in exact_records(p, user, asset_id=asset_id):
                 if s.asset.id == asset_id:
+                    sensitivity_access(user, p, s.asset.sensitive)
                     if view:
                         if "evidence_pilot" in s.run.dependencies:
                             raise Missing("Pilot review uses the frozen original image")
