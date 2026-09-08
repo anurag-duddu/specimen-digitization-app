@@ -1,0 +1,22 @@
+{
+  "fixture_kind": "illustrative additive contract; digest zeros are placeholders",
+  "workspace_additions": {
+    "audit_offset": 23,
+    "history_through_revision": 24,
+    "history_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/00000000-0000-4000-8000-000000000003/history"
+  },
+  "history_page": {
+    "items": [
+      {"revision": 1, "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+    ],
+    "through_revision": 25,
+    "next_cursor": 1
+  },
+  "review_before_reference": {
+    "specimen_id": "00000000-0000-4000-8000-000000000003",
+    "revision": 24,
+    "run_id": "00000000-0000-4000-8000-000000000004",
+    "run_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "history_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/00000000-0000-4000-8000-000000000003/history/24?run_sha256=0000000000000000000000000000000000000000000000000000000000000000&run_id=00000000-0000-4000-8000-000000000004"
+  }
+}
