@@ -33,6 +33,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   String _filter = '';
   String? _error;
   bool _loading = true;
+  bool _scopesVerified = false;
   bool _mutating = false;
   int _page = 0;
   int _generation = 0;
@@ -65,10 +66,16 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   }
 
   Future<void> _initialize() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _scopesVerified = false;
+    });
     try {
       final scopes = await widget.repository.scopes();
       if (!mounted) return;
       setState(() {
+        _scopesVerified = true;
         _scopes = scopes;
         _scope = scopes.firstOrNull;
         _loading = false;
@@ -84,9 +91,21 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
     }
   }
 
-  String _message(Object error) => error is ApiFailure
-      ? error.message
-      : 'The service could not be reached. Check your connection and retry.';
+  String _message(Object error) {
+    if (widget.session is LocalFixtureSession && error is ApiFailure) {
+      if (error.status == 401 || error.status == 403) {
+        return 'The local server did not authorize this request. Sign out and sign in with the current fixture token. Collection access has not been verified.';
+      }
+      if (['network', 'timeout'].contains(error.code) ||
+          (error.status ?? 0) >= 500) {
+        return 'The local synthetic server is unavailable. Reconnect the demo server and refresh. Collection permissions could not be checked.';
+      }
+    }
+    return error is ApiFailure
+        ? error.message
+        : 'The service could not be reached. Check your connection and retry.';
+  }
+
   Future<void> _refresh({bool quiet = false}) async {
     final scope = _scope;
     if (scope == null) return;
@@ -399,6 +418,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final wide = constraints.maxWidth >= 800;
+      final environment = widget.session is LocalFixtureSession
+          ? 'synthetic'
+          : widget.repository.mode;
       final historyScope = _scope;
       final historySpecimen = _selected;
       final body = _scope == null
@@ -410,8 +432,12 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                   children: [
                     const Icon(Icons.lock_outline, size: 40),
                     const SizedBox(height: 16),
-                    const Text(
-                      'No collection access is available. Ask your administrator to grant a collection role.',
+                    Text(
+                      _loading
+                          ? 'Checking collection access…'
+                          : _scopesVerified
+                          ? 'No collection access is available. Ask your administrator to grant a collection role.'
+                          : 'Collection access could not be verified. Reconnect or sign in again, then retry.',
                     ),
                     TextButton(
                       onPressed: _loading ? null : _initialize,
@@ -500,7 +526,11 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
           title: const Text('Specimen Digitization'),
           actions: [
             IconButton(
-              onPressed: _loading ? null : _refresh,
+              onPressed: _loading
+                  ? null
+                  : _scope == null
+                  ? _initialize
+                  : _refresh,
               tooltip: 'Refresh collection',
               icon: const Icon(Icons.refresh),
             ),
@@ -537,13 +567,13 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
               ),
         body: Column(
           children: [
-            if (widget.repository.mode != 'production')
+            if (environment != 'production')
               Container(
                 width: double.infinity,
                 color: const Color(0xffffe7a3),
                 padding: const EdgeInsets.all(12),
                 child: Text(
-                  '${widget.repository.mode.toUpperCase()} ENVIRONMENT — fixture results are not real model processing or museum-approved records.',
+                  '${environment.toUpperCase()} ENVIRONMENT — fixture results are not real model processing or museum-approved records.',
                   style: const TextStyle(color: Color(0xff483500)),
                 ),
               ),

@@ -421,3 +421,30 @@ skips), and fatal-info analysis passes. Logs:
 `/tmp/flutter-coordinate-validation-all.log`,
 `/tmp/flutter-coordinate-validation-analyze.log`.
 Integration/QA own the targeted final recheck before updating their frozen target.
+
+
+### Synthetic session validation repair
+
+Isolated from frozen integration base `285534c39d483de18605d398dd2e79ab8b52e746`.
+The local fixture session previously published sign-in before the API checked
+the bearer. It now waits for `/v1/session`, validates synthetic mode and server
+identity, and only then retains the token and publishes success. Pending requests
+cannot restore authentication after sign-out. The email is explicitly a test
+label and the secret field is labelled Fixture token. Firebase auth is unchanged.
+
+Rejected-token and server-unavailable messages remain on the sign-in form.
+Workspace scope loading distinguishes unverified access from a successfully
+verified empty role list; retry can recover. Synthetic environment notices remain
+visible during setup, sign-in and workspace access failures. No service, CI,
+deployment or infrastructure configuration changed.
+
+Validation: six new regressions pass, including a real ephemeral HTTP server
+rejecting the wrong bearer and accepting the correct fixture bearer, pending
+validation cancellation, malformed/wrong-mode/offline rejection, setup banner,
+sign-in error messages, and failed-access/verified-empty/recovery distinctions.
+The complete Flutter suite passes 76 tests with 7 gated live skips. Fatal-info
+analysis passes. Logs: `/tmp/flutter-auth-targeted.log`,
+`/tmp/flutter-auth-full.log`, `/tmp/flutter-auth-analyze.log`.
+Coordinator and independent QA own the browser check against durable local
+services after integration. These owner checks do not constitute production or
+institutional acceptance.
