@@ -1,7 +1,6 @@
 """Resolve retained evidence bytes before any final disposition is persisted."""
 
 import hashlib
-import io
 import json
 
 from PIL import Image
@@ -36,6 +35,9 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
             view = asset.view_derivative
             require(view["original_sha256"] == asset.sha256)
             read(view["blob_ref"], view["derivative_sha256"])
+        if run.segmentation:
+            require(run.segmentation["input_sha256"] == asset.sha256)
+            read(run.segmentation["blob_ref"], run.segmentation["sha256"])
         for metadata in [
             *run.phase_results.values(),
             *run.reading_metadata.values(),
@@ -71,10 +73,17 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                 require(getattr(published, name) == getattr(run.profile, name))
             require(published.model_routes == run.profile.routes)
         require(len(original) == asset.size_bytes)
-        with Image.open(io.BytesIO(original)) as image:
+        from .source_pixels import source_image
+
+        with source_image(asset, blobs) as image:
             image.load()
             require(image.size == (asset.width, asset.height))
-            require(Image.MIME.get(image.format) == asset.media_type)
+            if not asset.processing_derivative:
+                require(Image.MIME.get(image.format) == asset.media_type)
+            else:
+                require(
+                    asset.processing_derivative["coordinate_space"] == asset.pixel_basis
+                )
             regions = {region.id: region for region in run.regions}
             require(len(regions) == len(run.regions))
             input_hashes = {}

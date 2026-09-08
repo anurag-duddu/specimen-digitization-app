@@ -1,0 +1,348 @@
+{
+  "fixture_kind": "synthetic_real_heic_local_decoder_application_responses",
+  "policy": "explicit synthetic-only HEIC/DNG profile and codec enablement; local-test memory enforcement exception; no institutional approval",
+  "item_request": {
+    "client_item_id": "5042bd32-fc00-443d-9ea9-d4dc1a3457e6",
+    "filename": "synthetic-codec",
+    "media_type": "image/heic",
+    "size_bytes": 523,
+    "sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7"
+  },
+  "completion_response": {
+    "specimen_id": "6c1f2d5c-c093-542a-a1a4-89640e4a3f38",
+    "asset_id": "6ffa1c43-4755-5144-a931-add261094c25",
+    "collection_id": "00000000-0000-4000-8000-000000000002",
+    "organization_id": "00000000-0000-4000-8000-000000000001",
+    "revision": 1,
+    "batch_id": "0f31ce34-2be0-5704-8f35-a308a17043a7",
+    "filename": "synthetic-codec",
+    "created_at": "2026-09-08T07:29:57.603206+00:00",
+    "domain_created_at": "2026-09-08T07:29:57.603206+00:00",
+    "active_run_id": "20cd66b0-af2b-445f-ba97-6e17e4b0f053",
+    "record_version_id": "20cd66b0-af2b-445f-ba97-6e17e4b0f053:1",
+    "status": "running",
+    "stage": "ingested",
+    "disposition": null,
+    "reason_codes": [],
+    "blocker": null,
+    "profile_id": "zoology_insects",
+    "profile_version": "0.1.0-draft",
+    "synthetic": true,
+    "available_actions": [
+      "retry",
+      "resume",
+      "pause",
+      "cancel",
+      "reprocess",
+      "field",
+      "transcription",
+      "coverage",
+      "approve",
+      "classification",
+      "regions",
+      "taxonomy_resolution",
+      "authority_resolution",
+      "capability_defer"
+    ]
+  },
+  "asset": {
+    "quality_diagnostics": {
+      "status": "valid",
+      "input_sha256": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+      "size_bytes": 229,
+      "format": "PNG",
+      "width": 64,
+      "height": 96,
+      "issues": [
+        "uniform_luminance"
+      ],
+      "limits": {
+        "max_bytes": 25000000,
+        "max_axis": 20000,
+        "max_pixels": 40000000,
+        "allowed_formats": [
+          "PNG"
+        ],
+        "sample_axis": 256
+      },
+      "transform": {
+        "orientation": 1,
+        "original_width": 64,
+        "original_height": 96,
+        "view_width": 64,
+        "view_height": 96,
+        "matrix": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "coordinate_space": "pixel_edges",
+        "algorithm_version": "exif-edge-affine-v1"
+      },
+      "metrics": {
+        "algorithm_version": "thumbnail-luminance-gradient-v1",
+        "calibrated": false,
+        "mean_luminance": 76.0,
+        "contrast_stddev": 0.0,
+        "dark_fraction": 0.0,
+        "bright_fraction": 0.0,
+        "mean_neighbor_gradient": 0.0,
+        "sample_width": 64,
+        "sample_height": 96
+      },
+      "limitations": [
+        "uncalibrated_quality_metrics",
+        "focus_glare_framing_occlusion_not_determined",
+        "no_heic_or_raw_decoder"
+      ],
+      "original_sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+      "pixel_basis": "decoded_heif_primary_pixel_edges"
+    },
+    "view_derivative": {
+      "original_sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+      "derivative_sha256": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+      "family": "HEIC",
+      "actual_format": "HEIC",
+      "codec": "pillow-heif",
+      "codec_version": "1.7.0",
+      "native_library_version": "1.23.3",
+      "algorithm_version": "bounded-codec-png-v1",
+      "coordinate_space": "decoded_heif_primary_pixel_edges",
+      "transform": {
+        "orientation": 1,
+        "original_width": 64,
+        "original_height": 96,
+        "view_width": 64,
+        "view_height": 96,
+        "matrix": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "coordinate_space": "pixel_edges",
+        "algorithm_version": "exif-edge-affine-v1"
+      },
+      "sensor_crop": null,
+      "conversion": [
+        "libheif_container_orientation",
+        "hdr_to_rgb8",
+        "metadata_strip",
+        "encoded_grid_to_primary_mapping_unavailable"
+      ],
+      "memory_limit_enforced": false,
+      "cpu_limit_enforced": true,
+      "metadata_policy": "strip_all",
+      "blob_ref": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95"
+    },
+    "processing_derivative": {
+      "original_sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+      "derivative_sha256": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+      "family": "HEIC",
+      "actual_format": "HEIC",
+      "codec": "pillow-heif",
+      "codec_version": "1.7.0",
+      "native_library_version": "1.23.3",
+      "algorithm_version": "bounded-codec-png-v1",
+      "coordinate_space": "decoded_heif_primary_pixel_edges",
+      "transform": {
+        "orientation": 1,
+        "original_width": 64,
+        "original_height": 96,
+        "view_width": 64,
+        "view_height": 96,
+        "matrix": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "coordinate_space": "pixel_edges",
+        "algorithm_version": "exif-edge-affine-v1"
+      },
+      "sensor_crop": null,
+      "conversion": [
+        "libheif_container_orientation",
+        "hdr_to_rgb8",
+        "metadata_strip",
+        "encoded_grid_to_primary_mapping_unavailable"
+      ],
+      "memory_limit_enforced": false,
+      "cpu_limit_enforced": true,
+      "metadata_policy": "strip_all",
+      "blob_ref": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+      "canonicalization": "inverse_view_affine_to_declared_pixel_basis"
+    },
+    "pixel_basis": "decoded_heif_primary_pixel_edges",
+    "id": "6ffa1c43-4755-5144-a931-add261094c25",
+    "sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+    "blob_ref": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+    "media_type": "image/heic",
+    "size_bytes": 523,
+    "width": 64,
+    "height": 96,
+    "filename": "synthetic-codec",
+    "uploader": "synthetic-reviewer",
+    "created_at": "2026-09-08T07:29:57.603196+00:00"
+  },
+  "asset_access": {
+    "url": "/v1/organizations/00000000-0000-4000-8000-000000000001/assets/6ffa1c43-4755-5144-a931-add261094c25/content",
+    "requires_authorization": true,
+    "view_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/assets/6ffa1c43-4755-5144-a931-add261094c25/content?view=true",
+    "asset": {
+      "quality_diagnostics": {
+        "status": "valid",
+        "input_sha256": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+        "size_bytes": 229,
+        "format": "PNG",
+        "width": 64,
+        "height": 96,
+        "issues": [
+          "uniform_luminance"
+        ],
+        "limits": {
+          "max_bytes": 25000000,
+          "max_axis": 20000,
+          "max_pixels": 40000000,
+          "allowed_formats": [
+            "PNG"
+          ],
+          "sample_axis": 256
+        },
+        "transform": {
+          "orientation": 1,
+          "original_width": 64,
+          "original_height": 96,
+          "view_width": 64,
+          "view_height": 96,
+          "matrix": [
+            1,
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          "coordinate_space": "pixel_edges",
+          "algorithm_version": "exif-edge-affine-v1"
+        },
+        "metrics": {
+          "algorithm_version": "thumbnail-luminance-gradient-v1",
+          "calibrated": false,
+          "mean_luminance": 76.0,
+          "contrast_stddev": 0.0,
+          "dark_fraction": 0.0,
+          "bright_fraction": 0.0,
+          "mean_neighbor_gradient": 0.0,
+          "sample_width": 64,
+          "sample_height": 96
+        },
+        "limitations": [
+          "uncalibrated_quality_metrics",
+          "focus_glare_framing_occlusion_not_determined",
+          "no_heic_or_raw_decoder"
+        ],
+        "original_sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+        "pixel_basis": "decoded_heif_primary_pixel_edges"
+      },
+      "view_derivative": {
+        "original_sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+        "derivative_sha256": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+        "family": "HEIC",
+        "actual_format": "HEIC",
+        "codec": "pillow-heif",
+        "codec_version": "1.7.0",
+        "native_library_version": "1.23.3",
+        "algorithm_version": "bounded-codec-png-v1",
+        "coordinate_space": "decoded_heif_primary_pixel_edges",
+        "transform": {
+          "orientation": 1,
+          "original_width": 64,
+          "original_height": 96,
+          "view_width": 64,
+          "view_height": 96,
+          "matrix": [
+            1,
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          "coordinate_space": "pixel_edges",
+          "algorithm_version": "exif-edge-affine-v1"
+        },
+        "sensor_crop": null,
+        "conversion": [
+          "libheif_container_orientation",
+          "hdr_to_rgb8",
+          "metadata_strip",
+          "encoded_grid_to_primary_mapping_unavailable"
+        ],
+        "memory_limit_enforced": false,
+        "cpu_limit_enforced": true,
+        "metadata_policy": "strip_all",
+        "blob_ref": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95"
+      },
+      "processing_derivative": {
+        "original_sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+        "derivative_sha256": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+        "family": "HEIC",
+        "actual_format": "HEIC",
+        "codec": "pillow-heif",
+        "codec_version": "1.7.0",
+        "native_library_version": "1.23.3",
+        "algorithm_version": "bounded-codec-png-v1",
+        "coordinate_space": "decoded_heif_primary_pixel_edges",
+        "transform": {
+          "orientation": 1,
+          "original_width": 64,
+          "original_height": 96,
+          "view_width": 64,
+          "view_height": 96,
+          "matrix": [
+            1,
+            0,
+            0,
+            0,
+            1,
+            0
+          ],
+          "coordinate_space": "pixel_edges",
+          "algorithm_version": "exif-edge-affine-v1"
+        },
+        "sensor_crop": null,
+        "conversion": [
+          "libheif_container_orientation",
+          "hdr_to_rgb8",
+          "metadata_strip",
+          "encoded_grid_to_primary_mapping_unavailable"
+        ],
+        "memory_limit_enforced": false,
+        "cpu_limit_enforced": true,
+        "metadata_policy": "strip_all",
+        "blob_ref": "478326b95438c382150dd7c890fcc67ec9be5044a81b7bc9cf544a6b598acd95",
+        "canonicalization": "inverse_view_affine_to_declared_pixel_basis"
+      },
+      "pixel_basis": "decoded_heif_primary_pixel_edges",
+      "id": "6ffa1c43-4755-5144-a931-add261094c25",
+      "sha256": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+      "blob_ref": "e0dfe34c6aff41efc770734a1682d8117c720c7d5063e73ab8ca6c3879c408e7",
+      "media_type": "image/heic",
+      "size_bytes": 523,
+      "width": 64,
+      "height": 96,
+      "filename": "synthetic-codec",
+      "uploader": "synthetic-reviewer",
+      "created_at": "2026-09-08T07:29:57.603196+00:00"
+    }
+  },
+  "pixel_contract": "ROI uses decoded_heif_primary_pixel_edges; container orientation already applied; view transform identity"
+}

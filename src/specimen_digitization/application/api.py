@@ -87,8 +87,8 @@ class ItemInput(Record):
     filename: str = Field(min_length=1, max_length=255)
     media_type: str
     size_bytes: int = Field(gt=0, le=25000000)
-    width: int = Field(gt=0, le=20000)
-    height: int = Field(gt=0, le=20000)
+    width: int | None = Field(default=None, gt=0, le=20000)
+    height: int | None = Field(default=None, gt=0, le=20000)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
@@ -581,6 +581,18 @@ def create_app(
         ]
         return document
 
+    def duplicate_source(p, user, checksum):
+        sensitive = any(
+            m["organization_id"] == p.scope.organization_id
+            and m["collection_id"] == p.scope.collection_id
+            and m.get("can_view_sensitive")
+            for m in member_rows(user)
+        )
+        matches = repository.find_checksum(p.scope, checksum, sensitive)
+        if len(matches) > 1:
+            raise Conflict("Source checksum migration requires administrator review")
+        return matches[0]["id"] if matches else None
+
     @app.post(prefix + "/batches/{batch_id}/items")
     def item(
         organization_id: str,
@@ -592,7 +604,9 @@ def create_app(
         p, batch = find_document(user, organization_id, "batch", batch_id)
         principal(user, organization_id, p.scope.collection_id, write=True)
         key(idempotency_key)
-        if body.width * body.height > 40000000:
+        if (body.width is None) != (body.height is None):
+            raise ValueError("Declare both pixel dimensions or omit both")
+        if body.width is not None and body.width * body.height > 40000000:
             raise ValueError("Image exceeds 40 megapixel decoding limit")
         for prior in repository.documents(p.scope, "upload"):
             if (
@@ -624,9 +638,9 @@ def create_app(
                 raise Conflict("client_item_id reused with different content")
             return old
         except Missing:
-            for specimen in repository.list(p.scope):
-                if specimen.asset.sha256 == body.sha256:
-                    payload.update(state="duplicate", duplicate_specimen_id=specimen.id)
+            duplicate = duplicate_source(p, user, body.sha256)
+            if duplicate:
+                payload.update(state="duplicate", duplicate_specimen_id=duplicate)
             return repository.put_document(p.scope, "upload", ident, payload, 0)
 
     @app.get(prefix + "/uploads/{upload_id}")
@@ -720,26 +734,84 @@ def create_app(
         content = b"".join(blobs.get(c["ref"]) for c in doc["chunks"])
         if hashlib.sha256(content).hexdigest() != doc["sha256"]:
             raise ValueError("Original checksum mismatch")
-        try:
-            with Image.open(io.BytesIO(content)) as image:
-                image.verify()
-            with Image.open(io.BytesIO(content)) as image:
-                actual_type = Image.MIME.get(image.format)
-                if actual_type not in {"image/png", "image/jpeg", "image/tiff"}:
-                    raise ValueError("Image decoder format not supported")
-                if actual_type != doc["media_type"] or image.size != (
-                    doc["width"],
-                    doc["height"],
-                ):
-                    raise ValueError("Declared image metadata mismatch")
-            # Verify the complete pixel stream as well as the container headers.
-            with Image.open(io.BytesIO(content)) as image:
-                image.load()
-        except (OSError, SyntaxError, EOFError, Image.DecompressionBombError) as exc:
-            raise ValueError("Invalid or truncated image content") from exc
-        derivative, provenance = orientation_view(
-            content, ImageLimits(allowed_formats=("JPEG", "PNG", "TIFF"))
-        )
+        processing = None
+        pixel_basis = "original_pixel_edges"
+        special = doc["media_type"] in {
+            "image/heic",
+            "image/heif",
+            "image/dng",
+            "image/x-adobe-dng",
+        }
+        if special:
+            from .image_codecs import CodecPolicy, decode_image
+
+            policy = codec_policy or CodecPolicy()
+            family = (
+                "HEIC" if doc["media_type"] in {"image/heic", "image/heif"} else "DNG"
+            )
+            result, derivative = decode_image(content, family, policy)
+            if result.status == "blocked":
+                raise OperationalBlock("image_codec_" + result.reason)
+            if result.status != "decoded" or derivative is None:
+                raise ValueError("Invalid image: " + result.reason)
+            provenance = result.provenance
+            if provenance.actual_format != family:
+                raise ValueError("Decoded image family mismatch")
+            # HEIF's primary raster is already container-oriented. DNG's retained
+            # view must be inverted to its explicitly recorded active-area basis.
+            with Image.open(io.BytesIO(derivative)) as displayed:
+                canonical = displayed.convert("RGB")
+                orientation = provenance.transform.orientation
+                inverse = {
+                    2: Image.Transpose.FLIP_LEFT_RIGHT,
+                    3: Image.Transpose.ROTATE_180,
+                    4: Image.Transpose.FLIP_TOP_BOTTOM,
+                    5: Image.Transpose.TRANSPOSE,
+                    6: Image.Transpose.ROTATE_90,
+                    7: Image.Transpose.TRANSVERSE,
+                    8: Image.Transpose.ROTATE_270,
+                }.get(orientation)
+                if inverse is not None:
+                    canonical = canonical.transpose(inverse)
+                dimensions = canonical.size
+                pixels = io.BytesIO()
+                canonical.save(pixels, format="PNG")
+                canonical_bytes = pixels.getvalue()
+            processing = dict(
+                provenance.model_dump(mode="json"),
+                blob_ref=blobs.put(canonical_bytes),
+                derivative_sha256=hashlib.sha256(canonical_bytes).hexdigest(),
+                canonicalization="inverse_view_affine_to_declared_pixel_basis",
+            )
+            pixel_basis = provenance.coordinate_space
+            actual_type = "image/heic" if family == "HEIC" else "image/dng"
+        else:
+            try:
+                with Image.open(io.BytesIO(content)) as image:
+                    image.verify()
+                with Image.open(io.BytesIO(content)) as image:
+                    actual_type = Image.MIME.get(image.format)
+                    if actual_type not in {"image/png", "image/jpeg", "image/tiff"}:
+                        raise ValueError("Image decoder format not supported")
+                    if actual_type != doc["media_type"]:
+                        raise ValueError("Declared image media type mismatch")
+                    if image.width * image.height > 40000000 or max(image.size) > 20000:
+                        raise ValueError("Decoded image resolution limit exceeded")
+                    image.load()
+                    dimensions = image.size
+            except (
+                OSError,
+                SyntaxError,
+                EOFError,
+                Image.DecompressionBombError,
+            ) as exc:
+                raise ValueError("Invalid or truncated image content") from exc
+            derivative, provenance = orientation_view(
+                content, ImageLimits(allowed_formats=("JPEG", "PNG", "TIFF"))
+            )
+        if doc["width"] is not None and dimensions != (doc["width"], doc["height"]):
+            raise ValueError("Declared image dimensions mismatch")
+        doc.update(width=dimensions[0], height=dimensions[1])
         view = dict(provenance.model_dump(mode="json"), blob_ref=blobs.put(derivative))
         profile = Profile(
             synthetic=mode == "synthetic",
@@ -754,6 +826,8 @@ def create_app(
             asset=Asset(
                 id=doc["asset_id"],
                 view_derivative=view,
+                processing_derivative=processing,
+                pixel_basis=pixel_basis,
                 sha256=doc["sha256"],
                 blob_ref=blobs.put(content),
                 media_type=actual_type,
@@ -769,20 +843,26 @@ def create_app(
                 actor=user, action="ingest", reason="Verified immutable original"
             )
         )
-        specimen = repository.create(
-            p,
-            specimen,
-            "ingest:" + upload_id,
-            completion_digest,
-        )
+        duplicate = None
+        try:
+            specimen = repository.create(
+                p, specimen, "ingest:" + upload_id, completion_digest
+            )
+        except Conflict:
+            duplicate = duplicate_source(p, user, doc["sha256"])
+            if not duplicate or duplicate == specimen.id:
+                raise
+            specimen = repository.get(p.scope, duplicate)
         response = summary(specimen, p.role)
+        if duplicate:
+            response.update(upload_state="duplicate", duplicate_specimen_id=duplicate)
         doc.update(
             state="accepted",
             completion_digest=completion_digest,
             completion_response=response,
         )
         repository.put_document(p.scope, "upload", upload_id, doc, doc["revision"])
-        if mode == "synthetic":
+        if mode == "synthetic" and not duplicate:
             background_tasks.add_task(process_background, p, specimen.id)
         return response
 
@@ -902,7 +982,9 @@ def create_app(
         if not result.raw_ref or not result.response_sha256:
             raise Missing("Authority response body unavailable")
         content = read_artifact(
-            {"blob_ref": result.raw_ref, "sha256": result.response_sha256}, blobs
+            {"blob_ref": result.raw_ref, "sha256": result.response_sha256},
+            blobs,
+            max_bytes=1048576,
         )
         if len(content) > 1048576:
             raise ValueError("Raw evidence exceeds the 1 MiB response limit")
@@ -927,7 +1009,9 @@ def create_app(
         if observation is None:
             raise Missing(observation_id)
         content = read_artifact(
-            {"blob_ref": observation.raw_ref, "sha256": observation.raw_sha256}, blobs
+            {"blob_ref": observation.raw_ref, "sha256": observation.raw_sha256},
+            blobs,
+            max_bytes=1048576,
         )
         if len(content) > 1048576:
             raise ValueError("Raw evidence exceeds the 1 MiB response limit")

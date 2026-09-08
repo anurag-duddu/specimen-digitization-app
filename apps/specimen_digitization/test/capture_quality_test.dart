@@ -68,6 +68,6 @@ void main() {
       ),
     );
     expect(find.text('Measurements unavailable'), findsOneWidget);
-    expect(find.textContaining('server must validate'), findsOneWidget);
+    expect(find.textContaining('server must decode'), findsOneWidget);
   });
 }

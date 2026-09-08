@@ -71,3 +71,24 @@ def test_hierarchy_cycle_rejected_and_opaque_mapping():
     )
     assert configured.resolve(opaque).profile == profile
     assert configured.resolve("insects").status == "review"
+
+
+def test_optional_codec_families_representable_without_default_activation():
+    from specimen_digitization.application.collection_profiles import CollectionProfile
+
+    original = insects_registry().profiles[0]
+    assert original.allowed_input_formats == ("JPEG", "PNG")
+    definition = original.model_dump()
+    definition["allowed_input_formats"] = ("JPEG", "PNG", "HEIC", "DNG")
+    configured = CollectionProfile.model_validate(definition)
+    assert configured.allowed_input_formats == ("JPEG", "PNG", "HEIC", "DNG")
+    assert configured.state == "draft"
+    assert not configured.institutional_policy_approved
+    assert not configured.semantics_confirmed
+    assert (
+        CollectionProfile.model_validate_json(configured.model_dump_json())
+        == configured
+    )
+    definition["allowed_input_formats"] = ("RAW",)
+    with pytest.raises(ValidationError):
+        CollectionProfile.model_validate(definition)

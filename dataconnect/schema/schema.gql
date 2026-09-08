@@ -28,6 +28,7 @@ type CollectionMember @table(key: ["organizationId", "collectionId", "uid"]) {
   canViewSensitive: Boolean!
 }
 type Specimen @table(key: ["organizationId", "collectionId", "id"])
+  @unique(indexName: "specimen_scope_checksum", fields: ["organizationId", "collectionId", "sourceChecksum"])
   @index(fields: ["organizationId", "collectionId", "updatedAt"])
   @index(name: "specimen_due_work", fields: ["organizationId", "collectionId", "state", "workAvailableAt", "id"]) {
   organizationId: UUID!
@@ -39,6 +40,7 @@ type Specimen @table(key: ["organizationId", "collectionId", "id"])
   disposition: String
   activeRunId: UUID
   workAvailableAt: Timestamp
+  sourceChecksum: String
   sensitive: Boolean!
   createdBy: String!
   createdAt: Timestamp! @default(expr: "request.time")

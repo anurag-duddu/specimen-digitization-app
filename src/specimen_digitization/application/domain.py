@@ -100,6 +100,8 @@ class Principal(Record):
 class Asset(Record):
     quality_diagnostics: dict = Field(default_factory=dict)
     view_derivative: dict | None = None
+    processing_derivative: dict | None = None
+    pixel_basis: str = "original_pixel_edges"
     id: str = Field(default_factory=uid)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     blob_ref: str
@@ -248,6 +250,8 @@ class Run(Record):
     authority_usage: dict = Field(default_factory=dict)
     harness_spec: dict = Field(default_factory=dict)
     phase_results: dict = Field(default_factory=dict)
+    circuit: dict = Field(default_factory=dict)
+    segmentation: dict = Field(default_factory=dict)
     reading_metadata: dict = Field(default_factory=dict)
     disagreements: list[dict] = Field(default_factory=list)
     review_risk: dict = Field(default_factory=dict)
