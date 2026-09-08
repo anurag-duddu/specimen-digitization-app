@@ -190,6 +190,20 @@ class SqlConnectRepository:
             raise Missing(ident)
         return self._snapshot(row)
 
+    def version_info(self, scope, ident, revision):
+        row = self.execute(
+            "GetSnapshot", dict(self.variables(scope), id=ident, revision=revision)
+        ).get("specimenSnapshot")
+        if not row:
+            raise Missing(ident)
+        self._snapshot(row)
+        return {
+            "revision": revision,
+            "sha256": row["sha256"],
+            "run_sha256": digest(row["snapshot"]["run"]),
+            "run_id": row["snapshot"]["run"]["id"],
+        }
+
     def create(self, principal, specimen, key, digest):
         return self._commit(principal, specimen, 0, key, digest)
 
