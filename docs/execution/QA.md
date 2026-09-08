@@ -127,6 +127,24 @@ also run on the approved representative dataset before P0 acceptance.
 
 ## Threat and corruption matrix
 
+Cross-checked architect ACCEPTANCE.md after initial plan completion: the 20-row
+coverage and synthetic/live limits agree. Section 11 P0 requirements remain
+binding even where section 19 summarizes them. In addition to the matrix:
+
+- P0-01: exercise HEIC and profile-approved RAW/TIFF with actual bounded decode,
+  not just an accepted extension; camera quality feedback needs device evidence.
+- P0-03/10/17: test configurable hierarchy, missing/ambiguous profile mapping,
+  immutable published profiles, pinned versions and correction racing finalize.
+- P0-05/06: test mixed scripts/languages, span/line/field/label disagreement,
+  versioned risk components/reasons and no unsupported accuracy claim.
+- P0-08/20: inspect persisted parse, plan, lookup, resolve, normalize, validate
+  and finalize phases; a skipped phase requires an applicability decision.
+- P0-15/19/20: test every specified search/filter dimension with positive and
+  empty results, retry/dead-letter replay, authorized cancellation and human-wait
+  restart. A visible filter that does not affect the API result fails.
+- P0-17/19: backup/restore, retention and recovery targets require their own
+  approved protocol; ordinary process restart is not a restore drill.
+
 Use at least organizations A/B, collections A1/A2/B1, and operator, reviewer,
 viewer, revoked and anonymous identities. A reviewer in A1 must not acquire A2
 permissions by changing a URL, body, pagination cursor, referenced evidence ID,
