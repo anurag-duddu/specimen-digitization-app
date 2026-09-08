@@ -1,0 +1,108 @@
+{
+  "candidate": "95215d9",
+  "transport": "actualTCP8124 SQL9519 PG5569 retained pre-repair database",
+  "results": [
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_legacy_recovered",
+      "passed": true
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_continued_reviews",
+      "passed": true,
+      "approvals": 211,
+      "max_snapshot_bytes": 130668,
+      "last_snapshot_bytes": 52134
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_all_revision_pages",
+      "passed": true,
+      "count": 239,
+      "pages": 19
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_audit_sequence_complete",
+      "passed": true,
+      "events": 235
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_all_legacy_raw_snapshots_unchanged",
+      "passed": true,
+      "count": 28
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_original_receipt_stable",
+      "passed": true
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_stale_write_denied",
+      "passed": true
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_run_reference_resolves",
+      "passed": true
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_wrong_run_digest_denied",
+      "passed": true
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_wrong_run_id_denied",
+      "passed": true
+    },
+    {
+      "case": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692_page_limit_denied",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_legacy_recovered",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_continued_reviews",
+      "passed": true,
+      "approvals": 101,
+      "max_snapshot_bytes": 88283,
+      "last_snapshot_bytes": 88283
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_all_revision_pages",
+      "passed": true,
+      "count": 129,
+      "pages": 10
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_audit_sequence_complete",
+      "passed": true,
+      "events": 125
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_all_legacy_raw_snapshots_unchanged",
+      "passed": true,
+      "count": 28
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_original_receipt_stable",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_stale_write_denied",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_run_reference_resolves",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_wrong_run_digest_denied",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_wrong_run_id_denied",
+      "passed": true
+    },
+    {
+      "case": "7aced055-21bd-5cb0-86dd-cd5c60ed957b_page_limit_denied",
+      "passed": true
+    }
+  ]
+}

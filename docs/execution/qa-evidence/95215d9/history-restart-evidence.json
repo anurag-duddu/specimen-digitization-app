@@ -1,0 +1,36 @@
+{
+  "candidate": "95215d9",
+  "transport": "terminated API4855, fresh API process; same SQL9519/PG5569; new HTTP client",
+  "results": [
+    {
+      "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+      "case": "workspace_exact_after_API_process_restart",
+      "passed": true
+    },
+    {
+      "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+      "case": "page_exact_after_API_process_restart",
+      "passed": true
+    },
+    {
+      "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+      "case": "old_workspace_exact_after_API_process_restart",
+      "passed": true
+    },
+    {
+      "specimen_id": "7aced055-21bd-5cb0-86dd-cd5c60ed957b",
+      "case": "workspace_exact_after_API_process_restart",
+      "passed": true
+    },
+    {
+      "specimen_id": "7aced055-21bd-5cb0-86dd-cd5c60ed957b",
+      "case": "page_exact_after_API_process_restart",
+      "passed": true
+    },
+    {
+      "specimen_id": "7aced055-21bd-5cb0-86dd-cd5c60ed957b",
+      "case": "old_workspace_exact_after_API_process_restart",
+      "passed": true
+    }
+  ]
+}
