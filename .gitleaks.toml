@@ -200,6 +200,192 @@ regexes = [
   '''^\s*"hashed_secret": "f814f8306d43ec71bed5e8f25e44f3cd225555eb",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "f9b67ac9cc3f7336f1aa0d1f7ea35eee9cac36ad",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "fcf243b240f983f6fc47c1f0b17d6032988cd124",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "011d36e4d64a3349775e77c0598fc4b029da7e3b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "04b4f2fa8e2fef573dd1decfcbb7a794f1645830",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "0502466a5f2638c0139923c23f86fa9384ac7518",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "05632d7ceef9975172af4a94a8a10bcc065baddf",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "077dc10a4e549e9639b2018229091482608fc32c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "07826c4674e90cf3930548eda1a2c612f394868c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "07df322e0ef574ca4b23287642183baebac7d51b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "0861647b65fc3a8e44415ebdbc14a72fa85b67b7",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "08c1602f41745942ddcf29df6358468fbf607f56",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "091e56754e2afa38ee6d740fbb916ca7b860bd19",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "0b406a227d7aa45040fc47def985eeaa0f98605c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "0b599cd3a113ac845f81ca3c7d4d111d7003aaa2",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "0b695feb33f0e94c67bacc238ddde2ae31352aaf",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "0f27d131f8220b5b78eaa0929803f94e5147a8a0",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "11e43a5e187f0f49b06969d0f9faaeb508ddd417",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "12b65888091ffd44b7402cad46295e929e37ea20",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "189226949df7507a4f03e52dde5380f788c08b10",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "1a4151714fad38f64bbf5a44018c234f91da5cd8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "1a7bc6b671725d38c78e0988d44a6b481121180b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "1b035bc2c2febb97c84cdf57d1d64f26298f47d4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "1b96a338c4106e4865b0ed5ff7ccd496e697c179",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "1c6b08bdbfb4b3b2d30426bf34c48a80b8ce95d9",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "1ed55f46b2fc0912e1807265c7937808d933a88c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "20d3c8dba648e37a4e59841c14f0a710082f961e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "22eeab896baace7f720298cdb45508a3ad124ac5",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "2505995f92252bfb9e678bb33a27e77b0052e3c2",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "26719caad4a48c4ba4fa345a0bd2315f8895adf8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "27e2ea47e8c57f6319250ad1fb6ff61e0bd88b4a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "284202e70d574ae008f3f13848bce127157f64a8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "297276b58913fd46af9f3662fb9af685e75af88c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "29852702c6cba9e66910b195306d1828aded7f03",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "2c9c04d159384947c111a2a5a09dcbc7af6c5e3c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "2cd3d4baab844b4f24003cb07b3ffe7338300ee9",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "2d0d1320c6c5194e29cce465630a7ab4e280aad3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "2d71af6089f35d863d972eed1495e3e93f1cf947",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "2db89343ebcfb63cf9fddfe3dc5be7e4a9e4423b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "30918e0e3ca92b6dbccec03f23cb4d0f328f19f1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3100ef32e7cc003f689289574fff2c26a8f43b9c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "32f44657e418aa8965f353e6ca4401a908994e5a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3338b6a4e577587722d2ef141590f166842d6c3b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "343e2339a3ed751b74ddc4e7e44eb56769ac1701",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3517bbc640fd02bf56d9557f92c0c28bcfeb9cd8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "36acd7eb06fb04bd530d85aeb0086ba5eee93839",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "38bca8c6fc0e892b65a8cc58600c1e874b1385a1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "38c2dc25c372b44eeb0e91906e7936a0b22db93e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3a79228b38da0ee80e05b6216f9dce6c9dbba90c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3a84e266299c9d0de36b38b9b70c8ffa1f11c8b3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3bae0f8e4e8d8c8c338c57a08fe5ea1d3f1e0316",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3bb1ce17ae46481d92429db5f160b1763fb35435",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3dfd07a94c36a29a81adb58f4d83b7565b099613",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3ee5ef6ba57261d5123d7a5e51c0d2621f6ea8b8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3fa393cc7b92f59f5fe82a41c46ac8f5dc651df9",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "3fa7d19a8c200c51d68a7b7cfb24998cbbbf2e93",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4143716ce1cf9ae54b36c9c92a3d880de1491b54",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "42daa970064b99d7021e93515051a7bc79f5860e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "43033baf7226b1af2b5c8969f4054a816ccf9a66",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "49082e03eca4ac6715c37412bb060ced2ef38da3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4a27804a16aed20017264cd31773e536680f6152",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4b250e19a73f2128381011920dbf4110a7bfc55a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4b3d4d38557ddf451042b8113ca7421118090d45",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4cdad620f49b4cbf813602c42bb1a3a8afac6a01",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4d43401dd6bc395ebcdaacccef5367972e7e3549",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4d9484a3e1093bf38b4cdf50320bfb5981726f50",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "4fd8147d4aac5cb09c44b2bd45e22415d3033ee3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "50779d671e0c367b4e3cb4b7e9d83afd685856af",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "52f481196a52d53de5fb31f4ff653ecc994b47a0",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "5401ecf69e7e5a889995467e069954f1e605f553",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "54dba7e1d7482da9710cd5d4a2ee9160a19e699d",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "564dc8128ec85152132d2bd86530bbeb06e0355f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "57682a86a44aebc4501e3baaa369e4d9ad2e96c5",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "58ec102e393d125897c26ad7ac5373630f127d8e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "5a9221b251e07ac7e584be39b02705709b1104a1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "5d59d7a2c4695199c1da9e8098e139a82140b1d8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "5fa65ff8d81a84a5f084a4c6496b311a5384287a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "6263ac574831b6db224b8e4d085a5d5a1a21b083",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "6559ea1de8f4cd213950e7b6580c5586b05382ce",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "65c10bb0e831d6d0748c9f527b524b41ed66aa0f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "65c1b722ae81704edd595983d23b500667937fa5",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "67a526b4b8a7c72fb39fc6d12425007f17638567",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "6978e772699e4258c690690521f2a0c18b40145f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "6ba5f2898a0a6e2c5efe7d38752d8f073b3aa1bc",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "724e4897a4c187670c7372389d21bf5d1e443b36",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "73d045c5546b9d28b7230e42eb585dd7e9925a0c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7435d3b5c42132bfcee081145630cba6297156a8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "74a065957feb9ab1b89f3c68acc411ea76fdcf84",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "74d52caefd3a09d75e7582b586cb4bb1e9dbff0a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "752fb0f214f9c97a1567e3625050d3d3f51495fa",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "77b0501637720af6081b7f6e5cda48ccc404391b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "792e5df16a46693add3ff8a7ed87fa872aaa0a65",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7b5f1d2611576369a7a4090343ca7d9a1c116c82",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7d38effe1327f57b00552f82e971829a06c803af",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7d89e81a598d7d535d381ff73cd07b2a112fefd5",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7de995d802831af6f2d3a42bbafe8c636484fab6",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7f9f101d57539bb4647854722bcf758cd5b958e3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8008bd6daf28d6b785f7a1f076a60c6d3939c4ae",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "808ec39988445d0c87c025fe867c47dcf33c9fc0",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "827e97422142312bf89d6c0fce94503526aa3006",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8411a52ba415934ce80abf3095c1ea197ea5f051",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8432271d27f94339bfa6d386b015df0f86cc84a4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8443feb7bf4352745fd49f189858668af1caae02",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "863370748aa698224830fa9a536ee2a07124622f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "86f3ae174e570bef995435ada1f0142f03721883",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8736823ace0c275c9e0cef41933d0a8f70fcddae",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8bd6d9df5542ed9755e96b964bb9941798c82942",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8dd6304d5c522eb3a0f268973873e93ad33718ba",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8e3847378c9fcdd0924af2b2eb805096d465021e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "8f144cbaa0b22ec261a28ac8c76a5bbf61d88282",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "906e877afd1900a531aaa42cc5b8146ed7655cce",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "96c715cbcbff1ec96ac680a031950407bd270965",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "99b941e1d3370f6b7e7ad644485a4e576ed5eec0",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9a30c999f26739ccfa810069816de1dfe56d5cd3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9b7a8be7aa73239d13da0dad9437a72974f4f8ee",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9b9018d2cee760783202c67e0859abffc06178cd",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9db4bff87e282225d44cc5e1fae0e6adc2849f19",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9e2e5701a9cb3d1c8d8c67d2d9a4eec043be7479",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9f2f25a44097f87b589db0f73b19d5e995999c29",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9f784a17e1e8bb8702bfce31e8f2a3dcdb6633f5",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9feec17076c5800cb0cfc4def5ac7ce0fe854a26",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "a14d6f3c08b40228f7c2c2159c7f6518e87e29fc",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "a1c91de0431641795f7fd7a233761dd6fbc30eaa",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "a2f744129d806e2179469b269f74c485516160d4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "a39ff923664c8b45d32e8abd687c2cd5c12be13e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "a675e00d7e250cc49f086cb880071dd421b4d49a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "a85a99f61221f7ffa9688d38a5fc2df8f08cc25f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "aa033800884ab988dabf667560e597f8e7d2fc38",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ac9c6f97e51b8faba8ace594dffda738866efa2e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ad331b5e68eb6f9ae6b6df8fe732bb785ea3f1d1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ae0f96d8e501037bcd5d6c55e15511fd394d7657",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b143be165d539843d862f240391d5a843a3660ba",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b360828794ef3aad3f0b8e313289631aff63cd87",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b8a656bf4309f7f34a0071fa9da2e35254d9a67b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b8b9aa0f3e6bb7c55d3a06add1d8dce4cb828ada",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b912a8d65e811191794aaac2c6f9f9cc722ce4d4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b94a5975bd6830b7f824e6858adf744e24617e2b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "bb8b1491c07815483979581fb55e5b041c883ef4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "bc1ae81bef1f1e0d6c53df80fa1f678ef493a437",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "bd767399f82d67150d942938d19b42e8ee76a7b0",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "be167f3627fb34ce5e53e286b51b184d3cb6dd73",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c0ac577bd976daebc433d53c9d3e69d0811e2c14",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c28421d466dc4e7968e6bb65bc715fb2577797bb",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c3bdc5295b65ebc6e58a05be1a9911bf83e067a3",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c60eaae94230d630b1a5f5c8cc1142b936e724c0",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c6c85aa8c506f81b8060037c9c5f14459c9d77d4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c714b5c7eb437aab81712aac7aacf7f0fdaefb9b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c7ea20a1cb654d8e5683931916dd089ce9ced6af",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "c91ff5d5c0001f094843062f0d584f299150203f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "cb809f4fa62966769546586259ca432f7c8097a8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ceb7c75feda95ebc6d77a504f8c1c4e5251b7f15",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d1d6cb4e233474a34c514750ac989465cc7731c7",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d26192981bdfd7929aa221a5abf6ebe9834b29b5",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d2c199109077ade9732604ca608d4a3bd1e45e5a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d30d5004f0b3aa8d45996077b48a87039ee7d7c4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d876175be91a51d9bf98e9f53ffe658abd0500cf",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d92caa13b35efb8f124469a0066dfd9a06ef1d38",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "db733e7d89d9e538ef98d4854677449719e4ee8c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "dc0ed8256a0fa1edd9b4c51271442add2fa74b60",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "dc5af83c03b47328a8fc5d599d89569d80ecc954",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "dc5edf356c611c99f510fb2ec0f422527d4acada",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "dc944ed5b41b3e08073ddc94f1867a5b9496811b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "deb85354b357c962f905c128f3b1cadfb5b02d4c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "debe3c76630d2598f6dd4e8908f86009236a258e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e00fd67adee471872d55ad7fbe582e9299e0f958",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e06fd9cedc6b935bc2662a5495b81aae2520e3cb",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e1a3ae1e05a62b0adec7d3301f001d3ff67dfa3e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e2fed2a367fd55976f21d7aaaa73cd66e8f139b8",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e5a14ac06dab105e90a59fcc2a1a5c5fe723b8dc",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e8d35888f30965d2497bbd9107fd7eeb70b23299",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ec782dec41a66c251e3c22c33cd233afcbbabb31",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "edc2760769986a3176d7fadb0456614cf0cd45f1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "edd0bcc9ed249497b8a97b111d6877777ceaaf24",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "eefbba0ff8b0b591e5a89d78f76ddae8648d6a6b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f13c4481912d12aa93879ab3652c6915065c25d4",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f17b2101c28dcaf17f076cc30465be401ac885f1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f197407b6846dc18210066b3cb3aeca17a2150cf",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f28de98244dd1aaa3c94e070c2619f931124b914",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f51aa3698720316a21d94f9f0349899af9e3a0e1",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f51e282330ece70d7703fe1b77f67c25b91be558",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f75f2d26d51ebe67c5fa446d670c3ea6c0a55636",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f7fb51af265d3d4f948c29ccb2087671d22dd56b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f8e0db5a5d96e82071e8d193cb66bf41f209236d",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f9b9782b30e8342302feb1a54ebb4cdd57f8ccb9",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "fb5ee51844f136c4d28136939a0b54f540deef11",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "fb81dc1972678ebe11d056c2a3d98fdfad2a2310",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "fc4e1fa5de53a87641a83b1638a96d4b39d1608e",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "fd31e2657e78aaa50a381820b2b1534c051a849f",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ffd6850610f4e64cfcd930c7d9bb00a003d4c444",?\s*$''', # pragma: allowlist secret
 ]
 
 [[rules.allowlists]]
@@ -212,4 +398,18 @@ regexes = [
   '''^\s*"token_id": "06441d5f-7d95-45b8-b2d5-92ed19698bf0",?\s*$''',
   '''^\s*"token_id": "53bf160f-6c0e-495f-92df-9462b5441a9a",?\s*$''',
   '''^\s*"token_id": "79d4ce32-bd2d-4f27-8f67-f639f2de61ef",?\s*$''',
+]
+
+[[rules.allowlists]]
+description = "Exact synthetic persisted circuit identifiers in runtime response fixture"
+condition = "AND"
+paths = ['''^(?:docs/execution|apps/specimen_digitization/test/fixtures)/backend-runtime-wire-examples\.json$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"storage_key": "4d4b3de7-2c59-5185-bd26-86814f2db599",?\s*$''',
+  '''^\s*"storage_key": "8735149f-ca01-5243-bbff-9080ee4517fd",?\s*$''',
+  '''^\s*"token_id": "0cb1481e-3d92-4c0d-95d6-fe3b30bc4f7e",?\s*$''',
+  '''^\s*"token_id": "4c5507b0-4a89-45b6-a8f3-98cc49f24595",?\s*$''',
+  '''^\s*"token_id": "99c79752-91e0-4228-9d1d-3ea5aa1c0845",?\s*$''',
+  '''^\s*"token_id": "e7906029-4587-4290-bc9c-3b23a1efa839",?\s*$''',
 ]
