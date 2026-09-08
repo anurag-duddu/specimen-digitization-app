@@ -175,7 +175,7 @@ void main() {
       expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(
-        find.textContaining('No collection access is available'),
+        find.textContaining('Your account has no assigned collection'),
         findsNothing,
       );
       repo.accessFailure = const ApiFailure(
@@ -189,7 +189,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('No collection access is available'),
+        find.textContaining('Your account has no assigned collection'),
         findsNothing,
       );
       repo.accessFailure = null;
@@ -197,7 +197,7 @@ void main() {
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
       expect(
-        find.textContaining('No collection access is available'),
+        find.textContaining('Your account has no assigned collection'),
         findsOneWidget,
       );
       expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
@@ -214,7 +214,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(
-        find.textContaining('No collection access is available'),
+        find.textContaining('Your account has no assigned collection'),
         findsNothing,
       );
       expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
