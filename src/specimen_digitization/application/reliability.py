@@ -76,4 +76,8 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
             403: LookupStatus.AUTHORIZATION,
             429: LookupStatus.RATE_LIMITED,
         }.get(exc.status_code, LookupStatus.PROVIDER)
-        raise AdapterFailure("model_" + status.value, status) from exc
+        # A gateway/server failure may follow an accepted billable effect.
+        # A workflow retry must never turn an ambiguous 5xx into duplicate spend.
+        raise AdapterFailure(
+            "model_" + status.value, status, outcome_unknown=exc.status_code >= 500
+        ) from exc

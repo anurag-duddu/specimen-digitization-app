@@ -588,6 +588,8 @@ class ProductionAdapters:
         }
 
     def segment(self, specimen):
+        if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
+            raise OperationalBlock("provider_data_policy_and_spending_approval_required")
         # A deployment-specific SAM3 endpoint must implement the reviewed adapter.
         # No rectangle substitution, no hidden Hub download or paid execution.
         endpoint = os.getenv("SPECIMEN_SAM3_ENDPOINT")
@@ -743,11 +745,6 @@ class Sam3Service:
         self.effect = effect or sam3_request
 
     def segment(self, specimen):
-        import base64
-        from .domain import Region
-        from .bounded_effect import run_isolated
-        from ..hub_models import SAM3_MODEL
-
         from .collection_profiles import SegmentationSettings
         from .profile_runtime import pinned_risk_resolution
 
@@ -759,11 +756,24 @@ class Sam3Service:
             )
         except (KeyError, ValueError) as exc:
             raise OperationalBlock("segmentation_settings_unresolved") from exc
+        return self._segment_with_settings(specimen, settings)
+
+    def _segment_with_settings(self, specimen, settings):
+        # Private transport shared with the explicitly guarded evidence pilot.
+        # Normal segment() above still requires a resolved institutional policy.
+        import base64
+        from .domain import Region
+        from .bounded_effect import run_isolated
+        from ..hub_models import SAM3_MODEL
+
         revision = settings.model_revision
         if revision != SAM3_MODEL.revision:
             raise OperationalBlock("segmentation_model_revision_unsupported")
         request = {
             "run_id": specimen.run.id,
+            "specimen_id": specimen.id,
+            "organization_id": specimen.scope.organization_id,
+            "collection_id": specimen.scope.collection_id,
             "asset_id": specimen.asset.id,
             "blob_ref": specimen.asset.blob_ref,
             "sha256": specimen.asset.sha256,
