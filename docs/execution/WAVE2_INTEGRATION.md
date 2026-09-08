@@ -100,3 +100,44 @@ Log: /tmp/specimen-wave2-roi-canonical.log. Prior a398583 GUI evidence remains
 attributed to that exact application version; backend source is unchanged.
 The codec scanner dependency5868705 is included, but codec application/client
 follow-ups are not yet integrated. No second-wave push or deployment occurred.
+
+## Backend hardening checkpoint
+
+Reviewed core d6be7a0 is integrated as1901ce7. Empty Git diff verifies exact
+src/tests/dataconnect/scripts-data/pyproject.toml/uv.lock tree parity with that
+owner checkpoint. Ordered unique provenance:
+
+| Owner | Integrated | Scope |
+|---|---|---|
+| 3daf6c7 | c908fc1 | V3 checksum operations and scoped uniqueness |
+| 5f15bc1 | 8984fb4 | Checksum test report |
+| e0dd0aa | 6194707 | Bounded isolated trusted effects |
+| 19997c7 | 9f4d182 | Persisted provider circuits |
+| effb708 | 5a7109f | Explicit HEIC/DNG profile policy |
+| 681d1e0 | 7a86fa9 | Probe lease/execution bound alignment |
+| 5868705 | 5868705 | Already integrated exact codec fixture scanner metadata |
+| d6be7a0 | 1901ce7 | Actual codec intake, bounded reads, SQL and provider bindings |
+
+Independent verification on1901ce7:
+
+- Canonical scripts/ci/verify.sh passed243 Python/23 explicit SQL/codec skips,
+  50 Flutter/three opt-in live skips, analysis, scanners and web release.
+  Log: /tmp/specimen-wave2-hardening-canonical.log.
+- Fresh owned PostgreSQL/SQL Connect5589/9539 plus actual HTTP ran hardening
+  concurrency, authority, worker recovery, history paging, upload completion,
+  SQL application and process restart suites:30 passed in29.19s. Includes both
+  SQLite/SQL same-source completion race and shared circuit admission.
+  Log: /tmp/specimen-wave2-hardening-sql-http.log. Services stopped; state/logs
+  retained at /var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.vQmnin.
+- Optional pinned HEIC/raw extras and test-only tifffile2026.3.3 enabled
+  test_codec_runtime.py: nine passed in8.35s for actual HEIC/DNG intake,
+  orientations, retained source/crop basis, restart and approval.
+  Log: /tmp/specimen-wave2-hardening-codecs.log. Tests explicitly opt out of
+  unavailable local memory enforcement; production codec isolation is unproven.
+
+The client codec followup and independent combined hardening QA are pending.
+Active graph externalization and language/script propagation remain unimplemented
+at this checkpoint. Legacy V1/V2/null checksum rollout, institutional semantics,
+provider/device and production approvals remain separate gates. GCS byte reads
+are bounded; total GCS authentication/stream wall-clock time is not established.
+No push, deployment, cloud mutation or paid inference occurred.
