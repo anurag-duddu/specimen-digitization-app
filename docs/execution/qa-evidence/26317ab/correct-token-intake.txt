@@ -1,0 +1,18 @@
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- button "Authorized collection Insects"
+- generic: Local synthetic reviewer
+- button "Queue Tab 1 of 2"
+- button "Intake Tab 2 of 2" [active]
+- generic: Bring a specimen into focus
+- generic: One photograph per specimen. Originals remain unchanged; processing continues after you leave.
+- 'group "Select source photographs Local previews depend on this device. HEIC and approved TIFF/DNG families require a configured server codec and collection profile. Files can upload without a local preview; server completion verifies bytes, format and dimensions. A decoder block retains the upload for retry. Direct camera capture is available in the Android and iOS app. In a browser, choose a photograph from your device. Before submitting: check sharp focus, readable smallest text, even exposure, no glare, and every label inside the frame. Server quality checks are required; this client does not certify image quality."':
+  - button "Choose files"
+  - button "Take photograph" [disabled]
+  - checkbox "I checked framing and readability"
+- generic: Upload manifest · 0 items
+- generic: After a restart, reselect the same original files. Checksums reconcile saved upload handles with server offsets; accepted records are not recreated.
+- generic: Your selected photographs will appear here.
+- button "Upload / resume selected files" [disabled]

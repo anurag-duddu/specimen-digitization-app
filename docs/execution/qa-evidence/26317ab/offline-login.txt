@@ -1,0 +1,9 @@
+- generic: Specimen Digitization
+- generic: From source pixels to supported records.
+- generic: Local synthetic fixture access
+- generic: SYNTHETIC ONLY. The email is a test label, not a museum account. Access requires a fixture token accepted by the local server. No Firebase or live model processing.
+- textbox "Email address"
+- textbox "Fixture token" [active]
+- button "Show password"
+- generic: The local synthetic server is unavailable. Start or reconnect the demo server, then try again. You are not signed in.
+- button "Sign in"
