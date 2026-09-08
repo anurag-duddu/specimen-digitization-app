@@ -12,6 +12,7 @@ Product definition and architecture setup. Application implementation has not st
 
 - [Product requirements](docs/product-requirements/PRD.md)
 - [Agent harness decision and alternatives](docs/product-requirements/HARNESS_OPTIONS.md)
+- [Validated GBIF integration strategy](docs/GBIF.md)
 - [Field Museum EMu Parties and IRN availability check](docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md)
 
 ## Safe local setup
