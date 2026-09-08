@@ -335,6 +335,7 @@ def evaluate(manifest, manifest_sha, report, root, candidate_sha):
         "deploy_job_url",
         "api_image_digest",
         "worker_image_digest",
+        "sam_image_digest",
         "connector_revision",
         "storage_rules_revision",
         "runtime_workflow_url",
@@ -344,6 +345,17 @@ def evaluate(manifest, manifest_sha, report, root, candidate_sha):
         or deployment.get("hosting_commit_sha") != candidate_sha
         or deployment.get("api_commit_sha") != candidate_sha
         or deployment.get("worker_commit_sha") != candidate_sha
+        or deployment.get("sam_commit_sha") != candidate_sha
+        or deployment.get("sam_model_id") != "facebook/sam3"
+        or not sha(deployment.get("sam_model_revision"), 40)
+        or not sha(deployment.get("sam_checkpoint_sha256"))
+        or not sha(deployment.get("sam_config_sha256"))
+        or any(
+            not isinstance(deployment.get(f"{role}_image_digest"), str)
+            or re.fullmatch(r"sha256:[a-f0-9]{64}", deployment[f"{role}_image_digest"])
+            is None
+            for role in ("api", "worker", "sam")
+        )
         or deployment.get("main_workflow_conclusion") != "success"
         or deployment.get("deploy_job_conclusion") != "success"
     ):

@@ -58,9 +58,12 @@ cohort coverage is required for DATA-TEN, DATA-GENERATION, PROVIDER-ACTUAL and
 BROWSER-E2E. The denominator remains ten even when records fail or need review.
 All 20 PRD criteria and 15 live threat/operations cases must be retained.
 
-Deployment provenance binds the Hosting, API and worker commit SHA to the
-combined candidate and separately retains image digests, connector/rules
-revisions and workflow/job URLs. A final merged candidate SHA differs from an
+Deployment provenance binds the Hosting, API, worker and SAM commit SHA to the
+combined candidate. All three image digests use `sha256:` plus 64 lowercase hex
+characters. SAM additionally requires `sam_model_id=facebook/sam3`, a full
+40-character `sam_model_revision`, and 64-character `sam_checkpoint_sha256` and
+`sam_config_sha256`. These pins supplement connector/rules revisions and
+workflow/job URLs; they do not prove real serving or quality. A final merged candidate SHA differs from an
 owner PR head: create a new ledger and rerun relevant checks; never relabel old
 evidence. A reviewer must verify immutable image digest formats, actual URLs,
 workflow conclusions and runtime/data state against the deployed environment.
