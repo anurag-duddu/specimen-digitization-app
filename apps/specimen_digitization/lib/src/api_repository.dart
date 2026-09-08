@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 import 'models.dart';
 
@@ -70,7 +71,8 @@ class ApiSpecimenRepository implements SpecimenRepository {
     });
     if (bytes != null) {
       request.bodyBytes = bytes;
-      request.headers['Content-Type'] = 'application/octet-stream';
+      request.headers['Content-Type'] =
+          headers?['Content-Type'] ?? 'application/octet-stream';
     } else if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
@@ -116,6 +118,112 @@ class ApiSpecimenRepository implements SpecimenRepository {
   }
 
   @override
+  Future<Json> artifact(
+    CollectionScope scope,
+    Specimen specimen,
+    ArtifactRequest artifact,
+  ) async {
+    if (specimen.revision < 1 || artifact.id.isEmpty) {
+      throw const ApiFailure(
+        'Refresh the specimen before reading evidence.',
+        code: 'invalid_evidence',
+      );
+    }
+    final id = Uri.encodeComponent(artifact.id);
+    final suffix = switch (artifact.kind) {
+      ArtifactKind.phase => 'phases/$id',
+      ArtifactKind.authority => 'authority-results/$id',
+      ArtifactKind.authorityRaw => 'authority-results/$id/raw',
+      ArtifactKind.disagreement => 'disagreements/$id',
+      ArtifactKind.observationRaw => 'observations/$id/raw',
+      ArtifactKind.readingMetadata => 'observations/$id/metadata',
+    };
+    final path =
+        '${_root(scope)}/specimens/${Uri.encodeComponent(specimen.id)}/$suffix';
+    final query = {
+      'revision': '${specimen.revision}',
+      'field_key': ?artifact.fieldKey,
+    };
+    if (![
+      ArtifactKind.authorityRaw,
+      ArtifactKind.observationRaw,
+    ].contains(artifact.kind)) {
+      return request('GET', path, query: query);
+    }
+    final bearer = await token();
+    if (bearer == null || bearer.isEmpty) {
+      throw const ApiFailure(
+        'Your session expired. Sign in again.',
+        code: 'unauthenticated',
+        status: 401,
+      );
+    }
+    final req = http.Request(
+      'GET',
+      baseUrl.replace(
+        path: '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}$path',
+        queryParameters: query,
+      ),
+    )..followRedirects = false;
+    final check = await appCheckToken?.call();
+    req.headers.addAll({
+      'Authorization': 'Bearer $bearer',
+      'X-Firebase-AppCheck': ?check,
+      'Accept': 'text/plain',
+    });
+    try {
+      return await (() async {
+        final response = await _client.send(req);
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response.stream) {
+          if (bytes.length + chunk.length > 1048576) {
+            throw const ApiFailure(
+              'Raw evidence exceeds the 1 MiB display limit. No partial response is shown.',
+              code: 'evidence_limit',
+            );
+          }
+          bytes.add(chunk);
+        }
+        final data = bytes.takeBytes();
+        if (response.statusCode != 200) {
+          throw ApiFailure(
+            'Raw evidence is unavailable. Refresh or check current collection access.',
+            code: 'evidence_access',
+            status: response.statusCode,
+          );
+        }
+        final digest = crypto.sha256.convert(data).toString();
+        if (artifact.sha256 == null || digest != artifact.sha256) {
+          throw const ApiFailure(
+            'Raw evidence does not match the retained digest. Refresh evidence.',
+            code: 'evidence_digest',
+          );
+        }
+        return <String, dynamic>{
+          'text': utf8.decode(data),
+          'sha256': digest,
+          'size_bytes': data.length,
+        };
+      })().timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw const ApiFailure(
+        'Evidence request timed out. Retry to read the same revision.',
+        code: 'timeout',
+      );
+    } on http.ClientException {
+      throw const ApiFailure(
+        'Evidence connection interrupted. Retry to read the same revision.',
+        code: 'network',
+      );
+    } on FormatException {
+      throw const ApiFailure(
+        'Raw evidence is not valid UTF-8 text.',
+        code: 'invalid_evidence',
+      );
+    }
+  }
+
+  @override
   Future<List<CollectionScope>> scopes() async {
     final result = await request('GET', '/v1/session');
     mode = textOf(result['mode'], 'unsupported');
@@ -148,6 +256,9 @@ class ApiSpecimenRepository implements SpecimenRepository {
               collections['${m['organization_id']}/${m['collection_id']}']?['display_name'],
               m['collection_id'].toString(),
             ),
+            configuration:
+                collections['${m['organization_id']}/${m['collection_id']}'] ??
+                {},
             permissions: [
               m['role'].toString(),
               ...(m['permissions'] as List? ?? []).map((p) => p.toString()),
@@ -165,47 +276,69 @@ class ApiSpecimenRepository implements SpecimenRepository {
     CollectionScope scope, {
     String query = '',
     String status = '',
+  }) async => (await specimenPage(
+    scope,
+    filters: {
+      if (query.isNotEmpty) 'specimen_id': query,
+      if (status.isNotEmpty)
+        (['cleared', 'needs_human_review', 'deferred'].contains(status)
+                ? 'disposition'
+                : 'state'):
+            status,
+    },
+  )).items;
+
+  @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const {},
+    String? cursor,
   }) async {
-    final results = <Specimen>[];
-    String? cursor;
-    final seen = <String>{};
-    do {
-      final result = await request(
-        'GET',
-        '${_root(scope)}/specimens',
-        query: {
-          'collection_id': scope.collectionId,
-          if (query.isNotEmpty) 'q': query,
-          if (status.isNotEmpty)
-            (['cleared', 'needs_human_review', 'deferred'].contains(status)
-                    ? 'disposition'
-                    : 'state'):
-                status,
-          'cursor': ?cursor,
-        },
+    const allowed = {
+      'specimen_id',
+      'asset_id',
+      'active_run_id',
+      'batch_id',
+      'uploader_id',
+      'state',
+      'stage',
+      'disposition',
+      'profile_id',
+      'profile_version',
+      'reason_code',
+      'blocker',
+      'created_from',
+      'created_before',
+      'risk_min',
+      'risk_max',
+    };
+    if (filters.keys.any((key) => !allowed.contains(key))) {
+      throw const ApiFailure(
+        'Unsupported search filter.',
+        code: 'invalid_filter',
       );
-      results.addAll(objects(result['items']).map(Specimen.new));
-      cursor = result['next_cursor'] as String?;
-      if (cursor != null && !seen.add(cursor)) {
-        throw const ApiFailure(
-          'The server repeated a page cursor. Refresh the queue.',
-          code: 'pagination',
-        );
-      }
-    } while (cursor != null);
-    return results
-        .where(
-          (s) =>
-              query.isEmpty ||
-              [
-                s.id,
-                s.title,
-                s.data['batch_id'],
-                s.data['profile_version'],
-                s.data['reason_codes'],
-              ].join(' ').toLowerCase().contains(query.toLowerCase()),
-        )
-        .toList();
+    }
+    final result = await request(
+      'GET',
+      '${_root(scope)}/specimens',
+      query: {
+        'collection_id': scope.collectionId,
+        ...filters,
+        'limit': '50',
+        'cursor': ?cursor,
+      },
+    );
+    final next = result['next_cursor'];
+    if (next != null && (next is! String || next.isEmpty || next == cursor)) {
+      throw const ApiFailure(
+        'Invalid page cursor. Refresh the queue.',
+        code: 'pagination',
+      );
+    }
+    return SpecimenPage(
+      objects(result['items']).map(Specimen.new).toList(),
+      nextCursor: next as String?,
+    );
   }
 
   @override
@@ -334,7 +467,9 @@ class ApiSpecimenRepository implements SpecimenRepository {
     if (loadImage && asset['id'] != null) {
       try {
         final bearer = await token();
+        final derivative = asset['view_derivative'] is Map;
         final uri = baseUrl.replace(
+          queryParameters: derivative ? {'view': 'true'} : null,
           path:
               '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_root(scope)}/assets/${Uri.encodeComponent(asset['id'])}/content',
         );
@@ -346,7 +481,19 @@ class ApiSpecimenRepository implements SpecimenRepository {
           await _client.send(req).timeout(const Duration(seconds: 30)),
         ).timeout(const Duration(seconds: 30));
         if (response.statusCode == 200) {
-          asset['preview_bytes'] = response.bodyBytes;
+          final derivativeInfo = derivative
+              ? Map<String, dynamic>.from(asset['view_derivative'])
+              : <String, dynamic>{};
+          if (derivative &&
+              (derivativeInfo['original_sha256'] != asset['sha256'] ||
+                  crypto.sha256.convert(response.bodyBytes).toString() !=
+                      derivativeInfo['derivative_sha256'])) {
+            asset['preview_error'] =
+                'Preview does not match retained source provenance. Refresh evidence.';
+          } else {
+            asset['preview_bytes'] = response.bodyBytes;
+            asset['preview_is_derivative'] = derivative;
+          }
         } else {
           asset['preview_error'] =
               'Source image access is unavailable. Refresh or check collection permissions.';
@@ -371,7 +518,13 @@ class ApiSpecimenRepository implements SpecimenRepository {
           ...f,
           'field_key': e.key,
           'display_name': labelOf(e.key),
-          'required': true,
+          'required':
+              run['profile_snapshot'] is Map &&
+                  run['profile_snapshot']['mandatory_fields'] is List
+              ? (run['profile_snapshot']['mandatory_fields'] as List).contains(
+                  e.key,
+                )
+              : true,
           'state': f['value_state'] ?? f['state'],
           'literal_value': f['literal'],
           'parsed_value': f['parsed'],
@@ -401,6 +554,27 @@ class ApiSpecimenRepository implements SpecimenRepository {
         ),
       ],
     });
+  }
+
+  @override
+  Future<Json> preflight(CollectionScope scope, IntakeFile file) async {
+    final result = await request(
+      'POST',
+      '${_root(scope)}/images/preflight',
+      query: {'collection_id': scope.collectionId},
+      bytes: file.bytes,
+      headers: {'Content-Type': file.mimeType},
+    );
+    if (result['contract_version'] != 'image-preflight-v1' ||
+        result['input_sha256'] != file.sha256 ||
+        result['size_bytes'] != file.bytes.length ||
+        !['review', 'blocked', 'rejected'].contains(result['status'])) {
+      throw const ApiFailure(
+        'Preflight response does not match this image. No quality acceptance is inferred.',
+        code: 'invalid_preflight',
+      );
+    }
+    return result;
   }
 
   @override
@@ -504,6 +678,27 @@ class ApiSpecimenRepository implements SpecimenRepository {
     String key,
   ) async {
     final kind = change['kind'];
+    if (kind == 'run_action') {
+      final action = change['action'];
+      if (!['pause', 'resume', 'cancel', 'reprocess'].contains(action)) {
+        throw const ApiFailure(
+          'Unsupported run action.',
+          code: 'invalid_action',
+        );
+      }
+      await request(
+        'POST',
+        '${_root(scope)}/runs/${Uri.encodeComponent(specimen.data['active_run_id'])}/actions',
+        key: key,
+        body: {
+          'expected_revision': specimen.revision,
+          'action': action,
+          'reason': change['reason'],
+        },
+      );
+      return this.specimen(scope, specimen.id);
+    }
+
     final path = kind == 'classification_correction'
         ? 'classification'
         : kind == 'segmentation_correction'
@@ -516,7 +711,11 @@ class ApiSpecimenRepository implements SpecimenRepository {
       body: {
         'expected_revision': specimen.revision,
         'reason': change['reason'],
-        if (path == 'classification') 'collection_id': change['value'],
+        if (path == 'classification') ...{
+          'collection_id': change['value'],
+          if (change['profile_collection_id'] != null)
+            'profile_collection_id': change['profile_collection_id'],
+        },
         if (path == 'regions') ...{
           'base_run_id': specimen.data['active_run_id'],
           'regions': objects(change['regions']).map((r) {
@@ -529,6 +728,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
               'width': (b[2] - b[0]).toInt(),
               'height': (b[3] - b[1]).toInt(),
               'order': r['order'],
+              'rotation_quarter_turns': r['rotation_quarter_turns'] ?? 0,
               'method': 'human',
               'version': 'review-v1',
             };
@@ -555,6 +755,12 @@ class ApiSpecimenRepository implements SpecimenRepository {
                 }
               : kind == 'transcription_adjudication'
               ? {'text': change['value'], 'state': change['state']}
+              : kind == 'authority_resolution'
+              ? {
+                  'tool_id': change['tool_id'],
+                  'identifier': change['identifier'],
+                  'field_key': change['target_id'],
+                }
               : {'confirmed': true},
           'evidence_ids': change['evidence_ids'] ?? [],
         },

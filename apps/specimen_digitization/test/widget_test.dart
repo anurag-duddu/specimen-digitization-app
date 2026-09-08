@@ -99,6 +99,27 @@ const fixture = Specimen({
 
 class TestRepository implements SpecimenRepository {
   @override
+  Future<Json> preflight(CollectionScope scope, IntakeFile file) async => {};
+  @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const {},
+    String? cursor,
+  }) async => SpecimenPage(
+    await specimens(
+      scope,
+      query: filters['specimen_id'] ?? '',
+      status: filters['disposition'] ?? filters['state'] ?? '',
+    ),
+  );
+
+  @override
+  Future<Json> artifact(
+    CollectionScope scope,
+    Specimen specimen,
+    ArtifactRequest artifact,
+  ) async => {};
+  @override
   Future<HistoryPage> historyPage(
     CollectionScope scope,
     String id, {
@@ -208,14 +229,21 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
     expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
+    await tester.ensureVisible(find.text('Synthetic insect label'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Synthetic insect label'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Chicago 1912'),
+      find.text('Chicago 1912', findRichText: true),
       300,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find
+          .descendant(
+            of: find.byType(ReviewWorkbench),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
-    expect(find.text('Chicago 1917'), findsOneWidget);
+    expect(find.text('Chicago 1917', findRichText: true), findsOneWidget);
     await tester.tap(find.byTooltip('Sign out'));
     await tester.pumpAndSettle();
     expect(find.text('Sign in to your collection'), findsOneWidget);

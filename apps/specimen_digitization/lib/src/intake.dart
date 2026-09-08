@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
+import 'capture_quality.dart';
+import 'review_context.dart';
 
 class ManifestEntry {
   ManifestEntry({
@@ -15,12 +17,17 @@ class ManifestEntry {
     this.session,
     this.state = 'Reselect original to resume',
     this.progress = 0,
+    this.quality,
   });
   final String digest;
   IntakeFile? file;
   Json? session;
   String state;
   double progress;
+  CaptureQuality? quality;
+  Json? preflight;
+  String? preflightError;
+  bool checking = false;
 }
 
 class IntakeScreen extends StatefulWidget {
@@ -30,11 +37,15 @@ class IntakeScreen extends StatefulWidget {
     required this.scope,
     required this.userId,
     required this.onComplete,
+    this.pickImages,
+    this.recoverCamera,
   });
   final SpecimenRepository repository;
   final CollectionScope scope;
   final String userId;
   final VoidCallback onComplete;
+  final Future<List<XFile>> Function(bool camera)? pickImages;
+  final Future<List<XFile>> Function()? recoverCamera;
   @override
   State<IntakeScreen> createState() => _IntakeScreenState();
 }
@@ -46,10 +57,35 @@ class _IntakeScreenState extends State<IntakeScreen> {
   String? _error;
   String get _storageKey =>
       'upload-handles-v1:${widget.userId}:${widget.scope.key}';
+  Future<void> _preflight(ManifestEntry entry) async {
+    final file = entry.file;
+    if (file == null) return;
+    setState(() {
+      entry.checking = true;
+      entry.preflightError = null;
+    });
+    try {
+      final result = await widget.repository.preflight(widget.scope, file);
+      if (mounted && identical(entry.file, file)) {
+        setState(() => entry.preflight = result);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => entry.preflightError = e is ApiFailure
+              ? e.message
+              : 'Server preflight unavailable. Retry or check collection access.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => entry.checking = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _restore();
+    _restore().then((_) => _recoverCamera());
   }
 
   Future<void> _restore() async {
@@ -97,11 +133,18 @@ class _IntakeScreenState extends State<IntakeScreen> {
   Future<void> _pick({bool camera = false}) async {
     setState(() {
       _busy = true;
+      _qualityConfirmed = false;
       _error = null;
     });
     try {
       final List<XFile> files;
       if (camera) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_captureKey, _captureOwner);
+      }
+      if (widget.pickImages != null) {
+        files = await widget.pickImages!(camera);
+      } else if (camera) {
         final image = await ImagePicker().pickImage(
           source: ImageSource.camera,
           requestFullMetadata: false,
@@ -127,73 +170,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
           ],
         );
       }
-      for (final file in files) {
-        final size = await file.length();
-        if (size == 0 || size > 25000000) {
-          if (mounted) {
-            setState(
-              () => _error =
-                  '${file.name}: choose a non-empty image under 25 MB.',
-            );
-          }
-          continue;
-        }
-        final bytes = await file.readAsBytes();
-        final digest = sha256.convert(bytes).toString();
-        final extension = file.name.split('.').last.toLowerCase();
-        final mime = switch (extension) {
-          'jpg' || 'jpeg' => 'image/jpeg',
-          'png' => 'image/png',
-          'heic' || 'heif' => 'image/heic',
-          'tif' || 'tiff' => 'image/tiff',
-          'dng' => 'image/x-adobe-dng',
-          _ => '',
-        };
-        if (mime.isEmpty) {
-          if (mounted) {
-            setState(() => _error = '${file.name}: unsupported file type.');
-          }
-          continue;
-        }
-        int? width;
-        int? height;
-        try {
-          final codec = await ui.instantiateImageCodec(bytes);
-          final frame = await codec.getNextFrame();
-          width = frame.image.width;
-          height = frame.image.height;
-          frame.image.dispose();
-          codec.dispose();
-        } catch (_) {
-          /* Original may need the server's approved HEIC/TIFF/RAW decoder. */
-        }
-        final input = IntakeFile(
-          name: file.name,
-          bytes: bytes,
-          mimeType: mime,
-          sha256: digest,
-          method: camera ? 'camera' : 'files',
-          width: width,
-          height: height,
-        );
-        final old = _entries.where((e) => e.digest == digest).firstOrNull;
-        if (mounted) {
-          setState(() {
-            if (old != null) {
-              old.file = input;
-              if (old.state != 'Accepted') old.state = 'Ready to resume';
-            } else {
-              _entries.add(
-                ManifestEntry(
-                  digest: digest,
-                  file: input,
-                  state: 'Ready for upload',
-                ),
-              );
-            }
-          });
-        }
-      }
+      await _acceptFiles(files, camera: camera);
     } catch (_) {
       if (mounted) {
         setState(
@@ -202,7 +179,167 @@ class _IntakeScreenState extends State<IntakeScreen> {
         );
       }
     } finally {
+      if (camera) {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getString(_captureKey) == _captureOwner) {
+          await prefs.remove(_captureKey);
+        }
+      }
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _acceptFiles(List<XFile> files, {required bool camera}) async {
+    for (final file in files) {
+      final size = await file.length();
+      if (size == 0 || size > 25000000) {
+        if (mounted) {
+          setState(
+            () =>
+                _error = '${file.name}: choose a non-empty image under 25 MB.',
+          );
+        }
+        continue;
+      }
+      final bytes = await file.readAsBytes();
+      final digest = sha256.convert(bytes).toString();
+      final extension = file.name.split('.').last.toLowerCase();
+      final mime = switch (extension) {
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'heic' || 'heif' => 'image/heic',
+        'tif' || 'tiff' => 'image/tiff',
+        'dng' => 'image/x-adobe-dng',
+        _ => '',
+      };
+      if (mime.isEmpty) {
+        if (mounted) {
+          setState(() => _error = '${file.name}: unsupported file type.');
+        }
+        continue;
+      }
+      int? width;
+      int? height;
+      CaptureQuality? quality;
+      bool excessiveResolution = false;
+      try {
+        final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+        final codec = await ui.instantiateImageCodecWithSize(
+          buffer,
+          getTargetSize: (w, h) {
+            width = w;
+            height = h;
+            if (w > 20000 || h > 20000 || w * h > 40000000) {
+              excessiveResolution = true;
+              throw const FormatException('Image exceeds local decode limits');
+            }
+            final scale = w > h ? 256 / w : 256 / h;
+            return ui.TargetImageSize(
+              width: scale < 1 ? (w * scale).round().clamp(1, 256) : w,
+              height: scale < 1 ? (h * scale).round().clamp(1, 256) : h,
+            );
+          },
+        );
+        try {
+          final frame = await codec.getNextFrame();
+          try {
+            final pixels = await frame.image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            );
+            if (pixels != null) {
+              quality = CaptureQuality.measure(
+                pixels.buffer.asUint8List(),
+                frame.image.width,
+                frame.image.height,
+              );
+            }
+          } finally {
+            frame.image.dispose();
+          }
+        } finally {
+          codec.dispose();
+        }
+      } catch (_) {
+        /* An unsupported decoder or unavailable measurement is not a quality pass. */
+      }
+      if (excessiveResolution) {
+        if (mounted) {
+          setState(
+            () => _error =
+                '${file.name}: image exceeds the local 40 megapixel / 20,000 pixel axis limit.',
+          );
+        }
+        continue;
+      }
+      final input = IntakeFile(
+        name: file.name,
+        bytes: bytes,
+        mimeType: mime,
+        sha256: digest,
+        method: camera ? 'camera' : 'files',
+        width: width,
+        height: height,
+      );
+      final old = _entries.where((e) => e.digest == digest).firstOrNull;
+      if (mounted) {
+        setState(() {
+          if (old != null) {
+            old.file = input;
+            old.quality = quality;
+            if (old.state != 'Accepted') old.state = 'Ready to resume';
+          } else {
+            _entries.add(
+              ManifestEntry(
+                digest: digest,
+                file: input,
+                quality: quality,
+                state: 'Ready for upload',
+              ),
+            );
+          }
+        });
+      }
+    }
+  }
+
+  String get _captureOwner => '${widget.userId}:${widget.scope.key}';
+  static const _captureKey = 'pending-camera-owner-v1';
+  Future<void> _recoverCamera() async {
+    if ((!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ||
+        widget.recoverCamera != null) {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted || prefs.getString(_captureKey) != _captureOwner) return;
+      setState(() => _busy = true);
+      try {
+        final List<XFile> files;
+        if (widget.recoverCamera != null) {
+          files = await widget.recoverCamera!();
+        } else {
+          final lost = await ImagePicker().retrieveLostData();
+          if (lost.exception != null) throw lost.exception!;
+          files = lost.files ?? (lost.file == null ? [] : [lost.file!]);
+        }
+        if (!mounted) return;
+        await _acceptFiles(files, camera: true);
+        if (mounted && files.isNotEmpty) {
+          setState(
+            () => _error =
+                'Recovered an interrupted camera photograph. Check its framing and readability before uploading.',
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(
+            () => _error =
+                'The interrupted camera photograph could not be recovered. Capture again or choose the original file.',
+          );
+        }
+      } finally {
+        if (prefs.getString(_captureKey) == _captureOwner) {
+          await prefs.remove(_captureKey);
+        }
+        if (mounted) setState(() => _busy = false);
+      }
     }
   }
 
@@ -398,6 +535,50 @@ class _IntakeScreenState extends State<IntakeScreen> {
                     Text(
                       '${e.file!.bytes.length} bytes · ${e.file!.width ?? '?'} × ${e.file!.height ?? '?'} px',
                     ),
+                  if (e.file != null)
+                    CaptureQualityView(
+                      quality: e.quality,
+                      previewBytes: e.file!.bytes,
+                    ),
+                  if (e.file != null) ...[
+                    const Text(
+                      'Optional server preflight sends this original image to the collection service for decoding checks. It creates no specimen and makes no external provider call. Local measurements stay on this device until you choose an action.',
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton(
+                        onPressed: e.checking || _busy
+                            ? null
+                            : () => _preflight(e),
+                        child: Text(
+                          e.checking
+                              ? 'Checking on server…'
+                              : 'Send image for server preflight',
+                        ),
+                      ),
+                    ),
+                    if (e.preflightError != null) Text(e.preflightError!),
+                    if (e.preflight != null) ...[
+                      if (objectOf(e.preflight!['decode'])['reason'] ==
+                          'memory_limit_unavailable')
+                        const Text(
+                          'Server preflight requires memory-limit enforcement on an approved runtime. Ask the service administrator to configure it. Changing this image format will not resolve that block; ordinary supported-image intake is checked separately.',
+                        ),
+                      Text(
+                        'Server preflight: ${labelOf(textOf(e.preflight!['status']))}. Manual quality review remains required.',
+                      ),
+                      for (final issue in e.preflight!['issues'] as List? ?? [])
+                        Text(labelOf(issue.toString())),
+                      Text(
+                        'Unmeasured: ${e.preflight!['unmeasured'] ?? 'Not recorded'}',
+                      ),
+                      EvidenceDetails(
+                        title:
+                            'Server codec capabilities and preflight evidence',
+                        value: e.preflight!,
+                      ),
+                    ],
+                  ],
                   SelectableText(
                     'SHA-256 ${e.digest}',
                     style: Theme.of(context).textTheme.bodySmall,
