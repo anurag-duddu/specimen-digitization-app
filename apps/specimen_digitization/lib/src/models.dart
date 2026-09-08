@@ -83,6 +83,17 @@ class IntakeFile {
   final int? height;
 }
 
+class HistoryPage {
+  const HistoryPage({
+    required this.items,
+    required this.throughRevision,
+    this.nextCursor,
+  });
+  final List<Json> items;
+  final int throughRevision;
+  final int? nextCursor;
+}
+
 abstract class SpecimenRepository {
   String get mode;
   List<dynamic> get blockers;
@@ -94,6 +105,19 @@ abstract class SpecimenRepository {
     String status = '',
   });
   Future<Specimen> specimen(CollectionScope scope, String id);
+  Future<HistoryPage> historyPage(
+    CollectionScope scope,
+    String id, {
+    required int throughRevision,
+    int afterRevision = 0,
+  });
+  Future<Specimen> historicalSpecimen(
+    CollectionScope scope,
+    String id,
+    int revision, {
+    String? runId,
+    String? runSha256,
+  });
   Future<Json> createIntake(CollectionScope scope, IntakeFile file, String key);
   Future<Json> resumeIntake(CollectionScope scope, String id);
   Future<void> upload(

@@ -217,12 +217,121 @@ class ApiSpecimenRepository implements SpecimenRepository {
     return _workspace(result, scope);
   }
 
-  Future<Specimen> _workspace(Json result, CollectionScope scope) async {
+  @override
+  Future<HistoryPage> historyPage(
+    CollectionScope scope,
+    String id, {
+    required int throughRevision,
+    int afterRevision = 0,
+  }) async {
+    if (throughRevision < 1 ||
+        afterRevision < 0 ||
+        afterRevision > throughRevision) {
+      throw const ApiFailure(
+        'Choose a valid history revision range.',
+        code: 'invalid_history_range',
+      );
+    }
+    final result = await request(
+      'GET',
+      '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/history',
+      query: {
+        'after_revision': '$afterRevision',
+        'through_revision': '$throughRevision',
+        'limit': '10',
+      },
+    );
+    final items = objects(result['items']);
+    final next = result['next_cursor'];
+    var last = afterRevision;
+    final validItems =
+        result['items'] is List &&
+        items.length == (result['items'] as List).length &&
+        items.length <= 10 &&
+        items.every((item) {
+          final revision = item['revision'];
+          if (revision is! int ||
+              revision != last + 1 ||
+              revision > throughRevision ||
+              item['sha256'] is! String ||
+              !RegExp(r'^[a-f0-9]{64}$').hasMatch(item['sha256'])) {
+            return false;
+          }
+          last = revision;
+          return true;
+        });
+    if (result['through_revision'] != throughRevision ||
+        !validItems ||
+        (next == null && last != throughRevision) ||
+        (next != null &&
+            (next is! int ||
+                next != last ||
+                next <= afterRevision ||
+                next >= throughRevision))) {
+      throw const ApiFailure(
+        'The history page could not be verified. Retry or contact your administrator.',
+        code: 'invalid_history_page',
+      );
+    }
+    return HistoryPage(
+      items: items,
+      throughRevision: throughRevision,
+      nextCursor: next as int?,
+    );
+  }
+
+  @override
+  Future<Specimen> historicalSpecimen(
+    CollectionScope scope,
+    String id,
+    int revision, {
+    String? runId,
+    String? runSha256,
+  }) async {
+    if (revision < 1) {
+      throw const ApiFailure(
+        'Choose a retained record revision.',
+        code: 'invalid_revision',
+      );
+    }
+    if ((runId == null) != (runSha256 == null) ||
+        (runId != null && runId.isEmpty) ||
+        (runSha256 != null && !RegExp(r'^[a-f0-9]{64}$').hasMatch(runSha256))) {
+      throw const ApiFailure(
+        'The prior run reference is invalid.',
+        code: 'invalid_history_reference',
+      );
+    }
+    final result = await request(
+      'GET',
+      '${_root(scope)}/specimens/${Uri.encodeComponent(id)}/history/$revision',
+      query: {'run_id': ?runId, 'run_sha256': ?runSha256},
+    );
+    if (result['specimen_id'] != id || result['revision'] != revision) {
+      throw const ApiFailure(
+        'The returned historical record does not match the requested revision.',
+        code: 'invalid_history_record',
+      );
+    }
+    // A historical model is never an editable current snapshot. Source bytes are
+    // not fetched implicitly; retained asset IDs/digests remain in its evidence.
+    return _workspace(
+      {...result, 'available_actions': <String>[]},
+      scope,
+      loadImage: false,
+    );
+  }
+
+  Future<Specimen> _workspace(
+    Json result,
+    CollectionScope scope, {
+    bool loadImage = true,
+  }) async {
     final asset = result['asset'] is Map
         ? Map<String, dynamic>.from(result['asset'])
         : <String, dynamic>{};
     asset['asset_id'] = asset['id'];
-    if (asset['id'] != null) {
+    if (loadImage && asset['id'] != null) {
       try {
         final bearer = await token();
         final uri = baseUrl.replace(
