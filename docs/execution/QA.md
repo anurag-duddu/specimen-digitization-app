@@ -127,6 +127,42 @@ also run on the approved representative dataset before P0 acceptance.
 
 ## Threat and corruption matrix
 
+### Mandatory candidate checks from architecture amendment
+
+Coordinator supplied architecture HEAD `6a19fa9`; reviewed the canonical wire
+freeze and delta ledger in CONTRACTS.md. The following owner-reported fixes are
+**Not tested**, not acceptance evidence:
+
+1. Capture actual local HTTP session, item/create, upload PUT/resume/complete and
+   workspace responses from a synthetic journey. Feed those exact sanitized
+   response bytes to Flutter parsing tests and the rendered API repository.
+   Compare IDs, revision, offsets, singular asset, keyed fields, regions/bbox,
+   observations, validations and events. Generated request schemas and handwritten
+   expected examples cannot replace response fixtures. Confirm the same fixture
+   digest is consumed on both sides and include a stale upload/review 409 path.
+   Verify authenticated image fetches, relative URL handling, no-store and no
+   bearer forwarding to an unrelated origin.
+2. Send a valid authority envelope containing zero results through the adapter;
+   distinguish it from empty bytes or a malformed envelope. The valid no-match
+   outcome may leave an unsupported field needing review after required attempts;
+   malformed provider output remains operationally blocked. Neither may become
+   a supported candidate or Cleared. Retain raw HTTP bytes and persisted outcomes.
+3. Persist and serialize a field with explicit `unresolved` state, then parse it
+   in Flutter and reopen after process restart. Show the reason and abstention;
+   do not silently coerce to supported or discard the field. Exercise each of
+   the 20 mandatory keys, plus an unknown future enum to verify safe UI behavior.
+4. Determine the exact serializer used for the 256 KiB snapshot limit. Exercise
+   payloads of 262143, 262144 and 262145 serialized UTF-8 bytes through the actual
+   persistence adapter; include multibyte text and JSON escaping to catch
+   character-count errors. At/under limit may persist if otherwise valid; over
+   limit must fail with a clear bounded error and no partial revision, decision,
+   disposition or idempotency receipt. Reopen accepted data and retry rejected
+   writes; no silent truncation. Record SQLite and SQL Connect results separately.
+
+Repeat framework-generated 401/validation-error envelopes and available-action
+role filtering against the amended serializer. Inspect committed code before
+calling any architect-observed gap fixed. No candidate tests have run yet.
+
 Cross-checked architect ACCEPTANCE.md after initial plan completion: the 20-row
 coverage and synthetic/live limits agree. Section 11 P0 requirements remain
 binding even where section 19 summarizes them. In addition to the matrix:
