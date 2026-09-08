@@ -757,13 +757,8 @@ def create_app(
         end = min(through, after_revision + limit)
         items = []
         for revision in range(after_revision + 1, end + 1):
-            retained = repository.version(p.scope, specimen_id, revision)
-            items.append(
-                {
-                    "revision": revision,
-                    "sha256": digest(retained.model_dump(mode="json")),
-                }
-            )
+            retained = repository.version_info(p.scope, specimen_id, revision)
+            items.append({"revision": revision, "sha256": retained["sha256"]})
         return {
             "items": items,
             "through_revision": through,
@@ -781,12 +776,10 @@ def create_app(
     ):
         p, _ = history_access(user, organization_id, specimen_id)
         retained = repository.version(p.scope, specimen_id, revision)
-        if run_id is not None and retained.run.id != run_id:
+        retained_info = repository.version_info(p.scope, specimen_id, revision)
+        if run_id is not None and retained_info["run_id"] != run_id:
             raise Conflict("Historical run reference mismatch")
-        if (
-            run_sha256 is not None
-            and digest(retained.run.model_dump(mode="json")) != run_sha256
-        ):
+        if run_sha256 is not None and retained_info["run_sha256"] != run_sha256:
             raise Conflict("Historical run digest mismatch")
         return workspace(retained, p.role)
 
@@ -877,7 +870,7 @@ def create_app(
             raise ValueError("Review reason required")
         if body.base_record_version_id != f"{s.run.id}:{body.expected_revision}":
             raise Conflict("Wrong base record version")
-        before_digest = digest(s.run.model_dump(mode="json"))
+        before_digest = repository.version_info(p.scope, s.id, s.version)["run_sha256"]
         before = {
             "specimen_id": s.id,
             "revision": s.version,
