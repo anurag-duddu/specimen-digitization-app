@@ -67,6 +67,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   String? _region;
   final _transform = TransformationController();
   @override
+  void didUpdateWidget(covariant ReviewWorkbench oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.specimen.data['active_run_id'] !=
+            widget.specimen.data['active_run_id'] ||
+        (_region != null &&
+            !widget.specimen.regions.any((r) => r['region_id'] == _region))) {
+      _region = null;
+      _rotation = 0;
+      _transform.value = Matrix4.identity();
+    }
+  }
+
+  @override
   void dispose() {
     _transform.dispose();
     super.dispose();

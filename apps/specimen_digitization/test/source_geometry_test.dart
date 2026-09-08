@@ -80,6 +80,67 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a new run clears an obsolete crop selection and restores current overlays',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Widget view(String run, String region) => MaterialApp(
+        home: Scaffold(
+          body: ReviewWorkbench(
+            specimen: Specimen({
+              'specimen_id': 'same',
+              'active_run_id': run,
+              'revision': 1,
+              'assets': [
+                {'width': 1000, 'height': 520, 'preview_bytes': bytes},
+              ],
+              'regions': [
+                {
+                  'region_id': region,
+                  'bbox': [100, 52, 700, 312],
+                },
+              ],
+            }),
+            onChange: (_) async {},
+            onRetry: (_) async {},
+            onRefresh: () {},
+          ),
+        ),
+      );
+      await tester.pumpWidget(view('run1', 'region1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Label 1'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Image &&
+              w.semanticLabel == 'Source pixels for selected label region',
+        ),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(view('run2', 'region2'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Image &&
+              w.semanticLabel == 'Immutable original specimen image',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'Label region region2',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   for (final viewport in [const Size(390, 844), const Size(1440, 1000)]) {
     testWidgets(
       'source retains aspect and original coordinate overlays at $viewport for all rotations',
