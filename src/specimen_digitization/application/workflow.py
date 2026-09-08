@@ -23,6 +23,7 @@ from .domain import (
     Transcript,
     ValueState,
 )
+from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
 
@@ -187,6 +188,10 @@ class Workflow:
                         )
                     )
             elif step == "finalize":
+                try:
+                    verify_evidence(specimen, self.blobs)
+                except EvidenceIntegrityError as exc:
+                    raise OperationalBlock(str(exc)) from exc
                 finalize(run)
             run.blocker = None
             run.lease_until = None

@@ -30,6 +30,7 @@ from .domain import (
     Specimen,
     uid,
 )
+from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
 from .production import actor_uid
 from .storage import (
@@ -638,8 +639,20 @@ def create_app(
         p, doc = find_document(user, organization_id, "upload", upload_id)
         principal(user, organization_id, p.scope.collection_id, write=True)
         key(idempotency_key)
+        completion_digest = digest(
+            {
+                "upload": upload_id,
+                "actor": user,
+                "key": idempotency_key,
+                "body": body.model_dump(mode="json"),
+            }
+        )
         if doc["state"] == "accepted":
-            return summary(repository.get(p.scope, doc["specimen_id"]), p.role)
+            if doc.get("completion_digest") != completion_digest:
+                raise Conflict(
+                    "Upload completion request differs from accepted request"
+                )
+            return doc["completion_response"]
         if doc["revision"] != body.expected_revision:
             raise Conflict("Stale upload revision")
         if doc["offset"] != doc["size_bytes"]:
@@ -647,17 +660,23 @@ def create_app(
         content = b"".join(blobs.get(c["ref"]) for c in doc["chunks"])
         if hashlib.sha256(content).hexdigest() != doc["sha256"]:
             raise ValueError("Original checksum mismatch")
-        with Image.open(io.BytesIO(content)) as image:
-            image.verify()
-        with Image.open(io.BytesIO(content)) as image:
-            actual_type = Image.MIME.get(image.format)
-            if actual_type not in {"image/png", "image/jpeg", "image/tiff"}:
-                raise ValueError("Image decoder format not supported")
-            if actual_type != doc["media_type"] or image.size != (
-                doc["width"],
-                doc["height"],
-            ):
-                raise ValueError("Declared image metadata mismatch")
+        try:
+            with Image.open(io.BytesIO(content)) as image:
+                image.verify()
+            with Image.open(io.BytesIO(content)) as image:
+                actual_type = Image.MIME.get(image.format)
+                if actual_type not in {"image/png", "image/jpeg", "image/tiff"}:
+                    raise ValueError("Image decoder format not supported")
+                if actual_type != doc["media_type"] or image.size != (
+                    doc["width"],
+                    doc["height"],
+                ):
+                    raise ValueError("Declared image metadata mismatch")
+            # Verify the complete pixel stream as well as the container headers.
+            with Image.open(io.BytesIO(content)) as image:
+                image.load()
+        except (OSError, SyntaxError, EOFError, Image.DecompressionBombError) as exc:
+            raise ValueError("Invalid or truncated image content") from exc
         profile = Profile(
             synthetic=mode == "synthetic",
             institutional_policy_approved=mode == "synthetic",
@@ -689,13 +708,18 @@ def create_app(
             p,
             specimen,
             "ingest:" + upload_id,
-            digest({"upload": upload_id, "sha256": doc["sha256"]}),
+            completion_digest,
         )
-        doc["state"] = "accepted"
+        response = summary(specimen, p.role)
+        doc.update(
+            state="accepted",
+            completion_digest=completion_digest,
+            completion_response=response,
+        )
         repository.put_document(p.scope, "upload", upload_id, doc, doc["revision"])
         if mode == "synthetic":
             background_tasks.add_task(process_background, p, specimen.id)
-        return summary(specimen, p.role)
+        return response
 
     @app.get(prefix + "/specimens")
     def specimens(
@@ -911,14 +935,19 @@ def create_app(
             s.run.capability_reason = reason_code
             s.run.retry_eligibility = retry
             s.run.completed_steps.append("capability_attempts_exhausted")
-            finalize(s.run)
         elif body.kind == "approve":
             s.run.human_approved = True
         elif body.kind == "coverage":
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:
             raise ValueError("Unsupported review decision")
-        if s.run.stage == "finalized":
+        if s.run.stage == "finalized" or body.kind in {"approve", "capability_defer"}:
+            try:
+                verify_evidence(s, blobs)
+                if s.run.blocker == "evidence_integrity_failure":
+                    s.run.blocker = None
+            except EvidenceIntegrityError:
+                s.run.blocker = "evidence_integrity_failure"
             finalize(s.run)
         s.audit.append(
             AuditEvent(

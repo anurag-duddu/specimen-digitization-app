@@ -47,6 +47,9 @@ def evaluate(run: Run) -> list[str]:
     for e in run.evidence:
         if e.kind == "literal" and (
             e.region_id not in region_ids
+            or not any(
+                r.id == e.region_id and r.asset_id == e.asset_id for r in run.regions
+            )
             or not e.observation_ids
             or any(o not in observation_ids for o in e.observation_ids)
         ):
