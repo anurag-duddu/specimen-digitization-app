@@ -7,6 +7,33 @@ import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'widget_test.dart' show TestRepository;
 
+class PreflightRepository extends TestRepository {
+  int checks = 0;
+  int uploads = 0;
+  @override
+  Future<Json> preflight(CollectionScope scope, IntakeFile file) async {
+    checks++;
+    return {
+      'status': 'blocked',
+      'input_sha256': file.sha256,
+      'size_bytes': file.bytes.length,
+      'decode': {'reason': 'memory_limit_unavailable'},
+      'issues': ['memory_limit_unavailable'],
+      'unmeasured': ['focus', 'glare', 'label_coverage'],
+    };
+  }
+
+  @override
+  Future<Json> createIntake(
+    CollectionScope scope,
+    IntakeFile file,
+    String key,
+  ) async {
+    uploads++;
+    return super.createIntake(scope, file, key);
+  }
+}
+
 void main() {
   const scope = CollectionScope(
     organizationId: 'org',
@@ -114,4 +141,64 @@ void main() {
     expect(checked, isFalse);
     expect(find.text('Measured thumbnail · uncalibrated'), findsOneWidget);
   });
+  testWidgets(
+    'server preflight requires explicit transmission and leaves quality confirmation unchecked',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final repository = PreflightRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: IntakeScreen(
+              repository: repository,
+              scope: scope,
+              userId: 'owner',
+              onComplete: () {},
+              pickImages: (_) async => [
+                XFile.fromData(
+                  bytes,
+                  path: 'preflight.png',
+                  name: 'preflight.png',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.tap(find.text('Choose files'));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      });
+      await tester.pumpAndSettle();
+      expect(repository.checks, 0);
+      expect(repository.uploads, 0);
+      await tester.scrollUntilVisible(
+        find.text('Send image for server preflight'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Send image for server preflight'));
+      await tester.pumpAndSettle();
+      expect(repository.checks, 1);
+      expect(repository.uploads, 0);
+      expect(
+        find.textContaining(
+          'Changing this image format will not resolve that block',
+        ),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.byType(CheckboxListTile),
+        -300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+        isFalse,
+      );
+    },
+  );
 }
