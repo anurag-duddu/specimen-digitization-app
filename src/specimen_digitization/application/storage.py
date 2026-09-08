@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import hashlib
+from .active_graph import original_run_digest, unpack
 import json
 import os
 import sqlite3
@@ -143,6 +144,7 @@ class SQLiteRepository:
 
     def __init__(self, path: Path):
         self.path = path
+        self.graph_blobs = LocalBlobs(path.parent / (path.stem + "-graphs"))
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
@@ -198,12 +200,16 @@ class SQLiteRepository:
     def get(self, scope: Scope, specimen_id: str) -> Specimen:
         with self.connect() as db:
             row = db.execute(
-                "SELECT payload FROM records WHERE org=? AND collection=? AND id=?",
+                "SELECT r.payload,v.sha256 FROM records r JOIN versions v ON v.org=r.org AND v.collection=r.collection AND v.id=r.id AND v.revision=r.revision WHERE r.org=? AND r.collection=? AND r.id=?",
                 (*scope.model_dump().values(), specimen_id),
             ).fetchone()
         if row is None:
             raise Missing(specimen_id)
-        return Specimen.model_validate_json(row[0])
+        payload = json.loads(row[0])
+        if digest(payload) != row[1]:
+            raise Conflict("Current snapshot digest mismatch")
+
+        return unpack(payload, self.graph_blobs)
 
     def list(self, scope: Scope) -> list[Specimen]:
         with self.connect() as db:
@@ -211,7 +217,8 @@ class SQLiteRepository:
                 "SELECT payload FROM records WHERE org=? AND collection=? ORDER BY id",
                 tuple(scope.model_dump().values()),
             ).fetchall()
-        return [Specimen.model_validate_json(r[0]) for r in rows]
+
+        return [unpack(json.loads(r[0]), self.graph_blobs) for r in rows]
 
     def find_checksum(self, scope, checksum, include_sensitive=False):
         if len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum):
@@ -295,7 +302,8 @@ class SQLiteRepository:
             raise Missing(ident)
         if digest(json.loads(row[0])) != row[1]:
             raise Conflict("Historical snapshot digest mismatch")
-        return Specimen.model_validate_json(row[0])
+
+        return unpack(json.loads(row[0]), self.graph_blobs)
 
     def due_page(self, scope, cutoff, after_id=None, limit=50):
         if not 1 <= limit <= 100:
@@ -342,9 +350,37 @@ class SQLiteRepository:
         return {
             "revision": revision,
             "sha256": row[1],
-            "run_sha256": digest(payload["run"]),
+            "run_sha256": original_run_digest(payload, self.graph_blobs),
             "run_id": payload["run"]["id"],
         }
+
+    def graph_bytes(self, scope, ident, revision):
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT payload,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision=?",
+                (scope.organization_id, scope.collection_id, ident, revision),
+            ).fetchone()
+        if not row:
+            raise Missing(ident)
+        payload = json.loads(row[0])
+        if digest(payload) != row[1]:
+            raise Conflict("Snapshot digest mismatch")
+        from .active_graph import read_graph, encoded
+
+        graph = read_graph(payload, self.graph_blobs)
+        return (
+            graph[0]
+            if graph
+            else encoded(
+                {
+                    "contract_version": "active-run-v1",
+                    "scope": payload["scope"],
+                    "specimen_id": ident,
+                    "revision": revision,
+                    "run": payload["run"],
+                }
+            )
+        )
 
     def create(self, principal, specimen, key, digest):
         return self._commit(principal, specimen, 0, key, digest)
@@ -365,7 +401,8 @@ class SQLiteRepository:
             if receipt:
                 if receipt[0] != request_digest:
                     raise Conflict("Idempotency key reused with different request")
-                return Specimen.model_validate_json(receipt[1])
+
+                return unpack(json.loads(receipt[1]), self.graph_blobs)
             identity = (
                 specimen.scope.organization_id,
                 specimen.scope.collection_id,
@@ -391,9 +428,16 @@ class SQLiteRepository:
                 ):
                     raise Conflict("History prefix snapshot integrity mismatch")
                 specimen = compact_history(
-                    specimen, Specimen.model_validate_json(retained[0])
+                    specimen,
+                    unpack(json.loads(retained[0]), self.graph_blobs),
                 )
-            payload = specimen.model_dump_json()
+            from .active_graph import pack
+
+            payload = json.dumps(
+                pack(specimen, self.graph_blobs),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
             check_snapshot(payload)
             try:
                 db.execute(

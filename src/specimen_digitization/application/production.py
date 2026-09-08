@@ -3,6 +3,7 @@
 from __future__ import annotations
 import contextvars
 import hashlib
+from .active_graph import original_run_digest, unpack
 import json
 import os
 import re
@@ -17,7 +18,7 @@ from pydantic_ai.messages import ModelMessagesTypeAdapter
 from ..model_gateway import HuggingFaceModelGateway, INITIAL_HUGGINGFACE_ROUTES
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
-from .domain import Observation, Specimen, WorkItem, WorkPage, now
+from .domain import Observation, WorkItem, WorkPage, now
 from .lookup import GbifTaxonomy
 from .storage import (
     compact_history,
@@ -51,8 +52,10 @@ class SqlConnectRepository:
         connector="specimen-server",
         session=None,
         emulator_host=None,
+        graph_blobs=None,
     ):
         self.project = project
+        self.graph_blobs = graph_blobs
         if emulator_host:
             if (
                 project != "demo-specimen-data"
@@ -189,11 +192,8 @@ class SqlConnectRepository:
         rows = self.execute("SearchSpecimens", variables).get("items", [])
         return [sql_item(row, scope) for row in rows]
 
-    @staticmethod
-    def _snapshot(row):
+    def _snapshot(self, row):
         payload = row["snapshot"]
-        specimen = Specimen.model_validate(payload)
-
         # Canonical numeric JSON survives protobuf Struct / PostgreSQL round-trips.
         if digest(payload) != row["sha256"]:
             # Compatibility with early development fixtures whose sole float field
@@ -220,7 +220,8 @@ class SqlConnectRepository:
             ).hexdigest()
             if previous != row["sha256"]:
                 raise Conflict("Snapshot digest mismatch")
-        return specimen
+
+        return unpack(payload, self.graph_blobs)
 
     def history_page(
         self, scope, ident, after_revision=0, through_revision=None, limit=50
@@ -320,9 +321,33 @@ class SqlConnectRepository:
         return {
             "revision": revision,
             "sha256": row["sha256"],
-            "run_sha256": digest(row["snapshot"]["run"]),
+            "run_sha256": original_run_digest(row["snapshot"], self.graph_blobs),
             "run_id": row["snapshot"]["run"]["id"],
         }
+
+    def graph_bytes(self, scope, ident, revision):
+        row = self.execute(
+            "GetSnapshot", dict(self.variables(scope), id=ident, revision=revision)
+        ).get("specimenSnapshot")
+        if not row:
+            raise Missing(ident)
+        self._snapshot(row)
+        from .active_graph import read_graph, encoded
+
+        graph = read_graph(row["snapshot"], self.graph_blobs)
+        return (
+            graph[0]
+            if graph
+            else encoded(
+                {
+                    "contract_version": "active-run-v1",
+                    "scope": scope.model_dump(),
+                    "specimen_id": ident,
+                    "revision": revision,
+                    "run": row["snapshot"]["run"],
+                }
+            )
+        )
 
     def create(self, principal, specimen, key, digest):
         return self._commit(principal, specimen, 0, key, digest)
@@ -352,8 +377,10 @@ class SqlConnectRepository:
             specimen = compact_history(
                 specimen, self.version(principal.scope, specimen.id, expected)
             )
-        check_snapshot(specimen.model_dump_json())
-        payload = specimen.model_dump(mode="json")
+        from .active_graph import pack
+
+        payload = pack(specimen, self.graph_blobs)
+        check_snapshot(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
         variables = dict(
             base,
             id=specimen.id,

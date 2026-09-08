@@ -71,6 +71,8 @@ class Workflow:
         authority_cost_reservations=None,
     ):
         self.repository, self.blobs, self.adapters = repository, blobs, adapters
+        if hasattr(repository, "graph_blobs") and repository.graph_blobs is None:
+            repository.graph_blobs = blobs
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.monotonic = monotonic or time.monotonic
         self.random_value = random_value
@@ -552,7 +554,10 @@ class Workflow:
                 after={"stage": run.stage, "blocker": run.blocker},
             )
         )
-        saved = self.repository.save(
+        from .active_graph import save_recoverably
+
+        saved = save_recoverably(
+            self.repository,
             principal,
             specimen,
             revision,
