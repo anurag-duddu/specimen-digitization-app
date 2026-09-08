@@ -351,8 +351,6 @@ def test_sql_authority_review_and_search_metadata(
             "state": "completed",
             "disposition": "cleared",
             "profile_id": work["profile_id"],
-            "risk_min": 0,
-            "risk_max": 100,
             "limit": 1,
         }
         listing = http.get(PREFIX + "/specimens", params=params, headers=HEADERS)
@@ -362,6 +360,16 @@ def test_sql_authority_review_and_search_metadata(
         assert item["domain_created_at"] == approved.json()["domain_created_at"]
         assert item["revision"] == approved.json()["revision"]
         assert item["uploader_id"] == "synthetic-reviewer"
+        assert item["risk"] is None
+        assert approved.json()["run"]["review_risk"]["composite"] is None
+        # Human approval does not manufacture a measured risk score. Numeric
+        # ranges exclude unmeasured NULL values instead of treating them as zero.
+        ranged = http.get(
+            PREFIX + "/specimens",
+            params={**params, "risk_min": 0, "risk_max": 100},
+            headers=HEADERS,
+        )
+        assert ranged.status_code == 200 and ranged.json()["items"] == [], ranged.text
         following = http.get(
             PREFIX + "/specimens",
             params={**params, "cursor": listing.json()["next_cursor"]},

@@ -1,6 +1,7 @@
 """Bind pure evidence phases to verified application sources and immutable artifacts."""
 
 import hashlib
+import json
 from .blob_limits import BlobTooLarge
 
 from .authority_registry import (
@@ -23,7 +24,7 @@ from .evidence_harness import (
     run_phase,
 )
 from .integrity import verify_evidence, EvidenceIntegrityError
-from .review_risk import RiskSignal, review_risk
+from .review_risk import RiskSignal, assess_risk, label_review_risk
 from .reading_evidence import (
     ReadingEvidenceInput,
     align_readings,
@@ -344,7 +345,11 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
             result = execute_phase(specimen, phase, blobs)
     signals = []
     differences = []
-    unmeasured = set()
+    unmeasured = {"image_quality", "segmentation_quality", "field_agreement"}
+    from .profile_runtime import pinned_risk_resolution
+
+    resolution = pinned_risk_resolution(specimen.run)
+    label_scores = []
     reading_metadata = {}
     declaration_sources = {}
     from .reading_declarations import effective_declarations, label_handling
@@ -382,6 +387,16 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
             }
         if len(inputs) < 2:
             unmeasured.update(("reading_disagreement", "language", "script"))
+            label_scores.append(
+                label_review_risk(
+                    region.id,
+                    tuple(o.id for o in readings),
+                    (),
+                    metadata,
+                    resolution,
+                    unmeasured=("image_quality", "segmentation_quality"),
+                ).model_dump(mode="json")
+            )
             continue
         alignment = align_readings(*inputs)
         raw = alignment.model_dump_json().encode()
@@ -397,20 +412,67 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
                 "reasons": list(alignment.reasons),
             }
         )
+        label_scores.append(
+            label_review_risk(
+                region.id,
+                tuple(o.id for o in readings),
+                (alignment,),
+                metadata,
+                resolution,
+                unmeasured=("image_quality", "segmentation_quality"),
+            ).model_dump(mode="json")
+        )
         risk = reading_risk_evidence(alignment, metadata)
         signals.extend(risk.signals)
         unmeasured.update(risk.unmeasured)
     specimen.run.disagreements = differences
     specimen.run.reading_metadata = reading_metadata
     specimen.run.label_language_handling = label_handling(specimen, declaration_sources)
-    if result is not None and result.findings:
+    findings = (
+        [f.model_dump(mode="json") for f in result.findings]
+        if result is not None
+        else []
+    )
+    if result is None and specimen.run.phase_results.get("finalize"):
+        findings = json.loads(
+            read_artifact(specimen.run.phase_results["finalize"], blobs)
+        ).get("findings", [])
+    if findings:
         signals.append(
             RiskSignal(
                 code="hard_validation",
-                count=len(result.findings),
+                count=len(findings),
                 evidence_ids=tuple(e.id for e in specimen.run.evidence)
                 or (specimen.asset.id,),
             )
+        )
+    field_scores = []
+    for key, field in specimen.run.fields.items():
+        applicable = [
+            finding
+            for finding in findings
+            if finding.get("field_key") == key and finding.get("severity") == "hard"
+        ]
+        field_signals = (
+            (
+                RiskSignal(
+                    code="hard_validation",
+                    count=len(applicable),
+                    field_key=key,
+                    evidence_ids=tuple(field.evidence_ids) or (specimen.asset.id,),
+                ),
+            )
+            if applicable
+            else ()
+        )
+        field_scores.append(
+            assess_risk(
+                field_signals,
+                resolution,
+                scope="field",
+                target_id=key,
+                unmeasured=("field_agreement",),
+            ).model_dump(mode="json")
         )
     # Merge the same signal across regions before weighting, without duplicating it.
     merged = {}
@@ -427,15 +489,35 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
                 }
             )
         merged[key] = signal
-    specimen.run.review_risk = review_risk(tuple(merged.values())).model_dump(
-        mode="json"
+    specimen.run.review_risk = assess_risk(
+        tuple(merged.values()),
+        resolution,
+        scope="specimen",
+        target_id=specimen.id,
+        unmeasured=tuple(sorted(unmeasured)),
+    ).model_dump(mode="json")
+    specimen.run.review_risk.update(
+        {
+            "labels": label_scores,
+            "fields": field_scores,
+            "policy_version": resolution.reference.version
+            if resolution.reference
+            else None,
+            "policy_resolution_status": resolution.status,
+            "policy_resolution_reason": resolution.reason,
+            "measurement_complete": specimen.run.review_risk["status"] == "scored",
+        }
     )
-    specimen.run.review_risk["unmeasured"] = sorted(unmeasured)
-    specimen.run.review_risk["measurement_complete"] = not unmeasured
     return result
 
 
 def apply_phase_gate(run, result):
+    if run.review_risk.get("policy_resolution_status") == "blocked":
+        run.blocker = run.review_risk["policy_resolution_reason"]
+        run.disposition = None
+        run.stage = "processing_blocked"
+        run.reasons = [run.blocker]
+        return
     if result.applicability == "blocked":
         run.blocker = "evidence_harness_blocked:" + next(
             (f.code for f in result.findings if f.severity == "operational"),

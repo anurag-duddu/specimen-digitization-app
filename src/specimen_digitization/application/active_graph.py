@@ -41,6 +41,8 @@ def run_summary(run):
         "authority_results",
         "dependencies",
         "profile_snapshot",
+        "risk_policy_snapshot",
+        "profile_rules",
     }
     return {
         key: ([] if isinstance(value, list) else {}) if key in omitted else value

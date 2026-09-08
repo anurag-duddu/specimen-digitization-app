@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timezone, timedelta
-from difflib import SequenceMatcher
 from typing import Protocol
 import logfire
 from .domain import (
@@ -66,6 +65,7 @@ class Workflow:
         monotonic=None,
         random_value=None,
         profile_registry=None,
+        risk_registry=None,
         classifier=None,
         authority_tools=None,
         authority_cost_reservations=None,
@@ -77,7 +77,12 @@ class Workflow:
         self.monotonic = monotonic or time.monotonic
         self.random_value = random_value
         self.profile_registry = profile_registry
-        self.classifier = classifier
+        self.risk_registry = risk_registry
+        self.classifier = (
+            classifier
+            if classifier is not None
+            else getattr(adapters, "classifier", None)
+        )
         self.authority_tools = (
             authority_tools
             if authority_tools is not None
@@ -278,6 +283,8 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
+                if self.classifier is not None and hasattr(self.classifier, "pin"):
+                    run.dependencies["classifier"] = self.classifier.pin(run)
                 run.dependencies["authority_pins"] = self.authority_pins()
                 run.dependencies["profile_snapshot_sha256"] = digest(
                     run.profile_snapshot
@@ -292,13 +299,17 @@ class Workflow:
                 classifier = self.classifier or (
                     SyntheticClassifier(self.blobs) if run.profile.synthetic else None
                 )
+                if classifier is not None and hasattr(classifier, "bind"):
+                    classifier = classifier.bind(specimen, registry)
                 if run.profile.synthetic and run.classification_selection is None:
                     run.classification_selection = {
                         "collection_id": registry.nodes[0].id,
                         "actor_id": principal.user_id,
                         "reason": "Explicit synthetic fixture intake selection",
                     }
-                issue = classify_and_select(specimen, registry, classifier, self.blobs)
+                issue = classify_and_select(
+                    specimen, registry, classifier, self.blobs, self.risk_registry
+                )
                 if issue:
                     raise OperationalBlock("classification_review_required:" + issue)
                 # Resolve prompts again for the selected immutable profile, before inference.
@@ -331,8 +342,28 @@ class Workflow:
                 for region in run.regions:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
+                    from .reading_evidence import ReadingEvidenceInput, align_readings
+
+                    alignment = None
+                    if len(readings) == 2:
+                        alignment = align_readings(
+                            *(
+                                ReadingEvidenceInput(
+                                    observation_id=o.id,
+                                    region_id=region.id,
+                                    source_ref=o.raw_ref,
+                                    source_sha256=o.raw_sha256,
+                                    text=o.literal_text,
+                                )
+                                for o in readings
+                            )
+                        )
+                    measured = (
+                        alignment is not None and alignment.status != "policy_blocked"
+                    )
                     resolved = (
-                        len(texts) == 1
+                        measured
+                        and len(texts) == 1
                         and bool(texts[0].strip())
                         and not any(o.unreadable_spans for o in readings)
                     )
@@ -343,10 +374,19 @@ class Workflow:
                             observation_ids=[o.id for o in readings],
                             alternatives=texts,
                             resolved=resolved,
-                            disagreement_ratio=1
-                            - SequenceMatcher(None, texts[0], texts[-1]).ratio()
-                            if texts
-                            else 1,
+                            disagreement_ratio=(
+                                alignment.edit_distance
+                                / max(1, *(len(o.literal_text) for o in readings))
+                            )
+                            if measured
+                            else None,
+                            alignment_status=alignment.status
+                            if alignment
+                            else "policy_blocked",
+                            alignment_algorithm="bounded-levenshtein-fraction-v1",
+                            alignment_reasons=list(alignment.reasons)
+                            if alignment
+                            else ["independent_pair_incomplete"],
                         )
                     )
             elif step == "parse":

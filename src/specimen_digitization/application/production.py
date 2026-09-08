@@ -7,6 +7,7 @@ from .active_graph import original_run_digest, unpack
 import json
 import os
 import re
+import time
 from uuid import UUID
 
 import google.auth
@@ -539,9 +540,13 @@ class GcsBlobs:
 
 
 class ProductionAdapters:
-    def __init__(self, blobs):
+    def __init__(self, blobs, *, model_effect=None):
+        self.model_effect = model_effect
         self.blobs = blobs
         self.taxonomy = GbifTaxonomy(blobs)
+        from .classifier_runtime import configured_classifier
+
+        self.classifier = configured_classifier(blobs)
         from .authority_registry import AuthorityRegistry
         from .parties import PartiesAdapter
         from .geography import GeographyAdapter
@@ -574,6 +579,7 @@ class ProductionAdapters:
             "prompts": prompts,
             "routes": routes,
             "adapter_version": "production-v2",
+            "classifier": self.classifier.pin(run) if self.classifier else None,
             "segmentation": {
                 "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
                 "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
@@ -599,6 +605,11 @@ class ProductionAdapters:
         return Sam3Service(endpoint, self.blobs).segment(specimen)
 
     def transcribe(self, specimen, region, route):
+        from .model_runtime import invoke_model
+
+        return invoke_model(self, specimen, "transcribe", region=region, route=route)
+
+    def _transcribe_direct(self, specimen, region, route):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
             raise OperationalBlock(
                 "provider_data_policy_and_spending_approval_required"
@@ -624,6 +635,7 @@ class ProductionAdapters:
             gateway, route_id=route, prompt=prompt
         )
         image = crop_bytes(self.blobs, specimen, region)
+        started = time.monotonic()
         result = run_agent_bounded(
             agent,
             [
@@ -633,6 +645,7 @@ class ProductionAdapters:
             timeout_seconds=specimen.run.profile.execution.external_timeout_seconds,
             usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
         )
+        latency_seconds = time.monotonic() - started
         # Preserve every provider response (including retries), excluding image-bearing requests.
         responses = [m for m in result.all_messages() if m.kind == "response"]
         raw = ModelMessagesTypeAdapter.dump_json(responses)
@@ -641,7 +654,16 @@ class ProductionAdapters:
         raw_ref = self.blobs.put(raw)
         raw_sha256 = hashlib.sha256(raw).hexdigest()
         prompt_version = hashlib.sha256(prompt.text.encode()).hexdigest()
+        last_response = responses[-1] if responses else None
         return Observation(
+            latency_seconds=latency_seconds,
+            latency_basis="validated_agent_call_wall_seconds",
+            finish_state=getattr(last_response, "finish_reason", None),
+            completion_state="validated_output",
+            parameters=agent.model_settings,
+            provider_model_id=getattr(last_response, "model_name", None),
+            input_asset_id=specimen.asset.id,
+            input_crop_ref=self.blobs.put(image),
             declaration_evidence=model_evidence(
                 self.blobs,
                 result.output,
@@ -665,6 +687,11 @@ class ProductionAdapters:
         )
 
     def extract(self, specimen):
+        from .model_runtime import invoke_model
+
+        return invoke_model(self, specimen, "extract")
+
+    def _extract_direct(self, specimen):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
             raise OperationalBlock(
                 "provider_data_policy_and_spending_approval_required"
@@ -721,7 +748,20 @@ class Sam3Service:
         from .bounded_effect import run_isolated
         from ..hub_models import SAM3_MODEL
 
-        revision = SAM3_MODEL.revision
+        from .collection_profiles import SegmentationSettings
+        from .profile_runtime import pinned_risk_resolution
+
+        if pinned_risk_resolution(specimen.run).status != "resolved":
+            raise OperationalBlock("segmentation_profile_rules_unresolved")
+        try:
+            settings = SegmentationSettings.model_validate(
+                specimen.run.profile_rules["segmentation_settings"]
+            )
+        except (KeyError, ValueError) as exc:
+            raise OperationalBlock("segmentation_settings_unresolved") from exc
+        revision = settings.model_revision
+        if revision != SAM3_MODEL.revision:
+            raise OperationalBlock("segmentation_model_revision_unsupported")
         request = {
             "run_id": specimen.run.id,
             "asset_id": specimen.asset.id,
@@ -729,9 +769,12 @@ class Sam3Service:
             "sha256": specimen.asset.sha256,
             "width": specimen.asset.width,
             "height": specimen.asset.height,
-            "model_id": "facebook/sam3",
+            "model_id": settings.model_id,
             "model_revision": revision,
-            "prompt": "label",
+            "prompt": settings.prompt,
+            "parameters": settings.parameters.model_dump(),
+            "adapter_version": settings.adapter_version,
+            "settings_version": settings.version,
         }
         result = run_isolated(
             self.effect,
@@ -758,6 +801,10 @@ class Sam3Service:
             "input_sha256": specimen.asset.sha256,
             "http_status": envelope["http_status"],
             "validation": envelope["validation"],
+            "settings": settings.model_dump(mode="json"),
+            "request_sha256": hashlib.sha256(
+                json.dumps(request, sort_keys=True).encode()
+            ).hexdigest(),
             "elapsed_seconds": result.elapsed_seconds,
         }
         if envelope["validation"] != "valid":

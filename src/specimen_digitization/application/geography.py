@@ -30,11 +30,7 @@ class GeographyAdapter:
         client: httpx.Client | None = None,
     ):
         self.registry, self.blobs = registry, blobs
-        self.client = client or httpx.Client(
-            headers={
-                "User-Agent": "SpecimenDigitization/0.1 (https://github.com/anurag-duddu/specimen-digitization-app)"
-            }
-        )
+        self.client = client
 
     def lookup(self, query: AuthorityQuery) -> AuthorityResult:
         source = self.registry.authorize(self.source_id, self.operation, query)

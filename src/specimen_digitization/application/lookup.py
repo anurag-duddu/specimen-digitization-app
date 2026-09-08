@@ -1,6 +1,7 @@
 """Bounded, read-only GBIF COL XR name matching with typed failure fidelity."""
 
 import hashlib
+import time
 import httpx
 from .domain import Lookup, LookupStatus
 from .storage import BlobStore
@@ -12,13 +13,7 @@ COL_XR = "7ddf754f-d193-4cc9-b351-99906754a03b"
 class GbifTaxonomy:
     def __init__(self, blobs: BlobStore, client: httpx.Client | None = None):
         self.blobs = blobs
-        self.client = client or httpx.Client(
-            timeout=httpx.Timeout(20, connect=5),
-            follow_redirects=False,
-            headers={
-                "User-Agent": "SpecimenDigitization/0.1 (https://github.com/anurag-duddu/specimen-digitization-app)"
-            },
-        )
+        self.client = client
 
     def lookup(self, name: str) -> Lookup:
         query = {
@@ -34,10 +29,44 @@ class GbifTaxonomy:
             query=query,
             status=LookupStatus.PROVIDER,
         )
+        deadline = time.monotonic() + 20
         try:
-            response = self.client.get(
-                "https://api.gbif.org/v2/species/match", params=query
-            )
+            if self.client is None:
+                from .http_effect import bounded_http
+
+                captured = bounded_http(
+                    "https://api.gbif.org/v2/species/match",
+                    timeout_seconds=20,
+                    max_bytes=1024 * 1024,
+                    params=query,
+                )
+                if captured["failure"]:
+                    result.status = (
+                        LookupStatus.TIMEOUT
+                        if captured["failure"] == "timeout"
+                        else LookupStatus.PROVIDER
+                    )
+                    return result
+                response = httpx.Response(
+                    captured["status_code"],
+                    content=captured["body"],
+                    headers={"Retry-After": captured["retry_after"]},
+                )
+                if captured["truncated"] or captured.get("unsupported_encoding"):
+                    result.raw_ref = self.blobs.put(captured["body"])
+                    result.digest = hashlib.sha256(captured["body"]).hexdigest()
+                    result.status = LookupStatus.MALFORMED
+                    result.metadata = {
+                        "truncated": captured["truncated"],
+                        "unsupported_encoding": captured.get(
+                            "unsupported_encoding", False
+                        ),
+                    }
+                    return result
+            else:
+                response = self.client.get(
+                    "https://api.gbif.org/v2/species/match", params=query
+                )
             result.raw_ref = self.blobs.put(response.content)
             result.digest = hashlib.sha256(response.content).hexdigest()
             statuses = {
@@ -87,7 +116,36 @@ class GbifTaxonomy:
                 result.status = LookupStatus.AMBIGUOUS
             else:
                 result.status = LookupStatus.MALFORMED
-            metadata = self.client.get("https://api.gbif.org/v2/species/match/metadata")
+            if self.client is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    result.status = LookupStatus.TIMEOUT
+                    return result
+                captured = bounded_http(
+                    "https://api.gbif.org/v2/species/match/metadata",
+                    timeout_seconds=remaining,
+                    max_bytes=1024 * 1024,
+                )
+                if (
+                    captured["failure"]
+                    or captured["truncated"]
+                    or captured.get("unsupported_encoding")
+                ):
+                    result.status = (
+                        LookupStatus.TIMEOUT
+                        if captured["failure"] == "timeout"
+                        else LookupStatus.MALFORMED
+                        if captured["truncated"] or captured.get("unsupported_encoding")
+                        else LookupStatus.PROVIDER
+                    )
+                    return result
+                metadata = httpx.Response(
+                    captured["status_code"], content=captured["body"]
+                )
+            else:
+                metadata = self.client.get(
+                    "https://api.gbif.org/v2/species/match/metadata"
+                )
             if metadata.status_code != 200:
                 result.status = statuses.get(
                     metadata.status_code, LookupStatus.PROVIDER
