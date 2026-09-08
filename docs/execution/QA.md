@@ -800,3 +800,33 @@ confirmed second product defect. No crop-GUI pass is inferred.
 Preserving this failed checkpoint before the separately reviewed minimal atomic
 repair38fa32f+c8001bb. Graph/TRN are excluded. No production work or full P0
 acceptance is implied.
+
+## 2026-09-08 — minimal atomic repair verified, H01 closed locally
+
+Exact approved application sequence906e134 +
+`38fa32f07a77e28a9731a57b11334af7c7949eaf` +
+`c8001bbe5f29cf1d679e7b982ecc079c868ca4a8`; verified empty application diff against
+c8001bb. Only storage.py and the publication test differ from the frozen app.
+No graph or TRN source was included. Original failure evidence remains in8e421b1.
+
+**H01 closed for tested local immutable publication and SQL intake.** The QA
+reproducer was adapted to stop the real writer both before writing its private
+temporary file and immediately before linking the completed file. In both cases
+the final digest pathname is absent. A second identical put succeeds and reads
+byte-exact; releasing the first writer reconciles without replacing the existing
+inode. Both leave no owned temporary file. First/replayed empty publication works;
+corrupting its bytes then replaying fails closed without overwriting corruption.
+
+Independent focused publication/stream/SQLite+SQL HTTP duplicate/shared circuit
+suite:11 passed in3.34s, including the formerly failing SQL race and40 repeated
+multiprocess publications with concurrent readers and crash recovery. Five further
+QA-authored four-way barrier races through actual HTTP and SQL V3 produced five
+unique winners and15 authorized duplicates from20 distinct proposed IDs/keys.
+All20 same-key completion replays were exact; changed keys rejected; invalid
+checksum saves left revision unchanged and valid V3 saves succeeded. No legacy
+writer calls were observed. Evidence: `qa-evidence/c8001bb/`; focused log
+`/tmp/specimen-qa-atomic-repair-focused.log`.
+
+This bounded repair result was sent to parent/integration before broader GUI
+completion. It does not close the incomplete HEIC crop GUI case or imply graph,
+production, GCS wall-clock, codec memory-isolation or complete P0 acceptance.

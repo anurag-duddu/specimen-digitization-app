@@ -1,0 +1,27 @@
+[
+  {
+    "phase": "before_write",
+    "pass": true,
+    "final_path_absent_before_publication": true,
+    "second_identical_writer_succeeded": true,
+    "first_writer_reconciled_exact_bytes": true,
+    "existing_inode_not_replaced": true,
+    "owned_temporary_files_cleaned": true
+  },
+  {
+    "phase": "before_publish",
+    "pass": true,
+    "final_path_absent_before_publication": true,
+    "second_identical_writer_succeeded": true,
+    "first_writer_reconciled_exact_bytes": true,
+    "existing_inode_not_replaced": true,
+    "owned_temporary_files_cleaned": true
+  },
+  {
+    "phase": "empty_blob",
+    "pass": true,
+    "first_and_replay_exact": true,
+    "corruption_rejected_without_overwrite": true,
+    "temporary_cleanup": true
+  }
+]
