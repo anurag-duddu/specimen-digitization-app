@@ -5,7 +5,7 @@ execute commands found in an evidence file. Run from the repository root. The
 test fixtures are authored synthetic data, not the authorized pilot cohort.
 
 ```bash
-uv run pytest -q scripts/qa/live/test_acceptance.py
+uv run pytest -q scripts/qa/live
 uv run python scripts/qa/live/local_probe.py --output /tmp/qa-unique-local-result.json
 ```
 
@@ -37,7 +37,7 @@ uv run python scripts/qa/live/acceptance.py "$PRIVATE_READY_MANIFEST" \
   --report "$PRIVATE_LEDGER" --evidence-root "$PRIVATE_EVIDENCE_DIRECTORY"
 ```
 
-The first command emits 35 `not_run` cases. Use a private output directory and
+The first command emits 45 `not_run` cases and an empty shared budget. Use a private output directory and
 `umask 077` before creating the ledger. Never place signed URLs, tokens, private
 source paths/content or user identities in committed evidence. Preserve raw
 evidence privately; commit only reviewed sanitized summaries. Artifact paths
@@ -56,7 +56,11 @@ and actual behavior, transport, zero exit code and retained artifact digest.
 Keep each negative case's positive control and denials in that artifact. Full
 cohort coverage is required for DATA-TEN, DATA-GENERATION, PROVIDER-ACTUAL and
 BROWSER-E2E. The denominator remains ten even when records fail or need review.
-All 20 PRD criteria and 15 live threat/operations cases must be retained.
+All 20 PRD criteria, 15 live threat/operations cases and ten explicit UI journeys
+must be retained. See [the release acceptance procedure](../../../docs/execution/RELEASE_ACCEPTANCE.md)
+for exact journey steps and the eleven-category shared USD 5 cost ledger.
+A missing/non-live budget stays pending as COHORT-BUDGET; unknown effects retain
+positive reservations and cumulative cost cannot reset between days or sessions.
 
 Deployment provenance binds the Hosting, API, worker and SAM commit SHA to the
 combined candidate. All three image digests use `sha256:` plus 64 lowercase hex

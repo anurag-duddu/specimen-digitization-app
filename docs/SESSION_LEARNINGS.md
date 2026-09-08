@@ -492,3 +492,39 @@ If any answer is no or unknown, retain the item and record the exact blocker.
 - Durable learnings: A shutdown timer must not extend failed startup lifetime. Import/version smoke does not test actual checkpoint loading; the pinned Hub SDK needed explicit local_files_only even with offline HTTP mode. Working-tree mounted source is component evidence, not an immutable release image. Report model timing and numerical differences rather than expanding deadlines or calling detections ground truth. SAM's64-mask bound and default worker160k token reservations differ: only four full label pairs fit that default. A uniform per-stage cost includes SAM and can overreserve differently priced routes; lower hypothetical input-token estimates are not enforceable provider constraints.
 - Failed approaches: Initial Git/uv/Docker sandbox boundaries required approval and were not bypassed. First local container script omitted PYTHONPATH and exited before model/image access. Corrected import exposed the SDK offline tree-request failure; the implemented repair then ran actual inference. No provider-specific lower image/token bound was established by inspected crop code and primary API docs. The positive SIGTERM control already exited around5s and was not presented as a fixed defect.
 - Remaining follow-ups: Coordinator/acceptance independently review `docs/execution/RELEASE_RUNTIME.md` and implementation; integrate generation cap and rebuild all three images at exact committed source. Freeze real ten cardinality, verify native SAM timing and tolerated mask variation, reconcile the fixed worker SQL endpoint with API configuration, approve complete sharedUSD5 all-cost packet and separate runtime/data contract, then prove actual Google auth/App Check, SQL/Storage and durable ten-source public journey. Preserve the separate real-model-integration checkout and its four untracked helper/report files. No manual deploy, cloud mutation, paid call, push, merge, archive or prune occurred here.
+
+
+## 2026-09-08 — Release acceptance journeys and shared cohort budget
+
+- Task `01a082b4-a9bc-7413-a3c5-5077dd5c3a9f`, branch
+  `codex/release-acceptance`, worktree `ac0d/specimen-digitization-app`, base
+  `61d82aed64816802cd6ac00ac11e307a30c2bd8e`. Scoped implementation/report commit
+  is recorded by the coordinator handoff; PR/production release: Not confirmed.
+- Extended the existing offline gate to 45 cases with ten required UI journeys,
+  seven requiring all ten specimens. Added one cumulative USD 5 budget ledger
+  across sessions/retries/days, eleven explicit cost categories, conservative
+  reserved/unknown effects and missing-evidence rejection. Still always emits
+  `release_accepted: false`; structural integrity cannot authenticate claims.
+- TDD: first actual red 31 failures, follow-up unknown-effect zero-reservation
+  red 1 failure; final scoped suite 92 passes. Canonical verify passed 816 Python
+  /26 skips, 120 Flutter/7 skips, analysis/security/hooks/release web build.
+  Logs `/tmp/specimen-ac0d-acceptance-red.log`,
+  `/tmp/specimen-ac0d-unknown-budget-red.log`,
+  `/tmp/specimen-ac0d-acceptance-final.log`,
+  `/tmp/specimen-ac0d-canonical-20260908.log`. Staged new files received hooks.
+- Executed local ASGI/SQLite probe 24 checks plus separate API process/Flutter
+  HTTP journey 1 test without skips. Public browser independently showed API
+  not configured/collection connection required. Real sign-in, frozen ten,
+  production persistence/processing and live acceptance remain Not confirmed.
+- Independent runtime review: clean 7471 at `6a9420c8`, implementation `87117c2`;
+  29 lifecycle/offline tests passed, no actionable scoped finding. Real local
+  model timing >120 seconds remains a launch gate; no new image/model call.
+- Failed approaches: initial uv cache EPERM ran no tests; approved retry ran
+  the actual red. Browser creation took about 29 minutes. Temporary HTTP parser
+  initially assumed all JSON events were objects; corrected and rerun green.
+  These are not acceptance passes. No private data/identities/receipts in Git,
+  no cloud write, paid call, push, merge, deployment or pruning.
+- Reusable lesson: preserve distinct real/live evidence states, full denominator
+  and unresolved cost liabilities. User approval is now present for protected
+  runtime/data amendment and bounded setup; execution qualification remains.
+  Coordinator owns independent harness review and integrated release.
