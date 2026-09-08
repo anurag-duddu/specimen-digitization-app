@@ -283,3 +283,54 @@ This is a frozen intermediate candidate for independent combined QA. Published
 policy/runtime/risk/observation metadata/legacy comparison/classifier follow-ups
 remain pending; neither this checkpoint nor its synthetic tests closes external
 quality, production, device or full-P0 gates. No push or deployment occurred.
+
+## Runtime backend integration checkpoint
+
+Runtime originals 64c5420, 51fb6f6, c892e0e, fd72c33, a45643f and b60d9f2
+integrated as be60a3d, cddc041, 296edea, 852c734, 1da585c and 5ed2224.
+Scanner 42dd95a was already present and was not duplicated. Backend source,
+tests, data and dependency files matched b60d9f2 exactly. The additive runtime
+fixture remains 410255 bytes with SHA-256
+7e44c24bb0d0858aafd69cee665606e9ee6ec739cac023191ab753440a4aaaaf.
+
+Canonical verification at 5ed2224 passed 351 Python tests with 26 gated skips,
+64 Flutter tests with six live skips, analysis, scanners and web build. Log:
+/tmp/specimen-wave2-runtime-core-canonical.log. This predates the runtime UI
+follow-up and does not imply the skipped integrations passed.
+
+The first fresh broad SQL run passed 70 tests and exposed one stale numeric-risk
+assertion. Reviewed owner correction 25bac56 integrated as 778e0aa: unfiltered
+search must retain an unmeasured NULL risk, while numeric ranges exclude it.
+No runtime/filter or fixture change was made. Backend parity now matches
+25bac56. Original evidence: /tmp/specimen-wave2-runtime-sql.log.
+The corrected rerun passed that assertion but encountered an existing fixed demo
+fixture duplicate in the reused database (70 passed, one failed); evidence:
+/tmp/specimen-wave2-runtime-sql-corrected.log. A new isolated database is required
+for the conclusive broad rerun. Neither result is represented as a full pass.
+
+Independent graph review 9405374 integrated as 2b8bc70, and declaration review
+ec3da7c integrated as 6834737. Their scoped evidence remains distinct from this
+later runtime candidate. Runtime UI integration and independent combined review
+remain pending. Institutional policy/quality, approved live inference, production
+runtime/IAM/restore, native device and release gates remain open.
+
+## Combined runtime candidate
+
+Flutter 06f7616 integrated as ee4bec83715bf262deb9c7bff4598ad9211ddd44.
+Flutter files exactly match the owner checkpoint; backend files exactly match
+25bac56. The subsequent fresh SQL database run passed all 71 tests in 85.24s:
+/tmp/specimen-wave2-runtime-sql-fresh.log. This resolves the stale assertion and
+the reused-database setup failure above without weakening runtime constraints.
+
+Actual Flutter live_runtime_test.dart passed against this integration code and
+independent copies of retained synthetic state. It verified profile revisions
+20/40, distinct exact policy pins and component weights, NULL specimen/label/field
+composites and queue risk, and exact captured observation telemetry at revision21.
+Log: /tmp/specimen-wave2-runtime-live.log. State:
+/tmp/specimen-integration-runtime-ee4bec8; helper:
+/tmp/serve_integration_runtime.py. This was read-only HTTP reconstruction;
+hard-child execution evidence comes from the runtime SQL/SQLite tests, not these
+readback adapters. No live provider call or institutional acceptance is claimed.
+
+Final combined canonical and independent runtime QA remain pending at this
+documentation checkpoint. Wave2 remains unpushed; first repair PR3 is preserved.
