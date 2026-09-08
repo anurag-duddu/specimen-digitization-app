@@ -141,3 +141,74 @@ at this checkpoint. Legacy V1/V2/null checksum rollout, institutional semantics,
 provider/device and production approvals remain separate gates. GCS byte reads
 are bounded; total GCS authentication/stream wall-clock time is not established.
 No push, deployment, cloud mutation or paid inference occurred.
+
+## Frozen combined codec checkpoint
+
+Flutter f10eb79 is integrated as906e1348e71a0e800bfb260fa1125d67239b0e0e.
+Empty diffs confirm backend tree parity withd6be7a0 and complete Flutter tree
+parity withf10eb79. Existing scanner5868705 was not duplicated. Both codec
+fixture copies remain SHA2568dc736071fc530260097279cee0a09fab35a7c67420ef2b3dcf7271fee673e7d.
+Canonical passed243 Python/23 optional skips and54 Flutter/four opt-in live
+skips, plus analysis/scanners/web. Log: /tmp/specimen-wave2-codec-combined-canonical.log.
+
+The actual Flutter live_codec_test.dart passed against a fresh local codec API
+with pinned optional extras and the explicit local memory-enforcement exception.
+Specimen cc3502a9-fedc-5ea1-b893-4f73532034c4 reached review at revision20;
+ROI correction returned revision23 with the same bounds, quarter-turn1 and exact
+source digest. Test verified original bytes,64x96 decoded HEIF primary basis,
+derivative SHA and a fresh authenticated repository reopening retained evidence.
+Log: /tmp/specimen-wave2-combined-codec-live.log. State retained at
+/tmp/specimen-combined-codec-906e134; own8123 server stopped.
+
+Independent QA received this exact frozen combined SHA for hardening and actual
+HEIC browser verification. Subsequent graph/TRN work is excluded. This checkpoint
+is local and unpushed; production memory isolation and rollout gates remain open.
+
+## Graph follow-up and open verification failures
+
+Graph core0fc9cd0 integrated asa13ba6c with exact backend source/test/data tree
+parity; frozen response fixture/generator d78a45e integrated asf1a87b8. Scanner
+d77038b was already present and not duplicated. This is separate from codec
+QA's frozen906e134. Canonical passed253 Python/24 optional skips,54 Flutter/four
+live skips, analysis/scanners/web; /tmp/specimen-wave2-graph-core-canonical.log.
+Client large-workspace recovery is not yet integrated.
+
+The combined SQL graph/history/application/restart run FAILED:17 passed, one
+failed at test_real_sql_adapter_workflow_cas_and_reconstruction. Its unconfigured
+fresh repository list traversed a graph row retained by another test in their
+shared synthetic scope; graph_blobs was None, so integrity failed closed. Owner
+is repairing test scope/store configuration, not suppressing integrity. Preserve
+/tmp/specimen-wave2-graph-sql-http.log. Owned5589/9539 stopped; retained cluster
+/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.dTg9if.
+
+Independently, QA found and deterministically reproduced a real LocalBlobs.put
+publication race on frozen906e134: an identical concurrent put can see the newly
+created final pathname before bytes are written and return409 Immutable blob
+content mismatch. Prior passing concurrency runs do not close this intermittent
+failure. QA log /tmp/specimen-qa-906e134-sql.log and deterministic harness
+/tmp/specimen-hardening-blob-race.py are retained. Backend owns a minimal atomic
+publication repair and repeated multiprocess/HTTP SQL verification. Same-key
+completion replay passed; changed-key409 was intentional and is not a defect.
+No hardening acceptance or push is authorized while the real race remains open.
+
+## Atomic publication and graph fixture repairs
+
+38fa32f integrated as8416892; independent integration found duplicate empty
+blob regression, fixed by ownerc8001bb integrated as96caa27. Both use private
+fully synced temporary files and atomic create-only hardlinks; hash checks stay
+strict. Graph SQL fixture isolation3aca16f integrated asb23a9d0. Its initial
+canonical run attempted SQL seeding before the opt-in guard; owner3bd7f64,
+integrated ascd90ade, restores the guard before any setup network call.
+
+Fresh SQL combined graph/publication/limits/concurrency/authority/worker/history/
+upload/reconstruction/restart suite passed48 tests in45.20s, resolving the prior
+combined graph fixture failure. Log:/tmp/specimen-wave2-graph-atomic-sql.log.
+Owned5589/9539 services stopped; cluster retained at
+/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.GRJDIp.
+Canonical oncd90ade passed258 Python/24 optional skips,54 Flutter/four live skips,
+analysis/scanners/web. Log:/tmp/specimen-wave2-graph-atomic-final-canonical.log.
+Backend src/tests/data/dependency tree exactly matches owner3bd7f64.
+
+QA is independently verifying the minimal906e134+38fa32f+c8001bb repair candidate;
+this local combined pass alone does not close its publication-race finding.
+Client large-graph fallback remains pending, as does TRN declaration work.

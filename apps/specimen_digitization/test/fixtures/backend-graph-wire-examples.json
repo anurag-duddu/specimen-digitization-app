@@ -1,0 +1,254 @@
+{
+  "fixture_kind": "synthetic_actual_http_capture",
+  "workspace_get": {
+    "status": 413,
+    "body": {
+      "error": {
+        "code": "workspace_artifact_required",
+        "category": "policy",
+        "message": "Workspace requires complete artifact retrieval",
+        "retryable": false,
+        "request_id": "643a982e-5410-45f6-9920-6e2bf0267284",
+        "details": {
+          "revision": 57,
+          "record_version_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93:57",
+          "summary_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+          "artifact_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/748c44fa-b2f2-5c32-80cd-2cdb5269aa45/active-graph?revision=57",
+          "mutation_committed": false,
+          "workspace_max_bytes": 4194304,
+          "graph_max_bytes": 16777216,
+          "artifact_sha256": "2596f46aad99d4fbb74aa9463588623beb99f2a2dcc8451351099d3393e3d957",
+          "artifact_size_bytes": 2605715
+        }
+      }
+    }
+  },
+  "summary_get": {
+    "status": 200,
+    "body": {
+      "specimen_id": "748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+      "asset_id": "d3428daf-62e9-5116-b645-6f1491dc9245",
+      "collection_id": "00000000-0000-4000-8000-000000000002",
+      "organization_id": "00000000-0000-4000-8000-000000000001",
+      "revision": 57,
+      "batch_id": "2d1f9523-9c08-5efd-b9da-f204f9b3d398",
+      "filename": "synthetic.png",
+      "created_at": "2026-09-08T07:52:27.606254+00:00",
+      "domain_created_at": "2026-09-08T07:52:27.606254+00:00",
+      "active_run_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93",
+      "record_version_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93:57",
+      "status": "completed",
+      "stage": "finalized",
+      "disposition": "needs_human_review",
+      "reason_codes": [
+        "human_approval_required"
+      ],
+      "blocker": null,
+      "profile_id": "zoology_insects",
+      "profile_version": "synthetic-v1",
+      "synthetic": true,
+      "available_actions": [
+        "retry",
+        "resume",
+        "pause",
+        "cancel",
+        "reprocess",
+        "field",
+        "transcription",
+        "coverage",
+        "approve",
+        "classification",
+        "regions",
+        "taxonomy_resolution",
+        "authority_resolution",
+        "capability_defer"
+      ],
+      "risk": 0,
+      "risk_calibrated": false,
+      "uploader_id": "synthetic-reviewer"
+    }
+  },
+  "artifact_headers": {
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "x-specimen-revision": "57",
+    "x-content-sha256": "2596f46aad99d4fbb74aa9463588623beb99f2a2dcc8451351099d3393e3d957",
+    "content-length": "2605715",
+    "content-type": "application/json"
+  },
+  "artifact_envelope_keys": [
+    "contract_version",
+    "scope",
+    "specimen_id",
+    "revision",
+    "run"
+  ],
+  "artifact_run_keys": [
+    "authority_unresolved",
+    "authority_plan",
+    "authority_receipts",
+    "authority_results",
+    "authority_usage",
+    "harness_spec",
+    "phase_results",
+    "circuit",
+    "segmentation",
+    "reading_metadata",
+    "disagreements",
+    "review_risk",
+    "classification",
+    "classification_raw_sha256",
+    "classification_selection",
+    "profile_snapshot",
+    "profile_registry_version",
+    "usage",
+    "dependencies",
+    "id",
+    "profile",
+    "stage",
+    "completed_steps",
+    "regions",
+    "observations",
+    "transcripts",
+    "evidence",
+    "fields",
+    "lookups",
+    "coverage_confirmed",
+    "human_approved",
+    "disposition",
+    "reasons",
+    "blocker",
+    "attempts",
+    "capability_reason",
+    "retry_eligibility",
+    "next_retry_at",
+    "dead_letter",
+    "lease_until",
+    "created_at"
+  ],
+  "committed_mutation": {
+    "request": {
+      "kind": "coverage",
+      "after": {
+        "confirmed": true
+      },
+      "reason": "Synthetic large artifact coverage review",
+      "expected_revision": 57,
+      "base_record_version_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93:57"
+    },
+    "response": {
+      "status": 413,
+      "body": {
+        "error": {
+          "code": "workspace_artifact_required",
+          "category": "policy",
+          "message": "Workspace requires complete artifact retrieval",
+          "retryable": false,
+          "request_id": "9c3f1e7f-54a8-4b68-8048-cd7339f4c534",
+          "details": {
+            "revision": 58,
+            "record_version_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93:58",
+            "summary_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+            "artifact_url": "/v1/organizations/00000000-0000-4000-8000-000000000001/specimens/748c44fa-b2f2-5c32-80cd-2cdb5269aa45/active-graph?revision=58",
+            "mutation_committed": true,
+            "workspace_max_bytes": 4194304,
+            "graph_max_bytes": 16777216,
+            "artifact_sha256": "02bcb60369245d1332c44cb2d542ccb5010de21d062f4a424b6f083c672a5ac4",
+            "artifact_size_bytes": 2605971
+          }
+        }
+      }
+    }
+  },
+  "summary_after_mutation": {
+    "specimen_id": "748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+    "asset_id": "d3428daf-62e9-5116-b645-6f1491dc9245",
+    "collection_id": "00000000-0000-4000-8000-000000000002",
+    "organization_id": "00000000-0000-4000-8000-000000000001",
+    "revision": 58,
+    "batch_id": "2d1f9523-9c08-5efd-b9da-f204f9b3d398",
+    "filename": "synthetic.png",
+    "created_at": "2026-09-08T07:52:27.606254+00:00",
+    "domain_created_at": "2026-09-08T07:52:27.606254+00:00",
+    "active_run_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93",
+    "record_version_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93:58",
+    "status": "completed",
+    "stage": "finalized",
+    "disposition": "needs_human_review",
+    "reason_codes": [
+      "human_approval_required"
+    ],
+    "blocker": null,
+    "profile_id": "zoology_insects",
+    "profile_version": "synthetic-v1",
+    "synthetic": true,
+    "available_actions": [
+      "retry",
+      "resume",
+      "pause",
+      "cancel",
+      "reprocess",
+      "field",
+      "transcription",
+      "coverage",
+      "approve",
+      "classification",
+      "regions",
+      "taxonomy_resolution",
+      "authority_resolution",
+      "capability_defer"
+    ],
+    "risk": 10,
+    "risk_calibrated": false,
+    "uploader_id": "synthetic-reviewer"
+  },
+  "cancel": {
+    "request": {
+      "action": "cancel",
+      "reason": "Synthetic oversized workspace recovery",
+      "expected_revision": 58
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "specimen_id": "748c44fa-b2f2-5c32-80cd-2cdb5269aa45",
+        "asset_id": "d3428daf-62e9-5116-b645-6f1491dc9245",
+        "collection_id": "00000000-0000-4000-8000-000000000002",
+        "organization_id": "00000000-0000-4000-8000-000000000001",
+        "revision": 59,
+        "batch_id": "2d1f9523-9c08-5efd-b9da-f204f9b3d398",
+        "filename": "synthetic.png",
+        "created_at": "2026-09-08T07:52:27.606254+00:00",
+        "domain_created_at": "2026-09-08T07:52:27.606254+00:00",
+        "active_run_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93",
+        "record_version_id": "8f1b7f2d-1598-4fe4-b9fa-ebe6f9de9b93:59",
+        "status": "cancelled",
+        "stage": "cancelled",
+        "disposition": null,
+        "reason_codes": [
+          "human_approval_required"
+        ],
+        "blocker": null,
+        "profile_id": "zoology_insects",
+        "profile_version": "synthetic-v1",
+        "synthetic": true,
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "authority_resolution",
+          "capability_defer"
+        ]
+      }
+    }
+  }
+}

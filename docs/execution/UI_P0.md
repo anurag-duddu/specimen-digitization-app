@@ -203,3 +203,69 @@ HTTP log `/tmp/flutter-codec-live.log`. Final browser artifacts:
 revision 37, explicit decoded-source accessible label and coordinate limitations).
 The local web 3002 lease is released after verification; API 8016 remains owned
 by backend and is released by notification, not by killing another task's process.
+
+### Large-record recovery and committed-mutation receipts
+
+The frozen additive `backend-graph-wire-examples.json` was copied unchanged
+(SHA-256 `8e9238d5582fabc4eea8265740a6bb19df58e548c7eb834644199d9c8b779715`).
+Scanner dependency `d77038b` is carried as `3f6fee4`; integration already owns it.
+No multi-megabyte payload is committed as a fixture.
+
+A typed `workspace_artifact_required` response retains its revision and record
+version. The UI loads an independently authenticated, matching current summary
+and switches to an explicit read-only complete-evidence view. Summary failure or
+revision drift disables actions and requests a refresh. A mutation receipt with
+`mutation_committed=true` returns the saved revision and a visible saved notice;
+the workspace removes its pending mutation key instead of presenting the action
+as failed or automatically repeating it. Field edits and approval are intentionally
+unavailable in this fallback. Authorized current run controls and retained history
+remain reachable. This is bounded recovery, not unlimited graph support or a
+replacement for the ordinary field-review workspace.
+
+Artifact URLs from responses are never followed. Retrieval constructs the scoped
+specimen endpoint, pins revision, reauthenticates, caps the complete stream at
+16 MiB and checks retained SHA-256, size, response digest/revision headers,
+contract, organization, collection, specimen and run identity before display.
+The complete verified graph is navigable by section and 12,000 UTF-16-unit text
+pages, with surrogate-safe boundaries. A fixed-height selectable text area keeps
+controls nearby and exposes each complete page to accessibility tools. No partial
+or tampered payload is represented as complete. Historical artifact views retain
+the requested revision and grant no current mutation actions.
+
+Actual Flutter HTTP proof: immutable backend `e18570f`, fresh synthetic SQLite
+state `/tmp/specimen-flutter-graph-state-e18570f`, loopback API 8018. The generated
+multi-label record has a 2 MiB observation and a 2,605,715-byte complete artifact;
+its projected workspace exceeds 4 MiB. Specimen
+`748c44fa-b2f2-5c32-80cd-2cdb5269aa45`: GET fallback at revision 57, coverage
+mutation committed via 413 at 58, explicit cancel at 59. The stale revision was
+rejected, complete historical graph 57 remained identical, and no mutation was
+replayed. Log `/tmp/flutter-graph-live.log`; gated reproducible client test
+`test/live_graph_test.dart` requires an explicitly seeded large synthetic record.
+
+Browser testing discovered that cross-origin reads need the verification headers
+exposed. Backend owner supplied original `7dc87cc` (exact two exposed headers,
+allowed origins unchanged), carried only in the detached backend test checkout
+as `99509385764ee4f0c5829d6f98a78c9b32e24c4e`. After restarting the same persisted
+state through canonical `create_app(origins=...)`, Chrome verified and opened the
+complete graph using those headers. The initial test-only CORS wrapper was no
+longer used. Integration must include the backend CORS dependency with this UI.
+No deployed environment or institutional data was involved.
+
+Four focused wire/widget tests cover exact captured receipts, summary access
+failure after commit, authenticated constructed paths, digest/header/size/stream
+bounds, historical pinning, explicit lazy retrieval, no approval action, bounded
+text pages and complete page accessibility. Final canonical verification and
+browser artifact paths are recorded below. Independent combined QA remains open;
+TRN-006 human declaration mutations await their separate frozen HTTP fixture.
+
+Final graph gates passed: 81 Python tests (3 optional skips), 58 Flutter tests
+(5 separately gated live tests skipped), fatal-info analysis, both secret scanners,
+web release build and Wasm dry run. Log `/tmp/flutter-graph-final-gates.log`.
+The separate actual HTTP graph test passed in `/tmp/flutter-graph-live.log`.
+Final Chrome evidence `/tmp/flutter-graph-evidence/graph-page.png` and
+`graph-page-ax.txt` shows page 2 of 192, its complete 12,000-character text in AX,
+and nearby run controls. `history-ax.txt` records reachable history pagination.
+HTTP tests separately verify complete historical artifact retrieval and stale CAS.
+No browser viewport override or QA-owned port was changed. Both temporary graph
+API 8018 and Flutter web 3002 were stopped after verification; persisted synthetic
+state and immutable backend checkout remain available for independent reproduction.
