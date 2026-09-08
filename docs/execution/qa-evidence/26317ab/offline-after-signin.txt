@@ -1,0 +1,22 @@
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- button "Authorized collection Insects"
+- generic: Local synthetic reviewer
+- generic: The local synthetic server is unavailable. Reconnect the demo server and refresh. Collection permissions could not be checked.
+- button "Retry / refresh"
+- button "Queue Tab 1 of 2" [active]
+- button "Intake Tab 2 of 2"
+- generic: Collection queue
+- generic: Review the evidence. Resolve uncertainty. Keep every decision traceable.
+- textbox "Search specimens"
+- checkbox "All records" [checked]
+- checkbox "Needs human review"
+- checkbox "Cleared"
+- checkbox "Deferred"
+- checkbox "Processing blocked"
+- checkbox "Processing"
+- button "Filters (0)"
+- generic: 1 matching records loaded
+- 'button "synthetic.png needs human review Profile synthetic-v2-runtime-rules · 2026-09-08T14:00:58.707201+00:00 Risk: Unmeasured · Uncalibrated"'

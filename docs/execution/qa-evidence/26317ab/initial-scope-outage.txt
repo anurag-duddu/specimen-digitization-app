@@ -1,0 +1,10 @@
+- heading "Specimen Digitization" [level=2]
+- button "Refresh collection"
+- button "Sign out"
+- generic: SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+- generic: The local synthetic server is unavailable. Reconnect the demo server and refresh. Collection permissions could not be checked.
+- button "Retry / refresh"
+- button "Queue Tab 1 of 2"
+- button "Intake Tab 2 of 2"
+- generic: Collection access could not be verified. Reconnect or sign in again, then retry.
+- button "Check access again"

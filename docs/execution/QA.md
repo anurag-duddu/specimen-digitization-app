@@ -1059,3 +1059,64 @@ closed for P0-04/P0-15. No independently identified local blocker remains in thi
 scoped pass. Every external/device/quality/institutional/IAM/restore/configured-plane
 and production/release gate remains unaccepted; this is not overall P0 or release
 acceptance. QA made no product fixes, pushed nothing and deployed nothing.
+
+## 2026-09-08 — Independent local authentication and outage recheck
+
+Auth target `26317ab46d35eb2a8407a9ae5b45c15f531182c8` contains owner a8a999d.
+QA imported that exact change and then runner target
+`1d292e0e2f9292037db8f30c61625002d6c2363a`; product trees match the runner
+source exactly. QA resolved only the imported HANDOFF.md ancestry conflict to
+its exact owner version and made no product fixes.
+
+**The bounded authentication/outage checks pass.** Six focused Flutter tests
+(including actual local HTTP session validation) and fatal-info analysis passed.
+Four runner guard tests independently passed. Read-only runner inspection covered
+loopback binding, retained private token, existing Firebase configuration protection,
+owned launchd job checks, idempotent start, retained state on stop, and the local
+PWA-none build setting. The full canonical 355 Python / 26 gated and 76 Flutter /
+7 live-gated result is integration-reported, not independently rerun in this pass.
+
+Actual browser checks used a fresh QA-owned synthetic API on port 8128 and Flutter
+web on port 3004, in separate tab 8. The user's tab 1 and ports 8000/3000 were not
+used for outage injection or interrupted by QA.
+
+- A wrong fixture token stayed on sign-in with an explicit rejection.
+- A correct token with the API stopped stayed on sign-in with an explicit
+  unavailable message and "You are not signed in."
+- A correct token with the API running opened the one-record queue and Intake
+  file controls.
+- Stopping the API after sign-in and refreshing showed unavailable / permissions
+  could not be checked. It retained the prior queue without false role denial.
+- A valid session with a controlled collection-endpoint 503 showed "Collection
+  access could not be verified", never "No collection access". Removing the
+  outage and selecting "Check access again" restored the queue without a new login.
+- Synthetic labeling remained explicit in every tested login, queue, Intake,
+  outage and recovery state. Sign-out worked, including during the outage.
+
+Full screenshots and snapshots: `/tmp/specimen-qa-auth-browser`. Committed compact
+snapshots, results and the controlled-outage helper: `qa-evidence/26317ab/`.
+Focused logs: `/tmp/specimen-qa-auth-focused.log` and
+`/tmp/specimen-qa-auth-analyze.log`. QA signed out, closed only tab 8, stopped only
+its owned ports 8128/3004 and removed its byte-identical temporary CI Firebase stub.
+
+Independent read-only user-service verification found both launchd jobs running
+with keepalive enabled, authorized API session HTTP 200 in synthetic mode, and
+served main.dart.js bytes matching the public local-review.json marker for 26317ab.
+Both marker and JavaScript responses carried no-store headers. This establishes
+supervision beyond the launching task/PTY within the current login session;
+reboot/login installation, backup and production operation are not claimed.
+
+**Cache/lifecycle attribution:** the parent observed an old form on the first
+normal reload and the fixed form on the second, then verified wrong-token rejection
+in the user tab. Integration independently exercised the new runner's isolated
+start/status/idempotent-start/stop lifecycle and an empty service-worker artifact
+from `--pwa-strategy=none`. At this evidence checkpoint, the user service still
+serves the earlier auth artifact; integration is preparing its migration to the
+committed runner and cache setting. That final switch requires a separate served
+marker and supervisor readback. The earlier hash/supervisor capture is retained as
+`durable-before-final-migration.json` and must not be mistaken for that later check.
+
+No independently identified auth/outage blocker remains in this bounded pass.
+The all20 map and its external/device/quality/institutional/IAM/restore/configured
+processing-plane and production release gates remain unchanged and unaccepted.
+No push, merge, cloud change, paid inference or deployment was performed by QA.
