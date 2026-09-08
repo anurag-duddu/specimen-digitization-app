@@ -156,7 +156,7 @@ def test_poison_record_and_membership_failure_do_not_starve_healthy_work(tmp_pat
 def test_budget_exhaustion_persists_before_adapter_effect(tmp_path, budget, blocker):
     repo, blobs, principal, items = setup(tmp_path)
     s = items[0]
-    s.run.completed_steps = ["pin_dependencies", "classify"]
+    s.run.completed_steps = ["pin_dependencies", "classify", "quality_check"]
     policy = s.run.profile.execution
     setattr(
         s.run.usage,
@@ -186,7 +186,7 @@ def test_unpriced_production_effect_is_not_treated_as_zero_cost(tmp_path):
     repo, blobs, principal, items = setup(tmp_path)
     s = items[0]
     s.run.profile.synthetic = False
-    s.run.completed_steps = ["pin_dependencies", "classify"]
+    s.run.completed_steps = ["pin_dependencies", "classify", "quality_check"]
     s = repo.save(principal, s, s.version, "cost-fixture", digest("cost"))
 
     class Forbidden(SyntheticAdapters):
@@ -208,7 +208,7 @@ def test_active_lease_prevents_duplicate_effect_and_late_completion_loses_cas(tm
 
     repo, blobs, principal, items = setup(tmp_path)
     s = items[0]
-    s.run.completed_steps = ["pin_dependencies", "classify"]
+    s.run.completed_steps = ["pin_dependencies", "classify", "quality_check"]
     s = repo.save(principal, s, s.version, "ready", digest("ready"))
     entered, release = threading.Event(), threading.Event()
     calls = []
@@ -242,7 +242,7 @@ def test_active_lease_prevents_duplicate_effect_and_late_completion_loses_cas(tm
 def test_crash_after_intent_never_automatically_repeats_unknown_effect(tmp_path):
     repo, blobs, principal, items = setup(tmp_path)
     s = items[0]
-    s.run.completed_steps = ["pin_dependencies", "classify"]
+    s.run.completed_steps = ["pin_dependencies", "classify", "quality_check"]
     s = repo.save(principal, s, s.version, "ready", digest("ready"))
 
     class Crash(SyntheticAdapters):
@@ -275,7 +275,7 @@ def test_crash_after_intent_never_automatically_repeats_unknown_effect(tmp_path)
 def test_external_deadline_discards_late_result_and_retains_reservation(tmp_path):
     repo, blobs, principal, items = setup(tmp_path)
     s = items[0]
-    s.run.completed_steps = ["pin_dependencies", "classify"]
+    s.run.completed_steps = ["pin_dependencies", "classify", "quality_check"]
     s = repo.save(principal, s, s.version, "ready", digest("ready"))
     timings = iter([0, s.run.profile.execution.external_timeout_seconds + 1])
     workflow = Workflow(
