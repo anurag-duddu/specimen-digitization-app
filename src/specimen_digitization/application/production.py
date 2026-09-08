@@ -14,7 +14,7 @@ from google.cloud import storage
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 
-from ..model_gateway import HuggingFaceModelGateway
+from ..model_gateway import HuggingFaceModelGateway, INITIAL_HUGGINGFACE_ROUTES
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, Specimen, WorkItem, WorkPage, now
@@ -134,6 +134,50 @@ class SqlConnectRepository:
             ),
         )["specimenSnapshot"]
         return self._snapshot(row)
+
+    def search(
+        self,
+        scope,
+        filters,
+        cutoff,
+        after_created=None,
+        after_id="",
+        limit=50,
+        include_sensitive=False,
+    ):
+        from .search import sql_item
+
+        mapping = {
+            "specimen_id": "specimenId",
+            "asset_id": "assetId",
+            "active_run_id": "activeRunId",
+            "batch_id": "batchId",
+            "uploader_id": "uploader",
+            "state": "status",
+            "stage": "stage",
+            "disposition": "disposition",
+            "profile_id": "profileId",
+            "profile_version": "profileVersion",
+            "reason_code": "reasonCode",
+            "blocker": "blocker",
+            "created_from": "createdFrom",
+            "created_before": "createdBefore",
+            "risk_min": "riskMin",
+            "risk_max": "riskMax",
+        }
+        variables = dict(
+            self.variables(scope),
+            cutoff=cutoff,
+            afterCreatedAt=after_created,
+            afterId=after_id,
+            limit=limit,
+            includeSensitive=include_sensitive,
+        )
+        variables.update(
+            {mapping[key]: value for key, value in filters.model_dump().items()}
+        )
+        rows = self.execute("SearchSpecimens", variables).get("items", [])
+        return [sql_item(row, scope) for row in rows]
 
     @staticmethod
     def _snapshot(row):
@@ -418,11 +462,18 @@ class ProductionAdapters:
     def __init__(self, blobs):
         self.blobs = blobs
         self.taxonomy = GbifTaxonomy(blobs)
+        from .authority_registry import AuthorityRegistry
+        from .parties import PartiesAdapter
+        from .geography import GeographyAdapter
+
+        registry = AuthorityRegistry(version="unconfigured")
+        self.authority_tools = {
+            "parties": PartiesAdapter(registry, blobs),
+            "geography": GeographyAdapter(registry, blobs),
+        }
+        self.authority_cost_reservations = {"geography": 0}
 
     def pin_dependencies(self, run):
-        gateway = HuggingFaceModelGateway(
-            timeout_seconds=run.profile.execution.external_timeout_seconds / 2
-        )
         inputs = CollectionPromptInputs(
             collection_profile_id=run.profile.id,
             collection_name="Insects",
@@ -434,8 +485,8 @@ class ProductionAdapters:
         }
         routes = {
             route: {
-                "model_id": gateway.route(route).model_id,
-                "provider": gateway.route(route).provider,
+                "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
+                "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
             }
             for route in run.profile.routes
         }
@@ -443,6 +494,10 @@ class ProductionAdapters:
             "prompts": prompts,
             "routes": routes,
             "adapter_version": "production-v2",
+            "segmentation": {
+                "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
+                "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
+            },
             "policy": run.profile.execution.model_dump(mode="json"),
         }
 
@@ -450,6 +505,13 @@ class ProductionAdapters:
         # A deployment-specific SAM3 endpoint must implement the reviewed adapter.
         # No rectangle substitution, no hidden Hub download or paid execution.
         endpoint = os.getenv("SPECIMEN_SAM3_ENDPOINT")
+        if specimen.run.dependencies.get("segmentation") != {
+            "endpoint": endpoint,
+            "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
+        }:
+            raise OperationalBlock(
+                "segmentation_configuration_changed_requires_new_run"
+            )
         if not endpoint:
             raise OperationalBlock(
                 "sam3_serving_contract_not_configured_use_reviewed_regions"

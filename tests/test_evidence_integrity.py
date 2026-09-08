@@ -128,6 +128,7 @@ def test_same_integrity_gate_checks_production_crop_lineage(tmp_path):
     )
     blobs = LocalBlobs(tmp_path / "blobs")
     specimen.run.profile.synthetic = False
+    specimen.run.profile_snapshot = {}  # Exercise production crop hashing without a published fixture profile.
     for observation in specimen.run.observations:
         region = next(r for r in specimen.run.regions if r.id == observation.region_id)
         observation.input_sha256 = hashlib.sha256(

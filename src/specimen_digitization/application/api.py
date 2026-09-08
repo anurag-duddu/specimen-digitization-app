@@ -30,6 +30,11 @@ from .domain import (
     Specimen,
     uid,
 )
+from .collection_runtime import application_registry
+from .image_quality import ImageLimits, orientation_view
+from .classification import ManualSelection
+from .evidence_runtime import phase_artifact, refresh_review_evidence, apply_phase_gate
+from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
 from .reliability import has_active_lease
@@ -108,6 +113,7 @@ class RegionsInput(RevisionInput):
 
 class ClassificationInput(RevisionInput):
     collection_id: str
+    profile_collection_id: str = "insects"
 
 
 class ActionInput(RevisionInput):
@@ -135,6 +141,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "batch_id": specimen.batch_id,
         "filename": specimen.asset.filename,
         "created_at": specimen.created_at,
+        "domain_created_at": specimen.created_at,
         "active_run_id": run.id,
         "record_version_id": f"{run.id}:{specimen.version}",
         "status": status,
@@ -159,6 +166,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
                 "classification",
                 "regions",
                 "taxonomy_resolution",
+                "authority_resolution",
                 "capability_defer",
             ]
             if role in {"reviewer", "manager", "admin"}
@@ -229,6 +237,11 @@ def create_app(
     identity_verifier=None,
     memberships=None,
     origins: list[str] | None = None,
+    profile_registry=None,
+    classifier=None,
+    authority_tools=None,
+    authority_cost_reservations=None,
+    codec_policy=None,
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -253,7 +266,16 @@ def create_app(
                 "X-Firebase-AppCheck",
             ],
         )
-    workflow = Workflow(repository, blobs, adapters)
+    registry = profile_registry or application_registry(mode == "synthetic")
+    workflow = Workflow(
+        repository,
+        blobs,
+        adapters,
+        profile_registry=registry,
+        classifier=classifier,
+        authority_tools=authority_tools,
+        authority_cost_reservations=authority_cost_reservations,
+    )
 
     def process_background(p, ident):
         actor_uid.set(p.user_id)
@@ -307,7 +329,7 @@ def create_app(
                 "input",
                 str(exc)[:200],
             )
-        elif isinstance(exc, OperationalBlock):
+        elif isinstance(exc, (OperationalBlock, EvidenceIntegrityError)):
             message = str(exc)
         if isinstance(exc, SnapshotTooLarge):
             status, code, category = 413, "snapshot_too_large", "policy"
@@ -365,6 +387,7 @@ def create_app(
         PermissionError,
         ValueError,
         OperationalBlock,
+        EvidenceIntegrityError,
         SnapshotTooLarge,
     ):
         app.add_exception_handler(handled, errors)
@@ -479,8 +502,10 @@ def create_app(
                     "collection_id": m["collection_id"],
                     "display_name": "Insects",
                     "role": m["role"],
-                    "profiles": [
-                        Profile(synthetic=mode == "synthetic").model_dump(mode="json")
+                    "profiles": [p.model_dump(mode="json") for p in registry.profiles],
+                    "profile_registry_version": registry.version,
+                    "classification_nodes": [
+                        node.model_dump(mode="json") for node in registry.nodes
                     ],
                 }
                 for m in member_rows(user)
@@ -488,6 +513,36 @@ def create_app(
             ],
             "next_cursor": None,
         }
+
+    @app.post(prefix + "/images/preflight")
+    async def image_preflight(
+        organization_id: str,
+        collection_id: str,
+        request: Request,
+        user=Depends(identity),
+    ):
+        from .image_codecs import CodecPolicy
+        from .image_preflight import preflight_image
+        from starlette.concurrency import run_in_threadpool
+
+        principal(user, organization_id, collection_id, write=True)
+        policy = codec_policy or CodecPolicy()
+        content = bytearray()
+        async for part in request.stream():
+            if len(content) + len(part) > policy.limits.max_bytes:
+                raise ValueError("Preflight image exceeds configured byte limit")
+            content.extend(part)
+        if not content:
+            raise ValueError("Preflight image is empty")
+        result = await run_in_threadpool(
+            preflight_image,
+            bytes(content),
+            request.headers.get("Content-Type", "application/octet-stream").split(";")[
+                0
+            ],
+            policy,
+        )
+        return result.model_dump(mode="json")
 
     @app.post(prefix + "/batches")
     def create_batch(
@@ -682,6 +737,10 @@ def create_app(
                 image.load()
         except (OSError, SyntaxError, EOFError, Image.DecompressionBombError) as exc:
             raise ValueError("Invalid or truncated image content") from exc
+        derivative, provenance = orientation_view(
+            content, ImageLimits(allowed_formats=("JPEG", "PNG", "TIFF"))
+        )
+        view = dict(provenance.model_dump(mode="json"), blob_ref=blobs.put(derivative))
         profile = Profile(
             synthetic=mode == "synthetic",
             institutional_policy_approved=mode == "synthetic",
@@ -694,6 +753,7 @@ def create_app(
             run=Run(profile=profile),
             asset=Asset(
                 id=doc["asset_id"],
+                view_derivative=view,
                 sha256=doc["sha256"],
                 blob_ref=blobs.put(content),
                 media_type=actual_type,
@@ -771,44 +831,256 @@ def create_app(
             raise Conflict("Historical run reference mismatch")
         if run_sha256 is not None and retained_info["run_sha256"] != run_sha256:
             raise Conflict("Historical run digest mismatch")
-        return workspace(retained, p.role)
+        return render_workspace(retained, p)
+
+    @app.get(prefix + "/specimens/{specimen_id}/phases/{phase}")
+    def phase_output(
+        organization_id: str,
+        specimen_id: str,
+        phase: str,
+        revision: int | None = None,
+        user=Depends(identity),
+    ):
+        p, current = history_access(user, organization_id, specimen_id)
+        selected = (
+            repository.version(p.scope, specimen_id, revision)
+            if revision is not None
+            else current
+        )
+        if phase not in selected.run.phase_results:
+            raise Missing(phase)
+        return phase_artifact(selected, phase, blobs).model_dump(mode="json")
+
+    def artifact_specimen(user, organization_id, specimen_id, revision):
+        p, current = history_access(user, organization_id, specimen_id)
+        return (
+            repository.version(p.scope, specimen_id, revision)
+            if revision is not None
+            else current
+        )
+
+    def authority_metadata(selected, tool_id, field_key):
+        matches = [
+            m
+            for m in selected.run.authority_results.values()
+            if m["tool_id"] == tool_id
+            and (field_key is None or m["field_key"] == field_key)
+        ]
+        if not matches:
+            raise Missing(tool_id)
+        if len(matches) != 1:
+            raise ValueError(
+                "field_key is required to identify one retained authority result"
+            )
+        return matches[0]
+
+    @app.get(prefix + "/specimens/{specimen_id}/authority-results/{tool_id}")
+    def authority_output(
+        organization_id: str,
+        specimen_id: str,
+        tool_id: str,
+        revision: int | None = None,
+        field_key: str | None = None,
+        user=Depends(identity),
+    ):
+        selected = artifact_specimen(user, organization_id, specimen_id, revision)
+        metadata = authority_metadata(selected, tool_id, field_key)
+        return read_authority_result(metadata, blobs).model_dump(mode="json")
+
+    @app.get(prefix + "/specimens/{specimen_id}/authority-results/{tool_id}/raw")
+    def authority_raw(
+        organization_id: str,
+        specimen_id: str,
+        tool_id: str,
+        revision: int | None = None,
+        field_key: str | None = None,
+        user=Depends(identity),
+    ):
+        selected = artifact_specimen(user, organization_id, specimen_id, revision)
+        metadata = authority_metadata(selected, tool_id, field_key)
+        result = read_authority_result(metadata, blobs)
+        if not result.raw_ref or not result.response_sha256:
+            raise Missing("Authority response body unavailable")
+        content = read_artifact(
+            {"blob_ref": result.raw_ref, "sha256": result.response_sha256}, blobs
+        )
+        if len(content) > 1048576:
+            raise ValueError("Raw evidence exceeds the 1 MiB response limit")
+        return Response(
+            content,
+            media_type="text/plain",
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @app.get(prefix + "/specimens/{specimen_id}/observations/{observation_id}/raw")
+    def observation_raw(
+        organization_id: str,
+        specimen_id: str,
+        observation_id: str,
+        revision: int | None = None,
+        user=Depends(identity),
+    ):
+        selected = artifact_specimen(user, organization_id, specimen_id, revision)
+        observation = next(
+            (o for o in selected.run.observations if o.id == observation_id), None
+        )
+        if observation is None:
+            raise Missing(observation_id)
+        content = read_artifact(
+            {"blob_ref": observation.raw_ref, "sha256": observation.raw_sha256}, blobs
+        )
+        if len(content) > 1048576:
+            raise ValueError("Raw evidence exceeds the 1 MiB response limit")
+        return Response(
+            content,
+            media_type="text/plain",
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
+
+    @app.get(prefix + "/specimens/{specimen_id}/observations/{observation_id}/metadata")
+    def reading_metadata_output(
+        organization_id: str,
+        specimen_id: str,
+        observation_id: str,
+        revision: int | None = None,
+        user=Depends(identity),
+    ):
+        import json
+
+        selected = artifact_specimen(user, organization_id, specimen_id, revision)
+        metadata = selected.run.reading_metadata.get(observation_id)
+        if metadata is None:
+            raise Missing(observation_id)
+        return json.loads(read_artifact(metadata, blobs))
+
+    @app.get(prefix + "/specimens/{specimen_id}/disagreements/{region_id}")
+    def disagreement_output(
+        organization_id: str,
+        specimen_id: str,
+        region_id: str,
+        revision: int | None = None,
+        user=Depends(identity),
+    ):
+        import json
+
+        selected = artifact_specimen(user, organization_id, specimen_id, revision)
+        metadata = next(
+            (m for m in selected.run.disagreements if m["region_id"] == region_id), None
+        )
+        if metadata is None:
+            raise Missing(region_id)
+        return json.loads(read_artifact(metadata, blobs))
+
+    def search_metadata(
+        p, user, filters, cutoff=None, after_created=None, after_id="", limit=50
+    ):
+        from .domain import now
+
+        sensitive = any(
+            m["organization_id"] == p.scope.organization_id
+            and m["collection_id"] == p.scope.collection_id
+            and m.get("can_view_sensitive")
+            for m in member_rows(user)
+        )
+        return repository.search(
+            p.scope, filters, cutoff or now(), after_created, after_id, limit, sensitive
+        )
+
+    def render_workspace(specimen, p):
+        from .search import SearchFilters
+
+        result = workspace(specimen, p.role)
+        metadata = search_metadata(
+            p, p.user_id, SearchFilters(specimen_id=specimen.id), limit=1
+        )
+        if not metadata:
+            raise Missing(specimen.id)
+        result["created_at"] = metadata[0]["created_at"]
+        result["domain_created_at"] = specimen.created_at
+        return result
+
+    def exact_records(p, user, **filters):
+        from .search import SearchFilters
+
+        rows = search_metadata(p, user, SearchFilters(**filters), limit=2)
+        return [repository.get(p.scope, row["specimen_id"]) for row in rows]
 
     @app.get(prefix + "/specimens")
     def specimens(
         organization_id: str,
         collection_id: str,
-        user=Depends(identity),
-        disposition: str | None = None,
-        state: str | None = None,
-        batch_id: str | None = None,
-        cursor: int = 0,
+        request: Request,
+        cursor: str | None = None,
         limit: int = 50,
+        user=Depends(identity),
     ):
+        from .search import SearchFilters, binding, decode_cursor, encode_cursor
+
         p = principal(user, organization_id, collection_id)
-        items = [summary(s, p.role) for s in repository.list(p.scope)]
-        items = [
-            s
-            for s in items
-            if (not disposition or s["disposition"] == disposition)
-            and (not state or s["status"] == state)
-            and (not batch_id or s["batch_id"] == batch_id)
-        ]
-        if cursor < 0 or not 1 <= limit <= 100:
-            raise ValueError("Invalid pagination")
-        return {
-            "items": items[cursor : cursor + limit],
-            "next_cursor": str(cursor + limit) if cursor + limit < len(items) else None,
-        }
+        allowed = set(SearchFilters.model_fields) | {"collection_id", "cursor", "limit"}
+        if set(request.query_params) - allowed or any(
+            len(request.query_params.getlist(k)) != 1 for k in request.query_params
+        ):
+            raise ValueError("Unknown or duplicated search filter")
+        filters = SearchFilters.model_validate(
+            {
+                k: v
+                for k, v in request.query_params.items()
+                if k in SearchFilters.model_fields
+            }
+        )
+        if not 1 <= limit <= 100:
+            raise ValueError("Search limit must be 1 to 100")
+        sensitive = any(
+            m["organization_id"] == organization_id
+            and m["collection_id"] == collection_id
+            and m.get("can_view_sensitive")
+            for m in member_rows(user)
+        )
+        bound = binding(p.scope, filters, user, sensitive)
+        cutoff, after_created, after_id = decode_cursor(cursor, bound)
+        items = repository.search(
+            p.scope, filters, cutoff, after_created, after_id, limit, sensitive
+        )
+        # A full page may have an empty terminal page. This keeps each DB query <=100.
+        following = (
+            encode_cursor(bound, cutoff, items[-1]) if len(items) == limit else None
+        )
+        for item in items:
+            item["available_actions"] = (
+                ["retry", "resume", "pause", "cancel", "reprocess"]
+                if p.role in {"operator", "reviewer", "manager", "admin"}
+                else []
+            )
+        return {"items": items, "next_cursor": following, "cutoff": cutoff}
 
     @app.get(prefix + "/specimens/{specimen_id}")
     def detail(organization_id: str, specimen_id: str, user=Depends(identity)):
         p, s = find(user, organization_id, specimen_id)
-        return summary(s, p.role)
+        from .search import SearchFilters
+
+        result = summary(s, p.role)
+        metadata = search_metadata(p, user, SearchFilters(specimen_id=s.id), limit=1)
+        if not metadata:
+            raise Missing(specimen_id)
+        result.update(
+            {
+                k: metadata[0][k]
+                for k in (
+                    "created_at",
+                    "domain_created_at",
+                    "risk",
+                    "risk_calibrated",
+                    "uploader_id",
+                )
+            }
+        )
+        return result
 
     @app.get(prefix + "/specimens/{specimen_id}/workspace")
     def workbench(organization_id: str, specimen_id: str, user=Depends(identity)):
         p, s = find(user, organization_id, specimen_id)
-        return workspace(s, p.role)
+        return render_workspace(s, p)
 
     @app.get(prefix + "/assets/{asset_id}/access")
     def asset_access(organization_id: str, asset_id: str, user=Depends(identity)):
@@ -818,31 +1090,74 @@ def create_app(
             ):
                 continue
             p = principal(user, organization_id, m["collection_id"])
-            for s in repository.list(p.scope):
+            for s in exact_records(p, user, asset_id=asset_id):
                 if s.asset.id == asset_id:
                     return {
                         "url": f"/v1/organizations/{organization_id}/assets/{asset_id}/content",
                         "requires_authorization": True,
+                        "view_url": f"/v1/organizations/{organization_id}/assets/{asset_id}/content?view=true"
+                        if s.asset.view_derivative
+                        else None,
                         "asset": s.asset.model_dump(),
                     }
         raise Missing(asset_id)
 
     @app.get(prefix + "/assets/{asset_id}/content")
-    def asset_content(organization_id: str, asset_id: str, user=Depends(identity)):
+    def asset_content(
+        organization_id: str, asset_id: str, view: bool = False, user=Depends(identity)
+    ):
         for m in member_rows(user):
             if m["organization_id"] != organization_id or not m.get(
                 "can_view_sensitive"
             ):
                 continue
             p = principal(user, organization_id, m["collection_id"])
-            for s in repository.list(p.scope):
+            for s in exact_records(p, user, asset_id=asset_id):
                 if s.asset.id == asset_id:
+                    if view:
+                        if not s.asset.view_derivative:
+                            raise Missing("Oriented view unavailable")
+                        derived = s.asset.view_derivative
+                        content = blobs.get(derived["blob_ref"])
+                        if (
+                            hashlib.sha256(content).hexdigest()
+                            != derived["derivative_sha256"]
+                            or derived["original_sha256"] != s.asset.sha256
+                        ):
+                            raise OperationalBlock("view_integrity_failure")
+                    else:
+                        content = blobs.get(s.asset.blob_ref)
                     return Response(
-                        blobs.get(s.asset.blob_ref),
-                        media_type=s.asset.media_type,
+                        content,
+                        media_type="image/png" if view else s.asset.media_type,
                         headers={"Cache-Control": "no-store"},
                     )
         raise Missing(asset_id)
+
+    def invalidate_authorities(run, field_key=None):
+        affected = {
+            key
+            for key, metadata in run.authority_results.items()
+            if field_key is None or metadata["field_key"] == field_key
+        }
+        affected.update(
+            key
+            for key, metadata in run.authority_unresolved.items()
+            if field_key is None or metadata["field_key"] == field_key
+        )
+        for key in affected:
+            run.authority_results.pop(key, None)
+            run.authority_unresolved.pop(key, None)
+        run.completed_steps = [
+            step
+            for step in run.completed_steps
+            if step not in affected
+            and not (field_key is None and step.startswith("authority:"))
+        ]
+        # Old attempt receipts remain immutable and attempts are monotone. A new query
+        # gets a new attempt ID, so a correction cannot replay an old result.
+        run.phase_results = {}
+        run.review_risk = {}
 
     @app.post(prefix + "/specimens/{specimen_id}/decisions")
     def decision(
@@ -877,9 +1192,13 @@ def create_app(
                 dict(body.after, evidence_ids=body.evidence_ids)
             )
             s.run.fields[body.target_id] = field
+            invalidate_authorities(s.run, body.target_id)
             s.run.human_approved = False
-            if body.target_id == "taxon":
-                s.run.lookups = []
+            if body.target_id == "taxon" or any(
+                t["field_key"] == body.target_id for t in s.run.authority_plan
+            ):
+                if body.target_id == "taxon":
+                    s.run.lookups = []
                 s.run.completed_steps = [
                     x
                     for x in s.run.completed_steps
@@ -909,6 +1228,7 @@ def create_app(
                 raise ValueError("Supported literal text required")
             if state != "supported" and text is not None:
                 raise ValueError("An abstention carries null text, not a placeholder")
+            invalidate_authorities(s.run)
             transcript.text = text
             transcript.resolved = state == "supported"
             transcript.value_state = ValueState(state)
@@ -932,6 +1252,57 @@ def create_app(
             s.run.human_approved = False
             s.run.stage = "parse"
             s.run.disposition = None
+        elif body.kind == "authority_resolution":
+            tool_id = body.after.get("tool_id")
+            if body.after.get("field_key", body.target_id) != body.target_id:
+                raise ValueError("Authority field_key must match target_id")
+            identifier = body.after.get("identifier")
+            metadata = next(
+                (
+                    m
+                    for m in s.run.authority_results.values()
+                    if m["tool_id"] == tool_id and m["field_key"] == body.target_id
+                ),
+                None,
+            )
+            if metadata is None or not identifier:
+                raise ValueError("Retained authority candidates are required")
+            result = read_authority_result(metadata, blobs)
+            if result.status.value not in {"success", "ambiguous"}:
+                raise ValueError(
+                    "Operational or unmatched authority result cannot be selected"
+                )
+            candidates = [
+                candidate
+                for candidate in result.candidates
+                if candidate.identifier == identifier
+            ]
+            if len(candidates) != 1 or body.target_id not in s.run.fields:
+                raise ValueError("Select one retained authority candidate")
+            candidate = candidates[0]
+            if tool_id == "parties" and candidate.identity is None:
+                raise ValueError(
+                    "Parties selection requires a fully qualified eparties identity"
+                )
+            evidence = Evidence(
+                kind="authority_selection",
+                source=result.source_id,
+                locator="candidate:" + candidate.identifier,
+                excerpt=candidate.name + " | " + candidate.identifier,
+                raw_ref=result.raw_ref,
+                digest=result.response_sha256,
+            )
+            s.run.evidence.append(evidence)
+            field = s.run.fields[body.target_id]
+            field.authority_id = candidate.identifier
+            field.authority_identity = (
+                candidate.identity.model_dump(mode="json")
+                if candidate.identity
+                else None
+            )
+            field.normalized = candidate.name
+            field.evidence_ids.append(evidence.id)
+            s.run.human_approved = False
         elif body.kind == "taxonomy_resolution":
             if not s.run.lookups or s.run.lookups[-1].status.value not in {
                 "success",
@@ -1007,7 +1378,12 @@ def create_app(
                     s.run.blocker = None
             except EvidenceIntegrityError:
                 s.run.blocker = "evidence_integrity_failure"
+            phase_result = None
+            if s.run.blocker != "evidence_integrity_failure":
+                phase_result = refresh_review_evidence(s, blobs)
             finalize(s.run)
+            if phase_result is not None:
+                apply_phase_gate(s.run, phase_result)
         s.audit.append(
             AuditEvent(
                 actor=user,
@@ -1025,7 +1401,7 @@ def create_app(
             digest(body.model_dump()),
         )
         schedule_local(p, s, background_tasks)
-        return workspace(s, p.role)
+        return render_workspace(s, p)
 
     @app.post(prefix + "/specimens/{specimen_id}/regions")
     def regions(
@@ -1057,6 +1433,11 @@ def create_app(
         s.previous_runs.append(old)
         s.run = Run(
             profile=old.profile,
+            profile_snapshot=old.profile_snapshot,
+            profile_registry_version=old.profile_registry_version,
+            classification=old.classification,
+            classification_raw_sha256=old.classification_raw_sha256,
+            classification_selection=old.classification_selection,
             regions=body.regions,
             coverage_confirmed=True,
             completed_steps=["classify", "segment"],
@@ -1079,7 +1460,7 @@ def create_app(
             digest(body.model_dump()),
         )
         schedule_local(p, saved, background_tasks)
-        return workspace(saved, p.role)
+        return render_workspace(saved, p)
 
     @app.post(prefix + "/specimens/{specimen_id}/classification")
     def classification(
@@ -1102,10 +1483,28 @@ def create_app(
             )
         if not body.reason.strip():
             raise ValueError("Reason required")
+        resolution = registry.resolve(body.profile_collection_id)
+        if resolution.status != "selected":
+            raise ValueError("Published profile unavailable: " + resolution.reason)
         s.previous_runs.append(s.run)
-        s.run = Run(profile=s.run.profile)
+        s.run = Run(
+            profile=s.run.profile,
+            classification_selection=ManualSelection(
+                collection_id=body.profile_collection_id,
+                actor_id=user,
+                reason=body.reason,
+            ).model_dump(mode="json"),
+        )
         s.audit.append(
-            AuditEvent(actor=user, action="review_classification", reason=body.reason)
+            AuditEvent(
+                actor=user,
+                action="review_classification",
+                reason=body.reason,
+                after={
+                    "profile_collection_id": body.profile_collection_id,
+                    "profile_version": resolution.profile.version,
+                },
+            )
         )
         saved = repository.save(
             p,
@@ -1115,7 +1514,7 @@ def create_app(
             digest(body.model_dump()),
         )
         schedule_local(p, saved, background_tasks)
-        return workspace(saved, p.role)
+        return render_workspace(saved, p)
 
     @app.post(prefix + "/runs/{run_id}/actions")
     def action(
@@ -1130,7 +1529,7 @@ def create_app(
             if m["organization_id"] != organization_id:
                 continue
             p = principal(user, organization_id, m["collection_id"], write=True)
-            for s in repository.list(p.scope):
+            for s in exact_records(p, user, active_run_id=run_id):
                 if s.run.id != run_id:
                     continue
                 if not body.reason.strip():
@@ -1157,7 +1556,10 @@ def create_app(
                     s.run.disposition = None
                 elif body.action == "reprocess":
                     s.previous_runs.append(s.run)
-                    s.run = Run(profile=s.run.profile)
+                    s.run = Run(
+                        profile=s.run.profile,
+                        classification_selection=s.run.classification_selection,
+                    )
                 else:
                     raise ValueError("Unsupported action")
                 s.audit.append(
@@ -1185,7 +1587,7 @@ def create_app(
             if m["organization_id"] != organization_id:
                 continue
             p = principal(user, organization_id, m["collection_id"])
-            for s in repository.list(p.scope):
+            for s in exact_records(p, user, active_run_id=run_id):
                 if s.run.id == run_id:
                     return {
                         "items": [
@@ -1205,7 +1607,7 @@ def create_app(
         @app.post(prefix + "/specimens/{specimen_id}/process")
         def process(organization_id: str, specimen_id: str, user=Depends(identity)):
             p, s = find(user, organization_id, specimen_id)
-            return workspace(workflow.drain(p, s.id), p.role)
+            return render_workspace(workflow.drain(p, s.id), p)
 
     app.state.workflow = workflow
     return app

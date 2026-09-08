@@ -24,6 +24,21 @@ from .domain import (
     Transcript,
     ValueState,
 )
+from .collection_runtime import (
+    application_registry,
+    SyntheticClassifier,
+    classify_and_select,
+    quality_check,
+)
+from .evidence_runtime import execute_phase, refresh_review_evidence, apply_phase_gate
+from .evidence_runtime import plan_authorities, authority_query, harness_spec
+from .evidence_harness import (
+    HarnessRunner,
+    ToolCall,
+    ToolReceipt,
+    BudgetUsage as HarnessUsage,
+)
+from .region_pixels import region_png
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
@@ -52,11 +67,42 @@ class Workflow:
         clock=None,
         monotonic=None,
         random_value=None,
+        profile_registry=None,
+        classifier=None,
+        authority_tools=None,
+        authority_cost_reservations=None,
     ):
         self.repository, self.blobs, self.adapters = repository, blobs, adapters
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.monotonic = monotonic or time.monotonic
         self.random_value = random_value
+        self.profile_registry = profile_registry
+        self.classifier = classifier
+        self.authority_tools = (
+            authority_tools
+            if authority_tools is not None
+            else getattr(adapters, "authority_tools", {})
+        )
+        self.authority_cost_reservations = (
+            authority_cost_reservations
+            if authority_cost_reservations is not None
+            else getattr(adapters, "authority_cost_reservations", {})
+        )
+
+    def authority_pins(self):
+        return {
+            key: {
+                "version": tool.version,
+                "registry_sha256": digest(tool.registry.model_dump(mode="json"))
+                if hasattr(tool, "registry")
+                else None,
+                "connection_sha256": digest(tool.connection.model_dump(mode="json"))
+                if getattr(tool, "connection", None)
+                else None,
+                "reserved_cost_microunits": self.authority_cost_reservations.get(key),
+            }
+            for key, tool in self.authority_tools.items()
+        }
 
     def step(self, principal: Principal, specimen_id: str) -> Specimen:
         with logfire.span(
@@ -100,7 +146,13 @@ class Workflow:
         external = (
             step.startswith("transcribe:")
             or step in {"segment", "lookup"}
+            or step.startswith("authority:")
             or (step == "parse" and hasattr(self.adapters, "extract"))
+            or (
+                step == "classify"
+                and self.classifier is not None
+                and getattr(self.classifier, "external", True)
+            )
         )
         policy = run.profile.execution
         external_weight = (
@@ -196,10 +248,37 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
+                run.dependencies["authority_pins"] = self.authority_pins()
+                run.dependencies["profile_snapshot_sha256"] = digest(
+                    run.profile_snapshot
+                )
+                run.dependencies["profile_registry_version"] = (
+                    run.profile_registry_version
+                )
             elif step == "classify":
-                run.stage = "classify"
-                # The selected profile is explicit intake context, never a fabricated classifier.
-                run.completed_steps.append("classification_selected_at_intake")
+                registry = self.profile_registry or application_registry(
+                    run.profile.synthetic
+                )
+                classifier = self.classifier or (
+                    SyntheticClassifier(self.blobs) if run.profile.synthetic else None
+                )
+                if run.profile.synthetic and run.classification_selection is None:
+                    run.classification_selection = {
+                        "collection_id": registry.nodes[0].id,
+                        "actor_id": principal.user_id,
+                        "reason": "Explicit synthetic fixture intake selection",
+                    }
+                issue = classify_and_select(specimen, registry, classifier, self.blobs)
+                if issue:
+                    raise OperationalBlock("classification_review_required:" + issue)
+                # Resolve prompts again for the selected immutable profile, before inference.
+                run.completed_steps = [
+                    s for s in run.completed_steps if s != "pin_dependencies"
+                ]
+            elif step == "quality_check":
+                issue = quality_check(specimen, self.blobs)
+                if issue:
+                    raise OperationalBlock(issue)
             elif step == "segment":
                 run.regions = self.adapters.segment(specimen)
                 for region in run.regions:
@@ -244,6 +323,91 @@ class Workflow:
                 self.parse(run, specimen.asset.id)
                 if hasattr(self.adapters, "extract"):
                     self.adapters.extract(specimen)
+            elif step == "plan":
+                run.authority_plan = plan_authorities(specimen)
+            elif step.startswith("authority:"):
+                task = run.authority_plan[int(step.split(":")[1])]
+                query = authority_query(specimen, task, self.blobs)
+                if query is None:
+                    run.authority_unresolved[step] = dict(
+                        task, reason="source_literal_unresolved"
+                    )
+                else:
+                    tool = self.authority_tools.get(task["tool_id"])
+                    pinned = run.dependencies.get("authority_pins", {}).get(
+                        task["tool_id"]
+                    )
+                    if tool and pinned != self.authority_pins().get(task["tool_id"]):
+                        raise OperationalBlock(
+                            "authority_configuration_changed_requires_new_run"
+                        )
+                    call_id = step + ":" + str(run.attempts.get(step, 1))
+                    call = ToolCall(
+                        call_id=call_id,
+                        phase="lookup",
+                        tool_id=task["tool_id"],
+                        tool_version=getattr(tool, "version", "unconfigured"),
+                        reserved_cost_microunits=self.authority_cost_reservations.get(
+                            task["tool_id"]
+                        ),
+                    )
+                    previous = run.authority_receipts.get(call_id)
+                    if previous:
+                        raw = self.blobs.get(previous["blob_ref"])
+                        if hashlib.sha256(raw).hexdigest() != previous["sha256"]:
+                            raise OperationalBlock(
+                                "authority_receipt_integrity_failure"
+                            )
+                        previous = ToolReceipt.model_validate_json(raw)
+
+                    def checkpoint(receipt):
+                        nonlocal specimen, run, revision
+                        raw = receipt.model_dump_json().encode()
+                        run.authority_receipts[call_id] = {
+                            "blob_ref": self.blobs.put(raw),
+                            "sha256": hashlib.sha256(raw).hexdigest(),
+                            "state": receipt.state,
+                            "call_id": call_id,
+                        }
+                        run.authority_usage = receipt.usage.model_dump(mode="json")
+                        specimen = self.repository.save(
+                            principal,
+                            specimen,
+                            revision,
+                            f"authority:{call_id}:{receipt.state}:{revision}",
+                            digest(receipt.model_dump(mode="json")),
+                        )
+                        revision = specimen.version
+                        run = specimen.run
+
+                    receipt = HarnessRunner(self.authority_tools).execute_one(
+                        harness_spec(specimen),
+                        call,
+                        query,
+                        HarnessUsage.model_validate(run.authority_usage),
+                        checkpoint,
+                        previous,
+                    )
+                    if receipt.state != "completed" or receipt.result is None:
+                        raise OperationalBlock(
+                            receipt.reason or "authority_call_blocked"
+                        )
+                    result = receipt.result
+                    raw = result.model_dump_json().encode()
+                    run.authority_results[step] = {
+                        "tool_id": task["tool_id"],
+                        "field_key": task["field_key"],
+                        "source_id": result.source_id,
+                        "status": result.status.value,
+                        "blob_ref": self.blobs.put(raw),
+                        "sha256": hashlib.sha256(raw).hexdigest(),
+                    }
+                    if result.operationally_blocked:
+                        raise AdapterFailure(
+                            "authority_" + result.status.value,
+                            result.status,
+                            retry_after_seconds=result.retry_after_seconds,
+                        )
             elif step == "lookup":
                 name = run.fields["taxon"].literal
                 if name:
@@ -284,8 +448,15 @@ class Workflow:
                     verify_evidence(specimen, self.blobs)
                 except EvidenceIntegrityError as exc:
                     raise OperationalBlock(str(exc)) from exc
+                phase_result = refresh_review_evidence(specimen, self.blobs)
                 finalize(run)
-            run.blocker = None
+                apply_phase_gate(run, phase_result)
+            if step.startswith("authority:"):
+                execute_phase(specimen, "lookup", self.blobs)
+            if step in {"parse", "plan", "lookup", "resolve", "normalize", "validate"}:
+                execute_phase(specimen, step, self.blobs)
+            if run.stage != "processing_blocked":
+                run.blocker = None
             run.lease_until = None
             run.completed_steps.append(step)
             if step != "finalize":
@@ -369,7 +540,7 @@ class Workflow:
 
     @staticmethod
     def next_step(run: Run) -> str:
-        for step in ("pin_dependencies", "classify", "segment"):
+        for step in ("pin_dependencies", "classify", "quality_check", "segment"):
             if step not in run.completed_steps:
                 return step
         for region in run.regions:
@@ -382,6 +553,14 @@ class Workflow:
             "parse",
             "plan",
             "lookup",
+        ):
+            if step not in run.completed_steps:
+                return step
+        for index, task in enumerate(run.authority_plan):
+            step = f"authority:{index}:{task['tool_id']}"
+            if step not in run.completed_steps:
+                return step
+        for step in (
             "resolve",
             "normalize",
             "validate",
@@ -507,9 +686,4 @@ class SyntheticAdapters:
 
 def crop_bytes(blobs: BlobStore, specimen: Specimen, region: Region) -> bytes:
     with Image.open(io.BytesIO(blobs.get(specimen.asset.blob_ref))) as image:
-        crop = image.crop(
-            (region.x, region.y, region.x + region.width, region.y + region.height)
-        ).convert("RGB")
-        stream = io.BytesIO()
-        crop.save(stream, format="PNG")
-        return stream.getvalue()
+        return region_png(image, region)

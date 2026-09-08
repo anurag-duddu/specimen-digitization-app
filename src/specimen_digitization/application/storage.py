@@ -178,6 +178,9 @@ class SQLiteRepository:
                         ),
                     )
             db.execute(
+                "CREATE INDEX IF NOT EXISTS records_search ON records(org,collection,created_at,id)"
+            )
+            db.execute(
                 "CREATE INDEX IF NOT EXISTS records_due ON records(org,collection,id,work_available_at)"
             )
 
@@ -203,6 +206,31 @@ class SQLiteRepository:
                 tuple(scope.model_dump().values()),
             ).fetchall()
         return [Specimen.model_validate_json(r[0]) for r in rows]
+
+    def search(
+        self,
+        scope,
+        filters,
+        cutoff,
+        after_created=None,
+        after_id="",
+        limit=50,
+        include_sensitive=False,
+    ):
+        from .search import sqlite_search
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Invalid search limit")
+        return sqlite_search(
+            self,
+            scope,
+            filters,
+            cutoff,
+            after_created,
+            after_id,
+            limit,
+            include_sensitive,
+        )
 
     def history_page(
         self, scope, ident, after_revision=0, through_revision=None, limit=50

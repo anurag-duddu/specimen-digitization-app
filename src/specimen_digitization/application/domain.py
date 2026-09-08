@@ -98,6 +98,8 @@ class Principal(Record):
 
 
 class Asset(Record):
+    quality_diagnostics: dict = Field(default_factory=dict)
+    view_derivative: dict | None = None
     id: str = Field(default_factory=uid)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     blob_ref: str
@@ -111,6 +113,7 @@ class Asset(Record):
 
 
 class Region(Record):
+    rotation_quarter_turns: int = Field(default=0, ge=0, le=3)
     id: str = Field(default_factory=uid)
     asset_id: str
     x: int = Field(ge=0)
@@ -173,6 +176,7 @@ class FieldValue(Record):
     parsed: str | None = None
     normalized: str | None = None
     authority_id: str | None = None
+    authority_identity: dict | None = None
     evidence_ids: list[str] = Field(default_factory=list)
     reason: str = "No supported source value"
 
@@ -237,6 +241,21 @@ class Profile(Record):
 
 
 class Run(Record):
+    authority_unresolved: dict = Field(default_factory=dict)
+    authority_plan: list[dict] = Field(default_factory=list)
+    authority_receipts: dict = Field(default_factory=dict)
+    authority_results: dict = Field(default_factory=dict)
+    authority_usage: dict = Field(default_factory=dict)
+    harness_spec: dict = Field(default_factory=dict)
+    phase_results: dict = Field(default_factory=dict)
+    reading_metadata: dict = Field(default_factory=dict)
+    disagreements: list[dict] = Field(default_factory=list)
+    review_risk: dict = Field(default_factory=dict)
+    classification: dict = Field(default_factory=dict)
+    classification_raw_sha256: str | None = None
+    classification_selection: dict | None = None
+    profile_snapshot: dict = Field(default_factory=dict)
+    profile_registry_version: str | None = None
     usage: BudgetUsage = Field(default_factory=BudgetUsage)
     dependencies: dict = Field(default_factory=dict)
     id: str = Field(default_factory=uid)
