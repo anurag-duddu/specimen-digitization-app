@@ -125,7 +125,7 @@ class LocalBlobs:
             try:
                 os.link(temporary, path)
             except FileExistsError:
-                if self.get_bounded(ref, len(data)) != data:
+                if self.get_bounded(ref, max(1, len(data))) != data:
                     raise Conflict("Immutable blob content mismatch")
             directory = os.open(self.root, os.O_RDONLY)
             try:
