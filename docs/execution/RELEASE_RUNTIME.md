@@ -428,9 +428,57 @@ cases. Final implementation commit hooks passed. Logs are
 `/tmp/specimen-runtime-sensitivity-unknown-red-20260908.log` and
 `/tmp/specimen-runtime-sensitivity-canonical-20260908.log`.
 
-Independent exact-commit review and actual V2 connector integration were requested
-from acceptance/data and are separate gates. Their completion is Not confirmed
-in this paragraph. The data owner's newly available real object inventory has
+Acceptance subsequently completed independent review of e7f4985: **109 tests
+passed**, no blocking source finding, log
+`/tmp/specimen-ac0d-sensitivity-review-20260908.log`. It compared default Asset
+and concrete ten-source PilotLaunch serialization and digests against the actual
+parent Git source; both matched. Actual V2 connector integration remains a
+separate data-owned gate and is Not confirmed here. The data owner's newly
+available real object inventory has
 not established non-sensitive classification of the actual cohort. These tests
 demonstrate a guarded capability; they do not classify real source images,
 elevate the administrator, or substitute local fixture records for the frozen ten.
+
+## Worker graph reconstruction and supplied SQL sessions
+
+Delivery raised a possible graph-storage gap at production worker construction.
+Independent inspection and behavioral tests distinguish two paths:
+
+- Both ordinary and evidence-pilot workers construct `Workflow` before reading
+  any specimen. `Workflow.__init__` attaches the worker's blob store whenever the
+  repository has none. The existing worker path therefore preserves external
+  graphs; no worker production repair was necessary.
+- Delivery's standalone `verify_imported_cohort` reads SQL snapshots without a
+  Workflow. A repository without `graph_blobs` rejects a large graph snapshot;
+  constructing it with the corresponding blob adapter succeeds. Delivery owns
+  the explicit graph adapter wired to its already admitted credentials/session.
+
+New text-only fixtures exercise actual `worker._run`, both Workflow constructors,
+`PilotWorker` summary and `SqlConnectRepository` reconstruction/save/history.
+All ten records contain **64 regions and 128 readings each**, with each external
+graph exceeding 256 KiB. The worker reads all ten, retains all region/reading
+values, writes a full checkpoint, and reopens both the new and original historical
+graph. The fixtures correctly retain review-required status and exit 2; they do
+not assert clearance. Named SQL transport, configuration validation and external
+adapter construction are local test substitutes. No image bytes, model or cloud
+service is accessed, and this is not actual connector or live cohort evidence.
+
+A separate constructor defect was reproduced: `SqlConnectRepository(session=...)`
+still queried ambient ADC before using the supplied session. This prevented
+readback from relying solely on its admitted credential context. Commit
+`d1c59fedf0c1879aa7a189e7010f96c74489c081` now discovers ADC only when the session
+argument is None; an explicitly supplied session is reused directly. A regression
+forces ADC to fail and proves that the supplied session still performs its named
+membership request. A positive control preserves default ADC construction.
+
+Verification: the constructor regression was red before repair; the new five-case
+suite passed after repair. Combined graph/recovery/launch/materialization/sensitivity
+checks passed **90 tests / 2 opt-in skipped** in 11.38 seconds, log
+`/tmp/specimen-runtime-worker-graph-focused-20260908.log`. The final fixture-only
+rewrite also passed all five new tests. Commit hooks passed; a scanner false
+positive on a dummy resource path was resolved without changing scanner rules.
+An initial evidence-adapter test substitute lacked its required `blobs` property;
+correcting the substitute allowed the existing worker behavior to pass. Neither
+that fixture error nor the already-working workflow attachment is reported as a
+production defect. Delivery still owns actual activation graph/session wiring and
+the integrated release verification.
