@@ -13,7 +13,8 @@ function ok(r){assert.ok(!r.code&&!r.errors?.length,JSON.stringify(r));return r.
 function denied(r){assert.ok(r.code||r.errors?.length,JSON.stringify(r));}
 const organizationId=randomUUID(),collectionId=randomUUID(),actorUid='checksum-reviewer';
 const scope={organizationId,collectionId,actorUid};
-const psql=sql=>execFileSync(process.env.PSQL_BIN,['-h','127.0.0.1','-p',process.env.SPECIMEN_TEST_PG_PORT,'-d','specimen-digitization-database','-v','ON_ERROR_STOP=1','-At'],{input:sql,encoding:'utf8',maxBuffer:1024*1024});
+// The combined paging/search suite seeds >10k rows before the read-only audit.
+const psql=sql=>execFileSync(process.env.PSQL_BIN,['-h','127.0.0.1','-p',process.env.SPECIMEN_TEST_PG_PORT,'-d','specimen-digitization-database','-v','ON_ERROR_STOP=1','-At'],{input:sql,encoding:'utf8',maxBuffer:16*1024*1024});
 const checksum='a'.repeat(64),other='b'.repeat(64);
 ok(await raw(`mutation @transaction {
  organization_insert(data:{id:"${organizationId}",name:"Synthetic checksum"})

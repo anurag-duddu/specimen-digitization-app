@@ -13,6 +13,10 @@ const raw = query => call(':executeGraphql', {query});
 const op = (operationName, variables, mutation=false, impersonate) => call(`/connectors/specimen-server:impersonate${mutation?'Mutation':'Query'}`, {operationName,variables,extensions: {impersonate}});
 function ok(r) { assert.ok(!r.errors?.length && !r.code, JSON.stringify(r)); return r.data; }
 function denied(r) { assert.ok(r.errors?.length || r.code, JSON.stringify(r)); }
+assert.ok(ok(await op('Readiness', {})).organizations.length <= 1);
+denied(await op('Readiness', {}, false, {unauthenticated:true}));
+denied(await op('Readiness', {}, false, {authClaims:{sub:'reviewer'}}));
+console.log('PASS bounded server readiness and client denial');
 const org=randomUUID(), collection=randomUUID(), id=randomUUID();
 ok(await raw(`mutation @transaction {
  organization_insert(data:{id:"${org}",name:"Synthetic museum"})

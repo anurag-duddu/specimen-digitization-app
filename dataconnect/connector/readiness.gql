@@ -1,0 +1,5 @@
+# Server execution only. Runtime discards identifiers; no end-user or write scope.
+# Requires only connectors.impersonateQuery, never arbitrary GraphQL execution.
+query Readiness @auth(level: NO_ACCESS) {
+  organizations(limit: 1) { id }
+}

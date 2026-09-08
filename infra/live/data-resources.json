@@ -1,0 +1,116 @@
+{
+  "schema_version": "live-data-plan/v1",
+  "status": "proposal_not_applied",
+  "project_id": "specimen-digitization",
+  "cloud_state": "not_confirmed_authentication_blocked",
+  "data_connect": {
+    "location": "us-east4",
+    "service_id": "specimen-digitization-service",
+    "connector_id": "specimen-server",
+    "schema_validation": "COMPATIBLE",
+    "readiness_operation": "Readiness"
+  },
+  "database": {
+    "instance_id": "specimen-digitization-instance",
+    "database": "specimen-digitization-database",
+    "backup_enabled": null,
+    "pitr_enabled": null,
+    "latest_successful_backup_id": null,
+    "restore_rehearsal_instance": null,
+    "restore_evidence_status": "local_only_not_cloud_proof",
+    "migration_order": [
+      "quiesce_api_writes_worker_dispatch_and_inflight_transactions",
+      "capture_successful_backup_and_verify_isolated_restore",
+      "review_exact_source_target_schema_and_required_compatible_sql",
+      "apply_reviewed_schema_through_separate_approved_delivery",
+      "verify_schema_managed_unique_constraints",
+      "apply_exact_supplemental_indexes_after_schema_reconciliation",
+      "verify_catalog_definitions_validity_rows_and_connector_invariants",
+      "publish_compatible_connector_and_verify_again",
+      "refresh_restored_planner_statistics_and_verify_query_plans",
+      "resume_only_verified_runtime_revisions"
+    ],
+    "supplemental_sql": [
+      "dataconnect/sql/paging-indexes.sql",
+      "dataconnect/sql/search-indexes.sql"
+    ],
+    "supplemental_indexes": [
+      "specimen_text_cursor",
+      "auxiliary_text_cursor",
+      "specimen_search_cursor",
+      "snapshot_search_batch"
+    ],
+    "required_unique_index": "specimen_scope_checksum"
+  },
+  "storage": {
+    "bucket": "specimen-digitization.firebasestorage.app",
+    "rules_file": "storage.rules",
+    "direct_client_access": "deny_all",
+    "runtime_object_prefix": "application/sha256/",
+    "writes_require_generation_match": 0,
+    "reads_require_exact_generation": true,
+    "uniform_access_confirmed": false,
+    "public_access_prevention_confirmed": false,
+    "public_iam_denial_confirmed": false,
+    "retention_approval": null,
+    "readiness": "objects.get_for_exact_private_manifest_object_and_generation"
+  },
+  "pilot": {
+    "manifest_schema_version": "specimen-pilot/v1",
+    "specimen_limit": 10,
+    "allow_expansion": false,
+    "ready_manifest_sha256": null,
+    "source_order_confirmed": false,
+    "admin_identity_reference": "private_approval_artifact_required"
+  },
+  "runtime_identity_proposals": [
+    {
+      "service_account_id": "specimen-api-runtime",
+      "sql_connector_permissions": [
+        "firebasedataconnect.connectors.impersonateQuery",
+        "firebasedataconnect.connectors.impersonateMutation"
+      ],
+      "storage_permissions": ["storage.objects.get", "storage.objects.create"],
+      "storage_scope": "bucket_condition_application_sha256_prefix",
+      "provider_policy": "none",
+      "identity_exists_confirmed": false,
+      "effective_iam_confirmed": false
+    },
+    {
+      "service_account_id": "specimen-worker-runtime",
+      "sql_connector_permissions": [
+        "firebasedataconnect.connectors.impersonateQuery",
+        "firebasedataconnect.connectors.impersonateMutation"
+      ],
+      "storage_permissions": ["storage.objects.get", "storage.objects.create"],
+      "storage_scope": "bucket_condition_application_sha256_prefix",
+      "provider_policy": "separate_processing_exact_resource_only",
+      "identity_exists_confirmed": false,
+      "effective_iam_confirmed": false
+    }
+  ],
+  "privileged_maintenance": {
+    "runtime_connector_contains_bootstrap": false,
+    "bootstrap_preparation_script": "scripts/data/bootstrap_admin.py",
+    "bootstrap_apply_implemented": false,
+    "separate_maintenance_identity_required": true,
+    "hosting_identity_changes": false,
+    "cloud_apply_authorized": false
+  },
+  "cost_inputs": {
+    "currency": "USD",
+    "approved_total_limit": null,
+    "approved_restore_clone_hours": null,
+    "observed_database_tier": null,
+    "observed_storage_gib": null,
+    "observed_backup_gib": null,
+    "authorized_source_bytes": null,
+    "restore_clone_hourly_rate": null,
+    "storage_and_backup_gib_month_rates": null,
+    "source_download_egress_rate": null,
+    "new_persistent_sql_instances_proposed": 0,
+    "isolated_restore_clone_count_proposed": 1,
+    "runtime_and_inference_budget_owner": "delivery_and_processing",
+    "estimate_status": "blocked_on_current_metadata_and_approved_budget"
+  }
+}
