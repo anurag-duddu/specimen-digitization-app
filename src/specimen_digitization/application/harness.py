@@ -1,5 +1,7 @@
 """Bounded typed extraction. Proposed values must match retained source text."""
 
+import hashlib
+
 from pydantic import Field
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
@@ -20,7 +22,9 @@ class ExtractionOutput(Record):
     unresolved: list[str] = Field(default_factory=list, max_length=100)
 
 
-def apply_candidates(run, asset_id, output: ExtractionOutput, raw_ref: str):
+def apply_candidates(
+    run, asset_id, output: ExtractionOutput, raw_ref: str, raw_sha256: str | None = None
+):
     transcripts = {t.region_id: t for t in run.transcripts if t.resolved and t.text}
     for candidate in output.candidates:
         transcript = transcripts.get(candidate.region_id)
@@ -41,6 +45,7 @@ def apply_candidates(run, asset_id, output: ExtractionOutput, raw_ref: str):
             locator="region:" + candidate.region_id,
             excerpt=candidate.source_excerpt,
             raw_ref=raw_ref,
+            digest=raw_sha256,
         )
         run.evidence.append(evidence)
         old = run.fields[candidate.field_key]
@@ -90,4 +95,6 @@ def extract_with_agent(gateway, blobs, specimen):
         [m for m in result.all_messages() if m.kind == "response"]
     )
     ref = blobs.put(raw)
-    apply_candidates(run, specimen.asset.id, result.output, ref)
+    apply_candidates(
+        run, specimen.asset.id, result.output, ref, hashlib.sha256(raw).hexdigest()
+    )

@@ -168,3 +168,44 @@ def test_worker_finalization_blocks_missing_raw_storage(tmp_path):
     assert blocked.run.stage == "processing_blocked"
     assert blocked.run.blocker == "evidence_integrity_failure"
     assert blocked.run.disposition is None
+
+
+def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
+    app = local_app(tmp_path, TOKEN)
+    from fastapi.testclient import TestClient
+    from specimen_digitization.application.domain import Scope
+    from specimen_digitization.application.harness import (
+        ExtractionOutput,
+        ExtractionCandidate,
+        apply_candidates,
+    )
+
+    with TestClient(app) as http:
+        row = intake(http)
+    specimen = app.state.workflow.repository.get(
+        Scope(
+            organization_id=row["organization_id"], collection_id=row["collection_id"]
+        ),
+        row["specimen_id"],
+    )
+    blobs = LocalBlobs(tmp_path / "blobs")
+    raw = b'{"synthetic_extraction": "United States"}'
+    ref = blobs.put(raw)
+    apply_candidates(
+        specimen.run,
+        specimen.asset.id,
+        ExtractionOutput(
+            candidates=[
+                ExtractionCandidate(
+                    field_key="country",
+                    region_id=specimen.run.regions[0].id,
+                    literal="United States",
+                    source_excerpt="country: United States",
+                )
+            ]
+        ),
+        ref,
+        hashlib.sha256(raw).hexdigest(),
+    )
+    verify_evidence(specimen, blobs)
+    assert specimen.run.evidence[-1].digest == hashlib.sha256(raw).hexdigest()
