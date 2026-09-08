@@ -34,6 +34,8 @@ def run_summary(run):
         "lookups",
         "phase_results",
         "reading_metadata",
+        "reading_declarations",
+        "label_language_handling",
         "disagreements",
         "authority_receipts",
         "authority_results",

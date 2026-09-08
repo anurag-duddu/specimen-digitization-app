@@ -636,17 +636,30 @@ class ProductionAdapters:
         # Preserve every provider response (including retries), excluding image-bearing requests.
         responses = [m for m in result.all_messages() if m.kind == "response"]
         raw = ModelMessagesTypeAdapter.dump_json(responses)
+        from .reading_declarations import model_evidence
+
+        raw_ref = self.blobs.put(raw)
+        raw_sha256 = hashlib.sha256(raw).hexdigest()
+        prompt_version = hashlib.sha256(prompt.text.encode()).hexdigest()
         return Observation(
+            declaration_evidence=model_evidence(
+                self.blobs,
+                result.output,
+                raw_ref,
+                raw_sha256,
+                selected.model_id,
+                prompt_version,
+            ),
             region_id=region.id,
             route_id=route,
             model_id=selected.model_id,
             provider=selected.provider,
-            prompt_version=hashlib.sha256(prompt.text.encode()).hexdigest(),
+            prompt_version=prompt_version,
             input_sha256=hashlib.sha256(image).hexdigest(),
             literal_text=result.output.verbatim_text,
             unreadable_spans=result.output.unreadable_spans,
-            raw_ref=self.blobs.put(raw),
-            raw_sha256=hashlib.sha256(raw).hexdigest(),
+            raw_ref=raw_ref,
+            raw_sha256=raw_sha256,
             input_tokens=result.usage.input_tokens,
             output_tokens=result.usage.output_tokens,
         )

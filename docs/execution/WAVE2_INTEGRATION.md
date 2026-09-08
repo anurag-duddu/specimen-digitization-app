@@ -212,3 +212,52 @@ Backend src/tests/data/dependency tree exactly matches owner3bd7f64.
 QA is independently verifying the minimal906e134+38fa32f+c8001bb repair candidate;
 this local combined pass alone does not close its publication-race finding.
 Client large-graph fallback remains pending, as does TRN declaration work.
+
+## Frozen combined graph UI checkpoint
+
+Flutter36ae5c1 integrated as745127a1a326473a1aa93794bc7ae07f58591ba3.
+CORS7dc87cc is included asd9d25b5, exposing only two artifact verification headers
+to existing allowed origins; targeted publication/CORS suite passed six tests.
+Canonical on745127a passed259 Python/24 optional skips,58 Flutter/five opt-in
+live skips, analysis/scanners/web. Log:/tmp/specimen-wave2-graph-combined-canonical.log.
+
+Actual Flutter live_graph_test.dart passed against fresh synthetic API/SQLite.
+Specimen748c44fa-b2f2-5c32-80cd-2cdb5269aa45 revision57 retained a2605715-byte
+graph. A committed coverage action returned413 at58 and was recognized as saved,
+pinned historical57 evidence remained identical, stale CAS was rejected, and
+cancel succeeded at59. Log:/tmp/specimen-wave2-combined-graph-live.log; retained
+state:/tmp/specimen-combined-graph-745127a. Own8123 server stopped.
+
+This frozen combined graph checkpoint excludes subsequent TRN declaration code.
+Independent atomic-repair and combined graph GUI acceptance remain pending;
+local test success is not a production or institutional acceptance claim.
+
+## Declaration backend checkpoint and independent H01 closure
+
+Reviewed declaration corea6fd15c integrated asb59a1d0, frozen fixture8439b6e as
+950ae11, and advertised review capability6b4b654 as2f007f1. Scanner d3cb125 was
+already included. Backend src/tests/dataconnect/scripts-data/dependency tree is
+exactly equal to6b4b654. Canonical passed271 Python/24 optional skips,58 Flutter/
+five opt-in live skips, analysis/scanners/web. Log:
+/tmp/specimen-wave2-declarations-backend-canonical.log.
+
+Fresh SQL-enabled broad suite including declaration runtime, graph, publication,
+stream limits, duplicate/circuit concurrency, authority, worker, history, upload
+and reconstruction passed61 tests in45.63s. Declaration tests in that suite use
+SQLite; additional integration probes exercised mixed/conflicting/unknown and
+human supersession/replay/stale-CAS/unchanged raw-phase-authority evidence/restart
+through actual TCP API and SQL Connect. All four scenarios passed. Harness:
+/tmp/specimen-declarations-sql-check.py; log:/tmp/specimen-wave2-declarations-real-sql.log.
+The harness was corrected to await asynchronous TCP processing and use distinct
+synthetic request keys; initial setup errors were not product findings. Retained
+blob state: /var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-declarations-sql-kitq2vfq.
+SQL services5589/9539 stopped; retained cluster specimen-data-serve.kwf9q2.
+
+Independent QA original hardening failure8e421b1 integrated as82d7414, followed
+by H01 closure8a405ee integrated as98b3679. Original failure evidence is preserved.
+QA independently verified the minimal906e134+38fa32f+c8001bb repair with barriers,
+empty/corrupt blobs, multiprocess publication and five four-way actual SQL races:
+20 proposals, five winners,15 authorized duplicates,20 exact replay responses.
+H01 is closed in that tested local scope. Incomplete HEIC crop GUI and graph/TRN
+independent acceptance remain separate. Further PRD audit fixes and declaration
+Flutter wiring are pending; this backend checkpoint is not complete-product proof.

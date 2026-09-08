@@ -156,6 +156,7 @@ class ApiSpecimenRepository implements SpecimenRepository {
       ArtifactKind.disagreement => 'disagreements/$id',
       ArtifactKind.observationRaw => 'observations/$id/raw',
       ArtifactKind.readingMetadata => 'observations/$id/metadata',
+      ArtifactKind.readingDeclarations => 'observations/$id/declarations',
     };
     final path =
         '${_root(scope)}/specimens/${Uri.encodeComponent(specimen.id)}/$suffix';
@@ -168,7 +169,29 @@ class ApiSpecimenRepository implements SpecimenRepository {
       ArtifactKind.authorityRaw,
       ArtifactKind.observationRaw,
     ].contains(artifact.kind)) {
-      return request('GET', path, query: query);
+      final result = await request('GET', path, query: query);
+      if (artifact.kind == ArtifactKind.readingDeclarations) {
+        final observation = specimen.observations
+            .where(
+              (o) =>
+                  o['id'] == artifact.id || o['observation_id'] == artifact.id,
+            )
+            .firstOrNull;
+        final model = result['model'];
+        if (result['revision'] != specimen.revision ||
+            result['run_id'] != specimen.data['active_run_id'] ||
+            result['observation_id'] != artifact.id ||
+            observation == null ||
+            result['region_id'] != observation['region_id'] ||
+            (model is Map &&
+                model['raw_sha256'] != observation['raw_sha256'])) {
+          throw const ApiFailure(
+            'The declaration evidence does not match the current observation and revision. Refresh evidence.',
+            code: 'invalid_evidence',
+          );
+        }
+      }
+      return result;
     }
     final bearer = await token();
     if (bearer == null || bearer.isEmpty) {
@@ -913,6 +936,12 @@ class ApiSpecimenRepository implements SpecimenRepository {
                 }
               : kind == 'transcription_adjudication'
               ? {'text': change['value'], 'state': change['state']}
+              : kind == 'reading_metadata'
+              ? {
+                  'language_candidates': change['language_candidates'],
+                  'script_candidates': change['script_candidates'],
+                  'language_relation': change['language_relation'],
+                }
               : kind == 'authority_resolution'
               ? {
                   'tool_id': change['tool_id'],

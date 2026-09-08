@@ -169,6 +169,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             [
                 "field",
                 "transcription",
+                "reading_metadata",
                 "coverage",
                 "approve",
                 "classification",
@@ -1063,6 +1064,40 @@ def create_app(
             headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
         )
 
+    @app.get(
+        prefix + "/specimens/{specimen_id}/observations/{observation_id}/declarations"
+    )
+    def declaration_output(
+        organization_id: str,
+        specimen_id: str,
+        observation_id: str,
+        revision: int | None = None,
+        user=Depends(identity),
+    ):
+        from .reading_declarations import checked_value, effective_declarations
+
+        selected = artifact_specimen(user, organization_id, specimen_id, revision)
+        observation = next(
+            (o for o in selected.run.observations if o.id == observation_id), None
+        )
+        if observation is None:
+            raise Missing(observation_id)
+        effective_declarations(selected, observation, blobs)
+        return {
+            "run_id": selected.run.id,
+            "region_id": observation.region_id,
+            "observation_id": observation.id,
+            "revision": selected.version,
+            "model": checked_value(observation.declaration_evidence, blobs)
+            if observation.declaration_evidence
+            else None,
+            "human_history": [
+                checked_value(entry, blobs)
+                for entry in selected.run.reading_declarations
+                if entry["observation_id"] == observation.id
+            ],
+        }
+
     @app.get(prefix + "/specimens/{specimen_id}/observations/{observation_id}/metadata")
     def reading_metadata_output(
         organization_id: str,
@@ -1509,6 +1544,21 @@ def create_app(
             s.run.capability_reason = reason_code
             s.run.retry_eligibility = retry
             s.run.completed_steps.append("capability_attempts_exhausted")
+        elif body.kind == "reading_metadata":
+            from .reading_declarations import DeclarationCandidates, record_human
+
+            observation = next(
+                (o for o in s.run.observations if o.id == body.target_id), None
+            )
+            if observation is None:
+                raise ValueError(
+                    "Reading metadata requires a current observation target"
+                )
+            candidates = DeclarationCandidates.model_validate(body.after)
+            verify_evidence(s, blobs)
+            record_human(s, observation, candidates, user, body.reason, blobs)
+            s.run.human_approved = False
+            refresh_review_evidence(s, blobs, metadata_only=True)
         elif body.kind == "approve":
             s.run.human_approved = True
         elif body.kind == "coverage":
@@ -1523,7 +1573,10 @@ def create_app(
             except EvidenceIntegrityError:
                 s.run.blocker = "evidence_integrity_failure"
             phase_result = None
-            if s.run.blocker != "evidence_integrity_failure":
+            if (
+                s.run.blocker != "evidence_integrity_failure"
+                and body.kind != "reading_metadata"
+            ):
                 phase_result = refresh_review_evidence(s, blobs)
             finalize(s.run)
             if phase_result is not None:

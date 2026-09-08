@@ -554,6 +554,90 @@ application. The following are narrow delegate contracts for new modules and
 their own tests. Coordinator dispatches specialists; this document does not
 authorize infrastructure, paid inference or production mutation.
 
+### Active graph offload proposal acceptance
+
+Backend proposes offloading an exact serialized Run above 96 KiB to an immutable
+blob with a declared 16 MiB maximum. Persisted snapshots retain bounded summary/
+index fields and graph reference, byte hash and canonical Run hash; repositories
+verify and hydrate before policy/workflow use. Architecture accepts this design
+conditionally, not as implementation or test closure. No lazy observation API
+redesign is required. Required checks:
+
+- Final compact snapshot still satisfies the existing 256 KiB guard, including
+  summary/index fields and reference metadata.
+- Bounded reads verify blob length/hash, canonical Run hash and identity/revision
+  linkage after compact snapshot verification. Missing/corrupt graphs fail closed.
+- Full workspace serialization has an exact tested byte cap including aliases,
+  escaping and envelope; an approximate two-times estimate is insufficient.
+  Oversized responses have authorized complete retrieval and actionable recovery;
+  edit/cancel remain reachable for accepted records.
+- Graph-limit failure occurs before commit, preserves the last good revision and
+  supports a small bounded operational-error path. It cannot strand the record.
+- Blob writes preceding failed CAS may leave unreachable objects, but cannot
+  publish the losing graph or delete graphs needed by readers/history. Retention
+  is explicit; eager cleanup must not race references.
+- SQLite restart reuses its durable blob root. B04 history hashes use the exact
+  full canonical Run for offloaded records; old inline behavior stays intact.
+
+Backend tests cover a supported multi-label graph beyond the former inline cap,
+restart/full retrieval, size thresholds, serialized-response bounds and recovery,
+CAS races, tampering, scope authorization and historical hash regressions.
+
+### TRN-006 declaration contract
+
+Backend proposes bounded optional language/script candidates in actual structured
+model output, retained with original provider bytes and immutable Observation
+declarations. Human `reading_metadata` decisions target an observation and append
+separate audited declaration history; they never rewrite model observations.
+Architecture accepts this direction subject to the following requirements:
+
+- TRN-006 (PRD line 299) also requires label-level aggregation and versioned
+  profile-defined handling for mixed-language labels. Per-observation metadata
+  alone is insufficient. Explicit review/unmeasured handling is valid without
+  guessing institutional language policy or automatically deferring records.
+- Multiple alternative candidates do not establish a mixed-language label.
+  Represent mixed-language evidence separately from disagreement between readings;
+  missing declarations mean unmeasured, not monolingual.
+- Bound candidate count and string sizes. Define identifiers or explicitly treat
+  labels as opaque; do not imply standards validation that is not implemented.
+  Preserve model/prompt/raw hashes and human provenance; invent no confidence.
+- Server derives actor/time/audit provenance. Apply existing authorization, CAS
+  and idempotency; append/supersede human decisions without erasing prior values.
+  Bind targets to observation/region/run lineage and reject obsolete targets
+  after resegmentation. Recompute dependent profile handling, validation and
+  disposition while preserving immutable history.
+- Test mixed text versus conflicting alternatives, missing declarations, human
+  supersession/replay/stale writes, resegmentation, restart, unchanged raw hashes
+  and visible reasons from a versioned mixed-language rule. Old observations
+  remain readable. Supply additive actual HTTP fixtures to Flutter.
+
+Backend's `BACKEND_ACTIVE_GRAPH.md` now reports implementation and local tests
+for offload, actual PostgreSQL/SQLite restart/hash/CAS, adversarial integrity,
+16 MiB atomic recovery and a 4 MiB serialized workspace cap. Architecture read
+the report but did not rerun those tests. HTTP 413 includes `mutation_committed`;
+Flutter must prove it avoids repeating a committed mutation and offers complete
+artifact retrieval plus reachable controls. This remains an integration gate.
+
+### Checksum data follow-up
+
+The earlier missing-constraint finding above describes the pre-V3 assembly.
+Data subsequently handed off code `3daf6c7753601e9db14390bb79845d4cbed24459`
+and report `5f15bc1f805c2ce5a0786d69aa6ad1f59a238bd4` from worktree 39c2.
+Architecture inspected `DATA_CHECKSUM.md` and confirmed the nullable
+`sourceChecksum` field and scoped `specimen_scope_checksum` constraint in that
+schema. Data reports an actual PostgreSQL race with different specimen IDs and
+idempotency keys: one full commit, uniqueness failure for the loser, and no loser
+side effects. Architecture has not independently rerun that suite.
+
+`FindSpecimenByChecksum` takes organizationId, collectionId, actorUid, checksum
+and includeSensitive and returns only id/revision, limit two. Backend must adopt
+both `CreateSpecimenV3` (V2 variables plus required sourceChecksum) and
+`SaveSpecimenV3` (V2 variables, immutable nonnull checksum check), canonicalize
+returned UUIDs and prove scoped conflict mapping through actual HTTP intake.
+SQLite/intake integration remains backend-owned and unverified by this handoff.
+Legacy V1/V2 writers and unaudited null rows remain explicit rollout gates;
+the audit is read-only and no backfill or production rollout has occurred.
+
 ### Persistent provider circuit module
 
 HAR-009 (PRD line 330) requires circuits; a worker-local delay is insufficient for

@@ -443,6 +443,9 @@ def test_production_transcriber_does_not_receive_peer_observations(
                         "verbatim_text": "Independent source",
                         "lines": ["Independent source"],
                         "unreadable_spans": [],
+                        "language_candidates": ["English", "German"],
+                        "script_candidates": ["Latin"],
+                        "language_relation": "cooccurring",
                     },
                 )
             ]
@@ -473,6 +476,17 @@ def test_production_transcriber_does_not_receive_peer_observations(
     for route in specimen.run.profile.routes:
         observation = adapter.transcribe(specimen, specimen.run.regions[0], route)
         assert observation.literal_text == "Independent source"
+        from specimen_digitization.application.reading_declarations import checked_value
+
+        declaration = checked_value(observation.declaration_evidence, blobs)
+        assert declaration["structured_output"]["language_candidates"] == [
+            "English",
+            "German",
+        ]
+        assert declaration["candidates"]["language_relation"] == "cooccurring"
+        assert declaration["raw_sha256"] == observation.raw_sha256
+        assert declaration["producer"] == observation.model_id
+        assert declaration["version"] == observation.prompt_version
         raw = blobs.get(observation.raw_ref)
         assert b"Independent source" in raw
         assert b"PEER-OUTPUT-MUST-NOT-LEAK" not in raw
