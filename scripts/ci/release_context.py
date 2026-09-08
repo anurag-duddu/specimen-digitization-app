@@ -10,6 +10,7 @@ import re
 REPOSITORY = "anurag-duddu/specimen-digitization-app"
 PROJECT = "specimen-digitization"
 PLANES = {
+    "runtime-build": ("runtime-build-production", "runtime-release.yml", "specimen-runtime-build"),
     "runtime": ("runtime-production", "runtime-release.yml", "specimen-runtime-release"),
     "data": ("data-production", "data-release.yml", "specimen-data-release"),
 }

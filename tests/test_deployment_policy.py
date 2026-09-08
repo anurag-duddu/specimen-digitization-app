@@ -7,6 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/ci-cd.yml"
 DEPLOY_SCRIPT = ROOT / "scripts/ci/deploy_hosting.sh"
+APPROVED_DEPLOY_SCRIPTS = {
+    DEPLOY_SCRIPT,
+    ROOT / "scripts/ci/deploy_runtime.py",
+    ROOT / "scripts/ci/deploy_data.py",
+}
 
 
 def test_workflow_preserves_production_gates() -> None:
@@ -65,7 +70,7 @@ def test_no_other_automation_can_issue_a_deploy() -> None:
 
     violations: list[str] = []
     for path in candidates:
-        if path == DEPLOY_SCRIPT:
+        if path in APPROVED_DEPLOY_SCRIPTS:
             continue
         text = path.read_text()
         if any(pattern.search(text) for pattern in deploy_patterns):
@@ -81,3 +86,39 @@ def test_firebase_target_is_exactly_the_default_hosting_site() -> None:
     assert '"site": "specimen-digitization"' in firebase_config
     assert '"public": "apps/specimen_digitization/build/web"' in firebase_config
     assert '"default": "specimen-digitization"' in firebase_alias
+
+
+def test_release_contract_names_only_approved_backend_workflows() -> None:
+    agents = (ROOT / 'AGENTS.md').read_text()
+    contract = (ROOT / 'docs/DEPLOYMENT.md').read_text()
+    for filename in ('runtime-release.yml', 'data-release.yml'):
+        assert f'.github/workflows/{filename}' in agents
+        assert f'.github/workflows/{filename}' in contract
+    assert 'RELEASE_AUTHORIZATION.md' in contract
+
+
+def test_backend_workflows_have_main_push_and_separate_environments() -> None:
+    import yaml
+
+    for plane in ('runtime', 'data'):
+        path = ROOT / '.github/workflows' / f'{plane}-release.yml'
+        assert path.is_file(), f'Missing approved protected {plane} workflow'
+        workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+        assert set(workflow['on']) == {'push'}
+        assert workflow['on']['push']['branches'] == ['main']
+        assert workflow['permissions'] == {'contents': 'read'}
+        assert workflow['concurrency']['cancel-in-progress'] == 'false'
+        deploy_jobs = [
+            job for job in workflow['jobs'].values()
+            if job.get('permissions', {}).get('id-token') == 'write'
+        ]
+        assert deploy_jobs, 'No separately protected deployment job'
+        for job in deploy_jobs:
+            environment = job['environment']
+            if isinstance(environment, dict):
+                environment = environment['name']
+            allowed = {f'{plane}-production'}
+            if plane == 'runtime':
+                allowed.add('runtime-build-production')
+            assert environment in allowed
+            assert job.get('needs'), 'Cloud credentials cannot precede admission'
