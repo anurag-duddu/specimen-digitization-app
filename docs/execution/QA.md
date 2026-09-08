@@ -1018,3 +1018,44 @@ were exercised again in the final canonical/fresh SQL suites.
 The new runtime code gaps from the earlier audit are locally implemented and
 verified within these boundaries. Final project completion still requires N01's
 bounded UI recheck and the separately owned external acceptance/release gates.
+
+## 2026-09-08 — N01 closed on final minimal UI target
+
+Exact integration target `c144c05f5a3217208d6aab09e68ff3cdd2ddefa4`, containing
+frontend21b3e6b. QA imported the exact owner files when ancestry produced conflicts
+and verified an empty product diff against c144c05. Product delta from ee4bec8 is
+only region_editor.dart and its tests; backend/data/dependency trees are unchanged.
+
+**N01 closed.** Independent focused widgets:3 passed. Fatal-info analysis passed
+with the CI Firebase stub prepared. The first analysis attempt preceded stub
+creation and reported only the missing firebase_options.dart/DefaultFirebaseOptions;
+it is a QA setup issue, not a product finding. The unchanged backend suite was not
+rerun, as explicitly directed; ee4bec8 canonical351/26,Flutter68/7,fresh SQL71 and
+optional codec9 results remain the baseline. Owner full Flutter70 result remains
+owner-attributed rather than silently counted as independently rerun.
+
+Actual browser verification on the retained independently generated HEIC case:
+valid→empty produced numeric feedback; with two invalid coordinates, fixing one
+kept feedback; invalid submission stayed in the editor. Restoring the final
+coordinate cleared numeric feedback immediately. A missing reason remained
+required; another empty→valid numeric cycle preserved that unrelated error.
+Independent HTTP confirmed these rejected submissions left revision36 unchanged.
+
+QA then verified all DOM input values5/7/45/57,90° rotation and reason before
+saving. Completed revision52 and reopened editor preserved exactly those bounds,
+rotation, source preview and decoded80×120 basis. The independent HTTP/SQLite/
+NumPy oracle again confirmed original bytes, historical20 asset and cropped pixels
+exact; one region remained, approval=false and needs_human_review.
+
+Compact results/reproducer: `qa-evidence/c144c05/`. Browser states/screenshots:
+`/tmp/specimen-qa-n01-browser`; separate new oracle captures:
+`/tmp/specimen-qa-n01-heic`. Baseline ee4bec8 captures were preserved.
+Logs: `/tmp/specimen-qa-n01-focused.log`,
+`/tmp/specimen-qa-n01-analyze-prepared.log`,
+`/tmp/specimen-qa-n01-http-oracle.log`. Owned tab and servers were stopped.
+
+The all20 map above carries forward to c144c05 with the sole local followup N01
+closed for P0-04/P0-15. No independently identified local blocker remains in this
+scoped pass. Every external/device/quality/institutional/IAM/restore/configured-plane
+and production/release gate remains unaccepted; this is not overall P0 or release
+acceptance. QA made no product fixes, pushed nothing and deployed nothing.

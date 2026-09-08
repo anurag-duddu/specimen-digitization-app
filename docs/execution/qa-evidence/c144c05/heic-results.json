@@ -1,0 +1,21 @@
+{
+  "saved_revision": 52,
+  "regions": 1,
+  "decoded_source_basis": [
+    80,
+    120
+  ],
+  "saved_original_basis_crop": [
+    5,
+    7,
+    40,
+    50
+  ],
+  "clockwise_quarter_turns": 1,
+  "original_bytes_exact": true,
+  "crop_numpy_oracle_exact": true,
+  "initial_history_asset_exact": true,
+  "human_approved": false,
+  "status": "completed",
+  "disposition": "needs_human_review"
+}
