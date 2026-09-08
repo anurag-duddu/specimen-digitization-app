@@ -135,3 +135,28 @@ def test_empty_publication_is_idempotent_and_corruption_is_rejected(tmp_path):
     (tmp_path / first).write_bytes(b"x")
     with pytest.raises(Conflict):
         blobs.put(b"")
+
+
+def test_allowed_browser_origin_can_read_artifact_verification_headers(tmp_path):
+    from fastapi.testclient import TestClient
+    from specimen_digitization.application.api import create_app
+    from specimen_digitization.application.storage import SQLiteRepository
+    from specimen_digitization.application.workflow import SyntheticAdapters
+
+    blobs = LocalBlobs(tmp_path / "blobs")
+    app = create_app(
+        mode="synthetic",
+        repository=SQLiteRepository(tmp_path / "state.db"),
+        blobs=blobs,
+        adapters=SyntheticAdapters(blobs, "synthetic"),
+        origins=["http://localhost:3002"],
+        token="synthetic-test-only",
+    )
+    with TestClient(app) as http:
+        response = http.get("/health", headers={"Origin": "http://localhost:3002"})
+        assert (
+            response.headers["access-control-expose-headers"]
+            == "X-Content-SHA256, X-Specimen-Revision"
+        )
+        denied = http.get("/health", headers={"Origin": "http://unapproved.invalid"})
+        assert "access-control-allow-origin" not in denied.headers

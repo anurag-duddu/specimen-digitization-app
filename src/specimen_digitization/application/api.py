@@ -265,6 +265,7 @@ def create_app(
         app.add_middleware(
             CORSMiddleware,
             allow_origins=origins,
+            expose_headers=["X-Content-SHA256", "X-Specimen-Revision"],
             allow_methods=["GET", "POST", "PUT"],
             allow_headers=[
                 "Authorization",
