@@ -336,19 +336,28 @@ def execute_phase(specimen, phase, blobs):
     return result
 
 
-def refresh_review_evidence(specimen, blobs):
-    specimen.run.authority_plan = plan_authorities(specimen)
-    for phase in PHASES:
-        result = execute_phase(specimen, phase, blobs)
+def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
+    result = None
+    if not metadata_only:
+        specimen.run.authority_plan = plan_authorities(specimen)
+        for phase in PHASES:
+            result = execute_phase(specimen, phase, blobs)
     signals = []
     differences = []
     unmeasured = set()
     reading_metadata = {}
+    declaration_sources = {}
+    from .reading_declarations import effective_declarations, label_handling
+
     for region in specimen.run.regions:
         readings = [o for o in specimen.run.observations if o.region_id == region.id]
-        if len(readings) < 2:
-            unmeasured.update(("reading_disagreement", "language", "script"))
-            continue
+        observed_declarations = {}
+        for observation in readings:
+            declarations, candidates = effective_declarations(
+                specimen, observation, blobs
+            )
+            observed_declarations[observation.id] = declarations
+            declaration_sources.setdefault(region.id, []).extend(candidates)
         inputs = tuple(
             ReadingEvidenceInput(
                 observation_id=o.id,
@@ -356,6 +365,7 @@ def refresh_review_evidence(specimen, blobs):
                 text=o.literal_text,
                 source_ref=o.raw_ref,
                 source_sha256=o.raw_sha256,
+                declarations=observed_declarations[o.id],
             )
             for o in readings[:2]
         )
@@ -370,6 +380,9 @@ def refresh_review_evidence(specimen, blobs):
                 "script_state": item.script_state,
                 "reasons": list(item.reasons),
             }
+        if len(inputs) < 2:
+            unmeasured.update(("reading_disagreement", "language", "script"))
+            continue
         alignment = align_readings(*inputs)
         raw = alignment.model_dump_json().encode()
         differences.append(
@@ -389,7 +402,8 @@ def refresh_review_evidence(specimen, blobs):
         unmeasured.update(risk.unmeasured)
     specimen.run.disagreements = differences
     specimen.run.reading_metadata = reading_metadata
-    if result.findings:
+    specimen.run.label_language_handling = label_handling(specimen, declaration_sources)
+    if result is not None and result.findings:
         signals.append(
             RiskSignal(
                 code="hard_validation",
