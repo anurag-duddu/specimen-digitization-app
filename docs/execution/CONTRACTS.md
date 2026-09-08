@@ -161,7 +161,7 @@ network tools arrive from model output. Phases are parse, plan, lookup, resolve,
 normalize, validate, finalize; skips need a persisted applicability decision.
 
 `LookupAdapter.execute(request, context) -> LookupResult` has outcome:
-`success`, `no_match`, `ambiguous_match`, `empty_response`, `rate_limited`,
+`success`, `no_match`, `ambiguous`, `empty_response`, `rate_limited`,
 `timeout`, `authentication_error`, `authorization_error`, `provider_error`,
 `malformed_response`, `policy_blocked`. Include candidates, evidence reference,
 attempt, retry_after and sanitized error. Cache key includes provider, operation,
@@ -242,3 +242,27 @@ with collection membership; a collection grant alone cannot retain access after
 organization revocation. Backend enforces action-specific role permissions in
 addition to connector membership/CAS checks. Snapshot bounds and operation names
 must be exercised through the actual adapter before integration acceptance.
+
+
+### In-progress serializer reconciliation
+
+An early read-only review of backend `application/domain.py` identified the
+following compact internal representation. These are not yet a frozen HTTP
+fixture. Backend and Flutter were notified together before integration.
+
+| Conceptual contract | Backend internal shape | Required wire resolution |
+|---|---|---|
+| specimen_id, revision, organization/collection, active run | `id`, `version`, `scope`, `run` | Explicit serializer maps HTTP revision to aggregate version; publish exact session/workspace fixture |
+| asset_id, immutable storage reference, byte_count | `id`, `blob_ref`, `size_bytes` | Document compact aliases or translate once in backend; immutable digest/reference rules unchanged |
+| original-pixel bbox min/max | `x`, `y`, `width`, `height` | Equivalent bbox is `[x,y,x+width,y+height]`; do not interpret width as x_max |
+| lookup ambiguous match | `status: ambiguous` | Adopt `ambiguous` as canonical wire spelling, consistent with existing GBIF.md; conceptual meaning unchanged |
+| unresolved field | no distinct unresolved enum in early model | `unknown`/`ambiguous` with explicit reason may represent unresolved processing; never satisfy supported mandatory value |
+| valid empty lookup result | early OPERATIONAL set includes empty_response | Backend notified to distinguish valid empty response from malformed provider output; PRD §15 remains authoritative |
+
+Conceptual table names above describe evidence obligations, not an instruction
+to duplicate Python types or invent unsupported fields in Flutter. Final wire
+examples must derive from the executable backend schema and be tested through
+both serializers. Unimplemented provenance obligations remain acceptance gaps,
+not waived by compact serialization. The data-owner snapshot bound is provisional
+until the adapter enforces it. No later contract delta may weaken clearance or
+turn institutional unknowns into approved values.
