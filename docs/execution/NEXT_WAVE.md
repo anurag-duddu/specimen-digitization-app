@@ -533,3 +533,74 @@ invented; score_band remains explicitly unsupported. Data and Flutter were notif
 Legacy integer cursor 0 may explicitly restart a fresh search; nonzero old offsets
 return 422 rather than being silently reinterpreted. Flutter confirmation of the
 reset/error behavior and identical response-fixture tests remain integration gates.
+
+## Bounded remaining requirements and specialist module contracts
+
+Source pointers below refer to the inspected backend assembly in worktree 3782,
+not implementation present on this documentation branch. Line numbers are audit
+locators and can move during integration. All acceptance here is local; it does
+not establish production availability or institutional quality approval.
+
+| Gap and source | Classification | Minimum acceptance and ownership |
+| --- | --- | --- |
+| Current graph cap: `application/storage.py:38`, `production.py:345`; PRD line 649 | Mandatory bounded, recoverable processing and complete provenance; unlimited workload support is not required | Backend externalizes large current evidence/raw payloads into immutable verified references, or enforces declared supported-input limits before acceptance. A supported multi-label fixture beyond the old inline cap must retain all evidence through retrieval, restart and concurrent-write checks. Limit failure must be atomic and actionable; no dropped labels or stranded accepted record. Keep the 256 KiB guard. Historical B04 closure is not reopened. |
+| Duplicate precheck: `application/api.py:627`; ING-008, PRD line 261 | Scoped idempotency and duplicate warning mandatory; indexed precheck is a scalability enhancement unless measured supported-load bounds fail | Backend/data can replace full aggregate hydration with a scoped checksum metadata query. Preserve authoritative uniqueness under concurrent upload, authorized duplicate response, and cross-scope isolation. Flutter keeps the existing duplicate response flow. No warehouse search expansion. |
+| Codec intake: `application/api.py:724`, allowlist at 728; ING-001, PRD line 254 | JPEG/PNG/HEIC mandatory; RAW/TIFF conditional on profile approval | Backend must connect approved decoding to actual upload and worker paths; isolated preflight is insufficient. Preserve immutable originals, derivative/codec provenance and EXIF/crop transforms. Test an actual approved synthetic codec fixture through upload, processing, retrieval and restart in a permitted runtime. Flutter advertises only actual supported intake and presents actionable blocks. HEIC runtime approval remains an explicit gate, not an implicit PRD waiver; no all-RAW claim. |
+| Raw memory bound: `application/api.py:904,929`, `storage.py:126`, `production.py:445`; PRD sections 14 and 16 | Mandatory resource bound; streaming viewer enhancement optional | Backend adds a bounded blob read that stops at cap plus one before full allocation, pins object generation, and verifies the complete hash only for accepted payloads. Untrusted size metadata cannot bypass the bound. Use separate caps by artifact type, not the viewer's 1 MiB cap for originals. Test dishonest size, overshoot, tamper, cleanup and authorization. Flutter handles typed too-large errors without rendering unbounded content. |
+
+Backend remains sole editor/integrator of shared workflow, domain, API, storage,
+production and dependency files. Data owns schema/query changes; Flutter owns its
+application. The following are narrow delegate contracts for new modules and
+their own tests. Coordinator dispatches specialists; this document does not
+authorize infrastructure, paid inference or production mutation.
+
+### Persistent provider circuit module
+
+HAR-009 (PRD line 330) requires circuits; a worker-local delay is insufficient for
+systemic failures across workers. A specialist may own new
+`application/provider_circuit.py` and its matching tests. Define typed closed,
+open and half-open states; an injected-clock deterministic admission/outcome
+reducer; and a store protocol with revision-aware compare-and-swap. Circuit keys
+identify the approved provider connection, capability/route and relevant policy
+scope so one tenant cannot poison an unrelated tenant's circuit. Never put
+credentials in keys or reports.
+
+State includes failure count, next eligible time and expiring single-probe lease.
+Tests cover two workers competing for one half-open probe, stale outcomes,
+expired crash leases, scope isolation and no provider dispatch while open.
+Admission denial returns an operational block and next eligible time, never a
+biological disposition. Authentication failures require configuration recovery;
+no-match/ambiguity are semantic outcomes, not automatic systemic failures.
+After dispatch, an unknown outcome must retain its uncertainty and existing
+idempotency/reconciliation rules.
+
+Backend integrates admission before dispatch/budget effects and persists state
+through an approved shared CAS adapter. Backend/data must confirm permitted
+document kinds or the minimal schema operation; an in-memory implementation
+alone does not close cross-worker persistence. Specialist must not edit shared
+workflow/storage files or introduce a new orchestration engine.
+
+### SAM service total-deadline module
+
+PRD line 694 requires explicit stage timeouts. In `application/production.py`,
+`Sam3Service` starts at 597, synchronous identity-token fetch at 632 precedes the
+HTTPX client at 633. An HTTPX per-operation timeout does not prove a total deadline
+including credential acquisition. A specialist may own new
+`application/sam3_transport.py` and matching tests, with typed request/result,
+injected credential and HTTP transports, an absolute monotonic deadline, bounded
+response bytes and deterministic cleanup.
+
+The deadline must include identity acquisition, connection, response body and
+decode, with margin inside the worker lease. The credential adapter must actually
+cancel or terminate blocked work; timing out a thread while it continues does not
+satisfy this contract. A bounded isolated process is one possible adapter for a
+synchronous SDK, subject to platform cleanup tests. Do not log tokens or alter
+global credentials. Preserve existing pinned model, endpoint and response
+validation in the backend-owned wrapper.
+
+Local stalled credential and TCP-response tests must prove elapsed bounds and
+absence of orphan work. Distinguish known failure before dispatch from unknown
+outcome after dispatch; do not blindly retry an unknown effect. Tests need no live
+credentials or GPU service. Backend owns integration with reservations, leases,
+idempotency and circuits. This transport contract does not implement or approve
+a SAM serving service.
