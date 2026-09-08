@@ -85,3 +85,37 @@ Coordinator baseline canonical verification passed (355 Python, 26 gated skips;
 76 Flutter, seven live skips; analysis, scanners, release web). The two new
 coordination documents are documentation-only and receive normal commit/push
 hooks. Every implementation owner must independently validate its changed tree.
+
+
+## Pilot implementation decision and owner milestones
+
+Coordinator accepted a narrow evidence-only pilot implementation proposal on the
+processing feature branch. It must bind the frozen ten manifest, exact source,
+draft profile, model/prompt/configuration, authorized scope and positive durable
+budget reservation. Normal production behavior stays unchanged. It may retain
+actual SAM regions and two blind readings, then stops processing_blocked with
+pilot_evidence_review_required and no disposition. It must not publish a draft
+profile, invent calibrated risk, parse/resolve authorities, finalize or clear.
+API/client/QA coordinate real evidence inspection and permitted correction/history;
+outside-ten, missing approval and mutated bindings must fail. This is a pilot
+milestone, not full pipeline or institutional-quality acceptance. Cloud execution
+and later merge remain separately gated.
+
+Owner-reported milestones (independent live acceptance not yet performed):
+
+- Processing: 21 local pilot/worker tests passed, one real-SQL test skipped;
+  bounded restart/effect experiments and reuse of existing CPU SAM implementation.
+- API: 32 new runtime tests passed, including actual TCP and SIGTERM during a
+  stuck synchronous handler; full suite/container/canonical verification running.
+- Data: 18 manifest and 22 admin-bootstrap unit tests passed. Local restore
+  reconstructed 27 tables/16,251 test rows. SQL Connect 3.2.0 startup removes four
+  supplemental paging/search indexes despite COMPATIBLE mode; reviewed post-schema
+  index DDL and final catalog/query tests are required. No cloud restore claim.
+- Delivery: 68 packet/context guard tests reported; original Hosting restrictions
+  retained, canonical verification and independent review underway.
+- QA: 24 independent local fixture recovery/auth checks and 27 adversarial
+  evidence-gate tests passed. Actual Google identity/data/provider checks remain
+  blocked by environment/access, and the ten cloud specimens are not yet frozen.
+
+Coordination PR 4 tracks plan/status on codex/live-rollout-coordination. CI is
+observed by delivery and coordinator; no new workstream PR is merged to main.
