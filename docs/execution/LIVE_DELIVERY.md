@@ -270,3 +270,37 @@ Final canonical command `scripts/ci/verify.sh`: passed. Evidence logs:
 `/tmp/specimen-live-delivery-final-hooks.log` (all final workflow/security/shell
 hooks passed). No skip counted as a pass. Mobile compilation awaits GitHub CI.
 No local demo ports or shared Docker resources were modified by this task.
+
+## Scoped PR checkpoint
+
+Implementation SHA: `60d80a6d56f53dfd0992e84393762679feea5611`.
+PR: <https://github.com/anurag-duddu/specimen-digitization-app/pull/6>.
+Initial CI/CD: <https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34259749692>
+(in progress at checkpoint). Initial candidate CI:
+<https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34259749728>
+completed; packet example structurally valid but incomplete, owner image builds
+and data-plan validation explicitly **Not run** because inputs are absent on
+this scoped branch. Green wrapper jobs do not prove image builds. The PR API is
+the authority for the latest documentation checkpoint SHA and checks.
+
+Dependencies currently PR4 coordinator, PR5 client; API/data/processing/QA PRs
+pending. Keep all PRs unmerged. Delivery watches exact latest heads, not superseded
+runs. Integration worktree creation waits for reviewed owner handoffs.
+
+Confirmed owner contracts received after implementation freeze:
+
+- API requires textual `SPECIMEN_FIREBASE_PROJECT=specimen-digitization` for
+  Firebase Auth and numeric `SPECIMEN_FIREBASE_PROJECT_NUMBER=716045864126` for
+  the separate App Check verification context. Every allowed Firebase app ID
+  must match the numeric project. Reverify cloud metadata before launch. Owner
+  local RSA/JWKS fixtures prove SDK audience handling, not live Google tokens.
+- Data reports a local rehearsal with two connector restart cycles, exact four
+  non-unique index reconstruction, writer quiescence, the schema-managed
+  `specimen_scope_checksum` uniqueness constraint valid throughout, and required
+  `ANALYZE` after restore before query-plan acceptance. Never force planner flags
+  to simulate an indexed plan. Exact private artifact path remains with data/QA;
+  independent artifact review and actual cloud restore are separate gates.
+- Data public plan is `infra/live/data-resources.json`; offline validator is
+  `uv run python scripts/data/validate_live_plan.py`. Candidate CI runs it when
+  integrated and rejects its absence on main/integration. Plan's explicit
+  proposal/unknown states cannot be promoted to observed resource facts.
