@@ -357,3 +357,114 @@ Flutter's older-history UI is part of the chosen retrieval path; backend-only
 retention cannot substitute for accessible complete review history. Architecture
 has sent these conditions directly to backend. B04 remains unresolved until
 independent QA verifies the chosen implementation on its repaired candidate.
+
+## Progress refresh: first repair 290a2a7 and reliability WIP
+
+Coordinator reports B04/F04 independent closure and all five CI checks green for
+290a2a7. The reliability report covers tested checkpoint a63ab1a; architecture
+also inspected current dirty `3782` files, which must not be described as that
+committed checkpoint or a passing integrated candidate. Shared STATUS.md has
+historical entries; later explicit coordinator/owner messages supersede old rows.
+
+Existing worker progress is material: bounded due metadata sweeps, persisted
+cursor, fair scope rotation, error isolation/backoff, explicit budgets, deadlines,
+lease guards, pinned prompts/routes and retry jitter are reported implemented and
+tested in the checkpoint. Provider-wide circuits, remaining SAM/auth deadlines,
+API search projections and current graph growth remain owned backend work.
+
+Current WIP adds `collection_runtime.py` and `evidence_runtime.py`. Workflow now
+executes classification/profile selection, quality_check, authority planning and
+checkpointed typed authority calls. parse/plan/lookup/resolve/normalize/validate
+invoke `execute_phase`, which persists digest-verified PhaseResult artifacts;
+finalize recomputes evidence phases and applies phase gates alongside existing
+policy. The earlier label-only stage finding applies to the old baseline, not
+this WIP. Acceptance must still inspect actual phase proposals/transformations,
+not infer full HAR coverage from calls or stored phase names.
+
+### Additive Flutter integration contract to freeze now
+
+Existing backend is the serializer owner. Flutter completion starts from repaired
+290a2a7 and must consume a new shared generated response fixture, retaining v0.1
+field names and old-fixture compatibility. WIP currently exposes additions inside
+`run`, plus asset diagnostics:
+
+| Information | Current WIP location / next contract requirement |
+|---|---|
+| Classification/profile | run.classification, classification_selection, profile_snapshot and registry/dependency versions; expose candidates, selection/review reason and immutable profile display |
+| Image quality | asset.quality_diagnostics; distinguish measurements, failures and unmeasured diagnostics; processing-time output is not pre-submission capture feedback |
+| Seven phases | run.phase_results metadata; GET specimen/phases/{phase} retrieves verified artifact with historical revision selection; display applicability/findings/proposals |
+| Authorities | run.authority_plan/results/receipts; authority_resolution action needs exact source_id/field/identifier/evidence contract and current revision; show ambiguous candidates and operational failures distinctly |
+| Disagreement | run.disagreements artifact refs; provide authorized bounded content access, then render text/span/field alternatives without color-only encoding |
+| Review risk | run.review_risk; display version/components/reasons and uncalibrated label; quality/coverage/lookup components must be explicit rather than silently missing |
+| Raw model/evidence | Existing immutable references are not usable URLs; add scoped specimen/run/artifact lookup and verified content, including old revisions; never expose arbitrary blob retrieval |
+| History | Keep repaired fixed-boundary history/audit offsets/references and source access rules; new artifact selection must pin the same historical run |
+
+Backend and Flutter were directly asked for exact additive examples and action
+schemas. Architecture has not frozen unstated endpoint names or approved direct
+client blob access. Require identical-file decoding plus a real SQL/HTTP UI
+journey: classify/correct, inspect diagnostics, inspect all applicable phase
+outputs, select retained authority candidate, rerun dependent validation, inspect
+risk/disagreement and reopen historical evidence. Unsupported phase/action
+versions must render an actionable state, not disappear or trigger guessed writes.
+
+### Implementable gaps without an explicit active owner
+
+These are dispatch recommendations, not claims that the named owners have already
+accepted new scope. Parent should assign them explicitly; avoid a new framework
+or duplicate API owner.
+
+1. **HEIC and approved RAW decoding plus quality preflight:** extend existing
+   collection task with bounded decoder capability/fixture/license proposal and
+   diagnostic preflight contract. Backend owns endpoint/decoder composition;
+   Flutter owns pre-submission capture display and lost-camera-result handling.
+   Current post-upload quality_check does not satisfy ING-005 by itself. Native
+   permission/camera verification needs actual devices; decoder code and fixtures
+   can proceed independently. TIFF client preview capability remains separately
+   testable from server decode.
+2. **Language/script and disagreement/risk completeness:** extend evidence owner
+   with additive observation/script candidates and uncertainty, label+field+span
+   disagreement fixtures, and explicit bounded/unmeasured risk states. Backend
+   integrates extraction and API artifact access; Flutter renders. Current WIP
+   ignores readings longer than 8,000 characters in risk difference computation;
+   return a visible computation-limited reason rather than imply no disagreement.
+   Risk refresh currently uses only disagreement/hard-finding signals; connect
+   measured quality/coverage/lookup components or label them unmeasured. Human-
+   resolved differences must not be named unresolved merely because originals
+   differ. TRN-006/007 and SCR-001..004 are implementable P0, not model-cost gates.
+3. **Full EXP-001 filters:** explicitly assign backend+data bounded projected
+   search by stable ID/batch/collection/state/queue/date/uploader/score-band/issue/
+   profile-version, with Flutter controls. Existing due-work paging does not
+   automatically implement user-facing search. Avoid full hydrated list fetching
+   followed by UI-only filtering. Use scoped cursor/positive and negative tests.
+4. **Review source geometry and raw evidence UI:** explicitly include region
+   rotation and reproducible transforms, complete permitted raw-body access and
+   authority/phase content in Flutter completion. Existing edit/zoom/history
+   implementation does not prove all these operations. Backend/collection own
+   geometry contracts and derivative storage; no new independent Flutter owner.
+
+The current backend/evidence authority plan also needs a semantic repair/check:
+`authority_query` returning no source literal causes an operational block in WIP.
+Absent/unreadable label evidence should be a typed unresolved result and final
+review after required attempts; an unavailable/denied configured service is the
+operational case. Send this through existing backend owner rather than spawning
+a new task. Preserve qualified Parties identity and never fill an unknown IRN.
+
+### Owned but not yet accepted
+
+Backend owns handler assembly, API artifacts, persistent circuits/deadlines,
+budgets and current graph bounds; data owns SQL queries/indexes and normalized
+projection support; Flutter owns complete interactive use and accessibility;
+QA owns independent repaired/second-wave candidate testing; integration owns
+canonical/CI and later runtime delivery preparation. None of these WIP additions
+should be mixed into the first repaired candidate's acceptance claims.
+
+External gates remain approved collection semantics/authority access, representative
+quality and provider data/spend permissions, real SAM3/model serving, production
+App Check/IAM/connector/runtime rollout, managed-engine comparison and signed/device
+acceptance. Prepare local adapters/tests and comparison fixtures now, but do not
+claim these gates pass or provision resources from this planning pass.
+
+Planning verification: read current report and exact handler/serializer source,
+compared section 11 P0 and all 20 acceptance criteria, sent concrete gaps/contracts
+to backend, Flutter and coordinator. Only documentation changed; no product tests
+or cloud calls run. Commit hooks and diff checks validate this documentation pass.
