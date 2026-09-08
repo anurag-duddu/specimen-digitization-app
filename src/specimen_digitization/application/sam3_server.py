@@ -504,6 +504,24 @@ def create_app(segmenter, authenticate, *, hard_deadline=False):
     return app
 
 
+def read_runtime_manifest(*, materialize=False):
+    """Read the pinned manifest through the unchanged private-file contract."""
+    from .runtime_input_materialization import (
+        MANIFEST_MAX_BYTES,
+        materialize_inputs,
+    )
+
+    try:
+        source = Path(os.environ["SPECIMEN_PILOT_MANIFEST_PATH"])
+        expected = os.environ["SPECIMEN_PILOT_MANIFEST_SHA256"]
+        if not materialize:
+            return read_manifest(source, expected)
+        with materialize_inputs({"manifest": (source, expected, MANIFEST_MAX_BYTES)}) as paths:
+            return read_manifest(paths["manifest"], expected)
+    except (KeyError, OSError, ValueError):
+        raise RuntimeError("sam3_private_manifest_unavailable") from None
+
+
 def main():
     import argparse
 
@@ -511,6 +529,7 @@ def main():
         description="Opt-in authorized-ten SAM CPU service"
     )
     parser.add_argument("--version", action="store_true")
+    parser.add_argument("--materialize-config", action="store_true")
     args = parser.parse_args()
     if args.version:
         print(
@@ -538,9 +557,7 @@ def main():
     if not os.getenv("SPECIMEN_SAM3_BUDGET_AUTHORIZATION"):
         raise RuntimeError("sam3_budget_authorization_required")
     manifest_sha256 = os.environ["SPECIMEN_PILOT_MANIFEST_SHA256"]
-    manifest = read_manifest(
-        Path(os.environ["SPECIMEN_PILOT_MANIFEST_PATH"]), manifest_sha256
-    )
+    manifest = read_runtime_manifest(materialize=args.materialize_config)
     expiry = float(os.environ["SPECIMEN_SAM3_EXPIRES_UNIX"])
     if (
         not math.isfinite(expiry)

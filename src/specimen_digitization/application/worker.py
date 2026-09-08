@@ -1,6 +1,8 @@
 """Bounded polling worker over retained runs. Engine selection remains separate."""
 
 import argparse
+from contextlib import contextmanager, ExitStack
+from copy import copy
 import os
 import json
 import time
@@ -440,6 +442,57 @@ def production_launch(args):
     return launch
 
 
+@contextmanager
+def materialized_worker_args(args):
+    """Opt-in copy of pinned mounts; unchanged strict readers remain authority.
+
+    The external launch pin comes from deployment configuration. Only a strictly
+    parsed launch may supply pins for the source manifest and optional profile.
+    Copies remain private for the complete worker lifetime and are then removed.
+    """
+    if not getattr(args, "materialize_config", False):
+        yield args
+        return
+    if args.mode != "production":
+        raise OperationalBlock("pilot_materialization_requires_production")
+    if not args.launch_policy or not args.source_manifest:
+        raise OperationalBlock("pilot_launch_and_source_manifest_required")
+    from .runtime_input_materialization import (
+        materialize_inputs, MANIFEST_MAX_BYTES, POLICY_MAX_BYTES, RuntimeInputError,
+    )
+    from .worker_launch import read_launch
+
+    staged = copy(args)
+    try:
+        with ExitStack() as lifetime:
+            launch_pin = os.getenv("SPECIMEN_LAUNCH_POLICY_SHA256", "")
+            launch_paths = lifetime.enter_context(materialize_inputs({
+                "launch.json": (args.launch_policy, launch_pin, POLICY_MAX_BYTES),
+            }))
+            staged.launch_policy = launch_paths["launch.json"]
+            launch = read_launch(staged.launch_policy, launch_pin)
+            if bool(getattr(args, "evidence_only", False)) != launch.evidence_only:
+                raise OperationalBlock("pilot_evidence_mode_mismatch")
+            inputs = {
+                "manifest.json": (args.source_manifest, launch.source_manifest_sha256, MANIFEST_MAX_BYTES),
+            }
+            if launch.evidence_only:
+                if not getattr(args, "evidence_profile", None):
+                    raise OperationalBlock("pilot_evidence_profile_required")
+                inputs["profile.json"] = (
+                    args.evidence_profile, launch.evidence_profile_sha256, POLICY_MAX_BYTES,
+                )
+            elif getattr(args, "evidence_profile", None):
+                raise OperationalBlock("pilot_unexpected_evidence_profile")
+            paths = lifetime.enter_context(materialize_inputs(inputs))
+            staged.source_manifest = paths["manifest.json"]
+            if launch.evidence_only:
+                staged.evidence_profile = paths["profile.json"]
+            yield staged
+    except RuntimeInputError:
+        raise OperationalBlock("pilot_private_input_materialization_failed") from None
+
+
 def main():
     from .worker_version import version
 
@@ -451,6 +504,10 @@ def main():
     )
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--check-config", action="store_true")
+    parser.add_argument(
+        "--materialize-config", action="store_true",
+        help="Copy externally pinned read-only mounts to private runtime files",
+    )
     parser.add_argument("--launch-policy", type=Path)
     parser.add_argument("--source-manifest", type=Path)
     parser.add_argument("--evidence-only", action="store_true")
@@ -462,6 +519,15 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.max_seconds <= 1500:
         parser.error("max-seconds must be 1..1500")
+    try:
+        with materialized_worker_args(args) as staged:
+            _run(staged)
+    except OperationalBlock as exc:
+        print(json.dumps({"status": "blocked", "reason": str(exc)}))
+        raise SystemExit(2) from None
+
+
+def _run(args):
     launch = None
     evidence_profile = None
     if args.mode == "production":
