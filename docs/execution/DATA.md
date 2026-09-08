@@ -289,3 +289,15 @@ terminate only the connector process launched by this task, then use
 Do not stop other PostgreSQL clusters. An independent QA server can use
 `SPECIMEN_TEST_PG_PORT=5569 SPECIMEN_TEST_DC_PORT=9519 scripts/data/serve-local.sh`.
 Its Ctrl-C trap handles its own process cleanup and prints its unique data directory.
+
+## Integration lease cleanup — 2026-09-08
+
+After the backend released its lease and the coordinator confirmed QA/integration
+use independent clusters, stopped the task-owned SQL Connect PID64810 on9499
+and PostgreSQL PID64827 on5549. Verified each process command and PostgreSQL
+postmaster file against `/tmp/specimen-data-pg39c2/cluster` before stopping.
+Sent TERM to that connector only and used `pg_ctl -D` with the exact owned cluster
+and fast shutdown. TCP checks confirmed both loopback ports closed. Preserved the
+cluster, logs and repository evidence; no other service or cloud resource changed.
+QA/integration should launch the documented isolated server from their immutable
+candidate, choosing separate PostgreSQL and connector ports.
