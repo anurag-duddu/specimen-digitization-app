@@ -210,3 +210,40 @@ retains the existing firebase_core_web compatibility override.
 - Local demonstration services remain available for independent QA at web port
   3000 and API port 8000 using explicit synthetic configuration. They are local
   temporary processes, not a deployment, scheduled monitor or production service.
+
+## B04 retained history repair (2026-09-08)
+
+- Isolated branch `codex/flutter-audit-history` starts at integration commit
+  `76da6606542201265101193ca831731efd52b319`. Requires backend B04
+  `4bea6c9`; no backend, SQL schema, deployment or next-wave changes included.
+- Added scoped, authenticated, read-only immutable revision browser, available
+  whether or not audit compaction has occurred. Pages contain at most ten
+  records and remain pinned to the current review revision. Missing records,
+  malformed digests, repeated cursors and changed bounds are rejected.
+- Compaction marker and global audit sequence offsets are visible. Legacy inline
+  audit evidence stays readable. Prior-run references construct scoped API paths
+  and forward run ID/digest verification; supplied URLs are never followed.
+  Retry preserves the reference. Full retained workspace, source metadata, run,
+  readings, fields, validation and audit evidence are expandable/selectable.
+- Historical reads use current bearer/App Check authentication, suppress actions,
+  and never fetch source bytes implicitly or replace the active CAS model.
+  Scope/specimen/revision keys dispose prior history, including pending reads.
+- Seven new offline tests cover paging bounds/gaps, authenticated requests,
+  identity/access/digest failures, legacy evidence, read-only/current CAS,
+  digest-preserving retry and late-response isolation. Existing wire fixture
+  bytes remain unchanged (SHA-256
+  `9cc65c46bf6c2bdeff42b6186b2949197b1cba8f8b6b2869823470ed04364616`).
+- Actual TCP/SQL emulator verification used backend `4bea6c9` on an owned
+  API port 8012/state directory and leased SQL port 9579. An independently
+  unique synthetic upload completed 250 ordinary approve actions alternating
+  missing/restored raw evidence via the backend's test helper. At revision 267,
+  history was compacted through 177 with audit offset 173. The Flutter HTTP
+  repository read all 267 revisions across bounded pages, loaded revision 1 and
+  a digest-verified prior run, rejected a wrong digest, then successfully wrote
+  using the unchanged current revision (268) and rejected stale reuse. A pinned
+  history page remained bounded at 267 after that new write. Opt-in regression:
+  `test/live_history_test.dart`; no persisted fixtures or credentials added.
+- Canonical `scripts/ci/verify.sh` passed: scanners/hooks, 77 Python tests
+  (two opt-in SQL tests skipped), Flutter analysis, 23 offline Flutter tests
+  (two opt-in live tests skipped) and release web build. Actual live-history
+  test separately passed against the newer B04 backend as described above.

@@ -23,6 +23,7 @@ void main() {
   ) => ApiSpecimenRepository(
     baseUrl: Uri.parse('http://localhost:8000'),
     token: () async => 'synthetic-test-token',
+    appCheckToken: () async => 'synthetic-app-check',
     client: MockClient(handler),
   );
 
@@ -287,6 +288,173 @@ void main() {
       );
       expect(body?['kind'], 'transcription');
       expect(body?['after'], {'text': null, 'state': 'unreadable'});
+    },
+  );
+  test(
+    'history pages pin the review bound and authenticate every read',
+    () async {
+      final repo = repository((r) async {
+        expect(r.headers['Authorization'], 'Bearer synthetic-test-token');
+        expect(r.headers['X-Firebase-AppCheck'], 'synthetic-app-check');
+        expect(r.url.path, '/v1/organizations/org/specimens/s/history');
+        expect(r.url.queryParameters['through_revision'], '12');
+        expect(r.url.queryParameters['limit'], '10');
+        final after = int.parse(r.url.queryParameters['after_revision']!);
+        return http.Response(
+          jsonEncode({
+            'items': [
+              for (var n = after + 1; n <= (after == 0 ? 10 : 12); n++)
+                {'revision': n, 'sha256': 'a' * 64},
+            ],
+            'through_revision': 12,
+            'next_cursor': after == 0 ? 10 : null,
+          }),
+          200,
+        );
+      });
+      final first = await repo.historyPage(scope, 's', throughRevision: 12);
+      final next = await repo.historyPage(
+        scope,
+        's',
+        throughRevision: 12,
+        afterRevision: first.nextCursor!,
+      );
+      expect(first.items, hasLength(10));
+      expect(next.items.map((e) => e['revision']), [11, 12]);
+      expect(next.nextCursor, isNull);
+    },
+  );
+
+  test(
+    'history rejects gaps cursor stalls bound drift and omitted records',
+    () async {
+      for (final page in [
+        {
+          'items': [
+            {'revision': 2, 'sha256': 'a' * 64},
+          ],
+          'through_revision': 3,
+          'next_cursor': 2,
+        },
+        {
+          'items': [
+            {'revision': 1, 'sha256': 'a' * 64},
+          ],
+          'through_revision': 3,
+          'next_cursor': 0,
+        },
+        {
+          'items': [
+            {'revision': 1, 'sha256': 'a' * 64},
+          ],
+          'through_revision': 4,
+          'next_cursor': 1,
+        },
+        {'items': [], 'through_revision': 3, 'next_cursor': null},
+        {
+          'items': [null],
+          'through_revision': 3,
+          'next_cursor': null,
+        },
+      ]) {
+        final repo = repository(
+          (r) async => http.Response(jsonEncode(page), 200),
+        );
+        await expectLater(
+          repo.historyPage(scope, 's', throughRevision: 3),
+          throwsA(isA<ApiFailure>()),
+        );
+      }
+    },
+  );
+
+  test(
+    'historical references are scoped verified read only and keep current CAS',
+    () async {
+      final current = Specimen({
+        ...fixture['workspace_response'] as Json,
+        'specimen_id': 's',
+        'revision': 12,
+      });
+      var historyRequests = 0;
+      Json? edit;
+      final repo = repository((r) async {
+        if (r.url.path.endsWith('/history/2')) {
+          historyRequests++;
+          expect(r.headers['Authorization'], 'Bearer synthetic-test-token');
+          expect(r.url.queryParameters, {
+            'run_id': 'run-2',
+            'run_sha256': 'b' * 64,
+          });
+          return http.Response(
+            jsonEncode({
+              ...fixture['workspace_response'] as Json,
+              'specimen_id': 's',
+              'revision': 2,
+              'available_actions': ['approve'],
+            }),
+            200,
+          );
+        }
+        if (r.method == 'POST') {
+          edit = jsonDecode(r.body) as Json;
+          return http.Response('{}', 200);
+        }
+        if (r.url.path.endsWith('/content')) {
+          return http.Response.bytes([1], 200);
+        }
+        return http.Response(jsonEncode(current.data), 200);
+      });
+      final old = await repo.historicalSpecimen(
+        scope,
+        's',
+        2,
+        runId: 'run-2',
+        runSha256: 'b' * 64,
+      );
+      expect(historyRequests, 1);
+      expect(old.data['available_actions'], isEmpty);
+      expect(old.assets.single['preview_bytes'], isNull);
+      expect(current.revision, 12);
+      await repo.review(scope, current, {
+        'kind': 'approve',
+        'reason': 'Reviewed',
+      }, 'current-cas');
+      expect(edit?['expected_revision'], 12);
+    },
+  );
+
+  test(
+    'historical identity mismatches revoked access and digest failures surface',
+    () async {
+      for (final status in [200, 403, 409]) {
+        var calls = 0;
+        final repo = repository((r) async {
+          calls++;
+          return http.Response(
+            jsonEncode(
+              status == 200
+                  ? {
+                      ...fixture['workspace_response'] as Json,
+                      'specimen_id': 'other',
+                      'revision': 2,
+                    }
+                  : {
+                      'error': {
+                        'code': 'history_unavailable',
+                        'message': 'Unavailable',
+                      },
+                    },
+            ),
+            status,
+          );
+        });
+        await expectLater(
+          repo.historicalSpecimen(scope, 's', 2),
+          throwsA(isA<ApiFailure>()),
+        );
+        expect(calls, 1);
+      }
     },
   );
 }

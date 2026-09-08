@@ -302,6 +302,8 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final wide = constraints.maxWidth >= 800;
+      final historyScope = _scope;
+      final historySpecimen = _selected;
       final body = _scope == null
           ? SingleChildScrollView(
               child: Padding(
@@ -344,7 +346,23 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                 ),
                 Expanded(
                   child: ReviewWorkbench(
+                    key: ValueKey('${_scope!.key}:${_selected!.id}'),
                     specimen: _selected!,
+                    loadHistoryPage: (after, through) =>
+                        widget.repository.historyPage(
+                          historyScope!,
+                          historySpecimen!.id,
+                          afterRevision: after,
+                          throughRevision: through,
+                        ),
+                    loadHistoricalRevision: (revision, runId, runSha256) =>
+                        widget.repository.historicalSpecimen(
+                          historyScope!,
+                          historySpecimen!.id,
+                          revision,
+                          runId: runId,
+                          runSha256: runSha256,
+                        ),
                     collections: _scopes,
                     canReview: _scope!.permissions.any(
                       (p) => ['reviewer', 'manager', 'admin'].contains(p),
