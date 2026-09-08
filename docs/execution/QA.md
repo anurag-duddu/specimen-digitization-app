@@ -904,3 +904,117 @@ lineage captures and persisted state: `/tmp/specimen-qa-3dfb478-trn`.
 Logs: `/tmp/specimen-qa-3dfb478-{canonical,independent,live}.log`.
 This is a bounded local declarations checkpoint; no scientific-quality,
 production, final-followup or complete P0 acceptance is implied.
+
+## 2026-09-08 — final frozen runtime independent checkpoint
+
+Product freeze `ee4bec83715bf262deb9c7bff4598ad9211ddd44`; integration documentation
+head da3a978 is product-equivalent. QA imported the immutable source and verified
+an empty product diff. Every earlier Flutter fixture remains byte-exact. Both
+copies of the final runtime fixture match the frozen410255-byte artifact.
+No owner execution state was reused for the independent runs below.
+
+Independent verification:
+
+- Full canonical:351 Python passed/26 gated skips,68 Flutter passed/7 live skips;
+  analysis, scanners and release web build passed. Skips are not passes.
+- Fresh QA PostgreSQL5579/SQL Connect9529 broad suite:71 passed in85.59s,
+  including model/profile, graph, atomic publication, concurrent intake, authority,
+  worker recovery, history, HTTP restart, uploads and declarations.
+- Real optional HEIC/DNG codec suite:9 passed in7.12s.
+- Fresh runtime generation re-executed the actual API, local SAM TCP service,
+  configured classifier factory and transcription/extraction child processes.
+  Local FunctionModel responses are explicit synthetic substitutes; neither
+  approved live inference nor quality is claimed. New persisted roots are at
+  `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-runtime-wire-6st4c5ok`.
+- Independent HTTP probes verified profile20→40, exact old history, selected SAM
+  request prompt/settings, changed published risk pins and measured label
+  contributions40→60. Specimen/label/field composites remain null; unfiltered
+  queue includes the null score while numeric0..100 excludes it. Missing pins,
+  changed rules, policy contents and published profile version fail closed.
+- New model execution21 retained two independent routes, exact raw SHA values,
+  actual latency/basis/finish/model/completion values and absent parameters.
+  Canonical and fresh SQL model tests inspected persisted intent inside real
+  children, rejected peer context, killed construction/provider/sink stalls for
+  transcription and extraction, checked PID reaping/no late output, and retained
+  unknown outcome/lease without automatic replay. Classifier missing/unapproved
+  configuration invokes no child. Classifier/source/privacy and bounded legacy,
+  slow-header/drip/default authority HTTP tests passed in canonical verification.
+- Actual Flutter HTTP against **these newly generated fixtures** passed exact
+  current/historical profile risk/pins and observation equality. The QA harness
+  uses a separate fixture path; frozen application fixtures were not modified.
+- Actual browser showed Unmeasured queue and scoped risk, exact policy reference,
+  label weights20/40 and measured contributions, distinct unknown/mixed handling,
+  and actual observation latency, timing basis, finish state, tokens and crop
+  reference. Missing parameters remained Not reported. No composite or confidence
+  value was invented.
+
+### Prior HEIC crop GUI gap closed
+
+Fresh actual optional-codec intake retained the patterned4086-byte HEIC with
+null client dimensions, then GUI correction used explicit keyboard/numeric
+controls. QA verified all form values before saving: bbox5,7,45,57;90° clockwise;
+required reason. Completed revision36 retained one region with original-basis
+x5/y7/width40/height50/rotation1. Reopening the editor and focusing each numeric
+control exposed exactly5/7/45/57 and90°, with the decoded preview and honest
+80×120 HEIF coordinate-basis notice. Original encoded-grid mapping remains
+explicitly unavailable. No permission changes or blind coordinate clicks were used.
+
+Independent HTTP/SQLite retrieval verified original bytes unchanged, historical20
+asset exact, and the saved crop pixels equal a separately decoded NumPy slice
+and clockwise rotation oracle. Approval remained false and disposition remained
+needs_human_review. This closes the prior GUI gap; real camera/device acceptance,
+codec memory isolation and SAM model quality remain external gates.
+
+### N01 — minor coordinate-validation display issue
+
+Confirmed nonblocking UX issue: select-all/backspace/type briefly makes a numeric
+coordinate empty. After all fields contain valid integers, the global message
+`Coordinates must be whole pixel numbers.` remains until successful Save.
+Saved data and reopened bounds/rotation are correct. This is not a data integrity
+failure. Evidence: `heic-verified-form.txt` in the full browser capture directory.
+Parent requested a minimal frontend repair and targeted valid→empty→valid recheck;
+that repair is not included in this frozen ee4bec8 checkpoint.
+
+Evidence scripts and compact results: `qa-evidence/ee4bec8/`. Full independently
+generated wire evidence: `/tmp/specimen-qa-ee4bec8-runtime.json`; browser snapshots
+and screenshots: `/tmp/specimen-qa-ee4bec8-browser`; HEIC state, pixel oracle result
+and crop: `/tmp/specimen-qa-ee4bec8-heic`. Logs are
+`/tmp/specimen-qa-ee4bec8-{canonical,sql,generation,independent,codec-tests,flutter-live}.log`.
+Owned browser tab, API/web servers and isolated SQL cluster were stopped; all
+persisted evidence is retained. No push, deployment or product edits by QA.
+
+### All 20 P0 gate map at ee4bec8
+
+This map updates the earlier architecture audit's runtime code gaps using final
+independent evidence. **No row is final release acceptance.** Local synthetic
+execution, previously verified journeys, external approvals and untested device/
+production conditions are distinct. Earlier graph9405374, TRNec3da7c and atomic
+8a405ee evidence remains valid within its stated scope; their backend regressions
+were exercised again in the final canonical/fresh SQL suites.
+
+| ID | Independently verified local subconditions | Remaining gate or explicit limit |
+| --- | --- | --- |
+| P0-01 | Final upload/completion/restart tests,9 real optional-codec cases; earlier browser upload/preflight recovery; final HEIC crop save/reopen | Agreed iOS/Android/tablet camera and interruption acceptance; approved codec families/runtime and memory isolation |
+| P0-02 | Atomic publication, exact bytes, duplicate/CAS/checksum tests on fresh SQL; HEIC original/derivative/history equality | Deployed Storage generation/IAM and legacy-writer migration/rollout |
+| P0-03 | Configured HF child factory now runs; policy variant correction changes pinned profile and preserves exact20/40 history; no unapproved fallback | Approved live route, sensitive-source/spending configuration and representative classification quality |
+| P0-04 | Actual local SAM HTTP receives selected published settings; geometry/deadline tests; independent HEIC GUI crop/rotation/oracle/reopen | Real pinned SAM inference, mask/coverage gold set and service approval; N01 is minor display-only followup |
+| P0-05 | Two independent child observations, no peer input, actual parsed execution metadata/raw/crop lineage; declaration policy wiring | Approved live independent providers and representative transcription quality |
+| P0-06 | Final bounded legacy alignment and unknown-not-agreement tests; prior exact Unicode/disagreement/adjudication preservation; final minority-digit fixture visible | Representative minority-reading review acceptance and device/assistive validation |
+| P0-07 | Final harness/source-supported extraction and contradictory-source tests; fresh model extraction; prior corrected-field/history journey | Institution-approved semantics and representative literal/normalized review |
+| P0-08 | Final typed adapters, actual bounded slow-header/drip HTTP, caps/encoding and fresh SQL authority tests; prior independent TCP Parties proof | Approved real authority access/response validation; parent-side database/blob I/O remains separately bounded |
+| P0-09 | Fresh SQL model-child stalls, intent/lease/PID/no-replay, race/CAS/restart and worker tests | Configured production worker/scheduler, crash/restore operations; no exactly-once remote inference claim |
+| P0-10 | Final mandatory/integrity/approval/policy gates; changed/missing policy fails closed; risk null cannot imply clearance | Published institutional clearance policy and representative false-clear evaluation |
+| P0-11 | Final all-mandatory-field/state tests and missing-authority review behavior; UI shows unresolved fields | Confirmed institution-specific semantics including D/T/S and approved exceptions |
+| P0-12 | Final unsupported/coerced extraction and uncaptured-authority rejection; uncertainty remains explicit | Representative adversarial/incomplete-source evaluation with approved thresholds |
+| P0-13 | Final operational-vs-Deferred, unpriced/unknown child, missing classifier and policy block tests | Production outage/configuration drills and operational ownership |
+| P0-14 | Final synthetic capability/attempt/eligibility gates reject operational substitution | Approved legitimate capability cohort, viable alternatives and eligibility policy |
+| P0-15 | Final reason/CAS/role/approval-invalidation tests; prior independent selection/declaration GUI journeys; final HEIC numeric save/reopen | Representative review usability/device acceptance; N01 targeted repair remains open here |
+| P0-16 | Final integrity/graph/authority regressions; prior all377 graph pages reconstructed exactly; new model raw SHA and HEIC pixel oracle | Full representative field-to-pixel/authority trace with approved real model/SAM evidence |
+| P0-17 | Fresh SQL history/restart plus generated profile/model reconstruction; HEIC historical asset exact; prior queue/state reconstruction | Backup/restore drill, recovery objectives and configured production storage reconstruction |
+| P0-18 | Final scope/role/history/graph and privacy/scanner tests; prior current membership revocation across pinned evidence | Deployed Firebase/App Check/IAM/connector/Storage/signed-link expiry and formal privacy approval |
+| P0-19 | Keyboard and semantic browser subsets, final risk/provenance/HEIC controls and widget accessibility checks | Complete assistive/device/contrast/scalable-text acceptance, representative cohort/quality signoffs and restore/security review |
+| P0-20 | New actual synthetic API/child/SAM fixtures, fresh SQL regressions and actual Flutter HTTP/browser readback, with commands/state retained | One approved configured processing-plane/device journey plus operational rollout; no ADC/scheduler/live-quality/production acceptance |
+
+The new runtime code gaps from the earlier audit are locally implemented and
+verified within these boundaries. Final project completion still requires N01's
+bounded UI recheck and the separately owned external acceptance/release gates.
