@@ -127,7 +127,7 @@ def test_legacy_full_run_audit_compacts_only_previously_retained_content(tmp_pat
         )
         specimen = repo.get(principal.scope, row["specimen_id"])
         # Reproduce old shape near the cap; new content is not yet present in prior history.
-        for _ in range(10):
+        while len(specimen.model_dump_json().encode()) < 160 * 1024:
             specimen.audit.append(
                 AuditEvent(
                     actor=principal.user_id,

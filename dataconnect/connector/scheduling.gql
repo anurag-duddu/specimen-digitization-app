@@ -1,0 +1,27 @@
+# V2 callers supply workAvailableAt explicitly (null means immediately due for runnable states).
+mutation CreateSpecimenV2($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $snapshot: Any!, $snapshotSha256: String!, $requestSha256: String!, $idempotencyKey: String!, $operation: String!, $state: String!, $sensitive: Boolean!, $contractVersion: String!, $workAvailableAt: Timestamp) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.state in ['pending', 'running', 'waiting_for_review', 'retry_scheduled', 'paused', 'cancelled', 'processing_blocked', 'completed', 'superseded']") { active role canViewSensitive }
+  }
+  specimen_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, revision: 1, state: $state, sensitive: $sensitive, createdBy: $actorUid, workAvailableAt: $workAvailableAt})
+  specimenSnapshot_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision: 1, snapshot: $snapshot, sha256: $snapshotSha256, contractVersion: $contractVersion})
+  requestReceipt_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision: 1, actorUid: $actorUid, operation: $operation, idempotencyKey: $idempotencyKey, requestSha256: $requestSha256})
+  outboxEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, aggregateRevision: 1, eventType: "specimen_committed", deduplicationKey: $requestSha256, payloadReferences_expr: "{'specimen_id': vars.id}"})
+  auditEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, revision: 1, actorUid: $actorUid, action: "create", requestSha256: $requestSha256})
+}
+
+mutation SaveSpecimenV2($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $snapshot: Any!, $snapshotSha256: String!, $requestSha256: String!, $idempotencyKey: String!, $operation: String!, $state: String!, $sensitive: Boolean!, $contractVersion: String!, $workAvailableAt: Timestamp, $expectedRevision: Int!, $activeRunId: UUID, $disposition: String, $action: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.state in ['pending', 'running', 'waiting_for_review', 'retry_scheduled', 'paused', 'cancelled', 'processing_blocked', 'completed', 'superseded'] && (vars.disposition == null || (vars.state == 'completed' && vars.disposition in ['cleared', 'needs_human_review', 'deferred']))") { active role canViewSensitive }
+  }
+  current: query @redact {
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "this.revision == vars.expectedRevision && (!this.sensitive || response.query.collectionMember.canViewSensitive)", message: "revision conflict or access denied") { revision sensitive }
+  }
+  specimen_updateMany(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $id}, revision: {eq: $expectedRevision}}, data: {revision_expr: "vars.expectedRevision + 1", state: $state, workAvailableAt: $workAvailableAt, activeRunId: $activeRunId, disposition: $disposition, sensitive: $sensitive, updatedAt_expr: "request.time"}) @check(expr: "this == 1", message: "revision conflict")
+  specimenSnapshot_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision_expr: "vars.expectedRevision + 1", snapshot: $snapshot, sha256: $snapshotSha256, contractVersion: $contractVersion})
+  requestReceipt_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision_expr: "vars.expectedRevision + 1", actorUid: $actorUid, operation: $operation, idempotencyKey: $idempotencyKey, requestSha256: $requestSha256})
+  outboxEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, aggregateRevision_expr: "vars.expectedRevision + 1", eventType: "specimen_committed", deduplicationKey: $requestSha256, payloadReferences_expr: "{'specimen_id': vars.id}"})
+  auditEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, revision_expr: "vars.expectedRevision + 1", actorUid: $actorUid, action: $action, requestSha256: $requestSha256})
+}

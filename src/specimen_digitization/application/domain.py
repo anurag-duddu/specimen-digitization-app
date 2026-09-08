@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def uid() -> str:
@@ -98,6 +98,8 @@ class Principal(Record):
 
 
 class Asset(Record):
+    quality_diagnostics: dict = Field(default_factory=dict)
+    view_derivative: dict | None = None
     id: str = Field(default_factory=uid)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     blob_ref: str
@@ -111,6 +113,7 @@ class Asset(Record):
 
 
 class Region(Record):
+    rotation_quarter_turns: int = Field(default=0, ge=0, le=3)
     id: str = Field(default_factory=uid)
     asset_id: str
     x: int = Field(ge=0)
@@ -173,6 +176,7 @@ class FieldValue(Record):
     parsed: str | None = None
     normalized: str | None = None
     authority_id: str | None = None
+    authority_identity: dict | None = None
     evidence_ids: list[str] = Field(default_factory=list)
     reason: str = "No supported source value"
 
@@ -191,7 +195,40 @@ class Lookup(Record):
     retry_after_seconds: int | None = None
 
 
+class ExecutionPolicy(Record):
+    version: str = "execution-safety-v1"
+    max_steps: int = Field(default=200, ge=1, le=10000)
+    max_external_calls: int = Field(default=32, ge=1, le=1000)
+    max_tokens: int = Field(default=160000, ge=1)
+    max_active_seconds: float = Field(default=3600, gt=0)
+    external_timeout_seconds: float = Field(default=120, gt=0, le=600)
+    lease_seconds: float = Field(default=180, gt=0, le=900)
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    approved_cost_limit_micros: int | None = Field(default=None, ge=0)
+    request_cost_reservation_micros: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def timeout_fits_lease(self):
+        if self.lease_seconds < self.external_timeout_seconds + 30:
+            raise ValueError(
+                "Lease must exceed total external timeout by at least30 seconds"
+            )
+        return self
+
+
+class BudgetUsage(Record):
+    steps: int = 0
+    external_calls: int = 0
+    tokens: int = 0
+    reserved_tokens: int = 0
+    reserved_active_seconds: float = 0
+    active_seconds: float = 0
+    reserved_cost_micros: int = 0
+    actual_cost_micros: int | None = None
+
+
 class Profile(Record):
+    execution: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
     id: str = "zoology_insects"
     version: str = "0.1.0-draft"
     schema_version: str = "insects-v1"
@@ -204,6 +241,23 @@ class Profile(Record):
 
 
 class Run(Record):
+    authority_unresolved: dict = Field(default_factory=dict)
+    authority_plan: list[dict] = Field(default_factory=list)
+    authority_receipts: dict = Field(default_factory=dict)
+    authority_results: dict = Field(default_factory=dict)
+    authority_usage: dict = Field(default_factory=dict)
+    harness_spec: dict = Field(default_factory=dict)
+    phase_results: dict = Field(default_factory=dict)
+    reading_metadata: dict = Field(default_factory=dict)
+    disagreements: list[dict] = Field(default_factory=list)
+    review_risk: dict = Field(default_factory=dict)
+    classification: dict = Field(default_factory=dict)
+    classification_raw_sha256: str | None = None
+    classification_selection: dict | None = None
+    profile_snapshot: dict = Field(default_factory=dict)
+    profile_registry_version: str | None = None
+    usage: BudgetUsage = Field(default_factory=BudgetUsage)
+    dependencies: dict = Field(default_factory=dict)
     id: str = Field(default_factory=uid)
     profile: Profile = Field(default_factory=Profile)
     stage: str = "ingested"
@@ -252,3 +306,16 @@ class Specimen(Record):
     previous_runs: list[Run] = Field(default_factory=list)
     audit: list[AuditEvent] = Field(default_factory=list)
     created_at: str = Field(default_factory=now)
+
+
+class WorkItem(Record):
+    specimen_id: str
+    revision: int
+    state: str
+    work_available_at: str
+    created_at: str
+
+
+class WorkPage(Record):
+    items: list[WorkItem]
+    next_cursor: str | None

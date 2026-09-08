@@ -14,13 +14,22 @@ from google.cloud import storage
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 
-from ..model_gateway import HuggingFaceModelGateway
-from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt
+from ..model_gateway import HuggingFaceModelGateway, INITIAL_HUGGINGFACE_ROUTES
+from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
-from .domain import Observation, Specimen
+from .domain import Observation, Specimen, WorkItem, WorkPage, now
 from .lookup import GbifTaxonomy
-from .storage import Conflict, Missing, digest, check_snapshot, compact_history
+from .storage import (
+    compact_history,
+    Conflict,
+    Missing,
+    digest,
+    check_snapshot,
+    work_available_at,
+)
 from .workflow import OperationalBlock, crop_bytes
+from .reliability import run_agent_bounded
+from pydantic_ai.usage import UsageLimits
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 
@@ -126,6 +135,50 @@ class SqlConnectRepository:
         )["specimenSnapshot"]
         return self._snapshot(row)
 
+    def search(
+        self,
+        scope,
+        filters,
+        cutoff,
+        after_created=None,
+        after_id="",
+        limit=50,
+        include_sensitive=False,
+    ):
+        from .search import sql_item
+
+        mapping = {
+            "specimen_id": "specimenId",
+            "asset_id": "assetId",
+            "active_run_id": "activeRunId",
+            "batch_id": "batchId",
+            "uploader_id": "uploader",
+            "state": "status",
+            "stage": "stage",
+            "disposition": "disposition",
+            "profile_id": "profileId",
+            "profile_version": "profileVersion",
+            "reason_code": "reasonCode",
+            "blocker": "blocker",
+            "created_from": "createdFrom",
+            "created_before": "createdBefore",
+            "risk_min": "riskMin",
+            "risk_max": "riskMax",
+        }
+        variables = dict(
+            self.variables(scope),
+            cutoff=cutoff,
+            afterCreatedAt=after_created,
+            afterId=after_id,
+            limit=limit,
+            includeSensitive=include_sensitive,
+        )
+        variables.update(
+            {mapping[key]: value for key, value in filters.model_dump().items()}
+        )
+        rows = self.execute("SearchSpecimens", variables).get("items", [])
+        return [sql_item(row, scope) for row in rows]
+
     @staticmethod
     def _snapshot(row):
         payload = row["snapshot"]
@@ -159,28 +212,34 @@ class SqlConnectRepository:
                 raise Conflict("Snapshot digest mismatch")
         return specimen
 
-    def list(self, scope):
-        results = []
-        for offset in range(0, 10000, 100):
-            data = self.execute(
-                "ListSpecimens",
-                dict(
-                    self.variables(scope),
-                    limit=100,
-                    offset=offset,
-                    includeSensitive=any(
-                        m["organization_id"] == scope.organization_id
-                        and m["collection_id"] == scope.collection_id
-                        and m["can_view_sensitive"]
-                        for m in self.memberships(actor_uid.get())
-                    ),
-                ),
-            )
-            rows = data.get("specimens", [])
-            results.extend(self.get(scope, row["id"]) for row in rows)
-            if len(rows) < 100:
-                break
-        return results
+    def history_page(
+        self, scope, ident, after_revision=0, through_revision=None, limit=50
+    ):
+        current = self.get(scope, ident)
+        through = current.version if through_revision is None else through_revision
+        if (
+            not 1 <= limit <= 100
+            or not 0 <= after_revision <= through <= current.version
+        ):
+            raise ValueError("Invalid history page bounds")
+        rows = self.execute(
+            "ListSnapshotHistory",
+            dict(
+                self.variables(scope),
+                id=ident,
+                afterRevision=after_revision,
+                throughRevision=through,
+                limit=limit,
+            ),
+        ).get("specimenSnapshots", [])
+        items = [{"revision": row["revision"], "sha256": row["sha256"]} for row in rows]
+        return {
+            "items": items,
+            "through_revision": through,
+            "next_cursor": items[-1]["revision"]
+            if len(items) == limit and items[-1]["revision"] < through
+            else None,
+        }
 
     def version(self, scope, ident, revision):
         row = self.execute(
@@ -189,6 +248,57 @@ class SqlConnectRepository:
         if not row:
             raise Missing(ident)
         return self._snapshot(row)
+
+    def due_page(self, scope, cutoff, after_id=None, limit=50):
+        if not 1 <= limit <= 100:
+            raise ValueError("Invalid page size")
+        rows = self.execute(
+            "ListDueWork",
+            dict(
+                self.variables(scope),
+                cutoff=cutoff,
+                afterId=after_id or "",
+                limit=limit,
+            ),
+        ).get("items", [])
+        items = [
+            WorkItem(
+                specimen_id=str(UUID(row["id"])),
+                revision=row["revision"],
+                state=row["state"],
+                work_available_at=row.get("workAvailableAt") or row["createdAt"],
+                created_at=row["createdAt"],
+            )
+            for row in rows
+        ]
+        return WorkPage(
+            items=items,
+            next_cursor=items[-1].specimen_id if len(items) == limit else None,
+        )
+
+    def list(self, scope):
+        results, after, cutoff = [], "", now()
+        sensitive = any(
+            m["organization_id"] == scope.organization_id
+            and m["collection_id"] == scope.collection_id
+            and m["can_view_sensitive"]
+            for m in self.memberships(actor_uid.get())
+        )
+        while True:
+            rows = self.execute(
+                "ListSpecimenPage",
+                dict(
+                    self.variables(scope),
+                    cutoff=cutoff,
+                    afterId=after,
+                    limit=100,
+                    includeSensitive=sensitive,
+                ),
+            ).get("specimens", [])
+            results.extend(self.get(scope, str(UUID(row["id"]))) for row in rows)
+            if len(rows) < 100:
+                return results
+            after = str(UUID(rows[-1]["id"]))
 
     def version_info(self, scope, ident, revision):
         row = self.execute(
@@ -252,6 +362,7 @@ class SqlConnectRepository:
             ),
             sensitive=True,
             contractVersion="0.1",
+            workAvailableAt=work_available_at(specimen),
         )
         if expected:
             variables.update(
@@ -261,7 +372,9 @@ class SqlConnectRepository:
                 action="checkpoint_or_review",
             )
         self.execute(
-            "SaveSpecimen" if expected else "CreateSpecimen", variables, mutation=True
+            "SaveSpecimenV2" if expected else "CreateSpecimenV2",
+            variables,
+            mutation=True,
         )
         return specimen
 
@@ -274,16 +387,24 @@ class SqlConnectRepository:
         return row["payload"]
 
     def documents(self, scope, kind):
-        results = []
-        for offset in range(0, 10000, 100):
+        results, after, cutoff = [], "", now()
+        while True:
             rows = self.execute(
-                "ListDocuments",
-                dict(self.variables(scope), kind=kind, limit=100, offset=offset),
+                "ListDocumentPage",
+                dict(
+                    self.variables(scope),
+                    kind=kind,
+                    cutoff=cutoff,
+                    afterId=after,
+                    limit=100,
+                ),
             ).get("auxiliaryDocuments", [])
-            results.extend(r["payload"] for r in rows)
+            results.extend(
+                self.document(scope, kind, str(UUID(row["id"]))) for row in rows
+            )
             if len(rows) < 100:
-                break
-        return results
+                return results
+            after = str(UUID(rows[-1]["id"]))
 
     def put_document(self, scope, kind, ident, payload, expected):
         payload = dict(payload, revision=expected + 1)
@@ -341,11 +462,56 @@ class ProductionAdapters:
     def __init__(self, blobs):
         self.blobs = blobs
         self.taxonomy = GbifTaxonomy(blobs)
+        from .authority_registry import AuthorityRegistry
+        from .parties import PartiesAdapter
+        from .geography import GeographyAdapter
+
+        registry = AuthorityRegistry(version="unconfigured")
+        self.authority_tools = {
+            "parties": PartiesAdapter(registry, blobs),
+            "geography": GeographyAdapter(registry, blobs),
+        }
+        self.authority_cost_reservations = {"geography": 0}
+
+    def pin_dependencies(self, run):
+        inputs = CollectionPromptInputs(
+            collection_profile_id=run.profile.id,
+            collection_name="Insects",
+            schema_version=run.profile.schema_version,
+        )
+        prompts = {
+            name.value: resolve_prompt(name, inputs).model_dump(mode="json")
+            for name in PromptName
+        }
+        routes = {
+            route: {
+                "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
+                "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
+            }
+            for route in run.profile.routes
+        }
+        return {
+            "prompts": prompts,
+            "routes": routes,
+            "adapter_version": "production-v2",
+            "segmentation": {
+                "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
+                "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
+            },
+            "policy": run.profile.execution.model_dump(mode="json"),
+        }
 
     def segment(self, specimen):
         # A deployment-specific SAM3 endpoint must implement the reviewed adapter.
         # No rectangle substitution, no hidden Hub download or paid execution.
         endpoint = os.getenv("SPECIMEN_SAM3_ENDPOINT")
+        if specimen.run.dependencies.get("segmentation") != {
+            "endpoint": endpoint,
+            "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
+        }:
+            raise OperationalBlock(
+                "segmentation_configuration_changed_requires_new_run"
+            )
         if not endpoint:
             raise OperationalBlock(
                 "sam3_serving_contract_not_configured_use_reviewed_regions"
@@ -357,25 +523,35 @@ class ProductionAdapters:
             raise OperationalBlock(
                 "provider_data_policy_and_spending_approval_required"
             )
-        gateway = HuggingFaceModelGateway()
-        selected = gateway.route(route)
-        prompt = resolve_prompt(
-            PromptName.LITERAL_TRANSCRIPTION,
-            CollectionPromptInputs(
-                collection_profile_id=specimen.run.profile.id,
-                collection_name="Insects",
-                schema_version=specimen.run.profile.schema_version,
-            ),
+        gateway = HuggingFaceModelGateway(
+            timeout_seconds=specimen.run.profile.execution.external_timeout_seconds / 2
         )
+        selected = gateway.route(route)
+        pins = specimen.run.dependencies
+        expected = pins.get("routes", {}).get(route)
+        if not expected or expected != {
+            "model_id": selected.model_id,
+            "provider": selected.provider,
+        }:
+            raise OperationalBlock("pinned_model_route_unavailable")
+        try:
+            prompt = ResolvedPrompt.model_validate(
+                pins["prompts"][PromptName.LITERAL_TRANSCRIPTION.value]
+            )
+        except (KeyError, ValueError) as exc:
+            raise OperationalBlock("pinned_prompt_unavailable") from exc
         agent = build_literal_transcription_agent(
             gateway, route_id=route, prompt=prompt
         )
         image = crop_bytes(self.blobs, specimen, region)
-        result = agent.run_sync(
+        result = run_agent_bounded(
+            agent,
             [
                 "Transcribe only the supplied source image.",
                 BinaryContent(data=image, media_type="image/png"),
-            ]
+            ],
+            timeout_seconds=specimen.run.profile.execution.external_timeout_seconds,
+            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
         )
         # Preserve every provider response (including retries), excluding image-bearing requests.
         responses = [m for m in result.all_messages() if m.kind == "response"]
@@ -402,7 +578,17 @@ class ProductionAdapters:
             )
         from .harness import extract_with_agent
 
-        extract_with_agent(HuggingFaceModelGateway(), self.blobs, specimen)
+        gateway = HuggingFaceModelGateway(
+            timeout_seconds=specimen.run.profile.execution.external_timeout_seconds / 2
+        )
+        for route in specimen.run.profile.routes:
+            selected = gateway.route(route)
+            if specimen.run.dependencies.get("routes", {}).get(route) != {
+                "model_id": selected.model_id,
+                "provider": selected.provider,
+            }:
+                raise OperationalBlock("pinned_model_route_changed_requires_new_run")
+        extract_with_agent(gateway, self.blobs, specimen)
 
     def lookup(self, name):
         return self.taxonomy.lookup(name)

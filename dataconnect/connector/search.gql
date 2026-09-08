@@ -1,0 +1,57 @@
+# Server-only metadata search. The API validates enums and binds opaque cursors
+# to scope, all filters, fixed cutoff and the composite ordering key.
+query SearchSpecimens(
+  $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!,
+  $cutoff: Timestamp!, $afterCreatedAt: Timestamp = null, $afterId: String!,
+  $limit: Int!, $includeSensitive: Boolean!,
+  $specimenId: String = null,
+  $assetId: String = null,
+  $activeRunId: String = null,
+  $batchId: String = null,
+  $status: String = null,
+  $stage: String = null,
+  $disposition: String = null,
+  $uploader: String = null,
+  $reasonCode: String = null,
+  $blocker: String = null,
+  $profileId: String = null,
+  $profileVersion: String = null,
+  $createdFrom: Timestamp = null,
+  $createdBefore: Timestamp = null,
+  $riskMin: Float = null,
+  $riskMax: Float = null
+) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid})
+    @check(expr: "this.active && (!vars.includeSensitive || this.canViewSensitive) && vars.limit > 0 && vars.limit <= 100 && vars.cutoff <= request.time && ((vars.afterCreatedAt == null && vars.afterId == '') || (vars.afterCreatedAt != null && vars.afterCreatedAt <= vars.cutoff && vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))) && (vars.createdFrom == null || vars.createdBefore == null || vars.createdFrom < vars.createdBefore) && (vars.riskMin == null || (vars.riskMin >= 0 && vars.riskMin <= 100)) && (vars.riskMax == null || (vars.riskMax >= 0 && vars.riskMax <= 100)) && (vars.riskMin == null || vars.riskMax == null || vars.riskMin <= vars.riskMax)") { active canViewSensitive }
+  items: specimenSearches(where: {_and: [
+    {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, createdAt: {le: $cutoff}},
+    {_or: [{sensitive: {eq: false}}, {sensitive: {eq: $includeSensitive}}]},
+    {_or: [
+      {allRows: {eq_expr: "vars.afterCreatedAt == null"}},
+      {createdAt: {gt_expr: "vars.afterCreatedAt == null ? timestamp('1970-01-01T00:00:00Z') : vars.afterCreatedAt"}},
+      {createdAt: {eq_expr: "vars.afterCreatedAt == null ? timestamp('1970-01-01T00:00:00Z') : vars.afterCreatedAt"}, id: {gt: $afterId}}
+    ]},
+    {_or: [{allRows: {eq_expr: "vars.specimenId == null"}}, {id: {eq_expr: "vars.specimenId == null ? '' : vars.specimenId"}}]},
+    {_or: [{allRows: {eq_expr: "vars.assetId == null"}}, {assetId: {eq_expr: "vars.assetId == null ? '' : vars.assetId"}}]},
+    {_or: [{allRows: {eq_expr: "vars.activeRunId == null"}}, {activeRunId: {eq_expr: "vars.activeRunId == null ? '' : vars.activeRunId"}}]},
+    {_or: [{allRows: {eq_expr: "vars.batchId == null"}}, {batchId: {eq_expr: "vars.batchId == null ? '' : vars.batchId"}}]},
+    {_or: [{allRows: {eq_expr: "vars.status == null"}}, {status: {eq_expr: "vars.status == null ? '' : vars.status"}}]},
+    {_or: [{allRows: {eq_expr: "vars.stage == null"}}, {stage: {eq_expr: "vars.stage == null ? '' : vars.stage"}}]},
+    {_or: [{allRows: {eq_expr: "vars.disposition == null"}}, {disposition: {eq_expr: "vars.disposition == null ? '' : vars.disposition"}}]},
+    {_or: [{allRows: {eq_expr: "vars.uploader == null"}}, {uploader: {eq_expr: "vars.uploader == null ? '' : vars.uploader"}}]},
+    {_or: [{allRows: {eq_expr: "vars.reasonCode == null"}}, {reasonCodes: {includes: $reasonCode}}]},
+    {_or: [{allRows: {eq_expr: "vars.blocker == null"}}, {blocker: {eq_expr: "vars.blocker == null ? '' : vars.blocker"}}]},
+    {_or: [{allRows: {eq_expr: "vars.profileId == null"}}, {profileId: {eq_expr: "vars.profileId == null ? '' : vars.profileId"}}]},
+    {_or: [{allRows: {eq_expr: "vars.profileVersion == null"}}, {profileVersion: {eq_expr: "vars.profileVersion == null ? '' : vars.profileVersion"}}]},
+    {_or: [{allRows: {eq_expr: "vars.createdFrom == null"}}, {createdAt: {ge_expr: "vars.createdFrom == null ? timestamp('1970-01-01T00:00:00Z') : vars.createdFrom"}}]},
+    {_or: [{allRows: {eq_expr: "vars.createdBefore == null"}}, {createdAt: {lt_expr: "vars.createdBefore == null ? timestamp('1970-01-01T00:00:00Z') : vars.createdBefore"}}]},
+    {_or: [{allRows: {eq_expr: "vars.riskMin == null"}}, {risk: {ge_expr: "vars.riskMin == null ? 0.0 : vars.riskMin"}}]},
+    {_or: [{allRows: {eq_expr: "vars.riskMax == null"}}, {risk: {le_expr: "vars.riskMax == null ? 0.0 : vars.riskMax"}}]}
+  ]}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: $limit) {
+    id revision status stage disposition sensitive createdAt updatedAt domainCreatedAt
+    assetId batchId filename uploader activeRunId blocker profileId profileVersion
+    reasonCodes risk synthetic
+  }
+}

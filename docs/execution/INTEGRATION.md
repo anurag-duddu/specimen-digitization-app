@@ -275,3 +275,49 @@ correctly rejects excess data, but this low-count capacity failure blocks normal
 review/recovery usability. Backend bounded-history work must preserve complete
 versioned evidence and demonstrate this case without weakening the cap or
 truncating audit history. No second-wave implementation is included here.
+
+## Final local repair closure — application 290a2a7
+
+This section supersedes the open B04/F04 repair states in earlier checkpoints.
+Reviewed B04 backend `4bea6c9` and retained-hash follow-up `c99d1b2` were
+integrated as `95215d9` and `75f2953`. Flutter history `4d00421` and geometry/
+reading-accessibility `4794b0e` were integrated as `4fc34d2` and `290a2a7`.
+Application candidate: `290a2a7c6c713d39b1fefc9b88298bbe7b5f86bc`.
+
+Exact-candidate canonical verification passed: 81 Python tests, three explicit
+SQL opt-ins skipped; 26 Flutter tests, two live opt-ins skipped; analysis, release
+web, repository hooks and secret scans passed. Separately, integrated actual
+TCP/SQL tests covered 110 review/recovery actions and historical reads; a final
+250-action fixture reached revision268 with audit_offset174/history_through178,
+then Flutter verified every page, read-only history, prior-run digest checks,
+pinned boundaries and current/stale CAS. Logs: `/tmp/specimen-b04-sql-http.log`,
+`/tmp/specimen-final-flutter-history.log`, `/tmp/specimen-final-repair-canonical.log`.
+Owned API/SQL services were stopped after these checks.
+
+All five CI checks, including Android debug and unsigned iOS release, passed
+for that exact application SHA in run `34193537794`:
+https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34193537794.
+Hosting deploy was correctly skipped; no production merge is authorized.
+
+Independent QA's full report/evidence chain through source `7746975` is retained
+in QA.md and qa-evidence/. It independently recovered both original near-cap
+records, performed 312 additional decisions, reconstructed all historical
+revisions/events, preserved all 56 original raw snapshot rows, verified original
+stored hashes, auth/tamper/receipt/CAS and process restart. On final290a2a7,
+browser history preserved current241 while opening original28 and prior240
+read-only. Eight narrow/wide rotation captures verified aspect ratio; complete
+independent reading text appears in the accessibility tree. All B01–B04 and
+F01–F04 findings are closed only within their documented local scopes.
+
+GUI file selection remains not tested: browser extension permission and native
+surface visibility prevented a safe picker attempt. HTTP/repository intake proof
+does not substitute for this gap. Device, full accessibility, real provider/SAM3,
+institutional policy/semantics, representative quality, production authentication,
+data/runtime deployment and remaining P0 requirements remain unaccepted. The PR
+stays draft. Subsequent evidence-only commits preserve the tested application
+code; current-head canonical/CI results must still be reported separately.
+
+QA stopped only its owned3000/8124/9519/5569 services, restored viewport/native
+window and removed its temporary CI configuration. Original synthetic SQL cluster
+is retained at `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-serve.zzbWIk`
+for future regression evidence. No production or paid-provider mutation occurred.

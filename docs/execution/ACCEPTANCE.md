@@ -96,3 +96,41 @@ green main workflow, successful Hosting deploy job, matching public
 `deployment.json`, and public application smoke. Runtime/data deployment has
 separate approval and verification gates under DEPLOYMENT.md. Do not mark P0-20
 Pass merely because the static Hosting shell has the right SHA and HTTP 200.
+
+## Whole-product ownership refresh after repaired candidate 290a2a7
+
+Coordinator reports independent B04/F04 accessibility closure and five green CI
+checks on the first repair. Those scoped closures do not mark all P0 rows Pass.
+This architecture refresh inspected reliability checkpoint report and current
+uncommitted `3782` workflow/collection_runtime/evidence_runtime/API sources.
+WIP observations below are not tested candidate evidence. The original test
+specification remains authoritative; this table replaces only the stale ownership
+and implementation-progress picture, not historical results.
+
+| Criterion | Remaining demonstration / owner | Current boundary |
+|---|---|---|
+| P0-01 | Flutter capture/resume devices; collection+backend format/preflight implementation | Basic HTTP resume has evidence; HEIC/approved RAW and automated pre-submission feedback lack explicit completion owner until parent assigns extension |
+| P0-02 | Backend/data/QA derivative/original integrity and IAM | Original integrity repairs reported; new derivatives and actual runtime IAM still need proof |
+| P0-03 | Backend wires collection registry/candidates and Flutter selection with scoped invalidation | Real WIP handler exists; integrated fixture and correction journey pending; model calibration external |
+| P0-04 | Flutter rotation/region controls; collection/backend transforms and coverage | Corrected-image QA closure is narrower than all segmentation edits; real SAM 3/sample acceptance external |
+| P0-05 | Backend pinned independent requests; evidence owner language/script observation extension | Existing independence proof retained; metadata integration and real approved inference still outstanding |
+| P0-06 | Backend artifact access + Flutter span/line/field comparisons | Disagreement artifacts exist in WIP; UI retrieval/display and long-reading unmeasured states pending |
+| P0-07 | Backend/evidence phases + Flutter layered values | Typed phase implementation wired in WIP; prove actual normalized proposals and selections survive API/restart |
+| P0-08 | Backend/evidence authority execution + QA outcomes | Checkpointed authority calls now WIP; required provider failure/absence semantics and UI candidate selection pending |
+| P0-09 | Backend/data/QA due scans, budgets, leases and crash boundaries | Reliability subset reported tested; shared circuits/remaining deadline paths and final integrated QA outstanding |
+| P0-10 | Backend/QA integrity and phase gates | First-wave clearance integrity fixes reported; new phase/profile/authority inputs must not bypass gates |
+| P0-11 | Backend/QA mandatory fields with new profiles/authority plans | Re-run exhaustive absence matrix; missing source must be data unresolved, unavailable authority service operational |
+| P0-12 | Evidence/backend/QA unsupported suggestions under new phases | Preserve existing abstention checks and extend to Parties/geography/unknown semantics |
+| P0-13 | Backend/Flutter/QA action and blocker taxonomy | Extend existing failures to new classifier/authority adapters; avoid missing-value operational dead ends |
+| P0-14 | Backend/Flutter/QA capability reason, retained attempts, retry predicates | Existing narrowly gated action; verify new profile alternatives cannot be skipped |
+| P0-15 | Flutter/backend authority and classification correction journeys | authority_resolution newly WIP; fixed revision, reason, selection evidence and downstream revalidation required |
+| P0-16 | Backend scoped artifact retrieval + Flutter evidence browser + QA | Phase blobs verified by WIP; authority/disagreement/raw artifact retrieval not yet established as a shared contract |
+| P0-17 | Backend/data/Flutter/QA new phase/history reconstruction | B04 scoped closure reported; WIP current graph size, new phase refs and historical artifact reads need proof |
+| P0-18 | Backend/data/Flutter/QA authorization on every new endpoint | Existing scoped denials retained; new artifact/profile/authority paths must be tested; production identity/IAM external |
+| P0-19 | Flutter/QA component accessibility; museum/ops approved thresholds and devices | Code/semantics tests implementable; independent device/screen-reader and institutional quality/restore acceptance separate |
+| P0-20 | Integration/QA actual new-handler HTTP+SQL+Flutter journey | First candidate is baseline only; second-wave integration and real processing-plane acceptance remain |
+
+Cross-cutting EXP-001 filters require explicit backend/data projection and Flutter
+ownership, beyond UI filtering an unbounded fetched list. Not all twenty rows are
+blocked by external decisions: substantial listed code and local end-to-end work
+can proceed now. See NEXT_WAVE.md's ownership-gap assignments and UI contract gate.

@@ -2,11 +2,13 @@
 
 import hashlib
 import io
+import json
 
 from PIL import Image
 
 from .domain import Specimen
 from .storage import BlobStore
+from .region_pixels import region_png
 
 
 class EvidenceIntegrityError(RuntimeError):
@@ -30,6 +32,44 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
     try:
         asset, run = specimen.asset, specimen.run
         original = read(asset.blob_ref, asset.sha256)
+        if asset.view_derivative:
+            view = asset.view_derivative
+            require(view["original_sha256"] == asset.sha256)
+            read(view["blob_ref"], view["derivative_sha256"])
+        for metadata in [
+            *run.phase_results.values(),
+            *run.reading_metadata.values(),
+            *run.disagreements,
+            *run.authority_receipts.values(),
+            *run.authority_results.values(),
+        ]:
+            read(metadata["blob_ref"], metadata["sha256"])
+        for metadata in run.authority_results.values():
+            result = json.loads(read(metadata["blob_ref"], metadata["sha256"]))
+            if result.get("raw_ref") or result.get("response_sha256"):
+                require(
+                    bool(result.get("raw_ref")) and bool(result.get("response_sha256"))
+                )
+                read(result["raw_ref"], result["response_sha256"])
+        if run.classification.get("raw_response_ref"):
+            require(bool(run.classification_raw_sha256))
+            read(run.classification["raw_response_ref"], run.classification_raw_sha256)
+        if run.profile_snapshot:
+            from .collection_profiles import CollectionProfile
+
+            published = CollectionProfile.model_validate(run.profile_snapshot)
+            require(published.state == "active")
+            for name in (
+                "id",
+                "version",
+                "schema_version",
+                "mandatory_fields",
+                "synthetic",
+                "institutional_policy_approved",
+                "semantics_confirmed",
+            ):
+                require(getattr(published, name) == getattr(run.profile, name))
+            require(published.model_routes == run.profile.routes)
         require(len(original) == asset.size_bytes)
         with Image.open(io.BytesIO(original)) as image:
             image.load()
@@ -42,19 +82,10 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                 require(region.asset_id == asset.id)
                 require(region.x + region.width <= asset.width)
                 require(region.y + region.height <= asset.height)
-                crop = image.crop(
-                    (
-                        region.x,
-                        region.y,
-                        region.x + region.width,
-                        region.y + region.height,
-                    )
-                ).convert("RGB")
-                output = io.BytesIO()
-                crop.save(output, format="PNG")
-                input_hashes[region.id] = hashlib.sha256(output.getvalue()).hexdigest()
+                crop = region_png(image, region)
+                input_hashes[region.id] = hashlib.sha256(crop).hexdigest()
                 if region.crop_ref:
-                    require(read(region.crop_ref) == output.getvalue())
+                    require(read(region.crop_ref) == crop)
                 if region.mask_ref:
                     read(region.mask_ref)
             observations = {o.id: o for o in run.observations}

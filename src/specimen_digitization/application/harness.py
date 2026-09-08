@@ -6,8 +6,9 @@ from pydantic import Field
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
 from pydantic_ai.messages import ModelMessagesTypeAdapter
-from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt
+from ..prompts import PromptName, ResolvedPrompt
 from .domain import Record, Evidence, FieldValue, ValueState
+from .reliability import run_agent_bounded
 
 
 class ExtractionCandidate(Record):
@@ -65,13 +66,8 @@ def apply_candidates(
 
 def extract_with_agent(gateway, blobs, specimen):
     run = specimen.run
-    prompt = resolve_prompt(
-        PromptName.STRUCTURED_EXTRACTION,
-        CollectionPromptInputs(
-            collection_profile_id=run.profile.id,
-            collection_name="Insects",
-            schema_version=run.profile.schema_version,
-        ),
+    prompt = ResolvedPrompt.model_validate(
+        run.dependencies["prompts"][PromptName.STRUCTURED_EXTRACTION.value]
     )
     agent = Agent(
         gateway.model_for(run.profile.routes[0]),
@@ -82,7 +78,8 @@ def extract_with_agent(gateway, blobs, specimen):
     source = {t.region_id: t.text for t in run.transcripts if t.resolved and t.text}
     import json
 
-    result = agent.run_sync(
+    result = run_agent_bounded(
+        agent,
         json.dumps(
             {
                 "allowed_field_keys": run.profile.mandatory_fields,
@@ -90,7 +87,9 @@ def extract_with_agent(gateway, blobs, specimen):
             }
         ),
         usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+        timeout_seconds=run.profile.execution.external_timeout_seconds,
     )
+    run.usage.tokens += result.usage.input_tokens + result.usage.output_tokens
     raw = ModelMessagesTypeAdapter.dump_json(
         [m for m in result.all_messages() if m.kind == "response"]
     )
