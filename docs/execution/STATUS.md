@@ -4,7 +4,7 @@ Updated 2026-09-08. This file is maintained by the coordinating task. Detailed c
 
 ## Current result
 
-The complete local application candidate is assembled at **ee4bec83715bf262deb9c7bff4598ad9211ddd44**. Documentation-equivalent integration head: **da3a9788cd90a3876a6076b93dd3eecd74ab33bf**.
+The complete local application was independently assessed at **ee4bec83715bf262deb9c7bff4598ad9211ddd44**. The final narrow UI repair is integrated at **c144c05f5a3217208d6aab09e68ff3cdd2ddefa4**; backend source is unchanged.
 
 Integration verification passed:
 
@@ -13,9 +13,9 @@ Integration verification passed:
 - Separate fresh PostgreSQL/SQL Connect integration suite: **71 passed**.
 - Separate actual Flutter HTTP runtime test: passed.
 
-Independent final QA is running against the exact source candidate. Its fresh 71-test SQL suite passed. It generated its own runtime fixture and verified profile-specific policies and SAM request settings, nullable scoring, policy-tamper rejection, model observation provenance, and blocked classifier configurations. Final browser checks and the final acceptance report remain pending.
+Independent final QA passed and is committed as `ca693d7`: canonical checks, fresh 71-test SQL suite, nine optional codec tests, newly executed runtime fixtures, actual Flutter HTTP, browser policy/telemetry, and HEIC crop editing/reopen with exact pixel and source-byte checks. All 20 acceptance criteria are mapped with local and external limits. QA found only a minor stale coordinate-validation message, repaired by `21b3e6b` and integrated at `c144c05`. The owner passed 70 Flutter tests; independent targeted browser QA reports the message lifecycle and saved/reopened geometry now pass. Its durable closure report is being finalized.
 
-**The product is not yet accepted for production.** Final independent QA, the complete PR update, and current-head remote CI are still required. Production configuration, representative model-quality approval, institutional semantics, and operational acceptance are separate gates.
+**The product is not yet accepted for production.** The final closure documentation, exact-head canonical check, complete PR update, and current-head remote CI remain required. Production configuration, representative model-quality approval, institutional semantics, and operational acceptance are separate gates.
 
 ## Git and release state
 
@@ -38,7 +38,7 @@ The parent task plans, coordinates, documents, and reviews. Product implementati
 | Flutter | `01a07f48-2c8e-72b1-99bc-d81f2729c429` | `6b01` | Final client `06f7616` handed off; available for QA repairs |
 | Data | `01a07f48-6017-7af2-930d-ac2edda9ad9e` | `39c2` | Schema, storage, paging, search, and V3 checksum handoffs complete |
 | Integration | `01a07f48-a57c-71b0-9642-c9430886049c` | `80e6` | Final local candidate verified; preparing PR and handoff documentation |
-| Independent QA | `01a07f4a-f674-7243-a6c8-f91cd82c1d27` | `14dd` | Final immutable-candidate assessment underway |
+| Independent QA | `01a07f4a-f674-7243-a6c8-f91cd82c1d27` | `14dd` | Final assessment passed; minor UI repair independently rechecked, closure report pending |
 | Collection profiles/codecs | `01a07f6f-fd00-7011-827b-c03257df69bf` | `23ec` | Profile rules, codecs, preflight, and process boundary handoffs complete |
 | Evidence/risk/circuits | `01a07f70-854b-7b50-be5a-9d19ab8747c0` | `5178` | Authority, reading, risk-policy, and circuit handoffs complete |
 | HF classifier | `01a0801b-caea-7232-9947-f73ac93f205a` | `36e1` | Configured adapter handed off and integrated; live quality unverified |
@@ -76,7 +76,8 @@ Each result applies only to its recorded candidate and tested local scope. Repor
 | `906e134` + `38fa32f` + `c8001bb`; report `8a405ee` | Closed H01 with deterministic barriers, empty/corrupt cases, and five four-way SQL HTTP races: five winners, fifteen duplicates, twenty exact replays |
 | Graph `745127a`; report `9405374` | Reconstructed all 377 GUI pages and 20 observations exactly; verified a 4.8 MB artifact, hashes, authorization, committed-action recovery, history, corruption rejection, and restart; compact row about 13 KB |
 | Declarations `3dfb478`; report `ec3da7c` | Verified mixed/conflicting/unknown cases, invalid requests without effects, supersession, replay, stale writes, approval invalidation, immutable model evidence, revocation, and actual browser forms |
-| Final source `ee4bec8` | Independent SQL and fresh policy/model probes passed; final canonical/browser assessment in progress |
+| Final source `ee4bec8`; report `ca693d7` | Full scoped independent assessment passed, including newly generated runtime evidence, actual browser workflow and HEIC crop pixel oracle; external gates remain open |
+| Minor UI repair `c144c05` | Independent browser validation-message lifecycle, invalid/reasonless zero-effects checks, and exact saved/reopened bounds passed; durable closure report pending |
 
 The final report must distinguish independent passes, integration passes, owner-only evidence, explicitly skipped tests, and externally blocked criteria. No historical passing CI run substitutes for final-head checks.
 
@@ -98,6 +99,6 @@ The default local gcloud project points to `fm-specimen-pipeline`; every command
 
 ## Final handoff requirements
 
-Integration is preparing `HANDOFF.md`, a README refresh, a documentation index/dataflow, verified startup and demo commands, and a concrete runtime proposal. Preserve the existing `AGENTS.md` and complete `docs/DEPLOYMENT.md` contract.
+Integration has prepared `HANDOFF.md`, a README refresh, a documentation index/dataflow, verified startup and demo commands, and a concrete runtime proposal. After final QA documentation and current-head CI, it will launch a clearly labeled local synthetic review instance with isolated state and documented cleanup. Preserve the existing `AGENTS.md` and complete `docs/DEPLOYMENT.md` contract.
 
 Before reporting completion, provide the final PR/head, current-head CI, independently tested user journeys, exact local startup instructions, supported/tested platform distinctions, and remaining owner actions. Do not describe the full production product as complete while external release and institutional gates remain open.
