@@ -444,3 +444,42 @@ work, mapped one-to-one to the20 procedures above.
 
 Overall P0 remains **not accepted**; closing three defects is not a release or
 scientific-quality acceptance. No production merge/deployment was performed.
+
+
+## Additive extraction verification and B04 — 76da660
+
+Exact product candidate `76da6606542201265101193ca831731efd52b319` incorporated
+only the extraction checksum follow-up after25e8358; QA artifacts differ.
+Independently executed all15 upload/integrity regressions (3.58s, passed), then
+called the actual `extract_with_agent` through a real PydanticAI Agent configured
+with its explicit local TestModel. This exercised response serialization, blob
+retention, checksum generation and source-supported candidate application rather
+than manually supplying the digest. Set profile.synthetic=false and computed
+actual crop-input hashes for retained fixture observations. The901-byte response
+matched the generated evidence digest; positive integrity passed, replacing that
+response with corrupt bytes failed, and restoring it passed. This is a controlled
+model boundary, not live inference, museum policy or production-cloud proof.
+Results and harness: `qa-evidence/76da660/extraction-*`.
+
+**QA-B04 P2 open: repeated normal review makes records uneditable.** Independently
+created a fresh synthetic specimen through actual TCP8124/SQL9519 on76da660 and
+sent ordinary reasoned approve decisions with fresh idempotency keys and current
+revisions, with no corruption or graph injection. Eleven succeeded; the12th
+returned413. Persisted snapshot grew from43561 bytes after first approval to
+243821 after eleven. Audit accounted for223316 bytes,24 entries; previous_runs
+remained empty. Each additional successful review added20026 bytes. Thus normal
+short-reason review history reaches the256KiB cap after a low action count.
+The12th failure safely preserves prior state but prevents later review/recovery.
+Separate earlier fault fixture remained blocked despite restored bytes because
+its recovery approval could not fit. This is not closed by fresh test records.
+Growth series, specimen ID and exact harness are retained in
+`qa-evidence/76da660/capacity-*`; backend and coordinator received the finding.
+
+Required repair acceptance: preserve every historical revision/audit/evidence
+and stable idempotency receipt, paginate bounded historical reads, keep current
+snapshots bounded, and permit continued review/recovery well beyond11 actions.
+Do not increase the limit or delete evidence to pass. Verify existing oversized
+history fixtures recover through the supported migration/compaction path and
+that old snapshots remain exactly reconstructable. Owner implementation is not
+independent acceptance evidence. B01–B03 remain closed for tested local scope;
+B04 remains open, overall20-criterion P0 remains not accepted, PR must stay draft.
