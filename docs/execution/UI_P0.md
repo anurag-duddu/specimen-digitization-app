@@ -400,3 +400,24 @@ are separately exposed in AX. Browser use was read-only. Both temporary APIs and
 web server were stopped after verification; QA ports, viewport and browser
 settings were untouched. Independent final combined QA and institutional policy/
 calibration/production acceptance remain open.
+
+### Narrow post-QA coordinate-message correction
+
+Independent QA of product `ee4bec8` passed the final risk/telemetry and HEIC
+crop/reopen checks, and reported one nonblocking stale local validation message.
+That prior QA attribution is unchanged. Coordinator authorized this isolated
+follow-up from clean Flutter `06f7616`; no API, layout or backend change is included.
+
+Numeric parsing feedback is now derived from the current invalid-input set.
+Both valid and invalid changes rebuild the message. Once every coordinate is
+valid the parsing message disappears; another invalid field still blocks saving.
+Other local validation errors remain separate, and workspace/server/CAS error
+handling is untouched. Three targeted RegionEditor tests pass, including
+valid-to-empty-to-valid replacement, another invalid field remaining, blocked
+submission, exact saved bounds `[5, 7, 45, 57]` with quarter-turn 1, and preservation
+of an unrelated required-reason error. All 70 Flutter tests pass (7 gated live
+skips), and fatal-info analysis passes. Logs:
+`/tmp/flutter-coordinate-validation-targeted.log`,
+`/tmp/flutter-coordinate-validation-all.log`,
+`/tmp/flutter-coordinate-validation-analyze.log`.
+Integration/QA own the targeted final recheck before updating their frozen target.
