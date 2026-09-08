@@ -15,14 +15,14 @@ Future<void> main() async {
   SpecimenRepository? repository;
   String? setupMessage;
   const apiUrl = String.fromEnvironment('SPECIMEN_API_BASE_URL');
+  const localSynthetic = bool.fromEnvironment('SPECIMEN_LOCAL_SYNTHETIC');
   try {
-    const localSynthetic = bool.fromEnvironment('SPECIMEN_LOCAL_SYNTHETIC');
     if (localSynthetic) {
       final uri = Uri.parse(apiUrl);
       if (!['localhost', '127.0.0.1', '::1', '10.0.2.2'].contains(uri.host)) {
         throw StateError('Synthetic access is restricted to a local API');
       }
-      session = LocalFixtureSession();
+      session = LocalFixtureSession(baseUrl: uri);
       repository = ApiSpecimenRepository(
         baseUrl: uri,
         token: session.token,
@@ -61,14 +61,16 @@ Future<void> main() async {
       }
     }
   } catch (_) {
-    setupMessage =
-        'Application setup could not be completed. Ask your administrator to check Firebase and the API configuration.';
+    setupMessage = localSynthetic
+        ? 'Local synthetic setup could not be completed. Check the demo API configuration.'
+        : 'Application setup could not be completed. Ask your administrator to check Firebase and the API configuration.';
   }
   runApp(
     SpecimenDigitizationApp(
       session: session,
       repository: repository,
       setupMessage: setupMessage,
+      synthetic: localSynthetic,
     ),
   );
 }
@@ -79,10 +81,12 @@ class SpecimenDigitizationApp extends StatelessWidget {
     this.session,
     this.repository,
     this.setupMessage,
+    this.synthetic = false,
   });
   final SessionAccess? session;
   final SpecimenRepository? repository;
   final String? setupMessage;
+  final bool synthetic;
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Specimen Digitization',
@@ -118,6 +122,10 @@ class SpecimenDigitizationApp extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (synthetic)
+                        const Text(
+                          'SYNTHETIC ENVIRONMENT — local fixture access only; not museum-approved records.',
+                        ),
                       const Icon(Icons.biotech_outlined, size: 56),
                       const SizedBox(height: 24),
                       Text(

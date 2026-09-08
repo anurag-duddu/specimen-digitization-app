@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'api_repository.dart';
+import 'models.dart';
 
 abstract class SessionAccess {
   Stream<bool> get changes;
@@ -83,11 +86,13 @@ class _SignInScreenState extends State<SignInScreen> {
       } else {
         await widget.session.signIn(_email.text, _password.text);
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(
           () => _message =
-              'Sign-in could not be completed. Check your credentials and connection, or contact your administrator.',
+              widget.session is LocalFixtureSession && error is ApiFailure
+              ? error.message
+              : 'Sign-in could not be completed. Check your credentials and connection, or contact your administrator.',
         );
       }
     } finally {
@@ -130,7 +135,7 @@ class _SignInScreenState extends State<SignInScreen> {
                   const SizedBox(height: 8),
                   Text(
                     widget.session is LocalFixtureSession
-                        ? 'SYNTHETIC ONLY. Enter any test email and the local server fixture token. No Firebase or live model processing.'
+                        ? 'SYNTHETIC ONLY. The email is a test label, not a museum account. Access requires a fixture token accepted by the local server. No Firebase or live model processing.'
                         : 'Use the account provided by your museum. Collection access is checked by the server.',
                   ),
                   const SizedBox(height: 24),
@@ -156,7 +161,9 @@ class _SignInScreenState extends State<SignInScreen> {
                       if (!_busy) _submit();
                     },
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: widget.session is LocalFixtureSession
+                          ? 'Fixture token'
+                          : 'Password',
                       suffixIcon: IconButton(
                         tooltip: _obscure ? 'Show password' : 'Hide password',
                         onPressed: () => setState(() => _obscure = !_obscure),
@@ -165,8 +172,11 @@ class _SignInScreenState extends State<SignInScreen> {
                         ),
                       ),
                     ),
-                    validator: (s) =>
-                        s == null || s.isEmpty ? 'Enter your password' : null,
+                    validator: (s) => s == null || s.isEmpty
+                        ? widget.session is LocalFixtureSession
+                              ? 'Enter the fixture token'
+                              : 'Enter your password'
+                        : null,
                   ),
                   if (_message != null)
                     Padding(
@@ -199,28 +209,102 @@ class _SignInScreenState extends State<SignInScreen> {
 /// Explicit local fixture access. Never used as a Firebase failure fallback.
 /// The bearer stays in memory and is entered by the developer, not baked into a build.
 class LocalFixtureSession implements SessionAccess {
+  LocalFixtureSession({required Uri baseUrl, http.Client? client})
+    : _baseUrl = baseUrl,
+      _client = client ?? http.Client() {
+    if (!['localhost', '127.0.0.1', '::1', '10.0.2.2'].contains(baseUrl.host)) {
+      throw const ApiFailure(
+        'Synthetic access requires a local API.',
+        code: 'configuration',
+      );
+    }
+  }
+  final Uri _baseUrl;
+  final http.Client _client;
   String? _bearer;
+  String _userId = '';
+  int _generation = 0;
   final _controller = StreamController<bool>.broadcast();
   @override
   Stream<bool> get changes => _controller.stream;
   @override
   bool get signedIn => _bearer != null;
   @override
-  String get userId => 'synthetic-reviewer';
+  String get userId => _userId;
   @override
   String get displayName => 'Local synthetic reviewer';
   @override
   Future<String?> token() async => _bearer;
   @override
   Future<void> signIn(String email, String password) async {
-    _bearer = password;
-    _controller.add(true);
+    final generation = ++_generation;
+    final wasSignedIn = signedIn;
+    _bearer = null;
+    _userId = '';
+    if (wasSignedIn) _controller.add(false);
+    if (password.isEmpty) {
+      throw const ApiFailure(
+        'Enter the local server fixture token.',
+        code: 'unauthenticated',
+      );
+    }
+    final probe = ApiSpecimenRepository(
+      baseUrl: _baseUrl,
+      client: _client,
+      token: () async => password,
+    );
+    try {
+      final result = await probe.request('GET', '/v1/session');
+      if (generation != _generation) return;
+      if (result['mode'] != 'synthetic' ||
+          result['user_id'] is! String ||
+          (result['user_id'] as String).isEmpty ||
+          result['memberships'] is! List ||
+          (result['memberships'] as List).any((row) => row is! Map)) {
+        throw const ApiFailure(
+          'The local server did not return a valid synthetic session. Check the demo configuration.',
+          code: 'invalid_session',
+        );
+      }
+      _userId = result['user_id'] as String;
+      _bearer = password;
+      _controller.add(true);
+    } on ApiFailure catch (error) {
+      if (generation != _generation) return;
+      if (error.status == 401 || error.status == 403) {
+        throw const ApiFailure(
+          'The local server rejected the fixture token. Check the token and try again.',
+          code: 'unauthenticated',
+          status: 401,
+        );
+      }
+      if (['network', 'timeout'].contains(error.code) ||
+          (error.status ?? 0) >= 500) {
+        throw const ApiFailure(
+          'The local synthetic server is unavailable. Start or reconnect the demo server, then try again. You are not signed in.',
+          code: 'server_unavailable',
+        );
+      }
+      if (error.code == 'invalid_session') rethrow;
+      throw const ApiFailure(
+        'The local server could not validate this synthetic session. Check the demo configuration.',
+        code: 'invalid_session',
+      );
+    }
   }
 
   @override
   Future<void> signOut() async {
+    ++_generation;
     _bearer = null;
+    _userId = '';
     _controller.add(false);
+  }
+
+  void dispose() {
+    ++_generation;
+    _client.close();
+    _controller.close();
   }
 
   @override
