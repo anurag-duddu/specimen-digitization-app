@@ -54,9 +54,7 @@ class PartiesAdapter:
             connection,
             token,
         )
-        self.client = client or httpx.Client(
-            headers={"User-Agent": "SpecimenDigitization/0.1"}
-        )
+        self.client = client
 
     def lookup(self, query: AuthorityQuery) -> AuthorityResult:
         connection = self.connection

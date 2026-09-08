@@ -476,7 +476,9 @@ def test_production_transcriber_does_not_receive_peer_observations(
     adapter = production.ProductionAdapters(blobs)
     specimen.run.dependencies = adapter.pin_dependencies(specimen.run)
     for route in specimen.run.profile.routes:
-        observation = adapter.transcribe(specimen, specimen.run.regions[0], route)
+        observation = adapter._transcribe_direct(
+            specimen, specimen.run.regions[0], route
+        )
         assert observation.literal_text == "Independent source"
         assert observation.finish_state == "stop"
         import json

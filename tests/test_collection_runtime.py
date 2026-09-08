@@ -58,7 +58,7 @@ def test_versioned_profile_correction_preserves_scope_source_and_history(tmp_pat
         row = intake(http)
         path = PREFIX + f"/specimens/{row['specimen_id']}"
         old = http.get(path + "/workspace", headers=HEADERS).json()
-        assert old["run"]["profile_snapshot"]["version"] == "synthetic-v1"
+        assert old["run"]["profile_snapshot"]["version"] == original.version
         assert old["run"]["classification"]["synthetic"] is True
         assert old["asset"]["quality_diagnostics"]["status"] == "valid"
         assert old["asset"]["quality_diagnostics"]["metrics"]["calibrated"] is False

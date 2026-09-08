@@ -82,6 +82,12 @@ def test_sam_total_deadline_durable_unknown_and_no_retry(
     )
     repo, blobs, principal, items = setup(tmp_path)
     specimen = items[0]
+    initial = Workflow(repo, blobs, SyntheticAdapters(blobs, "synthetic"))
+    for _ in range(4):
+        if "classify" in specimen.run.completed_steps:
+            break
+        specimen = initial.step(principal, specimen.id)
+    assert "classify" in specimen.run.completed_steps
     specimen.run.completed_steps = ["pin_dependencies", "classify", "quality_check"]
     specimen.run.profile.execution.external_timeout_seconds = 3
     specimen = repo.save(
