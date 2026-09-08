@@ -1113,10 +1113,10 @@ def local_app(root: Path, token: str, persistence: str = "sqlite"):
     if persistence not in {"sqlite", "sql-emulator"}:
         raise ValueError("Invalid local persistence")
     if persistence == "sql-emulator":
-        from .production import SqlConnectRepository
+        from .production import SqlConnectRepository, sql_emulator_host
 
         repository = SqlConnectRepository(
-            project="demo-specimen-data", emulator_host="127.0.0.1:9499"
+            project="demo-specimen-data", emulator_host=sql_emulator_host()
         )
     else:
         repository = SQLiteRepository(root / "state.sqlite3")

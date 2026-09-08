@@ -6,7 +6,13 @@ import time
 from pathlib import Path
 from .api import SYNTHETIC_TEXT, SYNTHETIC_COLLECTION, SYNTHETIC_ORG
 from .domain import Principal, Scope
-from .production import SqlConnectRepository, GcsBlobs, ProductionAdapters, actor_uid
+from .production import (
+    sql_emulator_host,
+    SqlConnectRepository,
+    GcsBlobs,
+    ProductionAdapters,
+    actor_uid,
+)
 from .storage import SQLiteRepository, LocalBlobs, Conflict
 from .workflow import Workflow, SyntheticAdapters
 
@@ -31,7 +37,7 @@ def main():
     if args.mode == "synthetic":
         repository = (
             SqlConnectRepository(
-                project="demo-specimen-data", emulator_host="127.0.0.1:9499"
+                project="demo-specimen-data", emulator_host=sql_emulator_host()
             )
             if args.persistence == "sql-emulator"
             else SQLiteRepository(args.state_dir / "state.sqlite3")

@@ -607,3 +607,44 @@ def test_http_available_actions_match_role_and_server_rejects_viewer_edit(tmp_pa
     assert (
         viewer.post(path + "/decisions", headers=HEADERS, json=body).status_code == 403
     )
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "localhost:9499",
+        "127.0.0.2:9499",
+        "0.0.0.0:9499",
+        "example.com:9499",
+        "127.0.0.1:0",
+        "127.0.0.1:65536",
+        "127.0.0.1:9499/path",
+    ],
+)
+def test_emulator_configuration_rejects_nonloopback_or_invalid_ports(monkeypatch, host):
+    from specimen_digitization.application.production import (
+        sql_emulator_host,
+        SqlConnectRepository,
+    )
+
+    monkeypatch.setenv("SPECIMEN_SQL_EMULATOR_HOST", host)
+    with pytest.raises(ValueError):
+        sql_emulator_host()
+    with pytest.raises(ValueError):
+        SqlConnectRepository(project="demo-specimen-data", emulator_host=host)
+
+
+def test_emulator_port_config_is_explicit_and_production_rejects_it(monkeypatch):
+    from specimen_digitization.application.production import (
+        sql_emulator_host,
+        SqlConnectRepository,
+    )
+
+    monkeypatch.setenv("SPECIMEN_SQL_EMULATOR_HOST", "127.0.0.1:18499")
+    assert sql_emulator_host() == "127.0.0.1:18499"
+    repo = SqlConnectRepository(
+        project="demo-specimen-data", emulator_host=sql_emulator_host()
+    )
+    assert repo.url.startswith("http://127.0.0.1:18499/")
+    with pytest.raises(ValueError, match="Production rejects"):
+        SqlConnectRepository()

@@ -5,6 +5,7 @@ import contextvars
 import hashlib
 import json
 import os
+import re
 from uuid import UUID
 
 import google.auth
@@ -24,6 +25,14 @@ from .workflow import OperationalBlock, crop_bytes
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 
 
+def sql_emulator_host() -> str:
+    host = os.getenv("SPECIMEN_SQL_EMULATOR_HOST", "127.0.0.1:9499")
+    match = re.fullmatch(r"127\.0\.0\.1:([0-9]{1,5})", host)
+    if not match or not 1 <= int(match.group(1)) <= 65535:
+        raise ValueError("SQL emulator host must be 127.0.0.1 with a valid TCP port")
+    return host
+
+
 class SqlConnectRepository:
     def __init__(
         self,
@@ -36,13 +45,19 @@ class SqlConnectRepository:
     ):
         self.project = project
         if emulator_host:
-            if project != "demo-specimen-data" or emulator_host != "127.0.0.1:9499":
+            if (
+                project != "demo-specimen-data"
+                or not re.fullmatch(r"127\.0\.0\.1:[0-9]{1,5}", emulator_host)
+                or not 1 <= int(emulator_host.rsplit(":", 1)[1]) <= 65535
+            ):
                 raise ValueError("Emulator must use isolated loopback demo project")
             import requests
 
             self.session = session or requests.Session()
             origin = "http://" + emulator_host
         else:
+            if os.getenv("SPECIMEN_SQL_EMULATOR_HOST"):
+                raise ValueError("Production rejects SQL emulator configuration")
             credentials, _ = google.auth.default(
                 scopes=["https://www.googleapis.com/auth/cloud-platform"]
             )
