@@ -78,3 +78,30 @@ baseline path; it was moved outside the test repository, not exempted. All
 canaries were randomly generated synthetic strings and were not committed here.
 This scanner-only dependency may precede the owner fixture commits; it does not
 approve new product code or relax future changed-fixture review requirements.
+
+## Frozen codec fixture
+
+Reviewed separately on 2026-09-08. Backend codec fixture SHA-256:
+`8dc736071fc530260097279cee0a09fab35a7c67420ef2b3dcf7271fee673e7d`.
+Exact reviewed paths are docs/execution/backend-codec-wire-examples.json and
+apps/specimen_digitization/test/fixtures/backend-codec-wire-examples.json.
+The latter is the intended identical client copy, tested here in isolation.
+
+Reviewed generate_codec_fixture.py: it captures an actual synthetic HEIC item
+request, completion, asset and access response without authorization headers.
+Independently verified the retained synthetic-orientation6.heic source and both
+unique content digests against retained blob bytes (21 digest occurrences).
+The fixture declares local memory-enforcement exception and decoded primary
+pixel coordinates; this review does not approve production codec isolation.
+
+Detect-secrets1.5.0 finds two unique Hex High Entropy String findings per exact
+path. Both are64-character lowercase content digests with verified SHA-1 finding
+identifiers. Added only these exact findings and two exact SHA-1 metadata lines
+to the existing Gitleaks rule-local AND allowlist. Previous baseline entries,
+plugins, filters, thresholds and fixture bytes remain unchanged.
+
+Isolated testing with detect-secrets1.5.0 and pinned Gitleaks8.30.1 passed both
+exact copies. Both scanners rejected a new credential-shaped canary in each
+copy. Gitleaks rejected a new baseline credential and an allowed metadata hash
+in an unreviewed path. Restored files passed again. No general exemption or
+canary was committed. This scanner-only dependency precedes owner fixture code.
