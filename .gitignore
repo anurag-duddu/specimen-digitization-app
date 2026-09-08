@@ -28,6 +28,7 @@ credentials/
 client_secret*.json
 credentials.json
 application_default_credentials.json
+gha-creds-*.json
 
 # Terraform and infrastructure state can contain credentials.
 *.tfstate
@@ -43,7 +44,7 @@ firestore-debug.log*
 ui-debug.log*
 **/google-services.json
 **/GoogleService-Info.plist
-lib/firebase_options.dart
+**/lib/firebase_options.dart
 
 # -----------------------------------------------------------------------------
 # Flutter and Dart
@@ -81,6 +82,7 @@ xcuserdata/
 # -----------------------------------------------------------------------------
 # Python backend and tooling
 # -----------------------------------------------------------------------------
+.logfire/
 __pycache__/
 *.py[cod]
 *$py.class

@@ -1,21 +1,23 @@
-# Specimen Digitization Platform — Product Requirements Document
+# Specimen Digitization — Product Requirements Document
 
 | Document field | Value |
 |---|---|
 | Status | Draft for product review |
-| Version | 0.4 |
+| Version | 0.6 |
 | Date | 2026-09-07 |
-| Working product name | Specimen Digitization Platform |
+| Working product name | Specimen Digitization |
 | Product owner | TBD |
 | Technical owner | TBD |
 
 ## 1. Executive summary
 
-The Specimen Digitization Platform will turn photographs of natural-history museum specimens and their labels into traceable, reviewable digital records. It will support botany, zoology, geology, and anthropology, with collection- and subcollection-specific processing profiles.
+Specimen Digitization will turn photographs of natural-history museum specimens and their labels into traceable, reviewable digital records. It will support botany, zoology, geology, and anthropology, with collection- and subcollection-specific processing profiles.
 
-The product will use a responsive Flutter client for capture, upload, monitoring, and review. Firebase Authentication, Firestore, and Cloud Storage will provide the initial application platform. Long-running image, model, and agent workflows will run in a separate backend processing plane so jobs can be checkpointed, retried, audited, and resumed without depending on an open client session.
+The product will use a responsive Flutter client for capture, upload, monitoring, and review. Firebase Authentication, Firebase SQL Connect backed by Cloud SQL for PostgreSQL, and Cloud Storage will provide the initial application platform. Long-running image, model, and agent workflows will run in a separate backend processing plane so jobs can be checkpointed, retried, audited, and resumed without depending on an open client session.
 
 The first pilot will use the Field Museum Insects subcollection. Its initial profile, mandatory record fields, and collection-manager source policy are defined in section 12.4.
+
+The first build ends at a persisted, reviewable final queue disposition inside this application. EMu projection, versioned EMu export snapshots, and writes to EMu are explicitly deferred until after the application works end-to-end and the production pilot has validated record quality and workflow usability.
 
 For each submitted photograph, the platform will:
 
@@ -78,8 +80,8 @@ This product addresses those gaps through a configurable, specimen-centered pipe
 - Enrich and validate records through modular data-source adapters and collection-specific reasoning tools.
 - Give reviewers a single workspace in which source pixels, readings, evidence, proposed values, and validation issues are visible together.
 - Route every fully attempted specimen to a clear final queue using versioned, inspectable rules.
-- Support museum-funded provider access through bring-your-own-key (BYOK), including AWS Bedrock where configured, as well as a platform-managed default set of models.
-- Produce exportable, schema-valid digital records and an audit package suitable for downstream collection systems.
+- Support museum-funded provider access through bring-your-own-key (BYOK) for approved provider adapters, as well as a platform-managed default set of models.
+- Produce schema-valid internal digital records and a complete audit package; downstream collection-system projection and export are later integrations.
 
 ### 5.2 Success outcomes
 
@@ -97,7 +99,7 @@ This product addresses those gaps through a configurable, specimen-centered pipe
 - Automatically modifying an external system of record without explicit integration configuration, validation, and authorization.
 - Training foundation models on museum data by default.
 - Guaranteeing that every image can be cleared without human review.
-- Treating multiple specimens in one photograph as a standard v1 workflow. The v1 default is one specimen-processing record per photograph; a user can reject or split exceptional images.
+- Treating multiple specimens in one photograph as a standard v1 workflow. The v1 default is one specimen digitization record per photograph; a user can reject or split exceptional images.
 - Running large segmentation or vision models entirely on the capture device. On-device quality checks may be added, but authoritative processing is initially server-side.
 - Using a single global schema, prompt, confidence threshold, or enrichment strategy for every collection.
 
@@ -202,12 +204,9 @@ At minimum, permissions cover:
 3. The platform starts a new pipeline run while preserving the previous result.
 4. The new run is compared with the former run and routed normally.
 
-### 9.5 Export
+### 9.5 Later-phase external integration
 
-1. An authorized user selects cleared records and an approved target schema.
-2. The system validates the exact export set and creates a manifest.
-3. It emits records plus provenance, warnings, profile versions, source identifiers, and checksums as configured.
-4. Repeating an export with the same version and inputs is deterministic and does not duplicate downstream records.
+External-system projection is not part of the initial end-to-end application milestone. After the production pilot validates the internal record and queue workflow, an authorized user may select cleared records for an approved target schema. That later integration must validate the exact export set, create a manifest, preserve provenance and warnings, and remain deterministic and idempotent.
 
 ## 10. End-to-end lifecycle
 
@@ -242,7 +241,7 @@ Any processing stage may enter `Retry scheduled`, `Paused`, `Cancelled`, or `Pro
 - Every final disposition includes machine-readable reason codes and a human-readable explanation.
 - A record cannot be Deferred for a temporary operational failure such as a rate limit, invalid credential, timeout, or platform outage.
 - A record cannot be Cleared solely because its composite score crosses a threshold.
-- Reopening or reprocessing a cleared record preserves the earlier cleared version and export history.
+- Reopening or reprocessing a cleared record preserves the earlier cleared version. Later export integrations must also preserve export history.
 
 ## 11. Functional requirements
 
@@ -296,7 +295,7 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | TRN-002 | P0 | Keep first-pass models isolated from peer outputs. Each receives only the approved image context, profile prompt, schema, and tool permissions. |
 | TRN-003 | P0 | Ask models to preserve visible spelling, capitalization, punctuation, line breaks, abbreviations, and explicit unreadable/uncertain spans. |
 | TRN-004 | P0 | Separate literal transcription from structured field extraction and later normalization. |
-| TRN-005 | P0 | Store the full raw provider response and a parsed observation with provider, model identifier/version, prompt version, parameters, input asset/crop IDs, timestamps, latency, token/compute usage, finish state, and errors. Large raw payloads belong in object storage with a Firestore pointer. |
+| TRN-005 | P0 | Store the full raw provider response and a parsed observation with provider, model identifier/version, prompt version, parameters, input asset/crop IDs, timestamps, latency, token/compute usage, finish state, and errors. Large raw payloads belong in object storage with an immutable relational reference. |
 | TRN-006 | P0 | Support label-level language/script candidates and profile-defined handling for mixed-language labels. |
 | TRN-007 | P0 | Calculate character/span, line, field, and label disagreements without discarding minority readings. |
 | TRN-008 | P0 | Run a separate adjudication step only after all required independent observations are durably stored. |
@@ -356,8 +355,8 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 
 | ID | Priority | Requirement |
 |---|---:|---|
-| BYO-001 | P1 | Support organization- or collection-scoped provider connections, initially including an AWS Bedrock adapter and the platform-managed default model pool. |
-| BYO-002 | P1 | Keep provider secrets server-side in an approved secret manager; Firestore stores only encrypted connection metadata and secret references, never plaintext keys. |
+| BYO-001 | P1 | Support organization- or collection-scoped provider connections for approved provider adapters and the platform-managed default model pool without coupling the application architecture to any provider's cloud. |
+| BYO-002 | P1 | Keep provider secrets server-side in an approved secret manager; SQL Connect/Cloud SQL stores only encrypted connection metadata and secret references, never plaintext keys. |
 | BYO-003 | P1 | Let an authorized administrator test a connection, see permitted models/regions, set budgets, rotate credentials, and disable a connection. |
 | BYO-004 | P1 | A profile's provider-routing policy states which data classifications may be sent to which providers and regions. |
 | BYO-005 | P1 | Before execution, resolve a logical capability such as `handwriting_transcriber` to an approved provider/model and record the exact resolution. |
@@ -400,10 +399,11 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | EXP-001 | P0 | Search and filter specimens by stable ID, batch, collection, state, queue, date, uploader, score band, issue, and profile version. |
 | EXP-002 | P1 | Provide dashboards for throughput, clearance rate, human-review rate, deferred reasons, operational failures, queue age, cost, latency, and reviewer effort. |
 | EXP-003 | P1 | Report quality measures against reviewed ground truth by profile, field, model, prompt, language/script, image-quality band, and difficulty slice. |
-| EXP-004 | P1 | Export only authorized record versions to versioned target schemas with an immutable manifest, checksums, warnings, and provenance references. |
-| EXP-005 | P1 | Support at least CSV and JSON/JSON Lines initially; collection-system-specific adapters are separate versioned integrations. |
-| EXP-006 | P1 | Prevent duplicate downstream creation through stable source IDs and idempotency keys. |
-| EXP-007 | P1 | Never include restricted fields or source images in an export unless the target and user are explicitly authorized. |
+| EXP-004 | P2 | Export only authorized record versions to versioned target schemas with an immutable manifest, checksums, warnings, and provenance references. |
+| EXP-005 | P2 | Support CSV and JSON/JSON Lines when export work begins; collection-system-specific adapters are separate versioned integrations. |
+| EXP-006 | P2 | Prevent duplicate downstream creation through stable source IDs and idempotency keys. |
+| EXP-007 | P2 | Never include restricted fields or source images in an export unless the target and user are explicitly authorized. |
+| EXP-008 | P2 | Defer EMu projection, EMu export snapshots, and EMu writes until the internal end-to-end application and production pilot exit criteria pass. |
 
 ### 11.12 Notifications and operational recovery
 
@@ -420,7 +420,7 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 
 The collection profile is the main extension point. It should be declarative where possible and reference tested code modules only where reasoning or integration requires them.
 
-The accepted architecture uses Temporal as the durable outer workflow and Pydantic AI as the typed inner agent harness. The evaluated alternatives and reference architecture are documented in [Agent Harness Options](./HARNESS_OPTIONS.md). The selection must pass an Insects failure-injection spike before production expansion.
+The accepted architecture boundary separates a durable outer workflow from the typed inner agent harness. Pydantic AI is the first harness candidate; Temporal is the production-reference workflow candidate and Google Cloud Workflows is the required Firebase/GCP-native comparator. The final workflow engine is not selected until both run the same Insects failure-injection spike. Do not provision Temporal Cloud before that local comparison passes. See [Durable Workflow and Agent Harness Decision](./HARNESS_OPTIONS.md).
 
 ### 12.1 Minimum profile contents
 
@@ -449,7 +449,7 @@ disposition:
   clearance_policy: fmnh_insects_clearance_v1
 data_policy:
   classification: internal
-  approved_provider_routes: [platform_default, museum_bedrock]
+  approved_provider_routes: [huggingface_qwen_novita, huggingface_muse_deepinfra]
 ```
 
 This is illustrative, not a locked file format.
@@ -603,26 +603,28 @@ The product must report score calibration and correction rates. It must not opti
 **Firebase application services**
 
 - Firebase Authentication for identity.
-- Firestore for transactional application metadata, indexes, workflow summaries, permissions, and review state.
-- Cloud Storage for originals, derivatives, crops, large raw responses, exports, and audit artifacts.
+- Firebase SQL Connect backed by Cloud SQL for PostgreSQL for transactional application metadata, relational constraints, workflow summaries, permissions, and review state.
+- Cloud Storage for originals, derivatives, crops, large raw responses, and audit artifacts; later export artifacts may use the same service.
 - Firebase App Check and backend authorization enforcement for supported clients.
 - Short event-handling functions where appropriate.
 
 **Backend processing plane**
 
 - Durable workflow orchestration with retries, timeouts, checkpoints, idempotency, cancellation, and human-wait states.
-- Containerized services for quality analysis, classification, SAM 3 segmentation, model-provider adapters, transcription, adjudication, harness execution, validation, and export.
+- Containerized services for quality analysis, classification, SAM 3 segmentation, model-provider adapters, transcription, adjudication, harness execution, and validation. Export services are added in a later integration phase.
 - Queue/event transport for asynchronous work and backpressure.
 - Secret manager and key-management service for BYOK.
 - Central logs, traces, metrics, budgets, and alerting.
 
-The implementation may use Google Cloud services that integrate naturally with Firebase, but the workflow and agent-framework selection is a technical-design decision. The chosen stack must satisfy the behavior in this PRD; an agent library by itself is not a substitute for a durable workflow engine.
+Firebase remains the identity, application-data, object-storage, and UI-state platform. A durable workflow engine is additive: it coordinates the multi-stage processing lifecycle and writes application-owned records and summaries through controlled interfaces; it does not replace Firebase or become the specimen system of record.
 
-### 14.2 Logical Firestore model
+The implementation may use Google Cloud services that integrate naturally with Firebase, but the workflow and agent-framework selection is a technical-design decision. Temporal and Google Cloud Workflows must be compared with the same failure-injection scenario before the engine is selected. The chosen stack must satisfy the behavior in this PRD; an agent library, individual task queue, or event handler by itself is not a substitute for a durable workflow engine.
 
-The exact structure must be validated against access patterns, document-size limits, security rules, and cost. A proposed starting point is:
+### 14.2 Logical relational model
 
-| Collection / entity | Purpose |
+The SQL Connect schema and PostgreSQL structure must be validated against access patterns, relational constraints, indexes, transaction boundaries, authorization directives, connection limits, and cost. A proposed starting point is:
+
+| Table / entity | Purpose |
 |---|---|
 | `organizations` | Tenant policy, retention, provider-routing defaults. |
 | `users` and `memberships` | Identity references and scoped roles. |
@@ -641,10 +643,10 @@ The exact structure must be validated against access patterns, document-size lim
 | `validationFindings` | Rule version, severity, affected field, result, evidence. |
 | `reviewDecisions` | Actor, before/after, reason, authority, timestamps. |
 | `auditEvents` | Append-only security and material product actions. |
-| `exports` | Export set, target schema, manifest, checksums, status. |
+| `exports` (later phase) | Export set, target schema, manifest, checksums, status; do not build for the initial vertical slice. |
 | `providerConnections` | Non-secret metadata and references to secret-manager entries. |
 
-Large arrays, image bytes, raw model payloads, large evidence captures, and complete trace bundles must not be embedded in a single specimen document. They belong in subcollections or object storage with immutable pointers and hashes.
+Image bytes, raw model payloads, large evidence captures, and complete trace bundles must not be embedded in relational rows. They belong in object storage with immutable references and hashes; repeated structured values belong in normalized child tables.
 
 ### 14.3 Record layers
 
@@ -655,7 +657,7 @@ The database must keep these layers distinct:
 3. **Transcription layer:** adjudicated literal readings and alternatives.
 4. **Interpretation layer:** parsed and normalized candidates with evidence.
 5. **Decision layer:** selected values, validation outcomes, human overrides, and disposition.
-6. **Export layer:** immutable snapshots sent to downstream systems.
+6. **Downstream projection layer (later phase):** immutable snapshots sent to downstream systems only after the internal app and pilot are proven.
 
 ### 14.4 Provenance minimum
 
@@ -666,7 +668,7 @@ Every material value must answer:
 - Which model, prompt, profile, code, adapter, rule, and external-source versions contributed?
 - What alternatives existed and what evidence supported or contradicted them?
 - Who or what selected the final value, when, and why?
-- Has this exact version been exported, and where?
+- If later exported, which exact version was exported and where?
 
 ## 15. Provider and data-source failure behavior
 
@@ -704,7 +706,7 @@ Every material value must answer:
 ### 16.3 Security, privacy, and stewardship
 
 - Encrypt data in transit and at rest.
-- Store BYOK secrets only in an approved secret manager and never in Flutter, logs, prompts, analytics, or Firestore plaintext.
+- Store BYOK secrets only in an approved secret manager and never in Flutter, logs, prompts, analytics, or SQL Connect/Cloud SQL plaintext.
 - Enforce least-privilege service identities and collection-scoped user authorization.
 - Use short-lived signed access for private images and exports.
 - Maintain append-only audit events for authentication, authorization, configuration, review, export, credential, and deletion actions.
@@ -773,7 +775,7 @@ Trying to activate all natural-history domains at once would make validation amb
 
 ### Phase 0 — Discovery and technical validation
 
-- Use Field Museum Insects as the first pilot subcollection and confirm its target downstream record schema.
+- Use Field Museum Insects as the first pilot subcollection and confirm the internal pilot record schema. The EMu target schema is not a Phase 0 blocker.
 - Inventory representative image and label conditions, including difficult cases.
 - Define gold-set creation, reviewer protocol, critical fields, evidence policy, and acceptable error thresholds.
 - Validate Flutter capture/upload behavior on target devices.
@@ -787,26 +789,24 @@ Trying to activate all natural-history domains at once would make validation amb
 ### Phase 1 — P0 Insects vertical slice
 
 - Flutter authentication, file/camera intake, upload manifest, specimen list, and processing status.
-- Firestore/Storage foundation and durable asynchronous workflow.
+- SQL Connect/Cloud SQL and Cloud Storage foundation with a durable asynchronous workflow.
 - One Field Museum Insects profile implementing the mandatory fields and source rules in section 12.4.
 - Classification with manual correction.
 - SAM 3 segmentation with region correction.
 - Two independent vision transcriptions, raw-output preservation, disagreement display, and adjudication.
 - Minimal parse/validate harness with at least one meaningful authoritative lookup.
 - Review workbench and all three final queues.
-- JSON/CSV export with provenance manifest.
 - End-to-end audit trail, operational recovery, and pilot dashboard.
 
-**Exit:** A representative pilot batch can be processed, reviewed, cleared, reproduced, and exported without manual database edits, and critical quality thresholds approved in Phase 0 are met.
+**Exit:** A representative pilot batch can move from image intake through classification, segmentation, independent transcription, adjudication, enrichment, validation, review, persistence, and final queue assignment without manual database edits, and the critical quality thresholds approved in Phase 0 are met.
 
 ### Phase 2 — Production pilot
 
 - Full collection-specific enrichment and historical reasoning tools for the first profile.
-- AWS Bedrock BYOK plus approved platform-provider routing.
+- Provider-neutral BYOK plus approved platform-provider routing.
 - Batch/folder and cloud-URL intake hardening.
 - Role scopes, assignments, notifications, cost controls, and operational alerts.
 - Profile authoring/test/promotion workflow.
-- Integration adapter for one downstream collection system, if approved.
 - Security, accessibility, load, backup/restore, and incident-response validation.
 
 **Exit:** Museum staff complete an agreed production-scale pilot with signed quality, security, accessibility, cost, and operational acceptance.
@@ -824,6 +824,7 @@ Trying to activate all natural-history domains at once would make validation amb
 
 - Onboard additional botany, zoology, geology, and anthropology profiles under collection-governance approval.
 - Introduce advanced workload scheduling, cross-institution tenancy if required, and additional downstream integrations.
+- Design and implement the versioned EMu projection/export adapter only after the internal application and production pilot have passed their exit criteria.
 - Evaluate active learning or institution-approved fine-tuning as a separate governed capability.
 
 ## 19. P0 release acceptance criteria
@@ -846,10 +847,10 @@ The first vertical slice is acceptable only when all of the following are demons
 14. A legitimate model-capability limitation can enter Deferred only with attempts, reason, and retry eligibility recorded.
 15. A reviewer can resolve a Needs human review case and see dependent validations and disposition update.
 16. Every final field can be traced to source pixels, model/human observations, transformations, lookup evidence, and policy decisions.
-17. An authorized user can export a cleared record and manifest twice without creating a logically different result or duplicate downstream identity.
-18. Unauthorized users cannot access restricted source images, records, credentials, or exports.
+17. A persisted Cleared, Needs human review, or Deferred result can be reopened and reconstructed from its stored versions and audit evidence without hidden state.
+18. Unauthorized users cannot access restricted source images, records, credentials, or audit evidence.
 19. Accessibility, security, recovery, and quality gates defined during Phase 0 pass.
-20. A production-like end-to-end run completes without direct Firestore edits or hidden manual repair.
+20. A production-like end-to-end run completes without direct database edits or hidden manual repair.
 
 ## 20. Dependencies
 
@@ -858,8 +859,8 @@ The first vertical slice is acceptable only when all of the following are demons
 - Rights to store and process specimen images and send approved data to chosen providers.
 - SAM 3 model access, acceptable license, serving infrastructure, and performance validation.
 - Credentials and terms for authority sources, geocoders, taxonomy services, or other APIs.
-- AWS account/Bedrock access for organizations using BYOK.
-- Defined downstream collection-system schemas and identifiers for export/integration.
+- Credentials and account access for organizations using a supported BYOK provider adapter.
+- Downstream collection-system schemas and identifiers are a later integration dependency, not a blocker for the initial end-to-end application.
 - Security, privacy, cultural stewardship, legal, and accessibility review appropriate to each collection.
 
 ## 21. Risks and mitigations
@@ -873,7 +874,7 @@ The first vertical slice is acceptable only when all of the following are demons
 | Provider outage, rate limit, or grant expiration | Processing stalls or unexpectedly changes models. | Typed failures, backoff/circuit breaking, budget alerts, explicit fallback policy, paused jobs, and resumable runs. |
 | Sensitive data reaches an unapproved provider | Stewardship, privacy, contractual, or legal harm. | Data classification, provider-routing allowlists, server-side policy enforcement, redaction where approved, and audit logs. |
 | Profile changes make records incomparable | Quality regressions and unclear provenance. | Immutable versioned profiles, pinned runs, evaluation gates, controlled promotion, and run-to-run comparisons. |
-| Firestore becomes a large-payload/event-log bottleneck | Cost, document contention, and scale limits. | Store summaries/indexable state in Firestore; keep assets/raw payloads in object storage; design append-only events and indexes from measured access patterns. |
+| SQL Connect/Cloud SQL becomes a connection, hot-table, or large-payload bottleneck | Cost, contention, latency, and scale limits. | Normalize relational state, index measured access paths, bound connection pools, keep assets/raw payloads in object storage, and design append-only events from measured workloads. |
 | Flutter target differences disrupt folder/camera behavior | Inconsistent capture and batch workflows. | Define a supported-target matrix, prototype early, provide capability-specific UI, and test on actual museum devices. |
 | Clearance-rate incentives cause cherry-picking | Easy items inflate progress while hard work accumulates. | Report all dispositions and queue aging, freeze evaluation cohorts, audit exclusions, and prioritize representative sampling. |
 | Anthropology or sensitive collections need materially different governance | A generic workflow violates collection policy. | Make access, provider routing, evidence display, retention, and export profile/collection controlled; require stewardship approval before activation. |
@@ -882,7 +883,7 @@ The first vertical slice is acceptable only when all of the following are demons
 
 These questions do not prevent the initial PRD draft, but the starred items must be answered before Phase 0 can exit.
 
-1. **What downstream collection management system and exact target schema will receive the first cleared Insects records?** ★
+1. What downstream collection management system and exact target schema will eventually receive cleared Insects records? This is intentionally deferred and does not block the initial build.
 2. **What does “cleared” mean institutionally?** ★ Must every pilot record receive human approval, or can a calibrated subset clear automatically after hard gates?
 3. **What does `Verbatim D/T/S` mean in the target system, including its format and validation rules?** ★
 4. **Can Field Museum confirm the current production column, serialization, authority-access method, and permitted fields for the `eparties` record referenced by `Identified by IRN`?** ★
@@ -895,7 +896,7 @@ These questions do not prevent the initial PRD draft, but the starred items must
 11. Should operators confirm every collection classification during the pilot, or only low-confidence/policy-selected cases?
 12. Which exact SAM 3 release/checkpoint, license, hosting environment, latency target, and hardware budget are approved? ★
 13. Which platform-managed open vision models are candidates, and must “open” mean open weights, self-hosted, a particular license, or simply not BYOK? ★
-14. Beyond AWS Bedrock, which BYOK providers and regions must be supported first?
+14. Which BYOK providers, authentication methods, and regions must be supported first?
 15. May any model provider retain inputs, and what zero-retention/data-residency requirements apply? ★
 16. What terms, quotas, caching, attribution, and automation permissions apply to the named taxonomy and geography sources? ★
 17. Under what conditions may a browser or terminal tool access the public web, and what evidence must be captured from it?
@@ -910,7 +911,7 @@ These questions do not prevent the initial PRD draft, but the starred items must
 
 ## 23. Recommended immediate next step
 
-Run a short Insects-profile workshop focused on questions 1–6, 12–13, 15–16, and 18. The output should confirm the field semantics, critical-field rules, downstream schema, source conflict policy, approved providers, gold-set owner, and clearance standard. That brief will make the P0 Insects vertical slice estimable.
+Run a short Insects-profile workshop focused on questions 2–6, 12–13, 15–16, and 18. The output should confirm field semantics, critical-field rules, source conflict policy, approved providers, gold-set ownership, and the clearance standard. Downstream EMu projection is deliberately excluded. That brief will make the P0 Insects vertical slice estimable.
 
 ## 24. Approval
 
