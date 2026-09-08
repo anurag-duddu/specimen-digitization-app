@@ -504,7 +504,10 @@ def test_review_resolves_authority_ambiguity_without_overwriting_lookup(tmp_path
 
     class Ambiguous(SyntheticAdapters):
         def lookup(self, name):
+            retained = super().lookup(name)
             return Lookup(
+                raw_ref=retained.raw_ref,
+                digest=retained.digest,
                 provider="synthetic",
                 adapter_version="1",
                 query={"name": name},
