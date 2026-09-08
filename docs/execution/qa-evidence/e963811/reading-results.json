@@ -1,0 +1,330 @@
+{
+  "http_cases": [
+    {
+      "case": "unicode",
+      "alignment": {
+        "algorithm": "bounded-raw-codepoint-levenshtein-1",
+        "left": {
+          "observation_id": "9d16e0ed-b890-40de-ab29-3623735da015",
+          "region_id": "b7dc63fa-c608-438d-930a-fd066a26f700",
+          "source_ref": "277a81acbf0c[digest abbreviated]",
+          "source_sha256": "277a81acbf0c[digest abbreviated]",
+          "codepoints": 22,
+          "utf8_bytes": 47,
+          "text_sha256": "8628abcca23c[digest abbreviated]",
+          "source_truncated": false
+        },
+        "right": {
+          "observation_id": "9484cf27-e6ca-4f65-abb0-04399420be42",
+          "region_id": "b7dc63fa-c608-438d-930a-fd066a26f700",
+          "source_ref": "7ff6ae4fc200[digest abbreviated]",
+          "source_sha256": "7ff6ae4fc200[digest abbreviated]",
+          "codepoints": 21,
+          "utf8_bytes": 46,
+          "text_sha256": "c13ed57b0bc8[digest abbreviated]",
+          "source_truncated": false
+        },
+        "status": "disagreement",
+        "alternatives": [
+          {
+            "operation": "replace",
+            "left": {
+              "start": {
+                "codepoint": 1,
+                "utf8_byte": 4,
+                "utf16_codeunit": 2,
+                "line": 1,
+                "column_codepoint": 1
+              },
+              "end": {
+                "codepoint": 3,
+                "utf8_byte": 7,
+                "utf16_codeunit": 4,
+                "line": 1,
+                "column_codepoint": 3
+              },
+              "text": "é"
+            },
+            "right": {
+              "start": {
+                "codepoint": 1,
+                "utf8_byte": 4,
+                "utf16_codeunit": 2,
+                "line": 1,
+                "column_codepoint": 1
+              },
+              "end": {
+                "codepoint": 2,
+                "utf8_byte": 6,
+                "utf16_codeunit": 3,
+                "line": 1,
+                "column_codepoint": 2
+              },
+              "text": "é"
+            },
+            "contains_numeral": false
+          },
+          {
+            "operation": "replace",
+            "left": {
+              "start": {
+                "codepoint": 13,
+                "utf8_byte": 31,
+                "utf16_codeunit": 14,
+                "line": 2,
+                "column_codepoint": 8
+              },
+              "end": {
+                "codepoint": 14,
+                "utf8_byte": 32,
+                "utf16_codeunit": 15,
+                "line": 2,
+                "column_codepoint": 9
+              },
+              "text": "3"
+            },
+            "right": {
+              "start": {
+                "codepoint": 12,
+                "utf8_byte": 30,
+                "utf16_codeunit": 13,
+                "line": 2,
+                "column_codepoint": 8
+              },
+              "end": {
+                "codepoint": 13,
+                "utf8_byte": 31,
+                "utf16_codeunit": 14,
+                "line": 2,
+                "column_codepoint": 9
+              },
+              "text": "4"
+            },
+            "contains_numeral": true
+          }
+        ],
+        "reasons": [
+          "raw_readings_disagree"
+        ],
+        "alignment_cells": 182,
+        "reserved_working_bytes": 221670,
+        "edit_distance": 3,
+        "comparison_sha256": "cffa10a29339[digest abbreviated]",
+        "offset_convention": "zero-based-half-open; line-one-based; column-codepoints-zero-based"
+      },
+      "disposition": "needs_human_review",
+      "unmeasured": [
+        "language",
+        "script"
+      ],
+      "pass": true
+    },
+    {
+      "case": "insert",
+      "alignment": {
+        "algorithm": "bounded-raw-codepoint-levenshtein-1",
+        "left": {
+          "observation_id": "0cd4c5c1-4815-42d7-8277-f57fd504990d",
+          "region_id": "79a9e43b-226d-4f56-ae89-b8437a807dc4",
+          "source_ref": "9d575d0f6fc5[digest abbreviated]",
+          "source_sha256": "9d575d0f6fc5[digest abbreviated]",
+          "codepoints": 6,
+          "utf8_bytes": 9,
+          "text_sha256": "ac728ff621db[digest abbreviated]",
+          "source_truncated": false
+        },
+        "right": {
+          "observation_id": "76d354b2-20cc-4414-a877-1baff60bee64",
+          "region_id": "79a9e43b-226d-4f56-ae89-b8437a807dc4",
+          "source_ref": "232084a26ead[digest abbreviated]",
+          "source_sha256": "232084a26ead[digest abbreviated]",
+          "codepoints": 7,
+          "utf8_bytes": 12,
+          "text_sha256": "50f44e5ac3e7[digest abbreviated]",
+          "source_truncated": false
+        },
+        "status": "disagreement",
+        "alternatives": [
+          {
+            "operation": "insert",
+            "left": {
+              "start": {
+                "codepoint": 5,
+                "utf8_byte": 8,
+                "utf16_codeunit": 6,
+                "line": 2,
+                "column_codepoint": 2
+              },
+              "end": {
+                "codepoint": 5,
+                "utf8_byte": 8,
+                "utf16_codeunit": 6,
+                "line": 2,
+                "column_codepoint": 2
+              },
+              "text": ""
+            },
+            "right": {
+              "start": {
+                "codepoint": 5,
+                "utf8_byte": 8,
+                "utf16_codeunit": 6,
+                "line": 2,
+                "column_codepoint": 2
+              },
+              "end": {
+                "codepoint": 6,
+                "utf8_byte": 11,
+                "utf16_codeunit": 7,
+                "line": 2,
+                "column_codepoint": 3
+              },
+              "text": "中"
+            },
+            "contains_numeral": false
+          }
+        ],
+        "reasons": [
+          "raw_readings_disagree"
+        ],
+        "alignment_cells": 2,
+        "reserved_working_bytes": 24602,
+        "edit_distance": 1,
+        "comparison_sha256": "a38bf22915a4[digest abbreviated]",
+        "offset_convention": "zero-based-half-open; line-one-based; column-codepoints-zero-based"
+      },
+      "disposition": "needs_human_review",
+      "unmeasured": [
+        "language",
+        "script"
+      ],
+      "pass": true
+    },
+    {
+      "case": "delete",
+      "alignment": {
+        "algorithm": "bounded-raw-codepoint-levenshtein-1",
+        "left": {
+          "observation_id": "1b93c465-b9ca-4fec-acab-129e9363f6dc",
+          "region_id": "ca3c0cdd-324d-46fe-8a32-3eebe9a3adb7",
+          "source_ref": "21d7df08672f[digest abbreviated]",
+          "source_sha256": "21d7df08672f[digest abbreviated]",
+          "codepoints": 7,
+          "utf8_bytes": 12,
+          "text_sha256": "5da3b347fe51[digest abbreviated]",
+          "source_truncated": false
+        },
+        "right": {
+          "observation_id": "6c2cdb31-c4a2-4a0e-8c51-9423e13cd520",
+          "region_id": "ca3c0cdd-324d-46fe-8a32-3eebe9a3adb7",
+          "source_ref": "9d575d0f6fc5[digest abbreviated]",
+          "source_sha256": "9d575d0f6fc5[digest abbreviated]",
+          "codepoints": 6,
+          "utf8_bytes": 9,
+          "text_sha256": "ac728ff621db[digest abbreviated]",
+          "source_truncated": false
+        },
+        "status": "disagreement",
+        "alternatives": [
+          {
+            "operation": "delete",
+            "left": {
+              "start": {
+                "codepoint": 4,
+                "utf8_byte": 7,
+                "utf16_codeunit": 5,
+                "line": 2,
+                "column_codepoint": 1
+              },
+              "end": {
+                "codepoint": 5,
+                "utf8_byte": 10,
+                "utf16_codeunit": 6,
+                "line": 2,
+                "column_codepoint": 2
+              },
+              "text": "中"
+            },
+            "right": {
+              "start": {
+                "codepoint": 4,
+                "utf8_byte": 7,
+                "utf16_codeunit": 5,
+                "line": 2,
+                "column_codepoint": 1
+              },
+              "end": {
+                "codepoint": 4,
+                "utf8_byte": 7,
+                "utf16_codeunit": 5,
+                "line": 2,
+                "column_codepoint": 1
+              },
+              "text": ""
+            },
+            "contains_numeral": false
+          }
+        ],
+        "reasons": [
+          "raw_readings_disagree"
+        ],
+        "alignment_cells": 2,
+        "reserved_working_bytes": 24594,
+        "edit_distance": 1,
+        "comparison_sha256": "039ad844970f[digest abbreviated]",
+        "offset_convention": "zero-based-half-open; line-one-based; column-codepoints-zero-based"
+      },
+      "disposition": "needs_human_review",
+      "unmeasured": [
+        "language",
+        "script"
+      ],
+      "pass": true
+    },
+    {
+      "case": "long",
+      "alignment": {
+        "algorithm": "bounded-raw-codepoint-levenshtein-1",
+        "left": {
+          "observation_id": "84de739d-2e9a-4cc2-81f9-43da1f353679",
+          "region_id": "9698d1b7-3b3f-4d63-a2a9-d7ab0e09a053",
+          "source_ref": "a973483149ea[digest abbreviated]",
+          "source_sha256": "a973483149ea[digest abbreviated]",
+          "codepoints": 9000,
+          "utf8_bytes": 9000,
+          "text_sha256": "0598aa547681[digest abbreviated]",
+          "source_truncated": false
+        },
+        "right": {
+          "observation_id": "7e3fd90e-3607-482d-ab67-62c65a896fac",
+          "region_id": "9698d1b7-3b3f-4d63-a2a9-d7ab0e09a053",
+          "source_ref": "07f49d1f98c6[digest abbreviated]",
+          "source_sha256": "07f49d1f98c6[digest abbreviated]",
+          "codepoints": 9000,
+          "utf8_bytes": 9000,
+          "text_sha256": "e806dc11f46b[digest abbreviated]",
+          "source_truncated": false
+        },
+        "status": "policy_blocked",
+        "alternatives": [],
+        "reasons": [
+          "alignment_cell_budget_exhausted"
+        ],
+        "alignment_cells": 81018001,
+        "reserved_working_bytes": 83355737,
+        "edit_distance": null,
+        "comparison_sha256": "f20b133b2dfe[digest abbreviated]",
+        "offset_convention": "zero-based-half-open; line-one-based; column-codepoints-zero-based"
+      },
+      "disposition": "needs_human_review",
+      "unmeasured": [
+        "language",
+        "reading_disagreement",
+        "script"
+      ],
+      "pass": true
+    }
+  ],
+  "independent_oracle_cases": 300,
+  "passed": true
+}

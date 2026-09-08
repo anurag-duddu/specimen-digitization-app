@@ -609,3 +609,64 @@ representative quality thresholds/cohort, institutional policy and field semanti
 full production security/deployment, device/accessibility and the untested portions
 of the criterion matrix remain open. This is a local repair verification result,
 not production or scientific acceptance. No PR merge/deployment was performed.
+
+## 2026-09-08 — second-wave frozen backend checkpoint e963811
+
+**No new defect found in the tested backend checkpoint; not overall P0 acceptance.**
+Application `e963811aad17d8a958c948df0c11c13321a69b34`, documentation
+`e2cd07627717a5ee4111dafd895dac4e849141c5`. QA merged the frozen tree into its own
+branch and verified no tracked difference before execution. First-wave repair
+results remain recorded above. The newer Flutter implementation is excluded here.
+
+Independently ran canonical checks:206 Python passed/13 explicit optional skips,
+26 Flutter passed/2 opt-in live skips, analysis and web release build passed.
+Fresh QA-owned PostgreSQL/SQL Connect on5569/9519: designated authority, worker,
+history, upload, persistence and process-restart suite26 passed. Skips are not
+counted as live evidence. No institutional connection, paid inference, cloud
+mutation, release or deployment.
+
+Additional QA-authored probes in `qa-evidence/e963811/`:
+
+- 63 assertions through actual loopback HTTP. The authority workflow used actual
+SQL Connect/PostgreSQL and a local TCP Parties response. Its observer queried the
+exact specimen before the network effect and found the retained intent. All seven
+phase endpoints returned evidence. Bad tenant, absent candidate and mismatched
+field selections returned422 with no revision or extra request. Valid selection
+remained needs_human_review; a separate approval cleared. Corrupt raw retained
+bytes returned503 `authority_artifact_integrity_failure`, then restored bytes
+matched exactly. Source correction issued one new receipt/request, invalidated
+clearance, and preserved the complete old workspace and all seven phase artifacts.
+SQL metadata timestamps/revisions, terminal keyset page, changed-filter cursor,
+invalid/duplicate filter and timestamp rejection passed.
+- Actual HTTP preflight exercised valid PNG, MIME mismatch, corrupt PNG, disabled
+HEIC, empty/oversized body, missing identity and wrong scope. Every database table
+count and blob directory stayed unchanged. Successful decoder execution used an
+explicit QA-only memory-enforcement opt-out and2048-byte limit on macOS; this does
+not establish production memory isolation or optional-codec intake support.
+- Four actual HTTP reading cases cover supplementary Unicode, combining marks,
+CRLF, Bengali/Arabic, full-width numerals, insertion/deletion and9000-character
+opposing readings. Returned half-open spans slice exactly in codepoints, UTF-8
+and UTF-16. Raw bytes match retained digests; text hashes preserve originals.
+Long comparison is policy_blocked with null distance/no alternatives and
+unmeasured disagreement. Language/script remain unknown. A separate deterministic
+300-case full-matrix distance oracle and span-reconstruction check passed.
+- Actual HTTP with explicitly injected emulator identities/membership policy and
+SQLite verifies current and pinned raw/metadata/disagreement access revocation,
+restoration, and actor/permission cursor binding. This tests application checks,
+not Firebase identity validation or production IAM.
+- A separate persisted SQLite worker discovery exercise covers13 scopes/39 rows,
+38 healthy rows exactly once with one poison row isolated, eight-scope/two-step
+budgets, restart, later eligibility sorting behind the cursor recovered on wrap,
+and membership outage/backoff recovery. Workflow effects in this fairness probe
+are controlled callbacks; real workflow budget, lease, crash and SQL execution
+boundaries are additionally exercised by the canonical/designated suites.
+
+No product fixes were made. Harness setup mistakes (missing text argument,
+incorrect workflow method name, overly specific expected403 vs404 and422 vs503)
+were corrected before the final successful run; they were not product findings.
+Repeated attempts used distinct synthetic source metadata to avoid duplicate
+fixture interference. Raw response allocation, active graph growth, shared
+circuits, SAM3/auth total deadlines, SQL V3 checksum wiring, optional codec intake
+and language/script propagation remain the explicitly known pending work. No
+claim is made about representative scientific accuracy, approved authority policy,
+production security, real model behavior or complete PRD acceptance.
