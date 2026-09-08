@@ -583,6 +583,41 @@ Backend tests cover a supported multi-label graph beyond the former inline cap,
 restart/full retrieval, size thresholds, serialized-response bounds and recovery,
 CAS races, tampering, scope authorization and historical hash regressions.
 
+### TRN-006 declaration contract
+
+Backend proposes bounded optional language/script candidates in actual structured
+model output, retained with original provider bytes and immutable Observation
+declarations. Human `reading_metadata` decisions target an observation and append
+separate audited declaration history; they never rewrite model observations.
+Architecture accepts this direction subject to the following requirements:
+
+- TRN-006 (PRD line 299) also requires label-level aggregation and versioned
+  profile-defined handling for mixed-language labels. Per-observation metadata
+  alone is insufficient. Explicit review/unmeasured handling is valid without
+  guessing institutional language policy or automatically deferring records.
+- Multiple alternative candidates do not establish a mixed-language label.
+  Represent mixed-language evidence separately from disagreement between readings;
+  missing declarations mean unmeasured, not monolingual.
+- Bound candidate count and string sizes. Define identifiers or explicitly treat
+  labels as opaque; do not imply standards validation that is not implemented.
+  Preserve model/prompt/raw hashes and human provenance; invent no confidence.
+- Server derives actor/time/audit provenance. Apply existing authorization, CAS
+  and idempotency; append/supersede human decisions without erasing prior values.
+  Bind targets to observation/region/run lineage and reject obsolete targets
+  after resegmentation. Recompute dependent profile handling, validation and
+  disposition while preserving immutable history.
+- Test mixed text versus conflicting alternatives, missing declarations, human
+  supersession/replay/stale writes, resegmentation, restart, unchanged raw hashes
+  and visible reasons from a versioned mixed-language rule. Old observations
+  remain readable. Supply additive actual HTTP fixtures to Flutter.
+
+Backend's `BACKEND_ACTIVE_GRAPH.md` now reports implementation and local tests
+for offload, actual PostgreSQL/SQLite restart/hash/CAS, adversarial integrity,
+16 MiB atomic recovery and a 4 MiB serialized workspace cap. Architecture read
+the report but did not rerun those tests. HTTP 413 includes `mutation_committed`;
+Flutter must prove it avoids repeating a committed mutation and offers complete
+artifact retrieval plus reachable controls. This remains an integration gate.
+
 ### Checksum data follow-up
 
 The earlier missing-constraint finding above describes the pre-V3 assembly.
