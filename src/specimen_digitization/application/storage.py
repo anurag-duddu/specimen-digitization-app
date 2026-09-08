@@ -216,7 +216,7 @@ class SQLiteRepository:
             raise ValueError("Invalid history page bounds")
         with self.connect() as db:
             rows = db.execute(
-                "SELECT revision,payload FROM versions WHERE org=? AND collection=? AND id=? AND revision>? AND revision<=? ORDER BY revision LIMIT ?",
+                "SELECT revision,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision>? AND revision<=? ORDER BY revision LIMIT ?",
                 (
                     scope.organization_id,
                     scope.collection_id,
@@ -226,7 +226,7 @@ class SQLiteRepository:
                     limit,
                 ),
             ).fetchall()
-        items = [{"revision": r[0], "sha256": digest(json.loads(r[1]))} for r in rows]
+        items = [{"revision": r[0], "sha256": r[1]} for r in rows]
         return {
             "items": items,
             "through_revision": through,
@@ -277,6 +277,25 @@ class SQLiteRepository:
             items=items,
             next_cursor=items[-1].specimen_id if len(rows) > limit else None,
         )
+
+    def version_info(self, scope, ident, revision):
+        self.get(scope, ident)
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT payload,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision=?",
+                (scope.organization_id, scope.collection_id, ident, revision),
+            ).fetchone()
+        if not row:
+            raise Missing(ident)
+        payload = json.loads(row[0])
+        if digest(payload) != row[1]:
+            raise Conflict("Historical snapshot digest mismatch")
+        return {
+            "revision": revision,
+            "sha256": row[1],
+            "run_sha256": digest(payload["run"]),
+            "run_id": payload["run"]["id"],
+        }
 
     def create(self, principal, specimen, key, digest):
         return self._commit(principal, specimen, 0, key, digest)
