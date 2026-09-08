@@ -125,3 +125,13 @@ def test_gcs_publication_uses_create_only_precondition_and_checks_existing_bytes
     blob.download_as_bytes.return_value = b"different bytes"
     with pytest.raises(Conflict):
         blobs.put(b"synthetic object")
+
+
+def test_empty_publication_is_idempotent_and_corruption_is_rejected(tmp_path):
+    blobs = LocalBlobs(tmp_path)
+    first = blobs.put(b"")
+    assert blobs.put(b"") == first
+    assert blobs.get(first) == b""
+    (tmp_path / first).write_bytes(b"x")
+    with pytest.raises(Conflict):
+        blobs.put(b"")
