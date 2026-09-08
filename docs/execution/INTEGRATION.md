@@ -151,3 +151,32 @@ Hosting success. Data reports disabled Cloud SQL backups/ZONAL deployment and
 SQL/Storage region differences; backup/restore, availability and region/transfer
 policy need owner-approved review before production data/runtime launch, without
 implicit paid configuration changes.
+
+## Data integration and independent reproduction
+
+Reviewed source data commit `790a9f936299de9770d66dc79563fb530625f9cf` and
+cherry-picked as `14e7361`. Added root Firebase dataconnect source/storage rules
+references, preserving the exact Hosting target and `--only hosting` delivery.
+Narrow .gitignore exceptions admit only versioned .sh/.mjs files under
+scripts/data; generated data remains ignored.
+
+Independently reran from this integration worktree:
+
+- `SPECIMEN_TEST_PG_PORT=5589 SPECIMEN_TEST_DC_PORT=9539 scripts/data/test-postgres.sh`
+  exited 0 on PostgreSQL 18.6 and connector emulator 3.2.0. Compile/error-array
+  checks, receipt rollback, authorization/sensitivity/revocation, concurrent CAS
+  with one winner, audit/outbox counts, normalized artifact uniqueness,
+  cross-collection FK denial and connector process restart all passed. Retained
+  local logs: `/tmp/specimen-integration-pg.log`; disposable cluster evidence:
+  `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-test.34HHu1`.
+- Storage test with task-scoped Temurin21.0.12.1+1 exited 0. Anonymous and
+  authenticated read/list/create/overwrite/delete were denied; original bytes
+  survived and Admin bypass was explicit. Local log:
+  `/tmp/specimen-integration-storage.log`.
+
+Only owned disposable processes were stopped. Backend's leased 9499/5549 remained
+untouched. These prove data-operation behavior on local PostgreSQL/Storage
+emulators, not the combined application HTTP journey or production data rollout.
+Full normalized projection and outbox dispatch/leases remain incomplete as the
+data report states. Runtime delivery proposal is in RUNTIME_PROPOSAL.md and grants
+no provisioning or deployment authority.

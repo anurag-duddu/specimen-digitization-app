@@ -124,6 +124,11 @@ checkpoints/
 # Museum images, transcripts, exports, and evaluation data are private by
 # default. Add only deliberately cleared synthetic/public fixtures elsewhere.
 data/
+# Versioned emulator test code only; keep generated data private.
+!scripts/data/
+scripts/data/*
+!scripts/data/*.sh
+!scripts/data/*.mjs
 datasets/
 uploads/
 specimens/
