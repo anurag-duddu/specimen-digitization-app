@@ -1,0 +1,61 @@
+{
+  "identity": "explicit QA token verifier; NOT Firebase cryptographic identity proof",
+  "transport": "real TCP + SQL Connect/PostgreSQL; explicitly injected QA segmentation and synthetic observations/lookup; default production Profile unchanged",
+  "results": [
+    {
+      "case": "qa_viewer_approve_denied",
+      "http": 403,
+      "passed": true,
+      "available_actions": []
+    },
+    {
+      "case": "qa_viewer_authorized_source",
+      "passed": true
+    },
+    {
+      "case": "qa_operator_approve_denied",
+      "http": 403,
+      "passed": true,
+      "available_actions": [
+        "retry",
+        "resume",
+        "pause",
+        "cancel",
+        "reprocess"
+      ]
+    },
+    {
+      "case": "qa_operator_authorized_source",
+      "passed": true
+    },
+    {
+      "case": "qa_reviewer_authorized_source",
+      "passed": true
+    },
+    {
+      "case": "qa_nosensitive_sensitive_workspace",
+      "http": 409,
+      "passed": true
+    },
+    {
+      "case": "production_profile_HTTP_approval_blocks_unknown_semantics",
+      "http": 200,
+      "disposition": "needs_human_review",
+      "reasons": [
+        "institutional_policy_unapproved",
+        "mandatory_semantics_unconfirmed",
+        "label_coverage_unconfirmed"
+      ],
+      "passed": true
+    },
+    {
+      "case": "revocation_between_read_and_commit",
+      "http": 404,
+      "passed": true
+    },
+    {
+      "case": "revoked_memberships",
+      "passed": true
+    }
+  ]
+}
