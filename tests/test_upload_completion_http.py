@@ -19,7 +19,7 @@ PREFIX = f"/v1/organizations/{SYNTHETIC_ORG}"
 
 
 @pytest.fixture
-def tcp_client(tmp_path):
+def tcp_client(tmp_path, request):
     with socket.socket() as reservation:
         reservation.bind(("127.0.0.1", 0))
         port = reservation.getsockname()[1]
@@ -29,6 +29,8 @@ def tcp_client(tmp_path):
             str(Path(".venv/bin/specimen-api").resolve()),
             "--mode",
             "synthetic",
+            "--persistence",
+            getattr(request, "param", "sqlite"),
             "--state-dir",
             str(tmp_path),
             "--port",

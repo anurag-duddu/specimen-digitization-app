@@ -170,6 +170,9 @@ def workspace(specimen: Specimen, role: str = "viewer") -> dict:
     run = specimen.run
     return dict(
         summary(specimen, role),
+        history_through_revision=specimen.history_through_revision,
+        audit_offset=specimen.audit_offset,
+        history_url=f"/v1/organizations/{specimen.scope.organization_id}/specimens/{specimen.id}/history",
         asset=specimen.asset.model_dump(),
         run=run.model_dump(mode="json"),
         regions=[
@@ -209,7 +212,8 @@ def workspace(specimen: Specimen, role: str = "viewer") -> dict:
             e.model_dump() for e in specimen.audit if e.action.startswith("review")
         ],
         events=[
-            dict(e.model_dump(), sequence=i + 1) for i, e in enumerate(specimen.audit)
+            dict(e.model_dump(), sequence=specimen.audit_offset + i + 1)
+            for i, e in enumerate(specimen.audit)
         ],
     )
 
@@ -721,6 +725,71 @@ def create_app(
             background_tasks.add_task(process_background, p, specimen.id)
         return response
 
+    def history_access(user, organization_id, specimen_id):
+        p, current = find(user, organization_id, specimen_id)
+        if not any(
+            m["organization_id"] == p.scope.organization_id
+            and m["collection_id"] == p.scope.collection_id
+            and m.get("can_view_sensitive")
+            for m in member_rows(user)
+        ):
+            raise PermissionError(
+                "Historical evidence requires current sensitive-data permission"
+            )
+        return p, current
+
+    @app.get(prefix + "/specimens/{specimen_id}/history")
+    def history(
+        organization_id: str,
+        specimen_id: str,
+        after_revision: int = 0,
+        through_revision: int | None = None,
+        limit: int = 10,
+        user=Depends(identity),
+    ):
+        p, current = history_access(user, organization_id, specimen_id)
+        through = current.version if through_revision is None else through_revision
+        if (
+            not 1 <= limit <= 50
+            or not 0 <= after_revision <= through <= current.version
+        ):
+            raise ValueError("Invalid history page bounds")
+        end = min(through, after_revision + limit)
+        items = []
+        for revision in range(after_revision + 1, end + 1):
+            retained = repository.version(p.scope, specimen_id, revision)
+            items.append(
+                {
+                    "revision": revision,
+                    "sha256": digest(retained.model_dump(mode="json")),
+                }
+            )
+        return {
+            "items": items,
+            "through_revision": through,
+            "next_cursor": end if end < through else None,
+        }
+
+    @app.get(prefix + "/specimens/{specimen_id}/history/{revision}")
+    def historical_version(
+        organization_id: str,
+        specimen_id: str,
+        revision: int,
+        run_sha256: str | None = None,
+        run_id: str | None = None,
+        user=Depends(identity),
+    ):
+        p, _ = history_access(user, organization_id, specimen_id)
+        retained = repository.version(p.scope, specimen_id, revision)
+        if run_id is not None and retained.run.id != run_id:
+            raise Conflict("Historical run reference mismatch")
+        if (
+            run_sha256 is not None
+            and digest(retained.run.model_dump(mode="json")) != run_sha256
+        ):
+            raise Conflict("Historical run digest mismatch")
+        return workspace(retained, p.role)
+
     @app.get(prefix + "/specimens")
     def specimens(
         organization_id: str,
@@ -808,7 +877,14 @@ def create_app(
             raise ValueError("Review reason required")
         if body.base_record_version_id != f"{s.run.id}:{body.expected_revision}":
             raise Conflict("Wrong base record version")
-        before = s.run.model_dump(mode="json")
+        before_digest = digest(s.run.model_dump(mode="json"))
+        before = {
+            "specimen_id": s.id,
+            "revision": s.version,
+            "run_id": s.run.id,
+            "run_sha256": before_digest,
+            "history_url": f"/v1/organizations/{organization_id}/specimens/{s.id}/history/{s.version}?run_sha256={before_digest}&run_id={s.run.id}",
+        }
         if body.kind == "field":
             if body.target_id not in s.run.fields:
                 raise ValueError("Unknown field")
@@ -1116,9 +1192,9 @@ def create_app(
                 if s.run.id == run_id:
                     return {
                         "items": [
-                            dict(e.model_dump(), sequence=i + 1)
+                            dict(e.model_dump(), sequence=s.audit_offset + i + 1)
                             for i, e in enumerate(s.audit)
-                            if i + 1 > after_sequence
+                            if s.audit_offset + i + 1 > after_sequence
                         ],
                         "next_cursor": None,
                         "blocker": s.run.blocker,
