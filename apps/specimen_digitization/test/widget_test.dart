@@ -99,6 +99,21 @@ const fixture = Specimen({
 
 class TestRepository implements SpecimenRepository {
   @override
+  Future<HistoryPage> historyPage(
+    CollectionScope scope,
+    String id, {
+    required int throughRevision,
+    int afterRevision = 0,
+  }) async => HistoryPage(items: [], throughRevision: throughRevision);
+  @override
+  Future<Specimen> historicalSpecimen(
+    CollectionScope scope,
+    String id,
+    int revision, {
+    String? runId,
+    String? runSha256,
+  }) async => fixture;
+  @override
   String mode = 'synthetic';
   @override
   List<dynamic> blockers = [];

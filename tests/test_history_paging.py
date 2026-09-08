@@ -184,6 +184,7 @@ def test_real_sql_tcp_one_hundred_ten_reviews_and_history(
     image.save(output, format="PNG", pnginfo=metadata)
     monkeypatch.setattr(test_application, "image_bytes", lambda: output.getvalue())
     monkeypatch.setitem(HEADERS, "Authorization", tcp_client.headers["Authorization"])
+    monkeypatch.setitem(HEADERS, "Idempotency-Key", str(uuid4()))
     _, current = exercise_reviews(tcp_client, tmp_path)
     assert current["disposition"] == "cleared"
 
@@ -241,3 +242,40 @@ def test_history_current_authorization_and_stored_snapshot_digest(tmp_path):
                 (json.dumps(payload), row["specimen_id"]),
             )
         assert http.get(path, headers=HEADERS).status_code == 409
+
+
+def test_history_hash_identifies_retained_snapshot_before_new_defaults(tmp_path):
+    import json
+
+    app = local_app(tmp_path, TOKEN)
+    with TestClient(app) as http:
+        row = intake(http)
+        repo = app.state.workflow.repository
+        with repo.connect() as db:
+            payload = json.loads(
+                db.execute(
+                    "SELECT payload FROM versions WHERE id=? AND revision=1",
+                    (row["specimen_id"],),
+                ).fetchone()[0]
+            )
+            payload.pop("audit_offset")
+            payload.pop("history_through_revision")
+            retained_sha = digest(payload)
+            db.execute(
+                "UPDATE versions SET payload=?,sha256=? WHERE id=? AND revision=1",
+                (json.dumps(payload), retained_sha, row["specimen_id"]),
+            )
+        path = PREFIX + f"/specimens/{row['specimen_id']}/history"
+        page = http.get(path, headers=HEADERS, params={"limit": 1}).json()
+        assert page["items"][0]["sha256"] == retained_sha
+        detail = http.get(
+            path + "/1",
+            headers=HEADERS,
+            params={
+                "run_sha256": digest(payload["run"]),
+                "run_id": payload["run"]["id"],
+            },
+        )
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["audit_offset"] == 0
+        assert detail.json()["history_through_revision"] is None

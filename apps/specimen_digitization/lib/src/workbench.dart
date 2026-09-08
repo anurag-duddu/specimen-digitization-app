@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'region_editor.dart';
+import 'audit_history.dart';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -14,6 +15,8 @@ class ReviewWorkbench extends StatefulWidget {
     this.collections = const [],
     this.canReview = true,
     this.canOperate = true,
+    this.loadHistoryPage,
+    this.loadHistoricalRevision,
   });
   final Specimen specimen;
   final Future<void> Function(Json change) onChange;
@@ -23,6 +26,14 @@ class ReviewWorkbench extends StatefulWidget {
   final List<CollectionScope> collections;
   final bool canReview;
   final bool canOperate;
+  final Future<HistoryPage> Function(int afterRevision, int throughRevision)?
+  loadHistoryPage;
+  final Future<Specimen> Function(
+    int revision,
+    String? runId,
+    String? runSha256,
+  )?
+  loadHistoricalRevision;
   @override
   State<ReviewWorkbench> createState() => _ReviewWorkbenchState();
 }
@@ -960,23 +971,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           if (_tab == 0) _readings(),
           if (_tab == 1) _fields(),
           if (_tab == 2)
-            _section('Append-only decision history', [
-              if (s.audit.isEmpty) const Text('No audit events available.'),
-              ...s.audit.map(
-                (a) => ExpansionTile(
-                  title: Text(textOf(a['action'])),
-                  subtitle: Text(
-                    '${textOf(a['created_at'])} · ${textOf(a['actor_id'])}',
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: _record(a),
-                    ),
-                  ],
-                ),
-              ),
-            ]),
+            AuditHistoryPanel(
+              key: ValueKey('${s.id}:${s.revision}'),
+              specimen: s,
+              loadPage: widget.loadHistoryPage,
+              loadRevision: widget.loadHistoricalRevision,
+            ),
         ],
       );
       return SingleChildScrollView(
