@@ -381,3 +381,66 @@ inspected here; build success cannot establish device behavior.
 Repair candidate `25e83589031cf4d751a7059d07d252287ef2783e` is pending independent
 reproduction. Owner tests alone do not close B01–B03. No production deployment,
 cloud mutation, paid inference, museum data or product code changes by QA.
+
+
+## Independent repair verification — 25e8358
+
+Product tree matches `25e83589031cf4d751a7059d07d252287ef2783e`; only owned QA
+artifacts differ. Restarted owned API against unchanged SQL9519/PG5569 and
+retained local storage. Independently reran the original TCP upload reproducer
+and added fresh API-created synthetic records for each storage/graph fault.
+`qa-evidence/25e8358/` retains the results and exact harness. All faults are
+injected only into QA-owned storage/records and restored in finally blocks.
+
+- **B01 closed locally:** changed completion payload under same key returns409;
+  identical replay preserves the original response despite later processing.
+- **B02 closed locally:** truncated PNG returns422, no specimen, and subsequent
+  request on the same HTTP client succeeds. Other corrupt metadata cases stay422.
+- **B03 closed locally:** 48 actual TCP+SQL assertions pass. Missing/corrupt
+  source, observation and lookup bytes persist processing_blocked with null
+  disposition and evidence_integrity_failure. Restoring bytes and approving a
+  new version recovers synthetic clearance; replay keeps the old blocked receipt.
+  Persisted wrong digest, wrong raw reference, foreign asset association, wrong
+  input digest, wrong region asset and wrong evidence reference also block and
+  recover after graph restoration. No real Firebase or model-call claim.
+- Additional committed regressions independently pass:14 tests in
+  `test_evidence_integrity.py` and `test_upload_completion_http.py` (3.91s).
+
+An initial harness reused one record for every fault and reached the documented
+256KiB aggregate cap during the sixth restore (HTTP413). Bytes were restored;
+that fixture remains blocked until record-size handling. This is retained as a
+capacity limitation, not concealed as a test pass. Fresh records per independent
+fault completed all48 integrity assertions. No cap or policy was relaxed.
+The verifier's positive production-extraction compatibility follow-up remains
+pending on the next immutable integrated SHA; live providers remain untested.
+
+### P0 criterion dispositions after local repairs
+
+No row is accepted in full; these are bounded executed portions and remaining
+work, mapped one-to-one to the20 procedures above.
+
+| P0 | Independently passed local portion | Remaining acceptance gap |
+|---|---|---|
+|01|TCP resumed chunks, Flutter repository resume, duplicate receipt/conflict|GUI chooser and device camera/interruption not tested|
+|02|Fetched source hash/no-store, metadata rejection, Storage rules denial, corrupt source blocks|Cloud immutable generations/derivatives not tested|
+|03|Canonical synthetic/profile contract regressions|Real classification and full correction/supersession journey not tested|
+|04|Displayed synthetic regions and source controls|Real SAM3 serving blocked; full region-edit geometry not tested|
+|05|Two retained synthetic observations; raw digest integrity|Live independent routes/request isolation and interrupted first pass not tested|
+|06|GUI separate readings and unreadable adjudication preserve observations|Real disagreements/peer isolation; assistive reading text needs verification|
+|07|GUI literal-versus-parsed fields and repository correction|Full transformation lineage under historical/date/elevation cases not tested|
+|08|Controlled HTTP exact/no-match/ambiguous/empty/429/401 typed and raw-retained|Full retry timing/403/timeout matrix and live authorities not tested|
+|09|Actual API process restart using SQL and committed worker regressions|Three external-call crash boundaries and concurrent worker race not independently exercised|
+|10|Unresolved semantics, mandatory absences and missing/corrupt evidence prevent clearance|All critical gates with real provider outputs/approved policy not tested|
+|11|260 missing/unresolved/placeholder probes across20 mandatory fields|Institutional D/T/S/Parties semantics and approved attempt budgets unavailable|
+|12|Default policy/semantics fail closed; unreadable remains explicit|Adversarial live-model pressure and unsupported authority identity cases not tested|
+|13|Evidence outage operational block/null; restore/replay|Full provider failure/retry/dead-letter matrix not independently executed|
+|14|Canonical synthetic deferral policy regressions|Independent viable-alternatives exhaustion and real capability limits not tested|
+|15|GUI reason validation/approval/unreadable; real Flutter stale409|Full two-GUI-session race and all invalidation paths not tested|
+|16|Actual stored-byte hashes plus wrong graph associations rejected|Complete field-by-field production lineage traversal and scope-bound cloud objects not tested|
+|17|Actual SQL API kill/restart preserves workspace and exact original|All three outcomes/historical crops plus browser restart and backup restore not tested|
+|18|TCP token/scope/role/revocation denials, SQL and Storage emulator isolation|Firebase crypto/AppCheck, productionIAM and exhaustive threat cases not tested|
+|19|Browser/narrow screenshots; canonical analyzers/builds/tests|WCAG/device/text-scale review and approved quality cohort blocked or not tested|
+|20|Synthetic local API/Flutter review-to-persisted-results portions|One complete GUI intake journey, real model chain and representative acceptance not tested|
+
+Overall P0 remains **not accepted**; closing three defects is not a release or
+scientific-quality acceptance. No production merge/deployment was performed.

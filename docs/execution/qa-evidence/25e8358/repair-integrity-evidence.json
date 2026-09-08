@@ -1,0 +1,211 @@
+{
+  "candidate": "25e8358",
+  "transport": "actual TCP8124 SQL Connect9519 PostgreSQL5569",
+  "mode": "synthetic; unique API intake; own retained storage and persisted graph faults restored",
+  "results": [
+    {
+      "case": "source_missing_blocks",
+      "passed": true,
+      "status": "processing_blocked",
+      "disposition": null
+    },
+    {
+      "case": "source_missing_persisted",
+      "passed": true
+    },
+    {
+      "case": "source_missing_connection_alive",
+      "passed": true
+    },
+    {
+      "case": "source_missing_restored",
+      "passed": true
+    },
+    {
+      "case": "source_missing_receipt_immutable",
+      "passed": true
+    },
+    {
+      "case": "source_corrupt_blocks",
+      "passed": true,
+      "status": "processing_blocked",
+      "disposition": null
+    },
+    {
+      "case": "source_corrupt_persisted",
+      "passed": true
+    },
+    {
+      "case": "source_corrupt_connection_alive",
+      "passed": true
+    },
+    {
+      "case": "source_corrupt_restored",
+      "passed": true
+    },
+    {
+      "case": "source_corrupt_receipt_immutable",
+      "passed": true
+    },
+    {
+      "case": "observation_missing_blocks",
+      "passed": true,
+      "status": "processing_blocked",
+      "disposition": null
+    },
+    {
+      "case": "observation_missing_persisted",
+      "passed": true
+    },
+    {
+      "case": "observation_missing_connection_alive",
+      "passed": true
+    },
+    {
+      "case": "observation_missing_restored",
+      "passed": true
+    },
+    {
+      "case": "observation_missing_receipt_immutable",
+      "passed": true
+    },
+    {
+      "case": "observation_corrupt_blocks",
+      "passed": true,
+      "status": "processing_blocked",
+      "disposition": null
+    },
+    {
+      "case": "observation_corrupt_persisted",
+      "passed": true
+    },
+    {
+      "case": "observation_corrupt_connection_alive",
+      "passed": true
+    },
+    {
+      "case": "observation_corrupt_restored",
+      "passed": true
+    },
+    {
+      "case": "observation_corrupt_receipt_immutable",
+      "passed": true
+    },
+    {
+      "case": "lookup_missing_blocks",
+      "passed": true,
+      "status": "processing_blocked",
+      "disposition": null
+    },
+    {
+      "case": "lookup_missing_persisted",
+      "passed": true
+    },
+    {
+      "case": "lookup_missing_connection_alive",
+      "passed": true
+    },
+    {
+      "case": "lookup_missing_restored",
+      "passed": true
+    },
+    {
+      "case": "lookup_missing_receipt_immutable",
+      "passed": true
+    },
+    {
+      "case": "lookup_corrupt_blocks",
+      "passed": true,
+      "status": "processing_blocked",
+      "disposition": null
+    },
+    {
+      "case": "lookup_corrupt_persisted",
+      "passed": true
+    },
+    {
+      "case": "lookup_corrupt_connection_alive",
+      "passed": true
+    },
+    {
+      "case": "lookup_corrupt_restored",
+      "passed": true
+    },
+    {
+      "case": "lookup_corrupt_receipt_immutable",
+      "passed": true
+    },
+    {
+      "case": "wrong_digest_blocks",
+      "passed": true
+    },
+    {
+      "case": "wrong_digest_persisted",
+      "passed": true
+    },
+    {
+      "case": "wrong_digest_restored",
+      "passed": true
+    },
+    {
+      "case": "wrong_ref_blocks",
+      "passed": true
+    },
+    {
+      "case": "wrong_ref_persisted",
+      "passed": true
+    },
+    {
+      "case": "wrong_ref_restored",
+      "passed": true
+    },
+    {
+      "case": "wrong_asset_blocks",
+      "passed": true
+    },
+    {
+      "case": "wrong_asset_persisted",
+      "passed": true
+    },
+    {
+      "case": "wrong_asset_restored",
+      "passed": true
+    },
+    {
+      "case": "wrong_input_blocks",
+      "passed": true
+    },
+    {
+      "case": "wrong_input_persisted",
+      "passed": true
+    },
+    {
+      "case": "wrong_input_restored",
+      "passed": true
+    },
+    {
+      "case": "wrong_region_asset_blocks",
+      "passed": true
+    },
+    {
+      "case": "wrong_region_asset_persisted",
+      "passed": true
+    },
+    {
+      "case": "wrong_region_asset_restored",
+      "passed": true
+    },
+    {
+      "case": "wrong_evidence_ref_blocks",
+      "passed": true
+    },
+    {
+      "case": "wrong_evidence_ref_persisted",
+      "passed": true
+    },
+    {
+      "case": "wrong_evidence_ref_restored",
+      "passed": true
+    }
+  ]
+}

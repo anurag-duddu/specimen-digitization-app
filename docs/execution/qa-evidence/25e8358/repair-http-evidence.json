@@ -1,0 +1,295 @@
+{
+  "candidate": "25e8358",
+  "mode": "synthetic",
+  "transport": "SQL Connect9519/PostgreSQL5569 with local immutable blobs",
+  "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+  "results": [
+    {
+      "case": "session_sql_transport",
+      "actual": "sql_connect",
+      "expected": "sql_connect",
+      "status": "passed"
+    },
+    {
+      "case": "anonymous_session",
+      "actual": 401,
+      "expected": 401,
+      "status": "passed"
+    },
+    {
+      "case": "wrong_bearer",
+      "actual": 401,
+      "expected": 401,
+      "status": "passed"
+    },
+    {
+      "case": "cross_org_list",
+      "actual": 403,
+      "expected": 403,
+      "status": "passed"
+    },
+    {
+      "case": "cross_collection_list",
+      "actual": 403,
+      "expected": 403,
+      "status": "passed"
+    },
+    {
+      "case": "partial_offset",
+      "actual": 137,
+      "expected": 137,
+      "status": "passed"
+    },
+    {
+      "case": "same_chunk_replay",
+      "actual": 137,
+      "expected": 137,
+      "status": "passed"
+    },
+    {
+      "case": "changed_chunk_replay",
+      "actual": 409,
+      "expected": 409,
+      "status": "passed"
+    },
+    {
+      "case": "premature_complete",
+      "actual": 409,
+      "expected": 409,
+      "status": "passed"
+    },
+    {
+      "case": "automatic_background_review",
+      "actual": "needs_human_review",
+      "expected": "needs_human_review",
+      "status": "passed"
+    },
+    {
+      "case": "original_bytes_digest",
+      "actual": "d0fffdc1071c (digest prefix)",
+      "expected": "d0fffdc1071c (digest prefix)",
+      "status": "passed"
+    },
+    {
+      "case": "original_no_store",
+      "actual": "no-store",
+      "expected": "no-store",
+      "status": "passed"
+    },
+    {
+      "case": "complete_changed_payload_same_key",
+      "actual": 409,
+      "expected": 409,
+      "status": "passed"
+    },
+    {
+      "case": "complete_exact_replay_response",
+      "actual": {
+        "active_run_id": "8137b9a5-2da2-4b6f-bdcb-96007985637b",
+        "asset_id": "25d232df-1f22-50e8-9035-74ae49efe551",
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "capability_defer"
+        ],
+        "batch_id": "a1737dbc-c67c-5c93-beae-e20196a6f2d0",
+        "blocker": null,
+        "collection_id": "00000000-0000-4000-8000-000000000002",
+        "created_at": "2026-09-08T05:39:28.700916+00:00",
+        "disposition": null,
+        "filename": "qa-synthetic.png",
+        "organization_id": "00000000-0000-4000-8000-000000000001",
+        "profile_id": "zoology_insects",
+        "profile_version": "0.1.0-draft",
+        "reason_codes": [],
+        "record_version_id": "8137b9a5-2da2-4b6f-bdcb-96007985637b:1",
+        "revision": 1,
+        "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+        "stage": "ingested",
+        "status": "running",
+        "synthetic": true
+      },
+      "expected": {
+        "specimen_id": "98b3eac6-5d15-5bb4-bcd8-e06c65f00692",
+        "asset_id": "25d232df-1f22-50e8-9035-74ae49efe551",
+        "collection_id": "00000000-0000-4000-8000-000000000002",
+        "organization_id": "00000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "batch_id": "a1737dbc-c67c-5c93-beae-e20196a6f2d0",
+        "filename": "qa-synthetic.png",
+        "created_at": "2026-09-08T05:39:28.700916+00:00",
+        "active_run_id": "8137b9a5-2da2-4b6f-bdcb-96007985637b",
+        "record_version_id": "8137b9a5-2da2-4b6f-bdcb-96007985637b:1",
+        "status": "running",
+        "stage": "ingested",
+        "disposition": null,
+        "reason_codes": [],
+        "blocker": null,
+        "profile_id": "zoology_insects",
+        "profile_version": "0.1.0-draft",
+        "synthetic": true,
+        "available_actions": [
+          "retry",
+          "resume",
+          "pause",
+          "cancel",
+          "reprocess",
+          "field",
+          "transcription",
+          "coverage",
+          "approve",
+          "classification",
+          "regions",
+          "taxonomy_resolution",
+          "capability_defer"
+        ]
+      },
+      "status": "passed"
+    },
+    {
+      "case": "truncated_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "truncated_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "truncated_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Invalid or truncated image content",
+          "retryable": false,
+          "request_id": "9805f798-d877-4ca8-ba32-9c1ab7c561ed",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "hash_mismatch_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "hash_mismatch_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "hash_mismatch_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Original checksum mismatch",
+          "retryable": false,
+          "request_id": "8386e089-6783-420f-b1f2-1fa34caf1ff7",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "mime_mismatch_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "mime_mismatch_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "mime_mismatch_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Declared image metadata mismatch",
+          "retryable": false,
+          "request_id": "3a8fa8c6-bc63-45f6-bce4-29084cd1c629",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "dimension_mismatch_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "dimension_mismatch_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "dimension_mismatch_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Declared image metadata mismatch",
+          "retryable": false,
+          "request_id": "d2ef3c90-62f9-4d71-a83b-d33f721bc784",
+          "details": {}
+        }
+      }
+    },
+    {
+      "case": "random_bytes_rejected",
+      "actual": true,
+      "expected": true,
+      "status": "passed"
+    },
+    {
+      "case": "random_bytes_no_record",
+      "actual": 404,
+      "expected": 404,
+      "status": "passed"
+    },
+    {
+      "case": "random_bytes_error_class",
+      "status": "observed",
+      "http": 422,
+      "body": {
+        "error": {
+          "code": "invalid_input",
+          "category": "input",
+          "message": "Invalid or truncated image content",
+          "retryable": false,
+          "request_id": "2a2115b6-4381-448b-b1db-817fbf8b2696",
+          "details": {}
+        }
+      }
+    }
+  ]
+}
