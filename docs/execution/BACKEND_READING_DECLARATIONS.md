@@ -22,3 +22,7 @@ The existing reading metadata endpoint now contains real model/human declaration
 - Frozen additive `backend-declarations-wire-examples.json` captures complete actual synthetic mixed/conflicting/unknown workspaces and two human edits with metadata/provenance. Generator: `generate_declarations_fixture.py NEW_OUTPUT`, refuses existing outputs. Retained source state: `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-declarations-wire-vnw_iv8b`. Existing fixtures were not regenerated.
 
 Institutional policy approval, live provider validation and museum quality calibration remain external gates. Nothing was pushed or deployed.
+
+## Final verification and advertised action
+
+The final core canonical run passed again (`/tmp/specimen-declarations-final-canonical.log`) after selective invalidation and production structured-output tests. Flutter caught a missing advertised capability: reviewer/manager/admin summary/workspace actions now explicitly include `reading_metadata`; viewer/operator actions do not. Twelve declaration tests pass after this addition (`/tmp/specimen-declaration-actions-tests.log`). Separate `backend-declaration-actions-wire-examples.json` contains clearly labelled projections of actual HTTP summary/workspace fields. It supplements the frozen complete fixture; no frozen response bytes were changed.

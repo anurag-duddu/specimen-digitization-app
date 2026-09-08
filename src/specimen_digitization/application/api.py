@@ -169,6 +169,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             [
                 "field",
                 "transcription",
+                "reading_metadata",
                 "coverage",
                 "approve",
                 "classification",
