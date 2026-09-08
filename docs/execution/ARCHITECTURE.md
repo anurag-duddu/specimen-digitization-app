@@ -248,7 +248,11 @@ On 2026-09-08 UTC, `scripts/ci/verify.sh` completed with exit 0 in this worktree
 repository safety/secret checks, actionlint and shellcheck passed; locked Python
 installation used Python 3.11.16 and all 33 baseline tests passed; Flutter analysis
 reported no issues; one widget test passed; release web build and Wasm dry run
-succeeded. The canonical script used and removed the credential-free FlutterFire
+succeeded. Independent QA subsequently cross-checked ACCEPTANCE.md against its QA.md and
+confirmed all 20 criteria align, adding matching extra P0 coverage. This was a
+document review, not an integrated product acceptance run.
+
+The canonical script used and removed the credential-free FlutterFire
 placeholder. CI's Python 3.12 remains a separate pipeline environment.
 
 `git diff --cached --check` passed. Only ARCHITECTURE.md, CONTRACTS.md and
