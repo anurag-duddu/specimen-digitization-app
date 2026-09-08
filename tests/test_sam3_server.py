@@ -299,9 +299,9 @@ def test_busy_refuses_before_claim(setup):
     assert not objects.data and not engine.calls
 
 
-@pytest.mark.parametrize("offline", [False, True])
+@pytest.mark.parametrize("offline,pin", [(False, "optional"), (True, "valid"), (True, "missing"), (True, "changed")])
 def test_engine_pins_checkpoint_and_uses_only_local_model_files(
-    monkeypatch, tmp_path, offline
+    monkeypatch, tmp_path, offline, pin
 ):
     import sys
     from types import SimpleNamespace
@@ -329,7 +329,10 @@ def test_engine_pins_checkpoint_and_uses_only_local_model_files(
             calls["processor"] = kwargs
             return cls()
 
-    monkeypatch.setenv("HF_TOKEN", "fixture-only")
+    if offline:
+        monkeypatch.delenv("HF_TOKEN", raising=False)
+    else:
+        monkeypatch.setenv("HF_TOKEN", "fixture-only")
     monkeypatch.setitem(
         sys.modules, "torch", SimpleNamespace(set_num_threads=lambda _: None)
     )
@@ -346,16 +349,46 @@ def test_engine_pins_checkpoint_and_uses_only_local_model_files(
         "transformers",
         SimpleNamespace(Sam3Model=Model, Sam3Processor=Processor),
     )
+    from specimen_digitization.application.sam3_server import encoded, digest
+    expected = digest(encoded({"model.safetensors": hashlib.sha256(b"fixture-not-model-weights").hexdigest()}))
+    monkeypatch.delenv("SPECIMEN_SAM3_CHECKPOINT_SHA256", raising=False)
+    if pin in {"valid", "changed"}:
+        monkeypatch.setenv("SPECIMEN_SAM3_CHECKPOINT_SHA256", expected if pin == "valid" else "a" * 64)
+    if offline and pin != "valid":
+        with pytest.raises(RuntimeError, match="sam3_checkpoint"):
+            Sam3Engine()
+        assert "model" not in calls and "processor" not in calls
+        return
     engine = Sam3Engine()
     assert calls["download"]["revision"] == SAM3_MODEL.revision
     assert calls["download"]["repo_id"] == "facebook/sam3"
     assert calls["download"]["local_files_only"] is offline
+    assert calls["download"]["token"] == (False if offline else "fixture-only")
     for key in ("model", "processor"):
         assert calls[key] == {"local_files_only": True, "trust_remote_code": False}
     assert (
         engine.checkpoint_files["model.safetensors"]
         == hashlib.sha256(b"fixture-not-model-weights").hexdigest()
     )
+
+
+@pytest.mark.parametrize("issue", ["online", "credential", "missing_pin", "malformed_pin"])
+def test_sam_offline_launch_rejects_inference_secret_and_unpinned_mount(monkeypatch, issue):
+    from specimen_digitization.application import sam3_server
+    from huggingface_hub import constants
+
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", issue != "online")
+    for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SPECIMEN_SAM3_CHECKPOINT_SHA256", "a" * 64)
+    if issue == "credential":
+        monkeypatch.setenv("HF_TOKEN", "fixture-only")
+    elif issue == "missing_pin":
+        monkeypatch.delenv("SPECIMEN_SAM3_CHECKPOINT_SHA256")
+    elif issue == "malformed_pin":
+        monkeypatch.setenv("SPECIMEN_SAM3_CHECKPOINT_SHA256", "not-a-digest")
+    with pytest.raises(RuntimeError):
+        sam3_server.offline_checkpoint_digest()
 
 
 def test_manifest_rejects_symlink_fifo_and_public_permissions(tmp_path):

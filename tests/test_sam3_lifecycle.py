@@ -33,7 +33,12 @@ os.environ.update(
     SPECIMEN_SAM3_AUDIENCE="https://fixture.invalid",
     SPECIMEN_SAM3_CALLER_EMAIL="fixture@example.invalid",
     SPECIMEN_SAM3_OUTPUT_BUCKET="fixture-only",
+    SPECIMEN_SAM3_CHECKPOINT_SHA256="a" * 64,
 )
+from huggingface_hub import constants
+constants.HF_HUB_OFFLINE = True
+for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+    os.environ.pop(key, None)
 runtime.read_runtime_manifest = lambda **kwargs: SimpleNamespace()
 storage.Client = lambda **kwargs: SimpleNamespace()
 def engine():
@@ -87,7 +92,12 @@ os.environ.update(
     SPECIMEN_SAM3_AUDIENCE="https://fixture.invalid",
     SPECIMEN_SAM3_CALLER_EMAIL="fixture@example.invalid",
     SPECIMEN_SAM3_OUTPUT_BUCKET="fixture-only", PORT=port,
+    SPECIMEN_SAM3_CHECKPOINT_SHA256="a" * 64,
 )
+from huggingface_hub import constants
+constants.HF_HUB_OFFLINE = True
+for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
+    os.environ.pop(key, None)
 runtime.read_runtime_manifest = lambda **kwargs: SimpleNamespace()
 storage.Client = lambda **kwargs: SimpleNamespace()
 runtime.Sam3Engine = lambda: SimpleNamespace()
