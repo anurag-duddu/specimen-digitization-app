@@ -42,6 +42,24 @@ def check_snapshot(payload: str) -> None:
         )
 
 
+def compact_history(specimen: Specimen, previous: Specimen) -> Specimen:
+    """Offload only exact content already retained in the immutable previous version."""
+    if len(specimen.model_dump_json().encode()) <= 128 * 1024:
+        return specimen
+    previous_audit = previous.audit
+    if specimen.audit[: len(previous_audit)] == previous_audit:
+        specimen.audit = specimen.audit[len(previous_audit) :]
+        specimen.audit_offset = previous.audit_offset + len(previous_audit)
+    retained_runs = [previous.run, *previous.previous_runs]
+    specimen.previous_runs = [
+        run
+        for run in specimen.previous_runs
+        if not any(run == retained for retained in retained_runs)
+    ]
+    specimen.history_through_revision = previous.version
+    return specimen
+
+
 class Missing(KeyError):
     pass
 
@@ -112,6 +130,16 @@ class SQLiteRepository:
             CREATE TABLE IF NOT EXISTS documents (scope TEXT, kind TEXT, id TEXT,
                 revision INTEGER, payload TEXT, PRIMARY KEY(scope,kind,id));
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(versions)")}
+            if "sha256" not in columns:
+                db.execute("ALTER TABLE versions ADD COLUMN sha256 TEXT")
+                for row in db.execute(
+                    "SELECT org,collection,id,revision,payload FROM versions"
+                ):
+                    db.execute(
+                        "UPDATE versions SET sha256=? WHERE org=? AND collection=? AND id=? AND revision=?",
+                        (digest(json.loads(row[4])), *row[:4]),
+                    )
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10)
@@ -135,6 +163,19 @@ class SQLiteRepository:
                 tuple(scope.model_dump().values()),
             ).fetchall()
         return [Specimen.model_validate_json(r[0]) for r in rows]
+
+    def version(self, scope, ident, revision):
+        self.get(scope, ident)
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT payload,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision=?",
+                (scope.organization_id, scope.collection_id, ident, revision),
+            ).fetchone()
+        if not row:
+            raise Missing(ident)
+        if digest(json.loads(row[0])) != row[1]:
+            raise Conflict("Historical snapshot digest mismatch")
+        return Specimen.model_validate_json(row[0])
 
     def create(self, principal, specimen, key, digest):
         return self._commit(principal, specimen, 0, key, digest)
@@ -162,13 +203,27 @@ class SQLiteRepository:
                 specimen.id,
             )
             row = db.execute(
-                "SELECT revision FROM records WHERE org=? AND collection=? AND id=?",
+                "SELECT revision,payload FROM records WHERE org=? AND collection=? AND id=?",
                 identity,
             ).fetchone()
             if (row[0] if row else 0) != expected:
                 raise Conflict("Stale revision")
             specimen = specimen.model_copy(deep=True)
             specimen.version = expected + 1
+            if row and len(specimen.model_dump_json().encode()) > 128 * 1024:
+                retained = db.execute(
+                    "SELECT payload,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision=?",
+                    (*identity, expected),
+                ).fetchone()
+                if (
+                    not retained
+                    or retained[0] != row[1]
+                    or digest(json.loads(retained[0])) != retained[1]
+                ):
+                    raise Conflict("History prefix snapshot integrity mismatch")
+                specimen = compact_history(
+                    specimen, Specimen.model_validate_json(retained[0])
+                )
             payload = specimen.model_dump_json()
             check_snapshot(payload)
             try:
@@ -179,8 +234,8 @@ class SQLiteRepository:
             except sqlite3.IntegrityError as exc:
                 raise Conflict("Duplicate source checksum within collection") from exc
             db.execute(
-                "INSERT INTO versions VALUES (?,?,?,?,?)",
-                (*identity, specimen.version, payload),
+                "INSERT INTO versions (org,collection,id,revision,payload,sha256) VALUES (?,?,?,?,?,?)",
+                (*identity, specimen.version, payload, digest(json.loads(payload))),
             )
             db.execute(
                 "INSERT INTO receipts VALUES (?,?,?,?)",

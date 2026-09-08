@@ -19,7 +19,7 @@ from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, Specimen
 from .lookup import GbifTaxonomy
-from .storage import Conflict, Missing, digest, check_snapshot
+from .storage import Conflict, Missing, digest, check_snapshot, compact_history
 from .workflow import OperationalBlock, crop_bytes
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
@@ -182,6 +182,14 @@ class SqlConnectRepository:
                 break
         return results
 
+    def version(self, scope, ident, revision):
+        row = self.execute(
+            "GetSnapshot", dict(self.variables(scope), id=ident, revision=revision)
+        ).get("specimenSnapshot")
+        if not row:
+            raise Missing(ident)
+        return self._snapshot(row)
+
     def create(self, principal, specimen, key, digest):
         return self._commit(principal, specimen, 0, key, digest)
 
@@ -206,6 +214,10 @@ class SqlConnectRepository:
             return self._snapshot(row)
         specimen = specimen.model_copy(deep=True)
         specimen.version = expected + 1
+        if expected and len(specimen.model_dump_json().encode()) > 128 * 1024:
+            specimen = compact_history(
+                specimen, self.version(principal.scope, specimen.id, expected)
+            )
         check_snapshot(specimen.model_dump_json())
         payload = specimen.model_dump(mode="json")
         variables = dict(
