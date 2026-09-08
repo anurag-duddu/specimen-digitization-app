@@ -5,7 +5,8 @@ Owner task: 01a08219-2fc7-79e3-a2a9-bace605c5862.
 Coordinator: 01a07f48-a57c-71b0-9642-c9430886049c.
 Branch: `codex/live-api-runtime`.
 Worktree: `/Users/anuragduddu/.codex/worktrees/2bfe/specimen-digitization-app`.
-Baseline/current committed SHA: `a53f855e963b457c3ee2065f387609a193bb6f32`.
+Baseline SHA: `a53f855e963b457c3ee2065f387609a193bb6f32`.
+Frozen implementation SHA: `fedfaaeefc4646251f6a287c0a6deb76649dbb47` (this report may have a later documentation-only commit).
 
 ## Scope and decisions
 
@@ -185,3 +186,33 @@ Evidence log: `/tmp/specimen-live-api-verify-frozen.log`. Backend 394 passed,
 repository/secret checks passed. No scanner, check or policy exception added.
 The 39 API-specific tests include pilot original-only asset response/direct-view
 denial as well as the prior signed-token, shutdown and correction contracts.
+
+
+## Pull request and container handoff
+
+PR: <https://github.com/anurag-duddu/specimen-digitization-app/pull/10>.
+Required checks for the latest head:
+<https://github.com/anurag-duddu/specimen-digitization-app/pull/10/checks>.
+Initial implementation run:
+<https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34261175704>.
+All five required jobs started on the frozen implementation; latest-head final
+results and exact run URL are recorded in the task/coordinator handoff rather
+than claimed in advance here. Do not merge this owner PR independently.
+
+Exact-implementation container build passed with SOURCE_SHA
+`fedfaaeefc4646251f6a287c0a6deb76649dbb47` and local image config digest
+`sha256:4392861467042821c244a1a986cdfec9d99910cef011f79000f9325219f05432`.
+This is a local image, not a published registry digest or deployable release proof.
+`/version` returned that exact source SHA and mode synthetic in the nonroot,
+network-none/read-only/tmpfs container smoke; liveness/readiness 200 and SIGTERM
+exit within the deadline. Default production startup without required settings
+exits nonzero. Logs: `/tmp/specimen-live-api-container-frozen.log`,
+`/tmp/specimen-live-api-container-smoke.log`,
+`/tmp/specimen-live-api-container-denial-final.log`.
+
+Remaining owners: data publishes named Readiness query and frozen generation;
+delivery integrates against current main and binds service identity/image/config;
+QA validates real issued Firebase/App Check tokens, authorized first ten objects,
+worker/review/restart flow and deployed provenance after coordinator authorization.
+No production deployment, merge, provider call, secret value, cloud specimen read,
+IAM mutation, schema migration or local port3000/8000 change occurred here.
