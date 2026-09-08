@@ -87,3 +87,16 @@ pending backend wiring; this checkpoint still has the documented SQL uniqueness
 gap. Do not label a metadata precheck concurrent-race proof. Later data rollout
 needs legacy-writer/null-row reconciliation and authorization, never Hosting.
 Institutional semantics/quality/provider/device/production gates remain separate.
+
+## Additive ROI follow-up
+
+After independent GUI execution finished on frozen a398583, reviewed Flutter
+1e18d14 was integrated as b53a9ec. It clears obsolete selected ROI/rotation/zoom
+when the active run changes or the selected region disappears. Additional tests
+cover that regression, explicit preflight transmission and multilingual offsets.
+Canonical scripts/ci/verify.sh passed on b53a9ec:206 Python/13 optional skips,
+50 Flutter/three opt-in live skips, analysis, web release and scanners.
+Log: /tmp/specimen-wave2-roi-canonical.log. Prior a398583 GUI evidence remains
+attributed to that exact application version; backend source is unchanged.
+The codec scanner dependency5868705 is included, but codec application/client
+follow-ups are not yet integrated. No second-wave push or deployment occurred.
