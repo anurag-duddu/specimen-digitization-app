@@ -1,0 +1,65 @@
+mutation CreateSpecimen($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $snapshot: Any!, $snapshotSha256: String!, $requestSha256: String!, $idempotencyKey: String!, $operation: String!, $state: String!, $sensitive: Boolean!, $contractVersion: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.state in ['pending', 'running', 'waiting_for_review', 'retry_scheduled', 'paused', 'cancelled', 'processing_blocked', 'completed', 'superseded']") { active role canViewSensitive }
+  }
+  specimen_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, revision: 1, state: $state, sensitive: $sensitive, createdBy: $actorUid})
+  specimenSnapshot_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision: 1, snapshot: $snapshot, sha256: $snapshotSha256, contractVersion: $contractVersion})
+  requestReceipt_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision: 1, actorUid: $actorUid, operation: $operation, idempotencyKey: $idempotencyKey, requestSha256: $requestSha256})
+  outboxEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, aggregateRevision: 1, eventType: "specimen_committed", deduplicationKey: $requestSha256, payloadReferences_expr: "{'specimen_id': vars.id}"})
+  auditEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, revision: 1, actorUid: $actorUid, action: "create", requestSha256: $requestSha256})
+}
+
+mutation SaveSpecimen($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $snapshot: Any!, $snapshotSha256: String!, $requestSha256: String!, $idempotencyKey: String!, $operation: String!, $state: String!, $sensitive: Boolean!, $contractVersion: String!, $expectedRevision: Int!, $activeRunId: UUID, $disposition: String, $action: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.state in ['pending', 'running', 'waiting_for_review', 'retry_scheduled', 'paused', 'cancelled', 'processing_blocked', 'completed', 'superseded'] && (vars.disposition == null || (vars.state == 'completed' && vars.disposition in ['cleared', 'needs_human_review', 'deferred']))") { active role canViewSensitive }
+  }
+  current: query @redact {
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "this.revision == vars.expectedRevision && (!this.sensitive || response.query.collectionMember.canViewSensitive)", message: "revision conflict or access denied") { revision sensitive }
+  }
+  specimen_updateMany(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $id}, revision: {eq: $expectedRevision}}, data: {revision_expr: "vars.expectedRevision + 1", state: $state, activeRunId: $activeRunId, disposition: $disposition, sensitive: $sensitive, updatedAt_expr: "request.time"}) @check(expr: "this == 1", message: "revision conflict")
+  specimenSnapshot_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision_expr: "vars.expectedRevision + 1", snapshot: $snapshot, sha256: $snapshotSha256, contractVersion: $contractVersion})
+  requestReceipt_insert(data: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision_expr: "vars.expectedRevision + 1", actorUid: $actorUid, operation: $operation, idempotencyKey: $idempotencyKey, requestSha256: $requestSha256})
+  outboxEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, aggregateRevision_expr: "vars.expectedRevision + 1", eventType: "specimen_committed", deduplicationKey: $requestSha256, payloadReferences_expr: "{'specimen_id': vars.id}"})
+  auditEvent_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id_expr: "uuidV4()", specimenId: $id, revision_expr: "vars.expectedRevision + 1", actorUid: $actorUid, action: $action, requestSha256: $requestSha256})
+}
+
+query GetSpecimen($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!) @auth(level: NO_ACCESS) {
+
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true") { active role canViewSensitive }
+
+
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "this == null || !this.sensitive || response.collectionMember.canViewSensitive") { id revision state disposition activeRunId sensitive createdBy createdAt updatedAt }
+  specimenSnapshots(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, specimenId: {eq: $id}}, orderBy: {revision: DESC}, limit: 1) @check(expr: "this.size() == 0 || this[0].revision == response.specimen.revision", message: "snapshot revision changed; retry read") { revision snapshot sha256 contractVersion }
+}
+query ListSpecimens($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $limit: Int!, $offset: Int!, $includeSensitive: Boolean!) @auth(level: NO_ACCESS) {
+
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && (!vars.includeSensitive || this.canViewSensitive) && vars.limit > 0 && vars.limit <= 100 && vars.offset >= 0") { active role canViewSensitive }
+
+
+  specimens(where: {_and: [{organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}}, {_or: [{sensitive: {eq: false}}, {sensitive: {eq: $includeSensitive}}]}]}, orderBy: [{updatedAt: DESC}, {id: ASC}], limit: $limit, offset: $offset) { id revision state disposition activeRunId sensitive createdBy createdAt updatedAt }
+}
+query GetReceipt($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $operation: String!, $idempotencyKey: String!) @auth(level: NO_ACCESS) {
+
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true") { active role canViewSensitive }
+
+
+  requestReceipt(key: {organizationId: $organizationId, collectionId: $collectionId, actorUid: $actorUid, operation: $operation, idempotencyKey: $idempotencyKey}) { specimenId revision requestSha256 specimen @check(optional: true, expr: "!this.sensitive || response.collectionMember.canViewSensitive") { sensitive } }
+}
+query GetSnapshot($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $revision: Int!) @auth(level: NO_ACCESS) {
+
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true") { active role canViewSensitive }
+
+
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "!this.sensitive || response.collectionMember.canViewSensitive") { sensitive }
+  specimenSnapshot(key: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $id, revision: $revision}) { revision snapshot sha256 contractVersion }
+}
+query Memberships($actorUid: String!) @auth(level: NO_ACCESS) {
+  organizationMembers(where: {uid: {eq: $actorUid}, active: {eq: true}}, limit: 1000) { organizationId active }
+  collectionMembers(where: {uid: {eq: $actorUid}, active: {eq: true}}, limit: 1000) { organizationId collectionId role canViewSensitive active }
+}

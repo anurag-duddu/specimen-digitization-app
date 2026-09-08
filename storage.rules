@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // SQL collection membership is checked by the application API. Direct
+    // Firebase clients cannot bypass it. Admin/GCS IAM access bypasses rules;
+    // immutable originals additionally require create-only IAM and preconditions.
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
