@@ -70,7 +70,7 @@ calibrated confidence. JSON type checks precede casts. Malformed/non-array reaso
 payloads safely become an empty list; only string array members are considered.
 
 Returns `items` with `id`, `revision`, `status`, `stage`, `disposition`,
-`sensitive`, `createdAt`, `updatedAt`, `assetId`, `batchId`, `filename`, `uploader`,
+`sensitive`, `createdAt`, `updatedAt`, `domainCreatedAt`, `assetId`, `batchId`, `filename`, `uploader`,
 `activeRunId`, `blocker`, `profileId`, `profileVersion`, `reasonCodes`, `risk`,
 `synthetic`. Active run and synthetic come from current snapshot run.id and
 run.profile.synthetic, including initial creations whose typed activeRunId has
@@ -80,6 +80,8 @@ available actions from current authorization. No payloads or signed URLs return.
 Typed specimen.createdAt is authoritative for search filtering, ordering, cutoff
 and displayed creation time. Original snapshot root.created_at may differ by
 milliseconds and remains immutable domain provenance; it is not rewritten.
+Nullable domainCreatedAt returns this original string without full hydration;
+it is not used for search filtering or cursor ordering.
 Current data can change between pages. The fixed cutoff excludes later-created
 records; mutable filters do not create a transactionally frozen result set. A
 record becoming eligible behind the cursor appears on a fresh search. Backend
@@ -131,3 +133,8 @@ and checks all four supplemental indexes remain valid. `scripts/ci/verify.sh`
 also passes Python tests, pre-commit checks, Flutter analysis/widget tests and
 release web build. Backend HTTP cursor, SQLite equivalence, Flutter wiring and
 end-to-end API behavior remain the owning tasks' integration evidence.
+
+Final local evidence: canonical CI gates passed; final PostgreSQL suite retained
+logs at `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-data-test.2O9KHW`.
+The temporary server on 5599/9549 was stopped, and both its ports and final test
+ports 5609/9559 were verified closed. No active backend lease was interrupted.
