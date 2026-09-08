@@ -69,8 +69,10 @@ class Workflow:
         classifier=None,
         authority_tools=None,
         authority_cost_reservations=None,
+        admission=None,
     ):
         self.repository, self.blobs, self.adapters = repository, blobs, adapters
+        self.admission = admission
         if hasattr(repository, "graph_blobs") and repository.graph_blobs is None:
             repository.graph_blobs = blobs
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -120,8 +122,14 @@ class Workflow:
     def _step(self, principal: Principal, specimen_id: str) -> Specimen:
         specimen = self.repository.get(principal.scope, specimen_id)
         run = specimen.run
+        if "evidence_pilot" in run.dependencies and not getattr(
+            self, "evidence_pilot", False
+        ):
+            raise OperationalBlock("evidence_pilot_worker_required")
         if run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
+        if self.admission is not None:
+            self.admission.admit(specimen)
         if run.stage == "retry_scheduled":
             if (
                 run.next_retry_at
