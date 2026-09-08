@@ -505,3 +505,59 @@ index repair. At inspection, these DATA changes were uncommitted atop
 verification and independent source review remain separate integration gates.
 No runtime code change, cloud action, image access or real cohort reclassification
 was performed for this evidence update.
+
+## Independent DATA sensitivity review
+
+**PASS: no blocking finding in the reviewed slice.** Runtime independently reviewed
+DATA commit `0fb70aa5e26e421e68e64a7f550a20d77e65e30a` against
+`6276af09d7c8a9dad79bb32be1348320dd269b4a`, in the DATA `4a25` worktree.
+The eight inspected schema/connector/test files were hashed before execution and
+matched afterward and at the committed tip; the DATA worktree was clean. The
+single PostgreSQL harness change adds the sensitivity suite. This review covered
+DATA-authored SQL, not runtime's own Python implementation.
+
+The named V2 operations bind payload and column classification, default missing
+legacy declarations to sensitive, and prevent sensitive-to-false changes.
+All three older specimen save versions and the older document save enforce the
+same invariant. Both membership levels remain mandatory. Parent references bind
+history and receipt authorization to the current classification; foreign keys
+retain organization, collection, kind and document identity. Control documents
+remain creator-only even for another privileged member. Lists exclude controls
+and filter sensitive parents. Mutations remain transactional and require the
+expected revision before creating their history and receipt.
+
+Independent execution used DATA's retained local PostgreSQL/SQL Connect fixture
+on ports 5589/9569. The fixture processes and DATA source were left untouched;
+test requests created isolated synthetic metadata scopes.
+
+- DATA's `scripts/data/sensitivity-test.mjs` passed again, including creation,
+  promotion, legacy defaults, malformed declarations, active membership, client
+  denial, list filtering, all named specimen versions and historical access.
+  Log: `/tmp/specimen-runtime-data-sensitivity-independent-20260908.log`.
+- A separately authored probe passed **217 successful-result/denial checks**.
+  It tests malformed values on V1/V2 document saves; an allowed explicit-false
+  compatibility save; stale CAS with no extra receipt or version; privileged-peer
+  control denials; the same creator losing old receipt/history access after
+  promotion and sensitivity-permission revocation; both-membership keyset denial;
+  and malformed snapshot values on all three specimen saves without changing
+  revision, history or receipts. Script and log:
+  `/tmp/specimen-runtime-data-extra-review-20260908.mjs` and
+  `/tmp/specimen-runtime-data-extra-review-20260908.log`.
+- The four actual HTTP repository stage-cost/sensitivity/ledger round trips passed
+  independently in **0.95 seconds**, using DATA's test file and the current runtime
+  source through explicit `PYTHONPATH`. The imported production module was checked
+  as the `7471` path. Log:
+  `/tmp/specimen-runtime-data-roundtrip-independent-20260908.log`.
+  As above, these are one-specimen metadata cases with ten synthetic bindings;
+  REST values remained integers, and no real specimen processing is established.
+
+The source manifest is retained at
+`/tmp/specimen-runtime-data-review-source-20260908.sha256`; all eight checks and
+the committed diff whitespace check passed. DATA's separate canonical log was
+also inspected: **805 Python passed / 30 skipped, 120 Flutter passed / 7 skipped**,
+analysis, security and web build green, at
+`/tmp/specimen-release-sensitivity-verify-20260908.log`. Those canonical counts are
+DATA's branch, not the combined release. This closes the preceding local DATA
+source-review gate. Production integration, real source sensitivity, image/model
+execution and the ten human correction/save/reopen/history journeys remain
+separate coordinator gates under the existing authorization and budget.
