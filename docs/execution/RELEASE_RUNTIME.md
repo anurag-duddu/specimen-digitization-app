@@ -482,3 +482,26 @@ correcting the substitute allowed the existing worker behavior to pass. Neither
 that fixture error nor the already-working workflow attachment is reported as a
 production defect. Delivery still owns actual activation graph/session wiring and
 the integrated release verification.
+
+## Data connector evidence update
+
+Data subsequently exercised the sensitivity connector against the current runtime
+source. Runtime inspected the test and retained output read-only: **four local
+connector cases passed in 0.93 seconds**, log
+`/tmp/specimen-release-sensitivity-runtime-roundtrip-20260908.log`. Snapshot and
+pilot-ledger reconstruction each ran for legacy-sensitive and explicitly false
+records. Only the false cases create an isolated principal scope with
+`canViewSensitive=false`; legacy-sensitive cases use the existing privileged
+fixture. Each case persists one metadata specimen with ten synthetic launch
+bindings, not a ten-source processing result. Observed REST cost values remain
+integers; this does not reproduce or replace the separate protobuf regression.
+
+The retained PostgreSQL log
+`/tmp/specimen-release-sensitivity-postgres-20260908.log` records V2 auxiliary
+classification/creator/CAS/revocation denials, all named specimen save versions,
+27-table restore equality, and two restored restarts with explicit supplemental
+index repair. At inspection, these DATA changes were uncommitted atop
+`6276af09d7c8a9dad79bb32be1348320dd269b4a`. DATA's final source SHA, canonical
+verification and independent source review remain separate integration gates.
+No runtime code change, cloud action, image access or real cohort reclassification
+was performed for this evidence update.
