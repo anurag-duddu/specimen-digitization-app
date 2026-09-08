@@ -126,3 +126,28 @@ coordinator updates before final handoff. Contract upload-transport delta is
 pending architect commit. Executable backend/data/Flutter handoffs remain
 outstanding. This documentation assembly does not change the last tested product
 code and does not establish integrated P0 acceptance.
+
+## Production build/runtime metadata inspection
+
+Read-only metadata checked 2026-09-08 UTC after Flutter requested public API and
+App Check build inputs:
+
+- Repository and `production` environment variable lists are both empty.
+- Repository secret names contain only `FIREBASE_OPTIONS_DART_B64`; no secret
+  values were fetched.
+- Firebase reports one active web app for Specimen Digitization.
+- App Check v3 and Enterprise config reads return 403 `SERVICE_DISABLED` from
+  firebaseappcheck.googleapis.com. Config presence cannot be established through
+  the disabled API; do not claim an existing registration is absent. No API was
+  enabled and no site key was guessed.
+- Cloud Run service listing returns `SERVICE_DISABLED` for run.googleapis.com.
+  No runtime endpoint was established by this inspection. This does not prove
+  that no alternate runtime exists. No API enablement or provisioning occurred.
+
+Production build wiring remains gated on an approved API endpoint and public
+App Check v3 site-key configuration, consistent backend enforcement, and runtime
+readiness. Readiness must not be inferred from local synthetic UI tests or static
+Hosting success. Data reports disabled Cloud SQL backups/ZONAL deployment and
+SQL/Storage region differences; backup/restore, availability and region/transfer
+policy need owner-approved review before production data/runtime launch, without
+implicit paid configuration changes.
