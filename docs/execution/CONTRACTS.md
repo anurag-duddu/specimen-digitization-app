@@ -48,7 +48,8 @@ where a later write uses optimistic concurrency.
 | POST `/batches` | collection_id, display_name, acquisition_method | batch_id and item manifest; operator |
 | POST `/batches/{batch_id}/items` | client_item_id, filename, declared MIME/bytes/dimensions, sha256 | stable specimen_id, asset_id, upload_id, manifest state and duplicate reference if authorized; operator |
 | GET `/batches/{batch_id}` | cursor | itemized manifest and accepted/duplicate/invalid/uploading/failed states |
-| GET `/uploads/{upload_id}` | none | authoritative upload progress and expiry; owner/scoped operator |
+| GET `/uploads/{upload_id}` | none | authoritative upload offset, revision and expiry; owner/scoped operator |
+| PUT `/uploads/{upload_id}/content` | binary bytes and `Upload-Offset` header | updated offset/revision; authenticated scoped operator; backend-mediated transport |
 | POST `/uploads/{upload_id}/resume` | expected_revision | refreshed scoped resumable upload instructions; stable asset/specimen IDs |
 | POST `/uploads/{upload_id}/complete` | expected_revision, storage generation | server verifies actual bytes/hash/type/dimensions and commits immutable asset; idempotent ingestion enqueue |
 | GET `/specimens` | collection_id, batch_id, state, disposition, date bounds, uploader, score band, issue, profile_version, cursor | authorized specimen summaries |
@@ -64,9 +65,14 @@ where a later write uses optimistic concurrency.
 The API must not accept a client-supplied final disposition as authoritative.
 A review decision can request re-evaluation; only the deterministic policy
 commits a final outcome. Export and EMu write endpoints are out of scope.
-Upload binary transport may use the Storage resumable SDK or a scoped server
-session; the data/backend owners must publish the exact transport before Flutter
-wiring. Never put permanent download tokens in persisted evidence or telemetry.
+Backend and Flutter agreed on authenticated binary PUT to the content route with
+`Upload-Offset`; GET reports authoritative offset and completion supplies
+`expected_revision`. Direct Storage client writes are denied. Persist the session
+and verified offset so a restarted client can resume the same IDs. Duplicate
+chunks must either return verified progress or a conflict requiring GET; never
+append repeated bytes. Backend must publish exact chunk response and error
+examples before Flutter completes wiring. Never put permanent download tokens
+in persisted evidence or telemetry.
 
 ## Domain records
 
@@ -209,11 +215,30 @@ integration. No production resource or institutional approval is implied.
 | Snake-case wire, organization-scoped API, optimistic revision and idempotency | Architecture proposal sent to backend/Flutter; exact executable serializer fixture pending backend |
 | Idempotency-Key header; expected_revision request body; raw single-resource JSON and paged items/next_cursor | Proposed exact convention; backend confirmation pending |
 | Backend-only SQL operations, membership checks inside CAS, normalized references plus immutable snapshots | Accepted architecture/data boundary; operation names/schema compilation and runtime tests owned by data/backend |
-| Direct Storage client access denied; scoped backend upload/download | Accepted data boundary; Flutter informed it cannot use direct SDK writes |
-| Resumable binary chunk route/session, offset and complete response | Pending backend/Flutter agreement; must settle before wiring, not during final integration |
+| Direct Storage client access denied; scoped backend upload/download | Accepted by data and Flutter; no direct SDK writes |
+| Resumable binary transport | Backend proposed and Flutter accepted authenticated PUT `/uploads/{id}/content`, `Upload-Offset` plus raw bytes; GET offset, completion expected_revision; exact response serializer fixture remains backend-owned |
 | Hosting remains static-only; no implicit runtime/data delivery | Release/integration owner acknowledged contract; no wire deviations |
 
 For each pending row, the owner must publish an exact response example/schema
 and the matching operation/test reference. A planned convention is not evidence
 of a working serializer. Compatibility aliases, if needed, must be explicit and
 tested; never let Flutter silently guess both shapes.
+
+
+Data owner confirmed operation names `GetSpecimen`, `GetSnapshot`,
+`ListSpecimens`, `Memberships`, `GetReceipt`, `CreateSpecimen`, `SaveSpecimen` in
+`dataconnect/connector/operations.gql`. Architect inspected that in-progress source
+read-only; compilation success is reported by the data owner, not independently
+reproduced here. SQL operation variables are camelCase while HTTP remains
+snake_case; the backend adapter owns explicit translation. `snapshot: Any` holds
+backend-validated domain JSON with a proposed 256 KiB maximum, version and SHA-256;
+raw payloads remain object references. Aggregate revision fences checkpoint
+writes. Separate batch/upload document CAS operations are still data-owned work.
+
+Idempotency persistence may further scope receipts by collection. The backend
+must enforce the documented request scope consistently and avoid cross-collection
+response replay. Membership lists must intersect active organization membership
+with collection membership; a collection grant alone cannot retain access after
+organization revocation. Backend enforces action-specific role permissions in
+addition to connector membership/CAS checks. Snapshot bounds and operation names
+must be exercised through the actual adapter before integration acceptance.
