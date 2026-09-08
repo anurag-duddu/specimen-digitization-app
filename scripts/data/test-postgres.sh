@@ -37,6 +37,7 @@ node scripts/data/connector-test.mjs
 "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -v ON_ERROR_STOP=1 -f dataconnect/sql/search-indexes.sql
 PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/paging-test.mjs
 PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/search-test.mjs
+PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/checksum-test.mjs
 kill "$dc_pid"
 wait "$dc_pid" || true
 dc_pid=""
