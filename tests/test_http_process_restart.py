@@ -4,6 +4,7 @@ import io
 import json
 import os
 import secrets
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -20,6 +21,16 @@ from specimen_digitization.application.demo import fixture, journey
     reason="Requires seeded local SQL Connect/PostgreSQL emulator",
 )
 def test_sql_http_restart(tmp_path):
+    configured = os.getenv("SPECIMEN_TEST_HTTP_PORT")
+    if configured:
+        port = int(configured)
+        if not 1 <= port <= 65535:
+            raise ValueError("Invalid test HTTP port")
+    else:
+        with socket.socket() as reservation:
+            reservation.bind(("127.0.0.1", 0))
+            port = reservation.getsockname()[1]
+    base_url = f"http://127.0.0.1:{port}"
     token = secrets.token_urlsafe(32)
     env = dict(os.environ, SPECIMEN_SYNTHETIC_TOKEN=token)
     command = [
@@ -31,7 +42,7 @@ def test_sql_http_restart(tmp_path):
         "--state-dir",
         str(tmp_path),
         "--port",
-        "8102",
+        str(port),
     ]
 
     def start():
@@ -41,7 +52,7 @@ def test_sql_http_restart(tmp_path):
         for _ in range(100):
             try:
                 response = httpx.get(
-                    "http://127.0.0.1:8102/v1/session",
+                    base_url + "/v1/session",
                     headers={"Authorization": "Bearer " + token},
                 )
                 if response.status_code == 200:
@@ -62,7 +73,7 @@ def test_sql_http_restart(tmp_path):
         output = io.BytesIO()
         image.save(output, format="PNG", pnginfo=metadata)
         with httpx.Client(
-            base_url="http://127.0.0.1:8102",
+            base_url=base_url,
             headers={
                 "Authorization": "Bearer " + token,
                 "Idempotency-Key": str(uuid4()),
@@ -74,7 +85,7 @@ def test_sql_http_restart(tmp_path):
         process.wait(timeout=10)
         process = start()
         with httpx.Client(
-            base_url="http://127.0.0.1:8102",
+            base_url=base_url,
             headers={"Authorization": "Bearer " + token},
             timeout=30,
         ) as client:

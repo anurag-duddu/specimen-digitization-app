@@ -265,3 +265,18 @@ Cherry-pick the implementation commit and this documentation follow-up into the
 integration branch after its scanner dependency. Do not copy unrelated worktree
 state or deploy runtime/data resources through Hosting. Full product acceptance
 remains constrained by the numbered production gates above.
+
+### Isolated QA ports
+
+Local SQL API and worker modes now honor `SPECIMEN_SQL_EMULATOR_HOST=127.0.0.1:PORT`.
+Only that loopback address and TCP ports 1–65535 are accepted, always with the
+`demo-specimen-data` project. Production rejects the emulator environment variable
+rather than silently selecting a test backend. The default remains 9499 for the
+simple local commands above.
+
+The real TCP subprocess test accepts `SPECIMEN_TEST_HTTP_PORT`; when omitted it
+allocates a free loopback port instead of reserving 8102. It terminates only its own
+API subprocess. Start a separately seeded data runtime on an independently owned
+port before running the opt-in SQL tests; do not attach to another task's runtime.
+Eight focused configuration tests cover rejected hosts/ports and production-mode
+rejection. This follow-up changes runtime selection only; fixture bytes are unchanged.
