@@ -383,3 +383,11 @@ If any answer is no or unknown, retain the item and record the exact blocker.
 - Task: `01a0826b-967f-7240-a353-2495bc5d318f`; this corrects the branch count in the preceding prune-audit entry.
 - Outcome: The inventory contained 41 pre-existing local topic branches, not 40: 35 were pruned and six were retained for incomplete work. The short-lived `codex/session-learnings-ritual` branch was created separately for this change.
 - Remaining follow-ups: No other audit count changes.
+
+### 2026-09-08 — Correction: archived QA worktree removal
+
+- Task: `01a0826b-967f-7240-a353-2495bc5d318f`; this corrects the retained-worktree statement in the repository learning ritual and prune audit.
+- Outcome: Archiving completed QA task `01a07f4a-f674-7243-a6c8-f91cd82c1d27` through the Codex task UI also removed its detached task worktree at `/Users/anuragduddu/.codex/worktrees/14dd/specimen-digitization-app`. The cleanup therefore removed 20 merged worktrees in total and left seven worktrees: the canonical checkout plus six intentionally retained incomplete-work worktrees.
+- Evidence impact: Five ignored raw logs in the removed QA worktree were not tracked by Git and are not recoverable through Git: `docs/execution/qa-evidence/4c71e13/canonical.log`, `docs/execution/qa-evidence/4c71e13/data.log`, `docs/execution/qa-evidence/4c71e13/sql-tests.log`, `docs/execution/qa-evidence/4c71e13/storage.log`, and `docs/execution/qa-evidence/906e134/sql-failure.log`. Their committed QA conclusions and the task's closeout entry remain in repository and task history. No source commit, merged branch ancestry, or private receipt was lost.
+- Durable learnings: Treat task archival as a potentially worktree-removing action. Before archiving, inspect and intentionally preserve or dispose every ignored artifact in the task-owned worktree; a separate `git worktree remove` preflight is not sufficient.
+- Remaining follow-ups: None for the cleanup correction. The six incomplete-work branches and worktrees listed in the preceding audit remain retained behind their existing gates.
