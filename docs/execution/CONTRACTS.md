@@ -335,3 +335,15 @@ and
 `/Users/anuragduddu/.codex/worktrees/3782/specimen-digitization-app/docs/execution/backend-wire-examples.json`.
 Integration retains the files under repository-relative docs/execution paths so
 the contract survives removal of temporary worktrees.
+
+### Response-fixture milestone
+
+Backend subsequently generated actual TestClient HTTP journey fixtures in
+`backend-wire-examples.json`: session, batch_response, item_request, item_response,
+upload_response, complete_response, workspace_response, decision_request and
+decision_response. Architecture independently parsed the updated JSON and verified
+all nine objects and canonical workspace keys. The backend reports a synthetic
+Cleared journey without direct database edits; architecture did not independently
+rerun that journey. Missing response-fixture generation is resolved. Flutter's
+identical-fixture decode test and independent integrated HTTP/SQL acceptance
+remain required, with exact candidate SHA and test evidence in their reports.
