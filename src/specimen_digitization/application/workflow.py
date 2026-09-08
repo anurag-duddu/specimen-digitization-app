@@ -3,6 +3,7 @@
 from __future__ import annotations
 import hashlib
 import io
+import time
 from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
 from typing import Protocol
@@ -26,6 +27,7 @@ from .domain import (
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
+from .reliability import AdapterFailure, retry_delay
 
 
 class OperationalBlock(RuntimeError):
@@ -42,9 +44,19 @@ class PipelineAdapters(Protocol):
 
 class Workflow:
     def __init__(
-        self, repository: Repository, blobs: BlobStore, adapters: PipelineAdapters
+        self,
+        repository: Repository,
+        blobs: BlobStore,
+        adapters: PipelineAdapters,
+        *,
+        clock=None,
+        monotonic=None,
+        random_value=None,
     ):
         self.repository, self.blobs, self.adapters = repository, blobs, adapters
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.monotonic = monotonic or time.monotonic
+        self.random_value = random_value
 
     def step(self, principal: Principal, specimen_id: str) -> Specimen:
         with logfire.span(
@@ -60,9 +72,10 @@ class Workflow:
         if run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
         if run.stage == "retry_scheduled":
-            if run.next_retry_at and datetime.fromisoformat(
+            if (
                 run.next_retry_at
-            ) > datetime.now(timezone.utc):
+                and datetime.fromisoformat(run.next_retry_at) > self.clock()
+            ):
                 return specimen
             run.blocker = None
             run.next_retry_at = None
@@ -71,9 +84,10 @@ class Workflow:
         # Persist intent before network/model work. Crash with intent but no result is
         # blocked for explicit replay: provider calls may not support deduplication.
         if run.blocker == "external_outcome_unknown":
-            if run.lease_until and datetime.fromisoformat(
+            if (
                 run.lease_until
-            ) > datetime.now(timezone.utc):
+                and datetime.fromisoformat(run.lease_until) > self.clock()
+            ):
                 return specimen
             run.stage = "processing_blocked"
             return self.repository.save(
@@ -88,10 +102,74 @@ class Workflow:
             or step in {"segment", "lookup"}
             or (step == "parse" and hasattr(self.adapters, "extract"))
         )
+        policy = run.profile.execution
+        external_weight = (
+            2
+            if (step.startswith("transcribe:") or step == "parse")
+            and not run.profile.synthetic
+            else 1
+        )
+        billable = external and (
+            step.startswith("transcribe:") or step in {"parse", "segment", "classify"}
+        )
+        reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
+        cost = (
+            0
+            if run.profile.synthetic or not billable
+            else policy.request_cost_reservation_micros
+        )
+        issue = None
+        if run.usage.steps >= policy.max_steps:
+            issue = "step_budget_exhausted"
+        elif (
+            external
+            and run.usage.external_calls + external_weight > policy.max_external_calls
+        ):
+            issue = "external_call_budget_exhausted"
+        elif run.usage.reserved_tokens + reservation_tokens > policy.max_tokens:
+            issue = "token_budget_exhausted"
+        elif (
+            run.usage.active_seconds
+            + run.usage.reserved_active_seconds
+            + (policy.external_timeout_seconds if external else 0)
+            > policy.max_active_seconds
+        ):
+            issue = "active_time_budget_exhausted"
+        elif (
+            billable
+            and not run.profile.synthetic
+            and (cost is None or policy.approved_cost_limit_micros is None)
+        ):
+            issue = "approved_cost_budget_unavailable"
+        elif (
+            cost is not None
+            and policy.approved_cost_limit_micros is not None
+            and run.usage.reserved_cost_micros + cost
+            > policy.approved_cost_limit_micros
+        ):
+            issue = "cost_budget_exhausted"
+        if issue:
+            run.blocker = issue
+            run.stage = "processing_blocked"
+            run.disposition = None
+            return self.repository.save(
+                principal,
+                specimen,
+                revision,
+                f"budget:{revision}",
+                digest({"budget": issue}),
+            )
+        run.usage.steps += 1
         if external:
+            run.usage.external_calls += external_weight
+            run.usage.reserved_tokens += reservation_tokens
+            run.usage.reserved_cost_micros += cost or 0
+            run.usage.reserved_active_seconds += policy.external_timeout_seconds
+            if run.profile.synthetic:
+                run.usage.actual_cost_micros = 0
             run.blocker = "external_outcome_unknown"
             run.lease_until = (
-                datetime.now(timezone.utc) + timedelta(minutes=5)
+                self.clock() + timedelta(seconds=policy.lease_seconds)
             ).isoformat()
             run.attempts[step] = run.attempts.get(step, 0) + 1
             specimen = self.repository.save(
@@ -103,8 +181,22 @@ class Workflow:
             )
             revision = specimen.version
             run = specimen.run
+        reserved = specimen.model_copy(deep=True)
+        started = self.monotonic()
+        previous_tokens = sum(
+            o.input_tokens + o.output_tokens for o in run.observations
+        )
         try:
-            if step == "classify":
+            if step == "pin_dependencies":
+                run.dependencies = (
+                    self.adapters.pin_dependencies(run)
+                    if hasattr(self.adapters, "pin_dependencies")
+                    else {
+                        "adapter": type(self.adapters).__name__,
+                        "synthetic": run.profile.synthetic,
+                    }
+                )
+            elif step == "classify":
                 run.stage = "classify"
                 # The selected profile is explicit intake context, never a fabricated classifier.
                 run.completed_steps.append("classification_selected_at_intake")
@@ -198,6 +290,18 @@ class Workflow:
             run.completed_steps.append(step)
             if step != "finalize":
                 run.stage = self.next_step(run).split(":")[0]
+        except AdapterFailure as exc:
+            run.blocker = (
+                "external_outcome_unknown" if exc.outcome_unknown else exc.code
+            )
+            run.stage = "processing_blocked"
+            run.disposition = None
+            if not exc.outcome_unknown and exc.status in {
+                LookupStatus.RATE_LIMITED,
+                LookupStatus.TIMEOUT,
+                LookupStatus.PROVIDER,
+            }:
+                self.schedule_retry(run, step, exc.retry_after_seconds)
         except OperationalBlock as exc:
             run.blocker = str(exc)
             run.stage = "processing_blocked"
@@ -207,22 +311,35 @@ class Workflow:
                 "taxonomy_timeout",
                 "taxonomy_provider_error",
             }:
-                if run.attempts.get(step, 0) < 3:
-                    delay = run.lookups[-1].retry_after_seconds or (
-                        2 ** run.attempts.get(step, 1)
-                    )
-                    run.next_retry_at = (
-                        datetime.now(timezone.utc) + timedelta(seconds=delay)
-                    ).isoformat()
-                    run.stage = "retry_scheduled"
-                else:
-                    run.dead_letter = True
-                    run.blocker = "retry_budget_exhausted:" + run.blocker
+                self.schedule_retry(run, step, run.lookups[-1].retry_after_seconds)
         except Exception:
             # Do not expose raw exceptions containing provider headers or source text.
-            run.blocker = "stage_failed_inspect_private_worker_logs"
+            run.blocker = (
+                "external_outcome_unknown"
+                if external
+                else "stage_failed_inspect_private_worker_logs"
+            )
             run.stage = "processing_blocked"
             run.disposition = None
+        elapsed = max(0, self.monotonic() - started)
+        if external and elapsed > policy.external_timeout_seconds:
+            specimen = reserved
+            run = specimen.run
+            run.blocker = "external_outcome_unknown"
+            run.stage = "processing_blocked"
+            run.disposition = None
+            run.reasons = ["external_stage_deadline_exceeded"]
+        run.usage.active_seconds += elapsed
+        run.usage.tokens += max(
+            0,
+            sum(o.input_tokens + o.output_tokens for o in run.observations)
+            - previous_tokens,
+        )
+        if external and run.blocker != "external_outcome_unknown":
+            run.lease_until = None
+            run.usage.reserved_active_seconds = max(
+                0, run.usage.reserved_active_seconds - policy.external_timeout_seconds
+            )
         specimen.audit.append(
             AuditEvent(
                 actor=principal.user_id,
@@ -239,9 +356,20 @@ class Workflow:
             digest({"step": step, "run": run.id}),
         )
 
+    def schedule_retry(self, run, step, provider_seconds=None):
+        if run.attempts.get(step, 0) < run.profile.execution.max_attempts:
+            delay = retry_delay(
+                run.attempts.get(step, 1), provider_seconds, self.random_value
+            )
+            run.next_retry_at = (self.clock() + timedelta(seconds=delay)).isoformat()
+            run.stage = "retry_scheduled"
+        else:
+            run.dead_letter = True
+            run.blocker = "retry_budget_exhausted:" + (run.blocker or "adapter_failure")
+
     @staticmethod
     def next_step(run: Run) -> str:
-        for step in ("classify", "segment"):
+        for step in ("pin_dependencies", "classify", "segment"):
             if step not in run.completed_steps:
                 return step
         for region in run.regions:

@@ -32,6 +32,7 @@ from .domain import (
 )
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .policy import finalize
+from .reliability import has_active_lease
 from .production import actor_uid
 from .storage import (
     Conflict,
@@ -747,28 +748,12 @@ def create_app(
         limit: int = 10,
         user=Depends(identity),
     ):
-        p, current = history_access(user, organization_id, specimen_id)
-        through = current.version if through_revision is None else through_revision
-        if (
-            not 1 <= limit <= 50
-            or not 0 <= after_revision <= through <= current.version
-        ):
+        p, _ = history_access(user, organization_id, specimen_id)
+        if not 1 <= limit <= 50:
             raise ValueError("Invalid history page bounds")
-        end = min(through, after_revision + limit)
-        items = []
-        for revision in range(after_revision + 1, end + 1):
-            retained = repository.version(p.scope, specimen_id, revision)
-            items.append(
-                {
-                    "revision": revision,
-                    "sha256": digest(retained.model_dump(mode="json")),
-                }
-            )
-        return {
-            "items": items,
-            "through_revision": through,
-            "next_cursor": end if end < through else None,
-        }
+        return repository.history_page(
+            p.scope, specimen_id, after_revision, through_revision, limit
+        )
 
     @app.get(prefix + "/specimens/{specimen_id}/history/{revision}")
     def historical_version(
@@ -1054,6 +1039,10 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p, s = find(user, organization_id, specimen_id)
+        if has_active_lease(s.run):
+            raise Conflict(
+                "An external effect is still leased; wait for its result or lease expiry"
+            )
         principal(user, organization_id, p.scope.collection_id, review=True)
         if not body.reason.strip() or body.base_run_id != s.run.id:
             raise ValueError("Current run and reason required")
@@ -1104,6 +1093,10 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p, s = find(user, organization_id, specimen_id)
+        if has_active_lease(s.run):
+            raise Conflict(
+                "An external effect is still leased; wait for its result or lease expiry"
+            )
         principal(user, organization_id, p.scope.collection_id, review=True)
         if body.collection_id != p.scope.collection_id:
             raise ValueError(
@@ -1144,6 +1137,12 @@ def create_app(
                     continue
                 if not body.reason.strip():
                     raise ValueError("Action reason required")
+                if body.action in {"retry", "resume", "reprocess"} and has_active_lease(
+                    s.run
+                ):
+                    raise Conflict(
+                        "An external effect is still leased; concurrent retry is prohibited"
+                    )
                 if body.action in {"retry", "resume"}:
                     s.run.blocker = None
                     s.run.disposition = None

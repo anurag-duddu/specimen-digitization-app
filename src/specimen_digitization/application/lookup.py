@@ -4,6 +4,7 @@ import hashlib
 import httpx
 from .domain import Lookup, LookupStatus
 from .storage import BlobStore
+from .reliability import retry_after
 
 COL_XR = "7ddf754f-d193-4cc9-b351-99906754a03b"
 
@@ -49,9 +50,7 @@ class GbifTaxonomy:
                     response.status_code, LookupStatus.PROVIDER
                 )
                 retry = response.headers.get("Retry-After", "")
-                result.retry_after_seconds = (
-                    min(int(retry), 86400) if retry.isdigit() else None
-                )
+                result.retry_after_seconds = retry_after(retry)
                 return result
             if not response.content:
                 result.status = LookupStatus.MALFORMED
