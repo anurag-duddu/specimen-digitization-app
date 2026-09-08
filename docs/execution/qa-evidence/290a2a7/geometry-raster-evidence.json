@@ -1,0 +1,98 @@
+[
+  {
+    "file": "narrow-0.png",
+    "border_bounds": [
+      40,
+      391,
+      310,
+      161
+    ],
+    "observed_ratio": 1.9254658385093169,
+    "expected_ratio": 1.9230769230769231,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "narrow-180.png",
+    "border_bounds": [
+      40,
+      391,
+      310,
+      161
+    ],
+    "observed_ratio": 1.9254658385093169,
+    "expected_ratio": 1.9230769230769231,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "narrow-270.png",
+    "border_bounds": [
+      96,
+      282,
+      198,
+      380
+    ],
+    "observed_ratio": 0.5210526315789473,
+    "expected_ratio": 0.52,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "narrow-90.png",
+    "border_bounds": [
+      96,
+      282,
+      198,
+      380
+    ],
+    "observed_ratio": 0.5210526315789473,
+    "expected_ratio": 0.52,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "wide-0.png",
+    "border_bounds": [
+      120,
+      294,
+      608,
+      316
+    ],
+    "observed_ratio": 1.9240506329113924,
+    "expected_ratio": 1.9230769230769231,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "wide-180.png",
+    "border_bounds": [
+      120,
+      294,
+      608,
+      316
+    ],
+    "observed_ratio": 1.9240506329113924,
+    "expected_ratio": 1.9230769230769231,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "wide-270.png",
+    "border_bounds": [
+      325,
+      262,
+      198,
+      380
+    ],
+    "observed_ratio": 0.5210526315789473,
+    "expected_ratio": 0.52,
+    "passed_with_2px_tolerance": true
+  },
+  {
+    "file": "wide-90.png",
+    "border_bounds": [
+      325,
+      262,
+      198,
+      380
+    ],
+    "observed_ratio": 0.5210526315789473,
+    "expected_ratio": 0.52,
+    "passed_with_2px_tolerance": true
+  }
+]

@@ -1,0 +1,150 @@
+Browser tab: 1838811666, Title: "Specimen Digitization", URL: "http://127.0.0.1:3000/".
+1 AXWebArea Specimen Digitization, URL: 127.0.0.1:3000/
+	2 container
+		4 container flt-semantic-node-3
+			5 container flt-semantic-node-18
+				6 heading Specimen Digitization, Value: 2, ID: flt-semantic-node-19
+					7 text Specimen Digitization
+				8 button Refresh collection, ID: flt-semantic-node-20
+				9 button Sign out, ID: flt-semantic-node-21
+			10 text SYNTHETIC ENVIRONMENT — fixture results are not real model processing or museum-approved records.
+			11 button (collapsed) Authorized collection Insects, ID: flt-semantic-node-26, Secondary Actions: Expand
+			12 text Local synthetic reviewer
+			13 container flt-semantic-node-171
+				14 button Queue Tab 1 of 2, ID: flt-semantic-node-172
+				15 button Intake Tab 2 of 2, ID: flt-semantic-node-173
+			16 button Back to queue, ID: flt-semantic-node-112
+			17 container flt-semantic-node-113
+				18 text qa-synthetic.png
+				19 button Refresh evidence, ID: flt-semantic-node-116
+				20 container ID: flt-semantic-node-147, Description: Source image Asset: 25d232df-1f22-50e8-9035-74ae49efe551 Pan, pinch, or use zoom controls. View rotation does not alter the original.
+					21 button Rotate view 90 degrees, ID: flt-semantic-node-148
+					23 button Zoom in, ID: flt-semantic-node-149
+					24 button Reset image view, ID: flt-semantic-node-150
+					25 button Original, ID: flt-semantic-node-151
+					26 image Description: Immutable original specimen image, ID: flt-semantic-node-152
+					27 button Label region 8633ec53-b936-4fde-b9f7-41344443249b 8633ec53-b936-4fde-b9f7-41344443249b, ID: flt-semantic-node-153
+					28 checkbox Description: Label 1, Value: 0, ID: flt-semantic-node-154
+					29 button Correct label regions, ID: flt-semantic-node-156
+				30 container ID: flt-semantic-node-157, Description: Record status cleared Profile 0.1.0-draft · Revision 241 Stage: finalized · Attempts: {lookup: 1, segment: 1, transcribe:8633ec53-b936-4fde-b9f7-41344443249b:handwriting-muse: 1, transcribe:8633ec53-b936-4fde-b9f7-41344443249b:handwriting-qwen: 1}
+					31 button Confirm label coverage, ID: flt-semantic-node-158
+					32 button Record review approval, ID: flt-semantic-node-159
+					33 button Correct classification, ID: flt-semantic-node-160
+					34 button Retry processing, ID: flt-semantic-node-161
+				35 checkbox Description: Readings, Value: 0, ID: flt-semantic-node-162
+				36 checkbox Description: Fields & evidence, Value: 0, ID: flt-semantic-node-163
+				37 checkbox Description: History, Value: 1, ID: flt-semantic-node-164
+				47 container ID: flt-semantic-node-182, Description: Current decision history Current review revision 241 Earlier audit and run evidence through revision 192 is retained in immutable record history. Browse revisions below for the complete prior record.
+					48 button 189 · review approve 2026-09-08T05:58:33.743819+00:00 · synthetic-reviewer, ID: flt-semantic-node-183
+					49 button 190 · review approve 2026-09-08T05:58:33.813906+00:00 · synthetic-reviewer, ID: flt-semantic-node-184
+					50 button 191 · review approve 2026-09-08T05:58:33.874330+00:00 · synthetic-reviewer, ID: flt-semantic-node-185
+					51 button 192 · review approve 2026-09-08T05:58:33.938087+00:00 · synthetic-reviewer, ID: flt-semantic-node-186
+					52 button 193 · review approve 2026-09-08T05:58:34.002274+00:00 · synthetic-reviewer, ID: flt-semantic-node-187
+					53 button 194 · review approve 2026-09-08T05:58:34.066363+00:00 · synthetic-reviewer, ID: flt-semantic-node-188
+					54 button 195 · review approve 2026-09-08T05:58:34.129683+00:00 · synthetic-reviewer, ID: flt-semantic-node-189
+					55 button 196 · review approve 2026-09-08T05:58:34.194935+00:00 · synthetic-reviewer, ID: flt-semantic-node-190
+					56 button 197 · review approve 2026-09-08T05:58:34.257198+00:00 · synthetic-reviewer, ID: flt-semantic-node-191
+					57 button 198 · review approve 2026-09-08T05:58:34.325171+00:00 · synthetic-reviewer, ID: flt-semantic-node-192
+					58 button 199 · review approve 2026-09-08T05:58:34.388987+00:00 · synthetic-reviewer, ID: flt-semantic-node-193
+					59 button 200 · review approve 2026-09-08T05:58:34.456272+00:00 · synthetic-reviewer, ID: flt-semantic-node-194
+					60 button 201 · review approve 2026-09-08T05:58:34.525668+00:00 · synthetic-reviewer, ID: flt-semantic-node-195
+					61 button 202 · review approve 2026-09-08T05:58:34.591715+00:00 · synthetic-reviewer, ID: flt-semantic-node-196
+					62 button 203 · review approve 2026-09-08T05:58:34.658367+00:00 · synthetic-reviewer, ID: flt-semantic-node-197
+					63 button 204 · review approve 2026-09-08T05:58:34.725339+00:00 · synthetic-reviewer, ID: flt-semantic-node-198
+					64 button 205 · review approve 2026-09-08T05:58:34.794736+00:00 · synthetic-reviewer, ID: flt-semantic-node-199
+					65 button 206 · review approve 2026-09-08T05:58:34.864021+00:00 · synthetic-reviewer, ID: flt-semantic-node-200
+					66 button 207 · review approve 2026-09-08T05:58:34.939984+00:00 · synthetic-reviewer, ID: flt-semantic-node-201
+					67 button 208 · review approve 2026-09-08T05:58:35.011687+00:00 · synthetic-reviewer, ID: flt-semantic-node-202
+					68 button 209 · review approve 2026-09-08T05:58:35.082128+00:00 · synthetic-reviewer, ID: flt-semantic-node-203
+					69 button 210 · review approve 2026-09-08T05:58:35.154955+00:00 · synthetic-reviewer, ID: flt-semantic-node-204
+					70 button 211 · review approve 2026-09-08T05:58:35.225703+00:00 · synthetic-reviewer, ID: flt-semantic-node-205
+					71 button 212 · review approve 2026-09-08T05:58:35.300071+00:00 · synthetic-reviewer, ID: flt-semantic-node-206
+					72 button 213 · review approve 2026-09-08T05:58:35.371399+00:00 · synthetic-reviewer, ID: flt-semantic-node-207
+					73 button 214 · review approve 2026-09-08T05:58:35.447253+00:00 · synthetic-reviewer, ID: flt-semantic-node-208
+					74 button 215 · review approve 2026-09-08T05:58:35.521875+00:00 · synthetic-reviewer, ID: flt-semantic-node-209
+					75 button 216 · review approve 2026-09-08T05:58:35.596697+00:00 · synthetic-reviewer, ID: flt-semantic-node-210
+					76 button 217 · review approve 2026-09-08T05:58:35.671610+00:00 · synthetic-reviewer, ID: flt-semantic-node-211
+					77 button 218 · review approve 2026-09-08T05:58:35.747367+00:00 · synthetic-reviewer, ID: flt-semantic-node-212
+					78 button 219 · review approve 2026-09-08T05:58:35.822532+00:00 · synthetic-reviewer, ID: flt-semantic-node-213
+					79 button 220 · review approve 2026-09-08T05:58:35.900058+00:00 · synthetic-reviewer, ID: flt-semantic-node-214
+					80 button 221 · review approve 2026-09-08T05:58:35.976862+00:00 · synthetic-reviewer, ID: flt-semantic-node-215
+					81 button 222 · review approve 2026-09-08T05:58:36.055915+00:00 · synthetic-reviewer, ID: flt-semantic-node-216
+					82 button 223 · review approve 2026-09-08T05:58:36.134581+00:00 · synthetic-reviewer, ID: flt-semantic-node-217
+					83 button 224 · review approve 2026-09-08T05:58:36.211482+00:00 · synthetic-reviewer, ID: flt-semantic-node-218
+					84 button 225 · review approve 2026-09-08T05:58:36.291681+00:00 · synthetic-reviewer, ID: flt-semantic-node-219
+					85 button 226 · review approve 2026-09-08T05:58:36.372720+00:00 · synthetic-reviewer, ID: flt-semantic-node-220
+					86 button 227 · review approve 2026-09-08T05:58:36.450478+00:00 · synthetic-reviewer, ID: flt-semantic-node-221
+					87 button 228 · review approve 2026-09-08T05:58:36.526034+00:00 · synthetic-reviewer, ID: flt-semantic-node-222
+					88 button 229 · review approve 2026-09-08T05:58:36.604023+00:00 · synthetic-reviewer, ID: flt-semantic-node-223
+					89 button 230 · review approve 2026-09-08T05:58:36.680347+00:00 · synthetic-reviewer, ID: flt-semantic-node-224
+					90 button 231 · review approve 2026-09-08T05:58:36.758113+00:00 · synthetic-reviewer, ID: flt-semantic-node-225
+					91 button 232 · review approve 2026-09-08T05:58:36.836306+00:00 · synthetic-reviewer, ID: flt-semantic-node-226
+					92 button 233 · review approve 2026-09-08T05:58:36.915944+00:00 · synthetic-reviewer, ID: flt-semantic-node-227
+					93 button 234 · review approve 2026-09-08T05:58:36.993466+00:00 · synthetic-reviewer, ID: flt-semantic-node-228
+					94 button 235 · review approve 2026-09-08T05:58:37.073240+00:00 · synthetic-reviewer, ID: flt-semantic-node-229
+					95 button 236 · review approve 2026-09-08T06:06:08.363869+00:00 · synthetic-reviewer, ID: flt-semantic-node-230
+					96 button 237 · review approve 2026-09-08T06:06:14.135810+00:00 · synthetic-reviewer, ID: flt-semantic-node-231
+				129 container ID: flt-semantic-node-265, Description: Historical revision 28 · read only This retained record is historical evidence. It cannot be edited or used as the current review revision. Current review remains revision 241. Historical status: processing blocked. Profile 0.1.0-draft · Record 8137b9a5-2da2-4b6f-bdcb-96007985637b:28 Retained audit events · revision 28
+					130 button Source asset and pinned run evidence, ID: flt-semantic-node-266
+					131 button Independent readings and transcriptions, ID: flt-semantic-node-267
+					132 button Fields, authority evidence and validation, ID: flt-semantic-node-268
+					133 button Complete retained workspace, ID: flt-semantic-node-269
+					134 button 1 · ingest 2026-09-08T05:39:28.700957+00:00 · synthetic-reviewer, ID: flt-semantic-node-270
+					135 button 2 · workflow step 2026-09-08T05:39:28.721552+00:00 · synthetic-reviewer, ID: flt-semantic-node-271
+					136 button 3 · workflow step 2026-09-08T05:39:28.750260+00:00 · synthetic-reviewer, ID: flt-semantic-node-272
+					137 button 4 · workflow step 2026-09-08T05:39:28.781525+00:00 · synthetic-reviewer, ID: flt-semantic-node-273
+					138 button 5 · workflow step 2026-09-08T05:39:28.822538+00:00 · synthetic-reviewer, ID: flt-semantic-node-274
+					139 button 6 · workflow step 2026-09-08T05:39:28.841590+00:00 · synthetic-reviewer, ID: flt-semantic-node-275
+					140 button 7 · workflow step 2026-09-08T05:39:28.865450+00:00 · synthetic-reviewer, ID: flt-semantic-node-276
+					141 button 8 · workflow step 2026-09-08T05:39:28.891803+00:00 · synthetic-reviewer, ID: flt-semantic-node-277
+					142 button 9 · workflow step 2026-09-08T05:39:28.928504+00:00 · synthetic-reviewer, ID: flt-semantic-node-278
+					143 button 10 · workflow step 2026-09-08T05:39:28.956590+00:00 · synthetic-reviewer, ID: flt-semantic-node-279
+					144 button 11 · workflow step 2026-09-08T05:39:28.979684+00:00 · synthetic-reviewer, ID: flt-semantic-node-280
+					145 button 12 · workflow step 2026-09-08T05:39:29.004162+00:00 · synthetic-reviewer, ID: flt-semantic-node-281
+					146 button 13 · workflow step 2026-09-08T05:39:29.033532+00:00 · synthetic-reviewer, ID: flt-semantic-node-282
+					147 button 14 · review approve 2026-09-08T05:40:06.438481+00:00 · synthetic-reviewer, ID: flt-semantic-node-283
+					148 button 15 · review approve 2026-09-08T05:40:06.518865+00:00 · synthetic-reviewer, ID: flt-semantic-node-284
+					149 button 16 · review approve 2026-09-08T05:40:06.623673+00:00 · synthetic-reviewer, ID: flt-semantic-node-285
+					150 button 17 · review approve 2026-09-08T05:40:06.736264+00:00 · synthetic-reviewer, ID: flt-semantic-node-286
+					151 button 18 · review approve 2026-09-08T05:40:06.882945+00:00 · synthetic-reviewer, ID: flt-semantic-node-287
+					152 button 19 · review approve 2026-09-08T05:40:07.029305+00:00 · synthetic-reviewer, ID: flt-semantic-node-288
+					153 button 20 · review approve 2026-09-08T05:40:07.211834+00:00 · synthetic-reviewer, ID: flt-semantic-node-289
+					154 button 21 · review approve 2026-09-08T05:40:07.387238+00:00 · synthetic-reviewer, ID: flt-semantic-node-290
+					155 button 22 · review approve 2026-09-08T05:40:07.631199+00:00 · synthetic-reviewer, ID: flt-semantic-node-291
+					156 button 23 · review approve 2026-09-08T05:40:07.874309+00:00 · synthetic-reviewer, ID: flt-semantic-node-292
+					157 button 24 · review approve 2026-09-08T05:40:08.126964+00:00 · synthetic-reviewer, ID: flt-semantic-node-293
+					158 button Close historical record, ID: flt-semantic-node-294
+				97 container ID: flt-semantic-node-232, Description: Browse retained record revisions History is bounded through the current review revision 241. Opening a revision rechecks your current access.
+					99 button Revision 1 Snapshot SHA-256 0acd37182592[digest-prefix], ID: flt-semantic-node-234
+					100 button Revision 2 Snapshot SHA-256 8ccf1d2cf46e[digest-prefix], ID: flt-semantic-node-235
+					101 button Revision 3 Snapshot SHA-256 9e41b376a301[digest-prefix], ID: flt-semantic-node-236
+					102 button Revision 4 Snapshot SHA-256 ea22c7fe7744[digest-prefix], ID: flt-semantic-node-237
+					103 button Revision 5 Snapshot SHA-256 013eef683fd7[digest-prefix], ID: flt-semantic-node-238
+					104 button Revision 6 Snapshot SHA-256 ae2e75f303da[digest-prefix], ID: flt-semantic-node-239
+					105 button Revision 7 Snapshot SHA-256 eef0ffd4426e[digest-prefix], ID: flt-semantic-node-240
+					106 button Revision 8 Snapshot SHA-256 2562807b0ca3[digest-prefix], ID: flt-semantic-node-241
+					107 button Revision 9 Snapshot SHA-256 55db00141e72[digest-prefix], ID: flt-semantic-node-242
+					108 button Revision 10 Snapshot SHA-256 a15e1e8b2c0d[digest-prefix], ID: flt-semantic-node-243
+					109 button Revision 11 Snapshot SHA-256 15f67f156fc3[digest-prefix], ID: flt-semantic-node-244
+					110 button Revision 12 Snapshot SHA-256 1cb7965fe3c7[digest-prefix], ID: flt-semantic-node-245
+					111 button Revision 13 Snapshot SHA-256 5b8e0f8a5bbc[digest-prefix], ID: flt-semantic-node-246
+					112 button Revision 14 Snapshot SHA-256 aa39c31da56c[digest-prefix], ID: flt-semantic-node-247
+					113 button Revision 15 Snapshot SHA-256 d9cbd9ed1100[digest-prefix], ID: flt-semantic-node-248
+					114 button Revision 16 Snapshot SHA-256 4b61ca747b67[digest-prefix], ID: flt-semantic-node-249
+					115 button Revision 17 Snapshot SHA-256 36e4b0961fff[digest-prefix], ID: flt-semantic-node-250
+					116 button Revision 18 Snapshot SHA-256 45d31828927c[digest-prefix], ID: flt-semantic-node-251
+					117 button Revision 19 Snapshot SHA-256 e463fecbb32f[digest-prefix], ID: flt-semantic-node-252
+					118 button Revision 20 Snapshot SHA-256 d13c01cd3173[digest-prefix], ID: flt-semantic-node-253
+					119 button Revision 21 Snapshot SHA-256 6f51fbd1d8d6[digest-prefix], ID: flt-semantic-node-254
+					120 button Revision 22 Snapshot SHA-256 2673b1143af3[digest-prefix], ID: flt-semantic-node-255
+					121 button Revision 23 Snapshot SHA-256 e2debff0058a[digest-prefix], ID: flt-semantic-node-256
+					122 button Revision 24 Snapshot SHA-256 c3d27a16963c[digest-prefix], ID: flt-semantic-node-257
+					123 button Revision 25 Snapshot SHA-256 82f9efe31cae[digest-prefix], ID: flt-semantic-node-258
+					124 button Revision 26 Snapshot SHA-256 4a12c3c32b29[digest-prefix], ID: flt-semantic-node-259
+					125 button Revision 27 Snapshot SHA-256 c4a2aa9914c4[digest-prefix], ID: flt-semantic-node-260
+					126 button Revision 28 Snapshot SHA-256 0369c3dc02b2[digest-prefix], ID: flt-semantic-node-261
+					127 button Revision 29 Snapshot SHA-256 cfe46fdf549c[digest-prefix], ID: flt-semantic-node-262
+					128 button Revision 30 Snapshot SHA-256 ac803b7652c2[digest-prefix], ID: flt-semantic-node-263
+					98 button Load more revisions, ID: flt-semantic-node-233
+
+The focused UI element is 126 button Revision 28 Snapshot SHA-256 0369c3dc02b2[digest-prefix], ID: flt-semantic-node-261

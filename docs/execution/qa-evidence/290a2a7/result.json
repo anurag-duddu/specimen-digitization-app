@@ -1,0 +1,41 @@
+{
+  "candidate": "290a2a7",
+  "canonical": {
+    "exit": 0,
+    "python_pass": 81,
+    "python_opt_in_skips": 3,
+    "flutter_pass": 26,
+    "flutter_live_skips": 2,
+    "analysis": "passed",
+    "web_release_and_wasm_dry_run": "passed"
+  },
+  "browser": "Chrome local synthetic API8124 SQL9519 PG5569",
+  "geometry_rotations": [
+    0,
+    90,
+    180,
+    270
+  ],
+  "viewports": [
+    [
+      390,
+      844
+    ],
+    [
+      1440,
+      1000
+    ]
+  ],
+  "all_8_geometry_raster_checks_pass": true,
+  "independent_readings_AX_complete": true,
+  "history_browse_loaded_revisions": [
+    1,
+    30
+  ],
+  "original_nearcap_revision_28_read_only": true,
+  "current_review_before_link_240_read_only": true,
+  "current_review_remains_241_UI_and_HTTP": true,
+  "gui_upload": "not tested; extension denies file setter; QA tab absent from native Chrome windows/tab lists; no permissions changed",
+  "browser_cleanup": "original native window restored, viewport reset, QA tab closed",
+  "source_pixels": "1000x520 authored synthetic; full-image overlay in browser, non-full overlay coordinates tested by geometry widget regressions"
+}
