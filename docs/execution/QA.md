@@ -163,6 +163,31 @@ Repeat framework-generated 401/validation-error envelopes and available-action
 role filtering against the amended serializer. Inspect committed code before
 calling any architect-observed gap fixed. No candidate tests have run yet.
 
+### SQL-backed HTTP and institutional semantics checkpoint
+
+Coordinator reports initial real Python SQL Connect adapter execution against a
+PostgreSQL 18 emulator, with the full workflow still in progress. This is owner
+reported and **Not tested by QA**. Require an immutable candidate and isolated
+launch handoff before execution. The independent SQL run must perform HTTP intake,
+chunk resume/completion, worker processing, review and final reopening using the
+actual connector transport. Record the explicit SQL adapter configuration and
+persisted identifiers through a read-only connector query. Stop API and worker,
+start fresh processes without seed/repair, and compare versions, evidence,
+disposition and idempotency behavior. An emulator adapter unit test or a SQLite
+HTTP journey does not substitute. Keep the PostgreSQL emulator state during this
+process-restart check; database backup/restore is a separate procedure.
+
+In that candidate, run the actual production Insects profile locally with
+unresolved D/T/S semantics and Parties authority policy, even when all other
+synthetic fields/evidence and scores appear complete. Request clearance through
+normal review actions and repeat after restart. Expect an explicit unresolved
+semantics/policy gate, no Cleared record, and no invented institutional approval.
+Compare with an explicitly synthetic approved-profile positive control; verify
+the latter cannot enable approval in the production profile by changing client
+mode, submitted policy fields or retained idempotency key. This is local
+production-profile policy verification, not production execution or museum
+quality approval. No live provider calls or cloud mutation are authorized.
+
 Cross-checked architect ACCEPTANCE.md after initial plan completion: the 20-row
 coverage and synthetic/live limits agree. Section 11 P0 requirements remain
 binding even where section 19 summarizes them. In addition to the matrix:
