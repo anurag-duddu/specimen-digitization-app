@@ -608,3 +608,17 @@ incomplete, example or stale packets. No future deploy implementation may replac
 this with example/schema validation. API, worker and CPU SAM image provenance,
 pinned model artifact hashes, data restoration and approval evidence are required;
 actual evidence verification and cloud authorization remain additional gates.
+
+The first missing application database uses the typed
+`data-initialize-missing/v1` phase in that same protected data workflow. Its
+one-time initializer has a separate main-only `data-initialization-production`
+environment and `specimen-data-initialize` keyless identity. Native source and
+restore parity precede initializer credentials; fixed SQL and privilege disposal
+must qualify on the same owned clone before source initialization. Ordinary data
+apply resumes with ordinary credentials and the original recovery proof, without
+another clone. The maximum temporary privilege window is ten minutes after
+native parity, inside the existing two-hour clone deadline. Actual identities,
+conditional permissions and this exact temporary privilege require the existing
+independent authority/admission review. The workflow creates no IAM policy or
+password and changes no source capacity. See the precise contract and live gates
+in [DATABASE_INITIALIZATION.md](execution/DATABASE_INITIALIZATION.md).

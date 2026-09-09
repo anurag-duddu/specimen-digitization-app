@@ -90,7 +90,7 @@ def validate_admission(p: object, env: dict[str, str], observed: dict, *, now: f
     require(isinstance(identity["project_number"], str) and re.fullmatch(r"[1-9][0-9]{0,19}", identity["project_number"]),
             "observed numeric cloud project identity required")
     require(isinstance(identity["pool_id"], str) and re.fullmatch(r"[a-z][a-z0-9-]{2,31}", identity["pool_id"]), "invalid identity pool")
-    role = "runtime-build" if p["plane"] == "runtime-build" else f"{p['plane']}-release"
+    role = {"runtime-build": "runtime-build", "data-initialization": "data-initialize"}.get(p["plane"], f"{p['plane']}-release")
     expected_provider = (f"projects/{identity['project_number']}/locations/global/workloadIdentityPools/"
                          f"{identity['pool_id']}/providers/specimen-{role}")
     require(identity["provider"] == expected_provider, "wrong or unpinned WIF provider")

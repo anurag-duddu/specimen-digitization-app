@@ -1,0 +1,57 @@
+{
+  "all_file_hooks": "passed",
+  "branch": "codex/initialize-missing-database",
+  "cloud_execution": "Not performed",
+  "credential_scanning": "passed",
+  "digest_manifest": "DATABASE_INITIALIZATION_LOCAL_DIGESTS.md",
+  "evidence_scope": "Historical initial candidate 07b9a4d; not validation of later review repairs.",
+  "files": [
+    "scripts/ci/initialize_catalog.sql",
+    "scripts/ci/initialize_database.sql",
+    "scripts/ci/initialize_postconditions.sql",
+    "scripts/ci/release_catalog_envelope.py",
+    "scripts/ci/release_initialize.mjs",
+    "scripts/ci/release_initialize.py"
+  ],
+  "flutter": {
+    "analysis": "passed",
+    "passed": 129,
+    "release_web_build": "passed",
+    "skipped": 7
+  },
+  "focused_postgres18_node_crypto": {
+    "passed": 128,
+    "seconds": 24.76
+  },
+  "independent_integrated_review": "Pending coordinator review",
+  "logs": {
+    "canonical": {
+      "path": "/tmp/specimen-initialize-complete-canonical-20260908.log"
+    },
+    "focused_postgres_node_crypto": {
+      "path": "/tmp/specimen-initialize-frozen-native-final-20260908.log"
+    },
+    "operation_identity_red": {
+      "path": "/tmp/specimen-initialize-operation-red-20260908.log"
+    },
+    "ordinary_disposal_red": {
+      "path": "/tmp/specimen-initialize-disposal-red-20260908.log"
+    },
+    "privacy_red": {
+      "path": "/tmp/specimen-initialize-privacy-red-20260908.log"
+    },
+    "read_deadline_red": {
+      "path": "/tmp/specimen-initialize-read-deadline-red-20260908.log"
+    }
+  },
+  "managed_cloud_sql_qualification": "Not confirmed",
+  "push_merge_deployment": "Not performed",
+  "python": {
+    "passed": 1275,
+    "skipped": 50,
+    "warnings": 7
+  },
+  "task_id": "01a082b4-a9bd-7392-a73b-57ca45532fb7",
+  "version": "database-initialization-local-validation/v1",
+  "workflow_lint": "passed"
+}

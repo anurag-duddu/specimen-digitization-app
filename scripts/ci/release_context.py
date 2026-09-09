@@ -13,6 +13,7 @@ PLANES = {
     "runtime-build": ("runtime-build-production", "runtime-release.yml", "specimen-runtime-build"),
     "runtime": ("runtime-production", "runtime-release.yml", "specimen-runtime-release"),
     "data": ("data-production", "data-release.yml", "specimen-data-release"),
+    "data-initialization": ("data-initialization-production", "data-release.yml", "specimen-data-initialize"),
 }
 
 

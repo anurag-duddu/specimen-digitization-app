@@ -33,7 +33,7 @@ def cleanup_packet(packet_path, env):
     else:
         original = read_packet(packet_path, env)
         plan = read_bound_plan(packet_path.parent / "plan.json", original)
-        require(plan.get("version") == "data-apply/v1", "cleanup belongs only to native data apply")
+        require(plan.get("version") in {"data-apply/v1", "data-initialize-missing/v1"}, "cleanup belongs only to native data apply/initialization")
         packet = cleanup_permit(original, plan["recovery"]["expires_at_unix"])
     exact_keys(packet, {"source_sha", "release_run_id", "release_run_attempt", "issued_at_unix", "expires_at_unix", "identity", "clone_expires_at_unix"}, "cleanup ownership permit")
     require(type(packet["clone_expires_at_unix"]) is int and packet["issued_at_unix"] < packet["clone_expires_at_unix"] <= packet["expires_at_unix"], "invalid clone disposal deadline")
@@ -84,18 +84,34 @@ class Google:
         from google.auth.transport.requests import AuthorizedSession
         self.credentials, _ = load_credentials_from_dict(credential, scopes=["https://www.googleapis.com/auth/cloud-platform"])
         self.session = AuthorizedSession(self.credentials)
+        if plane == "data-initialization":
+            # Actual project identity is bound to the signed data recovery proof.
+            # This identity has no project/IAM API permission.
+            return
         project = self.request("project", "GET", f"projects/{PROJECT}")
         require(project.get("name") == f"projects/{self.packet['identity']['project_number']}"
                 and project.get("projectId") == PROJECT and project.get("state") == "ACTIVE", "observed project identity mismatch")
 
     def request(self, api: str, method: str, resource: str, *, body=None, params=None, missing=False):
-        require(api in ORIGINS and method in {"GET", "POST", "PATCH", "DELETE"}, "unsupported Google request")
+        require(api in ORIGINS and method in {"GET", "POST", "PATCH", "DELETE", "PUT"}, "unsupported Google request")
+        require(method != "PUT" or self.plane == "data-initialization", "PUT is reserved for fixed initializer role replacement")
+        if self.plane == "data-initialization":
+            from release_initialize import validate_request
+            validate_request(api, method, resource, body, params)
         aliases = {PROJECT, self.packet["identity"]["project_number"]}
         require(any(resource.startswith(f"projects/{value}/") or resource == f"projects/{value}" for value in aliases), "foreign Google resource")
         require(not any(value in resource for value in ("?", "#", "..", "%", "\\")), "invalid Google resource")
         if method != "GET":
             self.packet = admit(self.path, self.plane)
-        response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=30,
+            if self.plane == "data-initialization":
+                require(time.time() + 60 < getattr(self, "initialization_deadline", 0),
+                        "initializer deadline reached during admission; no new effects")
+        timeout = 30
+        read_deadline = getattr(self, "sql_read_deadline", None)
+        if method == "GET" and api == "sql" and read_deadline is not None:
+            timeout = min(timeout, read_deadline - time.time())
+            require(timeout > 0, "native SQL read has no remaining time")
+        response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=timeout,
                                         allow_redirects=False)
         if missing and response.status_code == 404:
             return None
@@ -113,6 +129,30 @@ class Google:
             operation = self.request(api, "GET", name)
         require("error" not in operation and isinstance(operation.get("response"), dict), "cloud operation failed")
         return operation["response"]
+
+    def cleanup_initializer(self, instance, action):
+        from release_initialize import user_request
+        require(self.plane == "data-initialization" and action in {"revoke", "delete"}, "only owned initializer privilege disposal")
+        validate_context({**dict(os.environ), "RELEASE_AUTHORIZED_SHA": self.packet["source_sha"]}, self.plane, self.packet["source_sha"])
+        method, resource, args = user_request(instance, action)
+        # Caller must retain this exact principal's native creation proof. This
+        # expiry exception cannot create a user or grant any privilege.
+        response = self.session.request(method, ORIGINS["sql"] + resource, json=args.get("body"),
+                                        params=args.get("params"), timeout=30, allow_redirects=False)
+        require(200 <= response.status_code < 300, "initializer privilege disposal rejected; immediate reconciliation required")
+        return response.json()
+
+    def dispose_initializer(self, instance, action):
+        from release_initialize import user_request
+        require(self.plane == "data" and action in {"revoke", "delete"}, "ordinary disposal cannot create or grant roles")
+        cleanup_packet(self.path, dict(os.environ))
+        method, resource, args = user_request(instance, action)
+        remaining = getattr(self, "sql_read_deadline", 0) - time.time()
+        require(remaining > 0, "ordinary disposal deadline reached")
+        response = self.session.request(method, ORIGINS["sql"] + resource, json=args.get("body"),
+            params=args.get("params"), timeout=min(30, remaining), allow_redirects=False)
+        require(200 <= response.status_code < 300, "ordinary privilege disposal rejected; reconcile without replay")
+        return response.json()
 
     def registry_login(self):
         from google.auth.transport.requests import Request

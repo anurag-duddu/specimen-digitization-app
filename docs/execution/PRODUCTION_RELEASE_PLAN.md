@@ -136,11 +136,11 @@ Do not provision Temporal or claim the incomplete Workflows comparison is passed
 | Gate | Required work and exit evidence | Current state |
 |---|---|---|
 | G0 Baseline | Live Git/GitHub/marker reconciliation and safe work ownership | Verified for starting SHA above |
-| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | In progress |
-| G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | Cloud metadata access verified through existing Firebase connection; exact approved Auth account absent and frozen source manifest pending |
-| G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, approved total/daily budget and hard execution bounds | Both user approvals granted; exact live inventory/action/cost evidence still required |
-| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | In progress under granted authority; no live deployment or readiness implied |
-| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | Pending complete candidate; this makes the approved data/runtime workflows available and is not product acceptance |
+| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PR 15 foundation integrated; first-database initialization follow-up awaits independent final review |
+| G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | Exact ten-source metadata/generations frozen; image digests await authorized reads. Admin account absent; Auth subtype and specimen sensitivity decisions pending |
+| G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, one cumulative budget and hard execution bounds | Infrastructure authority granted; USD 5 remains shared across all sessions/days/retries. Complete cost reservation and remaining user decisions are pending |
+| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows merged; narrow data WIF identity and no-role SQL IAM user verified. Initializer/runtime identities, native privilege proof and private admission inputs remain incomplete |
+| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR 15 and exact-main public Hosting smoke verified at `cc3a412`. Initialization follow-up still requires its own source release; this is not product acceptance |
 | G6 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback through the protected data workflow | Pending G2/G3/G5 |
 | G7 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart through the protected runtime workflow | Pending G6 and verified runtime admission |
 | G8 Public acceptance | Green main deploy, exact public marker, matching runtime/data revisions, actual ten-source processing/review/save/reopen and recovery | Not confirmed |
@@ -336,3 +336,63 @@ quiesce workers and retain evidence on failure. No destructive database rollback
   confirm all source is reachable from main. The unfinished real-model worktree
   must remain until its four untracked source/report paths are integrated or
   explicitly preserved. No removal was authorized by this checkpoint.
+
+## Verified checkpoint after PR 15 — 2026-09-08
+
+This checkpoint supersedes the earlier in-progress source-release statuses above.
+PR #15 merged reviewed source `2a787a9` as main
+`cc3a412e933b201229121d2ca61f26ae14d6a66c`.
+[CI/CD 34291763222](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34291763222)
+passed all five checks and the Hosting deploy; runtime candidate CI
+`34291763285` also passed. Root independently verified the public deployment
+marker and Hosting smoke for the exact main SHA. The protected data and runtime
+workflows stopped at credential-free admission because their private inputs were
+incomplete. G5 is verified; G6–G8 remain incomplete.
+
+Canonical local verification passed 1,167 Python tests (30 skipped), 129 Flutter
+tests (7 skipped), Flutter analysis, repository checks and the web release build.
+Skipped and synthetic tests do not count as live acceptance.
+
+The next critical path is:
+
+1. The reviewed keyless data identity and main-only environment setup is
+   verified. The registered IAM SQL user has no database roles; native SQL login
+   remains untested. Exact custom permissions avoid the broader predefined SQL
+   login role. Hosting identity and existing protections were preserved.
+2. Add the missing first-time application database and role initialization to
+   the protected data workflow, with backup/restore evidence and an independently
+   reviewed minimum privilege plan. The existing instance has only `postgres`;
+   the application database is absent. No new persistent instance is planned.
+3. Reconcile Authentication setup: one scoped setup request enabled email/password
+   on the existing app, but the server returned `IDENTITY_PLATFORM` rather than
+   the planned `FIREBASE_AUTH`. The helper stopped; app and billing attachment
+   were unchanged, and no account/email was created. Do not replay or silently
+   treat the failed subtype check as a pass.
+4. Prepare the API and verified App Check configuration; establish the owner's
+   verified account and scoped administrator membership.
+5. Resolve the already-open specimen sensitivity, measured whole-cohort cost,
+   new-backup retention and organization App Check allowance decisions. Complete
+   the cumulative reservation before any billable cohort work.
+6. Run real segmentation and both readers for every region of all ten originals,
+   then pass the authenticated correction/save/reload/search/history and recovery
+   journey on the public URL. Automated classification and clearance stay deferred.
+
+Private setup regressions continue to use failing tests followed by narrow fixes
+and independent review. Setup receipts, source checks and the Hosting checkpoint
+are preparation evidence; the first-ten product release is **not yet accepted**.
+
+## Initialization source candidate — 2026-09-09
+
+The first-database implementation is integrated from runtime `1d24d64` with
+all owner closeouts preserved. Independent SQL/native, cleanup/provenance and
+privacy reviews passed after two reproduced defects were repaired. Canonical
+verification passed **1,285 Python / 56 skipped** and **129 Flutter / 7 skipped**,
+plus analysis, security/workflow checks and the web build. Source PR/CI remains
+the next gate; these results do not establish managed Cloud SQL or live acceptance.
+The detailed contract is [DATABASE_INITIALIZATION.md](DATABASE_INITIALIZATION.md).
+
+The bounded prior-cost audit reconciled twelve setup effects and retained
+response evidence, but did not establish the complete running balance. No
+remaining balance of USD5 is assumed. The five existing owner decisions remain
+pending, and no paid model call or native database/restore execution is admitted
+by this source checkpoint.
