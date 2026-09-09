@@ -100,6 +100,7 @@ def test_full_bootstrap_cli_does_not_require_unrelated_sql_cleanup(tmp_path, mon
     monkeypatch.setattr(importlib.import_module('bootstrap_release'), 'bootstrap',
                         lambda *args: calls.append('bootstrap-completed'))
     output = tmp_path / 'data-ready.json'
+    monkeypatch.setenv('GITHUB_OUTPUT',str(tmp_path/'github-output'))
     def google(*args, **kwargs):
         if kwargs.get('cleanup'):
             assert json.loads(output.read_text())['schema_ready'] is True

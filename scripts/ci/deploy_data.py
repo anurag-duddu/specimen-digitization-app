@@ -93,6 +93,13 @@ def source_fingerprints():
 
 
 def validate_plan(plan, packet, *, now=None):
+    if isinstance(plan, dict) and plan.get("version") == "data-initialization-inventory/v1":
+        from release_initialize import fingerprints, validate_catalog_recipient
+        exact_keys(plan, {"version", "source_sha", "database_etag", "initialization_files", "catalog_recipient"}, "full initialization inventory")
+        validate_catalog_recipient(plan["catalog_recipient"])
+        require(plan["source_sha"] == packet["source_sha"] and plan["initialization_files"] == fingerprints(), "catalog source changed")
+        require(isinstance(plan["database_etag"], str) and 0 < len(plan["database_etag"]) <= 500, "observed SQL revision required")
+        return plan
     if isinstance(plan, dict) and plan.get("version") == "data-inventory/v1":
         exact_keys(plan, {"version", "source_sha", "database_etag", "catalog_sha256"}, "catalog phase")
         require(plan["source_sha"] == packet["source_sha"] and plan["catalog_sha256"] == catalog_fingerprint(), "catalog source mismatch")
@@ -111,10 +118,12 @@ def validate_plan(plan, packet, *, now=None):
             exact_keys(plan["bootstrap"], {"payload", "sha256"}, "bootstrap")
             digest(plan["bootstrap"]["sha256"], "bootstrap artifact")
         return plan
+    initializing = isinstance(plan, dict) and plan.get("version") == "data-initialize-missing/v1"
     exact_keys(plan, {"version", "source_sha", "schema_mode", "source_files", "database_etag", "schema_etag",
-                     "connector_etag", "storage_release_etag", "recovery", "writers", "bootstrap"}, "data plan")
-    require(plan["version"] == "data-apply/v1" and plan["source_sha"] == packet["source_sha"], "data source mismatch")
-    require(plan["schema_mode"] in {"validate_existing", "initialize_empty"}, "unapproved migration mode")
+                     "connector_etag", "storage_release_etag", "recovery", "writers", "bootstrap"}
+                     | ({"initialization", "catalog_recipient"} if initializing else set()), "data plan")
+    require(plan["version"] in {"data-apply/v1", "data-initialize-missing/v1"} and plan["source_sha"] == packet["source_sha"], "data source mismatch")
+    require(plan["schema_mode"] in ({"initialize_missing"} if initializing else {"validate_existing", "initialize_empty"}), "unapproved migration mode")
     require(plan["source_files"] == source_fingerprints(), "committed data source fingerprints changed")
     require(plan["writers"] == "no_runtime_exists", "first-release data changes require independently absent runtime writers")
     for key in ("database_etag", "schema_etag", "connector_etag", "storage_release_etag"):
@@ -129,6 +138,9 @@ def validate_plan(plan, packet, *, now=None):
     if plan["bootstrap"] is not None:
         exact_keys(plan["bootstrap"], {"payload", "sha256"}, "bootstrap")
         digest(plan["bootstrap"]["sha256"], "bootstrap artifact")
+    if initializing:
+        from release_initialize import validate_plan as validate_initialization
+        validate_initialization(plan, packet)
     return plan
 
 
@@ -251,11 +263,22 @@ def sql_inventory(directory, instance, *, repair=False):
 def wait_sql(google, operation, maximum_seconds=1800):
     name = operation.get("name", "")
     require(isinstance(name, str) and re.fullmatch(r"[a-zA-Z0-9_-]+", name), "invalid native SQL operation")
+    identity = {key: operation[key] for key in ("name", "kind", "targetId", "targetProject", "operationType", "user", "insertTime")
+                if key in operation}
     deadline = min(time.time() + maximum_seconds, google.packet["expires_at_unix"])
     while operation.get("status") != "DONE":
         require(time.time() + 5 < deadline, "native SQL operation deadline reached; cleanup and reconcile")
         time.sleep(5)
-        operation = google.request("sql", "GET", f"projects/{PROJECT}/operations/{name}")
+        previous_deadline = getattr(google, "sql_read_deadline", None)
+        google.sql_read_deadline = deadline
+        try:
+            operation = google.request("sql", "GET", f"projects/{PROJECT}/operations/{name}")
+        finally:
+            google.sql_read_deadline = previous_deadline
+        require(isinstance(operation, dict) and all(operation.get(key) == value for key, value in identity.items()),
+                "native SQL operation changed scope, actor or creation provenance while polling")
+        require(time.time() < deadline, "native SQL completion arrived after the original deadline")
+    require(time.time() < deadline, "native SQL completion exceeded its fixed deadline")
     require("error" not in operation, "native SQL operation failed")
     return operation
 
@@ -377,8 +400,16 @@ def rehearse(google, plan, directory):
 def deploy(path, output):
     google = Google(path, "data")
     plan = validate_plan(read_bound_plan(path.parent / "plan.json", google.packet), google.packet)
+    if plan["version"] == "data-initialization-inventory/v1":
+        from release_initialize import inspect_catalog
+        inspect_catalog(google, plan, path.parent, output)
+        return
     if plan["version"] == "data-inventory/v1":
         inventory_catalog(google, plan, path.parent, output)
+        return
+    if plan["version"] == "data-initialize-missing/v1":
+        from release_initialize import prepare_recovery
+        prepare_recovery(google, plan, path.parent, output)
         return
     if plan["version"] != "data-apply/v1":
         verify_or_bootstrap(google, plan, output)
@@ -389,6 +420,10 @@ def deploy(path, output):
         require(google.request("run", "GET", f"projects/{PROJECT}/locations/us-east4/{resource}", missing=True) is None,
                 "runtime writers exist; reviewed maintenance mode is required before later data migrations")
     before = rehearse(google, plan, path.parent)
+    apply_compatible(google, plan, path, output, before)
+
+
+def apply_compatible(google, plan, path, output, before):
     schema, connector = data_bodies(plan)
     for body, key in ((schema, "schema_etag"), (connector, "connector_etag")):
         current = google.request("data", "GET", body["name"], missing=True)
@@ -402,6 +437,9 @@ def deploy(path, output):
     after = sql_inventory(path.parent, SOURCE, repair=True)
     verify_indexes(after)
     require(len(after["rows"]) == 27, "unexpected application table count after schema publication")
+    if plan["version"] == "data-initialize-missing/v1":
+        from release_initialize import native
+        native(path.parent, SOURCE, "post", files=plan["initialization"]["files"], deadline=google.packet["expires_at_unix"])
     if plan["schema_mode"] == "validate_existing":
         require(before["rows"] == after["rows"] and before["sequences"] == after["sequences"], "data or sequence values changed during compatible publication")
     release = google.request("rules", "GET", RULE_RELEASE, missing=True)
@@ -434,6 +472,31 @@ def deploy(path, output):
                                  "membership_bootstrapped": plan["bootstrap"] is not None,
                                  **{role: {"name": value["name"], "etag": value["etag"]} for role, value in observations.items()},
                                  "storage_ruleset": rules["name"], "release_accepted": False}, sort_keys=True) + "\n")
+
+
+def complete_initialization(path, receipt_path, output):
+    from release_initialize import verified_handoff, native
+    google = Google(path, "data")
+    plan = validate_plan(read_bound_plan(path.parent / "plan.json", google.packet), google.packet)
+    require(plan["version"] == "data-initialize-missing/v1", "initialization continuation requires its own phase")
+    result = verified_handoff(receipt_path, google.packet, plan, initialized=True)
+    for resource in ("services/specimen-api", "jobs/specimen-worker"):
+        require(google.request("run", "GET", f"projects/{PROJECT}/locations/us-east4/{resource}", missing=True) is None,
+                "writer appeared after initialization")
+    source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+    require(source.get("settings", {}).get("settingsVersion") == plan["database_etag"], "source capacity or configuration changed")
+    for instance in (SOURCE, CLONE):
+        observed = native(path.parent, instance, "post", files=plan["initialization"]["files"], deadline=google.packet["expires_at_unix"])
+        require(observed["postconditions"] == result["targets"][instance]["native"]["postconditions"], "initialized ownership/privileges changed")
+    recovery = result["recovery"]["native_recovery"]
+    clone = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}")
+    validate_clone_ownership(clone, recovery, google.packet["release_run_id"])
+    recovery_path = path.parent / "native-recovery.json"
+    recovery_path.write_text(json.dumps(recovery)); recovery_path.chmod(0o600)
+    before = sql_inventory(path.parent, SOURCE)
+    require(before["rows"] == [] and before["sequences"] == [], "new initialized database is not empty")
+    # Reuse exactly this workflow's one backup/restore. Never call rehearse again.
+    apply_compatible(google, {**plan, "schema_mode": "initialize_empty"}, path, output, before)
 
 
 def verify_schema_receipt(google, plan):
@@ -485,6 +548,11 @@ def verify_or_bootstrap(google, plan, output):
     output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
 
 
+def emit_result_digest(path):
+    with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
+        handle.write("receipt_sha256=" + hashlib.sha256(path.read_bytes()).hexdigest() + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
@@ -494,10 +562,16 @@ def main():
     action.add_argument("--deploy", action="store_true")
     action.add_argument("--cleanup", action="store_true")
     action.add_argument("--prepare-cleanup", action="store_true")
+    action.add_argument("--prepare-initialization", action="store_true")
+    action.add_argument("--prepare-initializer-intents", action="store_true")
+    action.add_argument("--initialize", action="store_true")
+    action.add_argument("--complete-initialization", action="store_true")
+    action.add_argument("--dispose-initializer", action="store_true")
+    parser.add_argument("--receipt", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        if args.prepare_inputs:
+        if args.prepare_inputs or args.prepare_initialization:
             materialize_inputs(args.packet.parent, dict(os.environ))
         if args.prepare_cleanup:
             packet = cleanup_packet(args.packet, dict(os.environ))
@@ -508,12 +582,55 @@ def main():
         if args.cleanup:
             cleanup_rehearsal(Google(args.packet, "data", cleanup=True), args.packet.parent)
             return
-        packet = admit(args.packet, "data")
+        if args.dispose_initializer:
+            from release_initialize import verified_disposal_inputs, dispose_initializer_target
+            require(args.receipt is not None, "signed recovery and creation journals required")
+            google = Google(args.packet, "data", cleanup=True)
+            recovery, journals = verified_disposal_inputs(google.packet, args.receipt, args.packet.parent)
+            failures = []
+            for instance in (SOURCE, CLONE):
+                try:
+                    dispose_initializer_target(google, instance, recovery, journals, args.packet.parent)
+                except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+                    failures.append(type(error).__name__)
+            require(not failures, "one or more temporary principal disposals remain unconfirmed")
+            return
+        plane = "data-initialization" if args.prepare_initialization or args.initialize or args.prepare_initializer_intents else "data"
+        packet = admit(args.packet, plane)
         plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
+        if args.prepare_initialization or args.initialize or args.prepare_initializer_intents:
+            from release_initialize import (verified_handoff, require_protected_initializer_environment, initialize_targets,
+                prepare_initializer_intents, verified_disposal_inputs)
+            require(plan["version"] == "data-initialize-missing/v1" and args.receipt is not None,
+                    "initializer needs a verified preceding native restoration receipt")
+            require(packet["identity"] == plan["initialization"]["identity"], "initializer identity differs from reviewed plan")
+            require_protected_initializer_environment(plan)
+            recovery = verified_handoff(args.receipt, packet, plan)
+            if args.prepare_initializer_intents:
+                prepare_initializer_intents(Google(args.packet, plane), plan, args.packet.parent, recovery)
+            elif args.initialize:
+                require(args.output is not None, "initialization output required")
+                verified_recovery, journals = verified_disposal_inputs(packet, args.receipt, args.packet.parent)
+                require(verified_recovery == recovery, "published recovery changed before effects")
+                initialize_targets(Google(args.packet, plane), plan, args.packet.parent, recovery, args.output, prepared_intents=journals)
+                emit_result_digest(args.output)
+            else:
+                with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
+                    handle.write(f"provider={packet['identity']['provider']}\n")
+            return
+        if args.complete_initialization:
+            require(args.output is not None and args.receipt is not None, "initialization continuation inputs required")
+            try:
+                complete_initialization(args.packet, args.receipt, args.output)
+                emit_result_digest(args.output)
+            finally:
+                cleanup_rehearsal(Google(args.packet, "data", cleanup=True), args.packet.parent)
+            return
         if args.deploy:
             require(args.output is not None, "output required")
             try:
                 deploy(args.packet, args.output)
+                emit_result_digest(args.output)
             finally:
                 if plan["version"] == "data-apply/v1":
                     cleanup_rehearsal(Google(args.packet, "data", cleanup=True), args.packet.parent)
