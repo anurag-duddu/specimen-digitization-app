@@ -136,11 +136,11 @@ Do not provision Temporal or claim the incomplete Workflows comparison is passed
 | Gate | Required work and exit evidence | Current state |
 |---|---|---|
 | G0 Baseline | Live Git/GitHub/marker reconciliation and safe work ownership | Verified for starting SHA above |
-| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PRs 15–17 reviewed and integrated, including initialization, full-cohort reading admission, retained deadlines and cumulative accounting; actual managed-service qualification remains pending |
+| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PRs 15–19 reviewed and integrated. Catalog credential-mode compatibility and safe diagnostics passed TDD, independent review, full Python3.12/Flutter verification and all five protected platform checks. Actual managed-service qualification remains pending |
 | G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | All ten local originals match frozen cloud size/MD5/CRC metadata; SHA256 and local review complete. Coordinator accepted non-sensitive intake for these ten only. Existing email/password Auth retained; verified admin remains pending |
 | G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, one cumulative budget and hard execution bounds | Infrastructure authority granted; USD 5 remains shared across all sessions/days/retries. Prior uncertainty and bounded metering are explicitly reserved; eight native aggregate reads are complete. Independent review supports the next bounded catalog read within the cumulative cap, pending truthful operator-ledger admission and source gates. Organization reCAPTCHA usage remains a later assessment gate |
-| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows merged; backend environments verified main-only. Six separate service accounts now exist. Existing data WIF mapping isolation is verified, with Hosting and all account policies preserved. Runtime/initializer trust and permissions, native privilege proof and private admission inputs remain pending |
-| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR17 merged as `d34d27032b07c223a7556472535c8fe2ebd828ae`; main CI34316700169 all five checks and Hosting passed. Matching public marker and Hosting smoke verified; product acceptance remains pending |
+| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows merged; backend environments verified main-only. All five providers and ten service accounts exist. Four exact immutable subject repairs and three matching WIF-to-account bindings are natively verified, preserving Hosting and unrelated policies. Scoped image/workload permissions, native SQL qualification and current admission inputs remain pending |
+| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR19 merged as `c2a5ce897e344cb5952cdfaf51aae0747dfe5dde`; main CI34334300400 all five checks and Hosting passed. Matching public marker, root smoke and fresh browser inspected; product acceptance remains pending |
 | G6 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback through the protected data workflow | Pending G2/G3/G5 |
 | G7 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart through the protected runtime workflow | Pending G6 and verified runtime admission |
 | G8 Public acceptance | Green main deploy, exact public marker, matching runtime/data revisions, actual ten-source processing/review/save/reopen and recovery | Not accepted: fresh public browser shows Collection connection required and API not configured; real ten-source processing and review are pending |
@@ -593,3 +593,157 @@ organization projects. The tenth project's Monitoring read was denied, so
 organization-wide allowance coverage remains incomplete. No permission was
 expanded or assessment created. Metadata-only key registration may proceed;
 assessment-cost headroom remains a gate before public browser activation.
+
+
+### Verified PR18 source and provider checkpoint — 2026-09-09
+
+PR18 is live at `bc2b5483dfa831c04bf83734c237f3ef3617f1db`, with reviewed
+tree `28b55ddaa104b89fee268e35d6d47bab79411f9d`. All five main checks and Hosting
+passed in run34323102079 attempt1. The public deployment marker, smoke test and
+fresh browser check were independently inspected. The app still shows its
+unconfigured API screen; this is a source checkpoint, not full acceptance.
+
+All three remaining runtime/initializer WIF providers are now created. Root and
+an independent reviewer reconciled 239 native responses and preserved the
+existing two providers, ten service accounts, eleven policies and empty immutable
+registry. Their exact service-account bindings are prepared offline; workload
+grants and actual runtime delivery remain pending.
+
+The new original data34323102081 attempt1 stopped before cloud credentials and
+skipped every effect job. A fresh catalog-only attempt2 is being reviewed against
+PR18. It carries the old attempted USD0.02 liability and reserves a new USD0.02
+once, with proposed cumulative commitments of USD1.041. No native SQL catalog,
+database initialization, runtime deployment, model inference or signed-in review
+has yet passed. The original ten specimens and cumulative USD5 cap remain fixed.
+
+
+### App Check registration verified; exact GitHub subject repair — 2026-09-09
+
+The existing owned Enterprise key is now registered to the live web app. One
+siteKey PATCH succeeded; root checked all58 native response hashes and the full
+key/config/identity/policy readbacks. Existing token lifetime, score threshold
+and enforcement settings were preserved. No browser assessment or public build
+setting was enabled by this metadata operation.
+
+New-main data run34323102081 attempt2 passed both source and budget admission
+checks, then failed Google federation before SQL because its exact subject
+condition used GitHub's older name-only subject. The repository's native OIDC
+configuration reports an immutable owner/repository-ID prefix, matching the
+current format for its September7 creation. Four backend/initializer providers
+need only that exact subject value corrected; other restrictions and Hosting
+remain fixed. No automatic workflow retry has been requested. Both actual
+catalog attempts retain their USD0.02 uncertain liabilities; current admitted
+commitments remain USD1.041. A later attempt3 draft would add USD0.02 once and
+requires actual repair evidence and a new independent reservation review.
+
+Fresh reads after App Check registration preserve all five providers, ten
+service accounts, eleven policies, enabled APIs and empty immutable registry.
+Three matching WIF service-account binding requests passed independent offline
+review; their executor and narrow immutable-subject planner amendment are being
+tested before any grant. Image-publication permissions are being prepared in
+the existing runtime session. Actual catalog, database initialization, runtime
+deployment, ten-specimen processing and signed-in save/reload are not yet
+confirmed.
+
+The older organization project's Monitoring and Admin Activity reads remain
+denied. The owner has one selectable factual question about its September
+reCAPTCHA usage; the USD5 cap remains in force while backend work continues.
+
+
+2026-09-09 08:28 UTC checkpoint: all four existing data/runtime WIF immutable subjects now natively repaired with 240 verified response receipts and full state preservation. Next: independently reviewed original main data run34323102081 attempt3. Hosting PR18 remains live; runtime/API and full ten-specimen acceptance are not yet ready.
+
+### Catalog and runtime access checkpoint — 2026-09-09 09:12 UTC
+
+The three exact WIF-to-service-account bindings are now complete. Root and an
+independent reviewer reconciled all202 native responses and the full eleven-field
+baseline; only the three reviewed account bindings changed. Image publication
+and workload grants have not started.
+
+Original main data run34323102081 attempt3 passed source/budget admission and
+Google authentication, then failed the reviewed catalog command with a sanitized
+ValueError. Its complete native artifact listing is empty. Actual SQL connection
+and the precise failing operation remain Not confirmed; absence of a file is not
+proof of absence of a connection. No retry was issued. The additive accounting
+draft retains all three actual USD0.02 attempt liabilities as unknown, preserving
+USD1.061 in cumulative commitments; a next reservation has not been issued.
+
+An independent offline test of the unchanged pinned authentication action
+reproduced mode0640 under umask022, which the strict credential reader rejects.
+The scoped source repair tightens only that owned credential descriptor to0600
+before reading it and adds fixed safe failure stages. The general private-file
+policy and successful catalog protocol remain unchanged. TDD and independent
+review passed; full verification on Python3.12 is running in an isolated branch.
+The next native catalog must bind the eventual merged source and its own actual
+main-push run. The historical runner mode and failure cause remain unconfirmed.
+
+Runtime publication preparation now includes successful native direct404 reads
+for both proposed custom roles, a complete FULL/deleted role list showing neither,
+and all four required registry permissions in the exact repository's native
+permission catalog. The organization allow policy is readable; the tested project
+deny and principal-boundary lists returned no entries. Organization deny listing
+is denied and remains unknown. Independent review confirms this restricts certainty
+about successful access, without increasing the proposed allow permissions; it
+requires no new owner permission or denial-policy change. Final exact positive
+grant review, fresh execution reads and protected publisher calls remain necessary.
+
+The owner cost question for the older project's monthly reCAPTCHA usage remains
+pending. No browser assessment, runtime image publication, native database
+initialization, model inference or authenticated ten-specimen acceptance has been
+claimed from these checkpoints.
+
+### Current integrated release checkpoint — 2026-09-09 10:04 UTC
+
+PR19 source repair merged normally as `c2a5ce897e344cb5952cdfaf51aae0747dfe5dde`; exact-head five platform checks and all six main CI/Hosting jobs in34334300400 passed. All four runtime candidate jobs in34334300467 passed. Public deployment marker and independent public smoke match the source. Browser still shows collection connection required/API unconfigured; full product acceptance remains Not confirmed. Root full verification passed1,548 Python tests and133 Flutter tests with explicitly recorded skips; public source verification lives in `catalog-pr19-source-release-20260909/ROOT_PUBLIC_VERIFICATION.json`.
+
+Native source SQL settingsVersion is now5. Independent old/new full comparison established only metadata etag/selfLink/version differences, with every configuration field and full eleven-field runtime/IAM state unchanged. Later native selfLink alias variation was reconciled explicitly without following the link or changing configuration. Root and frontend retained all29 current nativeHTTP200 and ten GitHubHTTP200 preflight receipts; no SQL connection was inferred.
+
+Root issued exactly one fresh source-bound catalog packet for original main data run34334300382 prospective attempt2 at1788948048, expiry1788951648. New20,000-micro reservation carries complete prior33 rows forward; total commitments1,081,000 micros under unchanged5,000,000 ceiling. Final bundle independent review precedes exact existing four-variable/one-secret installation and one original-push rerun. Runtime34334300352 remains original credential-free attempt1 failure with no effects.
+
+The runtime workflow requires actual same-source data-ready proof and API configuration before full runtime preparation; there is no publication-only phase. Preserve this ordering through catalog, exact service-agent registration if absent, verified backup/owned restore, initializer qualification/disposal and compatible data apply. The root independently reviewed the additive no-role service-agent registration executor (37 mocked tests; actual metadata/source checked); actual catalog and eight fresh prerequisite observations are still required. The publication IAM executor is undergoing TDD correction for two independently reproduced deadline bugs, without cloud grants. Offline model cache preparation is complete; no model upload/inference or full-cohort processing has occurred.
+
+The only pending owner cost fact remains older-project September reCAPTCHA usage. Backend work continues without browser assessments. Owner authentication handoff will be requested only once the backend and live UI are ready for it.
+
+### 2026-09-09 10:35 UTC checkpoint
+
+Protected catalog run `34334300382/2` succeeded on main `c2a5ce897e344cb5952cdfaf51aae0747dfe5dde`; signed artifact, actual workflow attempt/environment, encrypted catalog and private plaintext were independently reconciled. Application data and runtime remain uninitialized. Cumulative pilot commitments remain USD 1.081 of USD 5.
+
+The actual native catalog revealed managed `cloudsqladmin` database and inert IAM authentication membership assumptions that the initializer must preserve. A combined red-first compatibility repair is being completed in isolated `codex/managed-cloudsql-catalog`; the initial database-only version passed full CI and independent review, but final combined bytes still require those gates.
+
+The SQL Connect managed identity lookup now uses the documented exact service identity generation design, pending executable independent review and one root-owned bounded action. No role grant, SQL registration, clone, runtime publication or specimen processing has occurred in this checkpoint. Frontend separately reviews repaired publication IAM executor deadlines; root coordinates all native writes and PR sequencing. The existing reCAPTCHA prior-usage question is still pending and limits browser assessment activation only.
+
+### 2026-09-09 10:56 UTC checkpoint
+
+The exact SQL Connect primary managed identity is now verified by one successful Service Usage generation operation and full consumer-project before/after preservation. No SQL registration or schema initialization yet. Root native closure `a9595ea44d1031bd5eb9ba84af3061649d06e018fd0ca39a0ca8b471fcb285cb`; cost commitments unchanged at USD1.081.
+
+Combined managed-database/IAM-marker repair `8a63bcdb10d356f872bec50d817436796d863b36` is open as PR20 with full local gates and independent review complete; exact platform/runtime CI is running. Root holds main c2 stable during the separately reviewed SQL-registration setup. Delivery prepares the next-source catalog issuer; Budget prepares complete phased resource/model cost accounting; Frontend independently verifies actual identity outcome; runtime session authors bounded registrationv3. Root owns native writes, actual packets, PR merge and public verification. No cohort result or end-to-end readiness is claimed.
+
+### 2026-09-09 17:09 UTC resumption
+
+PR20 all five platform checks and four runtime candidate jobs are now green on8a63; protected main remainsc2 while separately reviewed SQL registrationv3 is completed. The prior service identity generation succeeded and must never be replayed. Reconstituted bounded review, catalog and cost workers continue with root as sole native writer. The existing runtime task is active again. Public browser still displays API unconfigured; full app acceptance remains Not confirmed.
+
+Eight SAM cache files were rehashed locally with fresh transfer checksums and unchanged aggregate; no upload/effect. Cost/time analysis now checks the common segmentation/reader timeout before committing the single30-minute worker run. USD1.081 cumulative holds and the frozen ten remain unchanged; no limits reset, old packet reuse or processing credit from local SAM qualification.
+
+Correction at 2026-09-09 17:03 UTC: the preceding root resumption entry labeled17:09 UTC was written before17:03 UTC; the heading time was an operator transcription error. The reported GitHub/browser/local checksum facts and no-effect state are unchanged.
+
+### 2026-09-09 19:02 UTC — integrated release checkpoint
+
+The selected first release remains all ten frozen specimens through segmentation, both independent readings for every retained region, correction/save/reopen in human review. Classification and institutional clearance remain deferred. USD5 is one cumulative incremental pilot cap across all tasks and retries; retained commitments are USD1.081. No new catalog, backup, image upload, runtime or model execution reservation has been issued in this checkpoint.
+
+SQL Connect registration completed exactly once at18:19:24UTC using the reviewed no-role request. Full93 original request/response triples and all16 before/after fields were independently verified: only the intended SQL user was added. Root closure da2e8d22 and independent outcome c68ee26f are retained privately. Native PostgreSQL privileges remain Not confirmed until the next protected catalog. The original generation and registration intents are permanent and must never be replayed.
+
+PR20 merged as0547636b66b82a8666616a4c00306a79039af29a. All five main platform checks and all four runtime candidate jobs passed. Hosting upload succeeded, but its immediate public marker read was stale and the deploy job failed. Later root public marker and smoke match054763/run34389444933/attempt1. This is not a green source-release completion; a bounded, strict marker propagation retry is being developed through TDD before the next normal PR. Protected runtime/data admission failed with effect jobs skipped and no rerun.
+
+The coordinator integrates reviewed source in isolated codex/pilot-release-completion based054763. Cohort v2 adds atomic all-ten SAM reservation and expansion from actual retained regions, plus consistent reader deadlines; 176 independent checks pass, including the originally failing near-expiry schedule. Finite backup expiry and maximum-byte proof pass653 CI-script and20 independent checks; the optional path preserves legacy behavior. Native backup response shape, expiry enforcement and restore success remain Not confirmed. Full combined verification and the next PR remain pending.
+
+Current orchestration uses the same inherited coding-model configuration, with no model override or additional key. The bounded collaboration workers inherit the coordinator's model and reasoning settings; product inference remains the pinned SAM, Qwen/Novita and Muse/DeepInfra routes.
+
+| Active owner | Current responsibility and next evidence |
+|---|---|
+| Root coordinator01a082b2-c2c3-70d2-be90-7bfb622c9102 | Sole native/cloud/GitHub writer; integrate exact reviewed bytes, full verify, PR/main release, cost/source packets, protected data/runtime and final live acceptance |
+| complete_pilot_cost | Completed cost worksheet, cohort repair and independent backup audit; independently tests the strict Hosting verifier |
+| identity_registration_review | Completed registration and cohort outcome reviews; independently reviews the concrete cache upload/cleanup executables |
+| next_catalog_issuer | Authors bounded eight-file cache transfer and exact-generation cleanup with offline TDD; preserve original frozen catalog issuer and later refreeze it for actual final source and registration evidence |
+| Existing runtime task01a082b4-a9bd-7392-a73b-57ca45532fb7 | Completed finite-backup repair; authors strict Hosting propagation verification in a separate worktree |
+| Existing read-only release monitor01a08342-516e-7d53-a6ce-0f28cf63d1a3 | Tracks actual workflow completion/failure; root handles public access where monitor DNS is unavailable |
+
+Next: finish the Hosting repair and independent review; run combined verification; use normal PR and exact-source checks. Issue one fresh final-source catalog after these changes, carrying all prior commitments. Then qualify backup/owned restore, initialize/dispose temporary privilege, publish compatible data, qualify runtime/cache/model access and run the one bounded ten-specimen worker. Verify authenticated human review/save/reopen on the live URL. The older-project reCAPTCHA usage question and verified owner authentication remain separate owner facts; backend preparation continues without inventing answers or overriding identity.

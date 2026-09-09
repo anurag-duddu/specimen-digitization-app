@@ -129,13 +129,19 @@ def validate_plan(plan, packet, *, now=None):
     require(plan["writers"] == "no_runtime_exists", "first-release data changes require independently absent runtime writers")
     for key in ("database_etag", "schema_etag", "connector_etag", "storage_release_etag"):
         require(plan[key] is None or isinstance(plan[key], str) and 0 < len(plan[key]) <= 500, "invalid expected data revision")
-    recovery = exact_keys(plan["recovery"], {"backup_id", "clone", "recipe", "expires_at_unix"}, "recovery")
+    recovery = exact_keys(plan["recovery"], {"backup_id", "clone", "recipe", "expires_at_unix"}
+                          | ({"backup_retention"} if "backup_retention" in plan["recovery"] else set()), "recovery")
     require(recovery["clone"] == CLONE and (recovery["backup_id"] is None or isinstance(recovery["backup_id"], str)
             and re.fullmatch(r"[1-9][0-9]*", recovery["backup_id"])), "unapproved recovery target or backup")
     exact_keys(recovery["recipe"], {"tier", "source_version", "source_edition", "source_disk_gb"}, "restore recipe")
     now = time.time() if now is None else now
     integer(recovery["expires_at_unix"], 1, 2**53, "recovery expiry")
     require(now < recovery["expires_at_unix"] <= now + 7200, "recovery deadline expired or over two hours")
+    if "backup_retention" in recovery:
+        from release_backup import validate_retention
+        require(recovery["backup_id"] is None, "finite retention applies only to the one new backup")
+        validate_retention(recovery["backup_retention"], packet, now=now,
+                           restore_expiry=recovery["expires_at_unix"], disk_gb=recovery["recipe"]["source_disk_gb"])
     if plan["bootstrap"] is not None:
         exact_keys(plan["bootstrap"], {"payload", "sha256"}, "bootstrap")
         digest(plan["bootstrap"]["sha256"], "bootstrap artifact")
@@ -222,7 +228,11 @@ def list_sql(google, resource, **params):
     raise ValueError("native SQL inventory exceeded bounded pages")
 
 
-def ensure_backup(google, backup_id, directory):
+def ensure_backup(google, backup_id, directory, *, retention=None, source=None):
+    if retention is not None:
+        from release_backup import ensure_finite_backup
+        require(backup_id is None, "finite retention cannot adopt an existing backup")
+        return ensure_finite_backup(google, directory, retention, source)
     resource = f"projects/{PROJECT}/instances/{SOURCE}/backupRuns"
     description = "specimen-first-ten-" + google.packet["pilot"]["manifest_sha256"]
     receipt_path = directory / "native-backup.json"
@@ -370,13 +380,18 @@ def rehearse(google, plan, directory):
     else:
         verify_indexes(before)
     require(not (directory / "native-recovery.json").exists(), "rehearsal operation already recorded; reconcile without replay")
-    backup_id = ensure_backup(google, plan["recovery"]["backup_id"], directory)
+    backup_args = {"retention": plan["recovery"]["backup_retention"], "source": source} if "backup_retention" in plan["recovery"] else {}
+    backup_id = ensure_backup(google, plan["recovery"]["backup_id"], directory, **backup_args)
+    from release_backup import attach_proof
+    backup_proof = {"backup_id": backup_id}
+    attach_proof(backup_proof, plan, google.packet, directory)
     operation = google.request("sql", "POST", f"projects/{PROJECT}/instances", body=body)
     # Retain creation operation before waiting, so interrupted insertion is not
     # mistaken for permission to submit another native restore.
     creation = {"clone": CLONE, "source": SOURCE, "backup_id": backup_id,
                 "run_id": google.packet["release_run_id"], "run_attempt": google.packet["release_run_attempt"],
                 "create_operation": operation["name"], "expires_at_unix": plan["recovery"]["expires_at_unix"]}
+    creation.update(backup_proof)
     receipt_path = directory / "native-recovery.json"
     receipt_path.write_text(json.dumps(creation)); receipt_path.chmod(0o600)
     wait_sql(google, operation, maximum_seconds=900)

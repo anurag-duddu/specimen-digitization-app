@@ -122,7 +122,9 @@ def invoke_model(adapter, specimen, operation, *, region=None, route=None):
     result = run_isolated(
         adapter.model_effect or model_child,
         payload,
-        run.profile.execution.external_timeout_seconds,
+        run.profile.execution.effect_timeout_for_step(
+            "transcribe:region:route" if operation == "transcribe" else operation
+        ),
         4 * 1024 * 1024,
         max_input_bytes=4 * 1024 * 1024,
     )

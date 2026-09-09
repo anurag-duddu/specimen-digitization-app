@@ -274,6 +274,13 @@ class ExecutionPolicy(Record):
     max_tokens: int = Field(default=160000, ge=1)
     max_active_seconds: float = Field(default=3600, gt=0)
     external_timeout_seconds: float = Field(default=120, gt=0, le=600)
+    reader_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        strict=True,
+        exclude_if=lambda value: value is None,
+    )
     lease_seconds: float = Field(default=180, gt=0, le=900)
     max_attempts: int = Field(default=3, ge=1, le=10)
     approved_cost_limit_micros: int | None = Field(default=None, ge=0)
@@ -286,11 +293,21 @@ class ExecutionPolicy(Record):
 
     @model_validator(mode="after")
     def timeout_fits_lease(self):
+        if (
+            self.reader_timeout_seconds is not None
+            and self.reader_timeout_seconds > self.external_timeout_seconds
+        ):
+            raise ValueError("Reader timeout cannot exceed the external timeout")
         if self.lease_seconds < self.external_timeout_seconds + 30:
             raise ValueError(
                 "Lease must exceed total external timeout by at least30 seconds"
             )
         return self
+
+    def effect_timeout_for_step(self, step):
+        if step.startswith("transcribe:") and self.reader_timeout_seconds is not None:
+            return self.reader_timeout_seconds
+        return self.external_timeout_seconds
 
 
 class BudgetUsage(Record):

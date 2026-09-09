@@ -128,11 +128,15 @@ def validate_recovery_receipt(receipt, packet, plan, *, now=None, cleanup=False)
             and receipt.get("catalog_sha256") == plan["initialization"]["catalog_sha256"]
             and receipt.get("initialization_files") == fingerprints(), "stale or incomplete native restoration proof")
     native = exact_keys(receipt["native_recovery"], {"clone", "source", "source_sha", "backup_id", "run_id", "run_attempt",
-        "create_operation", "expires_at_unix", "create_time", "restore_operation", "native_restore_verified", "inventory_sha256"}, "native restoration")
+        "create_operation", "expires_at_unix", "create_time", "restore_operation", "native_restore_verified", "inventory_sha256"}
+        | ({"backup_retention"} if "backup_retention" in plan["recovery"] else set()), "native restoration")
     require(native["clone"] == CLONE and native["source"] == SOURCE and native["source_sha"] == packet["source_sha"]
             and native["run_id"] == packet["release_run_id"] and native["run_attempt"] == packet["release_run_attempt"]
             and native["native_restore_verified"] is True and native["inventory_sha256"] == receipt["catalog_sha256"]
             and native["expires_at_unix"] == plan["recovery"]["expires_at_unix"], "native restore ownership or catalog binding differs")
+    if "backup_retention" in plan["recovery"]:
+        from release_backup import validate_proof
+        validate_proof(native["backup_retention"], plan["recovery"]["backup_retention"], native["backup_id"], packet)
     now = time.time() if now is None else now
     start, end = receipt.get("parity_at_unix"), receipt.get("privilege_deadline_unix")
     integer(start, packet["issued_at_unix"], packet["expires_at_unix"], "native parity time")
@@ -238,13 +242,18 @@ def prepare_recovery(google, plan, directory, output):
     files, catalog = plan["initialization"]["files"], plan["initialization"]["catalog_sha256"]
     private_evidence = {"recipient": plan["catalog_recipient"], "provenance": catalog_provenance(google.packet)}
     native(directory, SOURCE, "absence", files=files, deadline=expiry, expected_catalog=catalog, **private_evidence)
-    backup_id = data.ensure_backup(google, plan["recovery"]["backup_id"], directory)
+    backup_args = {"retention": plan["recovery"]["backup_retention"], "source": source} if "backup_retention" in plan["recovery"] else {}
+    backup_id = data.ensure_backup(google, plan["recovery"]["backup_id"], directory, **backup_args)
     backup = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}/backupRuns/{backup_id}")
     require(0 <= time.time() - data.stamp(backup.get("endTime")) <= 7200, "stale or unobserved source backup checkpoint")
+    from release_backup import attach_proof
+    backup_proof = {"backup_id": backup_id}
+    attach_proof(backup_proof, plan, google.packet, directory)
     operation = once(directory, "clone-create", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances", body=body))
     creation = {"clone": CLONE, "source": SOURCE, "source_sha": google.packet["source_sha"], "backup_id": backup_id,
                 "run_id": google.packet["release_run_id"], "run_attempt": google.packet["release_run_attempt"],
                 "create_operation": operation["name"], "expires_at_unix": plan["recovery"]["expires_at_unix"]}
+    creation.update(backup_proof)
     receipt_path = directory / "native-recovery.json"
     receipt_path.write_text(json.dumps(creation)); receipt_path.chmod(0o600)
     data.wait_sql(google, operation, maximum_seconds=900)
