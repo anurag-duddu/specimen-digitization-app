@@ -8,7 +8,7 @@ cannot stand in for merged-source or successful-check observations.
 from __future__ import annotations
 
 import base64
-from datetime import date
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import os
@@ -17,6 +17,7 @@ import re
 import stat
 import subprocess
 import time
+from uuid import UUID
 
 from release_context import PLANES, PROJECT, REPOSITORY, validate_context
 from validate_release_packet import CHECKS, DIGEST, SHA, exact_keys
@@ -151,9 +152,112 @@ def private_bytes(path: Path, limit: int = 1048576) -> bytes:
     return raw
 
 
+def coordinator_liabilities(ledger, packet, seen):
+    """Preserve pinned operator accounting; this is not a verified price bound."""
+    anchor = exact_keys(ledger["accounting"], {"accounting_start_unix", "coordinator_task", "manifest_sha256",
+                                             "snapshot_sha256", "snapshot_json"}, "accounting anchor")
+    integer(anchor["accounting_start_unix"], 1, packet["issued_at_unix"], "accounting start")
+    task = anchor["coordinator_task"]
+    require(isinstance(task, str) and str(UUID(task)) == task, "invalid coordinator task UUID")
+    require(task == packet["independent_review"]["coordinator_session"], "different accounting coordinator")
+    require(anchor["manifest_sha256"] == ledger["manifest_sha256"], "accounting manifest mismatch")
+    digest(anchor["snapshot_sha256"], "coordinator snapshot")
+    raw = anchor["snapshot_json"]
+    require(isinstance(raw, str) and 0 < len(raw.encode()) <= 65536, "invalid coordinator snapshot bytes")
+    require(hashlib.sha256(raw.encode()).hexdigest() == anchor["snapshot_sha256"], "coordinator snapshot digest mismatch")
+    snapshot = exact_keys(strict_json(raw), {"schema", "currency", "scope", "accounting_start_unix", "resets_allowed",
+        "limit_micros", "coordinator_task", "frozen_metadata_sha256", "prior_evidence", "entries", "total_held_micros",
+        "actual_prior_total_micros", "available_for_further_workloads_micros", "authorized_next_operation",
+        "production_admission_compatible", "notes", "created_at"}, "coordinator snapshot")
+    require(snapshot["schema"] == "coordinator-cumulative-release-budget/v1"
+            and snapshot["currency"] == ledger["currency"] and snapshot["scope"] == ledger["scope"]
+            and snapshot["coordinator_task"] == task and snapshot["resets_allowed"] is False,
+            "accounting scope or reset mismatch")
+    integer(snapshot["accounting_start_unix"], 1, packet["issued_at_unix"], "snapshot accounting start")
+    require(snapshot["accounting_start_unix"] == anchor["accounting_start_unix"], "accounting start changed")
+    integer(snapshot["limit_micros"], 1, 5000000, "accounting limit")
+    require(packet["budget"]["total_limit_micros"] <= snapshot["limit_micros"], "accounting limit increased")
+    integer(snapshot["total_held_micros"], 1, snapshot["limit_micros"], "accounting total")
+    digest(snapshot["frozen_metadata_sha256"], "frozen accounting metadata")
+    prior_evidence = exact_keys(snapshot["prior_evidence"], {"path", "sha256"}, "prior evidence reference")
+    digest(prior_evidence["sha256"], "prior evidence")
+    require(isinstance(prior_evidence["path"], str) and 0 < len(prior_evidence["path"]) <= 4096,
+            "invalid prior evidence reference")
+    require(snapshot["actual_prior_total_micros"] is None
+            and snapshot["available_for_further_workloads_micros"] is None
+            and type(snapshot["production_admission_compatible"]) is bool,
+            "prior uncertainty cannot be relabeled actual or available funds")
+    require(isinstance(snapshot["notes"], list) and all(isinstance(note, str) for note in snapshot["notes"])
+            and isinstance(snapshot["authorized_next_operation"], str), "invalid accounting annotations")
+    require(isinstance(snapshot["created_at"], str), "invalid snapshot date")
+    created = datetime.fromisoformat(snapshot["created_at"])
+    require(created.tzinfo is not None and created.utcoffset().total_seconds() == 0
+            and anchor["accounting_start_unix"] <= created.timestamp() <= packet["issued_at_unix"], "invalid snapshot date")
+    require(isinstance(snapshot["entries"], list) and isinstance(ledger["operator_entries"], list), "operator accounting entries required")
+    operators, prior, snapshot_seen, total = {}, None, set(), 0
+    for row in snapshot["entries"]:
+        require(isinstance(row, dict), "invalid coordinator entry")
+        is_prior = "coverage" in row
+        extra = {"coverage"} if is_prior else {"category", "plan_sha256"}
+        exact_keys(row, {"operation_id", "owner_kind", "owner_task", "state", "held_micros"} | extra, "coordinator entry")
+        ident = row["operation_id"]
+        require(isinstance(ident, str) and 1 <= len(ident) <= 200 and ident not in snapshot_seen,
+                "duplicate or invalid coordinator operation")
+        snapshot_seen.add(ident)
+        require(isinstance(row["owner_kind"], str) and row["owner_kind"] in {"coordinator", "operator"}
+                and isinstance(row["owner_task"], str) and str(UUID(row["owner_task"])) == row["owner_task"]
+                and (row["owner_kind"] != "coordinator" or row["owner_task"] == task), "unrecognized accounting owner")
+        require(isinstance(row["state"], str) and row["state"] in {"settled", "unknown", "reserved"}, "invalid coordinator state")
+        integer(row["held_micros"], 1 if row["state"] == "unknown" else 0, 5000000, "coordinator liability")
+        total += row["held_micros"]
+        if is_prior:
+            require(prior is None and row["state"] == "unknown" and row["owner_kind"] == "coordinator"
+                    and isinstance(row["coverage"], str) and row["coverage"], "one explicit prior uncertainty required")
+            prior = row
+        else:
+            require(isinstance(row["category"], str) and row["category"] in CATEGORIES, "unknown operator category")
+            digest(row["plan_sha256"], "operator evidence")
+            operators[ident] = row
+    require(prior is not None and total == snapshot["total_held_micros"], "accounting holds omitted or total changed")
+    start_day = datetime.fromtimestamp(anchor["accounting_start_unix"], timezone.utc).date().isoformat()
+    issued_day = datetime.fromtimestamp(packet["issued_at_unix"], timezone.utc).date().isoformat()
+    rows, observed = [], set()
+    for entry in [*ledger["operator_entries"], ledger["prior_uncertainty"]]:
+        is_prior = entry is ledger["prior_uncertainty"]
+        exact_keys(entry, {"operation_id", "task_id", "state", "amount_micros", "day_utc", "evidence_sha256"}
+                   | (set() if is_prior else {"category"}), "prior carry" if is_prior else "operator entry")
+        ident = entry["operation_id"]
+        require(isinstance(ident, str) and 1 <= len(ident) <= 200 and ident not in seen, "duplicate or invalid cost operation")
+        seen.add(ident)
+        expected = prior if is_prior else operators.get(ident)
+        require(expected is not None and ident == expected["operation_id"], "operator or prior liability not in accounting snapshot")
+        require(isinstance(entry["task_id"], str) and str(UUID(entry["task_id"])) == entry["task_id"]
+                and entry["task_id"] == expected["owner_task"], "invalid operator task UUID")
+        require(entry["state"] == expected["state"], "accounting liability state changed")
+        integer(entry["amount_micros"], expected["held_micros"], 5000000, "retained liability")
+        digest(entry["evidence_sha256"], "retained operation evidence")
+        require(entry["evidence_sha256"] == (prior_evidence["sha256"] if is_prior else expected["plan_sha256"]),
+                "accounting evidence changed")
+        day = entry["day_utc"]
+        require(isinstance(day, str) and date.fromisoformat(day).isoformat() == day
+                and start_day <= day <= issued_day, "invalid operator cost day")
+        if is_prior:
+            require(day == start_day, "prior carry must retain accounting start day")
+        else:
+            require(entry["category"] == expected["category"], "operator category changed")
+            observed.add(ident)
+            rows.append(entry)
+    require(observed == set(operators), "operator liabilities omitted from accounting")
+    return rows, ledger["prior_uncertainty"]
+
+
 def validate_cost_ledger(ledger, packet):
-    ledger = exact_keys(ledger, {"version", "currency", "manifest_sha256", "scope", "entries"}, "shared cost ledger")
-    require(ledger["version"] == "release-cost-ledger/v1" and ledger["currency"] == "USD"
+    require(isinstance(ledger, dict), "invalid shared cost ledger")
+    version = ledger.get("version")
+    require(version in ("release-cost-ledger/v1", "release-cost-ledger/v2"), "unsupported shared cost ledger")
+    additions = {"accounting", "operator_entries", "prior_uncertainty"} if version == "release-cost-ledger/v2" else set()
+    ledger = exact_keys(ledger, {"version", "currency", "manifest_sha256", "scope", "entries"} | additions, "shared cost ledger")
+    require(ledger["currency"] == "USD"
             and ledger["scope"] == "entire_first_ten_all_sessions_and_retries"
             and ledger["manifest_sha256"] == packet["pilot"]["manifest_sha256"], "shared ledger scope mismatch")
     require(isinstance(ledger["entries"], list), "cost entries required")
@@ -174,8 +278,17 @@ def validate_cost_ledger(ledger, packet):
         if (entry["plane"], entry["run_id"], entry["run_attempt"]) == (packet["plane"], packet["release_run_id"], packet["release_run_attempt"]):
             require(entry["state"] == "reserved", "this operation may already have run; reconcile without replay")
             admitted[entry["category"]] += entry["amount_micros"]
-    require(sum(by_day.values()) <= packet["budget"]["total_limit_micros"], "cumulative shared budget exhausted")
-    require(all(value <= packet["budget"]["daily_limit_micros"] for value in by_day.values()), "daily shared budget exhausted")
+    carry = 0
+    if version == "release-cost-ledger/v2":
+        operators, prior = coordinator_liabilities(ledger, packet, seen)
+        for entry in operators:
+            by_day[entry["day_utc"]] = by_day.get(entry["day_utc"], 0) + entry["amount_micros"]
+        carry = prior["amount_micros"]
+        by_day.setdefault(prior["day_utc"], 0)
+    require(sum(by_day.values()) + carry <= packet["budget"]["total_limit_micros"], "cumulative shared budget exhausted")
+    # An aggregate uncertainty has no verified service-day allocation. Retain
+    # its full hold against every represented day, but count it once cumulatively.
+    require(all(value + carry <= packet["budget"]["daily_limit_micros"] for value in by_day.values()), "daily shared budget exhausted")
     require(admitted == {entry["category"]: entry["ceiling_micros"] for entry in packet["budget"]["reservations"]},
             "planned operations lack exact existing reservations in the shared ledger")
 

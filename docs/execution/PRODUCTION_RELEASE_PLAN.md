@@ -1,6 +1,6 @@
 # Production release plan and coordination
 
-Owner: task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `V0.1`, canonical
+Owner: task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `codex/cohort-budget-admission`, canonical
 checkout. Started 2026-09-08. Status: active implementation and qualification;
 end-to-end production acceptance is **Not confirmed**.
 
@@ -136,14 +136,14 @@ Do not provision Temporal or claim the incomplete Workflows comparison is passed
 | Gate | Required work and exit evidence | Current state |
 |---|---|---|
 | G0 Baseline | Live Git/GitHub/marker reconciliation and safe work ownership | Verified for starting SHA above |
-| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PR 15 foundation integrated; first-database initialization follow-up awaits independent final review |
-| G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | Exact ten-source metadata/generations frozen; image digests await authorized reads. Admin account absent; Auth subtype and specimen sensitivity decisions pending |
-| G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, one cumulative budget and hard execution bounds | Infrastructure authority granted; USD 5 remains shared across all sessions/days/retries. Complete cost reservation and remaining user decisions are pending |
-| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows merged; narrow data WIF identity and no-role SQL IAM user verified. Initializer/runtime identities, native privilege proof and private admission inputs remain incomplete |
-| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR 15 and exact-main public Hosting smoke verified at `cc3a412`. Initialization follow-up still requires its own source release; this is not product acceptance |
+| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PR 15 foundation and PR 16 initialization independently reviewed and integrated; actual managed-service qualification remains pending |
+| G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | All ten local originals match frozen cloud size/MD5/CRC metadata; SHA256 and local review complete. Coordinator accepted non-sensitive intake for these ten only. Existing email/password Auth retained; verified admin remains pending |
+| G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, one cumulative budget and hard execution bounds | Infrastructure authority granted; USD 5 remains shared across all sessions/days/retries. Prior uncertainty and bounded metering are explicitly reserved; eight native aggregate reads are complete. Independent review supports the next bounded catalog read within the cumulative cap, pending truthful operator-ledger admission and source gates. Organization reCAPTCHA usage remains a later assessment gate |
+| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows and initialization phase merged; narrow data WIF identity and API-observed no-role SQL IAM user verified. The three missing or incomplete backend environment guards are now verified main-only. Initializer/runtime identities, native privilege proof and private admission inputs remain incomplete |
+| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR 16 and exact-main public Hosting smoke verified at `e0187b1`; this is a source delivery checkpoint, not product acceptance |
 | G6 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback through the protected data workflow | Pending G2/G3/G5 |
 | G7 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart through the protected runtime workflow | Pending G6 and verified runtime admission |
-| G8 Public acceptance | Green main deploy, exact public marker, matching runtime/data revisions, actual ten-source processing/review/save/reopen and recovery | Not confirmed |
+| G8 Public acceptance | Green main deploy, exact public marker, matching runtime/data revisions, actual ten-source processing/review/save/reopen and recovery | Not accepted: fresh public browser shows Collection connection required and API not configured; real ten-source processing and review are pending |
 | G9 Closeout | Record complete release receipt, limitations, stop/rollback instructions and append-only learnings; preserve evidence before pruning | Pending G8 |
 
 Use local synthetic fixtures to develop tests, then real isolated data/services,
@@ -396,3 +396,143 @@ response evidence, but did not establish the complete running balance. No
 remaining balance of USD5 is assumed. The five existing owner decisions remain
 pending, and no paid model call or native database/restore execution is admitted
 by this source checkpoint.
+
+## Verified source checkpoint after PR 16 — 2026-09-09
+
+[PR16](https://github.com/anurag-duddu/specimen-digitization-app/pull/16) merged
+reviewed source `04eb3277eb34b2495efa9019d1b812d2a0fd4efa` as main
+`e0187b132519c4d4dd17c878ff05201a20d7a01e`; the trees are identical.
+[Main CI/CD34307140346](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34307140346)
+passed all five checks and Hosting deployment. Runtime candidate CI34307140526
+also passed. Root verified the exact public deployment marker and Hosting smoke.
+
+Fresh browser verification shows **Collection connection required** and an
+unconfigured application API. Data34307140330 and runtime34307140332 stopped
+at credential-free admission; their effect jobs were skipped. G5 is verified
+for this source, while G6–G8 remain incomplete. This source checkpoint does not
+admit a catalog connection, initializer privilege, restore clone or model call.
+
+The five existing decisions remain pending. The cumulative USD5 balance is
+Not confirmed; prior costs must be reconciled before the next billable action.
+All ten real inputs, both readings for every retained region, human correction
+and durable save/readback remain required. Classification and clearance stay
+deferred under the approved human-review scope.
+
+## Configuration continuation after user go-ahead — 2026-09-09
+
+The user authorized continuation and asked what still needs their input. The
+coordinator owns routine implementation choices: retain the observed
+email/password Identity Platform configuration without reprovisioning; implement
+the all-ten segmentation-first, full-cohort reader reservation barrier with TDD;
+and preserve backups without assuming new deletion authority. These are explicit
+coordinator choices within the existing release scope, not claims that the user
+selected every earlier decision card.
+
+Only two owner facts are pending in the replacement decision cards: sensitivity
+and provider use for the exact frozen ten, and other organization reCAPTCHA/App
+Check usage this month. Account password creation and email verification will be
+a later owner action through the real sign-in flow. The existing private admin
+identity does not need to be requested again.
+
+Fresh Firebase connector reads verified the intended project/account and enabled
+billing. SQL Connect's remote schema remains ephemeral with validation NONE;
+this is not a durable database proof. GitHub has no repository variables and
+only the existing FlutterFire configuration secret, confirming that public API
+and App Check build settings are still absent. Hosting is verified; backend
+configuration, native qualification, cumulative cost admission and authenticated
+full-cohort acceptance remain our implementation work. No cloud effect or model
+execution was performed during this check.
+
+## Direct configuration investigation — 2026-09-09
+
+At the user's request, the coordinator inspected the existing Infinative Chrome
+Firebase tab and working authenticated connectors. The browser requires Google
+reauthentication and the Mac subsequently locked; connected administrative reads
+remain available. These are observed access states, not missing product decisions.
+The previous sensitivity and organization-usage cards are superseded: sensitivity
+for the exact frozen ten is resolved by local review, and the coordinator owns
+investigation of organization usage before actual App Check assessments.
+
+All ten existing local originals match the frozen Firebase generation metadata
+(size, MD5 and CRC32C); independent full-image review and SHA256 recording are
+complete. The coordinator accepted non-sensitive intake only for this private
+human-review pilot. This does not grant automated institutional clearance or
+validate the source collection's taxonomy. Preserve literal label readings and
+all ten originals. No cloud image fetch or model call was needed for this review.
+
+Fresh native reads confirm only `postgres` in the existing SQL instance, a
+disabled Cloud Run API, and no App Check/reCAPTCHA registration. The existing
+inference credential version is enabled and reusable. GitHub's backend release
+environments lack required guards or private inputs. Hosting continues to serve
+the verified PR16 source and the unconfigured-API setup screen.
+
+Eight fixed, bounded Monitoring GET requests completed with native receipts.
+Their conservative read cost is at most USD0.000017; the full USD0.001 allowance
+and USD1 prior-uncertainty hold remain retained. This is not a settled invoice or
+a claim that the rest of the budget is available for cohort work. Independent
+review supports an additional USD0.02 catalog-only reservation, subject to source
+and identity admission. The current production ledger requires workflow IDs for
+all entries; a minimal additive contract is being tested to preserve actual
+operator provenance and prior uncertainty without inventing workflow runs.
+
+The all-ten reading barrier candidate `3bb8d17` is integrated locally for review.
+Independent testing found that per-specimen time checks do not ensure all
+remaining readings fit the launch and worker deadline. That regression must be
+fixed and reviewed before the next source release. GitHub environment guard
+setup is being prepared and tested separately; no guard effect is claimed here.
+
+### Verified backend environment guards
+
+The coordinator executed the independently reviewed six-action GitHub setup.
+`runtime-production`, `runtime-build-production`, and
+`data-initialization-production` now each have exactly one `main` branch policy.
+Native full listings and individual policy readbacks verified all six effects;
+`production`, `data-production`, and main branch protections were preserved.
+No workflow, cloud resource, secret, input or deployment was changed by this
+operation. The existing runtime environment identity was retained.
+
+Further native inventory confirms Artifact Registry is disabled alongside Cloud
+Run, and the separate runtime/initializer service accounts and WIF providers are
+absent. Only the existing Hosting and ordinary data providers are present. The
+coordinator is preparing the minimum already-authorized setup from those facts.
+
+### Integrated cohort, transport and cumulative accounting fixes
+
+The next candidate includes the all-ten segmentation-first reader barrier and
+the independently repaired aggregate time admission. Every retained region and
+both pinned readers remain required. Durable attempt claims retain uncertain
+liability across restarts; launch and worker checks preserve the original
+execution deadline, including malformed retained-window rejection.
+
+Native SQL Connect numeric transport exposed a separate circuit-state defect:
+integral JSON values can return as floating-point values. The repository adapter
+now normalizes only validated persisted integer fields, preserves strict public
+validation and compare-and-swap revision checks, and rejects unsafe writes.
+Generated ten-specimen/two-region coverage verifies all forty reader attempts;
+it does not count as actual specimen processing.
+
+The additive `release-cost-ledger/v2` contract preserves the exact original
+coordinator snapshot, real operator provenance and the positive prior-uncertainty
+hold alongside exact workflow reservations. The cumulative USD5 cap cannot reset
+between dates, sessions or retries. Independent accounting and source reviews
+passed; actual catalog admission still requires its reviewed private packet.
+
+Canonical `scripts/ci/verify.sh` passed: **1,478 Python tests / 56 skipped**,
+**129 Flutter tests / 7 skipped**, repository checks, analysis and the web build.
+The source PR, all five exact-head checks and protected main release remain the
+next source gates. No native SQL catalog or paid model inference is claimed.
+
+### Runtime API setup reconciled
+
+One native request enabled the Cloud Run API. Its original operation completed;
+fresh reads confirm that both Cloud Run and Artifact Registry APIs are now
+enabled. Artifact Registry changed during that sequence, so the helper stopped
+before a second intent or enable request. The coordinator and independent
+reviewer retained that original blocked result and added a separate observed
+closure; no replay or unverified causal claim was used.
+
+Fresh regional inventory confirms the runtime registry is absent and there are
+no Cloud Run services or worker jobs. The separate service accounts, minimum IAM,
+registry, actual SQL initialization and runtime delivery remain necessary setup.
+The current browser tool reports a locked Mac; the owner has one pending unlock
+and Google sign-in action while connected-tool work continues.

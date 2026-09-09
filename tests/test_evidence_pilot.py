@@ -1,7 +1,7 @@
 """Local generated fixtures exercise the evidence-only lane, never live models."""
 
-from types import SimpleNamespace
 import hashlib
+import json
 
 import pytest
 
@@ -49,16 +49,22 @@ class FixtureProvider:
 def pilot(tmp_path, monkeypatch):
     repo, principal, specimens, launch = fixture(tmp_path)
     blobs = LocalBlobs(tmp_path / "pilot-blobs")
-    raw = image_bytes()
-    source_ref = blobs.put(raw)
+    source_refs = {}
+    for index, binding in enumerate(launch.specimens):
+        raw = image_bytes() + f"\nlocal-fixture-{index}".encode()
+        source_ref = blobs.put(raw)
+        item = repo.get(principal.scope, binding.specimen_id)
+        item.asset.sha256 = binding.asset_sha256 = source_ref
+        item.asset.blob_ref = binding.blob_ref = source_ref + ":123"
+        item.asset.size_bytes = len(raw)
+        item.run.profile.execution.external_timeout_seconds = 1
+        repo.save(
+            principal, item, item.version, "pilot-fixture-source", digest(source_ref)
+        )
+        source_refs[item.asset.blob_ref] = source_ref
     s = repo.get(principal.scope, specimens[0].id)
-    s.asset.sha256 = hashlib.sha256(raw).hexdigest()
-    s.asset.blob_ref = s.asset.sha256 + ":123"
-    repo.save(principal, s, s.version, "pilot-fixture-source", digest(s.asset.sha256))
-    launch.specimens[0].asset_sha256 = s.asset.sha256
-    launch.specimens[0].blob_ref = s.asset.blob_ref
     original_get = blobs.get
-    blobs.get = lambda ref: original_get(source_ref if ref == s.asset.blob_ref else ref)
+    blobs.get = lambda ref: original_get(source_refs.get(ref, ref))
     profile = (
         insects_registry()
         .profiles[0]
@@ -86,7 +92,7 @@ def pilot(tmp_path, monkeypatch):
 
     def segment(item):
         calls.append(item.id)
-        return [
+        regions = [
             Region(
                 asset_id=item.asset.id,
                 x=0,
@@ -98,15 +104,42 @@ def pilot(tmp_path, monkeypatch):
                 version="local-fixture",
             )
         ]
+        raw = json.dumps(
+            [region.model_dump(mode="json") for region in regions]
+        ).encode()
+        item.run.segmentation = {
+            "blob_ref": blobs.put(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "input_sha256": item.asset.sha256,
+            "validation": "valid",
+            "model_id": "facebook/sam3",
+            "model_revision": profile.segmentation_settings.model_revision,
+            "request_sha256": digest({"specimen_id": item.id, "run_id": item.run.id}),
+            "settings": profile.segmentation_settings.model_dump(mode="json"),
+        }
+        return regions
 
     workflow.adapters.segment = segment
     return repo, principal, s, launch, workflow, calls
+
+
+def prepare_other_specimens(principal, subject_id, workflow):
+    """Run genuine local fixture segmentation, stopping before every reader."""
+    for binding in workflow.admission.launch.specimens:
+        if binding.specimen_id != subject_id:
+            for _ in range(3):
+                result = workflow.step(principal, binding.specimen_id)
+            assert (
+                "segment" in result.run.completed_steps and not result.run.observations
+            )
 
 
 def test_real_orchestration_retains_blind_fixture_readings_and_stops_without_clearance(
     tmp_path, monkeypatch
 ):
     repo, principal, s, launch, workflow, calls = pilot(tmp_path, monkeypatch)
+    prepare_other_specimens(principal, s.id, workflow)
+    calls.clear()
     for _ in range(10):
         result = workflow.step(principal, s.id)
         if result.run.stage == "processing_blocked":

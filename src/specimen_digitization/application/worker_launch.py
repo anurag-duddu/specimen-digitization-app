@@ -6,6 +6,8 @@ this contract never discovers, downloads, or imports cloud objects.
 
 from datetime import datetime, timezone, timedelta
 import hashlib
+import math
+import re
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5, uuid4
 
@@ -78,7 +80,9 @@ class PilotLaunch(Record):
             if not self.evidence_only:
                 stages |= {"classify", "parse"}
             if set(self.stage_cost_reservations.cost_micros) != stages:
-                raise ValueError("Launch requires an exact complete model stage cost map")
+                raise ValueError(
+                    "Launch requires an exact complete model stage cost map"
+                )
         if self.sam3_checkpoint_files is not None:
             import re
 
@@ -129,6 +133,104 @@ class PilotAdmission:
             uuid5(NAMESPACE_URL, "pilot:" + launch.source_manifest_sha256)
         )
         self._dispatch_tokens = {}
+        self.remaining_execution_seconds = None
+
+    def bind_execution_window(self, max_seconds=1500, interval_seconds=1):
+        """Retain the existing single execution's deadline; never refresh it."""
+        if (
+            type(max_seconds) not in (int, float)
+            or not math.isfinite(max_seconds)
+            or not 1 <= max_seconds <= 1500
+            or type(interval_seconds) not in (int, float)
+            or not math.isfinite(interval_seconds)
+            or not 0.1 <= interval_seconds <= 60
+        ):
+            raise OperationalBlock("pilot_cohort_execution_time_invalid")
+        ledger = self._ledger()
+        current = self.clock().timestamp()
+        window_exists = "execution_window" in ledger
+        previous = ledger.get("execution_window")
+        if window_exists and not isinstance(previous, dict):
+            raise OperationalBlock("pilot_cohort_execution_time_changed")
+        if not window_exists and (
+            ledger.get("reading_cohort")
+            or any(
+                self.repository.get(self.launch.scope, ident).run.usage.external_calls
+                for ident in ledger["runs"]
+            )
+        ):
+            raise OperationalBlock("pilot_cohort_execution_time_unreconciled")
+        window = {
+            "started_at_unix": current,
+            "deadline_unix": current + max_seconds,
+            "interval_seconds": interval_seconds,
+        }
+        if window_exists:
+            if (
+                set(previous) != set(window)
+                or any(
+                    type(value) not in (int, float) or not math.isfinite(value)
+                    for value in previous.values()
+                )
+                or not 0
+                < previous["deadline_unix"] - previous["started_at_unix"]
+                <= 1500
+                or not 0.1 <= previous["interval_seconds"] <= 60
+                or current < previous["started_at_unix"]
+            ):
+                raise OperationalBlock("pilot_cohort_execution_time_changed")
+            window = dict(
+                previous,
+                deadline_unix=min(previous["deadline_unix"], window["deadline_unix"]),
+                interval_seconds=max(previous["interval_seconds"], interval_seconds),
+            )
+        if window != previous:
+            self._write(ledger, execution_window=window)
+        if current >= window["deadline_unix"]:
+            raise OperationalBlock("pilot_cohort_execution_time_exhausted")
+
+    def _reading_time(self, ledger, records):
+        window = ledger.get("execution_window")
+        if not window:
+            raise OperationalBlock("pilot_cohort_execution_time_required")
+        current = self.clock()
+        remaining = min(
+            window["deadline_unix"] - current.timestamp(),
+            (self.launch.expires_at - current).total_seconds(),
+        )
+        if self.remaining_execution_seconds is not None:
+            remaining = min(remaining, self.remaining_execution_seconds())
+        seconds = 5.0  # Retain the existing deadline safety margin.
+        for ident, specimen in records.items():
+            run, policy = specimen.run, specimen.run.profile.execution
+            if run.blocker != "pilot_evidence_review_required":
+                seconds += window["interval_seconds"]
+            if run.next_retry_at:
+                seconds += max(
+                    0,
+                    (
+                        datetime.fromisoformat(run.next_retry_at) - current
+                    ).total_seconds(),
+                )
+            for region in run.regions:
+                for route in run.profile.routes:
+                    step = "transcribe:" + region.id + ":" + route
+                    if step in run.completed_steps:
+                        continue
+                    used = ledger.get("reader_claims", {}).get(ident, {}).get(step, 0)
+                    attempts = policy.max_attempts - used
+                    seconds += attempts * (
+                        policy.external_timeout_seconds + window["interval_seconds"]
+                    )
+                    # Maximum local retry jitter. A later provider Retry-After
+                    # is rechecked against the same unextended deadline.
+                    seconds += sum(
+                        2 * min(300, 2 ** min(attempt, 8))
+                        for attempt in range(int(used) + 1, policy.max_attempts)
+                    )
+        return seconds, (
+            "pilot_cohort_reading_time_insufficient" if seconds > remaining else None
+        )
 
     def binding_matches(self, specimen):
         binding = self.bindings.get(specimen.id)
@@ -297,6 +399,302 @@ class PilotAdmission:
             )
         self._write(ledger, summary=summary)
         return summary
+
+    def cohort_blocker(self):
+        ledger = self._ledger()
+        if ledger.get("reading_time_blocker"):
+            return ledger["reading_time_blocker"]
+        cohort = ledger.get("reading_cohort", {})
+        return cohort.get("reason") if cohort.get("state") == "blocked" else None
+
+    def _reading_snapshot(self, ledger, *, in_flight=None):
+        """Only retained metadata; neither source images nor model calls are read."""
+        from ..model_gateway import INITIAL_HUGGINGFACE_ROUTES
+
+        if not self.launch.evidence_only or set(ledger["runs"]) != set(self.bindings):
+            raise OperationalBlock("pilot_cohort_prior_allocations_incomplete")
+        snapshot, records = {}, {}
+        profiles = set()
+        for binding in self.launch.specimens:
+            specimen = self.repository.get(self.launch.scope, binding.specimen_id)
+            self.admit(specimen)  # Existing allocations only; never a second debit.
+            run, policy = specimen.run, specimen.run.profile.execution
+            if "segment" not in run.completed_steps:
+                raise OperationalBlock("pilot_cohort_segmentation_incomplete")
+            active = (
+                in_flight is not None
+                and specimen.id == in_flight.id
+                and specimen == in_flight
+            )
+            if (
+                run.blocker == "external_outcome_unknown" and not active
+            ) or run.stage in {"paused", "cancelled", "finalized"}:
+                raise OperationalBlock("pilot_cohort_unresolved_liability")
+            if (
+                run.stage == "processing_blocked"
+                and run.blocker != "pilot_evidence_review_required"
+            ):
+                raise OperationalBlock("pilot_cohort_unresolved_liability")
+            regions = run.regions
+            if (
+                not 0 < len(regions) <= 64
+                or len({region.id for region in regions}) != len(regions)
+                or any(
+                    not region.id
+                    or ":" in region.id
+                    or region.asset_id != specimen.asset.id
+                    or region.x + region.width > specimen.asset.width
+                    or region.y + region.height > specimen.asset.height
+                    for region in regions
+                )
+            ):
+                raise OperationalBlock("pilot_cohort_regions_invalid")
+            if tuple(run.profile.routes) != tuple(INITIAL_HUGGINGFACE_ROUTES):
+                raise OperationalBlock("pilot_cohort_reader_routes_changed")
+            marker = run.dependencies.get("evidence_pilot", {})
+            retained_pins = {
+                key: value
+                for key, value in run.dependencies.items()
+                if key != "evidence_pilot"
+            }
+            if (
+                marker.get("version") != "evidence-pilot-v1"
+                or marker.get("launch_sha256") != self.launch_digest
+                or marker.get("source_manifest_sha256")
+                != self.launch.source_manifest_sha256
+                or marker.get("profile_sha256") != self.launch.evidence_profile_sha256
+                or marker.get("runtime_pins_sha256") != digest(retained_pins)
+                or run.profile_rules
+                or run.risk_policy_snapshot.get("status") != "blocked"
+                or run.profile.institutional_policy_approved
+                or run.profile.semantics_confirmed
+                or run.human_approved
+                or run.disposition is not None
+            ):
+                raise OperationalBlock("pilot_cohort_provenance_mismatch")
+            segmentation = run.segmentation
+            settings = run.profile_snapshot.get("segmentation_settings", {})
+            if (
+                segmentation.get("validation") != "valid"
+                or segmentation.get("input_sha256") != binding.asset_sha256
+                or not segmentation.get("blob_ref")
+                or not settings
+                or segmentation.get("settings") != settings
+                or segmentation.get("model_id") != settings.get("model_id")
+                or segmentation.get("model_revision") != settings.get("model_revision")
+                or any(
+                    not re.fullmatch(r"[a-f0-9]{64}", segmentation.get(key, ""))
+                    for key in ("sha256", "request_sha256")
+                )
+            ):
+                raise OperationalBlock("pilot_cohort_segmentation_provenance_missing")
+            prices = {
+                route: (
+                    policy.stage_cost_reservations.for_step(
+                        "transcribe:region:" + route
+                    )
+                    if policy.stage_cost_reservations is not None
+                    else policy.request_cost_reservation_micros
+                )
+                for route in run.profile.routes
+            }
+            if any(
+                type(amount) is not int or amount <= 0 for amount in prices.values()
+            ):
+                raise OperationalBlock("pilot_cohort_reader_cost_unknown")
+            profiles.add(digest(run.profile_snapshot))
+            snapshot[specimen.id] = {
+                "run_id": run.id,
+                "asset_id": specimen.asset.id,
+                "source_sha256": binding.asset_sha256,
+                "blob_ref": binding.blob_ref,
+                "policy_sha256": digest(policy.model_dump(mode="json")),
+                "regions_sha256": digest([r.model_dump(mode="json") for r in regions]),
+                "region_ids": [r.id for r in regions],
+                "segmentation_sha256": digest(segmentation),
+                "dependencies_sha256": digest(run.dependencies),
+                "profile_sha256": digest(run.profile_snapshot),
+                "reader_cost_micros": prices,
+                "max_attempts": policy.max_attempts,
+            }
+            records[specimen.id] = specimen
+        if len(profiles) != 1:
+            raise OperationalBlock("pilot_cohort_profile_mismatch")
+        return snapshot, records
+
+    def reserve_cohort_readings(self, *, existing_only=False, in_flight=None):
+        """One CAS allocates every reader attempt inside existing whole-run holds.
+
+        This is a reservation subdivision, not another charge: runs.cost_micros
+        remains the cumulative allocation. No consumed or unknown cost is freed.
+        """
+        ledger = self._ledger()
+        if ledger.get("reading_time_blocker"):
+            raise OperationalBlock(ledger["reading_time_blocker"])
+        held = ledger.get("reading_cohort")
+        if held and held.get("state") == "blocked":
+            raise OperationalBlock(held["reason"])
+        snapshot, records = self._reading_snapshot(ledger, in_flight=in_flight)
+        identity = {
+            "version": "cohort-reading-reservation/v1",
+            "launch_sha256": self.launch_digest,
+            "source_manifest_sha256": self.launch.source_manifest_sha256,
+            "scope": self.launch.scope.model_dump(),
+            "specimen_ids": list(self.bindings),
+            "specimens": snapshot,
+        }
+        if held:
+            if (
+                held.get("identity_sha256") != digest(identity)
+                or held.get("identity") != identity
+                or held.get("state") != "reserved"
+            ):
+                raise OperationalBlock("pilot_cohort_snapshot_changed")
+            for ident, specimen in records.items():
+                allocation = held["allocations"][ident]
+                prior = allocation["prior_cost_micros"]
+                claims = ledger.get("reader_claims", {}).get(ident, {})
+                claimed_cost, claimed_attempts = 0, 0
+                for step, count in claims.items():
+                    parts = step.split(":")
+                    if (
+                        len(parts) != 3
+                        or parts[0] != "transcribe"
+                        or parts[1] not in snapshot[ident]["region_ids"]
+                        or parts[2] not in snapshot[ident]["reader_cost_micros"]
+                        or type(count) not in (int, float)
+                        or int(count) != count
+                        or not 1 <= count <= snapshot[ident]["max_attempts"]
+                        or specimen.run.attempts.get(step, 0) < count
+                    ):
+                        raise OperationalBlock("pilot_cohort_reader_liability_changed")
+                    claimed_attempts += count
+                    claimed_cost += (
+                        count * snapshot[ident]["reader_cost_micros"][parts[2]]
+                    )
+                usage = specimen.run.usage
+                if (
+                    usage.reserved_cost_micros < prior + claimed_cost
+                    or usage.reserved_cost_micros
+                    > prior + allocation["reading_cost_micros"]
+                    or usage.external_calls
+                    < allocation["prior_calls"] + claimed_attempts * 2
+                    or usage.reserved_tokens
+                    < allocation["prior_tokens"] + claimed_attempts * 16000
+                ):
+                    raise OperationalBlock("pilot_cohort_prior_liability_changed")
+            _, time_issue = self._reading_time(ledger, records)
+            if time_issue:
+                self._write(ledger, reading_time_blocker=time_issue)
+                raise OperationalBlock(time_issue)
+            return held
+        if existing_only:
+            raise OperationalBlock("pilot_cohort_reading_reservation_required")
+        allocations, total, count, issue = {}, 0, 0, None
+        for ident, specimen in records.items():
+            run, policy = specimen.run, specimen.run.profile.execution
+            item = snapshot[ident]
+            # Work before the new barrier is never silently adopted or credited.
+            if run.observations or any(
+                key.startswith("transcribe:") for key in run.attempts
+            ):
+                raise OperationalBlock("pilot_cohort_prior_reader_work_unreconciled")
+            reads = len(run.regions) * len(item["reader_cost_micros"])
+            amount = (
+                len(run.regions)
+                * sum(item["reader_cost_micros"].values())
+                * policy.max_attempts
+            )
+            prior = run.usage.reserved_cost_micros
+            segment_price = (
+                policy.stage_cost_reservations.for_step("segment")
+                if policy.stage_cost_reservations is not None
+                else policy.request_cost_reservation_micros
+            )
+            segment_attempts = run.attempts.get("segment", 0)
+            if (
+                not 1 <= segment_attempts <= policy.max_attempts
+                or prior < segment_attempts * segment_price
+                or run.usage.external_calls < segment_attempts
+                or run.usage.reserved_tokens < segment_attempts * 16000
+            ):
+                raise OperationalBlock(
+                    "pilot_cohort_prior_segmentation_liability_changed"
+                )
+            allocations[ident] = {
+                "segmentation_revision": specimen.version,
+                "prior_cost_micros": prior,
+                "reading_cost_micros": amount,
+                "prior_calls": run.usage.external_calls,
+                "prior_tokens": run.usage.reserved_tokens,
+            }
+            total += amount
+            count += reads
+            if prior + amount > min(
+                policy.approved_cost_limit_micros, ledger["runs"][ident]["cost_micros"]
+            ):
+                issue = "pilot_cohort_reading_budget_insufficient"
+            if (
+                run.usage.external_calls + reads * policy.max_attempts * 2
+                > policy.max_external_calls
+                or run.usage.reserved_tokens + reads * policy.max_attempts * 16000
+                > policy.max_tokens
+                or run.usage.steps + reads * policy.max_attempts > policy.max_steps
+                or run.usage.active_seconds
+                + run.usage.reserved_active_seconds
+                + reads * policy.max_attempts * policy.external_timeout_seconds
+                > policy.max_active_seconds
+            ):
+                issue = issue or "pilot_cohort_reading_capacity_insufficient"
+        if (
+            sum(row["cost_micros"] for row in ledger["runs"].values())
+            > self.launch.total_cost_limit_micros
+        ):
+            issue = "pilot_cohort_reading_budget_insufficient"
+        reading_seconds, time_issue = self._reading_time(ledger, records)
+        issue = issue or time_issue
+        held = {
+            "state": "blocked" if issue else "reserved",
+            "identity": identity,
+            "identity_sha256": digest(identity),
+            "allocations": allocations,
+            "reserved_cost_micros": total,
+            "reading_count": count,
+            "reading_seconds": reading_seconds,
+            "region_count": sum(len(s.run.regions) for s in records.values()),
+        }
+        if issue:
+            held["reason"] = issue
+        self._write(ledger, reading_cohort=held)
+        if issue:
+            raise OperationalBlock(issue)
+        return held
+
+    def assert_reader_reserved(self, specimen, region, route):
+        held = self.reserve_cohort_readings(existing_only=True, in_flight=specimen)
+        item = held["identity"]["specimens"][specimen.id]
+        if (
+            region.id not in item["region_ids"]
+            or route not in item["reader_cost_micros"]
+            or specimen.run.id != item["run_id"]
+        ):
+            raise OperationalBlock("pilot_cohort_reader_not_reserved")
+        ledger = self._ledger()
+        if ledger.get("reading_cohort") != held:
+            raise OperationalBlock("pilot_cohort_snapshot_changed")
+        step = "transcribe:" + region.id + ":" + route
+        count = specimen.run.attempts.get(step, 0)
+        claims = {
+            ident: dict(values)
+            for ident, values in ledger.get("reader_claims", {}).items()
+        }
+        prior = claims.setdefault(specimen.id, {}).get(step, 0)
+        if not 1 <= count <= item["max_attempts"] or count != prior + 1:
+            raise OperationalBlock("pilot_cohort_reader_attempt_unreconciled")
+        claims[specimen.id][step] = count
+        # Claim before the paid boundary. A lost response retains the claim and
+        # the original full hold; neither can authorize a replay after restart.
+        self._write(ledger, reader_claims=claims)
 
 
 def verify_source_manifest(path: Path, launch: PilotLaunch):
