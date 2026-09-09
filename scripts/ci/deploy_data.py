@@ -17,6 +17,7 @@ from release_admission import (admit, digest, exact_keys, integer, materialize_i
                                private_bytes, read_bound_plan, require, strict_json)
 from release_context import PROJECT, REPOSITORY
 from release_google import Google, cleanup_packet, cleanup_permit
+from release_diagnostics import public_failure, stage
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = f"projects/{PROJECT}/locations/us-east4/services/specimen-digitization-service"
@@ -399,7 +400,8 @@ def rehearse(google, plan, directory):
 
 def deploy(path, output):
     google = Google(path, "data")
-    plan = validate_plan(read_bound_plan(path.parent / "plan.json", google.packet), google.packet)
+    with stage("data.plan"):
+        plan = validate_plan(read_bound_plan(path.parent / "plan.json", google.packet), google.packet)
     if plan["version"] == "data-initialization-inventory/v1":
         from release_initialize import inspect_catalog
         inspect_catalog(google, plan, path.parent, output)
@@ -548,6 +550,7 @@ def verify_or_bootstrap(google, plan, output):
     output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
 
 
+@stage("data.receipt")
 def emit_result_digest(path):
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
         handle.write("receipt_sha256=" + hashlib.sha256(path.read_bytes()).hexdigest() + "\n")
@@ -572,7 +575,8 @@ def main():
     args = parser.parse_args()
     try:
         if args.prepare_inputs or args.prepare_initialization:
-            materialize_inputs(args.packet.parent, dict(os.environ))
+            with stage("data.inputs"):
+                materialize_inputs(args.packet.parent, dict(os.environ))
         if args.prepare_cleanup:
             packet = cleanup_packet(args.packet, dict(os.environ))
             with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
@@ -596,8 +600,10 @@ def main():
             require(not failures, "one or more temporary principal disposals remain unconfirmed")
             return
         plane = "data-initialization" if args.prepare_initialization or args.initialize or args.prepare_initializer_intents else "data"
-        packet = admit(args.packet, plane)
-        plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
+        with stage("data.admission"):
+            packet = admit(args.packet, plane)
+        with stage("data.plan"):
+            plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
         if args.prepare_initialization or args.initialize or args.prepare_initializer_intents:
             from release_initialize import (verified_handoff, require_protected_initializer_environment, initialize_targets,
                 prepare_initializer_intents, verified_disposal_inputs)
@@ -640,8 +646,8 @@ def main():
                 handle.write("cleanup_permit=" + json.dumps(cleanup_permit(packet, plan.get("recovery", {}).get("expires_at_unix")), separators=(",", ":")) + "\n")
                 handle.write("phase=" + plan["version"] + "\n")
             print("Protected data admission passed; native recovery and application remain separate gates.")
-    except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
-        raise SystemExit(f"Data release blocked ({type(exc).__name__}); inspect the named admission gate privately.") from None
+    except Exception as exc:
+        raise SystemExit(public_failure(exc)) from None
 
 
 if __name__ == "__main__":
