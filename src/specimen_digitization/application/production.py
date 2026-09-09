@@ -654,9 +654,10 @@ class ProductionAdapters:
             raise OperationalBlock(
                 "provider_data_policy_and_spending_approval_required"
             )
-        gateway = HuggingFaceModelGateway(
-            timeout_seconds=specimen.run.profile.execution.external_timeout_seconds / 2
+        reader_timeout = specimen.run.profile.execution.effect_timeout_for_step(
+            "transcribe:" + region.id + ":" + route
         )
+        gateway = HuggingFaceModelGateway(timeout_seconds=reader_timeout / 2)
         selected = gateway.route(route)
         pins = specimen.run.dependencies
         expected = pins.get("routes", {}).get(route)
@@ -682,7 +683,7 @@ class ProductionAdapters:
                 "Transcribe only the supplied source image.",
                 BinaryContent(data=image, media_type="image/png"),
             ],
-            timeout_seconds=specimen.run.profile.execution.external_timeout_seconds,
+            timeout_seconds=reader_timeout,
             usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
         )
         latency_seconds = time.monotonic() - started

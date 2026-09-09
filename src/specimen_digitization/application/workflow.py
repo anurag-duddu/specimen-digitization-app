@@ -168,6 +168,7 @@ class Workflow:
             )
         )
         policy = run.profile.execution
+        effect_timeout = policy.effect_timeout_for_step(step)
         external_weight = (
             2
             if (step.startswith("transcribe:") or step == "parse")
@@ -200,7 +201,7 @@ class Workflow:
         elif (
             run.usage.active_seconds
             + run.usage.reserved_active_seconds
-            + (policy.external_timeout_seconds if external else 0)
+            + (effect_timeout if external else 0)
             > policy.max_active_seconds
         ):
             issue = "active_time_budget_exhausted"
@@ -263,7 +264,7 @@ class Workflow:
             run.usage.external_calls += external_weight
             run.usage.reserved_tokens += reservation_tokens
             run.usage.reserved_cost_micros += cost or 0
-            run.usage.reserved_active_seconds += policy.external_timeout_seconds
+            run.usage.reserved_active_seconds += effect_timeout
             if run.profile.synthetic:
                 run.usage.actual_cost_micros = 0
             run.blocker = "external_outcome_unknown"
@@ -579,7 +580,7 @@ class Workflow:
             run.stage = "processing_blocked"
             run.disposition = None
         elapsed = max(0, self.monotonic() - started)
-        if external and elapsed > policy.external_timeout_seconds:
+        if external and elapsed > effect_timeout:
             circuit_failure = "timeout"
             specimen = reserved
             run = specimen.run
@@ -596,7 +597,7 @@ class Workflow:
         if external and run.blocker != "external_outcome_unknown":
             run.lease_until = None
             run.usage.reserved_active_seconds = max(
-                0, run.usage.reserved_active_seconds - policy.external_timeout_seconds
+                0, run.usage.reserved_active_seconds - effect_timeout
             )
         specimen.audit.append(
             AuditEvent(
