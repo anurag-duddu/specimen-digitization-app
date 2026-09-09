@@ -388,18 +388,30 @@ class Segmenter:
     def _segment(self, request, item):
         request_sha256 = digest(encoded(request.model_dump()))
         prefix = f"sam3/{self.manifest_sha256}/{item.specimen_id}"
+        storage_prefix = (
+            f"application/sha256/{self.manifest_sha256}/sam3/{item.specimen_id}"
+        )
         claim = self.objects.create(
-            prefix + "/claim.json", encoded({"request_sha256": request_sha256})
+            storage_prefix + "/claim.json", encoded({"request_sha256": request_sha256})
         )
         if claim is None:
-            previous = self.objects.read(prefix + "/response.json")
+            previous = self.objects.read(storage_prefix + "/response.json")
             if previous:
                 result = json.loads(previous)
                 if result["request_sha256"] == request_sha256:
                     return result
             raise HTTPException(409, "sam3_outcome_unknown_requires_reconciliation")
         source = item.source_objects[item.application_source.source_object_index]
-        raw = self.objects.source(source)
+        # Intake already verified this immutable application copy. Runtime IAM
+        # covers that copy; the original locator remains provenance only.
+        app = item.application_source
+        raw = self.objects.source(SourceObject(
+            bucket=f"{self.manifest.project_id}.firebasestorage.app",
+            object_name="application/sha256/" + app.sha256,
+            generation=app.blob_ref.split(":")[1],
+            sha256=app.sha256,
+            size_bytes=app.size_bytes,
+        ))
         if len(raw) != source.size_bytes or digest(raw) != source.sha256:
             raise HTTPException(409, "pilot_source_integrity_mismatch")
         with Image.open(io.BytesIO(raw)) as decoded:
@@ -470,7 +482,7 @@ class Segmenter:
             "regions": regions,
             "masks": evidence,
         }
-        if self.objects.create(prefix + "/response.json", encoded(response)) is None:
+        if self.objects.create(storage_prefix + "/response.json", encoded(response)) is None:
             raise HTTPException(409, "sam3_response_collision")
         return response
 
