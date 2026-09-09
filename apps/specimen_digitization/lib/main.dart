@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'src/api_repository.dart';
+import 'src/app_check.dart';
 import 'src/auth.dart';
 import 'src/connection_config.dart';
 import 'src/email_verification.dart';
@@ -47,13 +48,7 @@ Future<void> main() async {
       } else {
         final uri = config.validate(web: kIsWeb);
         await Firebase.initializeApp(options: options);
-        const siteKey = String.fromEnvironment('SPECIMEN_RECAPTCHA_SITE_KEY');
-        if (kIsWeb && siteKey.isEmpty) {
-          throw StateError('App Check site key missing');
-        }
-        await FirebaseAppCheck.instance.activate(
-          providerWeb: kIsWeb ? ReCaptchaV3Provider(siteKey) : null,
-        );
+        await activateProductionAppCheck(config, web: kIsWeb);
         final auth = FirebaseAuth.instance;
         session = FirebaseSession(auth);
         repository = ApiSpecimenRepository(

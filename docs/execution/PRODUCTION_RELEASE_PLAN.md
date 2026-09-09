@@ -136,11 +136,11 @@ Do not provision Temporal or claim the incomplete Workflows comparison is passed
 | Gate | Required work and exit evidence | Current state |
 |---|---|---|
 | G0 Baseline | Live Git/GitHub/marker reconciliation and safe work ownership | Verified for starting SHA above |
-| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PR 15 foundation and PR 16 initialization independently reviewed and integrated; actual managed-service qualification remains pending |
+| G1 Candidate | Owner audits, TDD repairs, independent review, exact interface/config contracts | PRs 15–17 reviewed and integrated, including initialization, full-cohort reading admission, retained deadlines and cumulative accounting; actual managed-service qualification remains pending |
 | G2 Access and scope | Working Google authentication, verified admin, generation-frozen ten-source manifest and allowed provider use | All ten local originals match frozen cloud size/MD5/CRC metadata; SHA256 and local review complete. Coordinator accepted non-sensitive intake for these ten only. Existing email/password Auth retained; verified admin remains pending |
 | G3 Authority and cost | Reviewed release-policy amendment, precise resource/IAM/config plan, one cumulative budget and hard execution bounds | Infrastructure authority granted; USD 5 remains shared across all sessions/days/retries. Prior uncertainty and bounded metering are explicitly reserved; eight native aggregate reads are complete. Independent review supports the next bounded catalog read within the cumulative cap, pending truthful operator-ledger admission and source gates. Organization reCAPTCHA usage remains a later assessment gate |
-| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows and initialization phase merged; narrow data WIF identity and API-observed no-role SQL IAM user verified. The three missing or incomplete backend environment guards are now verified main-only. Initializer/runtime identities, native privilege proof and private admission inputs remain incomplete |
-| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR 16 and exact-main public Hosting smoke verified at `e0187b1`; this is a source delivery checkpoint, not product acceptance |
+| G4 Protected delivery implementation | Approved separate data/runtime workflows with negative policy tests, least-privilege keyless identities and immutable provenance | Separate workflows merged; backend environments verified main-only. Six separate service accounts now exist. Existing data WIF mapping isolation is verified, with Hosting and all account policies preserved. Runtime/initializer trust and permissions, native privilege proof and private admission inputs remain pending |
+| G5 Protected source release | Integrated `scripts/ci/verify.sh`, runtime container CI, independent review and all five platform checks on exact PR head; merge through GitHub; green exact-main CI/Hosting | PR17 merged as `d34d27032b07c223a7556472535c8fe2ebd828ae`; main CI34316700169 all five checks and Hosting passed. Matching public marker and Hosting smoke verified; product acceptance remains pending |
 | G6 Data readiness | Cloud backup and isolated restore, compatible schema/connector/rules, exact indexes, scoped admin/import and independent readback through the protected data workflow | Pending G2/G3/G5 |
 | G7 Runtime readiness | Built-once API/worker/SAM digests, real model-loaded health, Google auth/App Check/denials, frozen inputs, safe stop/restart through the protected runtime workflow | Pending G6 and verified runtime admission |
 | G8 Public acceptance | Green main deploy, exact public marker, matching runtime/data revisions, actual ten-source processing/review/save/reopen and recovery | Not accepted: fresh public browser shows Collection connection required and API not configured; real ten-source processing and review are pending |
@@ -532,7 +532,64 @@ reviewer retained that original blocked result and added a separate observed
 closure; no replay or unverified causal claim was used.
 
 Fresh regional inventory confirms the runtime registry is absent and there are
-no Cloud Run services or worker jobs. The separate service accounts, minimum IAM,
-registry, actual SQL initialization and runtime delivery remain necessary setup.
-The current browser tool reports a locked Mac; the owner has one pending unlock
-and Google sign-in action while connected-tool work continues.
+no Cloud Run services or worker jobs. Six separate service accounts have since
+been created and read back; their runtime/initializer permissions, registry,
+actual SQL initialization and runtime delivery remain necessary setup.
+The connected cloud tools and in-app browser work while the native Mac is locked.
+The earlier request to unlock and sign into the Firebase console is withdrawn.
+
+### Verified source delivery and next native checks — 2026-09-09
+
+PR17 is merged at `d34d27032b07c223a7556472535c8fe2ebd828ae` with reviewed
+tree `4baa39a95c26dbff1ffb878a9b346cd80d70cd31`. All five main checks and the
+Hosting job passed in run34316700169 attempt1. The public marker and smoke
+match that source. The browser still reports that the application API is not
+configured, so the complete product has not passed live acceptance.
+
+The existing data provider now emits only its unchanged subject and unique
+release-plane mapping. One PATCH was sent. An initially incomplete operation
+response stopped the helper; separate read-only reconciliation subsequently
+verified that original operation completed and all ten service accounts,
+eleven project/account policies, other providers and Hosting were preserved.
+No update was replayed.
+
+The approved administrator Auth record is now created and verified by UID and
+email readbacks, with email unverified and no password supplied. No email or
+collection membership was created. Once the backend and login UI are ready,
+the owner sets a password, verifies the email and tests signed-in human review.
+
+The protected catalog attempt2 passed both source and budget admission checks,
+then stopped during Google authentication before SQL. The pinned GitHub action
+uses a full identity URL as its default audience; the provider was configured
+with the shorter resource name. The provider now accepts the exact full identity URL. A separate source guard
+also required correction to match the pinned action's generated credential.
+That repair and Enterprise App Check selection are prepared together for PR18.
+The next catalog must use the newly merged source and its actual main-push run;
+the unissued old-source attempt3 draft must not execute. Attempt2's USD0.02
+reservation remains held. The next-attempt draft retains another USD0.02 for
+USD1.041 in proposed cumulative commitments; it has not been issued or started. These reservations are not a billing invoice
+or a verified remaining balance. No SQL catalog, schema initialization, runtime
+deployment or paid model inference has occurred yet.
+
+The empty runtime registry is now created and verified as immutable and
+unscanned. Google added its documented Artifact Registry service-agent role;
+all prior project bindings and ten service-account policies were preserved.
+The three additional WIF providers remain pending and will use the corrected
+audience contract. Native operation, GET and LIST response differences were
+reconciled through reads without replaying the registry create.
+
+Direct App Check reads confirm default unconfigured records and zero project
+keys. The web app's Enterprise provider correction passed its red-first tests,
+full Flutter suite, Chrome provider tests, analysis and build. Independent
+credential review used the actual pinned action bundle with synthetic inputs;
+all four emitted fixtures fail on the old guard and pass on the correction.
+The combined source gate passed in an isolated worktree: 1,501 Python tests
+(56 skipped), 133 Flutter tests (7 skipped), repository checks, analysis and the
+release web build. The pull request and protected main delivery remain next. These checks do
+not establish a live App Check exchange or an authenticated product journey.
+
+Bounded monthly assessment reads returned no assessments for nine accessible
+organization projects. The tenth project's Monitoring read was denied, so
+organization-wide allowance coverage remains incomplete. No permission was
+expanded or assessment created. Metadata-only key registration may proceed;
+assessment-cost headroom remains a gate before public browser activation.
