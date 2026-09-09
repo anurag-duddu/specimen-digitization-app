@@ -156,6 +156,7 @@ async connect(){return {release(force){if(!force)throw Error('connection retaine
  if(sql.includes('current_database()'))return {rows:[{database:'postgres',actor:env.TEST_ACTOR,effective:env.TEST_ACTOR}]};
  if(sql.includes('backend_type='))return {rows:[{count:0}]};
  if(sql.includes('pg_stat_activity'))return {rows:[{count:env.TEST_FAULT==='sessions'?1:0}]};
+ if(sql===fs.readFileSync('scripts/ci/initialize_catalog.sql','utf8'))return {rows:[{catalog:JSON.parse(fs.readFileSync(env.TEST_CATALOG))}]};
  if(sql.includes('FROM pg_roles WHERE rolname='))return {rows:env.TEST_MODE==='disposal-absent'&&env.TEST_FAULT!=='present'?[]:[{oid:42,narrow:env.TEST_FAULT!=='privileged'}]};
  if(sql.includes('pg_auth_members'))return {rows:[{count:env.TEST_FAULT==='memberships'?1:0}]};
  if(sql.includes('pg_shdepend'))return {rows:[{count:env.TEST_FAULT==='dependencies'?1:0}]};
@@ -164,13 +165,21 @@ async end(){trace('pool.end')}
 };
 ''')
     trace, output = tmp_path / "trace.txt", tmp_path / "result.json"
+    from test_initializer_iam_membership import fixture
+    catalog = fixture("disposal-check")
+    if fault == "memberships":
+        catalog["memberships"].append({"role": "pg_read_all_data", "member": init.INITIALIZER_SQL,
+            "grantor": "cloudsqladmin", "admin": False, "inherit": True, "set": True})
+    catalog_path = tmp_path / "synthetic-catalog.json"
+    catalog_path.write_text(json.dumps(catalog))
     env = dict(os.environ, GITHUB_ACTIONS="true", GITHUB_REPOSITORY="anurag-duddu/specimen-digitization-app",
         GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main", GITHUB_REF_PROTECTED="true",
         GITHUB_WORKFLOW_REF="anurag-duddu/specimen-digitization-app/.github/workflows/data-release.yml@refs/heads/main",
         GITHUB_SHA="a" * 40, RELEASE_AUTHORIZED_SHA="a" * 40, DEPLOYMENT_ENVIRONMENT="data-production",
         RELEASE_SERVICE_ACCOUNT=init.MAINTENANCE + ".gserviceaccount.com", RELEASE_NODE_ROOT=str(tmp_path),
         INITIALIZATION_DEADLINE=str(int(time.time()) + 180), INITIALIZATION_FILES=json.dumps(init.fingerprints()),
-        TEST_MODE=mode, TEST_FAULT=fault or "", TEST_ACTOR=init.MAINTENANCE, TEST_TRACE=str(trace))
+        TEST_MODE=mode, TEST_FAULT=fault or "", TEST_ACTOR=init.MAINTENANCE, TEST_TRACE=str(trace),
+        TEST_CATALOG=str(catalog_path))
     result = subprocess.run(["node", str(init.ROOT / "scripts/ci/release_initialize.mjs"), mode, init.SOURCE, str(output)],
         cwd=init.ROOT, env=env, capture_output=True, timeout=10)
     assert (result.returncode == 0) == (fault is None), result.stderr.decode()

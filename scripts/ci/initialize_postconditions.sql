@@ -39,13 +39,37 @@ BEGIN
      OR pg_has_role('service-716045864126@gcp-sa-firebasedataconnect.iam',owner_role,'MEMBER') THEN
     RAISE EXCEPTION 'ordinary role assignments differ';
   END IF;
+  -- The IAM authentication marker survives assigned-role replacement. Verify
+  -- its exact inert graph; never erase it to manufacture zero memberships.
+  IF (SELECT count(*) FROM pg_roles WHERE rolname='cloudsqliamserviceaccount'
+      AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreaterole AND NOT rolcreatedb
+      AND NOT rolreplication AND NOT rolbypassrls AND rolinherit
+      AND rolconfig IS NULL AND rolconnlimit=-1 AND rolvaliduntil IS NULL) <> 1
+     OR EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles u ON u.oid=m.member
+       WHERE u.rolname='cloudsqliamserviceaccount') THEN
+    RAISE EXCEPTION 'IAM authentication marker role is missing, elevated or inherits another role';
+  END IF;
+  IF EXISTS(
+    WITH expected(member) AS (VALUES ('specimen-data-release@specimen-digitization.iam'::text),
+      ('service-716045864126@gcp-sa-firebasedataconnect.iam'::text)),
+    actual AS (SELECT u.rolname::text AS member,g.rolname::text AS grantor,
+      m.admin_option,m.inherit_option,m.set_option
+      FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
+      JOIN pg_roles u ON u.oid=m.member JOIN pg_roles g ON g.oid=m.grantor
+      WHERE r.rolname='cloudsqliamserviceaccount' AND u.rolname IN (SELECT member FROM expected)),
+    approved AS (SELECT member,'cloudsqladmin'::text AS grantor,false AS admin_option,
+      true AS inherit_option,true AS set_option FROM expected)
+    (SELECT * FROM actual EXCEPT SELECT * FROM approved) UNION ALL
+    (SELECT * FROM approved EXCEPT SELECT * FROM actual)) THEN
+    RAISE EXCEPTION 'ordinary IAM authentication marker grant or options differ';
+  END IF;
   IF EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
     JOIN pg_roles u ON u.oid=m.member WHERE
       u.rolname IN (owner_role,writer_role,reader_role)
       OR (u.rolname='specimen-data-release@specimen-digitization.iam'
-          AND (r.rolname<>owner_role OR m.admin_option OR NOT m.set_option OR NOT m.inherit_option))
+          AND (r.rolname NOT IN (owner_role,'cloudsqliamserviceaccount') OR m.admin_option OR NOT m.set_option OR NOT m.inherit_option))
       OR (u.rolname='service-716045864126@gcp-sa-firebasedataconnect.iam'
-          AND (r.rolname<>writer_role OR m.admin_option OR NOT m.set_option OR NOT m.inherit_option))) THEN
+          AND (r.rolname NOT IN (writer_role,'cloudsqliamserviceaccount') OR m.admin_option OR NOT m.set_option OR NOT m.inherit_option))) THEN
     RAISE EXCEPTION 'unapproved effective membership path or membership options';
   END IF;
   IF EXISTS(
