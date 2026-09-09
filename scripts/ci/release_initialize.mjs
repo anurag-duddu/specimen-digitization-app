@@ -34,6 +34,27 @@ for(const name of ['scripts/ci/release_initialize.py','scripts/ci/release_initia
   assert.equal(createHash('sha256').update(buffer).digest('hex'),files[name]); buffers[name]=buffer.toString('utf8');
 }
 assert.equal(Object.keys(files).length,6);
+// Cloud SQL keeps this inert system membership for IAM authentication when
+// assigned database roles are revoked. It is not an extra privilege allowance.
+function iamMemberships(catalog,member) {
+  assert.ok(['specimen-data-release@specimen-digitization.iam',
+    'service-716045864126@gcp-sa-firebasedataconnect.iam',
+    'specimen-data-initialize@specimen-digitization.iam'].includes(member));
+  const marker='cloudsqliamserviceaccount';
+  assert.deepEqual(catalog.roles.filter(r=>r.name===marker),[{name:marker,login:false,
+    super:false,create_role:false,create_db:false,replication:false,bypass_rls:false,
+    inherit:true,config:null,connection_limit:-1,valid_until:null}]);
+  assert.equal(catalog.memberships.filter(r=>r.member===marker).length,0,
+    'IAM authentication role must not inherit another role');
+  const memberships=catalog.memberships.filter(r=>r.member===member);
+  assert.deepEqual(memberships.filter(r=>r.role===marker),[{role:marker,member,
+    grantor:'cloudsqladmin',admin:false,inherit:true,set:true}]);
+  return memberships.filter(r=>r.role!==marker);
+}
+async function requireOnlyIamMarker(client,member) {
+  const catalog=(await client.query(buffers['scripts/ci/initialize_catalog.sql'])).rows[0].catalog;
+  assert.deepEqual(iamMemberships(catalog,member),[]);
+}
 diagnosticStage='node.dependencies';
 const require=createRequire(join(resolve(env.RELEASE_NODE_ROOT),'node_modules/firebase-tools/package.json'));
 assert.equal(require('./package.json').version,'15.8.0');
@@ -64,14 +85,14 @@ try {
     if(mode==='disposal-absent') assert.equal(roles.length,0);
     else {
       assert.equal(roles.length,1); assert.equal(roles[0].narrow,true);
-      assert.equal((await client.query('SELECT count(*)::int AS count FROM pg_auth_members WHERE member=$1',[roles[0].oid])).rows[0].count,0);
+      await requireOnlyIamMarker(client,principal);
       assert.equal((await client.query("SELECT count(*)::int AS count FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=$1",[roles[0].oid])).rows[0].count,0);
     }
     diagnosticStage='node.output';
     writeFileSync(output,JSON.stringify({instance,mode,files,verified:true}),{mode:0o600});
   } else if(mode==='clean') {
     diagnosticStage='node.clean';
-    assert.equal((await client.query("SELECT count(*)::int AS count FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=session_user)")).rows[0].count,0);
+    await requireOnlyIamMarker(client,actor);
     const safe=(await client.query('SELECT NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls) AS safe FROM pg_roles WHERE rolname=session_user')).rows[0];
     assert.equal(safe.safe,true);
     let denied=false;
@@ -109,7 +130,10 @@ try {
     let capability;
     assert.equal(catalog.server_major,18);
     if(mode!=='inspect') {
-    assert.deepEqual(catalog.databases.map(d=>d.name),['postgres']);
+    const managedDatabase=catalog.databases.find(d=>d.name==='cloudsqladmin');
+    assert.deepEqual(catalog.databases.map(d=>d.name),managedDatabase?['cloudsqladmin','postgres']:['postgres']);
+    if(managedDatabase) assert.equal(managedDatabase.owner,'cloudsqladmin','unverified managed database owner');
+    // Keep every database field in the catalog and its source/restore parity hash.
     assert.deepEqual(catalog.namespaces.map(n=>n.name),['public']);
     for(const name of ['user_relations','user_routines','user_types','event_triggers','publications','foreign_servers','foreign_wrappers','large_objects']) assert.equal(catalog[name],0);
     for(const name of ['firebaseowner','firebasewriter','firebasereader'].map(p=>p+'_specimen-digitization-database_public')) assert.ok(!catalog.roles.some(r=>r.name===name));
@@ -117,6 +141,7 @@ try {
     for(const name of ['specimen-data-release@specimen-digitization.iam','service-716045864126@gcp-sa-firebasedataconnect.iam']) {
       const role=catalog.roles.find(r=>r.name===name); assert.ok(role?.login);
       for(const flag of ['super','create_role','create_db','replication','bypass_rls']) assert.equal(role[flag],false);
+      assert.deepEqual(iamMemberships(catalog,name),[]);
       assert.equal((await client.query("SELECT pg_has_role($1,'cloudsqlsuperuser','MEMBER') AS elevated",[name])).rows[0].elevated,false);
       assert.equal((await client.query("SELECT has_database_privilege($1,'postgres','CREATE') AS elevated",[name])).rows[0].elevated,false);
     }
@@ -125,7 +150,8 @@ try {
       assert.equal(login?.login,true);
       for(const flag of ['super','create_role','create_db','replication','bypass_rls']) assert.equal(login[flag],false);
       const memberships=catalog.memberships.filter(r=>r.member===actor);
-      assert.ok(memberships.length>0 && memberships.every(r=>r.role==='cloudsqlsuperuser' && r.admin===false && r.set===true));
+      const privileges=iamMemberships(catalog,actor);
+      assert.ok(privileges.length===1 && privileges.every(r=>r.role==='cloudsqlsuperuser' && r.admin===false && r.set===true));
       await client.query('SET LOCAL ROLE cloudsqlsuperuser');
       const observed=(await client.query('SELECT current_user AS actor,rolcreaterole AS create_role FROM pg_roles WHERE rolname=current_user')).rows[0];
       assert.deepEqual(observed,{actor:'cloudsqlsuperuser',create_role:true});

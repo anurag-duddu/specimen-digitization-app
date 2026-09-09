@@ -48,6 +48,15 @@ checks require those two ordinary principals to be present and narrow before
 backup/clone creation. Native API/worker SQL logins are outside this first
 release's scope and must be absent; their runtimes use SQL Connect operations.
 
+The otherwise empty source/clone may also contain the native managed database
+`cloudsqladmin`, only when its observed owner is exactly `cloudsqladmin`. The
+allowed database lists are exactly `postgres`, or `cloudsqladmin` plus `postgres`;
+missing/wrong owners, duplicates and any other database block absence/capability
+qualification. The managed database and every observed field remain in the full
+private catalog, encryption and source/restore parity hash. This exception does
+not change namespace, object, role, writer-session, connection-context or
+application-database absence checks.
+
 The ordinary data identity observes native `postgres` catalog facts, requires
 the application database and three application roles to be absent, rejects user
 objects and other user databases, and compares the complete catalog hash with
@@ -206,6 +215,23 @@ uses PUT with role/revocation query parameters and ignores role changes in the
 body. [PostgreSQL18 role membership](https://www.postgresql.org/docs/18/role-membership.html)
 distinguishes membership, inherited privileges and SET capability. Native tests
 and the clone qualification are separate evidence from these documentation claims.
+
+IAM service accounts also retain the system authentication membership
+`cloudsqliamserviceaccount`; an empty API `databaseRoles` value is not an empty
+`pg_auth_members` graph. The signed ordinary-account catalog established a
+narrow, non-login marker without parent roles and an exact `cloudsqladmin`
+grant with ADMIN false and INHERIT/SET true. Qualification requires that same
+shape for each named IAM principal. Capability permits only that marker plus
+the one reviewed temporary `cloudsqlsuperuser` membership. Ordinary postconditions
+permit only the marker and intended application role. Cleanup and disposal
+require the marker alone, denied elevated SET, narrow actor flags, no sessions
+or dependencies, and then removal of the owned principal. No role is revoked
+merely to make a membership count zero.
+[Google's role-update contract](https://docs.cloud.google.com/sql/docs/postgres/reference/mcp/postgres/mcp/tools_list/update_user)
+documents preservation of IAM authentication system roles during role replacement.
+These checks change no grant or API request. Actual future initializer creation,
+API assigned-role readback, privilege removal and deletion must still qualify
+on the owned clone; local PostgreSQL tests do not emulate that managed behavior.
 
 Historical local validation for the initial candidate `07b9a4d` is recorded in
 [`DATABASE_INITIALIZATION_LOCAL_VALIDATION.json`](DATABASE_INITIALIZATION_LOCAL_VALIDATION.json):
