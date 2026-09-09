@@ -228,10 +228,21 @@ class PilotWorker(PollingWorker):
         if not 0.1 <= interval_seconds <= 60:
             raise ValueError("Worker interval must be .1..60 seconds")
         started = time.monotonic()
+        if self.admission.launch.evidence_only:
+            max_seconds = 1500 if max_seconds is None else max_seconds
+            self.admission.bind_execution_window(max_seconds, interval_seconds)
+            self.admission.remaining_execution_seconds = (
+                lambda: max_seconds - (time.monotonic() - started)
+            )
         while not stop.is_set():
             if max_seconds is not None and time.monotonic() - started >= max_seconds:
                 return
             self.tick(stop)
+            if self.admission.launch.evidence_only and (
+                self.admission.cohort_blocker()
+                or self.health.blocked_scopes.get("pilot_cohort")
+            ):
+                return
             if self.rotation and self.rotation % 10 == 0:
                 summary = self.result_summary()
                 counts = summary["counts"]
@@ -333,6 +344,29 @@ class PilotWorker(PollingWorker):
         binding = launch.specimens[self.rotation % 10]
         self.rotation += 1
         try:
+            if launch.evidence_only:
+                pending = []
+                incomplete = False
+                for item in launch.specimens:
+                    candidate = self.repository.get(launch.scope, item.specimen_id)
+                    if not self.admission.binding_matches(candidate):
+                        raise OperationalBlock("pilot_specimen_binding_mismatch")
+                    if "segment" not in candidate.run.completed_steps:
+                        incomplete = True
+                        if candidate.run.stage not in {
+                            "finalized",
+                            "paused",
+                            "cancelled",
+                            "processing_blocked",
+                        }:
+                            pending.append(item)
+                if incomplete and not pending:
+                    self.health.blocked_scopes["pilot_cohort"] = (
+                        "pilot_cohort_segmentation_incomplete"
+                    )
+                    return self.health
+                if pending:
+                    binding = pending[(self.rotation - 1) % len(pending)]
             specimen = self.repository.get(launch.scope, binding.specimen_id)
             if specimen.run.stage in {
                 "finalized",

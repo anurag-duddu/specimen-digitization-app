@@ -46,8 +46,9 @@ def read_evidence_profile(path: Path, expected_sha256: str) -> CollectionProfile
 class EvidencePilotAdapters:
     """Expose only SAM and independent transcription, never extraction/tools."""
 
-    def __init__(self, production, settings):
+    def __init__(self, production, settings, reader_admission):
         self.production, self.settings = production, settings
+        self.reader_admission = reader_admission
         self.blobs = production.blobs
         self.classifier = None
         self.authority_tools = {}
@@ -72,6 +73,7 @@ class EvidencePilotAdapters:
         )._segment_with_settings(specimen, self.settings)
 
     def transcribe(self, specimen, region, route):
+        self.reader_admission(specimen, region, route)
         return self.production.transcribe(specimen, region, route)
 
 
@@ -84,10 +86,18 @@ class EvidencePilotWorkflow(Workflow):
         if not admission.launch.evidence_only:
             raise OperationalBlock("evidence_pilot_not_authorized_in_launch")
         self.pilot_profile = profile
+        self._active_reader = None
         adapters = EvidencePilotAdapters(
-            production or ProductionAdapters(blobs), profile.segmentation_settings
+            production or ProductionAdapters(blobs),
+            profile.segmentation_settings,
+            self._admit_reader,
         )
         super().__init__(repository, blobs, adapters, admission=admission, **kwargs)
+
+    def _admit_reader(self, specimen, region, route):
+        if self._active_reader != (specimen.id, specimen.run.id, region.id, route):
+            raise OperationalBlock("pilot_cohort_reader_dispatch_required")
+        self.admission.assert_reader_reserved(specimen, region, route)
 
     @staticmethod
     def next_step(run):
@@ -109,6 +119,7 @@ class EvidencePilotWorkflow(Workflow):
             raise OperationalBlock("evidence_pilot_approval_required")
         specimen = self.repository.get(principal.scope, specimen_id)
         self.admission.admit(specimen)
+        self.admission.bind_execution_window()
         run = specimen.run
         profile = self.pilot_profile
         if specimen.asset.processing_derivative is not None:
@@ -203,7 +214,10 @@ class EvidencePilotWorkflow(Workflow):
             raise OperationalBlock("pilot_pinned_evidence_configuration_changed")
         if run.stage in {"processing_blocked", "paused", "cancelled"}:
             return specimen
-        if self.next_step(run) == "pilot_review":
+        next_step = self.next_step(run)
+        if next_step.startswith("transcribe:") or next_step == "pilot_review":
+            self.admission.reserve_cohort_readings()
+        if next_step == "pilot_review":
             run.stage = "processing_blocked"
             run.blocker = "pilot_evidence_review_required"
             run.disposition = None
@@ -244,4 +258,10 @@ class EvidencePilotWorkflow(Workflow):
                 "pilot-review:" + run.id,
                 digest(marker),
             )
-        return super().step(principal, specimen_id)
+        if next_step.startswith("transcribe:"):
+            _, region_id, route = next_step.split(":", 2)
+            self._active_reader = (specimen.id, run.id, region_id, route)
+        try:
+            return super().step(principal, specimen_id)
+        finally:
+            self._active_reader = None
