@@ -6,11 +6,13 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import stat
 import time
 from urllib.parse import parse_qsl, urlsplit
 
 from release_admission import admit, exact_keys, private_bytes, read_bound_plan, read_packet, require, strict_json
 from release_context import PROJECT, validate_context
+from release_diagnostics import HTTPFailure, stage
 
 ORIGINS = {"identity": "https://identitytoolkit.googleapis.com/v1/","run": "https://run.googleapis.com/v2/", "registry": "https://artifactregistry.googleapis.com/v1/",
            "project": "https://cloudresourcemanager.googleapis.com/v3/",
@@ -73,6 +75,35 @@ def validate_credentials(credential, packet, env):
             "credential OIDC claims are not bound to this job")
 
 
+
+def github_credential_bytes(path, limit=1048576):
+    """Tighten the pinned action's observed 0640 before reading the same inode.
+
+    The shared private_bytes policy remains strict and unchanged. This exception
+    can only remove the action's group-read bit from its owned regular output;
+    it never consumes a group-readable file or follows/adopts another target.
+    """
+    require(path.name.startswith("gha-creds-") and path.suffix == ".json", "GitHub-generated keyless credentials required")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+                and stat.S_IMODE(info.st_mode) in {0o600, 0o640} and info.st_size <= limit,
+                "owned single-link action credential required")
+        if stat.S_IMODE(info.st_mode) == 0o640:
+            os.fchmod(handle.fileno(), 0o600)
+        private = os.fstat(handle.fileno())
+        require(private.st_mode & 0o077 == 0 and stat.S_IMODE(private.st_mode) == 0o600
+                and private.st_uid == os.geteuid() and private.st_nlink == 1,
+                "credential permissions were not tightened")
+        raw = handle.read(limit + 1)
+        after = os.fstat(handle.fileno())
+        require(len(raw) <= limit and after.st_size == info.st_size and after.st_mtime_ns == info.st_mtime_ns
+                and stat.S_IMODE(after.st_mode) == 0o600 and after.st_nlink == 1,
+                "credential changed during private consumption")
+    return raw
+
+
 class Google:
     def __init__(self, packet_path: Path, plane: str, *, cleanup=False):
         self.path, self.plane = packet_path, plane
@@ -80,22 +111,32 @@ class Google:
             require(plane == "data", "cleanup belongs only to data")
             self.packet = cleanup_packet(packet_path, dict(os.environ))
         else:
-            self.packet = admit(packet_path, plane)
-        path = Path(os.environ.get("GOOGLE_GHA_CREDS_PATH", ""))
-        require(path.name.startswith("gha-creds-") and path.suffix == ".json", "GitHub-generated keyless credentials required")
-        credential = strict_json(private_bytes(path))
-        validate_credentials(credential, self.packet, dict(os.environ))
-        from google.auth import load_credentials_from_dict
-        from google.auth.transport.requests import AuthorizedSession
-        self.credentials, _ = load_credentials_from_dict(credential, scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        self.session = AuthorizedSession(self.credentials)
+            with stage("google.admission"):
+                self.packet = admit(packet_path, plane)
+        with stage("google.credentials-file"):
+            path = Path(os.environ.get("GOOGLE_GHA_CREDS_PATH", ""))
+            require(path.name.startswith("gha-creds-") and path.suffix == ".json", "GitHub-generated keyless credentials required")
+            require(all(os.environ.get(key, str(path)) == str(path) for key in
+                        ("GOOGLE_APPLICATION_CREDENTIALS", "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE")),
+                    "job credential paths disagree")
+            credential = strict_json(github_credential_bytes(path))
+        with stage("google.credentials-validation"):
+            validate_credentials(credential, self.packet, dict(os.environ))
+        with stage("google.credentials-load"):
+            from google.auth import load_credentials_from_dict
+            from google.auth.transport.requests import AuthorizedSession
+            self.credentials, _ = load_credentials_from_dict(credential, scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        with stage("google.session"):
+            self.session = AuthorizedSession(self.credentials)
         if plane == "data-initialization":
             # Actual project identity is bound to the signed data recovery proof.
             # This identity has no project/IAM API permission.
             return
-        project = self.request("project", "GET", f"projects/{PROJECT}")
-        require(project.get("name") == f"projects/{self.packet['identity']['project_number']}"
-                and project.get("projectId") == PROJECT and project.get("state") == "ACTIVE", "observed project identity mismatch")
+        with stage("google.project-request"):
+            project = self.request("project", "GET", f"projects/{PROJECT}")
+        with stage("google.project-identity"):
+            require(project.get("name") == f"projects/{self.packet['identity']['project_number']}"
+                    and project.get("projectId") == PROJECT and project.get("state") == "ACTIVE", "observed project identity mismatch")
 
     def request(self, api: str, method: str, resource: str, *, body=None, params=None, missing=False):
         require(api in ORIGINS and method in {"GET", "POST", "PATCH", "DELETE", "PUT"}, "unsupported Google request")
@@ -120,7 +161,8 @@ class Google:
                                         allow_redirects=False)
         if missing and response.status_code == 404:
             return None
-        require(200 <= response.status_code < 300, f"{api} operation rejected with HTTP {response.status_code}; no automatic retry")
+        if not 200 <= response.status_code < 300:
+            raise HTTPFailure(response.status_code)
         return response.json()
 
     def wait(self, api: str, operation: dict, *, maximum_seconds=600):

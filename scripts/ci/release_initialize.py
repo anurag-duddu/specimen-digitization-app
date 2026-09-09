@@ -10,6 +10,7 @@ import time
 
 from release_admission import digest, exact_keys, integer, private_bytes, require, strict_json
 from release_context import PROJECT, REPOSITORY
+from release_diagnostics import node_failure, stage
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = "specimen-digitization-instance"
@@ -151,6 +152,7 @@ def qualify_then_source(initialize, cleanup, source_recheck):
             cleanup(instance)
 
 
+@stage("catalog.native-preflight")
 def native(directory, instance, mode, *, files, deadline, expected_catalog=None, expected_postconditions=None,
            recipient=None, provenance=None):
     require(instance in (SOURCE, CLONE) and mode in {"inspect", "absence", "capability", "initialize", "clean", "post",
@@ -166,48 +168,56 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
         validate_catalog_recipient(recipient)
     evidence = None
     try:
-        result = subprocess.run(["node", "scripts/ci/release_initialize.mjs", mode, instance, str(target)],
-                                cwd=ROOT, env=env, capture_output=True, timeout=max(1, min(90, deadline - time.time())))
-        raw = private_bytes(target) if target.exists() else None
+        with stage("catalog.native-execute"):
+            result = subprocess.run(["node", "scripts/ci/release_initialize.mjs", mode, instance, str(target)],
+                                    cwd=ROOT, env=env, capture_output=True, timeout=max(1, min(90, deadline - time.time())))
+            raw = private_bytes(target) if target.exists() else None
     finally:
         # Native checks can leave observations before they fail. Encrypt those
         # exact bytes too; upload selectors never include this plaintext path.
         if private_catalog and target.exists():
-            from release_catalog_envelope import encrypt_catalog
-            raw = private_bytes(target)
-            envelope = encrypt_catalog(raw, recipient["public_key_pem"].encode(),
-                public_key_sha256=recipient["public_key_sha256"], provenance=provenance)
-            encrypted = directory / f"{instance}-{mode}.encrypted.json"
-            encrypted.write_text(json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n")
-            encrypted.chmod(0o600)
-            evidence = {"file": encrypted.name, "sha256": hashlib.sha256(private_bytes(encrypted)).hexdigest()}
-            target.unlink()
-    require(result.returncode == 0, "native initialization capability or postcondition failed; no broader fallback")
-    require(raw is not None, "native initialization did not retain evidence")
-    value = strict_json(raw)
-    require(value.get("instance") == instance and value.get("mode") == mode and value.get("files") == files,
-            "native initialization result provenance mismatch")
-    if expected_catalog is not None:
-        require(sha(value["catalog"]) == expected_catalog, "native catalog differs from reviewed source/restore")
-    if private_catalog:
-        require(value.get("qualified") is True, "native catalog not qualified")
-        value["catalog_evidence"] = evidence
-    return value
+            with stage("catalog.encryption"):
+                from release_catalog_envelope import encrypt_catalog
+                raw = private_bytes(target)
+                envelope = encrypt_catalog(raw, recipient["public_key_pem"].encode(),
+                    public_key_sha256=recipient["public_key_sha256"], provenance=provenance)
+                encrypted = directory / f"{instance}-{mode}.encrypted.json"
+                encrypted.write_text(json.dumps(envelope, sort_keys=True, separators=(",", ":")) + "\n")
+                encrypted.chmod(0o600)
+                evidence = {"file": encrypted.name, "sha256": hashlib.sha256(private_bytes(encrypted)).hexdigest()}
+                target.unlink()
+    if result.returncode != 0:
+        raise node_failure(getattr(result, "stderr", None))
+    with stage("catalog.native-result"):
+        require(raw is not None, "native initialization did not retain evidence")
+        value = strict_json(raw)
+        require(value.get("instance") == instance and value.get("mode") == mode and value.get("files") == files,
+                "native initialization result provenance mismatch")
+        if expected_catalog is not None:
+            require(sha(value["catalog"]) == expected_catalog, "native catalog differs from reviewed source/restore")
+        if private_catalog:
+            require(value.get("qualified") is True, "native catalog not qualified")
+            value["catalog_evidence"] = evidence
+        return value
 
 
 def inspect_catalog(google, plan, directory, output):
-    validate_catalog_recipient(plan["catalog_recipient"])
-    source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
-    require(source.get("region") == "us-east4" and source.get("databaseVersion") == "POSTGRES_18"
-            and source.get("settings", {}).get("settingsVersion") == plan["database_etag"], "catalog target changed")
+    with stage("catalog.recipient"):
+        validate_catalog_recipient(plan["catalog_recipient"])
+    with stage("catalog.metadata-request"):
+        source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+    with stage("catalog.metadata-identity"):
+        require(source.get("region") == "us-east4" and source.get("databaseVersion") == "POSTGRES_18"
+                and source.get("settings", {}).get("settingsVersion") == plan["database_etag"], "catalog target changed")
     observed = native(directory, SOURCE, "inspect", files=plan["initialization_files"], deadline=google.packet["expires_at_unix"],
                       recipient=plan["catalog_recipient"], provenance=catalog_provenance(google.packet))
-    output.write_text(json.dumps({"version": "data-initialization-inventory/v1",
-        "source_sha": google.packet["source_sha"], "run_id": google.packet["release_run_id"],
-        "run_attempt": google.packet["release_run_attempt"], "files": plan["initialization_files"],
-        "catalog_sha256": sha(observed["catalog"]), "catalog_evidence": observed["catalog_evidence"],
-        "native_client_sessions": observed["native_client_sessions"],
-        "data_ready": False, "release_accepted": False}, sort_keys=True) + "\n")
+    with stage("catalog.receipt"):
+        output.write_text(json.dumps({"version": "data-initialization-inventory/v1",
+            "source_sha": google.packet["source_sha"], "run_id": google.packet["release_run_id"],
+            "run_attempt": google.packet["release_run_attempt"], "files": plan["initialization_files"],
+            "catalog_sha256": sha(observed["catalog"]), "catalog_evidence": observed["catalog_evidence"],
+            "native_client_sessions": observed["native_client_sessions"],
+            "data_ready": False, "release_accepted": False}, sort_keys=True) + "\n")
 
 
 def prepare_recovery(google, plan, directory, output):

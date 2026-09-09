@@ -4,6 +4,8 @@ import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {join,resolve} from 'node:path';
+let diagnosticStage='node.preflight';
+try {
 const env=process.env;
 assert.equal(env.GITHUB_ACTIONS,'true');
 assert.equal(env.GITHUB_REPOSITORY,'anurag-duddu/specimen-digitization-app');
@@ -32,24 +34,30 @@ for(const name of ['scripts/ci/release_initialize.py','scripts/ci/release_initia
   assert.equal(createHash('sha256').update(buffer).digest('hex'),files[name]); buffers[name]=buffer.toString('utf8');
 }
 assert.equal(Object.keys(files).length,6);
+diagnosticStage='node.dependencies';
 const require=createRequire(join(resolve(env.RELEASE_NODE_ROOT),'node_modules/firebase-tools/package.json'));
 assert.equal(require('./package.json').version,'15.8.0');
 const {Connector,AuthTypes,IpAddressTypes}=require('@google-cloud/cloud-sql-connector');
 const {Pool}=require('pg');
+diagnosticStage='node.connector';
 const connector=new Connector();
-let pool,client;
+let pool,client,failure;
 const database=['initialize','post'].includes(mode)?'specimen-digitization-database':'postgres';
 try {
   const options=await connector.getOptions({instanceConnectionName:`specimen-digitization:us-east4:${instance}`,ipType:IpAddressTypes.PUBLIC,authType:AuthTypes.IAM});
   pool=new Pool({...options,user:actor,database,max:1,connectionTimeoutMillis:10000,
     statement_timeout:30000,lock_timeout:5000,idle_in_transaction_session_timeout:30000,
     application_name:`specimen-init-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`});
+  diagnosticStage='node.connect';
   client=await pool.connect();
+  diagnosticStage='node.context';
   const context=(await client.query('SELECT current_database() AS database,session_user AS actor,current_user AS effective')).rows[0];
   assert.deepEqual(context,{database,actor,effective:actor});
+  diagnosticStage='node.sessions';
   const writers=(await client.query("SELECT count(*)::int AS count FROM pg_stat_activity WHERE backend_type='client backend' AND pid<>pg_backend_pid() AND datname IS NOT NULL")).rows[0].count;
   if(mode!=='inspect') assert.equal(writers,0,'unknown native client sessions require writer reconciliation');
   if(mode.startsWith('disposal-')) {
+    diagnosticStage='node.disposal';
     const principal='specimen-data-initialize@specimen-digitization.iam';
     assert.equal((await client.query('SELECT count(*)::int AS count FROM pg_stat_activity WHERE usename=$1',[principal])).rows[0].count,0);
     const roles=(await client.query('SELECT oid,NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls) AS narrow FROM pg_roles WHERE rolname=$1',[principal])).rows;
@@ -59,8 +67,10 @@ try {
       assert.equal((await client.query('SELECT count(*)::int AS count FROM pg_auth_members WHERE member=$1',[roles[0].oid])).rows[0].count,0);
       assert.equal((await client.query("SELECT count(*)::int AS count FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=$1",[roles[0].oid])).rows[0].count,0);
     }
+    diagnosticStage='node.output';
     writeFileSync(output,JSON.stringify({instance,mode,files,verified:true}),{mode:0o600});
   } else if(mode==='clean') {
+    diagnosticStage='node.clean';
     assert.equal((await client.query("SELECT count(*)::int AS count FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=session_user)")).rows[0].count,0);
     const safe=(await client.query('SELECT NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls) AS safe FROM pg_roles WHERE rolname=session_user')).rows[0];
     assert.equal(safe.safe,true);
@@ -68,11 +78,14 @@ try {
     try {await client.query('SET ROLE cloudsqlsuperuser');} catch(error) {assert.equal(error.code,'42501');denied=true;}
     assert.equal(denied,true,'initializer still has managed-role SET capability');
     assert.equal((await client.query("SELECT count(*)::int AS count FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=(SELECT oid FROM pg_roles WHERE rolname=session_user)")).rows[0].count,0);
+    diagnosticStage='node.output';
     writeFileSync(output,JSON.stringify({instance,mode,files,roles_revoked:true,privileged_set_denied:true,dependencies:0}),{mode:0o600});
   } else if(mode==='initialize' || mode==='post') {
+    diagnosticStage='node.initialize';
     assert.ok(deadline*1000-Date.now()>60000,'insufficient SQL/cleanup window');
     if(mode==='initialize') await client.query(buffers['scripts/ci/initialize_database.sql']);
     else await client.query('BEGIN READ ONLY');
+    diagnosticStage='node.postconditions';
     const results=await client.query(buffers['scripts/ci/initialize_postconditions.sql']);
     const post=results.filter(r=>r.command==='SELECT').at(-1).rows[0].postconditions;
     assert.equal(post.database_owner,'cloudsqlsuperuser');
@@ -82,12 +95,17 @@ try {
       assert.deepEqual(comparable(post),comparable(expected),'source database properties/privileges differ from clone qualification');
     }
     await client.query('COMMIT');
+    diagnosticStage='node.output';
     writeFileSync(output,JSON.stringify({instance,mode,files,postconditions:post}),{mode:0o600});
   } else {
+    diagnosticStage='node.catalog-begin';
     await client.query('BEGIN READ ONLY');
+    diagnosticStage='node.catalog-query';
     const catalog=(await client.query(buffers['scripts/ci/initialize_catalog.sql'])).rows[0].catalog;
     // Retain native facts even when a later capability/absence guard rejects.
+    diagnosticStage='node.output';
     writeFileSync(output,JSON.stringify({instance,mode,files,catalog,qualified:false}),{mode:0o600});
+    diagnosticStage='node.catalog-validate';
     let capability;
     assert.equal(catalog.server_major,18);
     if(mode!=='inspect') {
@@ -118,11 +136,32 @@ try {
       assert.equal((await client.query("SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='specimen-data-initialize@specimen-digitization.iam') AS present")).rows[0].present,false);
     }
     }
+    diagnosticStage='node.catalog-rollback';
     await client.query('ROLLBACK');
+    diagnosticStage='node.output';
     writeFileSync(output,JSON.stringify({instance,mode,files,catalog,qualified:true,capability,native_client_sessions:writers}),{mode:0o600});
   }
+} catch(error) {
+  failure={error,stage:diagnosticStage};
 } finally {
-  client?.release(true);
-  await pool?.end();
-  connector.close();
+  try {
+    diagnosticStage='node.cleanup';
+    client?.release(true);
+    await pool?.end();
+    connector.close();
+  } catch(error) {
+    // Preserve the first failure if cleanup also rejects; never print either.
+    failure ??= {error,stage:diagnosticStage};
+  }
+}
+if(failure) {diagnosticStage=failure.stage;throw failure.error;}
+} catch(error) {
+  // Deliberately no exception message, stack, arbitrary error.code or SQL text.
+  const states=new Set(['08001','08003','08004','08006','08P01','28000','28P01',
+    '3D000','42501','53300','53400','55000','57014','57P01','57P03']);
+  const record={version:'release-diagnostic/v1',stage:diagnosticStage};
+  const code=error && typeof error==='object'?Object.getOwnPropertyDescriptor(error,'code')?.value:undefined;
+  if(typeof code==='string' && states.has(code)) record.sqlstate=code;
+  process.stderr.write(JSON.stringify(record)+'\n');
+  process.exitCode=1;
 }
