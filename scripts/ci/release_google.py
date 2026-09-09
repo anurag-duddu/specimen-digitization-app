@@ -59,9 +59,14 @@ def validate_credentials(credential, packet, env):
     require(expected.scheme == "https" and expected.hostname and expected.hostname.endswith(".actions.githubusercontent.com")
             and (actual.scheme, actual.netloc, actual.path) == (expected.scheme, expected.netloc, expected.path)
             and not actual.fragment and not actual.username and not actual.password, "credential OIDC source is not this job's endpoint")
-    params = dict(parse_qsl(actual.query))
-    expected_params = dict(parse_qsl(expected.query)); expected_params["audience"] = packet["identity"]["provider"]
-    require(params == expected_params and len(params) == len(parse_qsl(actual.query))
+    # Retain blank fields so they cannot hide duplicate or extra parameters.
+    query = parse_qsl(actual.query, keep_blank_values=True)
+    params = dict(query)
+    # The pinned auth action requests a GitHub OIDC JWT for this HTTPS audience.
+    # Its external-account credential above separately uses // for Google STS.
+    expected_params = dict(parse_qsl(expected.query, keep_blank_values=True))
+    expected_params["audience"] = f"https://iam.googleapis.com/{packet['identity']['provider']}"
+    require(params == expected_params and len(params) == len(query)
             and source["format"] == {"type": "json", "subject_token_field_name": "value"}
             and bool(env.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN"))
             and source["headers"] == {"Authorization": "Bearer " + env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},

@@ -4,7 +4,7 @@ import importlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import pytest
 
@@ -27,17 +27,100 @@ def context():
 
 
 def credential(env, packet):
+    # Synthetic shape emitted by google-github-actions/auth at the pinned
+    # 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093: src/main.ts supplies the
+    # HTTPS OIDC audience; src/client/workload_identity_federation.ts writes
+    # the separate // STS audience and sets the credential-source query.
     return {"type": "external_account", "audience": "//iam.googleapis.com/" + packet["identity"]["provider"],
             "subject_token_type": "urn:ietf:params:oauth:token-type:jwt", "token_url": "https://sts.googleapis.com/v1/token",
             "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" + env["RELEASE_SERVICE_ACCOUNT"] + ":generateAccessToken",
-            "credential_source": {"url": env["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&" + urlencode({"audience": packet["identity"]["provider"]}),
+            "credential_source": {"url": env["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&" + urlencode({"audience": "https://iam.googleapis.com/" + packet["identity"]["provider"]}),
                                   "headers": {"Authorization": "Bearer " + env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
                                   "format": {"type": "json", "subject_token_field_name": "value"}}}
 
 
 def test_bound_keyless_credential_can_only_exchange_this_jobs_oidc_token():
     env, packet = context()
+    value = credential(env, packet)
+    assert value["audience"] == "//iam.googleapis.com/" + packet["identity"]["provider"]
+    assert dict(parse_qsl(urlsplit(value["credential_source"]["url"]).query))["audience"] == (
+        "https://iam.googleapis.com/" + packet["identity"]["provider"])
+    M.validate_credentials(value, packet, env)
+
+
+@pytest.mark.parametrize("prefix", ["", "//iam.googleapis.com/", "http://iam.googleapis.com/",
+                                   "https://foreign.example/", "https://iam.googleapis.com/https://iam.googleapis.com/"])
+def test_oidc_audience_must_be_the_pinned_actions_exact_https_default(prefix):
+    env, packet = context()
+    value = credential(env, packet)
+    value["credential_source"]["url"] = env["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&" + urlencode({
+        "audience": prefix + packet["identity"]["provider"]})
+    with pytest.raises(ValueError, match="OIDC claims"):
+        M.validate_credentials(value, packet, env)
+
+
+@pytest.mark.parametrize("prefix", ["", "https://iam.googleapis.com/", "//foreign.example/"])
+def test_sts_audience_keeps_its_separate_exact_resource_syntax(prefix):
+    env, packet = context()
+    value = credential(env, packet)
+    value["audience"] = prefix + packet["identity"]["provider"]
+    with pytest.raises(ValueError, match="credential identity"):
+        M.validate_credentials(value, packet, env)
+
+
+@pytest.mark.parametrize("extra_query", ["audience=", "audience", "api-version=", "api-version=2.0",
+                                         "unexpected=", "audience=foreign"])
+def test_duplicate_or_extra_oidc_query_fields_are_rejected_including_blank_values(extra_query):
+    env, packet = context()
+    value = credential(env, packet)
+    value["credential_source"]["url"] += "&" + extra_query
+    with pytest.raises(ValueError, match="OIDC claims"):
+        M.validate_credentials(value, packet, env)
+
+
+def test_job_query_parameters_are_preserved_including_legitimate_blank_values():
+    env, packet = context()
+    env["ACTIONS_ID_TOKEN_REQUEST_URL"] += "&job-context="
     M.validate_credentials(credential(env, packet), packet, env)
+
+
+def test_credential_cannot_drop_a_blank_query_parameter_from_the_job_endpoint():
+    env, packet = context()
+    value = credential(env, packet)
+    env["ACTIONS_ID_TOKEN_REQUEST_URL"] += "&job-context="
+    with pytest.raises(ValueError, match="OIDC claims"):
+        M.validate_credentials(value, packet, env)
+
+
+def test_other_provider_at_the_correct_google_host_is_rejected():
+    env, packet = context()
+    value = credential(env, packet)
+    value["credential_source"]["url"] = value["credential_source"]["url"].replace(
+        "specimen-data-release", "specimen-runtime-release")
+    with pytest.raises(ValueError, match="OIDC claims"):
+        M.validate_credentials(value, packet, env)
+
+
+@pytest.mark.parametrize("change", [
+    lambda c: c["credential_source"].update(url=c["credential_source"]["url"].replace("/token?", "/other-job?")),
+    lambda c: c["credential_source"].update(url=c["credential_source"]["url"].replace("api-version=2.0", "api-version=1.0")),
+    lambda c: c["credential_source"].update(url=c["credential_source"]["url"] + "#fragment"),
+    lambda c: c["credential_source"]["headers"].update(Extra="value"),
+    lambda c: c["credential_source"]["format"].update(subject_token_field_name="other"),
+])
+def test_correct_https_audience_does_not_relax_the_job_source_binding(change):
+    env, packet = context()
+    value = credential(env, packet)
+    change(value)
+    with pytest.raises(ValueError):
+        M.validate_credentials(value, packet, env)
+
+
+def test_correct_audiences_still_require_a_nonempty_job_token():
+    env, packet = context()
+    env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"] = ""
+    with pytest.raises(ValueError, match="OIDC claims"):
+        M.validate_credentials(credential(env, packet), packet, env)
 
 
 @pytest.mark.parametrize("change", [
