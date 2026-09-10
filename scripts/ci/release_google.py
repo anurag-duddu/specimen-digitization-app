@@ -310,7 +310,33 @@ class Google:
 
     def registry_login(self):
         from google.auth.transport.requests import Request
-        require(self.plane == "runtime-build", "only the supervised publisher logs into the registry")
+        require(self.plane in {"runtime-build", "runtime"}, "only runtime release planes log into the registry")
+        if self.plane == "runtime":
+            # Preparation/activation use the separate admitted runtime identity.
+            # Refresh and login share one window inside the original packet.
+            require(signal.SIGALRM not in signal.pthread_sigmask(signal.SIG_BLOCK, [])
+                    and signal.SIGALRM not in signal.sigpending(), "runtime cannot use a blocked or pending alarm")
+            expires = self.packet["expires_at_unix"]
+            end = time.monotonic() + min(30, expires - time.time())
+            def remaining():
+                seconds = min(expires - time.time(), end - time.monotonic())
+                require(seconds > 0, "original runtime registry login deadline reached")
+                return seconds
+            from google.auth.exceptions import GoogleAuthError
+            try:
+                # Native SDK work can defer Python's alarm. Hard-exit only while
+                # no Docker child exists; disarm before the timeout-owned login.
+                with publication.total_request(remaining()):
+                    self.credentials.refresh(Request())
+            except (GoogleAuthError, publication.RequestExpired):
+                raise ValueError("runtime registry credential refresh failed") from None
+            with request_deadline(remaining()):
+                result = subprocess.run(["docker", "login", "-u", "oauth2accesstoken", "--password-stdin",
+                                         "https://us-east4-docker.pkg.dev"], input=self.credentials.token.encode(),
+                                        capture_output=True, timeout=remaining())
+                require(result.returncode == 0, "registry authentication failed")
+                remaining()
+            return
         with publication.total_request(publication.publication_budget(self.packet, 30)):
             self.credentials.refresh(Request())
             publication.publication_budget(self.packet)
