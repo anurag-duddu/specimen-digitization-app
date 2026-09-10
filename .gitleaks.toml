@@ -413,3 +413,12 @@ regexes = [
   '''^\s*"token_id": "99c79752-91e0-4228-9d1d-3ea5aa1c0845",?\s*$''',
   '''^\s*"token_id": "e7906029-4587-4290-bc9c-3b23a1efa839",?\s*$''',
 ]
+
+[[rules.allowlists]]
+description = "Exact public pinned Google authentication action commit; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''^scripts/ci/release_publication_deadline\.py$''']
+regexTarget = "line"
+regexes = [
+  '''^\n?AUTH_SHA = "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"  # pragma: allowlist secret \(public upstream commit\)$''', # pragma: allowlist secret
+]

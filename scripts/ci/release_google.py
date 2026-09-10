@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlsplit
 from release_admission import admit, exact_keys, private_bytes, read_bound_plan, read_packet, require, strict_json
 from release_context import PROJECT, validate_context
 from release_diagnostics import HTTPFailure, stage
+import release_publication_deadline as publication
 
 ORIGINS = {"identity": "https://identitytoolkit.googleapis.com/v1/","run": "https://run.googleapis.com/v2/", "registry": "https://artifactregistry.googleapis.com/v1/",
            "project": "https://cloudresourcemanager.googleapis.com/v3/",
@@ -137,6 +138,8 @@ def github_credential_bytes(path, limit=1048576):
 class Google:
     def __init__(self, packet_path: Path, plane: str, *, cleanup=False):
         self.path, self.plane = packet_path, plane
+        if plane == "runtime-build":
+            publication.publication_budget()
         if cleanup:
             require(plane == "data", "cleanup belongs only to data")
             self.packet = cleanup_packet(packet_path, dict(os.environ))
@@ -155,7 +158,8 @@ class Google:
         with stage("google.credentials-load"):
             from google.auth import load_credentials_from_dict
             from google.auth.transport.requests import AuthorizedSession
-            self.credentials, _ = load_credentials_from_dict(credential, scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            with publication.total_request(publication.publication_budget(self.packet, 30)) if plane == "runtime-build" else nullcontext():
+                self.credentials, _ = load_credentials_from_dict(credential, scopes=["https://www.googleapis.com/auth/cloud-platform"])
         with stage("google.session"):
             from requests.adapters import HTTPAdapter
             # A 401 after a native insert is an unknown outcome, not permission
@@ -201,6 +205,21 @@ class Google:
             remaining = min(self.packet["expires_at_unix"], recovery_deadline or self.packet["expires_at_unix"]) - time.time()
             require(remaining > 0, "native mutation has no remaining authority")
             timing["max_allowed_time"] = min(30, remaining)
+        if self.plane == "runtime-build":
+            seconds = publication.publication_budget(self.packet, 30)
+            with publication.total_request(seconds):
+                response = None
+                try:
+                    response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params,
+                        timeout=seconds, max_allowed_time=seconds, allow_redirects=False)
+                    if missing and response.status_code == 404:
+                        return None
+                    if not 200 <= response.status_code < 300:
+                        raise HTTPFailure(response.status_code)
+                    return response.json()
+                finally:
+                    if response is not None:
+                        response.close()
         with request_deadline(timing["max_allowed_time"]) if recovery_deadline else nullcontext():
             response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=timeout, **timing,
                                             allow_redirects=False)
@@ -291,11 +310,14 @@ class Google:
 
     def registry_login(self):
         from google.auth.transport.requests import Request
-        self.credentials.refresh(Request())
-        result = subprocess.run(["docker", "login", "-u", "oauth2accesstoken", "--password-stdin",
-                                 "https://us-east4-docker.pkg.dev"], input=self.credentials.token.encode(),
-                                capture_output=True, timeout=30)
-        require(result.returncode == 0, "registry authentication failed")
+        require(self.plane == "runtime-build", "only the supervised publisher logs into the registry")
+        with publication.total_request(publication.publication_budget(self.packet, 30)):
+            self.credentials.refresh(Request())
+            publication.publication_budget(self.packet)
+            result = subprocess.run(["docker", "login", "-u", "oauth2accesstoken", "--password-stdin",
+                                     "https://us-east4-docker.pkg.dev"], input=self.credentials.token.encode(),
+                                    capture_output=True, timeout=publication.publication_budget(self.packet, 30))
+            require(result.returncode == 0, "registry authentication failed")
 
     def run_iam_policy(self, resource):
         require(resource == f"projects/{PROJECT}/locations/us-east4/services/specimen-sam", "only the named SAM invocation policy is used")
