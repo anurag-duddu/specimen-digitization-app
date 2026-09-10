@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'api_repository.dart';
 import 'models.dart';
+import 'magic_link.dart';
+import 'magic_link_screen.dart';
 
 abstract class SessionAccess {
   Stream<bool> get changes;
@@ -22,7 +24,8 @@ abstract class VerifiedEmailAccess {
   Future<void> sendVerification();
 }
 
-class FirebaseSession implements SessionAccess, VerifiedEmailAccess {
+class FirebaseSession
+    implements SessionAccess, VerifiedEmailAccess, EmailLinkAccess {
   FirebaseSession(this.auth);
   final FirebaseAuth auth;
   @override
@@ -35,6 +38,13 @@ class FirebaseSession implements SessionAccess, VerifiedEmailAccess {
   String get displayName => auth.currentUser?.email ?? 'Signed in';
   @override
   Future<String?> token() async {
+    if (!staffEmailAllowed) {
+      throw const ApiFailure(
+        staffEmailMessage,
+        code: 'staff_email_required',
+        status: 403,
+      );
+    }
     if (!emailVerified) {
       throw const ApiFailure(
         'Verify your email address before opening a collection.',
@@ -47,6 +57,8 @@ class FirebaseSession implements SessionAccess, VerifiedEmailAccess {
 
   @override
   bool get emailVerified => auth.currentUser?.emailVerified == true;
+  bool get staffEmailAllowed =>
+      normalizedStaffEmail(auth.currentUser?.email ?? '') != null;
   @override
   Future<void> refreshVerification() async {
     await auth.currentUser?.reload();
@@ -61,28 +73,64 @@ class FirebaseSession implements SessionAccess, VerifiedEmailAccess {
   }
 
   @override
-  Future<void> signIn(String email, String password) async {
-    await auth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
+  bool isSignInWithEmailLink(String link) => auth.isSignInWithEmailLink(link);
+
+  @override
+  Future<void> sendSignInLink(String email) async {
+    final normalized = normalizedStaffEmail(email);
+    if (normalized == null) throw const FormatException(staffEmailMessage);
+    await auth.sendSignInLinkToEmail(
+      email: normalized,
+      actionCodeSettings: ActionCodeSettings(
+        url: emailLinkReturnUrl,
+        handleCodeInApp: true,
+      ),
     );
   }
 
   @override
-  Future<void> signOut() => auth.signOut();
+  Future<void> completeEmailLink(String email, String link) async {
+    final normalized = normalizedStaffEmail(email);
+    if (normalized == null) throw const FormatException(staffEmailMessage);
+    if (!auth.isSignInWithEmailLink(link)) {
+      throw FirebaseAuthException(code: 'invalid-action-code');
+    }
+    await auth.signInWithEmailLink(email: normalized, emailLink: link);
+  }
+
   @override
-  Future<void> resetPassword(String email) =>
-      auth.sendPasswordResetEmail(email: email.trim());
+  Future<void> signIn(String email, String password) async =>
+      throw UnsupportedError('Use an email sign-in link.');
+  @override
+  Future<void> resetPassword(String email) async =>
+      throw UnsupportedError('Use an email sign-in link.');
+  @override
+  Future<void> signOut() => auth.signOut();
 }
 
-class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key, required this.session});
+class SignInScreen extends StatelessWidget {
+  const SignInScreen({super.key, required this.session, this.magicLink});
+  final SessionAccess session;
+  final MagicLinkController? magicLink;
+  @override
+  Widget build(BuildContext context) => session is EmailLinkAccess
+      ? MagicLinkSignInScreen(
+          access: session as EmailLinkAccess,
+          controller: magicLink,
+        )
+      : _FixtureSignInScreen(session: session);
+}
+
+// Legacy SessionAccess adapters remain for isolated local fixtures/tests only.
+// FirebaseSession always takes the email-link route above.
+class _FixtureSignInScreen extends StatefulWidget {
+  const _FixtureSignInScreen({required this.session});
   final SessionAccess session;
   @override
-  State<SignInScreen> createState() => _SignInScreenState();
+  State<_FixtureSignInScreen> createState() => _SignInScreenState();
 }
 
-class _SignInScreenState extends State<SignInScreen> {
+class _SignInScreenState extends State<_FixtureSignInScreen> {
   final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _password = TextEditingController();

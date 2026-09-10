@@ -83,7 +83,7 @@ def test_config_and_immutable_provenance(tmp_path, monkeypatch):
 
 
 def verified_sdk(monkeypatch):
-    id_token = Mock(return_value={"uid": "fixture-user", "email_verified": True})
+    id_token = Mock(return_value={"uid": "fixture-user", "email": "fixture@fieldmuseum.org", "email_verified": True})
     app_token = Mock(
         return_value={
             "app_id": "1:123:web:abc123",
@@ -403,7 +403,7 @@ def test_real_app_check_sdk_crypto_numeric_audience(monkeypatch):
         monkeypatch.setattr(
             runtime_auth.auth,
             "verify_id_token",
-            lambda *args, **kwargs: {"uid": "fixture-user", "email_verified": True},
+            lambda *args, **kwargs: {"uid": "fixture-user", "email": "fixture@fieldmuseum.org", "email_verified": True},
         )
         verify = runtime_auth.firebase_verifier(app, ("1:123:web:abc123",), app)
         claims = {
@@ -490,6 +490,7 @@ def test_real_auth_sdk_crypto_text_project_and_revocation(monkeypatch):
             "aud": "specimen-digitization",
             "iss": "https://securetoken.google.com/specimen-digitization",
             "email_verified": True,
+            "email": "fixture@fieldmuseum.org",
             "auth_time": int(time.time()),
             "iat": int(time.time()),
             "exp": int(time.time()) + 300,

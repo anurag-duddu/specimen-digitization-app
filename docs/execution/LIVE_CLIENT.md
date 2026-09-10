@@ -1,5 +1,9 @@
 # Live client workstream
 
+This report preserves the earlier password-based implementation. Current web
+sign-in uses [staff email links](../MAGIC_LINK_SIGN_IN.md); collection roles
+remain server-authorized.
+
 ## Objective and ownership
 
 Connect the web login/upload/review path to verified Firebase identity and server

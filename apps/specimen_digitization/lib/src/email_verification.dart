@@ -37,6 +37,31 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
   @override
   Widget build(BuildContext context) {
     final access = widget.session;
+    if (access is FirebaseSession && !access.staffEmailAllowed) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Use a Field Museum account'),
+                const SizedBox(height: 12),
+                const Text('Sign in with your fieldmuseum.org email address.'),
+                if (_message != null)
+                  Semantics(liveRegion: true, child: Text(_message!)),
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => _act(access.signOut, 'Signed out.'),
+                  child: const Text('Sign out'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     if (access is! VerifiedEmailAccess ||
         ((access as VerifiedEmailAccess).emailVerified &&
             !_busy &&

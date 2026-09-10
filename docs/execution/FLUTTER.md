@@ -1,5 +1,8 @@
 # Flutter product implementation and verification
 
+This report preserves the original implementation. Current production web
+authentication uses [staff email links](../MAGIC_LINK_SIGN_IN.md).
+
 Worktree: `/Users/anuragduddu/.codex/worktrees/6b01/specimen-digitization-app`.
 Branch: `codex/flutter-product`. Base: `82fd60e`.
 Verified implementation HEAD: `31120e7d88ce053c465e890718d5fc21fc898322`.

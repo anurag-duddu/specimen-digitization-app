@@ -9,12 +9,16 @@ import 'src/app_check.dart';
 import 'src/auth.dart';
 import 'src/connection_config.dart';
 import 'src/email_verification.dart';
+import 'src/email_link_browser.dart';
+import 'src/magic_link.dart';
+import 'src/magic_link_screen.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
 import 'src/workspace.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final emailLinkBrowser = createEmailLinkBrowser();
   SessionAccess? session;
   SpecimenRepository? repository;
   String? setupMessage;
@@ -74,6 +78,7 @@ Future<void> main() async {
       repository: repository,
       setupMessage: setupMessage,
       synthetic: localSynthetic,
+      emailLinkBrowser: emailLinkBrowser,
     ),
   );
 }
@@ -85,7 +90,9 @@ class SpecimenDigitizationApp extends StatelessWidget {
     this.repository,
     this.setupMessage,
     this.synthetic = false,
+    this.emailLinkBrowser,
   });
+  final EmailLinkBrowser? emailLinkBrowser;
   final SessionAccess? session;
   final SpecimenRepository? repository;
   final String? setupMessage;
@@ -93,6 +100,7 @@ class SpecimenDigitizationApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Specimen Digitization',
+    initialRoute: '/',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
@@ -117,27 +125,36 @@ class SpecimenDigitizationApp extends StatelessWidget {
     ),
     home: session == null
         ? _ConnectionSetup(setupMessage: setupMessage, synthetic: synthetic)
-        : StreamBuilder<bool>(
-            stream: session!.changes,
-            initialData: session!.signedIn,
-            builder: (context, snapshot) => snapshot.data == true
-                ? EmailVerificationGate(
-                    session: session!,
-                    child: repository == null
-                        ? _ConnectionSetup(
-                            setupMessage:
-                                setupMessage ?? collectionPendingMessage,
-                            synthetic: synthetic,
-                            session: session,
-                          )
-                        : CollectionWorkspace(
-                            key: ValueKey(session!.userId),
-                            repository: repository!,
-                            session: session!,
-                          ),
+        : session is EmailLinkAccess
+        ? EmailLinkEntry(
+            access: session! as EmailLinkAccess,
+            browser: emailLinkBrowser ?? createEmailLinkBrowser(),
+            builder: (context, controller) => controller.handlingLink
+                ? SignInScreen(session: session!, magicLink: controller)
+                : _sessionHome(controller),
+          )
+        : _sessionHome(null),
+  );
+
+  Widget _sessionHome(MagicLinkController? magicLink) => StreamBuilder<bool>(
+    stream: session!.changes,
+    initialData: session!.signedIn,
+    builder: (context, snapshot) => snapshot.data == true
+        ? EmailVerificationGate(
+            session: session!,
+            child: repository == null
+                ? _ConnectionSetup(
+                    setupMessage: setupMessage ?? collectionPendingMessage,
+                    synthetic: synthetic,
+                    session: session,
                   )
-                : SignInScreen(session: session!),
-          ),
+                : CollectionWorkspace(
+                    key: ValueKey(session!.userId),
+                    repository: repository!,
+                    session: session!,
+                  ),
+          )
+        : SignInScreen(session: session!, magicLink: magicLink),
   );
 }
 
