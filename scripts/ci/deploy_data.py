@@ -129,7 +129,7 @@ def validate_plan(plan, packet, *, now=None):
     require(plan["writers"] == "no_runtime_exists", "first-release data changes require independently absent runtime writers")
     for key in ("database_etag", "schema_etag", "connector_etag", "storage_release_etag"):
         require(plan[key] is None or isinstance(plan[key], str) and 0 < len(plan[key]) <= 500, "invalid expected data revision")
-    recovery = exact_keys(plan["recovery"], {"backup_id", "clone", "recipe", "expires_at_unix"}
+    recovery = exact_keys(plan["recovery"], {"backup_id", "clone", "recipe", "expires_at_unix", "allowance"}
                           | ({"backup_retention"} if "backup_retention" in plan["recovery"] else set()), "recovery")
     require(recovery["clone"] == CLONE and (recovery["backup_id"] is None or isinstance(recovery["backup_id"], str)
             and re.fullmatch(r"[1-9][0-9]*", recovery["backup_id"])), "unapproved recovery target or backup")
@@ -137,6 +137,8 @@ def validate_plan(plan, packet, *, now=None):
     now = time.time() if now is None else now
     integer(recovery["expires_at_unix"], 1, 2**53, "recovery expiry")
     require(now < recovery["expires_at_unix"] <= now + 7200, "recovery deadline expired or over two hours")
+    from release_clone import validate_allowance
+    validate_allowance(recovery["allowance"], packet, recovery["expires_at_unix"], now=now)
     if "backup_retention" in recovery:
         from release_backup import validate_retention
         require(recovery["backup_id"] is None, "finite retention applies only to the one new backup")
@@ -369,9 +371,6 @@ def rehearse(google, plan, directory):
             "insufficient remaining restore/verification/cleanup window")
     require(google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True) is None,
             "rehearsal clone already exists; never adopt or overwrite it")
-    previous_operations = list_sql(google, f"projects/{PROJECT}/operations", instance=CLONE, maxResults=100)
-    require(not any(o.get("operationType") == "CREATE" and o.get("targetId") == CLONE for o in previous_operations),
-            "the single native clone allowance was already used; deletion never resets it")
     body = clone_body(source, plan["recovery"]["recipe"], google.packet["release_run_id"],
                       run_attempt=google.packet["release_run_attempt"], source_sha=google.packet["source_sha"])
     before = sql_inventory(directory, SOURCE)
@@ -380,12 +379,14 @@ def rehearse(google, plan, directory):
     else:
         verify_indexes(before)
     require(not (directory / "native-recovery.json").exists(), "rehearsal operation already recorded; reconcile without replay")
+    from release_clone import acquire
+    winner = acquire(google, plan, directory)
     backup_args = {"retention": plan["recovery"]["backup_retention"], "source": source} if "backup_retention" in plan["recovery"] else {}
-    backup_id = ensure_backup(google, plan["recovery"]["backup_id"], directory, **backup_args)
+    backup_id = winner.effect("clone-backup", lambda: ensure_backup(google, plan["recovery"]["backup_id"], directory, **backup_args))
     from release_backup import attach_proof
     backup_proof = {"backup_id": backup_id}
     attach_proof(backup_proof, plan, google.packet, directory)
-    operation = google.request("sql", "POST", f"projects/{PROJECT}/instances", body=body)
+    operation = winner.effect("clone-create", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances", body=body))
     # Retain creation operation before waiting, so interrupted insertion is not
     # mistaken for permission to submit another native restore.
     creation = {"clone": CLONE, "source": SOURCE, "backup_id": backup_id,
@@ -399,8 +400,8 @@ def rehearse(google, plan, directory):
     creation["create_time"] = clone["createTime"]
     receipt_path.write_text(json.dumps(creation))
     validate_clone_ownership(clone, creation, google.packet["release_run_id"])
-    operation = google.request("sql", "POST", f"projects/{PROJECT}/instances/{CLONE}/restoreBackup", body={
-        "restoreBackupContext": {"backupRunId": backup_id, "instanceId": SOURCE, "project": PROJECT}})
+    operation = winner.effect("clone-restore", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances/{CLONE}/restoreBackup", body={
+        "restoreBackupContext": {"backupRunId": backup_id, "instanceId": SOURCE, "project": PROJECT}}))
     creation["restore_operation"] = operation["name"]
     receipt_path.write_text(json.dumps(creation))
     wait_sql(google, operation, maximum_seconds=900)
@@ -582,6 +583,7 @@ def main():
     action.add_argument("--prepare-cleanup", action="store_true")
     action.add_argument("--prepare-initialization", action="store_true")
     action.add_argument("--prepare-initializer-intents", action="store_true")
+    action.add_argument("--prepare-clone-intent", action="store_true")
     action.add_argument("--initialize", action="store_true")
     action.add_argument("--complete-initialization", action="store_true")
     action.add_argument("--dispose-initializer", action="store_true")
@@ -619,6 +621,10 @@ def main():
             packet = admit(args.packet, plane)
         with stage("data.plan"):
             plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
+        if args.prepare_clone_intent:
+            from release_clone import prepare_intent
+            prepare_intent(args.packet, packet, plan)
+            return
         if args.prepare_initialization or args.initialize or args.prepare_initializer_intents:
             from release_initialize import (verified_handoff, require_protected_initializer_environment, initialize_targets,
                 prepare_initializer_intents, verified_disposal_inputs)

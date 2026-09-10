@@ -186,6 +186,65 @@ def test_mask_provenance_and_restart_reuses_retained_result(setup):
     assert engine.calls == 1
 
 
+@pytest.mark.parametrize("restrict", ["writes", "source", "both"])
+def test_application_prefix_access_preserves_original_provenance_and_restart(
+    setup, restrict
+):
+    service, _, request, original_objects, engine = setup
+    manifest = service.manifest.model_dump()
+    first = manifest["specimens"][0]["application_source"]
+    first["blob_ref"] = first["sha256"] + ":901"
+    service.manifest = PilotManifest.model_validate(manifest)
+    request = dict(request, blob_ref=first["blob_ref"])
+    item = service.manifest.specimens[0]
+    app = item.application_source
+    bucket = "specimen-digitization.firebasestorage.app"
+    prefix = "application/sha256/"
+    source_reads = []
+
+    class ScopedObjects(MemoryObjects):
+        def create(self, name, raw):
+            if restrict in {"writes", "both"} and not name.startswith(prefix):
+                raise PermissionError("outside approved application write prefix")
+            return super().create(name, raw)
+
+        def read(self, name):
+            if restrict in {"writes", "both"} and not name.startswith(prefix):
+                raise PermissionError("outside approved application receipt prefix")
+            return super().read(name)
+
+        def source(self, source):
+            if restrict in {"source", "both"} and (
+                source.bucket != bucket
+                or source.object_name != prefix + app.sha256
+                or source.generation != app.blob_ref.split(":")[1]
+            ):
+                raise PermissionError("original source access is not authorized")
+            source_reads.append(source)
+            return super().source(source)
+
+    objects = ScopedObjects(original_objects.raw)
+    service.objects = objects
+    parsed = SegmentRequest.model_validate(request)
+    result = service.segment(parsed)
+    assert result["source"] == item.source_objects[0].model_dump()
+    assert source_reads[0].sha256 == app.sha256
+    assert source_reads[0].size_bytes == app.size_bytes
+    restarted = Segmenter(
+        service.manifest, service.manifest_sha256, objects, engine, 1000,
+        clock=lambda: 0,
+    )
+    assert restarted.segment(parsed) == result
+    assert engine.calls == objects.reads == 1
+    parsed = parsed.model_copy(update={"run_id": "another-run"})
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as failure:
+        restarted.segment(parsed)
+    assert failure.value.status_code == 409
+    assert engine.calls == objects.reads == 1
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -274,7 +333,7 @@ def test_manifest_requires_exact_ten_ready_bound_hash(setup, tmp_path):
 
 def test_pending_claim_blocks_independent_server_instance(setup):
     service, _, request, objects, engine = setup
-    prefix = f"sam3/{service.manifest_sha256}/{request['specimen_id']}"
+    prefix = f"application/sha256/{service.manifest_sha256}/sam3/{request['specimen_id']}"
     objects.create(prefix + "/claim.json", b"{}")
     restarted = Segmenter(
         service.manifest,

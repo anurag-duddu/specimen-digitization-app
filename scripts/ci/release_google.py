@@ -1,13 +1,16 @@
 """Short-lived WIF transport with fixed Google API origins and mutation guards."""
 from __future__ import annotations
 
+from contextlib import contextmanager, nullcontext
 import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import stat
 import time
+import threading
 from urllib.parse import parse_qsl, urlsplit
 
 from release_admission import admit, exact_keys, private_bytes, read_bound_plan, read_packet, require, strict_json
@@ -19,6 +22,33 @@ ORIGINS = {"identity": "https://identitytoolkit.googleapis.com/v1/","run": "http
            "sql": "https://sqladmin.googleapis.com/sql/v1beta4/",
            "data": "https://firebasedataconnect.googleapis.com/v1/",
            "rules": "https://firebaserules.googleapis.com/v1/"}
+
+
+class _DeadlineSignal(Exception):
+    """Avoid SDK OSError handlers turning deadline expiry into a transport retry."""
+
+
+@contextmanager
+def request_deadline(seconds):
+    """Ubuntu protected runner: interrupt refresh, headers and body reads alike."""
+    require(threading.current_thread() is threading.main_thread() and 0 < seconds <= 30,
+            "bounded native request requires the protected main process")
+    require(signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0), "native request cannot replace another deadline")
+    previous = signal.getsignal(signal.SIGALRM)
+    deadline = time.monotonic() + seconds
+    def expired(*args):
+        raise _DeadlineSignal()
+    signal.signal(signal.SIGALRM, expired)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        yield
+        if time.monotonic() >= deadline:
+            raise TimeoutError("native request deadline reached")
+    except _DeadlineSignal:
+        raise TimeoutError("native request deadline reached") from None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def cleanup_permit(packet, clone_deadline=None):
@@ -127,7 +157,12 @@ class Google:
             from google.auth.transport.requests import AuthorizedSession
             self.credentials, _ = load_credentials_from_dict(credential, scopes=["https://www.googleapis.com/auth/cloud-platform"])
         with stage("google.session"):
-            self.session = AuthorizedSession(self.credentials)
+            from requests.adapters import HTTPAdapter
+            # A 401 after a native insert is an unknown outcome, not permission
+            # to refresh credentials and silently submit the insert again.
+            self.session = AuthorizedSession(self.credentials, max_refresh_attempts=0)
+            self.session.mount("https://", HTTPAdapter(max_retries=0))
+            self.session.mount("http://", HTTPAdapter(max_retries=0))
         if plane == "data-initialization":
             # Actual project identity is bound to the signed data recovery proof.
             # This identity has no project/IAM API permission.
@@ -147,8 +182,12 @@ class Google:
         aliases = {PROJECT, self.packet["identity"]["project_number"]}
         require(any(resource.startswith(f"projects/{value}/") or resource == f"projects/{value}" for value in aliases), "foreign Google resource")
         require(not any(value in resource for value in ("?", "#", "..", "%", "\\")), "invalid Google resource")
+        recovery_deadline = None
         if method != "GET":
             self.packet = admit(self.path, self.plane)
+            if api == "sql" and method == "POST":
+                from release_clone import authorize_effect
+                recovery_deadline = authorize_effect(self, resource)
             if self.plane == "data-initialization":
                 require(time.time() + 60 < getattr(self, "initialization_deadline", 0),
                         "initializer deadline reached during admission; no new effects")
@@ -157,13 +196,62 @@ class Google:
         if method == "GET" and api == "sql" and read_deadline is not None:
             timeout = min(timeout, read_deadline - time.time())
             require(timeout > 0, "native SQL read has no remaining time")
-        response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=timeout,
-                                        allow_redirects=False)
-        if missing and response.status_code == 404:
-            return None
-        if not 200 <= response.status_code < 300:
+        timing = {}
+        if method != "GET":
+            remaining = min(self.packet["expires_at_unix"], recovery_deadline or self.packet["expires_at_unix"]) - time.time()
+            require(remaining > 0, "native mutation has no remaining authority")
+            timing["max_allowed_time"] = min(30, remaining)
+        with request_deadline(timing["max_allowed_time"]) if recovery_deadline else nullcontext():
+            response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=timeout, **timing,
+                                            allow_redirects=False)
+            if missing and response.status_code == 404:
+                return None
+            if not 200 <= response.status_code < 300:
+                raise HTTPFailure(response.status_code)
+            return response.json()
+
+    def claim_restore(self, payload, directory):
+        """One fixed-key, held conditional insert. No get, retry or adoption API."""
+        from release_clone import (ACTOR, URL, PARAMS, RESPONSE_LIMIT, canonical, multipart, retain, sha)
+        require(self.plane == "data" and directory == self.path.parent
+                and os.environ.get("RELEASE_SERVICE_ACCOUNT") == ACTOR, "only ordinary recovery can claim")
+        require(admit(self.path, "data") == self.packet, "claim admission changed")
+        body, content_type = multipart(payload)
+        retain(directory / "clone-allowance-request.body", body)
+        retain(directory / "clone-allowance-request.json", canonical({"method": "POST", "url": URL,
+            "params": PARAMS, "content_type": content_type, "body_sha256": sha(body)}))
+        remaining = min(self.packet["expires_at_unix"],
+                        strict_json(payload)["recovery_expires_at_unix"]) - time.time()
+        require(remaining > 1800, "insufficient original claim authority")
+        response = None
+        raw = bytearray()
+        complete = False
+        try:
+            with request_deadline(min(30, remaining)):
+                response = self.session.request("POST", URL, params=dict(PARAMS), data=body,
+                    headers={"Content-Type": content_type, "Accept-Encoding": "identity"},
+                    timeout=min(30, remaining), max_allowed_time=min(30, remaining),
+                    stream=True, allow_redirects=False)
+                for chunk in response.iter_content(chunk_size=1024):
+                    raw.extend(chunk[:RESPONSE_LIMIT + 1 - len(raw)])
+                    require(len(raw) <= RESPONSE_LIMIT, "claim response exceeds bound")
+                    require(time.time() < self.packet["expires_at_unix"], "claim response deadline reached")
+                require(not response.headers.get("Content-Encoding")
+                        or response.headers["Content-Encoding"] == "identity", "unexpected claim response encoding")
+                length = response.headers.get("Content-Length")
+                require(length is None or length == str(len(raw)), "truncated claim response")
+                complete = True
+        finally:
+            if response is not None:
+                response.close()
+                retain(directory / "clone-allowance-response.body", bytes(raw))
+                retain(directory / "clone-allowance-response.json", canonical({"status": response.status_code,
+                    "complete": complete, "bytes": len(raw), "sha256": sha(bytes(raw))}))
+        require(complete, "incomplete claim response")
+        if response.status_code != 200:
             raise HTTPFailure(response.status_code)
-        return response.json()
+        require(time.time() < strict_json(payload)["recovery_expires_at_unix"], "claim response arrived too late")
+        return strict_json(bytes(raw))
 
     def wait(self, api: str, operation: dict, *, maximum_seconds=600):
         deadline = min(time.time() + maximum_seconds, self.packet["expires_at_unix"])

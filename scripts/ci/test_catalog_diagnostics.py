@@ -52,7 +52,7 @@ def test_google_constructor_failure_has_safe_stage(tmp_path, monkeypatch, where,
     if where == 'validation':
         monkeypatch.setattr(google, 'validate_credentials', fail)
     monkeypatch.setattr('google.auth.load_credentials_from_dict', fail if where == 'load' else lambda *a, **k: (None, None))
-    monkeypatch.setattr('google.auth.transport.requests.AuthorizedSession', fail if where == 'session' else lambda *a: None)
+    monkeypatch.setattr('google.auth.transport.requests.AuthorizedSession', fail if where == 'session' else lambda *a, **kw: SimpleNamespace(mount=lambda *a: None))
     monkeypatch.setattr(google.Google, 'request', fail if where == 'project' else lambda *a: {'name': CANARY})
     with pytest.raises(ValueError) as error:
         google.Google(tmp_path / 'packet.json', 'data')
@@ -157,7 +157,7 @@ def test_actual_auth_producer_0640_is_tightened_before_any_consumption(tmp_path,
         loaded.append(value)
         return None, None
     monkeypatch.setattr('google.auth.load_credentials_from_dict', load)
-    monkeypatch.setattr('google.auth.transport.requests.AuthorizedSession', lambda *a: None)
+    monkeypatch.setattr('google.auth.transport.requests.AuthorizedSession', lambda *a, **kw: SimpleNamespace(mount=lambda *a: None))
     monkeypatch.setattr(google.Google, 'request', lambda *a: {'name': 'projects/123456789', 'projectId': 'specimen-digitization', 'state': 'ACTIVE'})
     google.Google(tmp_path / 'packet', 'data')
     assert loaded == [credential(env, packet)]

@@ -107,6 +107,22 @@ jobs:
           node-version: "22"
       - name: Install the pinned native IAM SQL connector dependencies
         run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
+      - name: Prepare the original one-time recovery claim intent
+        if: needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1'
+        run: uv run python scripts/ci/deploy_data.py --prepare-clone-intent --packet "$RUNNER_TEMP/data-release/packet.json"
+      - name: Attest the original recovery claim intent before any recovery liability
+        if: needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/data-release/clone-allowance-intent.json
+      - name: Publish the immutable recovery claim intent
+        if: needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: clone-allowance-intent-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-release/clone-allowance-intent.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Execute only the reviewed inventory, recovery, compatibility or bootstrap phase
         id: apply
         env:
@@ -123,6 +139,11 @@ jobs:
           path: |
             ${{ runner.temp }}/data-release/native-recovery.json
             ${{ runner.temp }}/data-release/native-backup.json
+            ${{ runner.temp }}/data-release/clone-allowance-*.json
+            ${{ runner.temp }}/data-release/clone-allowance-*.body
+            ${{ runner.temp }}/data-release/clone-backup.json
+            ${{ runner.temp }}/data-release/clone-create.json
+            ${{ runner.temp }}/data-release/clone-restore.json
           if-no-files-found: warn
           retention-days: 30
       - name: Preserve encrypted native catalogs only, including rejected observations

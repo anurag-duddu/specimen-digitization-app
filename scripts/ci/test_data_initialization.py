@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import deploy_data as data
-from test_data_release import plan as ordinary_plan, SHA
+from test_data_release import plan as ordinary_plan, recovery_packet, SHA
 
 NOW = 1788890400
 
@@ -50,7 +50,7 @@ def plan():
 
 
 def packet():
-    return {"source_sha": SHA, "authorization_sha256": "1" * 64,
+    return {**recovery_packet(), "source_sha": SHA, "authorization_sha256": "1" * 64,
             "independent_review": {"report_sha256": "2" * 64},
             "identity": {"project_number": "716045864126"},
             "release_run_id": 123, "release_run_attempt": 1,
@@ -78,7 +78,7 @@ def test_missing_database_is_an_explicit_separate_phase():
     assert data.validate_plan(p, packet(), now=NOW) is p
     with pytest.raises(ValueError):
         data.validate_plan({**p, "version": "data-apply/v1"}, packet(), now=NOW)
-    assert data.validate_plan(ordinary_plan(), {"source_sha": SHA}, now=NOW)
+    assert data.validate_plan(ordinary_plan(), recovery_packet(), now=NOW)
 
 
 @pytest.mark.parametrize("change", [
@@ -364,13 +364,21 @@ def test_actual_recovery_checks_native_absence_and_restore_before_any_initializa
     monkeypatch.setattr(module,'native',native)
     monkeypatch.setattr(data,'ensure_backup',backup)
     monkeypatch.setattr(module.time,'time',lambda:NOW)
+    from test_clone_allowance import publish_fixture, Server
+    google.path, google.plane = tmp_path / 'packet.json', 'data'
+    server = Server()
+    def claim(payload, directory):
+        trace.append('claim')
+        return server.insert(payload, directory)
+    google.claim_restore = claim
+    publish_fixture(google, p, monkeypatch)
     output=tmp_path/'recovery.json'
     if catalog_failure:
         with pytest.raises(ValueError):module.prepare_recovery(google,p,tmp_path,output)
         assert trace==['catalog-'+data.SOURCE] and not output.exists()
     else:
         module.prepare_recovery(google,p,tmp_path,output)
-        assert trace==['catalog-'+data.SOURCE,'backup','instances','restoreBackup','catalog-'+data.CLONE,'catalog-'+data.SOURCE]
+        assert trace==['catalog-'+data.SOURCE,'claim','backup','instances','restoreBackup','catalog-'+data.CLONE,'catalog-'+data.SOURCE]
         import json
         module.validate_recovery_receipt(json.loads(output.read_bytes()),authority,p,now=NOW)
 

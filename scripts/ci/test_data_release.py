@@ -12,17 +12,27 @@ M = importlib.import_module("deploy_data")
 SHA = "a" * 40
 
 
+def recovery_packet():
+    return {"source_sha": SHA, "authorization_sha256": "1" * 64,
+            "pilot": {"manifest_sha256": "b" * 64},
+            "issued_at_unix": 1788890390, "expires_at_unix": 1788897500}
+
+
 def plan():
     return {"version": "data-apply/v1", "source_sha": SHA, "schema_mode": "validate_existing",
             "source_files": M.source_fingerprints(), "database_etag": "expected",
             "schema_etag": "schema", "connector_etag": "connector", "storage_release_etag": "release",
             "recovery": {"backup_id": "123", "clone": "specimen-digitization-restore-20260908-r1",
-                         "recipe": {"tier": "db-f1-micro", "source_version": "POSTGRES_15", "source_edition": "ENTERPRISE", "source_disk_gb": 10}, "expires_at_unix": 1788892000},
+                         "recipe": {"tier": "db-f1-micro", "source_version": "POSTGRES_15", "source_edition": "ENTERPRISE", "source_disk_gb": 10}, "expires_at_unix": 1788892000,
+                         "allowance": {"version": "first-production-restore/v1", "bucket": "specimen-digitization.firebasestorage.app",
+                             "object": "application/release-control/first-production-restore.json", "authority_sha256": "1" * 64,
+                             "baseline_sha256": "c" * 64, "manifest_sha256": "b" * 64, "iam_sha256": "d" * 64,
+                             "issued_at_unix": 1788890390, "expires_at_unix": 1788897500}},
             "writers": "no_runtime_exists", "bootstrap": None}
 
 
 def test_exact_data_plan_needs_no_preexisting_data_success_receipt():
-    assert M.validate_plan(plan(), {"source_sha": SHA}, now=1788890400)["schema_mode"] == "validate_existing"
+    assert M.validate_plan(plan(), recovery_packet(), now=1788890400)["schema_mode"] == "validate_existing"
 
 
 @pytest.mark.parametrize("change", [
@@ -41,13 +51,13 @@ def test_wrong_targets_unverified_recovery_stale_sql_and_unsafe_modes_fail_close
     p = plan()
     change(p)
     with pytest.raises(ValueError):
-        M.validate_plan(p, {"source_sha": SHA}, now=1788890400)
+        M.validate_plan(p, recovery_packet(), now=1788890400)
 
 
 def test_empty_schema_initialization_is_explicit_additive_only():
     p = plan()
     p.update(schema_mode="initialize_empty", schema_etag=None, connector_etag=None)
-    M.validate_plan(p, {"source_sha": SHA}, now=1788890400)
+    M.validate_plan(p, recovery_packet(), now=1788890400)
     schema, connector = M.data_bodies(p)
     assert schema["datasources"][0]["postgresql"]["schemaMigration"] == "MIGRATE_COMPATIBLE"
     assert "schemaValidation" not in schema["datasources"][0]["postgresql"]
@@ -220,24 +230,15 @@ def test_signed_compatibility_receipt_rejects_stale_sources_before_cloud_or_boot
 
 
 def test_deleted_clone_does_not_reset_the_single_rehearsal_allowance(tmp_path, monkeypatch):
-    p = plan()
-    p["recovery"]["expires_at_unix"] = 1788894000
-    monkeypatch.setattr(M.time, "time", lambda: 1788890400)
-    class Fake:
-        packet = {"expires_at_unix": 1788897600, "release_run_id": 123, "release_run_attempt": 2, "source_sha": SHA}
-        def request(self, api, method, resource, **kw):
-            assert method == "GET", "no mutation before checking the one-clone allowance"
-            if resource.endswith("/instances/" + M.SOURCE):
-                return {"region": "us-east4", "databaseVersion": "POSTGRES_15", "settings": {"settingsVersion": "expected",
-                        "dataDiskSizeGb": "10", "edition": "ENTERPRISE", "databaseFlags": [{"name": "cloudsql.iam_authentication", "value": "on"}]}}
-            if resource.endswith("/instances/" + M.CLONE):
-                return None
-            if resource.endswith("/operations"):
-                return {"items": [{"operationType": "CREATE", "targetId": M.CLONE, "targetProject": M.PROJECT}]}
-            pytest.fail("unexpected request before replay fence")
-    monkeypatch.setattr(M, "sql_inventory", lambda *a, **kw: pytest.fail("no SQL inventory/effects after prior native clone"))
-    with pytest.raises(ValueError, match="already used"):
-        M.rehearse(Fake(), p, tmp_path)
+    from test_clone_allowance import Server, fixture
+    from release_diagnostics import HTTPFailure
+    server = Server()
+    server.claims.append(b"prior spent allowance")
+    google, p = fixture(tmp_path, monkeypatch, server)
+    # Native clone is now truly absent; the original held claim stays spent.
+    with pytest.raises(HTTPFailure) as error:
+        M.rehearse(google, p, tmp_path)
+    assert error.value.http_status == 412 and server.backups == 0
 
 
 def test_inventory_phase_needs_exact_committed_readonly_catalog_and_database_revision():
