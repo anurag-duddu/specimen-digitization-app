@@ -39,6 +39,22 @@ POLL = .02
 PREFIX = "specimen-publication-"
 CURRENT = None
 BOUND_PACKET = None
+LAUNCH_GATE = r"""
+import os, sys
+descriptor = int(sys.argv[1])
+try:
+    token = b""
+    while len(token) < 4:
+        chunk = os.read(descriptor, 4 - len(token))
+        if not chunk:
+            break
+        token += chunk
+finally:
+    os.close(descriptor)
+if token != b"go\n":
+    sys.exit(1)
+os.execvpe(sys.argv[2], sys.argv[2:], os.environ)
+"""
 
 
 class PublicationStopped(ValueError):
@@ -194,9 +210,8 @@ class Supervisor:
         # No credential-capable code executes until its ownership is durable.
         read_gate, write_gate = os.pipe()
         try:
-            launch = ["/bin/sh", "-c", 'IFS= read -r publication_gate <&"$PUBLICATION_GATE_FD" || exit 1; exec "$@"',
-                      "publication-child", *command]
-            proc = subprocess.Popen(launch, env={**env, "PUBLICATION_GATE_FD": str(read_gate)}, cwd=cwd,
+            launch = [sys.executable, "-I", "-S", "-c", LAUNCH_GATE, str(read_gate), *command]
+            proc = subprocess.Popen(launch, env=env, cwd=cwd,
                 start_new_session=True, pass_fds=(read_gate,), stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except BaseException:
