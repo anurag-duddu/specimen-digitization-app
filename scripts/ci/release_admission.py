@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import base64
 from datetime import date, datetime, timezone
+import gzip
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -18,6 +20,7 @@ import stat
 import subprocess
 import time
 from uuid import UUID
+import zlib
 
 from release_context import PLANES, PROJECT, REPOSITORY, validate_context
 from validate_release_packet import CHECKS, DIGEST, SHA, exact_keys
@@ -354,22 +357,72 @@ def admit(packet_path: Path, plane: str, *, now: float | None = None) -> dict:
     return packet
 
 
+INPUT_SECRET_MAX_BYTES = 48000
+INPUT_RAW_MAX_BYTES = 1048576
+INPUT_LEGACY_BASE64_MAX_BYTES = 4 * ((INPUT_RAW_MAX_BYTES + 2) // 3)
+
+
+def encode_release_inputs(raw: bytes) -> str:
+    """Fit exact original bundle bytes in one secret; compression grants no admission."""
+    require(type(raw) is bytes and 0 < len(raw) <= INPUT_RAW_MAX_BYTES,
+            "missing or oversized private release inputs")
+    plain = base64.b64encode(raw).decode("ascii")
+    if len(plain) <= INPUT_SECRET_MAX_BYTES:
+        return plain
+    output = io.BytesIO()
+    # Empty filename, zero mtime and GzipFile's fixed OS byte make the envelope
+    # deterministic without rewriting any original JSON or evidence bytes.
+    with gzip.GzipFile(fileobj=output, mode="wb", filename="", mtime=0, compresslevel=9) as stream:
+        stream.write(raw)
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    require(len(encoded) <= INPUT_SECRET_MAX_BYTES, "release inputs do not fit the single secret")
+    return encoded
+
+
+def decode_release_inputs(encoded: str) -> bytes:
+    """Accept raw JSON or one complete gzip member, with bounded input and output."""
+    # Preserve the existing raw-JSON decoder contract. New producers always
+    # enforce the smaller secret ceiling; gzip does not expand the legacy limit.
+    require(isinstance(encoded, str) and 0 < len(encoded) <= INPUT_LEGACY_BASE64_MAX_BYTES,
+            "missing or oversized release input secret")
+    wire = base64.b64decode(encoded, validate=True)
+    # The gzip magic cannot prefix valid JSON. No JSON-controlled codec flag,
+    # zlib/raw-deflate autodetection, second stream or trailing content is accepted.
+    if wire.startswith(b"\x1f\x8b"):
+        require(len(encoded) <= INPUT_SECRET_MAX_BYTES, "oversized compressed release input secret")
+        try:
+            stream = zlib.decompressobj(wbits=31)
+            raw = stream.decompress(wire, INPUT_RAW_MAX_BYTES + 1)
+        except zlib.error:
+            raise ValueError("invalid compressed release inputs") from None
+        require(len(raw) <= INPUT_RAW_MAX_BYTES and stream.eof
+                and not stream.unconsumed_tail and not stream.unused_data,
+                "oversized, incomplete or trailing compressed release inputs")
+        # Never flush a decompressor: its length argument is not an output cap.
+    else:
+        raw = wire
+    require(0 < len(raw) <= INPUT_RAW_MAX_BYTES, "missing or oversized private release inputs")
+    return raw
+
+
 def materialize_inputs(destination: Path, env: dict[str, str]) -> None:
-    """Decode one reviewed private secret without accepting archive paths."""
-    raw = base64.b64decode(env.get("RELEASE_INPUTS_B64", ""), validate=True)
-    require(0 < len(raw) <= 1048576, "missing or oversized private release inputs")
+    """Restore one reviewed private secret without accepting archive paths."""
+    raw = decode_release_inputs(env.get("RELEASE_INPUTS_B64", ""))
     digest(env.get("RELEASE_INPUTS_SHA256"), "release input digest")
     require(hashlib.sha256(raw).hexdigest() == env["RELEASE_INPUTS_SHA256"], "release input digest mismatch")
     bundle = exact_keys(strict_json(raw), {"packet", "plan", "evidence"}, "private bundle")
     exact_keys(bundle["evidence"], {"independent_review", "authorization", "shared_budget_ledger"}, "private evidence")
+    values = {"packet.json": bundle["packet"], "plan.json": bundle["plan"],
+              **{f"evidence/{name}.json": value for name, value in bundle["evidence"].items()}}
+    require(all(isinstance(value, str) for value in values.values()),
+            "private bundle must retain exact original UTF-8 evidence bytes")
+    contents = {name: value.encode("utf-8") for name, value in values.items()}
     require(not destination.exists(), "refuse to overwrite release inputs")
     destination.mkdir(mode=0o700)
     (destination / "evidence").mkdir(mode=0o700)
-    for name, value in {"packet.json": bundle["packet"], "plan.json": bundle["plan"],
-                        **{f"evidence/{name}.json": value for name, value in bundle["evidence"].items()}}.items():
-        require(isinstance(value, str), "private bundle must retain exact original UTF-8 evidence bytes")
+    for name, value in contents.items():
         descriptor = os.open(destination / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(descriptor, "w") as handle:
+        with os.fdopen(descriptor, "wb") as handle:
             handle.write(value)
 
 

@@ -195,3 +195,30 @@ baseline credential, allowed scanner identifier in another path, and exact
 circuit UUID in an unreviewed path. Restored originals pass. No canary or fixture
 bytes are included in this scanner-only dependency. Runtime acceptance remains
 separate; unchanged earlier fixtures and reports need no additional exemptions.
+
+## Publication supervisor public upstream revision
+
+The publication supervisor pins Google’s existing public authentication action at
+`7c6bc770dae815cd3e89ee6cdf493a5fab2cc093`, independently bound to the workflow
+checkout and the reviewed upstream bundles. The public commit endpoint confirms
+this revision: https://github.com/google-github-actions/auth/commit/7c6bc770dae815cd3e89ee6cdf493a5fab2cc093.
+It is source provenance and is not an authentication credential.
+
+Pinned Gitleaks8.30.1 flags the `AUTH_SHA` declaration as generic-api-key. The
+additive rule-local AND exception matches only the exact supervisor path and
+the complete existing declaration, including this one public revision and its
+existing comment. Its optional leading newline reflects the pinned scanner’s
+`detect/location.go` line slice for staged fragments; no other prefix, identifier
+or value is exempted. Default rules and all previous exceptions remain intact.
+
+An explicit directory scan alone missed the staged-fragment newline difference.
+The original exception still failed the actual staged hook. The corrected exact
+exception passes that hook. Independent synthetic controls must also retain
+detection of a different high-entropy value at the same declaration, the exact
+public line in another path, and an adjacent credential-shaped canary. No canary
+is a live credential or included in the repository.
+
+`pre-commit run --all-files` invokes Gitleaks with its configured staged-diff
+mode. A clean index can therefore report a passing hook while new unstaged files
+have not been scanned by that hook. Validate the actual staged candidate before
+committing; do not treat an unstaged invocation as proof of a candidate scan.

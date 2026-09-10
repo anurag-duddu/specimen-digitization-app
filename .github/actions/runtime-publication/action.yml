@@ -1,0 +1,22 @@
+name: Supervised runtime publication
+description: Run the unchanged pinned WIF action and publisher under the original packet deadline.
+inputs:
+  role:
+    description: Fixed image role
+    required: true
+  packet:
+    description: Previously admitted private runtime-build packet
+    required: true
+  output:
+    description: Public immutable image receipt destination
+    required: true
+outputs:
+  image:
+    description: Verified role image name
+  digest:
+    description: Verified immutable digest
+runs:
+  using: node24
+  main: index.cjs
+  post: post.cjs
+  post-if: always()

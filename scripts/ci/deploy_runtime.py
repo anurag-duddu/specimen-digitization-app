@@ -18,9 +18,10 @@ import tempfile
 import time
 
 from release_admission import (admit, digest, exact_keys, integer, materialize_inputs,
-                               private_bytes, read_bound_plan, require, strict_json)
+                               private_bytes, read_bound_plan, read_packet, require, strict_json)
 from release_context import PROJECT, REPOSITORY
 from release_google import Google
+import release_publication_deadline as publication
 from validate_release_packet import IMAGE
 from specimen_digitization.hub_models import SAM3_MODEL
 
@@ -160,14 +161,17 @@ def resource_bodies(plan, packet, images, run_id, attempt, *, now=None):
     return bodies
 
 
-def checked(command, *, output=False, timeout=120):
-    result = subprocess.run(command, check=False, capture_output=True, timeout=timeout, cwd=ROOT)
+def checked(command, *, output=False, timeout=120, env=None):
+    if publication.CURRENT is not None:
+        timeout = publication.publication_budget(cap=timeout)
+    result = subprocess.run(command, check=False, capture_output=True, timeout=timeout, cwd=ROOT, env=env)
     require(result.returncode == 0, "release command failed; captured command output is withheld from public logs")
     return result.stdout if output else None
 
 
 def publish_role(path: Path, role: str, output: Path):
     require(role in {"api", "worker", "sam"}, "unknown image role")
+    publication.publication_budget()
     google = Google(path, "runtime-build")
     repository = google.request("registry", "GET", f"{PREFIX}/repositories/specimen-runtime")
     require(repository.get("format") == "DOCKER" and repository.get("dockerConfig", {}).get("immutableTags") is True,
@@ -175,9 +179,12 @@ def publish_role(path: Path, role: str, output: Path):
     tag_name = f"sha-{google.packet['source_sha']}-{google.packet['release_run_id']}-{google.packet['release_run_attempt']}"
     prior = google.request("registry", "GET", f"{PREFIX}/repositories/specimen-runtime/packages/{role}/tags/{tag_name}", missing=True)
     require(prior is None, "image publication already exists for this operation; reconcile without rebuilding")
-    checked(["scripts/ci/build_runtime_image.sh", role], timeout=3600)
+    build_env = {key: os.environ[key] for key in ("PATH", "HOME", "TMPDIR", "GITHUB_SHA", "DOCKER_CONFIG", "DOCKER_HOST")
+                 if key in os.environ}
+    checked(["scripts/ci/build_runtime_image.sh", role], timeout=3600, env=build_env)
     # Re-check source, time, attempt and budget after a potentially long build.
     packet = admit(path, "runtime-build")
+    publication.publication_budget(packet)
     image = f"{REGISTRY}/{role}"
     tag = f"{image}:sha-{packet['source_sha']}-{packet['release_run_id']}-{packet['release_run_attempt']}"
     google.registry_login()
@@ -188,9 +195,9 @@ def publish_role(path: Path, role: str, output: Path):
     require(len(refs) == 1 and IMAGE.fullmatch(refs[0]), "registry returned no unique role digest")
     receipt = {"version": "runtime-image/v1", "role": role, "source_sha": packet["source_sha"],
                "run_id": packet["release_run_id"], "run_attempt": packet["release_run_attempt"], "reference": refs[0]}
-    output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
-    with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
-        handle.write(f"image={image}\ndigest={refs[0].split('@')[1]}\n")
+    publication.publication_budget(packet)
+    publication.private_write(output, json.dumps(receipt, sort_keys=True) + "\n")
+    # Only the outside supervisor can promote this candidate to public outputs.
 
 
 def verify_attestation(path_or_image: str, source_sha: str, workflow: str):
@@ -524,6 +531,8 @@ def main():
     try:
         if args.prepare_inputs:
             materialize_inputs(args.packet.parent, dict(os.environ))
+        if args.publish_role:
+            publication.bind_child(read_packet(args.packet, dict(os.environ)))
         packet = admit(args.packet, args.plane)
         if args.publish_role:
             require(args.plane == "runtime-build" and args.output is not None, "build identity and output required")
