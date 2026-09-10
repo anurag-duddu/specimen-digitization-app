@@ -235,21 +235,21 @@ def prepare_recovery(google, plan, directory, output):
         require(google.request("run", "GET", f"projects/{PROJECT}/locations/us-east4/{resource}", missing=True) is None,
                 "runtime writers exist; no guessed maintenance switch")
     require(google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True) is None, "never adopt an existing clone")
-    require(not any(o.get("operationType") == "CREATE" and o.get("targetId") == CLONE for o in
-                    data.list_sql(google, f"projects/{PROJECT}/operations", instance=CLONE, maxResults=100)), "single clone allowance already used")
     body = data.clone_body(source, plan["recovery"]["recipe"], google.packet["release_run_id"],
                           run_attempt=google.packet["release_run_attempt"], source_sha=google.packet["source_sha"])
     files, catalog = plan["initialization"]["files"], plan["initialization"]["catalog_sha256"]
     private_evidence = {"recipient": plan["catalog_recipient"], "provenance": catalog_provenance(google.packet)}
     native(directory, SOURCE, "absence", files=files, deadline=expiry, expected_catalog=catalog, **private_evidence)
+    from release_clone import acquire
+    winner = acquire(google, plan, directory)
     backup_args = {"retention": plan["recovery"]["backup_retention"], "source": source} if "backup_retention" in plan["recovery"] else {}
-    backup_id = data.ensure_backup(google, plan["recovery"]["backup_id"], directory, **backup_args)
+    backup_id = winner.effect("clone-backup", lambda: data.ensure_backup(google, plan["recovery"]["backup_id"], directory, **backup_args))
     backup = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}/backupRuns/{backup_id}")
     require(0 <= time.time() - data.stamp(backup.get("endTime")) <= 7200, "stale or unobserved source backup checkpoint")
     from release_backup import attach_proof
     backup_proof = {"backup_id": backup_id}
     attach_proof(backup_proof, plan, google.packet, directory)
-    operation = once(directory, "clone-create", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances", body=body))
+    operation = winner.effect("clone-create", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances", body=body))
     creation = {"clone": CLONE, "source": SOURCE, "source_sha": google.packet["source_sha"], "backup_id": backup_id,
                 "run_id": google.packet["release_run_id"], "run_attempt": google.packet["release_run_attempt"],
                 "create_operation": operation["name"], "expires_at_unix": plan["recovery"]["expires_at_unix"]}
@@ -261,7 +261,7 @@ def prepare_recovery(google, plan, directory, output):
     creation["create_time"] = clone["createTime"]
     data.validate_clone_ownership(clone, creation, google.packet["release_run_id"])
     receipt_path.write_text(json.dumps(creation))
-    operation = once(directory, "clone-restore", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances/{CLONE}/restoreBackup",
+    operation = winner.effect("clone-restore", lambda: google.request("sql", "POST", f"projects/{PROJECT}/instances/{CLONE}/restoreBackup",
         body={"restoreBackupContext": {"backupRunId": backup_id, "instanceId": SOURCE, "project": PROJECT}}))
     creation["restore_operation"] = operation["name"]
     receipt_path.write_text(json.dumps(creation))

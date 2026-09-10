@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 import deploy_data as data
-from test_data_release import plan as legacy_plan
+from test_data_release import plan as legacy_plan, recovery_packet
 
 NOW = 1788890400
 LIMIT = 10 * 1024**3
@@ -25,8 +25,9 @@ def retention():
 
 
 def packet():
-    return {"source_sha": "a" * 40, "release_run_id": 123, "release_run_attempt": 2,
-            "issued_at_unix": NOW, "expires_at_unix": NOW + 7200,
+    return {**recovery_packet(), "source_sha": "a" * 40, "release_run_id": 123, "release_run_attempt": 2,
+            "identity": {"project_number": "716045864126"},
+            "issued_at_unix": NOW, "expires_at_unix": NOW + 7100,
             "pilot": {"manifest_sha256": "b" * 64}}
 
 
@@ -311,6 +312,10 @@ def test_recovery_requires_finite_proof_before_clone_and_restores_exact_id(
         if instance == data.CLONE:
             assert f.restored
     monkeypatch.setattr(init, "native", native)
+    from test_clone_allowance import publish_fixture, Server
+    f.path, f.plane = tmp_path / "packet.json", "data"
+    f.claim_restore = Server().insert
+    publish_fixture(f, p, monkeypatch)
     if missing_proof:
         monkeypatch.setattr(data, "ensure_backup", lambda *a, **kw: "42")
         with pytest.raises(FileNotFoundError, match="native-backup.json"):

@@ -13,7 +13,7 @@ import deploy_data as data
     ("initialize_empty", "schemaMigration"), ("validate_existing", "schemaValidation"),
 ])
 def test_actual_deploy_uses_same_valid_union_for_validate_only_and_apply(tmp_path, monkeypatch, mode, selector):
-    from test_data_release import plan
+    from test_data_release import plan, recovery_packet
     prepared = plan()
     prepared.update(schema_mode=mode, schema_etag=None, connector_etag=None)
     calls = []
@@ -21,7 +21,7 @@ def test_actual_deploy_uses_same_valid_union_for_validate_only_and_apply(tmp_pat
     class StopAfterSchemaRequest(Exception):
         pass
     class Google:
-        packet = {"source_sha": prepared["source_sha"]}
+        packet = recovery_packet()
         def wait(self, *args):
             pytest.fail("test stops before native operation waiting")
         def request(self, api, method, resource, **kwargs):

@@ -10,6 +10,7 @@ import 'src/auth.dart';
 import 'src/connection_config.dart';
 import 'src/email_verification.dart';
 import 'src/models.dart';
+import 'src/production_startup.dart';
 import 'src/workspace.dart';
 
 Future<void> main() async {
@@ -39,26 +40,26 @@ Future<void> main() async {
       );
     } else {
       final options = DefaultFirebaseOptions.currentPlatform;
-      if (options.appId.endsWith(':ci-placeholder')) {
-        setupMessage =
-            'This verification build has no live Firebase configuration. Configure Firebase Authentication and the application API to connect to a collection.';
-      } else if (apiUrl.isEmpty) {
-        setupMessage =
-            'The application API is not configured. Set SPECIMEN_API_BASE_URL in the approved build configuration.';
-      } else {
-        final uri = config.validate(web: kIsWeb);
-        await Firebase.initializeApp(options: options);
-        await activateProductionAppCheck(config, web: kIsWeb);
-        final auth = FirebaseAuth.instance;
-        session = FirebaseSession(auth);
-        repository = ApiSpecimenRepository(
+      final startup = await initializeProduction(
+        firebaseConfigured: !options.appId.endsWith(':ci-placeholder'),
+        config: config,
+        web: kIsWeb,
+        initializeSession: () async {
+          await Firebase.initializeApp(options: options);
+          return FirebaseSession(FirebaseAuth.instance);
+        },
+        activateAppCheck: () => activateProductionAppCheck(config, web: kIsWeb),
+        createRepository: (uri, session) => ApiSpecimenRepository(
           baseUrl: uri,
           expectedMode: 'production',
-          expectedUserId: () => auth.currentUser?.uid ?? '',
+          expectedUserId: () => session.userId,
           token: session.token,
           appCheckToken: () => FirebaseAppCheck.instance.getToken(),
-        );
-      }
+        ),
+      );
+      session = startup.session;
+      repository = startup.repository;
+      setupMessage = startup.setupMessage;
     }
   } on FormatException catch (error) {
     setupMessage = error.message;
@@ -114,59 +115,111 @@ class SpecimenDigitizationApp extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
       ),
     ),
-    home: session == null || repository == null
-        ? Scaffold(
-            body: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (synthetic)
-                        const Text(
-                          'SYNTHETIC ENVIRONMENT — local fixture access only; not museum-approved records.',
-                        ),
-                      const Icon(Icons.biotech_outlined, size: 56),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Specimen Digitization',
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Collection connection required',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        setupMessage ??
-                            'Configure Firebase Authentication and the application API to begin.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          )
+    home: session == null
+        ? _ConnectionSetup(setupMessage: setupMessage, synthetic: synthetic)
         : StreamBuilder<bool>(
             stream: session!.changes,
             initialData: session!.signedIn,
             builder: (context, snapshot) => snapshot.data == true
                 ? EmailVerificationGate(
                     session: session!,
-                    child: CollectionWorkspace(
-                      key: ValueKey(session!.userId),
-                      repository: repository!,
-                      session: session!,
-                    ),
+                    child: repository == null
+                        ? _ConnectionSetup(
+                            setupMessage:
+                                setupMessage ?? collectionPendingMessage,
+                            synthetic: synthetic,
+                            session: session,
+                          )
+                        : CollectionWorkspace(
+                            key: ValueKey(session!.userId),
+                            repository: repository!,
+                            session: session!,
+                          ),
                   )
                 : SignInScreen(session: session!),
           ),
+  );
+}
+
+class _ConnectionSetup extends StatefulWidget {
+  const _ConnectionSetup({
+    this.setupMessage,
+    this.synthetic = false,
+    this.session,
+  });
+  final String? setupMessage;
+  final bool synthetic;
+  final SessionAccess? session;
+
+  @override
+  State<_ConnectionSetup> createState() => _ConnectionSetupState();
+}
+
+class _ConnectionSetupState extends State<_ConnectionSetup> {
+  bool _signingOut = false;
+  String? _error;
+
+  Future<void> _signOut() async {
+    setState(() {
+      _signingOut = true;
+      _error = null;
+    });
+    try {
+      await widget.session!.signOut();
+    } catch (error) {
+      if (mounted) setState(() => _error = authErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _signingOut = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.synthetic)
+                const Text(
+                  'SYNTHETIC ENVIRONMENT — local fixture access only; not museum-approved records.',
+                ),
+              const Icon(Icons.biotech_outlined, size: 56),
+              const SizedBox(height: 24),
+              Text(
+                'Specimen Digitization',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Collection connection required',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.setupMessage ??
+                    'Configure Firebase Authentication and the application API to begin.',
+                textAlign: TextAlign.center,
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Semantics(liveRegion: true, child: Text(_error!)),
+                ),
+              if (widget.session != null) ...[
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: _signingOut ? null : _signOut,
+                  child: Text(_signingOut ? 'Signing out…' : 'Sign out'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
   );
 }

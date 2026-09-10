@@ -587,6 +587,16 @@ and retries. Stop if costs do not fit or an action exceeds the recorded scope.
 Only the newly created restore clone may be removed, by its two-hour expiry,
 after verification evidence is retained. Existing data and source SQL remain.
 
+Recovery admission additionally requires the original typed
+[`recovery.allowance` contract](execution/CLONE_ALLOWANCE.md). The protected data
+workflow publishes and verifies a signed original intent, then atomically creates
+one fixed-key held Storage claim before any backup/clone liability. Only that
+invocation's complete native winning response grants the in-memory capability.
+No retries, receipt adoption or allowance reset are permitted. Root must first
+qualify the complete issuance baseline, effective exact-object create-only IAM
+and continuing held-object costs. This source contract grants no native setup or
+new execution window; existing clone ownership and cleanup controls still apply.
+
 The candidate CI workflow `runtime-ci.yml` builds committed container inputs
 without credentials or registry publication. Scoped PRs report absent owner
 inputs as Not run; main/integration fail if either container or the data-plan

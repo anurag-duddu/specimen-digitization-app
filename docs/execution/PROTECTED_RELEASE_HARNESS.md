@@ -157,12 +157,22 @@ an uncertain effect into a settled charge.
 
 Resource fences supplement that shared authority: expected etags and previous
 revisions, immutable registry tags per source/run/attempt, one clone name with a
-native CREATE-history check, a cohort-stable worker execution token, and refusal
+fixed-key held Storage claim before any recovery liability, a cohort-stable worker execution token, and refusal
 to activate a job whose single execution was already used. SAM uses immutable
 checkpoint files from a read-only cache, no provider credential, bounded requests
 and an absolute deadline. API and SAM set and verify both total service and
 revision caps, plus GEN2. These are configuration controls, not a claim that an
 autoscaling limit alone is an exact billing hard stop.
+
+Both recovery entrypoints use `scripts/ci/release_clone.py`. The original intent
+must be attested, published as this run's immutable artifact, downloaded and
+verified before one conditional JSON multipart insert. Only the current
+invocation's fully verified HTTP 200 response grants an in-memory capability for
+one backup, clone create and restore sequence. A copied signed intent, generation,
+receipt or local winner flag grants no capability. No claim read, retry, adoption,
+delete, overwrite or hold release exists. Native ownership and complete operation
+history checks on an existing clone still govern cleanup and initialization.
+See [the exact claim contract](CLONE_ALLOWANCE.md) for baseline, IAM and cost gates.
 
 Native cleanup has a separate always-run job and an in-job `finally` path. Its
 public ownership permit is captured by the original credential-free admission,

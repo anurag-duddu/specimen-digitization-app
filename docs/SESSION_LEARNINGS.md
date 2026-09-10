@@ -1904,3 +1904,71 @@ Task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `codex/managed-cloudsql-cata
 - Root canonical `scripts/ci/verify.sh` exit0:1763 Python tests passed/66 skipped,133 Flutter tests passed/7 skipped, analysis/web build/all hooks passed. Private full log `sam-storage-successor-verify-20260909.log` SHA2564c420e84b7b1a659a6425335c399759f2b302f5c56ea55625878446bebf9d3fa. Source remains reviewed6998e4967e5e25d76e828931c64279e36c39dad0f55e0e4f5692b9ccb554e9b0.
 - Root actual read-only metadata proves current namedSAMservice/workerjob404 and zero oldsam3/prefix versioned or soft-deleted objects; independent reviewer checked all12 request/response/body links in resultfb4872904477e906c02b2bfb01f0a8231851224c07b2f17a083ca4190d921c7d. Current absence is not alone proof of every historical execution. Preserve root original no-launch/no-runtime-effect history before first execution; do not use this namespace change to bypass an unresolved old claim.
 - Source release remains separate from backend readiness. Keep main ataa7 through its already-prepared initialization phase; a later successor uses current-source data verification and new image qualification. No manual deployment, production push, original-intent retry or paid inference occurred here. Exactlyten/allregions/bothreadings/humanreview and cumulative5USD remain; currentrootledger1.256M includes one15000 operatorIAMnetworkhold aftercache1.241M. Historical source/code evidence and all worktrees remain preserved.
+
+### 2026-09-09 — DATA: atomic clone allowance source and transport repair
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, coordinator `01a082b2-c2c3-70d2-be90-7bfb622c9102`; branch `codex/clone-allowance-admission`, worktree `/private/tmp/specimen-clone-allowance-admission-20260909`, exact base `aa7cdc0613fb4887ba5265a5aab29ac9df7eb4d8`. Source remains uncommitted/unpushed with no new PR from DATA. Original 4a25 worktree and its prior closeout-only changes are preserved. Root owns integration with reviewed SAM commit `e1666f6`, independent review, combined canonical verification and publication through a new protected main PR.
+- The absent-clone filtered operations request returned complete403 and the omitted-instance diagnostic complete400. Neither proves unused allowance. V1 coordinator-only tombstone design was rejected because another runner could reuse the same packet and copied signed intent. Selected V2 proposal is `/tmp/specimen-clone-allowance-design-20260909-v2/PROPOSAL.md`, SHA256 `5ad00323c77304bd5b5688a97652f159b3eff2e0eee73b096fd145f1bf0940af`. A tombstone remains issuance provenance, never atomic mutual exclusion.
+- Implemented one fixed-key, initially held JSON multipart Storage insert with generation-match zero, published/verified original intent, mandatory typed `recovery.allowance`, bounded private request/response evidence, and a nonserializable current-invocation winner. Both recovery paths and native transport guard legacy/finite backup, clone create and restore; failed stages retire the capability. No claim get/adoption/retry/delete/update/reset path exists. Locked SDK automatic401 replay and adapter retries are disabled. A scoped POSIX timer bounds refresh, headers and streamed reads for claim and guarded SQL effects; a late response cannot qualify success. The exact contract is [CLONE_ALLOWANCE.md](execution/CLONE_ALLOWANCE.md).
+- Retained meaningful TDD in `/private/tmp/specimen-clone-allowance-implementation-20260909`: original aa7 source has4 RED regressions (same-packet independent runners reach two backups in three path combinations; locked google-auth2.57.1 automatically refreshes/replays a clone POST after401), `RED.log` SHA256 `6b6a4eb5ec94710322eed0e85edc550175db13842cc1223b640ae0d8a0e75086`, frozen original test SHA256 `627cc6fb7039e89b617f75feba02422c4109c674c7158dfeb485d27ea0bc4efa`. Two further real-localhost body-deadline RED tests became GREEN; five stage-retirement RED cases became GREEN. Those later RED logs describe intermediate candidate states, not aa7. No real Google request or credentials were used by these regressions.
+- Final frozen source: full Python **1842 passed,66 skipped,7 warnings**, `python-suite-frozen.log` SHA256 `3ddc02792a1da76eb9f8015779c897ffcbdfe166ed0a0248b7e7cb3819cdaa26`; final focused **284 passed**, `focused-final.log` SHA256 `af01709ac3a58236442fd7de474684a9fb4bea49cbfe3317c6743a9a5e9fa120`. Pinned all-file pre-commit and diff checks passed. Earlier canonical `scripts/ci/verify.sh` also passed1840 Python/66 skips, Flutter analysis,133 Flutter tests/7 skips and release web build; log SHA256 `ac1eba1fd09ce0b1f6e8d12e9305907f10ec64371386b70fe1278a7fbfc14fdf`. That canonical run preceded the final deadline/retirement hardening; final Python/focused checks cover those changes and root will canonical-verify the combined tree. The initial restricted full-suite run failed on stale test fixtures and localhost/socket permissions; fixtures were repaired and unrestricted local verification passed without weakening tests.
+- `UNCHANGED_CONTROLS.json` verifies20 original function/whole-file controls unchanged, including clone ownership/cleanup, existing-instance operation and principal lifecycle checks, finite-backup implementation, shared admission and other deployment workflows. `FROZEN_SOURCE.json` binds all16 implementation/test/contract paths before this log-only append. Root captured the same review source before closeout (`SOURCE_FILES.json` SHA256 `ea955510f65dd193c16aa134d17d2e64383317d4e305c8deeaf0d314250f0666`, patch SHA256 `9b651428d0b1b57bfdba3a2b781bc239f4dd6d3a99aac4617dab688a91fa4f2b`); all16 author-side hashes were rechecked after the final Python run.
+- Remaining native gates are **Not confirmed by DATA**: complete original issuance baseline, exact-object effective create-only IAM and bucket/hold qualification, fresh finite authority, and held-object costs beyond the initial365-day accounting horizon within cumulativeUSD5. No IAM/setup/native claim/backup/clone/schema/data effect, ledger reservation, actual packet, execution window, commit, push or merge occurred in this source task. Exactly ten specimens and original ownership/cleanup limits remain the governing scope; resetting Codex usage did not renew production authority.
+
+## 2026-09-09 — Firebase sign-in available before collection API setup
+
+- Task `01a082b4-a9bc-7413-a3c5-5077dd5c3a9f`, coordinator
+  `01a082b2-c2c3-70d2-be90-7bfb622c9102`. Investigation in ac0d,
+  `codex/release-acceptance` at `30823ce91eee1607faabb631818004f5ede37281`;
+  authorized implementation only in `/private/tmp/specimen-auth-before-api-20260909`,
+  branch `codex/auth-before-api`, base `aa7cdc0613fb4887ba5265a5aab29ac9df7eb4d8`.
+  No commit, push or PR by this task; root owns combined integration/release.
+- Confirmed two independent Flutter gates: missing API settings prevented Firebase
+  initialization, and null repository suppressed sign-in and email verification.
+  This is UI coupling, not an unavoidable backend cycle: schema-ready with
+  bootstrap null, API-only preparation and later data-bootstrap/v1 already exist.
+  Preserve fresh exact verified identity and first-admin bootstrap requirements.
+- Original exact-aa7 RED evidence: two expected widget failures, four passing
+  controls; all 151 archived source files unchanged. Frozen investigation:
+  `/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-first-login-investigation-20260909-xk1euy15`;
+  ARTIFACTS digest `a89dc55c19a05f1f38303508b83b263c563d9da4a6ec98366378c29e1ee2ffae`.
+  Further initializer/transition RED phase retained 11 expected failures and
+  seven controls after extracting the old blocking startup behavior.
+- Coordinator selected a minimal correction: configured Firebase/session starts
+  independently; absent/invalid backend settings invoke neither App Check nor
+  repository factory. Valid settings retain the existing Enterprise helper before
+  repository construction. A backend setup failure preserves available auth.
+  Sign-in and existing explicit verification precede a plain backend-pending
+  screen with sign-out; CollectionWorkspace is not mounted without a repository.
+- Changed main.dart, added a small production_startup.dart seam and two regression
+  files. Existing auth.dart, email verification gate, connection validation,
+  Enterprise helper, pubspec.lock and synthetic startup branch remain unchanged.
+  No provider, registration, role, emailVerified, bootstrap, server, CI or database
+  changes. Firebase SQL Connect remains the production database connection.
+- Actual validation: 27 focused Flutter tests pass; full Flutter suite 149 pass,
+  seven existing opt-in live tests skipped; flutter analyze reports no issues;
+  dart format and git diff --check pass. Clean source patch applied to another
+  pristine aa7 archive and all four resulting files match the candidate exactly.
+  Root will run the combined canonical gate and independent release checks.
+- Candidate logs, RED source, final source and SOURCE.patch are in
+  `/private/tmp/specimen-auth-before-api-review-20260909`.
+  SOURCE.patch SHA256 `5cff3a3d49a777b5aecb7496e33035b7a8ed74f3682efc8e3794088e68d8b974`.
+  Initial offline setup was blocked by the Flutter SDK engine.stamp sandbox write;
+  retained that failure and used approved cache/loopback access for offline tests.
+  No test failure is relabeled green; no dependency upgrade or full web build.
+- No live account lookup, verification email, Firebase/App Check assessment,
+  collection call, cloud/browser/model/media action, new spend, commit/push/PR or
+  production mutation. Native auth/App Check behavior and full live acceptance
+  remain Not confirmed by these fake-based local tests. Original-ten and cumulative
+  USD5 boundaries preserved. All preceding shared-log entries preserved.
+
+
+## 2026-09-10T00:00:19.147740+00:00 — Root combined human-review release candidate
+
+- Coordinator task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `codex/live-human-review-release`, worktree `/private/tmp/specimen-live-human-review-release-20260909`, based on reviewed SAM commit `e1666f6f4a73319605b86063e911ba5562e8a694` above main `aa7cdc0613fb4887ba5265a5aab29ac9df7eb4d8`. PR22 remains draft until this combined successor is merged; no branch/worktree pruning. New candidate commit and PR are Not confirmed at this pre-commit closeout.
+- Integrated exactly16 independently reviewed DATA files and4 independently reviewed Auth files. Root rechecked all20 source hashes after canonical verification. DATA review SHA256 `7e54a864867651215e54b62040227b0d0862e33e6a89031ad0f462f50d012770` passed87 cases; Auth review SHA256 `27f9b80e54f1d1c416a6a3b99c56e2e6d8a52721432b47b1a5eb691452a6324b` passed33 cases. SAM review and original source evidence remain recorded above.
+- Combined `scripts/ci/verify.sh` exited0: **1845 Python passed,66 skipped;149 Flutter passed,7 skipped; static analysis, all-file hooks, and release web build passed**. Private log `/Users/anuragduddu/.codex/rollout-state/specimen-live/live-human-review-combined-verify-20260909.log`, SHA256 `d91d0152fca3c797774d55cc8bbecdb76b1c4d59b89bd4a87378be1947ad827e`. Native Android/iOS checks remain required in exact-candidate CI. This log append follows validation and changes no tested source.
+- Original issuance baseline is now reconciled across7 GitHub data runs and12 attempts; the5 credential-bearing attempts were catalog-only, with no recovery contract or privileged follow-on. Reconciliation SHA256 `a37900389a91b36e37f1acf951af2dc103be8dbb74244db59289a499e7a0282b`. Earlier403/400 diagnostic failures remain failures; they were not treated as absence. This closes the recorded workflow baseline gap, without claiming unrelated provider lifetime history or issuing native authority.
+- Firebase sign-in and explicit verification will be available while backend setup is pending. Existing email verification and Enterprise App Check controls are preserved. Auth independent review documents an initial automatic Flutter diagnostic network exception and a later blocked SQLite hook download; successful runs used cached assets with external networking denied. No live Firebase/Auth calls or emails were made by those tests.
+- All10 original specimens, all actual regions and both readings remain the acceptance denominator; automated classification/clearance are deferred. Current cumulative commitments remain1.256M microUSD. Proposed additional12,400 microUSD and fresh IAM/phase windows are unissued. Full live data/runtime, app-owner verification, private billing usage, actual inference and save/reload acceptance are **Not confirmed**. Hosting source publication alone is not product completion.
+- SAM model-cache cleanup remains due `2026-09-10T21:17:07Z`; preserved generation-bound cleanup cannot tolerate unreviewed bucket IAM changes. No cache replay, source SQL deletion, original-object change, hand deployment, new key or protection weakening.

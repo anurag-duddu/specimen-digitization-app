@@ -116,6 +116,14 @@ Every operation poll preserves original operation name, target, project, actor,
 type and insertion time. Read timeouts use the remaining window; a response
 arriving after the original deadline cannot qualify completion.
 
+Before any backup or restore-clone creation, ordinary recovery must win the
+[fixed-key held Storage claim](CLONE_ALLOWANCE.md) in the same invocation as
+those effects. Its original signed intent is published before the claim; the
+current native response alone unlocks one backup/create/restore sequence. Failed
+or lost claims cannot be read, adopted, retried or refunded. This replaces only
+the absent-clone history admission check. Existing-instance ownership and native
+operation-history requirements above still apply.
+
 Before any CREATE_USER, a separate step rereads both targets' absence and creates
 two immutable intent documents bound to source/run/attempt, signed recovery and
 the original privilege window. The workflow attests and publishes both documents
