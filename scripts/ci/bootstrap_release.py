@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -36,6 +37,17 @@ READ_SCOPE = """query VerifyFirstAdministrator(
 }
 """
 
+READ_FIRST_SCOPE = """query VerifyFirstScopeAndOwner($organizationId: UUID!, $collectionId: UUID!) {
+  organization(key: {id: $organizationId}) { id name }
+  collections(where: {organizationId: {eq: $organizationId}}, limit: 2) { id organizationId name parentId }
+  matchingCollections: collections(where: {id: {eq: $collectionId}}, limit: 2) { id organizationId name parentId }
+  organizationMembers(where: {organizationId: {eq: $organizationId}}, limit: 2) { uid active }
+  members: collectionMembers(where: {organizationId: {eq: $organizationId}}, limit: 2) {
+    uid collectionId active role canViewSensitive
+  }
+}
+"""
+
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode()
@@ -47,10 +59,18 @@ def validate_prepared(payload, expected_sha256):
     try:
         identity, variables = payload["auth_record"], payload["request"]["variables"]
         require(variables["canViewSensitive"] is False, "initial sensitive access is not authorized")
-        expected = _prepared.prepare_bootstrap(
+        version = payload["schema_version"]
+        require(version in {"first-admin-bootstrap/v1", "first-scope-owner-bootstrap/v1"}, "unknown bootstrap mode")
+        extra = {}
+        prepare = _prepared.prepare_bootstrap
+        if version == "first-scope-owner-bootstrap/v1":
+            prepare = _prepared.prepare_first_scope
+            extra = {"organization_name": variables["organizationName"], "collection_name": variables["collectionName"]}
+        expected = prepare(
             auth_record=identity, requested_email=identity["email"], requested_uid=identity["uid"],
             organization_id=variables["organizationId"], collection_id=variables["collectionId"],
             can_view_sensitive=False,
+            **extra,
         )
         require(expected["artifact_sha256"] == expected_sha256 and canonical(payload) == canonical(expected),
                 "prepared first-admin artifact changed")
@@ -88,6 +108,95 @@ def read_scope(google, variables):
     return data
 
 
+def read_first_scope(google, variables):
+    data = graphql_data(google.request("data", "POST", SERVICE + ":executeGraphqlRead", body={
+        "query": READ_FIRST_SCOPE,
+        "variables": {key: variables[key] for key in ("organizationId", "collectionId")},
+    }))
+    require(set(data) == {"organization", "collections", "matchingCollections", "organizationMembers", "members"}
+            and all(isinstance(data[key], list) and len(data[key]) <= 2 for key in
+                    ("collections", "matchingCollections", "organizationMembers", "members")),
+            "first-scope observation incomplete")
+    return data
+
+
+def retain_first_scope(directory, name, value):
+    """Fixed attempt-local exclusive evidence; existing intent never resets."""
+    descriptor = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(canonical(value) + b"\n")
+        output.flush()
+        os.fsync(output.fileno())
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def apply_first_scope(google, payload, expected_sha256):
+    variables = payload["request"]["variables"]
+    before = read_first_scope(google, variables)
+    require(before == {"organization": None, "collections": [], "matchingCollections": [],
+                       "organizationMembers": [], "members": []},
+            "first-scope target is existing or partial; reconcile without adoption")
+    provenance = {"source_sha": google.packet["source_sha"], "run_id": google.packet["release_run_id"],
+                  "run_attempt": google.packet["release_run_attempt"], "artifact_sha256": expected_sha256}
+    directory = google.path.parent
+    retain_first_scope(directory, "first-scope-owner.intent.json", {
+        "version": "first-scope-owner-intent/v1", **provenance,
+        "request_sha256": hashlib.sha256(canonical(payload["request"])).hexdigest(),
+        "before_sha256": hashlib.sha256(canonical(before)).hexdigest(),
+    })
+    # Intent is durable before dispatch. Any exception, partial response or failed
+    # readback leaves it consumed. A new runner cannot adopt committed rows: the
+    # same pinned organization's insert still conflicts. No retry or new IDs.
+    response = google.request("data", "POST", SERVICE + ":executeGraphql", body=payload["request"])
+    retain_first_scope(directory, "first-scope-owner.response.json", response)
+    inserted = graphql_data(response)
+    keys = {
+        "organization_insert": {"id": "organizationId"},
+        "collection_insert": {"organizationId": "organizationId", "id": "collectionId"},
+        "organizationMember_insert": {"organizationId": "organizationId", "uid": "uid"},
+        "collectionMember_insert": {"organizationId": "organizationId", "collectionId": "collectionId", "uid": "uid"},
+    }
+    require(set(inserted) == set(keys), "first-scope mutation result incomplete")
+    for field, mapping in keys.items():
+        row = inserted[field]
+        require(isinstance(row, dict) and set(row) == set(mapping), "first-scope inserted key incomplete")
+        for key, variable in mapping.items():
+            require(row[key] == variables[variable] if key == "uid" else same_uuid(row[key], variables[variable]),
+                    "first-scope inserted key differs")
+    after = read_first_scope(google, variables)
+    retain_first_scope(directory, "first-scope-owner.readback.json", after)
+    organization = after["organization"]
+    require(isinstance(organization, dict) and set(organization) == {"id", "name"}
+            and same_uuid(organization["id"], variables["organizationId"])
+            and organization["name"] == variables["organizationName"], "first-scope organization readback differs")
+    for key in ("collections", "matchingCollections"):
+        require(len(after[key]) == 1, "first-scope collection set differs")
+        collection = after[key][0]
+        require(isinstance(collection, dict) and set(collection) == {"id", "organizationId", "name", "parentId"}
+                and same_uuid(collection["id"], variables["collectionId"])
+                and same_uuid(collection["organizationId"], variables["organizationId"])
+                and collection["name"] == variables["collectionName"] and collection["parentId"] is None,
+                "first-scope collection readback differs")
+    require(len(after["organizationMembers"]) == 1 and len(after["members"]) == 1, "first-scope owner set differs")
+    owner = after["organizationMembers"][0]
+    require(isinstance(owner, dict) and set(owner) == {"uid", "active"}
+            and owner["uid"] == variables["uid"] and owner["active"] is True, "first-scope owner differs")
+    member = after["members"][0]
+    require(isinstance(member, dict) and set(member) == {"uid", "collectionId", "active", "role", "canViewSensitive"}
+            and member["uid"] == variables["uid"] and member["active"] is True
+            and member["role"] == "admin" and member["canViewSensitive"] is False
+            and same_uuid(member["collectionId"], variables["collectionId"]), "first-scope owner readback differs")
+    receipt = {"version": "first-scope-owner-applied/v1", **provenance,
+               "membership_sha256": hashlib.sha256(canonical(after)).hexdigest(),
+               "scope_verified": True, "membership_verified": True, "sensitive_access": False, "release_accepted": False}
+    retain_first_scope(directory, "first-scope-owner.verified.json", receipt)
+    return receipt
+
+
 def bootstrap(google, prepared_payload, expected_sha256):
     """Recheck identity, execute exact transaction once, then verify membership.
 
@@ -110,6 +219,8 @@ def bootstrap(google, prepared_payload, expected_sha256):
     require(user.get("localId") == identity["uid"] and user.get("email") == identity["email"]
             and user.get("emailVerified") is True and user.get("disabled", False) is False
             and not user.get("tenantId"), "fresh Auth identity differs, is unverified or disabled")
+    if payload["schema_version"] == "first-scope-owner-bootstrap/v1":
+        return apply_first_scope(google, payload, expected_sha256)
     before = read_scope(google, variables)
     require(before["organizationMember"] is None and before["members"] == [] and before["admins"] == [],
             "first-admin target or organization already has membership; reconcile without elevation")

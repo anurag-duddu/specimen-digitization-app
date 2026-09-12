@@ -470,9 +470,10 @@ def apply_compatible(google, plan, path, output, before):
         google.request("rules", "POST", f"projects/{PROJECT}/releases", body=body)
     reread = google.request("rules", "GET", RULE_RELEASE)
     require(reread.get("rulesetName") == rules["name"], "Storage publication mismatch")
+    bootstrap_receipt = None
     if plan["bootstrap"] is not None:
         from bootstrap_release import bootstrap
-        bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"])
+        bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"])
     observations = {role: google.request("data", "GET", body["name"]) for role, body in (("schema", schema), ("connector", connector))}
     for value in observations.values():
         require(value.get("reconciling", False) is False and value.get("etag"), "data did not finish reconciling")
@@ -488,6 +489,8 @@ def apply_compatible(google, plan, path, output, before):
                                      "run_id": native["run_id"], "run_attempt": native["run_attempt"], "source_sha": native["source_sha"],
                                      "sha256": hashlib.sha256(native_raw).hexdigest()},
                                  "membership_bootstrapped": plan["bootstrap"] is not None,
+                                 **({"bootstrap_receipt": bootstrap_receipt} if bootstrap_receipt
+                                    and bootstrap_receipt.get("version") == "first-scope-owner-applied/v1" else {}),
                                  **{role: {"name": value["name"], "etag": value["etag"]} for role, value in observations.items()},
                                  "storage_ruleset": rules["name"], "release_accepted": False}, sort_keys=True) + "\n")
 
@@ -559,7 +562,9 @@ def verify_or_bootstrap(google, plan, output):
     receipt = verify_schema_receipt(google, plan)
     if plan["version"] == "data-bootstrap/v1":
         from bootstrap_release import bootstrap
-        bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"])
+        bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"])
+        if bootstrap_receipt and bootstrap_receipt.get("version") == "first-scope-owner-applied/v1":
+            receipt["bootstrap_receipt"] = bootstrap_receipt
         receipt["membership_bootstrapped"] = True
     receipt.update(source_sha=google.packet["source_sha"], run_id=google.packet["release_run_id"],
                    run_attempt=google.packet["release_run_attempt"], data_ready=False, release_accepted=False)

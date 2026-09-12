@@ -45,6 +45,26 @@ BOOTSTRAP_MUTATION = """mutation PrepareFirstAdministrator(
 }
 """
 
+# The first insert contends on the pinned organization primary key. A competing
+# transaction or replay cannot get past it. All four inserts commit or roll back
+# together; none can adopt, rename, reactivate or elevate an existing row.
+FIRST_SCOPE_MUTATION = """mutation PrepareFirstScopeAndOwner(
+  $organizationId: UUID!, $collectionId: UUID!, $uid: String!,
+  $organizationName: String!, $collectionName: String!, $canViewSensitive: Boolean!
+) @transaction {
+  organization_insert(data: {id: $organizationId, name: $organizationName})
+  query @redact {
+    matchingCollections: collections(where: {id: {eq: $collectionId}}, limit: 1)
+      @check(expr: "this.size() == 0", message: "Collection identifier already exists") { id }
+  }
+  collection_insert(data: {organizationId: $organizationId, id: $collectionId,
+    name: $collectionName, parentId: null})
+  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})
+  collectionMember_insert(data: {organizationId: $organizationId, collectionId: $collectionId,
+    uid: $uid, active: true, role: "admin", canViewSensitive: $canViewSensitive})
+}
+"""
+
 
 def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
@@ -127,6 +147,26 @@ def prepare_bootstrap(
     return artifact
 
 
+def prepare_first_scope(
+    *, organization_name: str, collection_name: str, can_view_sensitive: bool = False, **identity_scope: Any,
+) -> dict[str, Any]:
+    """Prepare only the explicitly selected empty-scope mode; never mint IDs."""
+    if can_view_sensitive is not False:
+        raise ValueError("Initial sensitive access is not authorized")
+    for name in (organization_name, collection_name):
+        if (not isinstance(name, str) or not name or name != name.strip()
+                or len(name.encode("utf-8")) > 256
+                or any(ord(character) < 32 or ord(character) == 127 for character in name)):
+            raise ValueError("Scope names must be explicit bounded text")
+    artifact = prepare_bootstrap(**identity_scope, can_view_sensitive=False)
+    artifact["schema_version"] = "first-scope-owner-bootstrap/v1"
+    artifact["request"]["query"] = FIRST_SCOPE_MUTATION
+    artifact["request"]["variables"].update(organizationName=organization_name, collectionName=collection_name)
+    del artifact["artifact_sha256"]
+    artifact["artifact_sha256"] = hashlib.sha256(_canonical(artifact)).hexdigest()
+    return artifact
+
+
 def write_private_artifact(path: Path, artifact: dict[str, Any]) -> None:
     """Exclusively create mode0600 outside Git, beneath a private owned directory."""
     parent = path.parent.resolve(strict=True)
@@ -148,11 +188,13 @@ def main() -> int:
     parser.add_argument("--request", type=Path, required=True, help="Private JSON with explicit requested fields")
     parser.add_argument("--auth-record", type=Path, required=True, help="Private exported Admin user record JSON")
     parser.add_argument("--output", type=Path, required=True, help="New private file outside Git; parent mode0700")
+    parser.add_argument("--first-scope", action="store_true", help="Explicit empty organization/collection and owner mode")
     args = parser.parse_args()
     try:
         request = json.loads(read_private(args.request))
         auth_record = json.loads(read_private(args.auth_record))
-        artifact = prepare_bootstrap(auth_record=auth_record, **request)
+        prepare = prepare_first_scope if args.first_scope else prepare_bootstrap
+        artifact = prepare(auth_record=auth_record, **request)
         write_private_artifact(args.output, artifact)
     except (ValueError, TypeError, OSError):
         # Do not echo private identity, record, path, or GraphQL variables.
