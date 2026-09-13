@@ -136,8 +136,9 @@ def signal_supervisor(directory):
 
 def test_supervisor_term_cleans_owned_process_group(tmp_path):
     outer = subprocess.Popen([sys.executable, "-c",
-                              "import sys; from test_worker_supervisor import signal_supervisor; signal_supervisor(sys.argv[1])",
-                              str(tmp_path)])
+                              "import sys; sys.path.insert(0, sys.argv[2]); "
+                              "from test_worker_supervisor import signal_supervisor; signal_supervisor(sys.argv[1])",
+                              str(tmp_path), str(Path(__file__).resolve().parent)])
     try:
         end = time.monotonic() + 3
         while not (tmp_path / "ready").exists() and time.monotonic() < end:
