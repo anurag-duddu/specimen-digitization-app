@@ -110,6 +110,8 @@ def fixture(tmp_path, monkeypatch, server, *, value=None):
         packet = authority
         claim_restore = staticmethod(server.insert)
         def request(self, api, method, resource, **kw):
+            if method == "GET" and api == "data" and resource in (data.PREFIX + "/schemas/main", data.PREFIX + "/connectors/specimen-server"):
+                return None
             assert method == "GET", "no SQL mutation is expected before the backup sentinel"
             if resource.endswith("/instances/" + data.SOURCE):
                 return {"region": "us-east4", "settings": {"settingsVersion": "6"}}

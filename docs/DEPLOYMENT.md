@@ -628,8 +628,11 @@ pinned model artifact hashes, data restoration and approval evidence are require
 actual evidence verification and cloud authorization remain additional gates.
 
 The first missing application database uses the typed
-`data-initialize-missing/v1` phase in that same protected data workflow. Its
-one-time initializer has a separate main-only `data-initialization-production`
+`data-initialize-missing/v1` phase in that same protected data workflow. The
+plan may bind the exact empty Firebase onboarding schema instead of requiring
+schema absence. It verifies that observation before recovery and before
+conditional publication; existing application schemas remain ineligible.
+The one-time initializer has a separate main-only `data-initialization-production`
 environment and `specimen-data-initialize` keyless identity. Native source and
 restore parity precede initializer credentials; fixed SQL and privilege disposal
 must qualify on the same owned clone before source initialization. Ordinary data

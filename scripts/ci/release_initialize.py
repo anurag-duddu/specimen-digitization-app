@@ -51,14 +51,58 @@ def catalog_provenance(packet):
             "run_id": packet["release_run_id"], "run_attempt": packet["release_run_attempt"]}
 
 
+def validate_schema_placeholder(placeholder, expected_etag):
+    """Accept only the reviewed, empty Firebase onboarding resource."""
+    from uuid import UUID
+    from deploy_data import PREFIX, stamp
+    exact_keys(placeholder, {"name", "createTime", "updateTime", "source", "uid",
+                            "reconciling", "datasources", "etag"}, "empty schema placeholder")
+    require(placeholder["name"] == PREFIX + "/schemas/main"
+            and placeholder["source"] in ({}, {"files": []})
+            and placeholder["reconciling"] is False,
+            "only the named empty schema placeholder is eligible")
+    require(isinstance(expected_etag, str) and 0 < len(expected_etag) <= 500
+            and placeholder["etag"] == expected_etag, "reviewed schema placeholder revision required")
+    try:
+        require(str(UUID(placeholder["uid"])) == placeholder["uid"], "invalid schema placeholder identity")
+        require(stamp(placeholder["createTime"]) <= stamp(placeholder["updateTime"]),
+                "invalid schema placeholder timestamps")
+    except (TypeError, AttributeError):
+        raise ValueError("invalid schema placeholder metadata") from None
+    require(placeholder["datasources"] == [{"postgresql": {
+        "database": DATABASE,
+        "cloudSql": {"instance": f"projects/{PROJECT}/locations/us-east4/instances/{SOURCE}"},
+        "schemaValidation": "NONE", "ephemeral": True,
+    }}], "schema placeholder must use the approved temporary datasource")
+    require(placeholder["datasources"][0]["postgresql"]["ephemeral"] is True,
+            "schema placeholder must be temporary")
+    return placeholder
+
+
+def verify_initialization_schema(google, plan):
+    """Observe the bound placeholder or absence before recovery and publication."""
+    from deploy_data import PREFIX
+    expected = plan.get("schema_placeholder")
+    if expected is not None:
+        validate_schema_placeholder(expected, plan["schema_etag"])
+    current = google.request("data", "GET", PREFIX + "/schemas/main", missing=True)
+    require(sha(current) == sha(expected), "initialization schema changed; reconcile the original observation")
+    require(google.request("data", "GET", PREFIX + "/connectors/specimen-server", missing=True) is None,
+            "first initialization cannot adopt an existing connector")
+
+
 def validate_plan(plan, packet):
     validate_catalog_recipient(plan["catalog_recipient"])
     init = exact_keys(plan["initialization"], {"files", "catalog_sha256", "authority_sha256", "review_sha256",
         "privilege_window_seconds", "identity", "permissions", "conditional_binding_sha256", "service_agent",
         "disposal_permissions", "disposal_binding_sha256"}, "initialization")
-    require(plan["schema_mode"] == "initialize_missing" and plan["schema_etag"] is None
+    require(plan["schema_mode"] == "initialize_missing"
             and plan["connector_etag"] is None and plan["bootstrap"] is None,
-            "first initialization cannot adopt existing schema or bootstrap")
+            "first initialization cannot adopt an existing connector or bootstrap")
+    if "schema_placeholder" in plan:
+        validate_schema_placeholder(plan["schema_placeholder"], plan["schema_etag"])
+    else:
+        require(plan["schema_etag"] is None, "existing schema requires an exact empty placeholder observation")
     require(plan["recovery"]["recipe"]["source_version"] == "POSTGRES_18", "only qualified PostgreSQL18 initialization")
     require(init["files"] == fingerprints(), "initialization source bytes changed")
     for key in ("catalog_sha256", "authority_sha256", "review_sha256", "conditional_binding_sha256", "disposal_binding_sha256"):
@@ -234,6 +278,7 @@ def prepare_recovery(google, plan, directory, output):
     for resource in ("services/specimen-api", "jobs/specimen-worker"):
         require(google.request("run", "GET", f"projects/{PROJECT}/locations/us-east4/{resource}", missing=True) is None,
                 "runtime writers exist; no guessed maintenance switch")
+    verify_initialization_schema(google, plan)
     require(google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True) is None, "never adopt an existing clone")
     body = data.clone_body(source, plan["recovery"]["recipe"], google.packet["release_run_id"],
                           run_attempt=google.packet["release_run_attempt"], source_sha=google.packet["source_sha"])

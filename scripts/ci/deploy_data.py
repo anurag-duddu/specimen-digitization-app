@@ -131,7 +131,8 @@ def validate_plan(plan, packet, *, now=None):
     initializing = isinstance(plan, dict) and plan.get("version") == "data-initialize-missing/v1"
     exact_keys(plan, {"version", "source_sha", "schema_mode", "source_files", "database_etag", "schema_etag",
                      "connector_etag", "storage_release_etag", "recovery", "writers", "bootstrap"}
-                     | ({"initialization", "catalog_recipient"} if initializing else set()), "data plan")
+                     | ({"initialization", "catalog_recipient"} if initializing else set())
+                     | ({"schema_placeholder"} if initializing and "schema_placeholder" in plan else set()), "data plan")
     require(plan["version"] in {"data-apply/v1", "data-initialize-missing/v1"} and plan["source_sha"] == packet["source_sha"], "data source mismatch")
     require(plan["schema_mode"] in ({"initialize_missing"} if initializing else {"validate_existing", "initialize_empty"}), "unapproved migration mode")
     require(plan["source_files"] == source_fingerprints(), "committed data source fingerprints changed")
@@ -449,11 +450,33 @@ def deploy(path, output):
     apply_compatible(google, plan, path, output, before)
 
 
+def verify_persistent_schema(schema):
+    """A reconciled temporary service cannot establish durable data readiness."""
+    datasources = schema.get("datasources")
+    require(isinstance(datasources, list) and len(datasources) == 1
+            and isinstance(datasources[0], dict) and set(datasources[0]) == {"postgresql"},
+            "one persistent PostgreSQL datasource required")
+    postgres = datasources[0]["postgresql"]
+    require(isinstance(postgres, dict) and postgres.get("ephemeral", False) is False
+            and postgres.get("database") == DATABASE and postgres.get("schema", "public") == "public"
+            and postgres.get("cloudSql") == {
+                "instance": f"projects/{PROJECT}/locations/us-east4/instances/{SOURCE}"},
+            "SQL Connect has not confirmed the expected persistent database")
+    before_deploy = set(postgres) & {"schemaValidation", "schemaMigration"}
+    require((before_deploy == {"schemaValidation"} and postgres["schemaValidation"] in {"COMPATIBLE", "STRICT"})
+            or (before_deploy == {"schemaMigration"} and postgres["schemaMigration"] == "MIGRATE_COMPATIBLE"),
+            "persistent SQL Connect schema compatibility is unverified")
+
+
 def apply_compatible(google, plan, path, output, before):
     schema, connector = data_bodies(plan)
-    for body, key in ((schema, "schema_etag"), (connector, "connector_etag")):
-        current = google.request("data", "GET", body["name"], missing=True)
-        require((current is None and plan[key] is None) or current and current.get("etag") == plan[key], "deployed data revision changed")
+    if plan["version"] == "data-initialize-missing/v1":
+        from release_initialize import verify_initialization_schema
+        verify_initialization_schema(google, plan)
+    else:
+        for body, key in ((schema, "schema_etag"), (connector, "connector_etag")):
+            current = google.request("data", "GET", body["name"], missing=True)
+            require((current is None and plan[key] is None) or current and current.get("etag") == plan[key], "deployed data revision changed")
     google.request("data", "PATCH", schema["name"], body=schema, params={"allowMissing": "true", "validateOnly": "true"})
     # Direct APIs never invoke CLI provisioning or change Cloud SQL capacity/IAM.
     google.wait("data", google.request("data", "PATCH", schema["name"], body=schema, params={"allowMissing": "true"}))
@@ -478,14 +501,15 @@ def apply_compatible(google, plan, path, output, before):
         google.request("rules", "POST", f"projects/{PROJECT}/releases", body=body)
     reread = google.request("rules", "GET", RULE_RELEASE)
     require(reread.get("rulesetName") == rules["name"], "Storage publication mismatch")
+    observations = {role: google.request("data", "GET", body["name"]) for role, body in (("schema", schema), ("connector", connector))}
+    for value in observations.values():
+        require(value.get("reconciling", False) is False and value.get("etag"), "data did not finish reconciling")
+    verify_persistent_schema(observations["schema"])
     bootstrap_receipt = None
     if plan["bootstrap"] is not None:
         from bootstrap_release import bootstrap
         bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"],
                                       plan["bootstrap"].get("evidence_recipient"))
-    observations = {role: google.request("data", "GET", body["name"]) for role, body in (("schema", schema), ("connector", connector))}
-    for value in observations.values():
-        require(value.get("reconciling", False) is False and value.get("etag"), "data did not finish reconciling")
     cleanup_rehearsal(google, path.parent)
     native_raw = private_bytes(path.parent / "native-recovery.json")
     native = strict_json(native_raw)
@@ -562,6 +586,8 @@ def verify_schema_receipt(google, plan):
                 "unapproved deployed data resource")
         observed = google.request("data", "GET", expected["name"])
         require(observed.get("etag") == expected["etag"] and observed.get("reconciling", False) is False, "deployed data changed after signed receipt")
+        if role == "schema":
+            verify_persistent_schema(observed)
     rules = google.request("rules", "GET", RULE_RELEASE)
     require(rules.get("rulesetName") == receipt["storage_ruleset"], "deployed Storage rules changed")
     return receipt
