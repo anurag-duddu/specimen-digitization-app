@@ -5,7 +5,12 @@ import json
 import pytest
 
 import bootstrap_release as B
-from test_bootstrap_release import FakeGoogle, artifact, execute  # noqa: F401
+from test_bootstrap_release import FakeGoogle, artifact  # noqa: F401
+from test_data_initialization import catalog_recipient
+
+
+def execute(google, artifact):
+    return B.bootstrap(google, artifact, artifact["artifact_sha256"], catalog_recipient())
 
 
 @pytest.fixture
@@ -173,7 +178,7 @@ def test_bootstrap_phase_signed_receipt_keeps_exact_bootstrap_proof(first, tmp_p
         "version": "data-schema-ready/v1", "schema_ready": True, "native_restore_verified": True})
     output = tmp_path / "data-ready.json"
     D.verify_or_bootstrap(google, {"version": "data-bootstrap/v1", "bootstrap": {
-        "payload": first, "sha256": first["artifact_sha256"]}}, output)
+        "payload": first, "sha256": first["artifact_sha256"], "evidence_recipient": catalog_recipient()}}, output)
     assert sequence == ["verified-schema"]
     result = json.loads(output.read_bytes())
     assert result["bootstrap_receipt"]["artifact_sha256"] == first["artifact_sha256"]

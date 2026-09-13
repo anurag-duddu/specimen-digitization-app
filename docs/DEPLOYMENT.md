@@ -571,6 +571,10 @@ expansion requires user review and approval of end-to-end results.
   uses the same protected DATA lane and a reviewed fixed UUID pair/names for one
   four-insert transaction. Legacy existing-scope bootstrap remains available;
   neither mode creates a generic runtime signup or collection-creation API.
+  First-scope plans additionally bind a reviewed public encryption key. The
+  release job attests and retains only encrypted bootstrap evidence on ordinary
+  failure paths; raw account/scope records remain private. Missing artifacts
+  after abrupt runner loss remain unknown and do not authorize retry.
 - Verify compatible deployed data before promoting runtimes. Enforce the
   approved API/worker/SAM resource, expiry, scope and cumulative cost limits.
   Build admission precedes images; data admission precedes data apply; runtime

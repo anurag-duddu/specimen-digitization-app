@@ -146,7 +146,19 @@ jobs:
             ${{ runner.temp }}/data-release/clone-restore.json
           if-no-files-found: warn
           retention-days: 30
-      - name: Preserve encrypted native catalogs only, including rejected observations
+      - name: Locate encrypted bootstrap evidence without exposing private records
+        id: bootstrap_evidence
+        if: always() && steps.auth.outcome == 'success'
+        run: |
+          if compgen -G "$RUNNER_TEMP/data-release/first-scope-owner.*.encrypted.json" > /dev/null; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Attest encrypted bootstrap evidence including failed dispatches
+        if: always() && steps.bootstrap_evidence.outputs.present == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/data-release/first-scope-owner.*.encrypted.json
+      - name: Preserve encrypted private observations only, including rejected results
         if: always() && steps.auth.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -2,7 +2,7 @@
 
 This is an additive source contract for the existing protected DATA bootstrap
 lane. It does not establish current native row absence, select production IDs,
-grant institutional clearance, or issue operational approval. The release still
+  grant institutional clearance, or issue operational approval. The release still
 requires the exact merged source, independent packet/artifact review, cumulative
 budget, separate keyless DATA identity and main-only environment in
 [DEPLOYMENT.md](../DEPLOYMENT.md).
@@ -21,6 +21,14 @@ private `bootstrap.payload` artifacts with its approved `bootstrap.sha256`:
   UUID pair, exact organization/collection names (nonempty, trimmed, no control
   characters, at most 256 UTF-8 bytes each), and the already approved owner's
   UID/email. No IDs or names are generated. Preparation is not application.
+
+For first-scope mode only, the private plan's `bootstrap` object also requires
+`evidence_recipient: {public_key_pem, public_key_sha256}`. The complete reviewed
+plan binds this canonical RSA3072-or-stronger public key and its SHA256 before
+credentials or native effects. The prepared bootstrap artifact remains unchanged;
+legacy bootstrap still accepts only `payload` and `sha256`. No private key enters
+CI, and existing first-scope plans without the recipient must be reviewed again
+before use. This source change does not supply or approve an operational key.
 
 Before choosing the operational mode, the coordinator reconciles current native
 scope state and freezes the routine UUID pair and names in the private artifact.
@@ -45,13 +53,27 @@ The prepared query and complete artifact are regenerated and compared to the
 reviewed hash before Auth lookup. An exclusive, fsynced
 `first-scope-owner.intent.json` in the original protected attempt's private input
 directory is consumed before its single mutation dispatch. The original returned
-response and readback are retained privately. A successful result must return all
+response and readback are retained privately, including rejected GraphQL results.
+Each captured record also receives an exclusive, fsynced `.encrypted.json`
+sibling using the existing RSA-OAEP/AES-GCM envelope and original repository,
+source, run and attempt provenance. The intent is encrypted before mutation;
+encryption failure leaves its local fence consumed and prevents dispatch.
+A successful result must return all
 four exact inserted keys and reread precisely the named scope and two expected
 memberships, with the sensitive permission still false. The existing signed
 `data-ready.json` gains `bootstrap_receipt` only for this new mode, binding the
 artifact hash, complete scope/membership readback hash, source and original
 run/attempt. It continues to report `data_ready: false` and
 `release_accepted: false`; bootstrap is not whole-product acceptance.
+
+The protected release job attests available encrypted bootstrap records and
+preserves them in its existing `encrypted-initialization-catalog` artifact on an
+`always()` path after authentication, including ordinary failed apply steps.
+Raw intent/response/readback files never match an upload path. Before using an
+envelope for reconciliation, the coordinator must verify the exact protected
+workflow producer, source/run/attempt and attested ciphertext digest, then decrypt
+with the originally reviewed recipient and compare its plaintext hash. Envelope
+encryption and self-reported provenance alone do not authenticate the producer.
 
 Failed or unknown dispatch, partial response, incorrect readback, or interrupted
 runner does not permit automatic retry, replacement IDs, existing-row adoption
@@ -60,7 +82,10 @@ intent prevents redispatch in that attempt; the stable organization's database
 key prevents a second committed bootstrap across runners. A new runner is not a
 durable record of the previous runner's uncommitted/unknown request: the
 coordinator must reconcile original evidence before admitting any subsequent
-attempt. No new packet or execution window is created by this implementation.
+attempt. Abrupt runner loss before attestation/upload can still lose evidence;
+missing or unauthenticated artifacts remain an unknown outcome and never license
+retry or a replacement scope. No new packet or execution window is created by
+this implementation.
 
 Qualification uses synthetic identities and IDs: focused Python artifact/dispatch
 tests plus the exact mutation and `executeGraphqlRead` readback on a disposable
