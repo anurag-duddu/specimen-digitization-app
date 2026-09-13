@@ -36,6 +36,14 @@ def test_admitted_uneven_cohort_finishes_within_its_retained_window(
         "time",
         SimpleNamespace(monotonic=lambda: (c.clock[0] - origin).total_seconds()),
     )
+    summaries = []
+    summarize = c.worker.result_summary
+
+    def record_summary():
+        summaries.append(c.worker.rotation)
+        return summarize()
+
+    monkeypatch.setattr(c.worker, "result_summary", record_summary)
 
     class Stop:
         waits = 0
@@ -49,10 +57,14 @@ def test_admitted_uneven_cohort_finishes_within_its_retained_window(
             c.clock[0] += timedelta(seconds=seconds)
 
     c.worker.run(Stop(), max_seconds=1500)
+    # Keep the same four summary operations as the old ten-tick cadence, moving
+    # its final summary to completion instead of adding a read on every tick.
+    assert summaries == [10, 20, 30, 32]
     reads = [event for event in c.events if event[0] == "read"]
     assert len(reads) == len(set(reads)) == 22
     assert c.worker.result_summary()["counts"] == {"review_required": 10}
     assert ledger(c)["execution_window"] == window
+    assert c.clock[0].timestamp() <= window["deadline_unix"]
 
 
 def test_completed_review_row_remains_in_all_cohort_checks(tmp_path, monkeypatch):
@@ -70,3 +82,24 @@ def test_completed_review_row_remains_in_all_cohort_checks(tmp_path, monkeypatch
     assert c.events == before
     assert c.worker.result_summary()["status"] != "evidence_review_required"
     assert c.worker.health.blocked_scopes
+
+
+def test_already_completed_cohort_does_not_wait_for_rotation(tmp_path, monkeypatch):
+    c = dynamic_cohort(tmp_path, monkeypatch)
+    segment_all(c)
+    for binding in c.launch.specimens:
+        item = c.repo.get(c.launch.scope, binding.specimen_id)
+        for _ in range(2 * len(item.run.regions) + 1):
+            c.flow.step(c.principal, binding.specimen_id)
+    before = list(c.events)
+
+    class Stop:
+        def is_set(self):
+            return False
+
+        def wait(self, seconds):
+            pytest.fail("A completed cohort must return before another polling wait")
+
+    c.worker.run(Stop(), max_seconds=1500)
+    assert c.events == before
+    assert c.worker.result_summary()["counts"] == {"review_required": 10}

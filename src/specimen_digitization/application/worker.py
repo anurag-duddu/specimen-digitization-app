@@ -196,6 +196,7 @@ class PilotWorker(PollingWorker):
     def __init__(self, repository, workflow, user_id, membership_loader, admission):
         super().__init__(repository, workflow, user_id, membership_loader)
         self.admission = admission
+        self._cohort_review_complete = False
 
     def _persist_blocker(self, principal, specimen_id, reason):
         specimen = self.repository.get(principal.scope, specimen_id)
@@ -243,7 +244,9 @@ class PilotWorker(PollingWorker):
                 or self.health.blocked_scopes.get("pilot_cohort")
             ):
                 return
-            if self.rotation and self.rotation % 10 == 0:
+            if self.rotation and (
+                self.rotation % 10 == 0 or self._cohort_review_complete
+            ):
                 summary = self.result_summary()
                 counts = summary["counts"]
                 if (
@@ -314,6 +317,7 @@ class PilotWorker(PollingWorker):
         return summary
 
     def tick(self, stop=None):
+        self._cohort_review_complete = False
         actor_uid.set(self.user_id)
         self.health.ticks += 1
         if stop is not None and stop.is_set():
@@ -386,6 +390,8 @@ class PilotWorker(PollingWorker):
                 "processing_blocked",
             }:
                 self.admission.note_outcome(specimen)
+                if launch.evidence_only and not unreviewed:
+                    self._cohort_review_complete = True
                 if specimen.run.stage != "finalized":
                     self.health.blocked_scopes[binding.specimen_id] = (
                         specimen.run.blocker or specimen.run.stage
@@ -409,6 +415,15 @@ class PilotWorker(PollingWorker):
             ):
                 raise Conflict("Pilot result changed before dispatch acknowledgement")
             self.admission.note_outcome(retained, completed_dispatch=True)
+            if (
+                launch.evidence_only
+                and len(unreviewed) == 1
+                and retained.run.stage == "processing_blocked"
+                and retained.run.blocker == "pilot_evidence_review_required"
+            ):
+                # Reuse this tick's all-ten scan; let run verify the complete
+                # summary now instead of sleeping until another tenth rotation.
+                self._cohort_review_complete = True
             self.health.attempted += 1
             self.health.last_success_at = self.clock()
             if retained.run.stage == "processing_blocked":
