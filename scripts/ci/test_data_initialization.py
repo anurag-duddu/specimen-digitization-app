@@ -339,6 +339,8 @@ def test_actual_recovery_checks_native_absence_and_restore_before_any_initializa
         def request(self,api,method,resource,**kwargs):
             if method=='GET':
                 if api=='run':return None
+                if api=='data' and resource in (data.PREFIX+'/schemas/main', data.PREFIX+'/connectors/specimen-server'):
+                    return None
                 if resource.endswith('/'+data.SOURCE):return {'region':'us-east4','databaseVersion':'POSTGRES_18',
                     'settings':{'settingsVersion':'expected','edition':'ENTERPRISE','dataDiskSizeGb':'10',
                     'databaseFlags':[{'name':'cloudsql.iam_authentication','value':'on'}]}}

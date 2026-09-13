@@ -288,6 +288,8 @@ def test_recovery_requires_finite_proof_before_clone_and_restores_exact_id(
     f.clone, f.restored = None, False
     request = f.request
     def recovery_request(api, method, resource, **kw):
+        if method == "GET" and api == "data" and resource in (data.PREFIX + "/schemas/main", data.PREFIX + "/connectors/specimen-server"):
+            return None
         if api == "run":
             assert method == "GET"
             return None

@@ -75,9 +75,34 @@ independent review, authority and cumulative-budget gates before credentials.
 Its reviewed packet uses plane `data-initialization`, the same plan, and the
 separately observed `specimen-data-initialize` WIF provider.
 
+Firebase can leave an empty onboarding `schemas/main` resource while the named
+PostgreSQL application database is absent. The optional `schema_placeholder`
+field binds that complete observed resource, including its UID, timestamps and
+etag. It accepts only empty source, the exact approved instance/database,
+`schemaValidation: NONE`, `ephemeral: true`, and no reconciliation in progress.
+The plan's `schema_etag` must match. Existing application schemas and connectors
+remain ineligible. Without this field, actual schema absence is required.
+
+The ordinary identity rereads that exact resource and connector absence before
+acquiring the one-time backup/clone allowance, and again before compatible
+publication. Both schema PATCH requests carry the reviewed etag. A changed or
+disappeared placeholder stops the phase; it is never deleted or treated as
+absent to satisfy initialization. An automatic Firebase transition after database
+creation may also change the observation. Reconcile original receipts and the
+spent allowance before reviewing a continuation; a new clone or ordinary rerun
+is not an automatic recovery path. Include the two additional pre-recovery
+metadata GETs in the reviewed DATA costs and request bounds.
+
+Before signing schema readiness or running a subsequent administrator bootstrap,
+the observed SQL Connect schema must identify the expected persistent PostgreSQL
+database, compatible schema validation/migration, and `ephemeral` absent or
+strictly false. Successful schema publication or native table creation alone
+does not prove that SQL Connect has left temporary onboarding mode.
+
 The initialization plan extends the ordinary plan with `catalog_recipient`,
 `schema_mode` set to
-`initialize_missing`, absent schema/connector revisions, no bootstrap, a PG18
+`initialize_missing`, an absent schema or the reviewed empty placeholder below,
+an absent connector, no bootstrap, a PG18
 restore recipe, and an `initialization` object containing:
 
 - `files`: exact SHA256 values for the committed Python helper, Node helper,
