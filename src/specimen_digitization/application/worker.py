@@ -346,11 +346,17 @@ class PilotWorker(PollingWorker):
         try:
             if launch.evidence_only:
                 pending = []
+                unreviewed = []
                 incomplete = False
                 for item in launch.specimens:
                     candidate = self.repository.get(launch.scope, item.specimen_id)
                     if not self.admission.binding_matches(candidate):
                         raise OperationalBlock("pilot_specimen_binding_mismatch")
+                    if not (
+                        candidate.run.stage == "processing_blocked"
+                        and candidate.run.blocker == "pilot_evidence_review_required"
+                    ):
+                        unreviewed.append(item)
                     if "segment" not in candidate.run.completed_steps:
                         incomplete = True
                         if candidate.run.stage not in {
@@ -367,6 +373,11 @@ class PilotWorker(PollingWorker):
                     return self.health
                 if pending:
                     binding = pending[(self.rotation - 1) % len(pending)]
+                elif unreviewed:
+                    # The admitted reading envelope counts waits for unfinished
+                    # work. Completed review rows remain in every cohort check,
+                    # but must not add idle polling waits while other rows run.
+                    binding = unreviewed[(self.rotation - 1) % len(unreviewed)]
             specimen = self.repository.get(launch.scope, binding.specimen_id)
             if specimen.run.stage in {
                 "finalized",
