@@ -567,6 +567,10 @@ expansion requires user review and approval of end-to-end results.
   Do not create or upgrade a source SQL instance as a side effect of deployment.
   Preserve source data and object generations. Bootstrap the approved initial
   administrator only after verified identity/scope, with sensitive access off.
+  The additive [first organization/collection contract](execution/FIRST_COLLECTION_BOOTSTRAP.md)
+  uses the same protected DATA lane and a reviewed fixed UUID pair/names for one
+  four-insert transaction. Legacy existing-scope bootstrap remains available;
+  neither mode creates a generic runtime signup or collection-creation API.
 - Verify compatible deployed data before promoting runtimes. Enforce the
   approved API/worker/SAM resource, expiry, scope and cumulative cost limits.
   Build admission precedes images; data admission precedes data apply; runtime
