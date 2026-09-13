@@ -93,6 +93,16 @@ def source_fingerprints():
     return {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
+def validate_bootstrap_plan(bootstrap):
+    payload = bootstrap.get("payload") if isinstance(bootstrap, dict) else None
+    first_scope = isinstance(payload, dict) and payload.get("schema_version") == "first-scope-owner-bootstrap/v1"
+    exact_keys(bootstrap, {"payload", "sha256"} | ({"evidence_recipient"} if first_scope else set()), "bootstrap")
+    digest(bootstrap["sha256"], "bootstrap artifact")
+    if first_scope:
+        from bootstrap_release import validate_evidence_recipient
+        validate_evidence_recipient(bootstrap["evidence_recipient"])
+
+
 def validate_plan(plan, packet, *, now=None):
     if isinstance(plan, dict) and plan.get("version") == "data-initialization-inventory/v1":
         from release_initialize import fingerprints, validate_catalog_recipient
@@ -116,8 +126,7 @@ def validate_plan(plan, packet, *, now=None):
             integer(receipt[key], 1, 2**53, key)
         require((plan["bootstrap"] is not None) == (plan["version"] == "data-bootstrap/v1"), "bootstrap artifact and phase must agree")
         if plan["bootstrap"] is not None:
-            exact_keys(plan["bootstrap"], {"payload", "sha256"}, "bootstrap")
-            digest(plan["bootstrap"]["sha256"], "bootstrap artifact")
+            validate_bootstrap_plan(plan["bootstrap"])
         return plan
     initializing = isinstance(plan, dict) and plan.get("version") == "data-initialize-missing/v1"
     exact_keys(plan, {"version", "source_sha", "schema_mode", "source_files", "database_etag", "schema_etag",
@@ -145,8 +154,7 @@ def validate_plan(plan, packet, *, now=None):
         validate_retention(recovery["backup_retention"], packet, now=now,
                            restore_expiry=recovery["expires_at_unix"], disk_gb=recovery["recipe"]["source_disk_gb"])
     if plan["bootstrap"] is not None:
-        exact_keys(plan["bootstrap"], {"payload", "sha256"}, "bootstrap")
-        digest(plan["bootstrap"]["sha256"], "bootstrap artifact")
+        validate_bootstrap_plan(plan["bootstrap"])
     if initializing:
         from release_initialize import validate_plan as validate_initialization
         validate_initialization(plan, packet)
@@ -473,7 +481,8 @@ def apply_compatible(google, plan, path, output, before):
     bootstrap_receipt = None
     if plan["bootstrap"] is not None:
         from bootstrap_release import bootstrap
-        bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"])
+        bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"],
+                                      plan["bootstrap"].get("evidence_recipient"))
     observations = {role: google.request("data", "GET", body["name"]) for role, body in (("schema", schema), ("connector", connector))}
     for value in observations.values():
         require(value.get("reconciling", False) is False and value.get("etag"), "data did not finish reconciling")
@@ -562,7 +571,8 @@ def verify_or_bootstrap(google, plan, output):
     receipt = verify_schema_receipt(google, plan)
     if plan["version"] == "data-bootstrap/v1":
         from bootstrap_release import bootstrap
-        bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"])
+        bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"],
+                                      plan["bootstrap"].get("evidence_recipient"))
         if bootstrap_receipt and bootstrap_receipt.get("version") == "first-scope-owner-applied/v1":
             receipt["bootstrap_receipt"] = bootstrap_receipt
         receipt["membership_bootstrapped"] = True
