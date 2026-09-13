@@ -69,7 +69,7 @@ def test_bad_recipient_stops_before_auth_or_scope(first, tmp_path, change):
 
 
 @pytest.mark.parametrize("outcome", ["success", "partial", "bad-readback", "rejected-readback", "unknown"])
-def test_workflow_retains_exact_encrypted_evidence_after_success_or_failure(first, tmp_path, outcome):
+def test_workflow_retains_exact_encrypted_evidence_after_success_or_failure(first, tmp_path, monkeypatch, outcome):
     google = FirstGoogle(first, tmp_path)
     if outcome == "partial":
         google.mutation_result = {"data": {}, "errors": [{"message": "private fixture-admin response"}]}
@@ -103,9 +103,17 @@ def test_workflow_retains_exact_encrypted_evidence_after_success_or_failure(firs
         assert encrypted.exists() and published(encrypted)
         assert not published(raw)
         envelope = json.loads(encrypted.read_bytes())
-        assert decrypt_catalog(envelope, keys()[1], public_key_sha256=recipient()["public_key_sha256"],
-                               provenance={"repository": "anurag-duddu/specimen-digitization-app", "source_sha": "a" * 40,
-                                           "run_id": 123, "run_attempt": 2}) == raw.read_bytes()
+        arguments = {"public_key_sha256": recipient()["public_key_sha256"],
+                     "provenance": {"repository": "anurag-duddu/specimen-digitization-app", "source_sha": "a" * 40,
+                                    "run_id": 123, "run_attempt": 2}}
+        # Synthetic private keys represent the local coordinator, never a runner.
+        # Prove the runner denial before testing that separate local readback.
+        with monkeypatch.context() as context:
+            context.setenv("GITHUB_ACTIONS", "true")
+            with pytest.raises(ValueError):
+                decrypt_catalog(envelope, keys()[1], **arguments)
+            context.delenv("GITHUB_ACTIONS")
+            assert decrypt_catalog(envelope, keys()[1], **arguments) == raw.read_bytes()
         for private in ("fixture-admin", "admin@example.invalid", "Synthetic organization", "private wrong name"):
             assert private.encode() not in encrypted.read_bytes()
         assert encrypted.stat().st_mode & 0o777 == 0o600
