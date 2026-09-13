@@ -196,6 +196,7 @@ class PilotWorker(PollingWorker):
     def __init__(self, repository, workflow, user_id, membership_loader, admission):
         super().__init__(repository, workflow, user_id, membership_loader)
         self.admission = admission
+        self._cohort_review_complete = False
 
     def _persist_blocker(self, principal, specimen_id, reason):
         specimen = self.repository.get(principal.scope, specimen_id)
@@ -243,7 +244,9 @@ class PilotWorker(PollingWorker):
                 or self.health.blocked_scopes.get("pilot_cohort")
             ):
                 return
-            if self.rotation and self.rotation % 10 == 0:
+            if self.rotation and (
+                self.rotation % 10 == 0 or self._cohort_review_complete
+            ):
                 summary = self.result_summary()
                 counts = summary["counts"]
                 if (
@@ -314,6 +317,7 @@ class PilotWorker(PollingWorker):
         return summary
 
     def tick(self, stop=None):
+        self._cohort_review_complete = False
         actor_uid.set(self.user_id)
         self.health.ticks += 1
         if stop is not None and stop.is_set():
@@ -346,11 +350,17 @@ class PilotWorker(PollingWorker):
         try:
             if launch.evidence_only:
                 pending = []
+                unreviewed = []
                 incomplete = False
                 for item in launch.specimens:
                     candidate = self.repository.get(launch.scope, item.specimen_id)
                     if not self.admission.binding_matches(candidate):
                         raise OperationalBlock("pilot_specimen_binding_mismatch")
+                    if not (
+                        candidate.run.stage == "processing_blocked"
+                        and candidate.run.blocker == "pilot_evidence_review_required"
+                    ):
+                        unreviewed.append(item)
                     if "segment" not in candidate.run.completed_steps:
                         incomplete = True
                         if candidate.run.stage not in {
@@ -367,6 +377,11 @@ class PilotWorker(PollingWorker):
                     return self.health
                 if pending:
                     binding = pending[(self.rotation - 1) % len(pending)]
+                elif unreviewed:
+                    # The admitted reading envelope counts waits for unfinished
+                    # work. Completed review rows remain in every cohort check,
+                    # but must not add idle polling waits while other rows run.
+                    binding = unreviewed[(self.rotation - 1) % len(unreviewed)]
             specimen = self.repository.get(launch.scope, binding.specimen_id)
             if specimen.run.stage in {
                 "finalized",
@@ -375,6 +390,8 @@ class PilotWorker(PollingWorker):
                 "processing_blocked",
             }:
                 self.admission.note_outcome(specimen)
+                if launch.evidence_only and not unreviewed:
+                    self._cohort_review_complete = True
                 if specimen.run.stage != "finalized":
                     self.health.blocked_scopes[binding.specimen_id] = (
                         specimen.run.blocker or specimen.run.stage
@@ -398,6 +415,15 @@ class PilotWorker(PollingWorker):
             ):
                 raise Conflict("Pilot result changed before dispatch acknowledgement")
             self.admission.note_outcome(retained, completed_dispatch=True)
+            if (
+                launch.evidence_only
+                and len(unreviewed) == 1
+                and retained.run.stage == "processing_blocked"
+                and retained.run.blocker == "pilot_evidence_review_required"
+            ):
+                # Reuse this tick's all-ten scan; let run verify the complete
+                # summary now instead of sleeping until another tenth rotation.
+                self._cohort_review_complete = True
             self.health.attempted += 1
             self.health.last_success_at = self.clock()
             if retained.run.stage == "processing_blocked":
