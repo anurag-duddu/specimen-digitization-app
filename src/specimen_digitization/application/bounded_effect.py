@@ -133,19 +133,12 @@ def _callable_reference(function: Callable) -> tuple[str, str]:
 
 
 def _cleanup(process: subprocess.Popen, *, process_group=False) -> bool:
-    """Bounded TERM -> KILL -> reap. Never return a late response after cleanup."""
+    """Bounded cleanup. Worker groups get no useful-work grace after cutoff."""
     if process_group:
         # Only used with our own start_new_session child. Its ordinary effect
-        # children inherit this group; terminating the leader alone is unsafe.
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            process.wait(timeout=TERMINATE_GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            pass
-        # Kill remaining descendants even when the leader already exited.
+        # children inherit this group. A graceful handler or TERM-resistant SDK
+        # can continue dispatching during a grace period, so hard-stop the whole
+        # group immediately, including descendants after their leader exits.
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -289,6 +282,11 @@ def run_isolated(
                     if type(value) not in (int, float) or not math.isfinite(value):
                         raise ValueError("invalid_worker_deadline")
                     deadline = min(deadline, value)
+                    # Do not let the child start useful work under a shorter
+                    # clock until this supervisor is enforcing that same clock.
+                    pending = root / "deadline-ack.pending"
+                    pending.write_text(json.dumps(deadline))
+                    pending.replace(root / "deadline-ack.json")
 
             while True:
                 retained_deadline()
@@ -365,12 +363,21 @@ def _worker(directory: str):
             return function(payload)
 
         if request.get("process_group"):
-            from .worker_deadline import WorkerDeadline
+            from .worker_deadline import WorkerDeadline, WorkerDeadlineExceeded
 
             def publish(deadline):
                 pending = root / "deadline.pending"
                 pending.write_text(json.dumps(deadline))
                 pending.replace(root / "deadline.json")
+                acknowledgement = root / "deadline-ack.json"
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise WorkerDeadlineExceeded
+                    if acknowledgement.exists():
+                        acknowledged = json.loads(acknowledgement.read_bytes())
+                        if acknowledged <= deadline:
+                            return
+                    time.sleep(min(0.001, max(0, deadline - time.monotonic())))
 
             with WorkerDeadline(request["deadline"], publish=publish).scope():
                 value = invoke()
