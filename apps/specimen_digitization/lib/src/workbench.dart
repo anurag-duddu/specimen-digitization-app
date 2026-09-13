@@ -621,12 +621,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   Widget _readings() {
     final observations = widget.specimen.observations;
-    final reference =
-        observations.firstOrNull?['literal_text']?.toString() ?? '';
+    String literalOf(Json o) =>
+        textOf(o['literal_text'], textOf(o['verbatim_text']));
+    final references = <String, String>{};
+    for (final o in observations) {
+      final region = o['region_id'];
+      if (region is String && region.trim().isNotEmpty) {
+        references.putIfAbsent(region, () => literalOf(o));
+      }
+    }
     Widget observation(Json o) {
-      final literal = textOf(o['literal_text'], textOf(o['verbatim_text']));
-      final differs = literal != reference;
-      final referenceRunes = reference.runes.toList();
+      final literal = literalOf(o);
+      final reference = references[o['region_id']];
+      final differs = reference != null && literal != reference;
+      final referenceRunes = reference?.runes.toList() ?? const <int>[];
       return Card.outlined(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -640,7 +648,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               const SizedBox(height: 8),
               Text(
                 differs
-                    ? '≠ Differs from the first reading'
+                    ? '≠ Differs from the first reading for this region'
                     : 'Independent observation',
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
