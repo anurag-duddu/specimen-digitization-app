@@ -28,7 +28,7 @@ def leave_descendant(payload):
     child = subprocess.Popen([
         sys.executable, "-c",
         "import signal,time,pathlib,sys; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
-        "pathlib.Path(sys.argv[1]).write_text('ready'); time.sleep(2); "
+        "pathlib.Path(sys.argv[1]).write_text(str(time.monotonic()+2)); time.sleep(2); "
         "pathlib.Path(sys.argv[2]).write_text('late mutation')",
         payload["ready"], payload["late"],
     ])
@@ -89,6 +89,7 @@ def test_owned_group_kills_descendant_even_when_leader_has_exited(tmp_path, hang
         time.sleep(0.01)
     else:
         pytest.fail("descendant survived process-group cleanup")
+    time.sleep(max(0, float((tmp_path / "ready").read_text()) + 0.05 - time.monotonic()))
     assert not (tmp_path / "late").exists()
     assert result.elapsed_seconds < 4
 
@@ -188,3 +189,130 @@ def test_production_operation_preserves_review_required_exit_without_replay(monk
     assert report["exit_code"] == 2
     assert json.loads(report["output"]) == {"status": "evidence_review_required", "authorized": 10}
     assert calls == ["materialize", "run"]
+
+
+def adopted_group_cleanup_probe(directory):
+    """Adoption is confined to this test child, never the pytest process."""
+    import ctypes
+
+    assert ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0
+    root = Path(directory)
+    unrelated = subprocess.Popen([sys.executable, "-c", "raise SystemExit(23)"],
+                                 start_new_session=True)
+    # Observe without reaping: owned-group cleanup must leave this other status.
+    os.waitid(os.P_PID, unrelated.pid, os.WEXITED | os.WNOWAIT)
+    cases = []
+    for hang in (False, True):
+        case = root / str(hang)
+        case.mkdir()
+        result = run_isolated(leave_descendant,
+                              {"ready": str(case / "ready"), "late": str(case / "late"),
+                               "pid": str(case / "pid"), "hang": hang},
+                              0.6, 100, process_group=True)
+        pid = int((case / "pid").read_text())
+        try:
+            os.kill(pid, 0)
+            absent = False
+        except ProcessLookupError:
+            absent = True
+        time.sleep(max(0, float((case / "ready").read_text()) + 0.05 - time.monotonic()))
+        cases.append({"hang": hang, "status": result.status,
+                      "cleanup_complete": result.cleanup_complete,
+                      "descendant_absent": absent, "late": (case / "late").exists(),
+                      "elapsed": result.elapsed_seconds})
+    pid, status = os.waitpid(unrelated.pid, os.WNOHANG)
+    assert pid == unrelated.pid
+    unrelated.returncode = os.waitstatus_to_exitcode(status)
+    print(json.dumps({"cases": cases, "unrelated_exit": unrelated.returncode}))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux adopted-child reaping")
+def test_adopted_group_reaping_preserves_unrelated_child_status(tmp_path):
+    result = subprocess.run([
+        sys.executable, "-c", "import sys; sys.path.insert(0,sys.argv[2]); "
+        "from test_worker_supervisor import adopted_group_cleanup_probe; "
+        "adopted_group_cleanup_probe(sys.argv[1])", str(tmp_path),
+        str(Path(__file__).resolve().parent),
+    ], capture_output=True, text=True, timeout=8, check=True)
+    report = json.loads(result.stdout)
+    assert report["unrelated_exit"] == 23
+    for case in report["cases"]:
+        assert case["status"] == ("deadline_exceeded" if case["hang"] else "completed")
+        assert case["cleanup_complete"] and case["descendant_absent"]
+        assert not case["late"]
+        assert case["elapsed"] < 2.7
+
+
+def test_cleanup_observed_after_its_original_bound_is_incomplete(monkeypatch):
+    from types import SimpleNamespace
+    from specimen_digitization.application import bounded_effect
+
+    clock = [0.0]
+    def signal_group(pid, signum):
+        if signum == 0:
+            clock[0] = 2.001
+            raise ProcessLookupError
+
+    def no_adopted_child(*args):
+        raise ChildProcessError
+
+    monkeypatch.setattr(bounded_effect, "os", SimpleNamespace(
+        killpg=signal_group, waitpid=no_adopted_child, WNOHANG=os.WNOHANG))
+    monkeypatch.setattr(bounded_effect, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    process = SimpleNamespace(pid=424242, returncode=-9, wait=lambda timeout: None)
+    assert not bounded_effect._cleanup(process, process_group=True)
+    assert process.returncode == -9
+
+
+def test_cleanup_clock_crossing_never_requests_negative_sleep(monkeypatch):
+    from types import SimpleNamespace
+    from specimen_digitization.application import bounded_effect
+
+    samples = iter([0.0, 0.0, 0.0, 1.999, 2.001])
+    sleeps = []
+
+    def sleep(seconds):
+        assert seconds >= 0
+        sleeps.append(seconds)
+
+    def no_adopted_child(*args):
+        raise ChildProcessError
+
+    monkeypatch.setattr(bounded_effect, "os", SimpleNamespace(
+        killpg=lambda *args: None, waitpid=no_adopted_child, WNOHANG=os.WNOHANG))
+    monkeypatch.setattr(bounded_effect, "time", SimpleNamespace(
+        monotonic=lambda: next(samples, 2.001), sleep=sleep))
+    process = SimpleNamespace(pid=424242, returncode=-9, wait=lambda timeout: None)
+    assert not bounded_effect._cleanup(process, process_group=True)
+    assert sum(sleeps) < 0.002
+
+
+@pytest.mark.parametrize("deny_kill", [False, True])
+def test_cleanup_permission_uncertainty_does_not_restart_its_bound(monkeypatch, deny_kill):
+    from types import SimpleNamespace
+    from specimen_digitization.application import bounded_effect
+
+    clock, signals, probes = [0.0], [], []
+    def signal_group(pid, signum):
+        if signum == signal.SIGKILL:
+            signals.append(signum)
+            if deny_kill:
+                raise PermissionError
+        else:
+            probes.append(signum)
+            if len(probes) == 1:
+                raise PermissionError
+            raise ProcessLookupError
+
+    def no_adopted_child(*args):
+        raise ChildProcessError
+
+    monkeypatch.setattr(bounded_effect, "os", SimpleNamespace(
+        killpg=signal_group, waitpid=no_adopted_child, WNOHANG=os.WNOHANG))
+    monkeypatch.setattr(bounded_effect, "time", SimpleNamespace(
+        monotonic=lambda: clock[0], sleep=lambda delay: clock.__setitem__(0, clock[0]+delay)))
+    process = SimpleNamespace(pid=424242, returncode=-9, wait=lambda timeout: None)
+    assert bounded_effect._cleanup(process, process_group=True) is (not deny_kill)
+    assert signals == [signal.SIGKILL]
+    assert probes == ([] if deny_kill else [0, 0])
+    assert clock[0] < 2

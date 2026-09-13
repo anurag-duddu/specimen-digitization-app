@@ -135,6 +135,7 @@ def _callable_reference(function: Callable) -> tuple[str, str]:
 def _cleanup(process: subprocess.Popen, *, process_group=False) -> bool:
     """Bounded cleanup. Worker groups get no useful-work grace after cutoff."""
     if process_group:
+        cleanup_deadline = time.monotonic() + KILL_GRACE_SECONDS
         # Only used with our own start_new_session child. Its ordinary effect
         # children inherit this group. A graceful handler or TERM-resistant SDK
         # can continue dispatching during a grace period, so hard-stop the whole
@@ -143,11 +144,35 @@ def _cleanup(process: subprocess.Popen, *, process_group=False) -> bool:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            return False
         try:
-            process.wait(timeout=KILL_GRACE_SECONDS)
+            process.wait(timeout=max(0, cleanup_deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
             return False
-        return True
+        while True:
+            # Container PID1 (or an existing subreaper) adopts killed orphan
+            # descendants. Reap only this owned group after preserving the
+            # direct leader's Popen status; never consume unrelated children.
+            while time.monotonic() < cleanup_deadline:
+                try:
+                    pid, _ = os.waitpid(-process.pid, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if not pid:
+                    break
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                return time.monotonic() < cleanup_deadline
+            except PermissionError:
+                # A denied observation is unknown, never proof of absence.
+                # Keep observing inside this same bound without another kill.
+                pass
+            remaining = cleanup_deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.01, remaining))
     if process.poll() is not None:
         process.wait()
         return True
