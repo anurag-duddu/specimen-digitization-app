@@ -23,6 +23,9 @@ from .production import (
 )
 from .storage import SQLiteRepository, LocalBlobs, Conflict, Missing, digest
 from .workflow import Workflow, SyntheticAdapters, OperationalBlock
+from .worker_deadline import (
+    WorkerDeadline, WorkerDeadlineExceeded, current_deadline, deadline_call,
+)
 
 
 @dataclass
@@ -197,9 +200,10 @@ class PilotWorker(PollingWorker):
         super().__init__(repository, workflow, user_id, membership_loader)
         self.admission = admission
         self._cohort_review_complete = False
+        self.deadline = None
 
     def _persist_blocker(self, principal, specimen_id, reason):
-        specimen = self.repository.get(principal.scope, specimen_id)
+        specimen = deadline_call(self.repository.get, principal.scope, specimen_id)
         # A mismatched record is not authorized for mutation, even when its ID
         # appears in the launch file. Keep that problem only in launch health.
         if not self.admission.binding_matches(specimen):
@@ -217,7 +221,7 @@ class PilotWorker(PollingWorker):
                 reason=reason,
             )
         )
-        self.repository.save(
+        deadline_call(self.repository.save,
             principal,
             specimen,
             specimen.version,
@@ -228,36 +232,62 @@ class PilotWorker(PollingWorker):
     def run(self, stop, interval_seconds=1, max_seconds=None):
         if not 0.1 <= interval_seconds <= 60:
             raise ValueError("Worker interval must be .1..60 seconds")
-        started = time.monotonic()
         if self.admission.launch.evidence_only:
             max_seconds = 1500 if max_seconds is None else max_seconds
-            self.admission.bind_execution_window(max_seconds, interval_seconds)
-            self.admission.remaining_execution_seconds = (
-                lambda: max_seconds - (time.monotonic() - started)
+        if self.deadline is None:
+            self.deadline = current_deadline() or WorkerDeadline(
+                time.monotonic() + (1500 if max_seconds is None else max_seconds),
+                monotonic=time.monotonic,
             )
-        while not stop.is_set():
-            if max_seconds is not None and time.monotonic() - started >= max_seconds:
-                return
-            self.tick(stop)
-            if self.admission.launch.evidence_only and (
-                self.admission.cohort_blocker()
-                or self.health.blocked_scopes.get("pilot_cohort")
-            ):
-                return
-            if self.rotation and (
-                self.rotation % 10 == 0 or self._cohort_review_complete
-            ):
-                summary = self.result_summary()
-                counts = summary["counts"]
-                if (
-                    sum(counts.values()) == 10
-                    and not counts.get("pending")
-                    and not counts.get("unavailable")
-                ):
-                    return  # Terminal/review/blocked batch never waits for human input.
-            stop.wait(interval_seconds)
+        try:
+            with self.deadline.scope():
+                self.deadline.tighten_until(
+                    self.admission.launch.expires_at.timestamp(),
+                    self.admission.clock().timestamp(),
+                )
+                if self.admission.launch.evidence_only:
+                    self.admission.bind_execution_window(max_seconds, interval_seconds)
+                    self.admission.remaining_execution_seconds = self.deadline.remaining
+                while not stop.is_set():
+                    self.deadline.check()
+                    self.tick(stop)
+                    if self.admission.launch.evidence_only and (
+                        deadline_call(self.admission.cohort_blocker)
+                        or self.health.blocked_scopes.get("pilot_cohort")
+                    ):
+                        return
+                    if self.rotation and (
+                        self.rotation % 10 == 0 or self._cohort_review_complete
+                    ):
+                        summary = self.result_summary()
+                        counts = summary["counts"]
+                        if (
+                            sum(counts.values()) == 10
+                            and not counts.get("pending")
+                            and not counts.get("unavailable")
+                        ):
+                            return
+                    stop.wait(min(interval_seconds, max(0, self.deadline.remaining())))
+        except WorkerDeadlineExceeded:
+            self.health.blocked_scopes["pilot"] = "pilot_execution_deadline_exceeded"
 
     def result_summary(self):
+        deadline = self.deadline or current_deadline()
+        try:
+            if deadline is None:
+                return self._result_summary()
+            with deadline.scope():
+                return deadline_call(self._result_summary)
+        except WorkerDeadlineExceeded:
+            # Read-only local report. Unknown in-flight intents remain retained;
+            # discovering or persisting a final summary would itself be new I/O.
+            return {
+                "status": "incomplete", "authorized": 10,
+                "counts": {"unavailable": 10}, "specimens": {},
+                "blocker": "pilot_execution_deadline_exceeded",
+            }
+
+    def _result_summary(self):
         """Read every authorized record, not only records attempted this process."""
         launch = self.admission.launch
         summary = {
@@ -268,7 +298,7 @@ class PilotWorker(PollingWorker):
         }
         actor_uid.set(self.user_id)
         try:
-            memberships = self.membership_loader(self.user_id)
+            memberships = deadline_call(self.membership_loader, self.user_id)
             if not any(
                 m["organization_id"] == launch.scope.organization_id
                 and m["collection_id"] == launch.scope.collection_id
@@ -280,7 +310,7 @@ class PilotWorker(PollingWorker):
                 )
             for binding in launch.specimens:
                 try:
-                    specimen = self.repository.get(launch.scope, binding.specimen_id)
+                    specimen = deadline_call(self.repository.get, launch.scope, binding.specimen_id)
                     if not self.admission.binding_matches(specimen):
                         state, reason = "blocked", "pilot_specimen_binding_mismatch"
                     elif specimen.run.stage == "finalized":
@@ -324,7 +354,7 @@ class PilotWorker(PollingWorker):
             return self.health
         launch = self.admission.launch
         try:
-            memberships = self.membership_loader(self.user_id)
+            memberships = deadline_call(self.membership_loader, self.user_id)
         except Exception:
             self.health.membership_errors += 1
             return self.health
@@ -353,7 +383,7 @@ class PilotWorker(PollingWorker):
                 unreviewed = []
                 incomplete = False
                 for item in launch.specimens:
-                    candidate = self.repository.get(launch.scope, item.specimen_id)
+                    candidate = deadline_call(self.repository.get, launch.scope, item.specimen_id)
                     if not self.admission.binding_matches(candidate):
                         raise OperationalBlock("pilot_specimen_binding_mismatch")
                     if not (
@@ -382,7 +412,7 @@ class PilotWorker(PollingWorker):
                     # work. Completed review rows remain in every cohort check,
                     # but must not add idle polling waits while other rows run.
                     binding = unreviewed[(self.rotation - 1) % len(unreviewed)]
-            specimen = self.repository.get(launch.scope, binding.specimen_id)
+            specimen = deadline_call(self.repository.get, launch.scope, binding.specimen_id)
             if specimen.run.stage in {
                 "finalized",
                 "paused",
@@ -404,8 +434,8 @@ class PilotWorker(PollingWorker):
                 # This instance positively knows dispatch has not begun.
                 self.admission.note_outcome(specimen, completed_dispatch=True)
                 return self.health
-            result = self.workflow.step(principal, binding.specimen_id)
-            retained = self.repository.get(launch.scope, binding.specimen_id)
+            result = deadline_call(self.workflow.step, principal, binding.specimen_id)
+            retained = deadline_call(self.repository.get, launch.scope, binding.specimen_id)
             # Only a real returned, retained checkpoint closes a dispatch. The
             # API may have mutated the current revision while an effect ran.
             if (
@@ -580,11 +610,62 @@ def main():
     if not 1 <= args.max_seconds <= 1500:
         parser.error("max-seconds must be 1..1500")
     try:
-        with materialized_worker_args(args) as staged:
-            _run(staged)
+        if args.mode == "production" and not args.check_config:
+            _supervise(args)
+        else:
+            with materialized_worker_args(args) as staged:
+                _run(staged)
     except OperationalBlock as exc:
         print(json.dumps({"status": "blocked", "reason": str(exc)}))
         raise SystemExit(2) from None
+
+
+def _supervise(args):
+    from .bounded_effect import run_isolated
+    # Import under the canonical name even when this CLI is __main__.
+    from specimen_digitization.application.worker import _production_operation
+
+    payload = {key: str(value) if isinstance(value, Path) else value
+               for key, value in vars(args).items()}
+    result = run_isolated(
+        _production_operation, payload, args.max_seconds, 65536, process_group=True
+    )
+    if result.status != "completed" or not result.cleanup_complete:
+        print(json.dumps({
+            "status": "incomplete", "authorized": 10,
+            "reason": "pilot_execution_outcome_unknown",
+            "cleanup_complete": result.cleanup_complete,
+        }))
+        raise SystemExit(2)
+    report = json.loads(result.value)
+    print(report["output"], end="")
+    if report["exit_code"]:
+        raise SystemExit(report["exit_code"])
+
+
+def _production_operation(payload):
+    """Trusted supervised entry; startup/materialization share the original clock."""
+    from contextlib import redirect_stdout
+    from io import StringIO
+
+    args = argparse.Namespace(**payload)
+    for key in ("state_dir", "launch_policy", "source_manifest", "evidence_profile"):
+        value = getattr(args, key, None)
+        if value is not None:
+            setattr(args, key, Path(value))
+    if current_deadline() is None:
+        raise RuntimeError("worker_supervisor_required")
+    output, exit_code = StringIO(), 0
+    with redirect_stdout(output):
+        try:
+            with materialized_worker_args(args) as staged:
+                deadline_call(_run, staged)
+        except OperationalBlock as exc:
+            print(json.dumps({"status": "blocked", "reason": str(exc)}))
+            exit_code = 2
+        except SystemExit as exc:
+            exit_code = 0 if exc.code is None else int(exc.code)
+    return json.dumps({"output": output.getvalue(), "exit_code": exit_code}).encode()
 
 
 def _run(args):
@@ -592,7 +673,13 @@ def _run(args):
     evidence_profile = None
     if args.mode == "production":
         try:
-            launch = production_launch(args)
+            launch = deadline_call(production_launch, args)
+            if current_deadline() is not None:
+                from datetime import timezone
+
+                current_deadline().tighten_until(
+                    launch.expires_at.timestamp(), datetime.now(timezone.utc).timestamp()
+                )
             if args.evidence_only:
                 from .evidence_pilot import read_evidence_profile
 
@@ -670,7 +757,12 @@ def _run(args):
             repository, workflow, user, repository.memberships, admission
         )
     if args.once:
-        worker.tick(stop)
+        if isinstance(worker, PilotWorker) and current_deadline() is not None:
+            worker.deadline = current_deadline()
+            if launch.evidence_only:
+                worker.admission.bind_execution_window(args.max_seconds)
+                worker.admission.remaining_execution_seconds = worker.deadline.remaining
+        deadline_call(worker.tick, stop)
     else:
         worker.run(stop, max_seconds=args.max_seconds)
     if isinstance(worker, PilotWorker):

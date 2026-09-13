@@ -17,6 +17,7 @@ from pydantic import Field, model_validator
 from .domain import Record, Scope, StageCostReservations
 from .storage import Missing, digest
 from .workflow import OperationalBlock
+from .worker_deadline import current_deadline, guarded
 
 
 class PilotSpecimen(Record):
@@ -193,6 +194,13 @@ class PilotAdmission:
                 deadline_unix=min(previous["deadline_unix"], window["deadline_unix"]),
                 interval_seconds=max(previous["interval_seconds"], interval_seconds),
             )
+        deadline = current_deadline()
+        if deadline is not None:
+            # Startup and ledger reads consume the original supervisor window.
+            window["deadline_unix"] = min(
+                window["deadline_unix"], current + deadline.remaining()
+            )
+            deadline.tighten_until(window["deadline_unix"], current)
         if window != previous:
             self._write(ledger, execution_window=window)
         if current >= window["deadline_unix"]:
@@ -272,6 +280,7 @@ class PilotAdmission:
             raise OperationalBlock("pilot_launch_sensitivity_mismatch")
         return value
 
+    @guarded
     def _write(self, ledger, **updates):
         payload = {key: value for key, value in ledger.items() if key != "revision"}
         payload.update(updates)
