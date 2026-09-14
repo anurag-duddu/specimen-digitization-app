@@ -286,6 +286,48 @@ void main() {
       expect(find.text('Pinned beetle 1'), findsOneWidget);
     });
 
+    testWidgets('the long press names what it does, in the list\'s own noun', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        SelectableRow(
+          selected: false,
+          label: 'Slide 0041',
+          showCheckbox: false,
+          onToggle: () {},
+          onLongPress: () {},
+          longPressHint: 'Select this object',
+          child: const SizedBox(height: 48, child: Text('Slide 0041')),
+        ),
+      );
+      // The hint is what a reader speaks instead of "double tap and hold".
+      // It defaults to the record wording and takes the list's own noun,
+      // exactly as the bar's count label does.
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Semantics &&
+              widget.properties.hintOverrides?.onLongPressHint ==
+                  'Select this object',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Semantics &&
+              widget.properties.hintOverrides?.onLongPressHint ==
+                  SelectableRow.recordLongPressHint,
+        ),
+        findsNothing,
+        reason: 'a list of objects must not be told to select a record',
+      );
+      expect(SelectableRow.recordLongPressHint, 'Select this record');
+      handle.dispose();
+    });
+
     testWidgets('a row that cannot be picked keeps the column', (
       WidgetTester tester,
     ) async {

@@ -106,6 +106,7 @@ class SelectableRow extends StatelessWidget {
     this.enabled = true,
     this.onExtend,
     this.onLongPress,
+    this.longPressHint = SelectableRow.recordLongPressHint,
   });
 
   /// True when this row is in the selection.
@@ -133,9 +134,15 @@ class SelectableRow extends StatelessWidget {
 
   /// What the long press does, for a reader that announces custom actions.
   ///
-  /// Without it the gesture is an unnamed action on an unnamed node, which is
+  /// Without one the gesture is an unnamed action on an unnamed node, which is
   /// a reviewer on a phone being told an action exists and not what it is.
-  static const String longPressHint = 'Select this record';
+  ///
+  /// Defaults to [recordLongPressHint]. A list whose rows are not records
+  /// passes its own noun, the same way the bar takes its own count label.
+  final String longPressHint;
+
+  /// The default [longPressHint], for a list whose rows are records.
+  static const String recordLongPressHint = 'Select this record';
 
   /// False while the list is not in selection and the window is too narrow to
   /// keep the column open.
@@ -200,7 +207,7 @@ class SelectableRow extends StatelessWidget {
     return Semantics(
       label: label,
       onLongPress: onLongPress,
-      onLongPressHint: SelectableRow.longPressHint,
+      onLongPressHint: longPressHint,
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         excludeFromSemantics: true,
