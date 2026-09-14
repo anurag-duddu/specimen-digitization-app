@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'source_pixels.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 /// All edits stay in original pixel coordinates. The API validates and versions them.
 class RegionEditor extends StatefulWidget {
@@ -29,7 +31,7 @@ class _RegionEditorState extends State<RegionEditor> {
   String? get _visibleError => _invalidCoordinates.isEmpty
       ? _error
       : _coordinateSubmitAttempted
-      ? 'Correct invalid pixel coordinates before saving.'
+      ? 'Enter whole pixel numbers before you save.'
       : 'Coordinates must be whole pixel numbers.';
   final _reason = TextEditingController();
   @override
@@ -68,7 +70,14 @@ class _RegionEditorState extends State<RegionEditor> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Add missed labels, resize bounds, rotate a label reading, reorder, or merge adjacent regions. Coordinates follow the recorded source basis. Saving supersedes affected observations.',
+                'Add, resize, rotate, reorder or merge label regions.',
+              ),
+              const CaveatText(
+                label:
+                    'Saving replaces the readings that depend on these regions.',
+                why:
+                    'Coordinates follow the recorded source basis. Earlier '
+                    'readings stay in history.',
               ),
               const SizedBox(height: 12),
               Text(
@@ -257,7 +266,8 @@ class _RegionEditorState extends State<RegionEditor> {
                 minLines: 2,
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  labelText: 'Reason for segmentation correction',
+                  labelText: 'Reason',
+                  helperText: reasonHelperText,
                 ),
               ),
               if (_visibleError != null)
@@ -283,7 +293,7 @@ class _RegionEditorState extends State<RegionEditor> {
             final width = (widget.asset['width'] as num?)?.toDouble() ?? 0;
             final height = (widget.asset['height'] as num?)?.toDouble() ?? 0;
             if (_reason.text.trim().isEmpty) {
-              setState(() => _error = 'A reason is required.');
+              setState(() => _error = reasonRequired);
               return;
             }
             for (final r in _regions) {

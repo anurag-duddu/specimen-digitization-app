@@ -11,6 +11,8 @@ import 'source_pixels.dart';
 import 'large_record.dart';
 import 'reading_declarations.dart';
 import 'risk_assessment.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -118,7 +120,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text(
-            '${labelOf(kind)}${target == null ? '' : ': ${labelOf(target)}'}',
+            '${vocabularyLabel(kind)}${target == null ? '' : ': ${vocabularyLabel(target)}'}',
           ),
           content: SizedBox(
             width: 520,
@@ -129,8 +131,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Creates a versioned decision. The server reruns affected checks and determines the queue.',
+                    Text(
+                      'Saving records a decision on version '
+                      '${widget.specimen.revision} and reruns the affected '
+                      'checks. The server decides the queue.',
                     ),
                     const SizedBox(height: 16),
                     if (kind == 'field_correction' ||
@@ -158,7 +162,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                 .map(
                                   (s) => DropdownMenuItem(
                                     value: s,
-                                    child: Text(labelOf(s)),
+                                    child: Text(vocabularyLabel(s)),
                                   ),
                                 )
                                 .toList(),
@@ -167,8 +171,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                       ),
                     const SizedBox(height: 16),
                     if (kind == 'transcription_adjudication')
-                      const Text(
-                        'Choose an unresolved state when the source cannot support a reading. Independent observations remain unchanged and clearance stays blocked.',
+                      const CaveatText(
+                        label:
+                            'Choose an unresolved state if the source does not '
+                            'support a reading.',
+                        why:
+                            'Both readings are kept unchanged. The record stays '
+                            'blocked from clearance.',
                       ),
                     TextFormField(
                       controller: value,
@@ -177,15 +186,15 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                       decoration: InputDecoration(
                         labelText: kind == 'segmentation_correction'
                             ? 'Regions JSON (original pixel coordinates)'
-                            : 'Literal source value',
+                            : 'Value as written',
                         helperText: selectedState == 'supported'
-                            ? 'Preserve literal text; do not fill missing evidence.'
-                            : 'Absence is recorded as a state, not a fabricated value.',
+                            ? 'Keep the text exactly as written, and do not add missing evidence.'
+                            : 'Absence is recorded as a state, never as a made-up value.',
                       ),
                       validator: (s) {
                         if (selectedState == 'supported' &&
                             (s == null || s.trim().isEmpty)) {
-                          return 'Provide supported content or choose an absence state.';
+                          return 'Enter the supported value, or choose an absence state.';
                         }
                         if (kind == 'segmentation_correction') {
                           try {
@@ -203,22 +212,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                     if (kind == 'field_correction') ...[
                       TextFormField(
                         controller: parsed,
-                        decoration: const InputDecoration(
-                          labelText: 'Parsed value (separate from literal)',
-                        ),
+                        decoration: const InputDecoration(labelText: 'Read as'),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: normalized,
                         decoration: const InputDecoration(
-                          labelText: 'Normalized candidate (requires evidence)',
+                          labelText: 'Standardized (needs evidence)',
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: authority,
                         decoration: const InputDecoration(
-                          labelText: 'Authority identifier (source-qualified)',
+                          labelText: 'Authority identifier',
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -226,7 +233,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                     TextFormField(
                       controller: evidence,
                       decoration: const InputDecoration(
-                        labelText: 'Source / evidence IDs',
+                        labelText: 'Evidence IDs',
                         helperText: 'Comma-separated IDs from this specimen',
                       ),
                       validator: (s) =>
@@ -234,7 +241,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                   kind == 'transcription_adjudication') &&
                               selectedState == 'supported' &&
                               (s == null || s.trim().isEmpty)
-                          ? 'Link the supporting source evidence.'
+                          ? 'Enter the evidence IDs that support this value.'
                           : null,
                     ),
                     const SizedBox(height: 16),
@@ -243,11 +250,11 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                       minLines: 2,
                       maxLines: 4,
                       decoration: const InputDecoration(
-                        labelText: 'Reason for decision',
+                        labelText: 'Reason',
+                        helperText: reasonHelperText,
                       ),
-                      validator: (s) => s == null || s.trim().isEmpty
-                          ? 'A reason is required.'
-                          : null,
+                      validator: (s) =>
+                          s == null || s.trim().isEmpty ? reasonRequired : null,
                     ),
                   ],
                 ),
@@ -292,7 +299,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   });
                 }
               },
-              child: const Text('Save and revalidate'),
+              child: const Text('Save correction'),
             ),
           ],
         ),
@@ -331,7 +338,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     if (result != null && mounted) await widget.onChange(result);
   }
 
-  Future<void> _confirm(String kind, String title) async {
+  Future<void> _confirm(String kind, String title, String action) async {
     final reason = TextEditingController();
     final form = GlobalKey<FormState>();
     final result = await showDialog<String>(
@@ -344,17 +351,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'This records your review. All evidence and validation gates still apply; the server determines clearance.',
+                'All evidence and validation checks still apply. The server '
+                'decides clearance.',
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: reason,
                 minLines: 2,
                 maxLines: 4,
-                decoration: const InputDecoration(labelText: 'Review reason'),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'A reason is required.'
-                    : null,
+                decoration: const InputDecoration(
+                  labelText: 'Reason',
+                  helperText: reasonHelperText,
+                ),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? reasonRequired : null,
               ),
             ],
           ),
@@ -370,7 +380,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 Navigator.pop(context, reason.text.trim());
               }
             },
-            child: const Text('Record review'),
+            child: Text(action),
           ),
         ],
       ),
@@ -416,8 +426,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     final height = (asset['height'] as num?)?.toDouble() ?? 1;
     return _section('Source image', [
       if (legacyOrientation)
-        const Text(
-          'Legacy source has no verified orientation derivative. Preview orientation may differ from original coordinates; region correction and overlays require a verified derivative.',
+        const CaveatText(
+          label:
+              'This image has no verified orientation, so region editing is '
+              'unavailable.',
+          why:
+              'The preview may be rotated differently from the original '
+              'coordinates. Region correction needs a verified orientation.',
         ),
       Wrap(
         spacing: 8,
@@ -445,7 +460,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
           TextButton(
             onPressed: () => setState(() => _region = null),
-            child: const Text('Whole image'),
+            child: const Text('Show whole image'),
           ),
         ],
       ),
@@ -596,7 +611,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       SourceBasisNotice(asset: asset),
       Text('Asset: ${textOf(asset['asset_id'])}'),
       SelectableText(
-        'SHA-256: ${textOf(asset['sha256'])}',
+        'Checksum (SHA-256): ${textOf(asset['sha256'])}',
         style: Theme.of(context).textTheme.bodySmall,
       ),
       TextButton.icon(
@@ -614,7 +629,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         label: const Text('Correct label regions'),
       ),
       const Text(
-        'Pan, pinch, or use zoom controls. View rotation does not alter the original.',
+        'Pan, pinch or use the zoom controls. Rotating the view does not '
+        'change the original.',
       ),
     ]);
   }
@@ -648,8 +664,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               const SizedBox(height: 8),
               Text(
                 differs
-                    ? '≠ Differs from the first reading for this region'
-                    : 'Independent observation',
+                    ? 'Differs from the first reading for this label'
+                    : 'Independent reading',
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
@@ -683,7 +699,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   key: ValueKey(
                     'raw:${widget.specimen.id}:${widget.specimen.revision}:${o['id']}',
                   ),
-                  label: 'Read raw observation',
+                  label: 'Read raw reading',
                   load: () => widget.loadArtifact!(
                     ArtifactRequest(
                       ArtifactKind.observationRaw,
@@ -692,7 +708,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                     ),
                   ),
                   render: (raw) => EvidenceDetails(
-                    title: 'Raw observation response',
+                    title: 'Raw reading response',
                     value: raw,
                   ),
                 ),
@@ -740,9 +756,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   o.containsKey('completion_state'))
                 ObservationExecutionDetails(observation: o),
               ExpansionTile(
-                title: const Text(
-                  'Observation provenance and raw response reference',
-                ),
+                title: const Text('Reading provenance and raw response'),
                 children: [
                   Padding(padding: const EdgeInsets.all(12), child: _record(o)),
                 ],
@@ -765,11 +779,16 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
         _section('Independent readings', [
           const Text(
-            'Each observation is retained unchanged. Short readings show differing characters underlined; use the retained comparison for exact alignment and limits.',
+            'Each reading is kept unchanged. Short readings underline the '
+            'characters that differ.',
+          ),
+          Text(
+            'Use the saved comparison for exact alignment and its limits.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
           if (observations.isEmpty)
-            const Text('No independent observations recorded yet.'),
+            const Text('No independent readings recorded yet.'),
           LayoutBuilder(
             builder: (context, c) => Wrap(
               spacing: 8,
@@ -787,7 +806,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             ),
           ),
         ]),
-        _section('Disagreements & adjudication', [
+        _section('Differences and resolution', [
           if (widget.loadArtifact != null)
             for (final d in objects(
               objectOf(widget.specimen.data['run'])['disagreements'],
@@ -796,7 +815,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 key: ValueKey(
                   'alignment:${widget.specimen.id}:${widget.specimen.revision}:${d['region_id']}',
                 ),
-                label: 'Read comparison for region ${d['region_id']}',
+                label: 'Read comparison for label ${d['region_id']}',
                 load: () => widget.loadArtifact!(
                   ArtifactRequest(
                     ArtifactKind.disagreement,
@@ -827,15 +846,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             ),
           ),
           if (objects(widget.specimen.data['disagreements']).isEmpty)
-            const Text(
-              'No disagreement details recorded. This does not establish label coverage.',
+            const CaveatText(
+              label: 'No differences recorded between the readings.',
+              why:
+                  'Agreement between readings does not mean every label was '
+                  'found.',
             ),
           ...objects(widget.specimen.data['transcriptions']).map(
             (t) => ExpansionTile(
               title: Text(
                 t['resolved'] == true
-                    ? 'Adjudicated literal transcription'
-                    : 'Unresolved literal transcription',
+                    ? 'Resolved transcription'
+                    : 'Unresolved transcription',
               ),
               subtitle: Text(textOf(t['verbatim_text'], textOf(t['text']))),
               children: [
@@ -859,7 +881,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                         _region ?? widget.specimen.regions.first['region_id'],
                   ),
             icon: const Icon(Icons.edit_note),
-            label: const Text('Adjudicate literal transcription'),
+            label: const Text('Resolve reading'),
           ),
         ]),
       ],
@@ -868,9 +890,14 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   Widget _fields() => Column(
     children: [
-      _section('Required fields & validation', [
+      _section('Required fields and checks', [
         const Text(
-          'Literal text, candidates, resolved values and authority evidence are separate. Missing mandatory values block clearance.',
+          'As written, read as, standardized and authority values are recorded '
+          'separately.',
+        ),
+        Text(
+          'Missing required values block clearance.',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         ...widget.specimen.findings.map(
           (f) => ListTile(
@@ -884,8 +911,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         if (widget.specimen.fields.isEmpty)
           const Padding(
             padding: EdgeInsets.all(12),
-            child: Text(
-              'No extracted fields recorded. Required-field validation has not been demonstrated.',
+            child: CaveatText(
+              label: 'No fields recorded yet.',
+              why: 'Required-field checks have not run for this record.',
             ),
           ),
         ...widget.specimen.fields.map(
@@ -894,7 +922,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               '${textOf(f['display_name'], textOf(f['field_key']))}${f['required'] == true ? ' *' : ''}',
             ),
             subtitle: Text(
-              '${labelOf(textOf(f['state'], 'unknown'))} · ${textOf(f['resolved_value'], 'No resolved value')}',
+              '${vocabularyLabel(textOf(f['state'], 'unknown'))} · ${textOf(f['resolved_value'], 'Not resolved')}',
             ),
             children: [
               Padding(
@@ -903,11 +931,17 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (!knownFieldStates.contains(f['state']))
-                      const Text(
-                        'Unsupported field state. Editing is disabled; refresh or update the client.',
+                      const CaveatText(
+                        label:
+                            'This field cannot be edited in this version of the '
+                            'app.',
+                        why:
+                            'The server sent a field state this app does not '
+                            'recognize. Refreshing may help. Otherwise update the '
+                            'app.',
                       ),
-                    Text('Literal: ${textOf(f['literal_value'])}'),
-                    Text('Parsed: ${textOf(f['parsed_value'])}'),
+                    Text('As written: ${textOf(f['literal_value'])}'),
+                    Text('Read as: ${textOf(f['parsed_value'])}'),
                     const SizedBox(height: 8),
                     _record(f),
                     Align(
@@ -934,7 +968,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
         ),
       ]),
-      _section('Authority evidence & lookups', [
+      _section('Authority evidence', [
         if (widget.specimen.evidence.isEmpty)
           const Text('No authority evidence recorded.'),
         ...widget.specimen.evidence.map(
@@ -959,7 +993,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           padding: const EdgeInsets.all(16),
           children: [
             Text(s.title, style: Theme.of(context).textTheme.headlineSmall),
-            Text('${s.status} · Revision ${s.revision}'),
+            Text('${s.status} · Version ${s.revision}'),
             TextButton(
               onPressed: widget.busy ? null : widget.onRefresh,
               child: const Text('Refresh current record'),
@@ -991,22 +1025,22 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         children: [
           _section('Record status', [
             Text(s.status, style: Theme.of(context).textTheme.headlineSmall),
-            Text('Profile ${s.profile} · Revision ${s.revision}'),
+            Text('Profile ${s.profile} · Version ${s.revision}'),
             if (s.data['run'] is Map)
               Text(
-                'Stage: ${labelOf(textOf(s.data['stage']))} · Attempts: ${textOf(s.data['run']['attempts'], 'None recorded')}',
+                'Step: ${vocabularyLabel(textOf(s.data['stage']))} · Attempts: ${textOf(s.data['run']['attempts'], 'None recorded')}',
               ),
             if (s.data['run'] is Map && s.data['run']['next_retry_at'] != null)
               Text('Next retry: ${s.data['run']['next_retry_at']}'),
             if (s.data['run'] is Map && s.data['run']['dead_letter'] == true)
               Text(
-                'Automatic retries stopped: ${textOf(s.data['blocker'], 'retry limit reached')}. Request a checkpoint retry after resolving the cause.',
+                'Automatic retries have stopped: ${vocabularyLabel(textOf(s.data['blocker'], 'retry limit reached'))}. Fix the cause, then retry from the checkpoint.',
               ),
             if (s.data['reason_codes'] is List)
               ...List<String>.from(s.data['reason_codes']).map(
                 (r) => Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text('• ${labelOf(r)}'),
+                  child: Text('• ${vocabularyLabel(r)}'),
                 ),
               ),
             Wrap(
@@ -1018,16 +1052,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                       ? null
                       : () => _confirm(
                           'coverage',
-                          'Confirm all labels are covered',
+                          'Confirm coverage?',
+                          'Confirm coverage',
                         ),
                   child: const Text('Confirm label coverage'),
                 ),
                 FilledButton.tonal(
                   onPressed: _blocked('approve')
                       ? null
-                      : () =>
-                            _confirm('approve', 'Record human review approval'),
-                  child: const Text('Record review approval'),
+                      : () => _confirm(
+                          'approve',
+                          'Approve record?',
+                          'Approve record',
+                        ),
+                  child: const Text('Approve record'),
                 ),
               ],
             ),
@@ -1064,13 +1102,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                     objectOf(s.data['run'])['blocker'],
                                     '',
                                   ).contains('external_outcome_unknown'))
-                                    const Text(
-                                      'This request may already have executed. Reconcile the unknown external outcome before explicitly requesting another attempt.',
+                                    const CaveatText(
+                                      label:
+                                          'The last request may already have run. '
+                                          'Its result is unknown.',
+                                      why:
+                                          'Reconcile that request before you retry. '
+                                          'This app never retries it for you.',
                                     ),
                                   TextField(
                                     controller: controller,
                                     decoration: const InputDecoration(
-                                      labelText: 'Reason for retry',
+                                      labelText: 'Reason',
+                                      helperText: reasonHelperText,
                                     ),
                                   ),
                                 ],
@@ -1089,7 +1133,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                                       );
                                     }
                                   },
-                                  child: const Text('Request retry'),
+                                  child: const Text('Retry from checkpoint'),
                                 ),
                               ],
                             ),
@@ -1118,7 +1162,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: ['Readings', 'Fields & evidence', 'History'].indexed
+            children: ['Readings', 'Fields and evidence', 'History'].indexed
                 .map(
                   (e) => ChoiceChip(
                     label: Text(e.$2),

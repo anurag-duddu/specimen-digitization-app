@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 class LabelLanguagePolicy extends StatelessWidget {
   const LabelLanguagePolicy({super.key, required this.handling});
@@ -13,8 +15,11 @@ class LabelLanguagePolicy extends StatelessWidget {
         'Label language handling',
         style: Theme.of(context).textTheme.titleMedium,
       ),
-      const Text(
-        'Declared candidates are uncalibrated. Multiple languages on one label and conflicting interpretations are recorded separately.',
+      const CaveatText(
+        label: 'Not calibrated',
+        why:
+            'Declared languages are recorded, not measured. Multiple languages '
+            'on one label and conflicting readings are recorded separately.',
       ),
       for (final label in objects(handling['labels']))
         Card.outlined(
@@ -28,18 +33,18 @@ class LabelLanguagePolicy extends StatelessWidget {
                   'Languages: ${_labels(label['language_candidates'])} · Scripts: ${_labels(label['script_candidates'])}',
                 ),
                 Text(
-                  'Multiple languages declared together: ${_flag(label['mixed_declared'])}',
+                  'Multiple languages declared together: ${_state(label['mixed_declared'], 'Declared', 'Not declared')}',
                 ),
                 Text(
-                  'Conflicting candidate interpretations: ${_flag(label['conflicting_candidates'])}',
+                  'Conflicting readings: ${_state(label['conflicting_candidates'], 'Recorded', 'None recorded')}',
                 ),
                 Text(
-                  'Policy ${textOf(label['policy_version'])} · Review required: ${_flag(label['review_required'])}',
+                  'Policy ${textOf(label['policy_version'])} · Review: ${_state(label['review_required'], 'Required', 'Not required')}',
                 ),
                 if (label['unmeasured'] == true)
-                  const Text('Language confidence is not measured.'),
+                  const Text('Language is not measured.'),
                 for (final reason in label['reasons'] as List? ?? [])
-                  Text(labelOf(reason.toString())),
+                  Text(vocabularyLabel(reason.toString())),
               ],
             ),
           ),
@@ -54,10 +59,13 @@ class LabelLanguagePolicy extends StatelessWidget {
 
 String _labels(dynamic values) =>
     values is List && values.isNotEmpty ? values.join(', ') : 'Not declared';
-String _flag(dynamic value) => value == true
-    ? 'Yes'
+
+/// A recorded boolean, named in the words of the thing it describes.
+/// A bare "Yes" or "No" says nothing on its own (guideline 6, rule 6).
+String _state(dynamic value, String present, String absent) => value == true
+    ? present
     : value == false
-    ? 'No'
+    ? absent
     : 'Not recorded';
 String _relation(dynamic value) => switch (value) {
   'cooccurring' => 'Multiple languages on the same label',
@@ -86,9 +94,12 @@ class ReadingDeclarationView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Declaration provenance · Revision ${provenance['revision']}'),
-        const Text(
-          'Model declarations and original readings remain immutable. A new human declaration supersedes the previous human declaration for this observation and invalidates approval.',
+        Text('Declaration provenance · Version ${provenance['revision']}'),
+        const CaveatText(
+          label: 'Model declarations and original readings never change.',
+          why:
+              'A new declaration replaces your previous one for this reading. '
+              'Saving it also removes approval.',
         ),
         Text(
           'Model languages: ${_labels(objectOf(model['candidates'])['language_candidates'])}',
@@ -151,7 +162,7 @@ class ReadingDeclarationView extends StatelessWidget {
               );
               if (change != null && context.mounted) await onChange!(change);
             },
-            child: const Text('Record language and script declaration'),
+            child: const Text('Record declaration'),
           ),
       ],
     );
@@ -192,7 +203,7 @@ class _ReadingDeclarationDialogState extends State<ReadingDeclarationDialog> {
       return 'Use up to 8 labels, each at most 100 characters.';
     }
     if (values.toSet().length != values.length) {
-      return 'Each candidate must be distinct.';
+      return 'Each entry must be different.';
     }
     return null;
   }
@@ -217,20 +228,23 @@ class _ReadingDeclarationDialogState extends State<ReadingDeclarationDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Enter one candidate per line. Labels are preserved as declarations; no language or script is inferred. Leave a list empty to record no declaration. This does not approve the record.',
+              const CaveatText(
+                label: 'Enter one language per line.',
+                why:
+                    'Your entries are recorded exactly as typed. Nothing is '
+                    'inferred. An empty list records no declaration, and saving '
+                    'does not approve the record.',
               ),
               TextFormField(
                 controller: _languages,
                 minLines: 2,
                 maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Language candidates',
-                ),
+                decoration: const InputDecoration(labelText: 'Languages'),
                 validator: (v) {
                   final error = _validate(v);
                   if (error != null) return error;
-                  if (_relation != 'unspecified' && _values(v ?? '').length < 2) {
+                  if (_relation != 'unspecified' &&
+                      _values(v ?? '').length < 2) {
                     return 'This relationship requires at least 2 distinct languages.';
                   }
                   return null;
@@ -240,9 +254,7 @@ class _ReadingDeclarationDialogState extends State<ReadingDeclarationDialog> {
                 controller: _scripts,
                 minLines: 2,
                 maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Script candidates',
-                ),
+                decoration: const InputDecoration(labelText: 'Scripts'),
                 validator: _validate,
               ),
               DropdownButtonFormField<String>(
@@ -274,11 +286,11 @@ class _ReadingDeclarationDialogState extends State<ReadingDeclarationDialog> {
                 minLines: 2,
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  labelText: 'Reason for declaration',
+                  labelText: 'Reason',
+                  helperText: reasonHelperText,
                 ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'A reason is required.'
-                    : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? reasonRequired : null,
               ),
             ],
           ),

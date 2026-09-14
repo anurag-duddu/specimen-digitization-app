@@ -3,7 +3,7 @@ import 'connection_config.dart';
 import 'models.dart';
 
 const collectionPendingMessage =
-    'Collection access is still being set up. Please try again later or contact your administrator.';
+    'Collection access is still being set up. Try again later, or ask your administrator.';
 
 class ProductionStartup {
   const ProductionStartup({this.session, this.repository, this.setupMessage});
@@ -23,7 +23,7 @@ Future<ProductionStartup> initializeProduction({
   if (!firebaseConfigured) {
     return const ProductionStartup(
       setupMessage:
-          'This verification build has no live Firebase configuration. Configure Firebase Authentication and the application API to connect to a collection.',
+          'This build has no live sign-in configuration. Ask your administrator to set up sign-in and the collection API.',
     );
   }
   final SessionAccess session;
@@ -32,7 +32,7 @@ Future<ProductionStartup> initializeProduction({
   } catch (_) {
     return const ProductionStartup(
       setupMessage:
-          'Sign-in could not be set up. Please try again later or contact your administrator.',
+          'Sign-in could not be set up. Try again later, or ask your administrator.',
     );
   }
   // Authentication and explicit email verification do not depend on the API.

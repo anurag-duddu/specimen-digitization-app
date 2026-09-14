@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'auth.dart';
 import 'intake.dart';
 import 'models.dart';
-import 'workbench.dart';
 import 'search_filters.dart';
+import 'vocabulary.dart';
+import 'workbench.dart';
 
 class CollectionWorkspace extends StatefulWidget {
   const CollectionWorkspace({
@@ -124,11 +125,11 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
     }
     if (widget.session is LocalFixtureSession && error is ApiFailure) {
       if (error.status == 401 || error.status == 403) {
-        return 'The local server did not authorize this request. Sign out and sign in with the current fixture token. Collection access has not been verified.';
+        return 'The local server did not authorize this request. Your collection access is unverified, so sign out and sign in with the current fixture token.';
       }
       if (['network', 'timeout'].contains(error.code) ||
           (error.status ?? 0) >= 500) {
-        return 'The local synthetic server is unavailable. Reconnect the demo server and refresh. Collection permissions could not be checked.';
+        return 'The test server is unavailable and collection permissions were not checked. Reconnect the demo server, then refresh.';
       }
     }
     return error is ApiFailure
@@ -175,6 +176,19 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
         });
       }
     }
+  }
+
+  bool get _unfiltered => _filter.isEmpty && _query.isEmpty && _filters.isEmpty;
+  int get _needsReview =>
+      _items.where((s) => s.disposition == 'needs_human_review').length;
+  void _clearFilters() {
+    _searchController.clear();
+    setState(() {
+      _query = '';
+      _filter = '';
+      _filters = {};
+    });
+    _refresh();
   }
 
   Map<String, String> get _activeFilters => {
@@ -290,7 +304,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
       if (mounted && generation == _generation) {
         setState(
           () => _error = e is ApiFailure && e.conflict
-              ? 'This record changed while you were reviewing. Your decision was not saved. Refresh evidence and compare the current version before trying again.'
+              ? 'Another reviewer saved a new version while you were working. Your decision was not saved.'
               : _message(e),
         );
       }
@@ -313,15 +327,13 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
         style: Theme.of(context).textTheme.headlineMedium,
       ),
       const SizedBox(height: 8),
-      const Text(
-        'Review the evidence. Resolve uncertainty. Keep every decision traceable.',
-      ),
+      Text('${_items.length} records · $_needsReview need review'),
       const SizedBox(height: 24),
       TextField(
         controller: _searchController,
         decoration: const InputDecoration(
           labelText: 'Search specimens',
-          hintText: 'Exact specimen ID; use Filters for other criteria',
+          hintText: 'Exact specimen ID. Use Filters for anything else.',
           prefixIcon: Icon(Icons.search),
         ),
         onChanged: (q) {
@@ -342,10 +354,10 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
         children:
             {
                   '': 'All records',
-                  'needs_human_review': 'Needs human review',
+                  'needs_human_review': 'Needs review',
                   'cleared': 'Cleared',
                   'deferred': 'Deferred',
-                  'processing_blocked': 'Processing blocked',
+                  'processing_blocked': 'Blocked',
                   'running': 'Processing',
                 }.entries
                 .map(
@@ -392,19 +404,23 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                 const Icon(Icons.inventory_2_outlined, size: 40),
                 const SizedBox(height: 16),
                 Text(
-                  _filter.isEmpty && _query.isEmpty && _filters.isEmpty
-                      ? 'Your collection starts with a photograph'
-                      : 'No records match these filters',
+                  _unfiltered ? 'No specimens yet' : 'No matches',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Upload photographs or adjust your search. Completed results and processing blocks appear here.',
+                Text(
+                  _unfiltered
+                      ? 'Upload a photograph to create the first record.'
+                      : 'No records match the current search and filters.',
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: () => setState(() => _page = 1),
-                  child: const Text('Add photographs'),
+                  onPressed: _unfiltered
+                      ? () => setState(() => _page = 1)
+                      : _clearFilters,
+                  child: Text(
+                    _unfiltered ? 'Add photographs' : 'Clear filters',
+                  ),
                 ),
               ],
             ),
@@ -430,7 +446,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '${s.status}\nProfile ${s.profile} · ${textOf(s.data['updated_at'], textOf(s.data['created_at']))}\nRisk: ${s.data['risk'] == null ? 'Unmeasured' : '${s.data['risk']} / 100'}${s.data['risk_calibrated'] == true ? '' : ' · Uncalibrated'}',
+                '${s.status}\nProfile ${s.profile} · ${textOf(s.data['updated_at'], textOf(s.data['created_at']))}\nRisk ${s.data['risk'] == null ? 'Not measured' : '${s.data['risk']} of 100'}${s.data['risk_calibrated'] == true ? '' : ' · Not calibrated'}',
               ),
             ),
             trailing: const Icon(Icons.chevron_right),
@@ -467,7 +483,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                       _loading
                           ? 'Checking collection access…'
                           : _scopesVerified
-                          ? 'Your account has no assigned collection. Ask your administrator to grant a collection role, then check access again.'
+                          ? 'You have no collection assigned. Ask your administrator to assign one, then check again.'
                           : 'Collection access could not be verified. Reconnect or sign in again, then retry.',
                     ),
                     const SizedBox(height: 12),
@@ -573,7 +589,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                   await widget.session.signOut();
                 } catch (_) {
                   if (mounted) {
-                    setState(() => _error = 'Sign-out failed. Try again.');
+                    setState(
+                      () => _error = 'Sign-out did not complete. Try again.',
+                    );
                   }
                 }
               },
@@ -606,15 +624,24 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                 color: const Color(0xffffe7a3),
                 padding: const EdgeInsets.all(12),
                 child: Text(
-                  '${environment.toUpperCase()} ENVIRONMENT — fixture results are not real model processing or museum-approved records.',
+                  '${environmentLabel(environment)} environment. Results are fixtures, not model processing or museum records.',
                   style: const TextStyle(color: Color(0xff483500)),
                 ),
               ),
             if (widget.repository.blockers.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
-                  'Runtime blocked: ${widget.repository.blockers.map((b) => labelOf(b.toString())).join('; ')}. Contact the collection administrator.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Processing is blocked: ${widget.repository.blockers.map((b) => vocabularyLabel(b.toString())).join(', ')}.',
+                    ),
+                    Text(
+                      'Ask your collection administrator to review it.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ),
             if (_scopes.isNotEmpty)
@@ -669,7 +696,7 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
                 actions: [
                   TextButton(
                     onPressed: _scope == null ? _initialize : _refresh,
-                    child: const Text('Retry / refresh'),
+                    child: const Text('Refresh'),
                   ),
                 ],
               ),

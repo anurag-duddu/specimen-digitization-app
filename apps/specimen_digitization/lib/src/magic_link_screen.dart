@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'email_link_browser.dart';
 import 'magic_link.dart';
+import 'widgets/caveat_text.dart';
 
 class EmailLinkEntry extends StatefulWidget {
   const EmailLinkEntry({
@@ -159,7 +160,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                     Text(
                       confirm
                           ? 'Enter the fieldmuseum.org address that received this link.'
-                          : 'Use your fieldmuseum.org email. We’ll send you a sign-in link. No password needed.',
+                          : 'Use your fieldmuseum.org email to get a sign-in link. No password needed.',
                     ),
                     const SizedBox(height: 24),
                     TextFormField(
@@ -219,8 +220,13 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                         ),
                       ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'First time here? Your verified staff email creates your sign-in account. Collection access is managed separately by your collection administrator.',
+                    const CaveatText(
+                      label:
+                          'First time? Signing in with your verified staff email '
+                          'creates your account.',
+                      why:
+                          'Collection access is separate and is granted by your '
+                          'collection administrator.',
                     ),
                   ],
                 ),

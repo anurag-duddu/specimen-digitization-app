@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 import 'models.dart';
+import 'vocabulary.dart';
 
 class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
   ApiSpecimenRepository({
@@ -211,7 +212,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
             ? Map<String, dynamic>.from(result['error'])
             : <String, dynamic>{};
         throw ApiFailure(
-          textOf(error['message'], 'The request failed. Please retry.'),
+          textOf(error['message'], 'The request did not complete. Retry.'),
           code: textOf(error['code'], 'request_failed'),
           status: response.statusCode,
           details: error['details'] is Map
@@ -229,7 +230,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
       );
     } on http.ClientException {
       throw const ApiFailure(
-        'Connection interrupted. Retry to resume from the server checkpoint.',
+        'Connection interrupted. Retry to resume where the server stopped.',
         code: 'network',
       );
     }
@@ -301,7 +302,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
             (model is Map &&
                 model['raw_sha256'] != observation['raw_sha256'])) {
           throw const ApiFailure(
-            'The declaration evidence does not match the current observation and revision. Refresh evidence.',
+            'The declaration evidence does not match the current reading and version. Refresh evidence.',
             code: 'invalid_evidence',
           );
         }
@@ -365,7 +366,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         final digest = crypto.sha256.convert(data).toString();
         if (artifact.sha256 == null || digest != artifact.sha256) {
           throw const ApiFailure(
-            'Raw evidence does not match the retained digest. Refresh evidence.',
+            'Raw evidence does not match the saved checksum. Refresh evidence.',
             code: 'evidence_digest',
           );
         }
@@ -386,7 +387,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
               decoded['run'] is! Map ||
               decoded['run']['id'] != specimen.data['active_run_id']) {
             throw const ApiFailure(
-              'The complete graph does not match its retained scope, revision or size. Refresh evidence.',
+              'The complete graph does not match its saved scope, version or size. Refresh evidence.',
               code: 'invalid_evidence',
             );
           }
@@ -402,12 +403,12 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
       throw _deny(failure, epoch, userId);
     } on TimeoutException {
       throw const ApiFailure(
-        'Evidence request timed out. Retry to read the same revision.',
+        'Evidence request timed out. Retry to read the same version.',
         code: 'timeout',
       );
     } on http.ClientException {
       throw const ApiFailure(
-        'Evidence connection interrupted. Retry to read the same revision.',
+        'Evidence connection interrupted. Retry to read the same version.',
         code: 'network',
       );
     } on FormatException {
@@ -470,7 +471,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         (m) => !keys.add('${m['organization_id']}/${m['collection_id']}'),
       )) {
         throw const ApiFailure(
-          'The server returned conflicting collection roles. Contact your administrator.',
+          'The server returned conflicting collection roles. Ask your administrator.',
           code: 'invalid_session',
           status: 403,
         );
@@ -596,7 +597,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
     };
     if (filters.keys.any((key) => !allowed.contains(key))) {
       throw const ApiFailure(
-        'Unsupported search filter.',
+        'This search filter is not supported.',
         code: 'invalid_filter',
       );
     }
@@ -613,7 +614,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
     final next = result['next_cursor'];
     if (next != null && (next is! String || next.isEmpty || next == cursor)) {
       throw const ApiFailure(
-        'Invalid page cursor. Refresh the queue.',
+        'This page link is out of date. Refresh the queue.',
         code: 'pagination',
       );
     }
@@ -666,7 +667,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
           summary['record_version_id'] != version ||
           summary['active_run_id'] != runId) {
         throw const ApiFailure(
-          'The current summary changed. Refresh to load its current revision.',
+          'The current summary changed. Refresh to load its current version.',
           code: 'summary_changed',
         );
       }
@@ -678,7 +679,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
       summary = {};
       summaryError = e is ApiFailure
           ? e.message
-          : 'Summary unavailable. Refresh to check current access and revision.';
+          : 'Summary unavailable. Refresh to check current access and version.';
     }
     _checkAccess(epoch, userId);
     return Specimen({
@@ -723,7 +724,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         afterRevision < 0 ||
         afterRevision > throughRevision) {
       throw const ApiFailure(
-        'Choose a valid history revision range.',
+        'Choose a history version range inside this record.',
         code: 'invalid_history_range',
       );
     }
@@ -764,7 +765,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
                 next <= afterRevision ||
                 next >= throughRevision))) {
       throw const ApiFailure(
-        'The history page could not be verified. Retry or contact your administrator.',
+        'The history page could not be verified. Retry, or ask your administrator.',
         code: 'invalid_history_page',
       );
     }
@@ -787,7 +788,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
     final userId = expectedUserId?.call();
     if (revision < 1) {
       throw const ApiFailure(
-        'Choose a retained record revision.',
+        'Choose a saved record version.',
         code: 'invalid_revision',
       );
     }
@@ -795,7 +796,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         (runId != null && runId.isEmpty) ||
         (runSha256 != null && !RegExp(r'^[a-f0-9]{64}$').hasMatch(runSha256))) {
       throw const ApiFailure(
-        'The prior run reference is invalid.',
+        'The earlier run reference could not be read.',
         code: 'invalid_history_reference',
       );
     }
@@ -819,7 +820,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
     _checkAccess(epoch, userId);
     if (result['specimen_id'] != id || result['revision'] != revision) {
       throw const ApiFailure(
-        'The returned historical record does not match the requested revision.',
+        'The record that came back is not the version that was requested.',
         code: 'invalid_history_record',
       );
     }
@@ -911,7 +912,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         return <String, dynamic>{
           ...f,
           'field_key': e.key,
-          'display_name': labelOf(e.key),
+          'display_name': vocabularyLabel(e.key),
           'required':
               run['profile_snapshot'] is Map &&
                   run['profile_snapshot']['mandatory_fields'] is List
@@ -964,7 +965,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
         result['size_bytes'] != file.bytes.length ||
         !['review', 'blocked', 'rejected'].contains(result['status'])) {
       throw const ApiFailure(
-        'Preflight response does not match this image. No quality acceptance is inferred.',
+        'The server check response does not match this image. No quality result is recorded.',
         code: 'invalid_preflight',
       );
     }
@@ -1050,7 +1051,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
     var offset = (state['offset'] as num?)?.toInt() ?? 0;
     if (offset < 0 || offset > file.bytes.length) {
       throw const ApiFailure(
-        'Server upload offset is invalid. Contact your administrator.',
+        'The server upload position could not be read. Ask your administrator.',
         code: 'offset',
       );
     }
@@ -1069,7 +1070,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
       final next = (state['offset'] as num?)?.toInt();
       if (next == null || next <= offset || next > file.bytes.length) {
         throw const ApiFailure(
-          'The upload did not advance. Retry to reconcile its server offset.',
+          'The upload did not advance. Retry to match its position on the server.',
           code: 'offset',
         );
       }
@@ -1136,7 +1137,7 @@ class ApiSpecimenRepository implements SpecimenRepository, AccessFailureSource {
       final action = change['action'];
       if (!['pause', 'resume', 'cancel', 'reprocess'].contains(action)) {
         throw const ApiFailure(
-          'Unsupported run action.',
+          'This run action is not supported.',
           code: 'invalid_action',
         );
       }

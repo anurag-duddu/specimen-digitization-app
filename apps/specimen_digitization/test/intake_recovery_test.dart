@@ -88,15 +88,15 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 150));
     });
     await tester.pumpAndSettle();
-    expect(find.text('Upload manifest · 2 items'), findsOneWidget);
+    expect(find.text('Selected files · 2'), findsOneWidget);
     await tester.tap(find.text('I checked framing and readability'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Upload / resume selected files'),
+      find.text('Upload selected files'),
       400,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Upload / resume selected files'));
+    await tester.tap(find.text('Upload selected files'));
     await tester.pumpAndSettle();
     expect(repo.attempts, 1);
   });
@@ -149,17 +149,17 @@ void main() {
       await tester.scrollUntilVisible(find.text('recovered.png'), 300);
       expect(find.text('recovered.png'), findsOneWidget);
       expect(
-        find.textContaining('Recovered an interrupted camera photograph'),
+        find.textContaining('Recovered an interrupted photograph'),
         findsOneWidget,
       );
       await tester.scrollUntilVisible(
-        find.text('Upload / resume selected files'),
+        find.text('Upload selected files'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
       final upload = tester.widget<FilledButton>(
         find.ancestor(
-          of: find.text('Upload / resume selected files'),
+          of: find.text('Upload selected files'),
           matching: find.byWidgetPredicate((w) => w is FilledButton),
         ),
       );
@@ -213,7 +213,10 @@ void main() {
     );
     expect(find.text('chosen.png'), findsOneWidget);
     expect(checked, isFalse);
-    expect(find.text('Measured thumbnail · uncalibrated'), findsOneWidget);
+    expect(
+      find.text('Not calibrated. Measured from a thumbnail.'),
+      findsOneWidget,
+    );
   });
   testWidgets(
     'server preflight requires explicit transmission and leaves quality confirmation unchecked',
@@ -250,19 +253,24 @@ void main() {
       expect(repository.checks, 0);
       expect(repository.uploads, 0);
       await tester.scrollUntilVisible(
-        find.text('Send image for server preflight'),
+        find.text('Send for server check'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Send image for server preflight'));
+      await tester.tap(find.text('Send for server check'));
       await tester.pumpAndSettle();
       expect(repository.checks, 1);
       expect(repository.uploads, 0);
       expect(
-        find.textContaining(
-          'Changing this image format will not resolve that block',
-        ),
+        find.textContaining('The server check is not available.'),
+        findsOneWidget,
+      );
+      // The format caveat moved behind "Why" and must still be reachable.
+      await tester.tap(find.text('Why').last);
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Changing the image format will not help.'),
         findsOneWidget,
       );
       await tester.scrollUntilVisible(

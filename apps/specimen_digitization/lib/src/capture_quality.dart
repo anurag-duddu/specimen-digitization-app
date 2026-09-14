@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
+import 'widgets/caveat_text.dart';
+
 /// Descriptive thumbnail measurements, not calibrated blur or readability grades.
 class CaptureQuality {
   const CaptureQuality({
@@ -110,8 +112,8 @@ class CaptureQualityView extends StatelessWidget {
       title: const Text('Before-upload image check'),
       subtitle: Text(
         q == null
-            ? 'Measurements unavailable'
-            : 'Measured thumbnail · uncalibrated',
+            ? 'Not measured'
+            : 'Not calibrated. Measured from a thumbnail.',
       ),
       children: [
         if (previewBytes != null && q != null)
@@ -140,15 +142,29 @@ class CaptureQualityView extends StatelessWidget {
                 Text(
                   'Neighbor contrast ${q.gradient.toStringAsFixed(1)} / 255 · Sample ${q.width} × ${q.height}',
                 ),
-                const Text(
-                  'Large clipped areas or little contrast can hide text. Compare the preview with the original; these measurements do not establish sharpness or readability.',
+                const CaveatText(
+                  label: 'Clipping or low contrast can hide text.',
+                  why:
+                      'Compare the preview with the original. These measurements '
+                      'do not show sharpness or readability.',
                 ),
               ] else
-                const Text(
-                  'This device could not preview or measure the image. Inspect the original in a compatible viewer before confirming readability. Upload preserves the original; the server must decode it with an approved codec and establish its dimensions. Decoder or runtime blocks remain actionable upload errors.',
+                const CaveatText(
+                  label:
+                      'This device cannot preview this image. Check the original '
+                      'in another viewer before you confirm readability.',
+                  why:
+                      'Your original file is uploaded unchanged. The server decodes '
+                      'it and records its dimensions. If it cannot, the upload stays '
+                      'and you can retry.',
                 ),
-              const Text(
-                'Focus, glare, framing and label coverage are not determined automatically. Check the smallest text, reflections and every label; retake the photograph if needed.',
+              const CaveatText(
+                label:
+                    'Focus, glare, framing and label coverage are not checked '
+                    'automatically.',
+                why:
+                    'Check the smallest text, any reflections, and that every label '
+                    'is in the frame. Retake the photograph if it is not.',
               ),
             ],
           ),
