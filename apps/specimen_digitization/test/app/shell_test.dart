@@ -89,7 +89,7 @@ void main() {
     tester,
   ) async {
     await pumpAt(tester, 400);
-    expect(find.textContaining('Synthetic environment.'), findsOneWidget);
+    expect(find.textContaining('Test environment.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }
