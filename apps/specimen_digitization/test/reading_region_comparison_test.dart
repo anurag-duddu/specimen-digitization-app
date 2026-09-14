@@ -38,7 +38,7 @@ Future<void> showReadings(WidgetTester tester, List<Json> observations) async {
   await tester.pumpAndSettle();
 }
 
-Finder get disagreementBadges => find.textContaining('Differs at');
+Finder get disagreementBadges => find.textContaining('Differs in');
 
 Finder get matchingBadges =>
     find.textContaining('Matches the reference reading');

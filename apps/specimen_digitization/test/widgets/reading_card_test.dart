@@ -26,7 +26,7 @@ void main() {
     expect(find.text('Synthetic reading B'), findsOneWidget);
     expect(find.text('Fixture provider'), findsOneWidget);
     expect(find.byType(DiffText), findsOneWidget);
-    expect(find.text('Differs at 1 position'), findsOneWidget);
+    expect(find.text('Differs in 1 place'), findsOneWidget);
   });
 
   testWidgets('with no reference there is no comparison sentence', (
@@ -43,7 +43,7 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('Differs at'), findsNothing);
+    expect(find.textContaining('Differs in'), findsNothing);
     expect(find.textContaining('Matches the reference'), findsNothing);
   });
 
