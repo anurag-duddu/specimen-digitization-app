@@ -229,7 +229,14 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
     expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
-    await tester.ensureVisible(find.text('Synthetic insect label'));
+    // The queue row sits below the fold, so scroll the queue list to it
+    // rather than assuming it was laid out. Row heights move with the type
+    // scale, so this must not depend on the header happening to be short.
+    await tester.scrollUntilVisible(
+      find.text('Synthetic insect label'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Synthetic insect label'));
     await tester.pumpAndSettle();

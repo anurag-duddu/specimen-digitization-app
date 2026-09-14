@@ -14,6 +14,7 @@ import 'src/magic_link.dart';
 import 'src/magic_link_screen.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
+import 'src/theme/app_theme.dart';
 import 'src/workspace.dart';
 
 Future<void> main() async {
@@ -102,27 +103,9 @@ class SpecimenDigitizationApp extends StatelessWidget {
     title: 'Specimen Digitization',
     initialRoute: '/',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      scaffoldBackgroundColor: const Color(0xfff4f6f3),
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff174f3b),
-        surface: const Color(0xfff9fbf7),
-      ),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
-      ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xfff4f6f3),
-        surfaceTintColor: Colors.transparent,
-      ),
-    ),
+    theme: AppTheme.light(),
+    darkTheme: AppTheme.dark(),
+    themeMode: ThemeMode.system,
     home: session == null
         ? _ConnectionSetup(setupMessage: setupMessage, synthetic: synthetic)
         : session is EmailLinkAccess
