@@ -166,6 +166,62 @@ void main() {
     }
   });
 
+  group('the confirmation on a narrow window', () {
+    testWidgets('opens as a sheet and still names the count', (
+      WidgetTester tester,
+    ) async {
+      bool? answer;
+      await pumpComponent(
+        tester,
+        Builder(
+          builder: (BuildContext context) => TextButton(
+            onPressed: () async {
+              answer = await confirmSourceImport(
+                context,
+                count: 1000,
+                alreadyInQueue: 0,
+              );
+            },
+            child: const Text('Open'),
+          ),
+        ),
+        // Compact: showAdaptiveForm draws a bottom sheet rather than a
+        // dialog, and the count has to survive the change of surface.
+        size: const Size(390, 844),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.text('Add 1,000 photographs to the queue?'), findsOneWidget);
+
+      await tester.tap(find.text('Add 1,000 photographs'));
+      await tester.pumpAndSettle();
+      expect(answer, isTrue);
+    });
+
+    testWidgets('lays out at 200 percent text without overflowing', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(
+        tester,
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: const SourceImportConfirmation(
+            count: 1000,
+            alreadyInQueue: 342,
+          ),
+        ),
+        size: const Size(390, 844),
+      );
+
+      // The buttons wrap rather than run off the edge, which is what
+      // OverflowBar is there for. An exception would have failed the pump.
+      expect(tester.takeException(), isNull);
+      expect(find.text('Add 1,000 photographs'), findsOneWidget);
+    });
+  });
+
   group('the report', () {
     testWidgets('says how many of how many landed', (
       WidgetTester tester,
