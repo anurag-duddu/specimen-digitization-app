@@ -46,6 +46,7 @@ dependencies:
   firebase_app_check: ^0.4.7
   google_fonts: ^8.2.1
   material_symbols_icons: ^4.2960.0
+  camera: ^0.11.0
   # Pinned: 17.5.0 is the last go_router that resolves on Flutter 3.38.5
   # and Dart 3.10.4. Newer majors raise the Flutter floor.
   go_router: 17.5.0

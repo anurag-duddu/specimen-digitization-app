@@ -8,7 +8,10 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/intake.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/models.dart';
+
+import 'intake_harness.dart';
 
 void main() {
   testWidgets(
@@ -69,6 +72,7 @@ void main() {
       addTearDown(repository.close);
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: IntakeScreen(
               repository: repository,
@@ -83,40 +87,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.runAsync(() async {
-        await tester.tap(find.text('Choose files'));
-        var finished = false;
-        for (var attempt = 0; attempt < 200; attempt++) {
-          await Future<void>.delayed(const Duration(milliseconds: 25));
-          await tester.pump();
-          final choose = find.ancestor(
-            of: find.text('Choose files'),
-            matching: find.byWidgetPredicate((w) => w is FilledButton),
-          );
-          if (tester.widget<FilledButton>(choose).onPressed != null) {
-            finished = true;
-            break;
-          }
-        }
-        expect(
-          finished,
-          isTrue,
-          reason: 'Native source inspection must finish before upload',
-        );
-      });
-      await tester.pumpAndSettle();
+      await chooseFiles(tester);
       expect(offset, 0);
       expect(completions, 0);
-      await tester.tap(find.text('I checked framing and readability'));
-      await tester.pump();
-      await tester.scrollUntilVisible(
-        find.text('Upload selected files'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Upload selected files'));
-      await tester.pumpAndSettle();
+      await submitBatch(tester);
       expect(offset, bytes.length);
       expect(completions, 1);
       expect(accepted, 0);

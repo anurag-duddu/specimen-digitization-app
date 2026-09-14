@@ -9,7 +9,10 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/intake.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/models.dart';
+
+import 'intake_harness.dart';
 
 const scope = CollectionScope(
   organizationId: 'org',
@@ -39,6 +42,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: IntakeScreen(
             repository: repository,
@@ -55,51 +59,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> choose(WidgetTester tester) async {
-    await tester.ensureVisible(find.text('Choose files'));
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Choose files'));
-      var finished = false;
-      for (var attempt = 0; attempt < 200; attempt++) {
-        await Future<void>.delayed(const Duration(milliseconds: 25));
-        await tester.pump();
-        final button = find.ancestor(
-          of: find.text('Choose files'),
-          matching: find.byWidgetPredicate((w) => w is FilledButton),
-        );
-        if (tester.widget<FilledButton>(button).onPressed != null) {
-          finished = true;
-          break;
-        }
-      }
-      expect(finished, isTrue);
-    });
-    await tester.pumpAndSettle();
-  }
+  Future<void> choose(WidgetTester tester) => chooseFiles(tester);
 
-  Future<void> selectSensitivity(WidgetTester tester, String label) async {
-    final selector = find.byKey(const ValueKey('intake-sensitivity'));
-    expect(selector, findsOneWidget);
-    await tester.ensureVisible(selector);
-    await tester.tap(selector);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(label).last);
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> submit(WidgetTester tester) async {
-    final quality = find.text('I checked framing and readability');
-    await tester.ensureVisible(quality);
-    await tester.tap(quality);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Upload selected files'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Upload selected files'));
-    await tester.pumpAndSettle();
-  }
+  Future<void> submit(WidgetTester tester) => submitBatch(tester);
 
   test(
     'legacy intake defaults to Sensitive in both creation requests',
@@ -166,7 +128,7 @@ void main() {
 
   for (final value in <dynamic>[null, true, 'false']) {
     testWidgets(
-      'Non-sensitive intake rejects incompatible batch value $value',
+      'Not sensitive intake rejects incompatible batch value $value',
       (tester) async {
         SharedPreferences.setMockInitialValues({});
         var items = 0, accepted = 0;
@@ -189,7 +151,7 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        await selectSensitivity(tester, 'Non-sensitive');
+        await selectSensitivity(tester, 'Not sensitive');
         await choose(tester);
         await submit(tester);
         expect(items, 0);
@@ -202,7 +164,7 @@ void main() {
     );
   }
 
-  testWidgets('explicit Non-sensitive selection reaches batch and item', (
+  testWidgets('explicit Not sensitive selection reaches batch and item', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -232,8 +194,11 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    expect(find.text('Sensitive'), findsOneWidget);
-    await selectSensitivity(tester, 'Non-sensitive');
+    expect(
+      find.descendant(of: sensitivityControl, matching: find.text('Sensitive')),
+      findsOneWidget,
+    );
+    await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);
     expect(bodies.map((body) => body['sensitive']), [false, false]);
@@ -270,7 +235,7 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    await selectSensitivity(tester, 'Non-sensitive');
+    await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);
     expect(accepted, 0);
@@ -316,7 +281,7 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        if (sensitive) await selectSensitivity(tester, 'Non-sensitive');
+        if (sensitive) await selectSensitivity(tester, 'Not sensitive');
         await choose(tester);
         await submit(tester);
         expect(accepted, 1);
