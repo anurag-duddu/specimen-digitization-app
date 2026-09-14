@@ -83,8 +83,10 @@ def run_smoke(tmp_path, *, markers=None, html=None, site=SITE, sha=SHA, reverse_
         target.chmod(0o700)
     env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
            'SMOKE_TEST_STATE': str(state_path)}
+    # Each fake command starts Python. Allow their host overhead while retaining
+    # the script's independently asserted 300-second clock and 60-pass limit.
     result = subprocess.run(['bash', str(SCRIPT), site, sha, *extra_args], env=env, capture_output=True,
-                            text=True, timeout=30)
+                            text=True, timeout=120)
     return result, json.loads(state_path.read_text())
 
 

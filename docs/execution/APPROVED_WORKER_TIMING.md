@@ -1,18 +1,47 @@
 # Approved review worker timing
 
 The combined approval recorded on 2026-09-14 adds one explicit timing dialect.
-It does not change legacy launches. This document describes source behavior;
-it is not an operational launch packet or evidence of native completion.
+It does not change legacy launches. This document describes source behavior and
+required native qualification; it is not an operational launch packet or evidence
+of native completion.
 
 An approved runtime plan retains its existing `runtime-prepare/v1` or
 `runtime-activate/v1` phase and adds
 `worker.timing_version: approved-worker-timing/v1`. It requires the approved
 `shared-release-reservations/v2` budget and matching approval digest. Its pinned
 launch has `timing` with exactly `version`, `approval_sha256`,
-`dispatch_started_at_unix` and `sam_expires_at_unix`. The original dispatch
-timestamp T is fixed when issuing that one immutable intent, before dispatch;
-preparation delays consume the same interval. The launch expiry must be T+3500,
-within the original release packet. Preparation of images must precede issuance.
+`dispatch_started_at_unix` and `sam_expires_at_unix`. For native qualification,
+root must durably record the original timestamp T when issuing the bounded
+original authorization, before any API-first effects or image preparation, and
+retain it in the later launch and dispatch intent. DATA initialization,
+restore/clone cleanup and owner bootstrap
+can finish before the original API start Sa. When T=Sa, both image preparations,
+input setup, reviews, public build if needed and startup consume that unchanged
+interval. The launch expiry must be T+3500, within the original release packet.
+The packet's `issued_at_unix` retains the actual original authorization issue
+time; later construction, materialization and review retain their actual later
+timestamps separately. Never backdate or recreate the origin, claim a later
+packet already existed at T, or add future receipt hashes to the original record.
+
+Before granting or writing the exact launch inputs, and again before protected
+activation installation/dispatch, native qualification requires an independently
+reviewed guard over the actual launch, original timing-origin receipt and
+effective policy readbacks. The guard must parse the launch through its qualified
+source consumer, join its T to the original source/cohort/API scope and verify
+T+3500 < G, where G is the earliest expiry of every needed runtime permission or
+dependency. With completion expiry Ec and API expiry Ea, require G <= Ec <= Ea;
+Ec=Ea=Sa+3600 is permitted only when the actual scopes and effective policies
+substantiate it. Retain the original SAM expiry Es <= Ec and the independent
+Es-D >=2135 check immediately before dispatch. A true input flag or a valid
+digest alone does not prove these temporal or effective-permission joins.
+
+The actual protected job start, worker cleanup, bounded final Google observations
+and publication/closeout must also fit the job's 55-minute deadline and their own
+remaining bounds. The 100-second arithmetic gap between T+3500 and Sa+3600 does
+not prove cloud finalization fits. Record actual ordered phase durations, remaining
+bounds and cost at each transition; both three-image preparations consume the
+original clock. A late path stops with spent/unknown evidence, without a new
+clock, third image triplet, extra secret version, refund or permission extension.
 
 Before the sole job request, activation exclusively creates and fsyncs
 `worker-dispatch.intent.json`, retaining the original timing, launch/source pins,
