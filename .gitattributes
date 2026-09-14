@@ -1,0 +1,17 @@
+# The session log is append-only by ritual (AGENTS.md): every task adds its
+# entry at the end and never edits another's. Two branches that both append to
+# the end of the same file conflict every single time, because Git sees two
+# different lines claiming the same position with no shared context between
+# them. That is structural, not bad luck, and no amount of process documentation
+# prevents it.
+#
+# `union` is Git's built-in driver for exactly this shape: on a conflict it
+# keeps both sides in full instead of stopping. That is precisely what every
+# session has been doing by hand, so this automates the existing convention
+# rather than changing it.
+#
+# It is safe here only because the ritual forbids rewriting or deleting another
+# session's entry. Do not extend `union` to files where two branches can edit
+# the same region, such as pubspec.yaml or any structured config, where keeping
+# both sides would produce a file that no longer parses.
+docs/SESSION_LEARNINGS.md merge=union
