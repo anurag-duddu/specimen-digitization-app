@@ -284,7 +284,7 @@ distinct values, so it is the number that has to clear the bar.
 | `surfaceBright` | `#FBFCFA` | `onSurface` | 16.96:1 | n/a | Equals `surface` in light. Dialog and menu ground. |
 | `onSurface` | `#161B17` | all surfaces | 12.80:1 to 17.45:1 | 12.80 | All primary text and icons |
 | `onSurfaceVariant` | `#414A42` | all surfaces | 6.75:1 to 9.20:1 | 6.75 | Secondary text, metadata, `diff.unchanged` |
-| `outline` | `#6C756C` | all surfaces | 3.50:1 to 4.77:1 | 3.50 | Input borders, chip borders, disabled content |
+| `outline` | `#6C756C` | all surfaces | 3.50:1 to 4.77:1 | 3.50 | Input borders, chip borders |
 | `outlineVariant` | `#C0C8BF` | all surfaces | 1.26:1 to 1.71:1 | 1.26 | Decorative dividers only. Never a boundary a user must find. |
 | `primary` | `#14513D` | `onPrimary #FFFFFF` | 9.23:1 | 6.77 | Filled commit actions, focus-adjacent selection bar |
 | `onPrimary` | `#FFFFFF` | on `primary` | 9.23:1 | n/a | Text and icons on primary |
@@ -325,7 +325,7 @@ Ground truth surfaces: `surface #101311`, `surfaceContainerLowest #0A0D0B`,
 | `surfaceBright` | `#373C37` | `onSurface` | 8.92:1 | n/a | Dialog and menu ground |
 | `onSurface` | `#E2E6DF` | all surfaces | 8.92:1 to 15.45:1 | 8.92 | Primary text and icons |
 | `onSurfaceVariant` | `#BFC8BE` | all surfaces | 6.56:1 to 11.36:1 | 6.56 | Secondary text, `diff.unchanged` |
-| `outline` | `#8A938A` | all surfaces | 3.55:1 to 6.16:1 | 3.55 | Borders, disabled content |
+| `outline` | `#8A938A` | all surfaces | 3.55:1 to 6.16:1 | 3.55 | Borders |
 | `outlineVariant` | `#424A42` | all surfaces | 1.23:1 to 2.13:1 | 1.23 | Decorative dividers only |
 | `primary` | `#7FD6B0` | `onPrimary #00382A` | 7.60:1 | 6.52 | Filled commit actions |
 | `onPrimary` | `#00382A` | on `primary` | 7.60:1 | n/a | Text on primary |
@@ -407,7 +407,8 @@ surrounding surface, satisfying SC 1.4.11 for the component boundary
 | `risk.high` | oxide | `#A83D28` | `#E1907F` | Three filled bars of three. |
 | `environment.synthetic` | ochre | fill `#F7E3B4`, text `#4A3400` (9.31:1) | fill `#4A3608`, text `#F2D79B` (8.21:1) | Retunes the existing `#FFE7A3` / `#483500` pair at `workspace.dart:606-610`, which already passed. Full-bleed band, never dismissible. |
 | `focus.ring` | reserved | `#0F5FA8` | `#7FC4F5` | Light min 4.78:1 across surfaces; dark min 5.96:1. Reserved. Never used for status. |
-| `disabled.content` | neutral | `outline #6C756C` (min 3.50:1) | `outline #8A938A` (min 3.55:1) | See 3.6. |
+| `disabled.content` | neutral | `#5A625A` (4.63:1 to 6.31:1 across surfaces; 3.67:1 to 4.95:1 on `disabled.container`) | `#A3ACA3` (4.82:1 to 8.36:1; 3.52:1 to 6.46:1 on `disabled.container`) | See 3.6. Raised from `outline` by finding V-8. |
+| `disabled.outline` | neutral | `#6F786F` (3.35:1 to 4.57:1 across surfaces) | `#848D84` (3.29:1 to 5.70:1) | The border of a disabled outlined control and of a disabled field. Non-text, so 3:1. |
 | `disabled.container` | neutral | `onSurface` at 12% | `onSurface` at 12% | |
 
 ### 3.5 Status is never color alone
@@ -446,15 +447,34 @@ The abstention marks use the same rule:
 
 ### 3.6 Disabled state, and why it does not use 38%
 
-Material's default disabled treatment is 38% opacity on the content color. Against
-`surfaceContainer` that lands near 2.5:1 and is unreadable. In this product a disabled action is
-carrying information: it means the server does not permit this decision yet. WCAG exempts inactive
-components (SC 1.4.3 excludes text in an inactive user interface component, and SC 1.4.11 excludes
-inactive components), but the exemption is not a reason to make a load-bearing label illegible.
+Material's default disabled treatment is 38% opacity on the content color. Measured against this
+product's own surfaces it lands between 2.26:1 and 2.39:1 in light and between 2.68:1 and 3.08:1 in
+dark, and the two controls finding V-8 caught, `Correct label regions` and `Approve record`, read at
+2.38:1 and 2.25:1. In this product a disabled action is carrying information: it means the server
+does not permit this decision yet, and the control's own label and hint say which. WCAG exempts
+inactive components (SC 1.4.3 excludes text in an inactive user interface component, and SC 1.4.11
+excludes inactive components), but the exemption is not a reason to make a load-bearing sentence
+illegible.
 
-Rule: `disabled.content` is `colorScheme.outline`, which measures a minimum of 3.50:1 in light and
-3.55:1 in dark across every surface. `disabled.container` is `onSurface` at 12%. A disabled action
-always carries a tooltip and a `Semantics(hint:)` that names the reason.
+Rule, as of finding V-8:
+
+- `disabled.content` is `#5A625A` in light and `#A3ACA3` in dark. It clears the **text** minimum of
+  4.5:1 on all eight surface roles in both modes (light 4.63:1 to 6.31:1, dark 4.82:1 to 8.36:1),
+  and still clears it over `disabled.container` (light 3.67:1 to 4.95:1, dark 3.52:1 to 6.46:1),
+  which is where a disabled `FilledButton` draws it. It is deliberately quieter than
+  `onSurfaceVariant` on every surface, so a disabled control is legible and still reads as disabled.
+- `disabled.outline` is `#6F786F` in light and `#848D84` in dark: light 3.35:1 to 4.57:1, dark
+  3.29:1 to 5.70:1, over the 3:1 non-text floor everywhere.
+- `disabled.container` stays `onSurface` at 12%.
+
+These are not advisory. `specimenFilledButtonTheme`, `specimenOutlinedButtonTheme`,
+`specimenTextButtonTheme`, `specimenIconButtonTheme`, `specimenChipTheme` and `specimenInputTheme`
+each take the token layer and pass the pair to Material, so no call site can fall back to the 38%
+default. `test/theme/contrast_test.dart` holds all four claims: 3:1 for both tokens on every
+surface, 4.5:1 for the content, 3:1 for the content over its own container, and that the content
+beats the Material default it replaces on every surface while staying under `onSurfaceVariant`.
+
+A disabled action always carries a tooltip and a `Semantics(hint:)` that names the reason.
 
 ---
 
@@ -1098,6 +1118,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     // ... one triple per product token in 3.4
     required this.focusRing,
     required this.disabledContent,
+    required this.disabledOutline,
   });
 
   final Color clearedContent;

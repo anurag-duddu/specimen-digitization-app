@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../administrator_contact.dart';
 import '../auth.dart';
 import '../theme/icons.dart';
 import '../widgets/widgets.dart';
@@ -127,6 +128,12 @@ class _SetupScreenState extends State<SetupScreen> {
         title: title,
         children: <Widget>[
           Text(body, style: theme.textTheme.bodyMedium),
+          // Every message on this screen ends in "ask your administrator",
+          // and this is who that is (pass criterion 10.3).
+          Padding(
+            padding: EdgeInsets.only(top: context.space.space2),
+            child: const AdministratorContactLine(),
+          ),
           if (state == SetupState.checking) ...<Widget>[
             SizedBox(height: context.space.space4),
             const LoadingAnnouncement(

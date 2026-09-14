@@ -6,6 +6,8 @@
 /// one record are saved together under one reason.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,7 @@ import 'audit_history.dart';
 import 'evidence_panel.dart';
 import 'large_record.dart';
 import 'models.dart';
+import 'reason_codes.dart';
 import 'region_editor.dart';
 import 'review_context.dart';
 import 'screens/workbench/blockers.dart';
@@ -44,7 +47,9 @@ class ReviewWorkbench extends StatefulWidget {
     super.key,
     required this.specimen,
     required this.onChange,
+    this.onChangeBatch,
     required this.onRetry,
+    this.reviewerId = '',
     required this.onRefresh,
     this.busy = false,
     this.collections = const [],
@@ -65,7 +70,23 @@ class ReviewWorkbench extends StatefulWidget {
   loadHistoricalArtifact;
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
   final Future<void> Function(Json change) onChange;
+
+  /// Saves several corrections as one reviewer action under one reason, and
+  /// answers how many the server accepted (pass criterion 7.2).
+  ///
+  /// Optional so a component test can pump the workbench with the one change
+  /// callback alone; where it is absent the corrections go one at a time and
+  /// the screen moves once per change, which is what shipped before.
+  final Future<int> Function(List<Json> changes, String reason)? onChangeBatch;
+
   final Future<void> Function(String reason) onRetry;
+
+  /// The account whose recent reasons this workbench offers.
+  ///
+  /// Per reviewer rather than per device: an imaging station is shared, and
+  /// one reviewer's reasons are not a suggestion for the next one
+  /// (pass criterion 7.6).
+  final String reviewerId;
   final VoidCallback onRefresh;
   final bool busy;
   final List<CollectionScope> collections;
@@ -119,7 +140,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   bool _sourceCollapsed = false;
   List<PendingFieldChange> _pending = <PendingFieldChange>[];
   List<PendingFieldChange> _stale = <PendingFieldChange>[];
-  final List<String> _recentReasons = <String>[];
+  List<String> _recentReasons = <String>[];
+  late RecentReasonStore _reasonStore = RecentReasonStore(widget.reviewerId);
   int? _conflictVersion;
   bool _savingLocally = false;
   String? _announcement;
@@ -128,6 +150,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   final ScrollController _evidenceScroll = ScrollController();
   final Map<String, GlobalKey> _regionAnchors = <String, GlobalKey>{};
   final Map<String, GlobalKey> _fieldAnchors = <String, GlobalKey>{};
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadRecentReasons());
+  }
 
   List<String> get _serverActions =>
       (widget.specimen.data['available_actions'] as List? ?? <Object?>[])
@@ -188,6 +216,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   @override
   void didUpdateWidget(covariant ReviewWorkbench oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.reviewerId != widget.reviewerId) {
+      // A different account is a different list of recent reasons, never a
+      // merge of the two (pass criterion 7.6).
+      _reasonStore = RecentReasonStore(widget.reviewerId);
+      _recentReasons = <String>[];
+      unawaited(_loadRecentReasons());
+    }
     final bool newRecord = oldWidget.specimen.id != widget.specimen.id;
     if (newRecord ||
         oldWidget.specimen.data['active_run_id'] !=
@@ -282,14 +317,57 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     });
   }
 
+  /// Records [reason] for next time, on the device, for this reviewer.
+  ///
+  /// In memory at once, so the next sheet offers it whatever the store does,
+  /// and written behind the save so the reason survives a restart
+  /// (pass criterion 7.6).
   void _rememberReason(String reason) {
-    _recentReasons
-      ..remove(reason)
-      ..insert(0, reason);
-    if (_recentReasons.length > _recentReasonLimit) {
-      _recentReasons.removeRange(_recentReasonLimit, _recentReasons.length);
-    }
+    final List<String> next = <String>[
+      reason,
+      for (final String existing in _recentReasons)
+        if (existing != reason) existing,
+    ];
+    setState(
+      () => _recentReasons = next.length <= RecentReasonStore.limit
+          ? next
+          : next.sublist(0, RecentReasonStore.limit),
+    );
+    // The write happens behind the save. A preferences store that is slow, or
+    // absent on this platform, must never hold up a decision the reviewer has
+    // already confirmed.
+    unawaited(
+      _reasonStore.remember(reason).then((List<String> stored) {
+        if (!mounted || stored.isEmpty) return;
+        setState(() => _recentReasons = stored);
+      }),
+    );
   }
+
+  Future<void> _loadRecentReasons() async {
+    final List<String> stored = await _reasonStore.load();
+    if (!mounted || stored.isEmpty) return;
+    setState(() => _recentReasons = stored);
+  }
+
+  /// The decision reasons this record's collection or profile published.
+  ///
+  /// Empty against every collection document and profile this client has
+  /// seen, which is why pass criterion 7.6 records what the API would have
+  /// to publish rather than claiming the group ships full.
+  List<String> get _configuredReasons => configuredReasonCodes(<Json?>[
+    widget.collections
+        .where(
+          (CollectionScope c) =>
+              c.collectionId == widget.specimen.data['collection_id'],
+        )
+        .firstOrNull
+        ?.configuration,
+    objectOf(widget.specimen.data['profile']),
+  ]);
+
+  /// The machine's reasons this record is in the queue, in plain words.
+  List<String> get _recordReasons => recordReasonCodes(widget.specimen);
 
   /// Sends one change and reports whether the record moved.
   ///
@@ -304,10 +382,23 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     try {
       await widget.onChange(change);
     } finally {
-      _savingLocally = false;
+      _clearSavingAfterFrame();
     }
     if (!mounted) return false;
     return !identical(widget.specimen, before);
+  }
+
+  /// Drops the local-save flag after the frame that carries the new record.
+  ///
+  /// Not when the future completes. The host sets the new record and notifies
+  /// during the await, which schedules a build; the await resumes in a
+  /// microtask before that build runs. A flag cleared at the microtask is
+  /// already false when `didUpdateWidget` sees the new revision, and the
+  /// reviewer is told their own save was somebody else's version. Found while
+  /// measuring pass criterion 1.2, which is the first test that watched a
+  /// save land frame by frame.
+  void _clearSavingAfterFrame() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _savingLocally = false);
   }
 
   Future<void> _savePending() async {
@@ -328,25 +419,14 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         for (final PendingFieldChange change in batch) change.summary,
         for (final ClearanceBlocker blocker in outstanding) blocker.message,
       ],
+      configuredReasons: _configuredReasons,
+      recordReasons: _recordReasons,
       recentReasons: _recentReasons,
     );
     if (reason == null || !mounted) return;
     _rememberReason(reason);
 
-    int saved = 0;
-    for (final PendingFieldChange change in batch) {
-      final bool landed = await _send(change.toChange(reason));
-      if (!mounted) return;
-      if (_conflicted(landed)) break;
-      saved++;
-      setState(
-        () => _pending = <PendingFieldChange>[
-          for (final PendingFieldChange p in _pending)
-            if (p.fieldKey != change.fieldKey) p,
-        ],
-      );
-    }
-
+    final int saved = await _sendBatch(batch, reason);
     if (!mounted) return;
     if (saved == batch.length) {
       _announce(
@@ -356,6 +436,59 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       return;
     }
     await _reportFailedSave(batch.length - saved);
+  }
+
+  /// Sends every pending correction under one reason.
+  ///
+  /// Pass criterion 7.2. Where the host gave the workbench a batch callback,
+  /// the whole set goes out under one idempotency key prefix and the screen
+  /// moves once, at the end, rather than once per correction. Where it did
+  /// not, this is the loop that shipped before, kept so a component test can
+  /// still drive the workbench with the one change callback alone.
+  ///
+  /// Returns how many corrections the server accepted, and clears exactly
+  /// those from the pending list.
+  Future<int> _sendBatch(List<PendingFieldChange> batch, String reason) async {
+    final Future<int> Function(List<Json>, String)? send = widget.onChangeBatch;
+    if (send != null) {
+      _savingLocally = true;
+      final int saved;
+      try {
+        saved = await send(<Json>[
+          for (final PendingFieldChange change in batch)
+            change.toChange(reason),
+        ], reason);
+      } finally {
+        _clearSavingAfterFrame();
+      }
+      if (!mounted) return 0;
+      final Set<String> landed = <String>{
+        for (final PendingFieldChange change in batch.take(saved))
+          change.fieldKey,
+      };
+      setState(
+        () => _pending = <PendingFieldChange>[
+          for (final PendingFieldChange p in _pending)
+            if (!landed.contains(p.fieldKey)) p,
+        ],
+      );
+      return saved;
+    }
+
+    int saved = 0;
+    for (final PendingFieldChange change in batch) {
+      final bool landed = await _send(change.toChange(reason));
+      if (!mounted) return saved;
+      if (_conflicted(landed)) break;
+      saved++;
+      setState(
+        () => _pending = <PendingFieldChange>[
+          for (final PendingFieldChange p in _pending)
+            if (p.fieldKey != change.fieldKey) p,
+        ],
+      );
+    }
+    return saved;
   }
 
   /// True only when both halves of a conflict are in hand: another
@@ -393,6 +526,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       outstanding: <String>[
         for (final ClearanceBlocker blocker in outstanding) blocker.message,
       ],
+      configuredReasons: _configuredReasons,
+      recordReasons: _recordReasons,
       recentReasons: _recentReasons,
     );
     if (reason == null || !mounted) return;
@@ -454,6 +589,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           'The last external request may already have run and its result is '
               'unknown. Reconcile it first. This app never retries it for you.',
       ],
+      configuredReasons: _configuredReasons,
+      recordReasons: _recordReasons,
       recentReasons: _recentReasons,
     );
     if (reason == null || !mounted) return;
@@ -1292,8 +1429,6 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       ),
     );
   }
-
-  static const int _recentReasonLimit = 5;
 
   static const double _panelSlide = 0.06;
 

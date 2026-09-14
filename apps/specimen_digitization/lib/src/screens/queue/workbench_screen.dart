@@ -183,7 +183,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                     positionLabel: listed
                         ? '$position of ${controller.items.length}'
                         : null,
+                    reviewerId: controller.session.userId,
                     onChange: (Json change) => controller.mutate(change, null),
+                    onChangeBatch: (List<Json> changes, String reason) =>
+                        controller.mutateBatch(changes, reason),
                     onRetry: (String reason) => controller.mutate(null, reason),
                     onRefresh: () => controller.refresh(),
                   ),

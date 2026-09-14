@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'administrator_contact.dart';
 import 'app/auth_layout.dart';
 import 'auth.dart';
 import 'theme/icons.dart';
@@ -53,6 +54,7 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
                   : () => _act(access.signOut, 'Signed out.'),
               child: const Text('Sign out'),
             ),
+            const AdministratorContactLine(),
           ],
         ),
       );
@@ -107,6 +109,10 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
             onPressed: _busy ? null : () => _act(access.signOut, 'Signed out.'),
             child: const Text('Sign out'),
           ),
+          // Verification is raised before a collection is resolved, so the
+          // contact here can only come from the build stamp
+          // (pass criterion 10.3).
+          const AdministratorContactLine(),
         ],
       ),
     );

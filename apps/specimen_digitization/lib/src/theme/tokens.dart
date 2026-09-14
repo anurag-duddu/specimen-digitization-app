@@ -217,6 +217,18 @@ abstract final class ProductPalette {
   static const Color focusRingLight = Color(0xFF0F5FA8);
   static const Color focusRingDark = Color(0xFF7FC4F5);
 
+  // Disabled state (design system, section 3.6; finding V-8). Material draws
+  // a disabled control at 38 percent of the content color, which measured
+  // 2.26:1 in light and 2.68:1 in dark and made a load-bearing sentence
+  // unreadable. The content clears 4.5:1 on every surface in both modes,
+  // because a disabled control here carries the reason the server forbids
+  // the decision and that is text. The outline stays a step quieter and
+  // clears the 3:1 non-text floor, so the control still reads as disabled.
+  static const Color disabledContentLight = Color(0xFF5A625A);
+  static const Color disabledContentDark = Color(0xFFA3ACA3);
+  static const Color disabledOutlineLight = Color(0xFF6F786F);
+  static const Color disabledOutlineDark = Color(0xFF848D84);
+
   /// Opacity of the disabled container fill over `onSurface`.
   static const double disabledContainerOpacity = 0.12;
 }

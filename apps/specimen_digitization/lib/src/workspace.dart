@@ -666,6 +666,63 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  /// Saves several corrections as one reviewer action under one reason.
+  ///
+  /// Pass criterion 7.2. The wire takes one decision per call, so this is
+  /// still several calls; what it is not is several screen updates. The
+  /// record is replaced once, from the last result, so a reviewer saving
+  /// five corrections sees the version move once instead of five times, and
+  /// the whole batch shares one idempotency key prefix.
+  ///
+  /// Returns how many of [changes] the server accepted.
+  Future<int> mutateBatch(List<Json> changes, String reason) async {
+    final Specimen? current = _selected;
+    final CollectionScope? scope = _scope;
+    if (current == null || scope == null || _mutating || changes.isEmpty) {
+      return 0;
+    }
+    final int generation = _recordGeneration;
+    final String payload =
+        '${current.id}:${current.revision}:batch:${changes.length}:$reason';
+    final String prefix = _mutationKeys.putIfAbsent(
+      payload,
+      () => 'review-batch-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    _mutating = true;
+    _error = null;
+    _notify();
+    try {
+      final Specimen result = await repository.reviewBatch(
+        scope,
+        current,
+        changes,
+        reason,
+        prefix,
+      );
+      if (_disposed || generation != _recordGeneration) return changes.length;
+      _selected = result;
+      _mutationKeys.remove(payload);
+      return changes.length;
+    } on ReviewBatchFailure catch (failure) {
+      if (_disposed || generation != _recordGeneration) return failure.saved;
+      // What landed, landed. The screen shows the record the server has now
+      // rather than the one the reviewer opened, and the caller reports the
+      // corrections that are still outstanding.
+      if (failure.saved > 0) _selected = failure.specimen;
+      _recordFailure(failure.cause);
+      return failure.saved;
+    } catch (error) {
+      if (_disposed || generation != _recordGeneration) return 0;
+      _recordFailure(error);
+      return 0;
+    } finally {
+      if (!_disposed) {
+        _mutating = false;
+        _notify();
+      }
+    }
+  }
+
   /// Ends the session.
   Future<void> signOut() async {
     try {

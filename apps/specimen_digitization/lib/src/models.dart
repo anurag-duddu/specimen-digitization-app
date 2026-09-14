@@ -193,10 +193,86 @@ abstract class SpecimenRepository {
     Json change,
     String key,
   );
+
   Future<Specimen> retry(
     CollectionScope scope,
     Specimen specimen,
     String reason,
     String key,
   );
+}
+
+/// One reviewer action that the wire can only take one decision at a time.
+///
+/// An extension rather than a method on [SpecimenRepository] because every
+/// repository in this client `implements` that interface rather than
+/// extending it, so a default body on the interface would reach none of
+/// them. The moment the API publishes a batch endpoint this becomes a method
+/// on the interface and `ApiSpecimenRepository` overrides it with one call.
+extension ReviewBatch on SpecimenRepository {
+  /// Sends [changes] as one reviewer action under one [reason].
+  ///
+  /// Pass criterion 7.2 asks for five corrections on one record to save with
+  /// one round trip and one reason. One reason and one reviewer action are
+  /// what this delivers today. One round trip is not, and cannot be from the
+  /// client: the review API takes one decision per call, so five corrections
+  /// are five calls. Until it grows a batch endpoint this sends them in
+  /// order, threading the record forward so each call carries the revision
+  /// the one before it produced, and returns only the last result so the
+  /// caller moves the screen once rather than five times.
+  ///
+  /// [keyPrefix] is one prefix for the whole batch. Every call inside it is
+  /// `<keyPrefix>-<index>`, so an identical retry of the same batch
+  /// reconciles on the server call by call rather than recording twice, and
+  /// a reader of the server's idempotency log can see which calls were one
+  /// reviewer action.
+  ///
+  /// The batch stops at the first failure and rethrows. Whatever landed
+  /// before it stays landed, which is what the wire does; the caller reports
+  /// how many of the changes are still outstanding.
+  Future<Specimen> reviewBatch(
+    CollectionScope scope,
+    Specimen specimen,
+    List<Json> changes,
+    String reason,
+    String keyPrefix,
+  ) async {
+    Specimen current = specimen;
+    for (final (int index, Json change) in changes.indexed) {
+      try {
+        current = await review(scope, current, <String, dynamic>{
+          ...change,
+          'reason': reason,
+        }, '$keyPrefix-$index');
+      } catch (error) {
+        throw ReviewBatchFailure(saved: index, specimen: current, cause: error);
+      }
+    }
+    return current;
+  }
+}
+
+/// A batch that stopped part way through.
+///
+/// Carries the record as the server now has it, so the screen can still show
+/// what landed, and the count, so the reviewer is told how many corrections
+/// are still theirs to make rather than being told the save failed.
+class ReviewBatchFailure implements Exception {
+  const ReviewBatchFailure({
+    required this.saved,
+    required this.specimen,
+    required this.cause,
+  });
+
+  /// How many of the changes the server accepted before it stopped.
+  final int saved;
+
+  /// The record after the last change that landed.
+  final Specimen specimen;
+
+  /// What the failing call threw.
+  final Object cause;
+
+  @override
+  String toString() => cause.toString();
 }
