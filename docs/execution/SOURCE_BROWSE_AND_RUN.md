@@ -174,17 +174,44 @@ immediately. F precedes the code it describes.
     E (independent)
     F (first)
 
+## The cohort, and what the whole thing actually costs
+
+**The pilot ten are the first ten objects in source order:**
+`subject_105526321` through `subject_105526330`. Decided 2026-09-14. Nothing
+beyond ten runs until the browse-and-run screen exists; everything after the
+pilot is triggered from the UI, per specimen or per selection.
+
+Cost was measured, not estimated, from five of those ten processed end to end
+through both configured routes:
+
+| | per specimen | ten | all 1,000 |
+|---|---|---|---|
+| Tokens (both readers) | 1,991 in + 1,034 out | | |
+| Inference at a realistic rate | ~$0.0016 | ~$0.016 | ~$1.62 |
+| Inference at a deliberately high rate | ~$0.0041 | ~$0.041 | ~$4.06 |
+| SAM segmentation, if run | ~$0.0034 | ~$0.034 | ~$3.40 |
+
+Processing the entire thousand is single-digit dollars, not the order of
+magnitude an earlier draft of this document claimed. That draft multiplied the
+**whole cloud release ceiling** (USD 12, which covers Cloud Run, storage, IAM,
+the restore clone, network and telemetry) by the specimen count. Infrastructure
+there is mostly fixed cost; inference is the only line that scales with slide
+count, and it is the cheap one.
+
+This changes the emphasis of workstream C but not its design. Estimate-then-
+reserve is still right, because a UI that spends money should always say how
+much before it does. It is no longer a gate on building the screen, and the
+number it shows will be reassuring rather than alarming.
+
 ## Open questions for the owner
 
-1. **What is the ongoing budget?** The approved USD 12 is bound to the release
-   ledger and the frozen ten. Processing the remaining 990 slides is a new
-   spending decision with a different order of magnitude. Nothing in D or C
-   should be usable until a number exists.
-2. **Who may run a bulk job?** Today any reviewer can process one specimen. A
-   thousand at once is a different authority. This probably needs a role check.
-3. **Do the remaining 990 need the full pipeline?** Segmentation is the
-   expensive, Cloud-Run-only stage. A cheaper "transcribe the label region only"
-   path may be the right default for bulk, with full processing on request.
-4. **What happens to a partly finished bulk run?** Cancellation, resumption and
+1. **Who may run a bulk job?** Today any reviewer can process one specimen. A
+   thousand at once is a different authority, even at a few dollars. This
+   probably needs a role check.
+2. **Do bulk runs need segmentation?** It is the slowest stage by far, about 25
+   seconds per image against 5 to 7 for a reading, and it is Cloud-Run-only. A
+   cheaper "read the label region only" default for bulk, with full processing
+   on request, may be the better shape.
+3. **What happens to a partly finished bulk run?** Cancellation, resumption and
    per-specimen failure are all reviewer-visible states that need a decision
    before D is designed.
