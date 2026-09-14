@@ -1,5 +1,7 @@
 """Actual declaration provenance, human supersession and label policy through HTTP."""
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 from test_application import HEADERS, PREFIX, TOKEN, intake
@@ -9,9 +11,22 @@ from specimen_digitization.application.storage import LocalBlobs, SQLiteReposito
 from specimen_digitization.application.workflow import SyntheticAdapters
 from specimen_digitization.application.reading_declarations import (
     DeclarationCandidates,
+    LanguageHandling,
+    label_handling,
+    language_key,
     model_evidence,
 )
 from specimen_digitization.transcription import LiteralTranscription
+
+
+# What each route declares, by mode: the first route, then the second. The
+# "vocabulary" pair is the observed 2026-09-14 dual read, where both routes
+# agreed the label was English and named that language differently.
+DECLARED_LANGUAGES = {
+    "mixed": (["English", "German"], ["English", "German"]),
+    "conflicting": (["English"], ["German"]),
+    "vocabulary": (["en"], ["English"]),
+}
 
 
 class DeclaredAdapters(SyntheticAdapters):
@@ -21,21 +36,19 @@ class DeclaredAdapters(SyntheticAdapters):
 
     def transcribe(self, specimen, region, route):
         observation = super().transcribe(specimen, region, route)
-        candidates = (
-            {}
-            if self.mode == "unknown"
-            else {
-                "language_candidates": ["English", "German"]
-                if self.mode == "mixed"
-                else [
-                    "English" if route == specimen.run.profile.routes[0] else "German"
-                ],
+        if self.mode == "unknown":
+            candidates = {}
+        else:
+            first, second = DECLARED_LANGUAGES[self.mode]
+            candidates = {
+                "language_candidates": first
+                if route == specimen.run.profile.routes[0]
+                else second,
                 "script_candidates": ["Latin"],
                 "language_relation": "cooccurring"
                 if self.mode == "mixed"
                 else "unspecified",
             }
-        )
         output = LiteralTranscription(
             verbatim_text=observation.literal_text,
             lines=observation.literal_text.split("\n"),
@@ -278,3 +291,162 @@ def test_declaration_action_only_advertised_to_review_roles(tmp_path):
             )
         for role in ("reviewer", "manager", "admin"):
             assert "reading_metadata" in summary(specimen, role)["available_actions"]
+
+
+def label_for(*groups):
+    """Run the label policy over one region holding the given declaration groups."""
+    region = SimpleNamespace(id="region-1")
+    specimen = SimpleNamespace(
+        run=SimpleNamespace(
+            id="run-1",
+            regions=[region],
+            profile=SimpleNamespace(language_handling=LanguageHandling()),
+        )
+    )
+    return label_handling(specimen, {region.id: list(groups)})["labels"][0]
+
+
+@pytest.mark.parametrize(
+    "first,second,conflicting",
+    [
+        (("en",), ("English",), False),
+        (("English",), ("english",), False),
+        (("eng",), ("English",), False),
+        (("en-US",), ("English",), False),
+        (("en_GB",), ("eng",), False),
+        (("en", "English"), ("English",), False),
+        (("deu",), ("German",), False),
+        (("en",), ("fr",), True),
+        (("English",), ("French",), True),
+        (("en",), ("French",), True),
+        (("English",), ("Sundanese",), True),
+    ],
+)
+def test_reader_vocabulary_does_not_fake_a_language_conflict(
+    first, second, conflicting
+):
+    """Two routes naming one language differently is not a disagreement."""
+    label = label_for(
+        DeclarationCandidates(language_candidates=first, script_candidates=("Latin",)),
+        DeclarationCandidates(language_candidates=second, script_candidates=("Latin",)),
+    )
+    assert label["conflicting_candidates"] is conflicting
+    assert label["review_required"] is conflicting
+    assert label["language_candidates"] == sorted({*first, *second})
+
+
+def test_one_reader_spelling_a_language_two_ways_is_not_ambiguous():
+    label = label_for(DeclarationCandidates(language_candidates=("en", "English")))
+    assert not label["conflicting_candidates"]
+    assert label["language_candidates"] == ["English", "en"]
+
+
+@pytest.mark.parametrize(
+    "candidates,relation,mixed,conflicting",
+    [
+        (("English", "German"), "cooccurring", True, False),
+        (("English", "German"), "alternatives", False, True),
+        (("English", "German"), "unspecified", False, True),
+        (("en", "English"), "alternatives", False, True),
+        (("en", "English"), "cooccurring", True, False),
+    ],
+)
+def test_declared_relations_are_never_folded_away(
+    candidates, relation, mixed, conflicting
+):
+    """An explicit reader declaration outranks any equivalence of label forms."""
+    label = label_for(
+        DeclarationCandidates(
+            language_candidates=candidates, language_relation=relation
+        )
+    )
+    assert label["mixed_declared"] is mixed
+    assert label["conflicting_candidates"] is conflicting
+
+
+@pytest.mark.parametrize(
+    "label,key",
+    [
+        ("en", "english"),
+        ("ENG", "english"),
+        ("  English  ", "english"),
+        ("en-US", "english"),
+        ("pt_BR", "portuguese"),
+        ("Kiswahili", "kiswahili"),
+        ("Old English", "old english"),
+    ],
+)
+def test_language_key_folds_known_vocabulary_and_leaves_the_rest_distinct(label, key):
+    assert language_key(label) == key
+
+
+def test_dual_route_vocabulary_split_does_not_force_review(tmp_path):
+    """The observed dual-read symptom, through the whole stored evidence path."""
+    with TestClient(app_at(tmp_path, "vocabulary")) as http:
+        row = intake(http)
+        path = PREFIX + "/specimens/" + row["specimen_id"]
+        work = http.get(path + "/workspace", headers=HEADERS).json()
+        label = work["run"]["label_language_handling"]["labels"][0]
+        assert not label["conflicting_candidates"] and not label["mixed_declared"]
+        assert not label["review_required"] and label["reasons"] == []
+        declared = set()
+        for obs in work["observations"]:
+            metadata = http.get(
+                path + "/observations/" + obs["id"] + "/metadata", headers=HEADERS
+            ).json()
+            declared.update(
+                item["value"]
+                for item in metadata["declarations"]
+                if item["kind"] == "language"
+            )
+        assert declared == {"en", "English"}
+        assert label["language_candidates"] == ["English", "en"]
+
+
+def test_reviewer_restating_a_declaration_is_not_a_second_candidate(tmp_path):
+    """Model and human vocabularies merge into one observation; both are retained."""
+    with TestClient(app_at(tmp_path, "vocabulary")) as http:
+        row = intake(http)
+        path = PREFIX + "/specimens/" + row["specimen_id"]
+        work = http.get(path + "/workspace", headers=HEADERS).json()
+
+        def metadata_for(observation_id):
+            return http.get(
+                path + "/observations/" + observation_id + "/metadata", headers=HEADERS
+            ).json()
+
+        # The route that declared the coded form; the reviewer restates it in words.
+        target = [
+            o["id"]
+            for o in work["observations"]
+            if any(d["value"] == "en" for d in metadata_for(o["id"])["declarations"])
+        ]
+        assert len(target) == 1
+        response = http.post(
+            path + "/decisions",
+            headers={**HEADERS, "Idempotency-Key": "reviewer-vocabulary"},
+            json={
+                "kind": "reading_metadata",
+                "target_id": target[0],
+                "after": {
+                    "language_candidates": ["English"],
+                    "script_candidates": ["Latn"],
+                },
+                "reason": "Reviewer restating the declared label",
+                "expected_revision": work["revision"],
+                "base_record_version_id": work["record_version_id"],
+            },
+        )
+        assert response.status_code == 200, response.text[:500]
+        metadata = metadata_for(target[0])
+        assert metadata["language_state"] == "declared"
+        assert metadata["script_state"] == "declared"
+        assert metadata["reasons"] == []
+        assert {(d["kind"], d["value"]) for d in metadata["declarations"]} == {
+            ("language", "en"),
+            ("language", "English"),
+            ("script", "Latin"),
+            ("script", "Latn"),
+        }
+        label = response.json()["run"]["label_language_handling"]["labels"][0]
+        assert not label["conflicting_candidates"] and not label["review_required"]
