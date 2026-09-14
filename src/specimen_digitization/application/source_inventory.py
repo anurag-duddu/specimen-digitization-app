@@ -67,6 +67,12 @@ class SourceInventory(BaseModel):
     sensitive: bool = True
     revision: int = 0
 
+    def wire(self) -> dict:
+        """`entries_blob_ref` is an internal storage handle and stays off the wire,
+        as `asset.blob_ref` already does. `entries_sha256` is the snapshot's
+        identity and a client legitimately needs it to notice a change."""
+        return self.model_dump(mode="json", exclude={"entries_blob_ref"})
+
 
 def inventory_document_id(source_id: str) -> str:
     """One current inventory per source, addressed by a derived id, never listed."""

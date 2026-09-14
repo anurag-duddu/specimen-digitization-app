@@ -856,7 +856,7 @@ def create_app(
         from .source_inventory import header
 
         try:
-            return header(repository, p.scope, source).model_dump(mode="json")
+            return header(repository, p.scope, source).wire()
         except Missing:
             return None
 
@@ -909,14 +909,15 @@ def create_app(
         )
         if current and current.get("entries_sha256") == captured.entries_sha256:
             # The prefix is unchanged. Keep the snapshot the reviewer is using.
-            return current
-        return repository.put_document(
+            return source_inventory.SourceInventory.model_validate(current).wire()
+        stored = repository.put_document(
             p.scope,
             "source_inventory",
             ident,
             captured.model_dump(mode="json"),
             current["revision"] if current else 0,
         )
+        return source_inventory.SourceInventory.model_validate(stored).wire()
 
     @app.get(prefix + "/sources/{source_id}/objects")
     def source_objects(

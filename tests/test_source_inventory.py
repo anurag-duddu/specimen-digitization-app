@@ -216,6 +216,20 @@ def test_capture_records_the_source_object_shape(tmp_path):
     assert row["specimen_id"] is None
 
 
+def test_internal_storage_handles_stay_off_the_wire(tmp_path):
+    """`summary` never exposes `asset.blob_ref`; a snapshot header matches that."""
+    objects = tmp_path / "objects"
+    slides(objects, 1)
+    client = source_client(tmp_path, objects)
+
+    inventory = capture(client)
+    detail = client.get(PREFIX + f"/sources/{SOURCE_ID}", headers=HEADERS).json()
+
+    assert "entries_blob_ref" not in inventory
+    assert "entries_blob_ref" not in detail["inventory"]
+    assert inventory["entries_sha256"] == detail["inventory"]["entries_sha256"]
+
+
 def test_capture_is_a_snapshot_not_a_live_listing(tmp_path):
     objects = tmp_path / "objects"
     slides(objects, 1)
