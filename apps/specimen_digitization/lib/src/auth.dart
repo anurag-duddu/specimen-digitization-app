@@ -6,6 +6,7 @@ import 'api_repository.dart';
 import 'models.dart';
 import 'magic_link.dart';
 import 'magic_link_screen.dart';
+import 'widgets/caveat_text.dart';
 
 abstract class SessionAccess {
   Stream<bool> get changes;
@@ -203,22 +204,31 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'From source pixels to supported records.',
+                    'Specimen record review',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
                   Text(
                     widget.session is LocalFixtureSession
-                        ? 'Local synthetic fixture access'
+                        ? 'Test data access'
                         : 'Sign in to your collection',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    widget.session is LocalFixtureSession
-                        ? 'SYNTHETIC ONLY. The email is a test label, not a museum account. Access requires a fixture token accepted by the local server. No Firebase or live model processing.'
-                        : 'Use the account provided by your museum. Collection access is checked by the server.',
-                  ),
+                  if (widget.session is LocalFixtureSession)
+                    const CaveatText(
+                      label:
+                          'Test data only. This email is a test label, not a '
+                          'museum account.',
+                      why:
+                          'Access needs a fixture token the local server accepts. '
+                          'There is no live sign-in and no live model processing.',
+                    )
+                  else
+                    const Text(
+                      'Use the account provided by your museum. Collection access '
+                      'is checked by the server.',
+                    ),
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _email,
@@ -229,7 +239,7 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
                     ),
                     validator: (s) => s != null && s.contains('@')
                         ? null
-                        : 'Enter a valid email address',
+                        : 'Enter an address like name@fieldmuseum.org.',
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -279,8 +289,13 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
                   if (widget.session is! LocalFixtureSession)
                     const Padding(
                       padding: EdgeInsets.only(top: 16),
-                      child: Text(
-                        'Need an account or collection access? Ask your collection administrator to provide an account and assign a collection role. This app does not create accounts or grant roles.',
+                      child: CaveatText(
+                        label:
+                            'No account or no collection access? Ask your '
+                            'collection administrator.',
+                        why:
+                            'This app cannot create accounts or assign roles. '
+                            'Both are managed by your collection administrator.',
                       ),
                     ),
                   if (widget.session is! LocalFixtureSession)
@@ -306,7 +321,7 @@ class LocalFixtureSession implements SessionAccess {
       _client = client ?? http.Client() {
     if (!['localhost', '127.0.0.1', '::1', '10.0.2.2'].contains(baseUrl.host)) {
       throw const ApiFailure(
-        'Synthetic access requires a local API.',
+        'Test access requires a local API.',
         code: 'configuration',
       );
     }
@@ -324,7 +339,7 @@ class LocalFixtureSession implements SessionAccess {
   @override
   String get userId => _userId;
   @override
-  String get displayName => 'Local synthetic reviewer';
+  String get displayName => 'Test reviewer';
   @override
   Future<String?> token() async => _bearer;
   @override
@@ -354,7 +369,7 @@ class LocalFixtureSession implements SessionAccess {
           result['memberships'] is! List ||
           (result['memberships'] as List).any((row) => row is! Map)) {
         throw const ApiFailure(
-          'The local server did not return a valid synthetic session. Check the demo configuration.',
+          'The local server did not return a usable test session. Check the demo configuration.',
           code: 'invalid_session',
         );
       }
@@ -373,13 +388,13 @@ class LocalFixtureSession implements SessionAccess {
       if (['network', 'timeout'].contains(error.code) ||
           (error.status ?? 0) >= 500) {
         throw const ApiFailure(
-          'The local synthetic server is unavailable. Start or reconnect the demo server, then try again. You are not signed in.',
+          'The test server is unavailable and you are not signed in. Start or reconnect the demo server, then try again.',
           code: 'server_unavailable',
         );
       }
       if (error.code == 'invalid_session') rethrow;
       throw const ApiFailure(
-        'The local server could not validate this synthetic session. Check the demo configuration.',
+        'The local server could not check this test session. Check the demo configuration.',
         code: 'invalid_session',
       );
     }
@@ -413,10 +428,9 @@ String authErrorMessage(Object error, {bool reset = false}) {
       'too-many-requests' =>
         'Too many attempts. Wait a few minutes before trying again.',
       'operation-not-allowed' =>
-        '$action is not enabled for this app. Contact your administrator.',
-      'invalid-email' => 'Enter a valid email address.',
-      'user-disabled' =>
-        'This account cannot sign in. Contact your administrator.',
+        '$action is not enabled for this app. Ask your administrator to enable it.',
+      'invalid-email' => 'Enter an address like name@fieldmuseum.org.',
+      'user-disabled' => 'This account cannot sign in. Ask your administrator.',
       _ =>
         '$action could not be completed. Check your account details or contact your administrator.',
     };

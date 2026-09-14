@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 class OperationalPanel extends StatelessWidget {
   const OperationalPanel({
@@ -31,19 +33,19 @@ class OperationalPanel extends StatelessWidget {
             children: [
               Text(
                 action == 'reprocess'
-                    ? 'A new run preserves the previous record and repeats eligible processing under the server policy.'
-                    : 'The server will apply this action to the current run. In-flight external work may finish; only valid current results can be committed.',
+                    ? 'A new run keeps the previous record and repeats the processing the server allows.'
+                    : 'The server applies this action to the current run. Work already sent may still finish, and only current results are saved.',
               ),
               TextFormField(
                 controller: reason,
                 minLines: 2,
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  labelText: 'Reason for run action',
+                  labelText: 'Reason',
+                  helperText: reasonHelperText,
                 ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'A reason is required.'
-                    : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? reasonRequired : null,
               ),
             ],
           ),
@@ -100,37 +102,64 @@ class OperationalPanel extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             Text(
-              'Stage: ${labelOf(textOf(run['stage'], textOf(specimen.data['stage'])))}',
+              'Step: ${vocabularyLabel(textOf(run['stage'], textOf(specimen.data['stage'])))}',
             ),
-            if (blocker.isNotEmpty) Text('Blocked: ${labelOf(blocker)}'),
-            if (blocker == 'pilot_evidence_review_required')
+            if (blocker.isNotEmpty)
+              Text('Blocked: ${vocabularyLabel(blocker)}'),
+            if (blocker == 'pilot_evidence_review_required') ...[
               const Text(
-                'Pilot evidence review needed. Inspect the retained regions and independent readings. Risk is unmeasured and clearance is blocked; only corrections permitted by the server are available.',
+                'Pilot evidence review needed. Check the saved label regions and '
+                'the independent readings.',
               ),
-            if (blocker.contains('external_outcome_unknown'))
+              const CaveatText(
+                label: 'Risk is not measured and clearance is blocked.',
+                why: 'Only the corrections the server allows are available.',
+              ),
+            ],
+            if (blocker.contains('external_outcome_unknown')) ...[
               const Text(
-                'The last external request may have executed. Its outcome is unknown. An authorized operator must reconcile that request before deliberately retrying; the client never repeats it automatically.',
+                'The last external request may have run. Its result is unknown.',
               ),
-            if (blocker.contains('budget') || blocker.contains('cost'))
-              const Text(
-                'Processing stopped at a budget or cost-policy gate. An administrator must review the approved limit or provider configuration. Missing cost information is not zero cost.',
+              const CaveatText(
+                label:
+                    'An authorized operator must reconcile it before anyone '
+                    'retries.',
+                why: 'This app never repeats the request automatically.',
               ),
+            ],
+            if (blocker.contains('budget') || blocker.contains('cost')) ...[
+              const Text('Processing stopped at a cost limit.'),
+              const CaveatText(
+                label:
+                    'An administrator must review the approved limit or the '
+                    'provider configuration.',
+                why: 'Where a cost is not recorded, it is unknown, not zero.',
+              ),
+            ],
             if (run['next_retry_at'] != null)
               Text('Next scheduled retry: ${run['next_retry_at']}'),
-            if (run['dead_letter'] == true)
-              const Text(
-                'Automatic attempts exhausted. Authorized recovery requires an explicit reason.',
-              ),
-            if (activeLease)
+            if (run['dead_letter'] == true) ...[
+              const Text('Automatic retries have stopped.'),
               Text(
-                'External work is leased until ${run['lease_until']}. Retry, resume and new-run requests must wait for the lease to end.',
+                'Retrying now requires a reason.',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
+            ],
+            if (activeLease) ...[
+              Text(
+                'Reserved by the processing service until ${run['lease_until']}.',
+              ),
+              Text(
+                'Retry, resume and new run are unavailable until then.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
             if (usage.isNotEmpty) ...[
               Text(
-                'Steps ${amount('steps')} / ${policy['max_steps'] ?? 'limit unavailable'} · External requests ${amount('external_calls')} / ${policy['max_external_calls'] ?? 'limit unavailable'}',
+                'Steps ${amount('steps')} of ${policy['max_steps'] ?? 'Not recorded'} · External requests ${amount('external_calls')} of ${policy['max_external_calls'] ?? 'Not recorded'}',
               ),
               Text(
-                'Tokens ${amount('tokens')} · Reserved tokens ${amount('reserved_tokens')} · Limit ${policy['max_tokens'] ?? 'unavailable'}',
+                'Tokens ${amount('tokens')} · Reserved tokens ${amount('reserved_tokens')} · Limit ${policy['max_tokens'] ?? 'Not recorded'}',
               ),
               Text(
                 'Active time ${amount('active_seconds')} seconds · Reserved time ${amount('reserved_active_seconds')} seconds',

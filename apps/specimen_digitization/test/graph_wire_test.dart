@@ -236,7 +236,7 @@ void main() {
         ),
       );
       expect(
-        find.textContaining('Action saved at revision 57'),
+        find.textContaining('Your action was saved on version 57'),
         findsOneWidget,
       );
       expect(find.text('Approve record'), findsNothing);

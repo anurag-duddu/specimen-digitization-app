@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 import 'risk_assessment.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
 
 class LazyEvidence extends StatefulWidget {
   const LazyEvidence({
@@ -88,7 +89,7 @@ class EvidencePanel extends StatelessWidget {
     final result = await showDialog<Json>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Select authority candidate'),
+        title: const Text('Use this match?'),
         content: SizedBox(
           width: 560,
           child: SingleChildScrollView(
@@ -99,7 +100,7 @@ class EvidencePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '${labelOf(textOf(metadata['field_key']))}: ${candidate['name']}',
+                    '${vocabularyLabel(textOf(metadata['field_key']))}: ${candidate['name']}',
                   ),
                   SelectableText(textOf(candidate['identifier'])),
                   if (candidate['identity'] != null)
@@ -108,18 +109,20 @@ class EvidencePanel extends StatelessWidget {
                       value: candidate['identity'],
                     ),
                   const Text(
-                    'This selects a retained authority candidate, preserves the literal field and reruns dependent validation. It does not grant final approval.',
+                    'This uses a saved authority match and reruns the checks that '
+                    'depend on it. The text as written is unchanged and the record '
+                    'is not approved.',
                   ),
                   TextFormField(
                     controller: reason,
                     minLines: 2,
                     maxLines: 4,
                     decoration: const InputDecoration(
-                      labelText: 'Reason for selecting this authority',
+                      labelText: 'Reason',
+                      helperText: reasonHelperText,
                     ),
-                    validator: (v) => v == null || v.trim().isEmpty
-                        ? 'A reason is required.'
-                        : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? reasonRequired : null,
                   ),
                 ],
               ),
@@ -143,7 +146,7 @@ class EvidencePanel extends StatelessWidget {
                 });
               }
             },
-            child: const Text('Select and revalidate'),
+            child: const Text('Use this match'),
           ),
         ],
       ),
@@ -157,18 +160,18 @@ class EvidencePanel extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        '${labelOf(textOf(result['status']))} · Source ${result['source_id']} · ${result['source_version']}',
+        '${vocabularyLabel(textOf(result['status']))} · Source ${result['source_id']} · ${result['source_version']}',
       ),
       Text(
         'Retrieved ${result['retrieved_at']} · Adapter ${result['adapter_version']}',
       ),
-      Text('Literal input: ${textOf(result['literal'])}'),
+      Text('As written: ${textOf(result['literal'])}'),
       if (result['retry_after_seconds'] != null)
         Text(
           'Provider retry instruction: ${result['retry_after_seconds']} seconds',
         ),
       for (final reason in result['reasons'] as List? ?? [])
-        Text('• ${labelOf(reason.toString())}'),
+        Text('• ${vocabularyLabel(reason.toString())}'),
       for (final candidate in objects(result['candidates']))
         Card.outlined(
           child: Padding(
@@ -182,10 +185,10 @@ class EvidencePanel extends StatelessWidget {
                 ),
                 SelectionArea(child: Text(textOf(candidate['identifier']))),
                 Text(
-                  '${labelOf(textOf(candidate['relation']))}: ${textOf(candidate['reason'])}',
+                  '${vocabularyLabel(textOf(candidate['relation']))}: ${textOf(candidate['reason'])}',
                 ),
                 EvidenceDetails(
-                  title: 'Candidate identity, context and support',
+                  title: 'Match identity, context and support',
                   value: candidate,
                 ),
                 if (canReview &&
@@ -196,7 +199,7 @@ class EvidencePanel extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: TextButton(
                       onPressed: () => _select(context, metadata, candidate),
-                      child: const Text('Select this candidate'),
+                      child: const Text('Use this match'),
                     ),
                   ),
               ],
@@ -204,7 +207,7 @@ class EvidencePanel extends StatelessWidget {
           ),
         ),
       if (objects(result['candidates']).isEmpty)
-        const Text('No retained candidate is available for selection.'),
+        const Text('No saved match is available to use.'),
       EvidenceDetails(
         title: 'Authority query and captured evidence',
         value: result,
@@ -244,7 +247,7 @@ class EvidencePanel extends StatelessWidget {
           ),
         if (phases.isNotEmpty)
           Text(
-            'Evidence phases',
+            'Evidence steps',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         for (final name in [
@@ -267,12 +270,12 @@ class EvidencePanel extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          '${labelOf(name)} · ${labelOf(textOf(metadata['applicability']))}',
+                          '${vocabularyLabel(name)} · ${vocabularyLabel(textOf(metadata['applicability']))}',
                         ),
-                        Text(labelOf(textOf(metadata['reason']))),
+                        Text(vocabularyLabel(textOf(metadata['reason']))),
                         for (final finding in objects(metadata['findings']))
                           Text(
-                            '${finding['severity']}: ${labelOf(textOf(finding['code']))} ${textOf(finding['field_key'], '')}',
+                            '${finding['severity']}: ${vocabularyLabel(textOf(finding['code']))} ${textOf(finding['field_key'], '')}',
                           ),
                         LazyEvidence(
                           key: ValueKey(
@@ -288,10 +291,12 @@ class EvidencePanel extends StatelessWidget {
                               ))
                                 ListTile(
                                   title: Text(
-                                    labelOf(textOf(proposal['field_key'])),
+                                    vocabularyLabel(
+                                      textOf(proposal['field_key']),
+                                    ),
                                   ),
                                   subtitle: Text(
-                                    'Literal: ${proposal['literal']}\nCandidate: ${proposal['candidate']}\n${labelOf(textOf(proposal['relation']))}: ${textOf(proposal['reason'])}',
+                                    'As written: ${proposal['literal']}\nSuggested match: ${proposal['candidate']}\n${vocabularyLabel(textOf(proposal['relation']))}: ${textOf(proposal['reason'])}',
                                   ),
                                 ),
                               EvidenceDetails(
@@ -318,7 +323,7 @@ class EvidencePanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        '${labelOf(textOf(metadata['field_key']))} · ${metadata['tool_id']} · ${labelOf(textOf(metadata['status']))}',
+                        '${vocabularyLabel(textOf(metadata['field_key']))} · ${metadata['tool_id']} · ${vocabularyLabel(textOf(metadata['status']))}',
                       ),
                       LazyEvidence(
                         key: ValueKey(

@@ -88,25 +88,28 @@ void main() {
       await tester.tap(find.text('Read authority alternatives'));
       await tester.pumpAndSettle();
       expect(find.text('Current access must be checked'), findsOneWidget);
-      expect(find.text('Select this candidate'), findsNothing);
+      expect(find.text('Use this match'), findsNothing);
       await tester.tap(find.text('Retry read authority alternatives'));
       await tester.pumpAndSettle();
       expect(find.text('candidate-1'), findsOneWidget);
       expect(find.text('candidate-2'), findsOneWidget);
-      await tester.tap(find.text('Select this candidate').last);
+      await tester.tap(find.text('Use this match').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Select and revalidate'));
+      // The row button and the dialog primary share one label for one intent,
+      // so target the dialog explicitly.
+      final confirm = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(FilledButton, 'Use this match'),
+      );
+      await tester.tap(confirm);
       await tester.pumpAndSettle();
-      expect(find.text('A reason is required.'), findsOneWidget);
+      expect(find.text('Enter a reason for this decision.'), findsOneWidget);
       expect(change, isNull);
       await tester.enterText(
-        find.widgetWithText(
-          TextFormField,
-          'Reason for selecting this authority',
-        ),
+        find.widgetWithText(TextFormField, 'Reason'),
         'Matched retained institutional evidence',
       );
-      await tester.tap(find.text('Select and revalidate'));
+      await tester.tap(confirm);
       await tester.pumpAndSettle();
       expect(change?['identifier'], 'candidate-2');
       expect(change?['target_id'], 'identified_by_irn');
@@ -149,12 +152,12 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Review risk (uncalibrated)'), findsOneWidget);
-      expect(find.text('Unmeasured'), findsOneWidget);
+      expect(find.text('Review risk'), findsOneWidget);
+      expect(find.text('Not measured'), findsOneWidget);
       expect(find.text('lookup · blocked'), findsOneWidget);
       expect(find.text('credentials required'), findsOneWidget);
-      expect(find.text('0 / 100'), findsNothing);
-      expect(find.text('Select this candidate'), findsNothing);
+      expect(find.text('0 of 100'), findsNothing);
+      expect(find.text('Use this match'), findsNothing);
     },
   );
 }

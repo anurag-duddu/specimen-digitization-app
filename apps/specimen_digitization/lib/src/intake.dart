@@ -9,13 +9,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models.dart';
 import 'capture_quality.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
+
+/// The state of an upload that already exists in collection storage.
+/// Used as a sentinel as well as a label, so it lives in one place.
+const String duplicateUploadState = 'Already in collection';
 
 class ManifestEntry {
   ManifestEntry({
     required this.digest,
     this.file,
     this.session,
-    this.state = 'Reselect original to resume',
+    this.state = 'Select this file again to resume',
     this.progress = 0,
     this.quality,
   });
@@ -23,6 +29,9 @@ class ManifestEntry {
   IntakeFile? file;
   Json? session;
   String state;
+
+  /// The expandable half of [state], when the state carries a caveat.
+  String? why;
   double progress;
   CaptureQuality? quality;
   Json? preflight;
@@ -75,7 +84,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         setState(
           () => entry.preflightError = e is ApiFailure
               ? e.message
-              : 'Server preflight unavailable. Retry or check collection access.',
+              : 'The server check did not run. Retry, or ask your administrator to confirm your collection access.',
         );
       }
     } finally {
@@ -104,7 +113,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       } catch (_) {
         setState(
           () => _error =
-              'Saved upload handles could not be read. Reselect files to reconcile with the server.',
+              'Saved uploads could not be read. Select your files again to match them with the server.',
         );
       }
     }
@@ -121,7 +130,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
               (e) =>
                   e.session?['upload_id'] != null &&
                   e.state != 'Accepted' &&
-                  !e.state.startsWith('Duplicate'),
+                  e.state != duplicateUploadState,
             )
             .map(
               (e) => {'digest': e.digest, 'upload_id': e.session!['upload_id']},
@@ -176,7 +185,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
       if (mounted) {
         setState(
           () => _error =
-              'Capture or file selection unavailable. Check device permissions or select files instead.',
+              'The camera or file picker did not open. Check device permissions, then choose files.',
         );
       }
     } finally {
@@ -196,8 +205,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
       if (size == 0 || size > 25000000) {
         if (mounted) {
           setState(
-            () =>
-                _error = '${file.name}: choose a non-empty image under 25 MB.',
+            () => _error =
+                '${file.name} was skipped. Images must be under 25 MB and not empty.',
           );
         }
         continue;
@@ -215,7 +224,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
       };
       if (mime.isEmpty) {
         if (mounted) {
-          setState(() => _error = '${file.name}: unsupported file type.');
+          setState(
+            () => _error =
+                '${file.name} was skipped. Choose a JPEG, PNG, HEIC, TIFF or DNG image.',
+          );
         }
         continue;
       }
@@ -267,7 +279,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         if (mounted) {
           setState(
             () => _error =
-                '${file.name}: image exceeds the local 40 megapixel / 20,000 pixel axis limit.',
+                '${file.name} was skipped. It is over 40 megapixels or over 20,000 pixels on one side.',
           );
         }
         continue;
@@ -307,6 +319,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
     }
   }
 
+  /// File sizes read as "4.2 MB", to one decimal (guideline 4.14).
+  static String _megabytes(int bytes) => (bytes / 1000000).toStringAsFixed(1);
+
   String get _captureOwner => '${widget.userId}:${widget.scope.key}';
   static const _captureKey = 'pending-camera-owner-v1';
   Future<void> _recoverCamera() async {
@@ -329,14 +344,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
         if (mounted && files.isNotEmpty) {
           setState(
             () => _error =
-                'Recovered an interrupted camera photograph. Check its framing and readability before uploading.',
+                'Recovered an interrupted photograph. Check its framing and readability before you upload.',
           );
         }
       } catch (_) {
         if (mounted) {
           setState(
             () => _error =
-                'The interrupted camera photograph could not be recovered. Capture again or choose the original file.',
+                'The interrupted photograph could not be recovered. Take it again, or choose the original file.',
           );
         }
       } finally {
@@ -357,11 +372,11 @@ class _IntakeScreenState extends State<IntakeScreen> {
       (e) =>
           e.file != null &&
           e.state != 'Accepted' &&
-          !e.state.startsWith('Duplicate'),
+          e.state != duplicateUploadState,
     )) {
       if (!mounted) break;
       try {
-        setState(() => entry.state = 'Checking manifest');
+        setState(() => entry.state = 'Checking upload');
         entry.session = entry.session == null
             ? await widget.repository.createIntake(
                 widget.scope,
@@ -375,9 +390,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
         await _persist();
         if (entry.session!['state'] == 'duplicate') {
           if (mounted) {
-            setState(
-              () => entry.state = 'Duplicate — existing record retained',
-            );
+            setState(() {
+              entry.state = duplicateUploadState;
+              entry.why =
+                  'This photograph matches an existing record by checksum. '
+                  'No new record was created.';
+            });
           }
           await _persist();
           continue;
@@ -405,6 +423,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         if (mounted) {
           setState(() {
             entry.state = 'Accepted';
+            entry.why = null;
             entry.progress = 1;
           });
         }
@@ -412,13 +431,24 @@ class _IntakeScreenState extends State<IntakeScreen> {
         widget.onComplete();
       } catch (e) {
         if (mounted) {
-          setState(
-            () => entry.state = e is ApiFailure
-                ? e.message.startsWith('image_codec_')
-                      ? 'Server decoding is blocked (${labelOf(e.message.substring(12))}). The uploaded original is retained. Ask an administrator to check the approved codec, collection profile and runtime, then retry completion.'
-                      : e.message
-                : 'Interrupted — retry to resume from the server checkpoint',
-          );
+          setState(() {
+            if (e is ApiFailure && e.message.startsWith('image_codec_')) {
+              entry.state =
+                  'The server cannot decode this file '
+                  '(${vocabularyLabel(e.message.substring(12))}). '
+                  'Your upload is kept.';
+              entry.why =
+                  'Ask an administrator to check the approved codec, collection '
+                  'profile and runtime.';
+            } else if (e is ApiFailure) {
+              entry.state = e.message;
+              entry.why = null;
+            } else {
+              entry.state = 'Interrupted';
+              entry.why =
+                  'Uploading again resumes from where the server stopped.';
+            }
+          });
         }
         if (e is ApiFailure && (e.status == 401 || e.status == 403)) break;
       }
@@ -436,12 +466,15 @@ class _IntakeScreenState extends State<IntakeScreen> {
       padding: const EdgeInsets.all(24),
       children: [
         Text(
-          'Bring a specimen into focus',
+          'Add photographs',
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 8),
-        const Text(
-          'One photograph per specimen. Originals remain unchanged; processing continues after you leave.',
+        const Text('One photograph per specimen.'),
+        Text(
+          'Your original file is never changed. Processing continues after you '
+          'leave this screen.',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 24),
         Card(
@@ -453,7 +486,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
                 const Icon(Icons.add_photo_alternate_outlined, size: 40),
                 const SizedBox(height: 16),
                 Text(
-                  'Select source photographs',
+                  'Source photographs',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
@@ -462,6 +495,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   initialValue: _newSensitive,
                   decoration: const InputDecoration(
                     labelText: 'Sensitivity of new photographs',
+                    helperText: 'Applies to photographs you add next.',
                   ),
                   items: const [
                     DropdownMenuItem(value: true, child: Text('Sensitive')),
@@ -476,11 +510,19 @@ class _IntakeScreenState extends State<IntakeScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Choose Non-sensitive only when these photographs and their label information are suitable for ordinary collection access. This choice applies to photographs added next; existing uploads keep their original classification.',
+                  'Choose Non-sensitive only if these photographs and their labels '
+                  'are suitable for ordinary collection access.',
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Local previews depend on this device. HEIC and approved TIFF/DNG families require a configured server codec and collection profile. Files can upload without a local preview; server completion verifies bytes, format and dimensions. A decoder block retains the upload for retry.',
+                const CaveatText(
+                  label:
+                      'HEIC, TIFF and DNG may not preview on this device. You can '
+                      'still upload them.',
+                  why:
+                      'Previews depend on this device. The server verifies the '
+                      'bytes, format and dimensions of the file when the upload '
+                      'completes. If the server cannot decode it, your upload is '
+                      'kept so you can retry.',
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -505,13 +547,20 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   const Padding(
                     padding: EdgeInsets.only(top: 12),
                     child: Text(
-                      'Direct camera capture is available in the Android and iOS app. In a browser, choose a photograph from your device.',
+                      'Camera capture is available in the iOS and Android apps. In '
+                      'a browser, choose a file instead.',
                     ),
                   ),
                 const SizedBox(height: 16),
-                const Text(
-                  'Before submitting: check sharp focus, readable smallest text, even exposure, no glare, and every label inside the frame. Server quality checks are required; this client does not certify image quality.',
-                ),
+                const Text('Before you upload, check:'),
+                for (final check in const [
+                  'Sharp focus',
+                  'Smallest text readable',
+                  'Even exposure',
+                  'No glare',
+                  'Every label inside the frame',
+                ])
+                  Text('• $check'),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _qualityConfirmed,
@@ -519,6 +568,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       ? null
                       : (v) => setState(() => _qualityConfirmed = v!),
                   title: const Text('I checked framing and readability'),
+                ),
+                Text(
+                  'The server runs its own checks.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
@@ -534,18 +587,21 @@ class _IntakeScreenState extends State<IntakeScreen> {
           ),
         const SizedBox(height: 20),
         Text(
-          'Upload manifest · ${_entries.length} items',
+          'Selected files · ${_entries.length}',
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 8),
-        const Text(
-          'After a restart, reselect the same original files. Checksums reconcile saved upload handles with server offsets; accepted records are not recreated.',
+        const CaveatText(
+          label: 'After a restart, select the same files again to resume.',
+          why:
+              'Checksums match your files to the uploads already on the server. '
+              'Records that were accepted are not created twice.',
         ),
         const SizedBox(height: 16),
         if (_entries.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
-            child: Text('Your selected photographs will appear here.'),
+            child: Text('No files selected yet.'),
           ),
         ..._entries.map(
           (e) => Card(
@@ -560,17 +616,22 @@ class _IntakeScreenState extends State<IntakeScreen> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
-                  Semantics(liveRegion: true, child: Text(e.state)),
+                  Semantics(
+                    liveRegion: true,
+                    child: e.why == null
+                        ? Text(e.state)
+                        : CaveatText(label: e.state, why: e.why!),
+                  ),
                   Text(
                     e.session != null
-                        ? 'Existing upload · original sensitivity retained'
+                        ? 'Existing upload · sensitivity unchanged'
                         : e.file?.sensitive == false
                         ? 'Non-sensitive photograph'
                         : 'Sensitive photograph',
                   ),
                   if (e.file != null)
                     Text(
-                      '${e.file!.bytes.length} bytes · ${e.file!.width ?? '?'} × ${e.file!.height ?? '?'} px',
+                      '${_megabytes(e.file!.bytes.length)} MB · ${e.file!.width ?? '?'} × ${e.file!.height ?? '?'} pixels',
                     ),
                   if (e.file != null)
                     CaptureQualityView(
@@ -578,8 +639,13 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       previewBytes: e.file!.bytes,
                     ),
                   if (e.file != null) ...[
-                    const Text(
-                      'Optional server preflight sends this original image to the collection service for decoding checks. It creates no specimen and makes no external provider call. Local measurements stay on this device until you choose an action.',
+                    const CaveatText(
+                      label:
+                          'Send this image to the server for a decode check.',
+                      why:
+                          'Nothing is created and no outside service is called. '
+                          'Your local measurements stay on this device until you '
+                          'choose an action.',
                     ),
                     Align(
                       alignment: Alignment.centerLeft,
@@ -588,9 +654,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
                             ? null
                             : () => _preflight(e),
                         child: Text(
-                          e.checking
-                              ? 'Checking on server…'
-                              : 'Send image for server preflight',
+                          e.checking ? 'Checking…' : 'Send for server check',
                         ),
                       ),
                     ),
@@ -598,32 +662,39 @@ class _IntakeScreenState extends State<IntakeScreen> {
                     if (e.preflight != null) ...[
                       if (objectOf(e.preflight!['decode'])['reason'] ==
                           'memory_limit_unavailable')
-                        const Text(
-                          'Server preflight requires memory-limit enforcement on an approved runtime. Ask the service administrator to configure it. Changing this image format will not resolve that block; ordinary supported-image intake is checked separately.',
+                        const CaveatText(
+                          label:
+                              'The server check is not available. Ask the service '
+                              'administrator to enable memory-limit enforcement.',
+                          why:
+                              'Changing the image format will not help. Ordinary '
+                              'image intake is checked separately and is '
+                              'unaffected.',
                         ),
                       Text(
-                        'Server preflight: ${labelOf(textOf(e.preflight!['status']))}. Manual quality review remains required.',
+                        'Server check: ${vocabularyLabel(textOf(e.preflight!['status']))}. Check quality yourself as well.',
                       ),
                       for (final issue in e.preflight!['issues'] as List? ?? [])
-                        Text(labelOf(issue.toString())),
+                        Text(vocabularyLabel(issue.toString())),
                       Text(
-                        'Unmeasured: ${e.preflight!['unmeasured'] ?? 'Not recorded'}',
+                        'Not measured: ${e.preflight!['unmeasured'] ?? 'Not recorded'}',
                       ),
                       EvidenceDetails(
-                        title:
-                            'Server codec capabilities and preflight evidence',
+                        title: 'Server codec support and check evidence',
                         value: e.preflight!,
                       ),
                     ],
                   ],
                   SelectableText(
-                    'SHA-256 ${e.digest}',
+                    'Checksum (SHA-256) ${e.digest}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   if (e.state == 'Uploading')
                     LinearProgressIndicator(
                       value: e.progress,
-                      semanticsLabel: 'Upload progress',
+                      semanticsLabel: e.file == null
+                          ? 'Uploading'
+                          : 'Uploading ${_megabytes((e.progress * e.file!.bytes.length).round())} of ${_megabytes(e.file!.bytes.length)} megabytes',
                     ),
                 ],
               ),
@@ -641,14 +712,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
                       (e) =>
                           e.file != null &&
                           e.state != 'Accepted' &&
-                          !e.state.startsWith('Duplicate'),
+                          e.state != duplicateUploadState,
                     )
                 ? null
                 : _send,
             icon: const Icon(Icons.cloud_upload_outlined),
-            label: Text(
-              _busy ? 'Uploading…' : 'Upload / resume selected files',
-            ),
+            label: Text(_busy ? 'Uploading…' : 'Upload selected files'),
           ),
         ),
       ],

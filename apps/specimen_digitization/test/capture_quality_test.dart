@@ -54,10 +54,13 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Measured thumbnail · uncalibrated'), findsOneWidget);
+    expect(
+      find.text('Not calibrated. Measured from a thumbnail.'),
+      findsOneWidget,
+    );
     expect(
       find.textContaining(
-        'Focus, glare, framing and label coverage are not determined',
+        'Focus, glare, framing and label coverage are not checked',
       ),
       findsOneWidget,
     );
@@ -67,7 +70,17 @@ void main() {
         home: Scaffold(body: CaptureQualityView(quality: null)),
       ),
     );
-    expect(find.text('Measurements unavailable'), findsOneWidget);
-    expect(find.textContaining('server must decode'), findsOneWidget);
+    expect(find.text('Not measured'), findsOneWidget);
+    expect(
+      find.textContaining('This device cannot preview this image.'),
+      findsOneWidget,
+    );
+    // The decode promise moved behind "Why"; it is still reachable.
+    await tester.tap(find.text('Why').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('The server decodes it and records its dimensions.'),
+      findsOneWidget,
+    );
   });
 }

@@ -31,7 +31,7 @@ void main() {
             ),
           ),
         );
-        expect(find.text('Unmeasured'), findsOneWidget);
+        expect(find.text('Not measured'), findsOneWidget);
         expect(
           find.textContaining(
             'numeral disagreement · Count 1 · Weight ${entry.value} · Contribution ${entry.value}',
@@ -39,12 +39,12 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.text('Policy digest: ${risk['policy_reference']['digest']}'),
+          find.text('Policy checksum: ${risk['policy_reference']['digest']}'),
           findsOneWidget,
         );
-        expect(find.text('0 / 100'), findsNothing);
+        expect(find.text('0 of 100'), findsNothing);
         final label = (risk['labels'] as List).first as Json;
-        final target = find.text('${label['target_id']} · Unmeasured');
+        final target = find.text('${label['target_id']} · Not measured');
         await tester.ensureVisible(target);
         await tester.pumpAndSettle();
         await tester.tap(target);
@@ -55,7 +55,7 @@ void main() {
           ),
           findsNWidgets(2),
         );
-        expect(find.textContaining('Unmeasured dimensions:'), findsNWidgets(2));
+        expect(find.textContaining('Not measured:'), findsNWidgets(2));
       }
     },
   );
@@ -64,11 +64,11 @@ void main() {
     () {
       expect(
         riskComposite({'status': 'blocked', 'composite': 0}),
-        'Unmeasured',
+        'Not measured',
       );
       expect(
         riskComposite({'status': 'unmeasured', 'composite': 0}),
-        'Unmeasured',
+        'Not measured',
       );
       expect(
         riskComposite({
@@ -76,7 +76,7 @@ void main() {
           'measurement_complete': false,
           'composite': 0,
         }),
-        'Unmeasured',
+        'Not measured',
       );
       expect(
         riskComposite({
@@ -84,7 +84,7 @@ void main() {
           'measurement_complete': true,
           'composite': 0,
         }),
-        '0 / 100',
+        '0 of 100',
       );
     },
   );
@@ -169,7 +169,7 @@ void main() {
       );
       expect(
         find.text(
-          'Comparison: policy blocked · Difference fraction: Unmeasured',
+          'Comparison: policy blocked · Difference fraction: Not measured',
         ),
         findsOneWidget,
       );

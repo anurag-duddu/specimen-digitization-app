@@ -45,7 +45,7 @@ void main() {
                 .first,
           );
       expect(button('Correct label regions').onPressed, isNull);
-      expect(button('Record review approval').onPressed, isNull);
+      expect(button('Approve record').onPressed, isNull);
       expect(button('Confirm label coverage').onPressed, isNotNull);
       expect(find.text('Start new run'), findsNothing);
       expect(specimen.data['disposition'], isNull);
@@ -85,7 +85,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('Risk is unmeasured and clearance is blocked'),
+        find.textContaining('Risk is not measured and clearance is blocked'),
         findsOneWidget,
       );
       expect(find.text('Resume processing'), findsNothing);

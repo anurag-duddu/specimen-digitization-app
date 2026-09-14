@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 Json objectOf(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : {};
@@ -54,7 +56,7 @@ class ReviewContext extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   Text(
-                    '${labelOf(textOf(quality['status']))} · ${quality['width']} × ${quality['height']} pixels',
+                    '${vocabularyLabel(textOf(quality['status']))} · ${quality['width']} × ${quality['height']} pixels',
                   ),
                   if (metrics.isNotEmpty) ...[
                     Text(
@@ -63,19 +65,22 @@ class ReviewContext extends StatelessWidget {
                     Text(
                       'Detail signal ${metrics['mean_neighbor_gradient']} · ${textOf(metrics['algorithm_version'])}',
                     ),
-                    const Text(
-                      'Uncalibrated measurements. A valid image is not proof of readable labels or complete coverage.',
+                    const CaveatText(
+                      label: 'Not calibrated',
+                      why:
+                          'A readable image does not prove the labels are legible '
+                          'or that all of them are in frame.',
                     ),
                   ],
                   for (final issue in quality['issues'] as List? ?? [])
-                    Text('• ${labelOf(issue.toString())}'),
+                    Text('• ${vocabularyLabel(issue.toString())}'),
                   for (final limitation
                       in quality['limitations'] as List? ?? [])
                     Text(
                       limitation == 'no_heic_or_raw_decoder' &&
                               asset['processing_derivative'] is Map
                           ? 'Quality measurements use the decoded preview. This measurement stage does not decode HEIC or RAW itself.'
-                          : labelOf(limitation.toString()),
+                          : vocabularyLabel(limitation.toString()),
                     ),
                   EvidenceDetails(
                     title: 'Image measurements and orientation',
@@ -93,30 +98,36 @@ class ReviewContext extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Classification and pinned profile',
+                    'Classification and profile',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   if (classification.isNotEmpty) ...[
                     Text(
-                      '${labelOf(textOf(classification['status']))} · ${labelOf(textOf(classification['reason']))}',
+                      '${vocabularyLabel(textOf(classification['status']))} · ${vocabularyLabel(textOf(classification['reason']))}',
                     ),
                     Text(
                       classification['synthetic'] == true
-                          ? 'Synthetic classifier output'
+                          ? 'Test classifier output'
                           : 'Classifier output',
                     ),
-                    Text(
-                      classification['calibration_version'] == null
-                          ? 'Scores are uncalibrated; they do not establish correctness.'
-                          : 'Calibration ${classification['calibration_version']}',
-                    ),
+                    if (classification['calibration_version'] == null)
+                      const CaveatText(
+                        label: 'Not calibrated',
+                        why:
+                            'Scores order the queue. They are not a measure of '
+                            'whether a reading is correct.',
+                      )
+                    else
+                      Text(
+                        'Calibration ${classification['calibration_version']}',
+                      ),
                     for (final candidate in objects(
                       classification['candidates'],
                     ))
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: Text(
-                          '${candidate['collection_id']} · Score ${candidate['score']}\n${(candidate['reasons'] as List? ?? []).map((v) => labelOf(v.toString())).join('; ')}',
+                          '${candidate['collection_id']} · Score ${candidate['score']}\n${(candidate['reasons'] as List? ?? []).map((v) => vocabularyLabel(v.toString())).join(', ')}',
                         ),
                       ),
                     EvidenceDetails(
@@ -134,12 +145,12 @@ class ReviewContext extends StatelessWidget {
                     Text(
                       profile['institutional_policy_approved'] == true
                           ? 'Profile policy approved in this environment'
-                          : 'Institutional policy approval missing',
+                          : 'Institutional policy approval is missing',
                     ),
                     Text(
                       profile['semantics_confirmed'] == true
                           ? 'Field semantics confirmed in this environment'
-                          : 'Required field semantics remain unconfirmed',
+                          : 'Required field semantics are not confirmed',
                     ),
                     EvidenceDetails(
                       title: 'Pinned profile dependencies and field rules',
@@ -152,7 +163,8 @@ class ReviewContext extends StatelessWidget {
                       value: run['classification_selection'],
                     ),
                   const Text(
-                    'Classification corrections create a new run and supersede affected downstream results. Prior records remain in history.',
+                    'A correction starts a new run and replaces the results that '
+                    'depend on it. Earlier records stay in history.',
                   ),
                 ],
               ),
@@ -193,7 +205,7 @@ class _ClassificationDialogState extends State<ClassificationDialog> {
         .where((p) => p['collection_id'] == _node)
         .toList();
     return AlertDialog(
-      title: const Text('Confirm collection classification'),
+      title: const Text('Correct classification?'),
       content: SizedBox(
         width: 560,
         child: SingleChildScrollView(
@@ -205,12 +217,13 @@ class _ClassificationDialogState extends State<ClassificationDialog> {
               children: [
                 Text('Authorized collection: ${widget.scope.name}'),
                 const Text(
-                  'Select the classification used to resolve a published profile. This decision does not transfer the record to another collection.',
+                  'Choose the classification that resolves a published profile. '
+                  'The record stays in this collection.',
                 ),
                 const SizedBox(height: 12),
                 if (nodes.isEmpty)
                   const Text(
-                    'No classification choices were returned. Refresh collection access or contact your administrator.',
+                    'No classifications were returned. Refresh collection access, or ask your administrator.',
                   ),
                 DropdownButtonFormField<String>(
                   initialValue: _node,
@@ -236,22 +249,23 @@ class _ClassificationDialogState extends State<ClassificationDialog> {
                   ),
                 if (_node != null && matching.isEmpty)
                   const Text(
-                    'No published profile is shown for this classification. The server will require review if mapping is unavailable.',
+                    'No published profile is shown for this classification. The server will ask for review if it cannot map one.',
                   ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Saving starts a new run and invalidates profile-dependent results. Previous evidence and decisions remain retained.',
+                  'A new run replaces the results that depend on the profile. '
+                  'Earlier evidence and decisions stay in history.',
                 ),
                 TextFormField(
                   controller: _reason,
                   minLines: 2,
                   maxLines: 4,
                   decoration: const InputDecoration(
-                    labelText: 'Classification reason',
+                    labelText: 'Reason',
+                    helperText: reasonHelperText,
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty
-                      ? 'A reason is required.'
-                      : null,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? reasonRequired : null,
                 ),
               ],
             ),
@@ -276,7 +290,7 @@ class _ClassificationDialogState extends State<ClassificationDialog> {
                     });
                   }
                 },
-          child: const Text('Select profile and rerun'),
+          child: const Text('Correct classification'),
         ),
       ],
     );

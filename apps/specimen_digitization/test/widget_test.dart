@@ -228,8 +228,15 @@ void main() {
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
-    await tester.ensureVisible(find.text('Synthetic insect label'));
+    expect(find.textContaining('Test environment.'), findsOneWidget);
+    // The queue row sits below the fold, so scroll the queue list to it
+    // rather than assuming it was laid out. Row heights move with the type
+    // scale, so this must not depend on the header happening to be short.
+    await tester.scrollUntilVisible(
+      find.text('Synthetic insect label'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Synthetic insect label'));
     await tester.pumpAndSettle();
@@ -290,11 +297,11 @@ void main() {
       ),
     );
     await tester.scrollUntilVisible(
-      find.text('Fields & evidence'),
+      find.text('Fields and evidence'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Fields & evidence'));
+    await tester.tap(find.text('Fields and evidence'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('Country *'),
@@ -310,15 +317,15 @@ void main() {
     );
     await tester.tap(find.text('Correct supported value'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save and revalidate'));
+    await tester.tap(find.text('Save correction'));
     await tester.pumpAndSettle();
-    expect(find.text('A reason is required.'), findsOneWidget);
+    expect(find.text('Enter a reason for this decision.'), findsOneWidget);
     expect(saved, isNull);
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Reason for decision'),
+      find.widgetWithText(TextFormField, 'Reason'),
       'No country appears in the original label',
     );
-    await tester.tap(find.text('Save and revalidate'));
+    await tester.tap(find.text('Save correction'));
     await tester.pumpAndSettle();
     expect(saved?['state'], 'unknown');
     expect(saved?['value'], isNull);
@@ -351,11 +358,11 @@ void main() {
       ),
     );
     await tester.scrollUntilVisible(
-      find.text('Fields & evidence'),
+      find.text('Fields and evidence'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Fields & evidence'));
+    await tester.tap(find.text('Fields and evidence'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('Country *'),
@@ -365,8 +372,15 @@ void main() {
     await tester.tap(find.text('Country *'));
     await tester.pumpAndSettle();
     expect(
-      find.text(
-        'Unsupported field state. Editing is disabled; refresh or update the client.',
+      find.text('This field cannot be edited in this version of the app.'),
+      findsOneWidget,
+    );
+    // The rest of the caveat sits behind "Why" and must still be reachable.
+    await tester.tap(find.text('Why').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
+        'The server sent a field state this app does not recognize.',
       ),
       findsOneWidget,
     );
@@ -409,7 +423,7 @@ void main() {
           .widget<ButtonStyleButton>(
             find
                 .ancestor(
-                  of: find.text('Record review approval'),
+                  of: find.text('Approve record'),
                   matching: find.byWidgetPredicate(
                     (w) => w is ButtonStyleButton,
                   ),
@@ -476,22 +490,22 @@ void main() {
         ),
       );
       await tester.scrollUntilVisible(
-        find.text('Adjudicate literal transcription'),
+        find.text('Resolve reading'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.text('Adjudicate literal transcription'));
+      await tester.tap(find.text('Resolve reading'));
       await tester.pumpAndSettle();
       await tester.tap(find.byType(DropdownButtonFormField<String>));
       await tester.pumpAndSettle();
-      expect(find.text('not applicable'), findsNothing);
-      await tester.tap(find.text('unreadable').last);
+      expect(find.text('Not applicable'), findsNothing);
+      await tester.tap(find.text('Unreadable').last);
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Reason for decision'),
+        find.widgetWithText(TextFormField, 'Reason'),
         'Source damaged; no supported reading',
       );
-      await tester.tap(find.text('Save and revalidate'));
+      await tester.tap(find.text('Save correction'));
       await tester.pumpAndSettle();
       expect(saved?['state'], 'unreadable');
       expect(saved?['value'], isNull);
@@ -529,7 +543,7 @@ void main() {
                 )
                 .first,
           );
-      expect(button('Record review approval').onPressed, isNull);
+      expect(button('Approve record').onPressed, isNull);
       expect(button('Confirm label coverage').onPressed, isNull);
       expect(button('Retry processing').onPressed, isNotNull);
     },
