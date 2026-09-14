@@ -46,7 +46,7 @@ void main() {
         setupMessage: 'Local synthetic setup failed.',
       ),
     );
-    expect(find.textContaining('Synthetic environment.'), findsOneWidget);
+    expect(find.textContaining('Test environment.'), findsOneWidget);
     expect(find.text('Local synthetic setup failed.'), findsOneWidget);
   });
   test(
@@ -172,7 +172,7 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: repo),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('Synthetic environment.'), findsOneWidget);
+      expect(find.textContaining('Test environment.'), findsOneWidget);
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(
         find.textContaining('You have no collection assigned'),
@@ -200,7 +200,7 @@ void main() {
         find.textContaining('You have no collection assigned'),
         findsOneWidget,
       );
-      expect(find.textContaining('Synthetic environment.'), findsOneWidget);
+      expect(find.textContaining('Test environment.'), findsOneWidget);
       repo.empty = false;
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
@@ -217,7 +217,7 @@ void main() {
         find.textContaining('You have no collection assigned'),
         findsNothing,
       );
-      expect(find.textContaining('Synthetic environment.'), findsOneWidget);
+      expect(find.textContaining('Test environment.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       session.dispose();
     },

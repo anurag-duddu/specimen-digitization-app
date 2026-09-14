@@ -256,13 +256,13 @@ void main() {
     test('the summary is quantified, not a symbol', () {
       expect(
         DiffText.compare('Chicago 1917', 'Chicago 1912').summary,
-        'Differs at 1 position',
+        'Differs in 1 place',
       );
       expect(
         DiffText.compare('Chicago 1917', 'Chicago 1912').differingPositions,
         1,
       );
-      expect(DiffText.summaryFor(3), 'Differs at 3 positions');
+      expect(DiffText.summaryFor(3), 'Differs in 3 places');
     });
 
     testWidgets('the summary is on screen and spoken with the reading', (
@@ -272,9 +272,9 @@ void main() {
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
-      expect(find.text('Differs at 1 position'), findsOneWidget);
+      expect(find.text('Differs in 1 place'), findsOneWidget);
       expect(
-        find.bySemanticsLabel(RegExp('Differs at 1 position')),
+        find.bySemanticsLabel(RegExp('Differs in 1 place')),
         findsOneWidget,
       );
       semantics.dispose();
