@@ -423,3 +423,208 @@ unknown metadata is honest but does not complete TRN-006. Shared circuits,
 SAM3/auth deadline proof, oversized active evidence graph and duplicate precheck
 scale remain explicitly open in BACKEND_ASSEMBLY.md. Flutter fixture parity and
 independent integrated SQL/HTTP acceptance are still required.
+
+## Source registry, inventory and server-side import
+
+Status: contract recorded 2026-09-14, before implementation, for workstreams A
+and B of [`SOURCE_BROWSE_AND_RUN.md`](SOURCE_BROWSE_AND_RUN.md). Workstream C
+(bulk run and cost estimation) is deliberately absent: it is blocked on an
+ongoing-budget decision the owner has not made, and no route below can dispatch
+inference or spend. This section is a specification. It is not evidence that a
+source is registered, that an inventory exists, or that any object was read.
+
+This surface is separate from `pilot_manifest.py`. `PilotManifest`,
+`PilotSpecimen` and `Selection` remain the frozen exactly-ten release cohort and
+are not extended, imported into or altered by anything here. Only `SourceObject`
+is shared, unchanged, as the per-object shape.
+
+### A source is configuration, not a resource
+
+A source is a collection-scoped, administrator-registered pointer at one storage
+prefix:
+
+    source_id, collection_id, bucket, prefix, media_types, registered_by, registered_at
+
+There is no endpoint that creates, edits or deletes a source, and none is
+planned. `docs/DEPLOYMENT.md` records that neither bootstrap mode creates a
+generic runtime signup or collection-creation API; naming a storage prefix that
+a collection may ingest from is the same class of decision. Sources are supplied
+to the process at construction (`create_app(source_registry=...)`) beside
+identity, membership and origins. A reviewer selects *within* a registered
+source and never names a bucket. `GET /sources` is a collection route shaped
+like `GET /collections`, so a runtime configured with no sources answers it with
+an empty list; every route that names a particular source answers 404, which is
+also what a source registered to a collection the caller is not in looks like.
+
+`media_types` is an explicit allowlist, validated at registration against the
+formats the from-source path can itself verify: `image/jpeg`, `image/png`,
+`image/tiff`. HEIC and DNG need the optional codec path that upload completion
+uses; they are refused when a source is registered, not discovered at import.
+`prefix` is validated at registration and every inventoried or imported
+`object_name` must lie under it.
+
+### Inventory is a snapshot, never a live listing
+
+An inventory is a point-in-time capture of the objects under a source prefix. It
+is not a live bucket listing, for the three reasons recorded in the design:
+interactive paging over 1,000+ objects is slow; `generation` must be captured at
+a known moment so a later import can prove it binds to the bytes that were seen;
+and a reviewer's selection must stay stable while they choose.
+
+One current inventory exists per source, persisted as an auxiliary document of
+kind `source_inventory` whose id is derived from the source id. Its rows are
+serialized once into a content-addressed blob and read back digest-verified, so
+the snapshot has a single identity (`entries_sha256`) in the same sense that
+`Selection.source_inventory_sha256` already gives the frozen cohort one. A
+capture that yields rows identical to the current snapshot returns the existing
+inventory and does not bump the revision. Capture is bounded; a prefix holding
+more than the configured maximum fails closed rather than silently truncating.
+
+A capture reads every object it inventories, because the `imported` state is
+resolved through `find_checksum` against a SHA-256 the server computed itself,
+and a bucket listing supplies only CRC32C and MD5. That cost is real and
+measured: against `microscopic-slides/` in the project bucket, listing the 1,000
+objects takes under a second, and digesting them takes about 0.25s each, so a
+*first* capture of that prefix runs roughly four minutes. That is beyond an
+ordinary request budget, and moving capture to the worker plane is the first
+follow-up this surface needs; until then a first capture is an operator-initiated
+call that must be given a long client deadline.
+
+A refresh is cheap. An object already recorded at the same generation and size
+keeps its digest instead of being read again: a generation identifies immutable
+bytes, so the retained digest still describes exactly what the server read at
+that generation. A refresh of an unchanged prefix therefore reads no objects at
+all, and an ordinary refresh reads only what moved.
+
+Each row carries the `SourceObject` fields — `bucket`, `object_name`,
+`generation`, `sha256`, `size_bytes`, `crc32c`, `md5_hash` — plus `media_type`.
+On read, each row resolves an `imported` state through the repository's existing
+`find_checksum` against the unique index `specimen_scope_checksum`, so a listing
+shows what is already in the queue instead of offering duplicates. Two retained
+specimens sharing one source checksum is the same administrator-review conflict
+that intake already raises; a listing does not paper over it.
+
+That resolution is one `find_checksum` per row returned, which against SQL
+Connect is one round trip per row: a fifty-row page costs fifty. It is bounded
+and correct, and it reuses the index intake already depends on rather than
+inventing a second notion of "already ingested", which is why it is written this
+way. A batched checksum lookup in the connector is the obvious optimisation if
+paging a source ever feels slow; it is not needed for correctness.
+
+### Routes
+
+The organization prefix is `/v1/organizations/{organization_id}`.
+
+| Method and relative path | Input | Result and authorization |
+|---|---|---|
+| GET `/sources` | none | registered sources for the caller's collections in this organization, each with its current inventory header or null; any member |
+| GET `/sources/{source_id}` | none | one registered source and its current inventory header; any member of that source's collection |
+| POST `/sources/{source_id}/inventory` | `Idempotency-Key`; empty body | captures a snapshot and returns the inventory header; reviewer or above |
+| GET `/sources/{source_id}/objects` | `cursor`, `limit`, `imported`, `media_type` | paged inventory rows with resolved `imported` state; any member of that source's collection |
+| POST `/batches/{batch_id}/items:from-source` | `Idempotency-Key`; `source_id`, `objects[{object_name, generation}]`, `sensitive` | per-object import outcome; operator or above |
+
+Inventory capture requires reviewer or above, at the API and again in the
+connector `@check`, which narrows `source_inventory` writes below the operator
+tier the other document kinds accept. Capture is an operational refresh, not an
+administrative grant: it enumerates a prefix an administrator has already
+admitted for that collection, computes digests over bytes the same members may
+already import, and creates no scope, membership or authority. The administrative
+decision is registering the source, and that is guarded by having no runtime API
+at all rather than by a role check, which is the stronger guarantee. Requiring
+`admin` here would protect nothing that configuration does not already protect.
+
+`GET /sources/{source_id}/objects` uses the same cursor discipline as
+`GET /specimens`: an opaque base64 cursor bound to a digest over scope, actor,
+sensitivity permission and the exact filter set, plus `limit` in 1..100 and a
+`{items, next_cursor}` envelope. It additionally binds `inventory_id`. A cursor
+issued against one snapshot is rejected once a new snapshot is captured, because
+the rows it addresses are no longer the rows the reviewer was choosing from.
+The response repeats `inventory_id`, `captured_at` and `object_count` so a client
+can detect the change rather than silently page across two snapshots. Cursors
+carry no authorization authority.
+
+It also returns `matching_count`: how many rows a select-all over the active
+filter set would cover, so a confirmation can name a number the server actually
+counted. It is exact and page-independent when the filters need no checksum
+resolution — no filter, or `media_type`, both of which are on the row and scan
+an in-memory snapshot. It is `null` when `imported` is set, because that state
+is resolved per row through `find_checksum` and counting a whole snapshot under
+it would cost a lookup per object on every page. `null` means the server did not
+count; it never means zero, and a client must not render it as one. Select-all
+over the unfiltered snapshot needs no such filter and keeps an exact count,
+which is safe because re-importing an already-imported object is a no-op that
+reads nothing and is reported back as `duplicate`.
+
+Making `matching_count` exact under `imported` needs a batched checksum lookup
+in the connector, which is the same follow-up the per-row listing cost wants.
+It is not in this change.
+
+### The integrity guarantee does not weaken
+
+`POST /uploads/{upload_id}/complete` proves declared-equals-actual because a
+client declared filename, media type, size, dimensions and sha256 first and the
+server checked the uploaded bytes against that declaration; a JPEG uploaded
+against a PNG declaration returns 422.
+
+The from-source path has no client declaration — the server is the only reader —
+so the equivalent proof is the generation binding. Every read is issued with a
+`generation` precondition, so the bytes are admitted only when the object's
+*current* generation is still the generation recorded in the inventory the
+reviewer selected from. An object overwritten, replaced or deleted between
+inventory and import is refused. Pinning a read to a historical generation would
+prove only "these are that version's bytes"; it would not prove the object is
+unchanged, and it is not what this path does.
+
+Two further checks make this the full analogue of completion rather than a
+weaker cousin. An object must appear in the source's *current* inventory at the
+generation the request declares, so the selection the reviewer made is the
+selection the server acts on. And the bytes read must digest to the `sha256` the
+server itself computed when it captured that row. The snapshot is therefore the
+declaration that the upload path gets from a client, except that no client ever
+supplied it and no client can alter it.
+
+A changed object fails the request with 422 and error code
+`source_object_changed`, category `conflict`. The request is checked in two
+passes: every declared generation is verified against live object metadata
+before any specimen is created, so the ordinary stale-inventory case creates
+nothing at all. The read in the second pass carries the same precondition, so a
+change racing the import is still refused; the error then names the objects
+already created rather than concealing them. `objects` is bounded per request
+and the client pages.
+
+Re-importing the same object is a no-op that returns the existing specimen,
+through the checksum uniqueness that intake already relies on. "Select all" run
+twice creates nothing the second time and reports every row as `duplicate`.
+
+Import does not dispatch processing. Upload completion schedules a synthetic
+drain for the one specimen it just created; the from-source path schedules
+nothing, in any mode. Importing a selection and running a selection are separate
+decisions, and running is workstream C, which is blocked on an ongoing budget.
+Dispatching N specimens as a side effect of importing them would be that
+workstream, arriving without the allowance that is supposed to bound it, and
+would do so against whatever adapters the process happens to be holding. An
+imported specimen enters the queue at `ingested` and is processed by the
+existing per-specimen route.
+
+Per-object `state` is one of `imported`, `duplicate`, `unsupported_media_type`
+or `not_in_source`. Bytes are verified after reading exactly as completion
+verifies them: the image must decode, its actual media type must be permitted by
+the registered source, and the decoded resolution limits are the intake limits.
+`unsupported_media_type` covers every "this object's bytes are not something
+this path can ingest" outcome — a format the source does not admit, an image
+that does not decode, a resolution past the intake limits. Each is a property of
+that one object, so it is reported against that object and never fails a
+selection the rest of which is importable. Only the integrity failure does that.
+`sensitive` must match the retained batch, as it must for `POST
+/batches/{batch_id}/items`; membership never supplies that declaration.
+
+### Persistence
+
+`source_inventory` is added to the kinds `CreateDocumentV2` and `SaveDocumentV2`
+admit, with the reviewer-or-above restriction expressed in the same `@check`.
+The document is sensitive by default, like every other retained record: object
+names under a collection's prefix are collection information. It is not
+added to `ListDocumentsV2` or `ListDocumentPageV2`: one inventory per source is
+addressed by a derived id and is never enumerated. It is not added to the V1
+`auxiliary.gql` operations, which stay narrower on purpose. No schema table is
+added; the snapshot is an auxiliary document and a content-addressed blob.
