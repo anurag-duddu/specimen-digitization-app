@@ -4,6 +4,17 @@ set -euo pipefail
 readonly expected_repository="anurag-duddu/specimen-digitization-app"
 site_url="${1:-https://specimen-digitization.web.app}"
 expected_sha="${2:-}"
+expected_run_id="${3:-}"
+expected_run_attempt="${4:-}"
+
+# Two arguments retain the read-only SHA diagnostic. Protected CI supplies all
+# four arguments and can qualify only its own run attempt.
+if [[ "$#" != 2 && "$#" != 4 ]] \
+  || { [[ "$#" == 4 ]] && { [[ ! "$expected_run_id" =~ ^[1-9][0-9]*$ ]] \
+    || [[ ! "$expected_run_attempt" =~ ^[1-9][0-9]*$ ]]; }; }; then
+  printf 'Usage: %s https://specimen-digitization.web.app EXPECTED_40_CHARACTER_SHA [EXPECTED_RUN_ID EXPECTED_RUN_ATTEMPT]\n' "$0" >&2
+  exit 1
+fi
 
 if [[ "$site_url" != "https://specimen-digitization.web.app" ]]; then
   printf 'Smoke test refused for unexpected site: %s\n' "$site_url" >&2
@@ -92,7 +103,7 @@ for ((smoke_attempt=1; smoke_attempt<=60; smoke_attempt++)); do
   # Streaming retains duplicate keys and multiple documents; ordinary parsing
   # would silently accept the last duplicate value. Only the emitted v1 shape
   # can qualify as current or enter the same-repository stale-marker wait.
-  if ! deployed_sha="$(jq --exit-status --raw-output --null-input --stream --arg repository "$expected_repository" '
+  if ! deployed_identity="$(jq --exit-status --raw-output --null-input --stream --arg repository "$expected_repository" '
     [inputs] as $events
     | if ($events | length) != 7 or ($events | map(select(length == 1)) | length) != 1
       then error("one complete marker object required") else $events end
@@ -102,22 +113,29 @@ for ((smoke_attempt=1; smoke_attempt<=60; smoke_attempt++)); do
     | map({key: .[0][0], value: .[1]}) | from_entries
     | . as $marker
     | if .schemaVersion == 1 and .repository == $repository
-      and (.commitSha | type == "string" and test("^[0-9a-f]{40}$"))
-      and (.runId | type == "string" and test("^[1-9][0-9]*$"))
-      and (.runAttempt | type == "string" and test("^[1-9][0-9]*$"))
+      and (.commitSha | type == "string" and test("^[0-9a-f]{40}\\z"))
+      and (.runId | type == "string" and test("^[1-9][0-9]*\\z"))
+      and (.runAttempt | type == "string" and test("^[1-9][0-9]*\\z"))
       and (.builtAt | type == "string")
       and ((.builtAt | fromdateiso8601 | strftime("%Y-%m-%dT%H:%M:%SZ")) == $marker.builtAt)
-      then .commitSha else error("invalid marker identity or fields") end
+      then [.commitSha, .runId, .runAttempt] | @tsv else error("invalid marker identity or fields") end
     ' "$metadata_file" 2>/dev/null)"; then
     printf 'Malformed or foreign deployment marker; verification stopped.\n' >&2
     exit 1
   fi
+  IFS=$'\t' read -r deployed_sha deployed_run_id deployed_run_attempt <<< "$deployed_identity"
   check_budget
-  if [[ "$deployed_sha" == "$expected_sha" ]]; then
-    printf 'Production smoke passed for %s at %s.\n' "$expected_sha" "$site_url"
+  if [[ "$deployed_sha" == "$expected_sha" ]] \
+    && { [[ "$#" == 2 ]] || { [[ "$deployed_run_id" == "$expected_run_id" ]] \
+      && [[ "$deployed_run_attempt" == "$expected_run_attempt" ]]; }; }; then
+    if [[ "$#" == 4 ]]; then
+      printf 'Production smoke passed for %s run %s attempt %s at %s.\n' "$expected_sha" "$expected_run_id" "$expected_run_attempt" "$site_url"
+    else
+      printf 'Production smoke passed for %s at %s.\n' "$expected_sha" "$site_url"
+    fi
     exit 0
   fi
-  printf 'Same-repository marker is still %s; waiting for expected SHA %s.\n' "$deployed_sha" "$expected_sha" >&2
+  printf 'Same-repository marker is still %s run %s attempt %s; waiting for the expected release.\n' "$deployed_sha" "$deployed_run_id" "$deployed_run_attempt" >&2
   retry_pause
 done
 check_budget
