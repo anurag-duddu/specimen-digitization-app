@@ -2212,3 +2212,22 @@ Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/worker-reading-schedu
 - Independent native Linux baseline reproduced the remaining TERM test failure and recorded stable child identity adopted by outer pytest rather than the nested supervisor. The source correctly returned incomplete. The dedicated Linux test child now enables adoption before launch, matching its intended PID1 role; pytest's adoption setting is unchanged. Strict PID/group absence and waiting through the possible late marker strengthen the existing assertions. Test SHA256 `03ea4394a93aed96f9796bf84f784a5a8cc666b9c511d073b4344b461f74117c`.
 - Independent review `/private/tmp/specimen-worker-term-topology-independent-20260913/REVIEW_ADDENDUM.md`, SHA256 `443956fafd7d954e79a26aee595254a71cfe26b9bd7b1b8ebd93bb17d5e29482`: ALL 35 relevant Linux tests pass in BOTH PID1 and preexisting-subreeper contexts; no manual reaping or late marker, no actionable findings. Prior selected Linux subset missed this nested fixture; future qualification must cover the full relevant modules. Retained emulated startup failures remain distinct from the native topology RED and GREEN.
 - Final canonical gate passed again: 2126 Python/81 skipped, 211 Flutter/7 skipped, repository checks, analysis and web build. `VERIFY_SIGNAL_TOPOLOGY.log` SHA256 `1501683797df57604f9620de33dd1565e53ad08510d61b26df5864add8591c04` and its separate receipt are preserved in the parent independent evidence directory. No native action, new clock, altered resource/budget cap or paid call. Corrected exact-head CI and release verification remain pending.
+
+
+### 2026-09-13 — Completed-work reconciliation and branch preservation
+
+- Task: `01a07f48-a57c-71b0-9642-c9430886049c`, Continuous CI/CD and product integration.
+- Branch/worktree: `codex/reconcile-completed-work-20260913` at `/Users/anuragduddu/.codex/worktrees/80e6/specimen-digitization-app`.
+- Outcome: In progress; user authorizes completed-work merge and branch pruning, excluding active tasks.
+- Commits/PRs: baseline main `4c04a2a1de4ae273afab3e57fab1d411289c7183` (PR32); reconciliation PR pending.
+- Validation: fetched/pruned remote references; audited every registered worktree's status and ancestry, compared dirty file bytes and reverse patches, and matched evolved files to historical main blobs. Verified a private pre-prune Git bundle. No production or private evidence was deleted.
+- Durable learnings: dirty worktree code may already be integrated; historical blob equality proves preservation without reverting main. Keep ignored evidence in place and active owner dependencies untouched. Recover append-only logs into linked bounded files when the shared file would exceed the existing one-MiB file gate; do not weaken that gate or rewrite existing entries.
+- Failed approaches: list_threads limit100 was rejected; used50 and asked owners for auxiliary dependencies. Reverse patch checks alone failed for evolved files; exact historical Git blob matches resolved those cases.
+- Remaining follow-ups: finish documented source reconciliation and green PR/Hosting release, prune only reconciled inactive branches, and continue deferred active-task work after handoff. DATA/runtime admission and live ten-specimen acceptance remain separate gates.
+
+Historical entries absent from this branch's log are preserved in the appendices below. Existing entries above remain byte-for-byte unchanged.
+
+- [Recovered closeouts, part 1](execution/recovered-closeouts/2026-09-13-part-1.md)
+- [Recovered closeouts, part 2](execution/recovered-closeouts/2026-09-13-part-2.md)
+- [Recovered closeouts, part 3](execution/recovered-closeouts/2026-09-13-part-3.md)
+- [Recovered closeouts, part 4](execution/recovered-closeouts/2026-09-13-part-4.md)
