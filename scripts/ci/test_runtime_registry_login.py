@@ -2,6 +2,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import signal
 import socket
 import subprocess
@@ -181,6 +182,26 @@ def alarm_case_probe(plane, phase, watchdog_path, native_stall=False):
         watchdog.close()
 
 
+def assert_guarded_hard_watchdog_stack(dump):
+    """Only the blocked call or its exact guarded unwind can explain hard exit."""
+    stalled = [("test_runtime_registry_login.py", "stalled"),
+               ("release_google.py", "registry_login"),
+               ("test_runtime_registry_login.py", "alarm_case_probe")]
+    unwind = [("test_runtime_registry_login.py", "cancelled"),
+              ("release_publication_deadline.py", "total_request"),
+              ("contextlib.py", "__exit__"),
+              *stalled[1:]]
+    for stack in (stalled, unwind):
+        pattern = r"^(?:Thread|Current thread) 0x[0-9a-fA-F]+ \(most recent call first\):\n"
+        pattern += "".join(
+            r'  File "[^"\n]*/' + re.escape(filename) + r'", line [0-9]+ in '
+            + re.escape(function) + r"\n" for filename, function in stack
+        )
+        if re.search(pattern, dump, re.MULTILINE):
+            return
+    pytest.fail("hard watchdog must stop the stalled call or its guarded unwind")
+
+
 @pytest.mark.parametrize(("plane", "phase", "native_stall"), [
     ("runtime", "refresh", False),
     ("runtime-build", "refresh", False),
@@ -216,12 +237,59 @@ def test_shared_real_alarm_interrupts_stalled_refresh_or_login(tmp_path, plane, 
         assert (plane, phase) != ("runtime", "login")
         assert lines[0]["hard_armed"] and 0 < lines[0]["hard_seconds"] <= .08
         assert dump.startswith("Timeout (")
-        assert " in stalled\n" in dump and " in registry_login\n" in dump
+        # The C deadline may win while the soft exception is cancelling it in
+        # total_request's finally. That is still a bounded, fail-closed exit.
+        assert_guarded_hard_watchdog_stack(dump)
     (tmp_path / "alarm-result.json").write_text(json.dumps({
         "plane": plane, "phase": phase, "native_stall": native_stall,
         "exit_code": result.returncode,
         "elapsed_since_stall": ended - lines[0]["at"], "events": lines,
     }, sort_keys=True))
+
+
+@pytest.mark.parametrize("case", [
+    "stalled", "unwind", "unrelated-top", "wrong-guard-file", "reordered",
+    "split-threads", "unrelated-exit", "unarmed", "late-event", "late-observation",
+    "soft-only-hard", "empty-dump", "prefixed-header",
+])
+def test_hard_watchdog_controller_requires_exact_causality(tmp_path, monkeypatch, case):
+    frames = [("test_runtime_registry_login.py", "cancelled"),
+              ("release_publication_deadline.py", "total_request"),
+              ("contextlib.py", "__exit__"),
+              ("release_google.py", "registry_login"),
+              ("test_runtime_registry_login.py", "alarm_case_probe")]
+    if case == "stalled":
+        frames = [("test_runtime_registry_login.py", "stalled"), *frames[3:]]
+    elif case == "unrelated-top":
+        frames.insert(0, ("unrelated.py", "cancelled"))
+    elif case == "wrong-guard-file":
+        frames[1] = ("unrelated.py", "total_request")
+    elif case == "reordered":
+        frames[1], frames[2] = frames[2], frames[1]
+    header = "Thread 0x123 (most recent call first):\n"
+    lines = [f'  File "/synthetic/{file}", line 1 in {function}\n' for file, function in frames]
+    if case == "split-threads":
+        lines.insert(1, header)
+    dump = "Timeout (0:00:00.080000)!\n" + ("prefix: " if case == "prefixed-header" else "") + header + "".join(lines)
+    (tmp_path / "hard-watchdog.txt").write_text("" if case == "empty-dump" else dump)
+    phase = "login" if case == "soft-only-hard" else "refresh"
+    events = ["refresh", "stalled-login"] if phase == "login" else ["stalled-refresh"]
+    output = [{"event": "started", "at": 100, "events": events,
+               "hard_armed": case != "unarmed", "hard_seconds": .08}]
+    if case == "late-event":
+        output.append({"event": "late"})
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+        returncode=2 if case == "unrelated-exit" else 1, stderr="",
+        stdout="\n".join(json.dumps(item) for item in output) + "\n",
+    ))
+    monkeypatch.setattr(sys.modules[__name__], "time", SimpleNamespace(
+        monotonic=lambda: 100.6 if case == "late-observation" else 100.1,
+    ))
+    if case in {"stalled", "unwind"}:
+        test_shared_real_alarm_interrupts_stalled_refresh_or_login(tmp_path, "runtime", phase, False)
+    else:
+        with pytest.raises((AssertionError, pytest.fail.Exception)):
+            test_shared_real_alarm_interrupts_stalled_refresh_or_login(tmp_path, "runtime", phase, False)
 
 
 @pytest.mark.parametrize("expiry", [105, 160])
