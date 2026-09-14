@@ -1,0 +1,27 @@
+# Baselined UI string violations for scripts/ci/check_ui_strings.py.
+#
+# Format: path:line:rule, relative to the repository root.
+# This list is a ratchet. It may shrink, never grow. Read the module
+# docstring of scripts/ci/check_ui_strings.py before editing it.
+#
+# Regenerate line numbers with --write-baseline and confirm that the
+# diff shows only line-number churn, never a new path:line:rule triple.
+
+apps/specimen_digitization/lib/main.dart:205:dash
+apps/specimen_digitization/lib/src/api_repository.dart:1053:banned-word
+apps/specimen_digitization/lib/src/api_repository.dart:616:banned-word
+apps/specimen_digitization/lib/src/api_repository.dart:798:banned-word
+apps/specimen_digitization/lib/src/connection_config.dart:28:banned-word
+apps/specimen_digitization/lib/src/email_verification.dart:109:dash
+apps/specimen_digitization/lib/src/intake.dart:379:dash
+apps/specimen_digitization/lib/src/intake.dart:420:dash
+apps/specimen_digitization/lib/src/magic_link.dart:185:banned-word
+apps/specimen_digitization/lib/src/magic_link.dart:190:banned-word
+apps/specimen_digitization/lib/src/magic_link_screen.dart:162:banned-word
+apps/specimen_digitization/lib/src/reading_declarations.dart:58:banned-word
+apps/specimen_digitization/lib/src/reading_declarations.dart:60:banned-word
+apps/specimen_digitization/lib/src/region_editor.dart:32:banned-word
+apps/specimen_digitization/lib/src/search_filters.dart:15:dash
+apps/specimen_digitization/lib/src/search_filters.dart:16:dash
+apps/specimen_digitization/lib/src/source_pixels.dart:40:banned-word
+apps/specimen_digitization/lib/src/workspace.dart:609:dash
