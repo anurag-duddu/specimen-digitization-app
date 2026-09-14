@@ -22,6 +22,7 @@ import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/theme/icons.dart';
 import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
@@ -504,3 +505,82 @@ class GoldenQueueRepository extends GoldenRepository {
       records.where((Specimen record) => record.id == id).firstOrNull ??
       records.first;
 }
+
+/// The boundary a component golden captures.
+///
+/// A component is captured at its own size rather than at the window's, so
+/// the canvas can be made tall enough for 200 percent text without every
+/// golden gaining a field of empty pixels below the content. The boundary is
+/// explicit because `matchesGoldenFile` captures the nearest repaint boundary
+/// above the finder it is given, and for a plain `Column` that is the whole
+/// window.
+const Key goldenComponentKey = ValueKey<String>('golden-component');
+
+/// The canvas a component golden is drawn on.
+///
+/// Deliberately taller than any sheet needs. Nothing inside
+/// [goldenComponentKey] may be clipped, and a component that overflows this
+/// canvas fails its test rather than being captured half drawn: `testWidgets`
+/// fails on the layout error, which is the same gate
+/// `size_classes_golden_test.dart` installs a collector for.
+const Size goldenComponentCanvas = Size(900, 4200);
+
+/// Pumps one component on the product theme, at a fixed measure.
+///
+/// The third entry point into this suite, beside [pumpGoldenApp] for a screen
+/// and [pumpGoldenDialog] / [pumpGoldenRoute] for a surface the app opens. A
+/// component that a screen golden cannot reach needs one of its own: see
+/// `diff_text_golden_test.dart` for why the reading comparison is such a
+/// component.
+///
+/// [measure] is the width the component is given, because a component has no
+/// window class of its own. What decides its layout is the measure its
+/// container hands it, so that is the axis these goldens vary.
+///
+/// The product surface is painted inside the boundary rather than around it.
+/// A `RepaintBoundary` composites only its own subtree, so a capture that
+/// leaves the surface to the `Scaffold` behind it records marked runs against
+/// transparency, and a fill or an underline token is then evidence of
+/// nothing.
+Future<void> pumpGoldenComponent(
+  WidgetTester tester, {
+  required Brightness brightness,
+  required double measure,
+  required Widget child,
+  double textScale = 1.0,
+}) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = goldenComponentCanvas;
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.view.reset);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
+      home: Scaffold(
+        body: Align(
+          alignment: AlignmentDirectional.topStart,
+          child: Builder(
+            builder: (BuildContext context) => RepaintBoundary(
+              key: goldenComponentKey,
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surface,
+                child: Padding(
+                  padding: EdgeInsets.all(context.space.space4),
+                  child: SizedBox(width: measure, child: child),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Matches the component under [goldenComponentKey] against [name].
+Future<void> expectGoldenComponent(WidgetTester tester, String name) =>
+    expectGoldenFinder(tester, find.byKey(goldenComponentKey), name);
