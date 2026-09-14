@@ -233,7 +233,8 @@ class PilotWorker(PollingWorker):
         if not 0.1 <= interval_seconds <= 60:
             raise ValueError("Worker interval must be .1..60 seconds")
         if self.admission.launch.evidence_only:
-            max_seconds = 1500 if max_seconds is None else max_seconds
+            default = 3485 if self.admission.launch.timing else 1500
+            max_seconds = default if max_seconds is None else max_seconds
         if self.deadline is None:
             self.deadline = current_deadline() or WorkerDeadline(
                 time.monotonic() + (1500 if max_seconds is None else max_seconds),
@@ -242,7 +243,7 @@ class PilotWorker(PollingWorker):
         try:
             with self.deadline.scope():
                 self.deadline.tighten_until(
-                    self.admission.launch.expires_at.timestamp(),
+                    self.admission.useful_until,
                     self.admission.clock().timestamp(),
                 )
                 if self.admission.launch.evidence_only:
@@ -386,6 +387,7 @@ class PilotWorker(PollingWorker):
                     candidate = deadline_call(self.repository.get, launch.scope, item.specimen_id)
                     if not self.admission.binding_matches(candidate):
                         raise OperationalBlock("pilot_specimen_binding_mismatch")
+                    self.admission.observe_timing_record(candidate)
                     if not (
                         candidate.run.stage == "processing_blocked"
                         and candidate.run.blocker == "pilot_evidence_review_required"
@@ -607,8 +609,10 @@ def main():
         "--persistence", choices=["sqlite", "sql-emulator"], default="sqlite"
     )
     args = parser.parse_args()
-    if not 1 <= args.max_seconds <= 1500:
-        parser.error("max-seconds must be 1..1500")
+    if not 1 <= args.max_seconds <= 1500 and not (
+        args.mode == "production" and args.max_seconds == 3485 and os.getenv("SPECIMEN_WORKER_TIMING")
+    ):
+        parser.error("max-seconds requires the legacy limit or explicit approved fixed timing")
     try:
         if args.mode == "production" and not args.check_config:
             _supervise(args)
@@ -627,8 +631,18 @@ def _supervise(args):
 
     payload = {key: str(value) if isinstance(value, Path) else value
                for key, value in vars(args).items()}
+    fixed = {}
+    timing = worker_timing_environment()
+    if timing is not None:
+        if args.max_seconds != 3485:
+            raise OperationalBlock("pilot_supervisor_timing_mismatch")
+        current, monotonic = time.time(), time.monotonic()
+        if not timing.dispatch_started_at_unix <= current < timing.useful_until:
+            raise OperationalBlock("pilot_supervisor_timing_expired")
+        fixed = {"deadline_monotonic": monotonic + timing.useful_until - current,
+                 "cleanup_until": monotonic + timing.cleanup_until - current}
     result = run_isolated(
-        _production_operation, payload, args.max_seconds, 65536, process_group=True
+        _production_operation, payload, args.max_seconds, 65536, process_group=True, **fixed
     )
     if result.status != "completed" or not result.cleanup_complete:
         print(json.dumps({
@@ -641,6 +655,20 @@ def _supervise(args):
     print(report["output"], end="")
     if report["exit_code"]:
         raise SystemExit(report["exit_code"])
+
+
+def worker_timing_environment():
+    from .worker_timing import ApprovedWorkerTiming
+
+    raw = os.getenv("SPECIMEN_WORKER_TIMING")
+    if raw is None:
+        return None
+    try:
+        if len(raw) > 2048:
+            raise ValueError
+        return ApprovedWorkerTiming.model_validate_json(raw)
+    except ValueError:
+        raise OperationalBlock("pilot_supervisor_timing_invalid") from None
 
 
 def _production_operation(payload):
@@ -674,11 +702,14 @@ def _run(args):
     if args.mode == "production":
         try:
             launch = deadline_call(production_launch, args)
+            if launch.timing != worker_timing_environment():
+                raise OperationalBlock("pilot_supervisor_launch_timing_mismatch")
             if current_deadline() is not None:
                 from datetime import timezone
 
                 current_deadline().tighten_until(
-                    launch.expires_at.timestamp(), datetime.now(timezone.utc).timestamp()
+                    launch.timing.useful_until if launch.timing else launch.expires_at.timestamp(),
+                    datetime.now(timezone.utc).timestamp()
                 )
             if args.evidence_only:
                 from .evidence_pilot import read_evidence_profile

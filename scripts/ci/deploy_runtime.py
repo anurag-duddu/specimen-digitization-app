@@ -24,6 +24,8 @@ from release_google import Google
 import release_publication_deadline as publication
 from validate_release_packet import IMAGE
 from specimen_digitization.hub_models import SAM3_MODEL
+from specimen_digitization.release_budget import APPROVAL_SHA256
+from specimen_digitization.application.worker_timing import TIMING_VERSION, SAM_DISPATCH_REMAINING
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = f"us-east4-docker.pkg.dev/{PROJECT}/specimen-runtime"
@@ -68,7 +70,15 @@ def validate_plan(plan: object, packet: dict, *, now=None):
             "unapproved API targets")
     if plan["version"] == "runtime-prepare/v1" and plan["worker"] is None and plan["sam"] is None:
         return plan
-    worker = exact_keys(plan["worker"], {"expected_etag", "launch_secret", "manifest_secret", "launch_sha256", "manifest_sha256"}, "worker plan")
+    worker_keys = {"expected_etag", "launch_secret", "manifest_secret", "launch_sha256", "manifest_sha256"}
+    if isinstance(plan["worker"], dict) and "timing_version" in plan["worker"]:
+        worker_keys.add("timing_version")
+    worker = exact_keys(plan["worker"], worker_keys, "worker plan")
+    if "timing_version" in worker:
+        require(worker["timing_version"] == TIMING_VERSION
+                and packet.get("budget", {}).get("version") == "shared-release-reservations/v2"
+                and packet["budget"].get("approval_sha256") == APPROVAL_SHA256,
+                "approved worker timing and shared budget authority required")
     sam = exact_keys(plan["sam"], {"expected_etag", "previous_revision", "expires_at_unix", "manifest_secret", "manifest_sha256", "checkpoint_prefix", "checkpoint_sha256", "audience"}, "SAM plan")
     for role, value in (("api", api), ("worker", worker), ("sam", sam)):
         validate_expected_runtime(role, value)
@@ -281,8 +291,13 @@ def verify_data_receipt(plan, packet, google):
 
 
 def validate_activation_inputs(plan, packet, *, now=None):
-    activation = exact_keys(plan["activation"], {"prepared_receipt", "manifest_bytes", "launch_bytes", "profile_bytes",
-                                              "profile_secret", "hf_secret", "actor_uid", "human_review_authorization_sha256"}, "activation")
+    activation_keys = {"prepared_receipt", "manifest_bytes", "launch_bytes", "profile_bytes",
+                       "profile_secret", "hf_secret", "actor_uid", "human_review_authorization_sha256"}
+    if plan["worker"].get("timing_version") == TIMING_VERSION:
+        activation_keys.add("worker_trace")
+    activation = exact_keys(plan["activation"], activation_keys, "activation")
+    if "worker_trace" in activation:
+        validate_worker_trace(activation["worker_trace"], plan)
     prepared = exact_keys(activation["prepared_receipt"], {"run_id", "run_attempt", "sha256"}, "prepared runtime receipt")
     for name in ("run_id", "run_attempt"):
         integer(prepared[name], 1, 2**53, name)
@@ -325,7 +340,18 @@ def validate_activation_inputs(plan, packet, *, now=None):
             and sum(v for k, v in costs.items() if k.startswith("transcribe:")) * 10 <= budget["provider"],
             "ten first-pass model stages do not fit their reviewed category allocations")
     now = time.time() if now is None else now
-    require(now + 125 < launch.expires_at.timestamp() <= min(plan["sam"]["expires_at_unix"], packet["expires_at_unix"]), "worker launch expiry mismatch")
+    if plan["worker"].get("timing_version") == TIMING_VERSION:
+        require(launch.timing is not None and launch.timing.version == TIMING_VERSION
+                and packet.get("budget", {}).get("version") == "shared-release-reservations/v2"
+                and packet["budget"].get("approval_sha256") == APPROVAL_SHA256,
+                "approved worker timing and shared budget authority required")
+        require(launch.timing.sam_expires_at_unix == plan["sam"]["expires_at_unix"]
+                and packet["issued_at_unix"] <= launch.timing.dispatch_started_at_unix <= now < launch.timing.useful_until
+                and launch.expires_at.timestamp() == launch.timing.cleanup_until <= packet["expires_at_unix"],
+                "original worker/SAM/packet timing mismatch")
+    else:
+        require(launch.timing is None, "approved launch timing discriminator required")
+        require(now + 125 < launch.expires_at.timestamp() <= min(plan["sam"]["expires_at_unix"], packet["expires_at_unix"]), "worker launch expiry mismatch")
     actual = [(s.specimen_id, s.asset_sha256, s.blob_ref) for s in launch.specimens]
     expected = [(s.specimen_id, s.application_source.sha256, s.application_source.blob_ref) for s in manifest.specimens]
     require(actual == expected and all((s.organization_id, s.collection_id) ==
@@ -338,6 +364,22 @@ def validate_activation_inputs(plan, packet, *, now=None):
             and not profile.semantics_confirmed and profile.segmentation_settings is not None
             and tuple(profile.model_routes) == tuple(INITIAL_HUGGINGFACE_ROUTES), "unapproved human review model/profile policy")
     return manifest, launch, profile
+
+
+def validate_worker_trace(value, plan):
+    trace = exact_keys(value, {"version", "project_id", "token_secret", "service_name", "identity_receipt_sha256"}, "worker trace")
+    require(trace["version"] == "worker-trace/v1", "unsupported worker trace binding")
+    require(isinstance(trace["project_id"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,127}", trace["project_id"]),
+            "reviewed existing trace project identity required")
+    require(isinstance(trace["service_name"], str) and re.fullmatch(r"[a-z][a-z0-9-]{0,62}", trace["service_name"]),
+            "reviewed trace service name required")
+    digest(trace["identity_receipt_sha256"], "trace destination identity receipt")
+    require(isinstance(trace["token_secret"], str) and SECRET.fullmatch(trace["token_secret"]),
+            "immutable same-project worker trace writer reference required")
+    others = {plan["worker"]["launch_secret"], plan["worker"]["manifest_secret"],
+              plan["activation"]["profile_secret"], plan["activation"]["hf_secret"]}
+    require(trace["token_secret"] not in others, "separate worker trace writer reference required")
+    return trace
 
 
 def verify_public_api(uri, source_sha):
@@ -422,12 +464,17 @@ def activation_worker(body, plan, packet, *, now=None):
     task = body["template"]["template"]
     container = task["containers"][0]
     now = time.time() if now is None else now
-    maximum = min(1800, int(launch.expires_at.timestamp() - now - 10))
+    if launch.timing:
+        require(launch.timing.sam_expires_at_unix - now >= SAM_DISPATCH_REMAINING,
+                "complete SAM lifetime required at worker dispatch")
+        maximum = min(3500, int(launch.timing.cleanup_until - now))
+    else:
+        maximum = min(1800, int(launch.expires_at.timestamp() - now - 10))
     require(maximum > 135, "no bounded worker window remains")
     task["timeout"] = f"{maximum}s"
     container["args"] = ["--mode", "production", "--materialize-config", "--evidence-only", "--launch-policy", "/inputs/launch/launch.json",
                          "--source-manifest", "/inputs/manifest/manifest.json", "--evidence-profile", "/inputs/profile/profile.json",
-                         "--max-seconds", str(min(1500, maximum - 10))]
+                         "--max-seconds", "3485" if launch.timing else str(min(1500, maximum - 10))]
     task["volumes"].append(secret_volume("profile", activation["profile_secret"], "profile.json"))
     container["volumeMounts"].append({"name": "profile", "mountPath": "/inputs/profile"})
     values = {"SPECIMEN_APPROVED_INFERENCE": "true", "SPECIMEN_APPROVED_EVIDENCE_PILOT": "true",
@@ -435,8 +482,42 @@ def activation_worker(body, plan, packet, *, now=None):
               "SPECIMEN_SAM3_REVISION": SAM_REVISION, "SPECIMEN_SAM3_ENDPOINT": plan["sam"]["audience"]}
     container["env"].extend({"name": k, "value": v} for k, v in sorted(values.items()))
     container["env"].append(env_secret("HF_TOKEN", activation["hf_secret"]))
+    if launch.timing:
+        container["env"].append({"name": "SPECIMEN_WORKER_TIMING", "value": launch.timing.model_dump_json()})
+        trace = validate_worker_trace(activation["worker_trace"], plan)
+        container["env"].append(env_secret("LOGFIRE_TOKEN", trace["token_secret"]))
+        tracing = {"LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": trace["service_name"],
+                   "APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "metadata", "LOGFIRE_HEAD_SAMPLE_RATE": "1.0",
+                   "LOGFIRE_DISTRIBUTED_TRACING": "false"}
+        container["env"].extend({"name": key, "value": value} for key, value in sorted(tracing.items()))
     body["runExecutionToken"] = "pilot-" + packet["pilot"]["manifest_sha256"][:24]
     return body
+
+
+def retain_worker_dispatch(directory, worker, plan, packet, *, now=None):
+    """Exclusive durable intent precedes the sole request, including unknowns."""
+    _, launch, _ = validate_activation_inputs(plan, packet, now=now)
+    require(launch.timing is not None, "approved original dispatch timing required")
+    current = time.time() if now is None else now
+    require(launch.timing.sam_expires_at_unix - current >= SAM_DISPATCH_REMAINING,
+            "complete SAM lifetime required at worker dispatch")
+    raw = json.dumps(worker, sort_keys=True, separators=(",", ":")).encode()
+    intent = {"version": "approved-worker-dispatch/v1", "source_sha": packet["source_sha"],
+              "launch_sha256": plan["worker"]["launch_sha256"], "run_execution_token": worker["runExecutionToken"],
+              "timing": launch.timing.model_dump(mode="json"), "request_sha256": hashlib.sha256(raw).hexdigest()}
+    descriptor = os.open(directory / "worker-dispatch.intent.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "wb") as output:
+        output.write(json.dumps(intent, sort_keys=True).encode() + b"\n")
+        output.flush()
+        os.fsync(output.fileno())
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    require(launch.timing.sam_expires_at_unix - time.time() >= SAM_DISPATCH_REMAINING if now is None else True,
+            "SAM dispatch deadline passed while retaining intent")
+    return intent
 
 
 def activate(google, plan, output):
@@ -500,6 +581,19 @@ def activate(google, plan, output):
     current_api = google.request("run", "GET", api["name"])
     verify_public_api(current_api["uri"], packet["source_sha"])
     worker = activation_worker(bodies["worker"], plan, packet)
+    if launch.timing:
+        intent = retain_worker_dispatch(google.path.parent, worker, plan, packet)
+
+        def dispatch_guard(api, method, resource, body):
+            require(api == "run" and method in {"POST", "PATCH"}
+                    and resource in {f"{PREFIX}/jobs", worker["name"]}
+                    and hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest() == intent["request_sha256"],
+                    "fixed worker dispatch intent mismatch")
+            require(launch.timing.dispatch_started_at_unix <= time.time()
+                    and launch.timing.sam_expires_at_unix - time.time() >= SAM_DISPATCH_REMAINING,
+                    "complete SAM lifetime required at worker dispatch")
+
+        google.worker_dispatch_guard = dispatch_guard
     if existing is None:
         operation = google.request("run", "POST", f"{PREFIX}/jobs", body=worker, params={"jobId": "specimen-worker"})
     else:
@@ -507,7 +601,8 @@ def activate(google, plan, output):
     # runExecutionToken names one cohort execution. Never call jobs:run or
     # generate a new token after an ambiguous response.
     try:
-        google.wait("run", operation, maximum_seconds=1800)
+        wait_seconds = max(0, launch.timing.cleanup_until - time.time()) if launch.timing else 1800
+        google.wait("run", operation, maximum_seconds=wait_seconds)
     finally:
         observation = google.request("run", "GET", worker["name"])
         output.write_text(json.dumps({"version": "runtime-human-review/v1", "source_sha": packet["source_sha"],

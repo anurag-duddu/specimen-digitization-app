@@ -1,4 +1,5 @@
 """Actual registry-login method and callers with synthetic credentials/transport."""
+import hashlib
 import json
 from pathlib import Path
 import signal
@@ -127,29 +128,100 @@ def test_login_failure_is_not_retried_and_clears_alarm(login, monkeypatch, plane
     assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
 
 
-@pytest.mark.parametrize("plane", ["runtime", "runtime-build"])
-@pytest.mark.parametrize("phase", ["refresh", "login"])
-def test_shared_real_alarm_interrupts_stalled_refresh_or_login(login, monkeypatch, plane, phase):
-    client, events = login(plane)
+def alarm_case_probe(plane, phase, watchdog_path, native_stall=False):
+    """The real C hard watchdog may exit; it must never own the pytest runner."""
+    monkeypatch = pytest.MonkeyPatch()
+    client, events = login.__wrapped__(monkeypatch)(plane)
     owner, name = ((google, "request_deadline") if plane == "runtime" and phase == "login"
                    else (publication, "total_request"))
     guard = getattr(owner, name)
     monkeypatch.setattr(owner, name, lambda seconds: guard(min(seconds, .08)))
+    hard = {"armed": False, "seconds": None}
+    watchdog = open(watchdog_path, "w")
+    arm = publication.faulthandler.dump_traceback_later
+    cancel = publication.faulthandler.cancel_dump_traceback_later
+
+    def armed(seconds, **kwargs):
+        assert kwargs["exit"] is True
+        arm(seconds, **{**kwargs, "file": watchdog})
+        hard.update(armed=True, seconds=seconds)
+
+    def cancelled():
+        cancel()
+        hard.update(armed=False, seconds=None)
+
+    monkeypatch.setattr(publication.faulthandler, "dump_traceback_later", armed)
+    monkeypatch.setattr(publication.faulthandler, "cancel_dump_traceback_later", cancelled)
 
     def stalled(*args, **kwargs):
         events.append("stalled-" + phase)
-        time.sleep(1)
-        pytest.fail("deadline did not stop synthetic stall")
+        print(json.dumps({"event": "started", "at": time.monotonic(), "events": events,
+                          "hard_armed": hard["armed"], "hard_seconds": hard["seconds"]}), flush=True)
+        if native_stall:
+            hashlib.pbkdf2_hmac("sha256", b"synthetic", b"fixture", 10_000_000)
+        else:
+            time.sleep(1)
+        print(json.dumps({"event": "late"}), flush=True)
+        raise AssertionError("deadline did not stop synthetic stall")
 
     monkeypatch.setattr(client.credentials if phase == "refresh" else google.subprocess,
                         "refresh" if phase == "refresh" else "run", stalled)
     began = time.monotonic()
+    previous = signal.getsignal(signal.SIGALRM)
     expected = ValueError if plane == "runtime" and phase == "refresh" else (TimeoutError, publication.RequestExpired)
-    with pytest.raises(expected):
-        client.registry_login()
-    assert time.monotonic() - began < .5
-    assert events == (["stalled-refresh"] if phase == "refresh" else ["refresh", "stalled-login"])
-    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+    try:
+        with pytest.raises(expected):
+            client.registry_login()
+        assert time.monotonic() - began < .5
+        assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+        assert signal.getsignal(signal.SIGALRM) == previous
+        print(json.dumps({"event": "soft_interrupt", "events": events}), flush=True)
+    finally:
+        monkeypatch.undo()
+        watchdog.close()
+
+
+@pytest.mark.parametrize(("plane", "phase", "native_stall"), [
+    ("runtime", "refresh", False),
+    ("runtime-build", "refresh", False),
+    ("runtime", "login", False),
+    ("runtime-build", "login", False),
+    ("runtime", "refresh", True),
+])
+def test_shared_real_alarm_interrupts_stalled_refresh_or_login(tmp_path, plane, phase, native_stall):
+    watchdog_path = tmp_path / "hard-watchdog.txt"
+    result = subprocess.run([
+        sys.executable, "-c", "import sys; sys.path.insert(0,sys.argv[1]); "
+        "from test_runtime_registry_login import alarm_case_probe; "
+        "alarm_case_probe(sys.argv[2],sys.argv[3],sys.argv[4],sys.argv[5]=='True')",
+        str(Path(__file__).parent), plane, phase, str(watchdog_path), str(native_stall),
+    ], capture_output=True, text=True, timeout=3)
+    ended = time.monotonic()
+    (tmp_path / "child.stdout").write_text(result.stdout)
+    (tmp_path / "child.stderr").write_text(result.stderr)
+    dump = watchdog_path.read_text()
+    lines = [json.loads(line) for line in result.stdout.splitlines()]
+    assert lines and lines[0]["event"] == "started", (result.returncode, result.stdout, result.stderr)
+    assert ended - lines[0]["at"] < .5
+    expected = ["stalled-refresh"] if phase == "refresh" else ["refresh", "stalled-login"]
+    assert lines[0]["events"] == expected
+    assert result.stderr == ""
+    if result.returncode == 0:
+        assert not native_stall and dump == ""
+        assert lines[1:] == [{"event": "soft_interrupt", "events": expected}]
+    else:
+        # Only the deliberately armed 80 ms C hard exit is an alternative to
+        # Python's 72 ms signal. No other nonzero/late/event sequence is accepted.
+        assert result.returncode == 1 and len(lines) == 1
+        assert (plane, phase) != ("runtime", "login")
+        assert lines[0]["hard_armed"] and 0 < lines[0]["hard_seconds"] <= .08
+        assert dump.startswith("Timeout (")
+        assert " in stalled\n" in dump and " in registry_login\n" in dump
+    (tmp_path / "alarm-result.json").write_text(json.dumps({
+        "plane": plane, "phase": phase, "native_stall": native_stall,
+        "exit_code": result.returncode,
+        "elapsed_since_stall": ended - lines[0]["at"], "events": lines,
+    }, sort_keys=True))
 
 
 @pytest.mark.parametrize("expiry", [105, 160])

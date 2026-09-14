@@ -46,9 +46,10 @@ def read_evidence_profile(path: Path, expected_sha256: str) -> CollectionProfile
 class EvidencePilotAdapters:
     """Expose only SAM and independent transcription, never extraction/tools."""
 
-    def __init__(self, production, settings, reader_admission):
+    def __init__(self, production, settings, reader_admission, sam_admission=None):
         self.production, self.settings = production, settings
         self.reader_admission = reader_admission
+        self.sam_admission = sam_admission
         self.blobs = production.blobs
         self.classifier = None
         self.authority_tools = {}
@@ -66,6 +67,8 @@ class EvidencePilotAdapters:
         if not specimen.run.dependencies.get("evidence_pilot"):
             raise OperationalBlock("evidence_pilot_binding_required")
         endpoint = specimen.run.dependencies["segmentation"]["endpoint"]
+        if self.sam_admission is not None:
+            self.sam_admission(specimen)
         return Sam3Service(
             endpoint,
             self.blobs,
@@ -91,6 +94,7 @@ class EvidencePilotWorkflow(Workflow):
             production or ProductionAdapters(blobs),
             profile.segmentation_settings,
             self._admit_reader,
+            admission.assert_sam_dispatch,
         )
         super().__init__(repository, blobs, adapters, admission=admission, **kwargs)
 
@@ -112,6 +116,12 @@ class EvidencePilotWorkflow(Workflow):
         return "pilot_review"
 
     def step(self, principal, specimen_id):
+        with self.admission.operation_scope():
+            result = self._evidence_step(principal, specimen_id)
+            self.admission.observe_timing_record(result)
+            return result
+
+    def _evidence_step(self, principal, specimen_id):
         if (
             os.getenv("SPECIMEN_APPROVED_EVIDENCE_PILOT") != "true"
             or os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true"

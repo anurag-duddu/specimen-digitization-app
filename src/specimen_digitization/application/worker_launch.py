@@ -11,13 +11,16 @@ import re
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5, uuid4
 from typing import Literal
+from contextlib import contextmanager
+import time
 
 from pydantic import Field, model_validator
 
 from .domain import Record, Scope, StageCostReservations
 from .storage import Missing, digest
 from .workflow import OperationalBlock
-from .worker_deadline import current_deadline, guarded
+from .worker_deadline import current_deadline, guarded, WorkerDeadline, WorkerDeadlineExceeded
+from .worker_timing import ApprovedWorkerTiming, USEFUL_SECONDS, PARENT_SECONDS, FINALIZATION_SECONDS
 
 
 class PilotSpecimen(Record):
@@ -45,6 +48,7 @@ class PilotLaunch(Record):
     scope: Scope
     specimens: list[PilotSpecimen] = Field(min_length=10, max_length=10)
     expires_at: datetime
+    timing: ApprovedWorkerTiming | None = Field(default=None, exclude_if=lambda value: value is None)
     total_cost_limit_micros: int = Field(gt=0)
     per_specimen_cost_limit_micros: int = Field(gt=0)
     per_specimen_call_limit: int = Field(gt=0, le=1000)
@@ -70,6 +74,11 @@ class PilotLaunch(Record):
             )
         if self.expires_at.tzinfo is None:
             raise ValueError("Launch expiry requires timezone")
+        if self.timing is not None and (
+            not self.evidence_only or self.cohort_allocation_mode != "actual-regions-v1"
+            or self.expires_at.timestamp() != self.timing.cleanup_until
+        ):
+            raise ValueError("Approved timing requires the complete review cohort and original cleanup expiry")
         if len({s.specimen_id for s in self.specimens}) != 10:
             raise ValueError("Pilot specimen IDs must be unique")
         if len({s.blob_ref for s in self.specimens}) != 10:
@@ -144,20 +153,113 @@ class PilotAdmission:
         )
         self._dispatch_tokens = {}
         self.remaining_execution_seconds = None
+        self._reader_phase_receipt = None
+        self._phase_deadline = None
+        self._timing_records = {}
+        self._timing_anchor = (self.clock().timestamp(), time.monotonic())
 
-    def bind_execution_window(self, max_seconds=1500, interval_seconds=1):
+    def timing_now(self):
+        wall, mono = self.clock().timestamp(), time.monotonic()
+        previous, anchored_mono = self._timing_anchor
+        # Wall corrections can consume time, but cannot restore elapsed time.
+        current = max(wall, previous + mono - anchored_mono)
+        self._timing_anchor = (current, mono)
+        return current
+
+    def observe_timing_record(self, specimen):
+        # Reuse records already read for the all-ten fence or positively
+        # returned persistence; timing does not add another SQL scan per step.
+        if self.launch.timing and self.binding_matches(specimen):
+            self._timing_records[specimen.id] = specimen.model_copy(deep=True)
+
+    @property
+    def useful_until(self):
+        return self.launch.timing.useful_until if self.launch.timing else self.launch.expires_at.timestamp()
+
+    def _phase(self, ledger):
+        phase = ledger.get("sam_phase")
+        if phase is not None and (phase != self._reader_phase_receipt or phase.get("state") != "readers"):
+            # A returned acknowledgement is process-local evidence. A restart
+            # cannot turn a possibly late/unknown CAS into a completed phase.
+            raise OperationalBlock("pilot_sam_phase_outcome_unknown")
+        return phase
+
+    def _sam_time(self, ledger):
+        timing = self.launch.timing
+        current = self.timing_now()
+        if current < timing.dispatch_started_at_unix:
+            raise OperationalBlock("pilot_dispatch_clock_changed")
+        if self._phase(ledger):
+            return
+        remaining = PARENT_SECONDS + 5.0
+        minimum_readers = 5 + FINALIZATION_SECONDS
+        interval = ledger.get("execution_window", {}).get("interval_seconds", 1)
+        for binding in self.launch.specimens:
+            item = self._timing_records.get(binding.specimen_id)
+            if item is None:
+                raise OperationalBlock("pilot_complete_timing_inventory_required")
+            policy = item.run.profile.execution
+            if policy.max_attempts != 1:
+                raise OperationalBlock("pilot_approved_run_retries_forbidden")
+            if "segment" not in item.run.completed_steps:
+                remaining += policy.effect_timeout_for_step("segment")
+                remaining += interval * sum(step not in item.run.completed_steps for step in ("pin_dependencies", "quality_check", "segment"))
+            minimum_readers += max(1, len(item.run.regions)) * sum(
+                policy.effect_timeout_for_step("transcribe:region:" + route) + interval
+                for route in item.run.profile.routes
+            ) + interval
+        if current + remaining > timing.sam_expires_at_unix:
+            raise OperationalBlock("pilot_complete_sam_phase_time_insufficient")
+        # The same five-second safety reserve is already in the reader bound.
+        if current + remaining + minimum_readers - 5 > self.useful_until:
+            raise OperationalBlock("pilot_complete_worker_time_insufficient")
+
+    @contextmanager
+    def operation_scope(self):
+        """SAM calls and persistence cannot be adopted after its original expiry."""
+        timing = self.launch.timing
+        if timing is None:
+            yield
+            return
+        phase = self._reader_phase_receipt
+        current = self.timing_now()
+        expiry = self.useful_until if phase else min(self.useful_until, timing.sam_expires_at_unix)
+        outer = current_deadline()
+        self._operation_outer = outer
+        monotonic = outer.monotonic if outer is not None else time.monotonic
+        bound = monotonic() + expiry - current
+        self._operation_outer_deadline = outer.deadline if outer is not None else monotonic() + self.useful_until - current
+        if outer is not None:
+            bound = min(bound, outer.deadline)
+        local = WorkerDeadline(bound, monotonic=monotonic)
+        previous, self._phase_deadline = self._phase_deadline, local
+        try:
+            with local.scope():
+                try:
+                    yield
+                finally:
+                    local.check()
+                    limit = self.useful_until if self._reader_phase_receipt else expiry
+                    if self.timing_now() >= limit:
+                        raise WorkerDeadlineExceeded
+        finally:
+            self._phase_deadline = previous
+
+    def bind_execution_window(self, max_seconds=None, interval_seconds=1):
         """Retain the existing single execution's deadline; never refresh it."""
+        limit = USEFUL_SECONDS if self.launch.timing else 1500
+        max_seconds = limit if max_seconds is None else max_seconds
         if (
             type(max_seconds) not in (int, float)
             or not math.isfinite(max_seconds)
-            or not 1 <= max_seconds <= 1500
+            or not 1 <= max_seconds <= limit
             or type(interval_seconds) not in (int, float)
             or not math.isfinite(interval_seconds)
             or not 0.1 <= interval_seconds <= 60
         ):
             raise OperationalBlock("pilot_cohort_execution_time_invalid")
         ledger = self._ledger()
-        current = self.clock().timestamp()
+        current = self.timing_now() if self.launch.timing else self.clock().timestamp()
         window_exists = "execution_window" in ledger
         previous = ledger.get("execution_window")
         if window_exists and not isinstance(previous, dict):
@@ -175,6 +277,11 @@ class PilotAdmission:
             "deadline_unix": current + max_seconds,
             "interval_seconds": interval_seconds,
         }
+        if self.launch.timing:
+            if current < self.launch.timing.dispatch_started_at_unix or max_seconds != USEFUL_SECONDS:
+                raise OperationalBlock("pilot_dispatch_clock_changed")
+            window.update(started_at_unix=self.launch.timing.dispatch_started_at_unix,
+                          deadline_unix=self.useful_until)
         if window_exists:
             if (
                 set(previous) != set(window)
@@ -184,10 +291,12 @@ class PilotAdmission:
                 )
                 or not 0
                 < previous["deadline_unix"] - previous["started_at_unix"]
-                <= 1500
+                <= limit
                 or not 0.1 <= previous["interval_seconds"] <= 60
                 or current < previous["started_at_unix"]
             ):
+                raise OperationalBlock("pilot_cohort_execution_time_changed")
+            if self.launch.timing and previous != window:
                 raise OperationalBlock("pilot_cohort_execution_time_changed")
             window = dict(
                 previous,
@@ -195,11 +304,14 @@ class PilotAdmission:
                 interval_seconds=max(previous["interval_seconds"], interval_seconds),
             )
         deadline = current_deadline()
+        if self.launch.timing and deadline is not None and deadline is self._phase_deadline:
+            deadline = self._operation_outer
         if deadline is not None:
             # Startup and ledger reads consume the original supervisor window.
-            window["deadline_unix"] = min(
-                window["deadline_unix"], current + deadline.remaining()
-            )
+            if not self.launch.timing:
+                window["deadline_unix"] = min(
+                    window["deadline_unix"], current + deadline.remaining()
+                )
             deadline.tighten_until(window["deadline_unix"], current)
         if window != previous:
             self._write(ledger, execution_window=window)
@@ -213,11 +325,13 @@ class PilotAdmission:
         current = self.clock()
         remaining = min(
             window["deadline_unix"] - current.timestamp(),
-            (self.launch.expires_at - current).total_seconds(),
+            self.useful_until - current.timestamp(),
         )
         if self.remaining_execution_seconds is not None:
             remaining = min(remaining, self.remaining_execution_seconds())
         seconds = 5.0  # Retain the existing deadline safety margin.
+        if self.launch.timing:
+            seconds += PARENT_SECONDS + FINALIZATION_SECONDS
         for ident, specimen in records.items():
             run, policy = specimen.run, specimen.run.profile.execution
             if run.blocker != "pilot_evidence_review_required":
@@ -282,15 +396,21 @@ class PilotAdmission:
 
     @guarded
     def _write(self, ledger, **updates):
+        def sam_check():
+            if self.launch.timing and self.timing_now() >= self.useful_until:
+                raise WorkerDeadlineExceeded
+            if self.launch.timing and self._reader_phase_receipt is None and self.timing_now() >= self.launch.timing.sam_expires_at_unix:
+                raise WorkerDeadlineExceeded
+
+        sam_check()
         payload = {key: value for key, value in ledger.items() if key != "revision"}
         payload.update(updates)
-        self.repository.put_document(
-            self.launch.scope,
-            "pilot_launch",
-            self.ledger_id,
-            payload,
-            ledger["revision"],
-        )
+        try:
+            self.repository.put_document(
+                self.launch.scope, "pilot_launch", self.ledger_id, payload, ledger["revision"],
+            )
+        finally:
+            sam_check()
 
     def _validate_run(self, specimen):
         launch, run = self.launch, specimen.run
@@ -299,6 +419,13 @@ class PilotAdmission:
         if not self.binding_matches(specimen):
             raise OperationalBlock("pilot_specimen_binding_mismatch")
         policy = run.profile.execution
+        if launch.timing:
+            self.observe_timing_record(specimen)
+            ledger = self._ledger()
+            if self._phase(ledger) and "segment" not in run.completed_steps:
+                raise OperationalBlock("pilot_reader_phase_cannot_return_to_sam")
+            if ledger["runs"] or len(self._timing_records) == 10:
+                self._sam_time(ledger)
         if policy.stage_cost_reservations != launch.stage_cost_reservations:
             raise OperationalBlock("pilot_stage_cost_reservations_mismatch")
         timeout = policy.external_timeout_seconds
@@ -315,7 +442,7 @@ class PilotAdmission:
             timeout = 0 if step == "pilot_review" else policy.effect_timeout_for_step(step)
         if (
             self.clock() + timedelta(seconds=timeout + 5)
-            >= launch.expires_at
+            >= datetime.fromtimestamp(self.useful_until, timezone.utc)
         ):
             raise OperationalBlock("pilot_launch_deadline_reached")
         if (
@@ -396,6 +523,8 @@ class PilotAdmission:
         ):
             raise OperationalBlock("pilot_cohort_prior_allocations_incomplete")
         held = ledger.get("reading_cohort")
+        if self.launch.timing:
+            self._phase(ledger)
         if held is None or isinstance(held, dict) and held.get("state") == "blocked":
             if digest(ledger["runs"]) != baseline_sha:
                 raise OperationalBlock("pilot_cohort_prior_liability_changed")
@@ -472,8 +601,14 @@ class PilotAdmission:
             ):
                 raise OperationalBlock("pilot_cohort_prior_allocations_incomplete")
             runs = {}
+            records = {}
+            if self.launch.timing:
+                for binding in self.launch.specimens:
+                    item = self.repository.get(self.launch.scope, binding.specimen_id)
+                    records[binding.specimen_id] = item
+                    self.observe_timing_record(item)
             for binding in self.launch.specimens:
-                item = self.repository.get(self.launch.scope, binding.specimen_id)
+                item = records[binding.specimen_id] if self.launch.timing else self.repository.get(self.launch.scope, binding.specimen_id)
                 self._validate_run(item)
                 run, policy = item.run, item.run.profile.execution
                 if (
@@ -923,7 +1058,23 @@ class PilotAdmission:
         if issue:
             held["reason"] = issue
         if self.launch.cohort_allocation_mode is not None and not issue:
-            self._write(ledger, runs=expanded_runs, reading_cohort=held)
+            updates = {}
+            if self.launch.timing:
+                updates["sam_phase"] = {
+                    "state": "readers", "identity_sha256": held["identity_sha256"],
+                    "completed_at_unix": self.clock().timestamp(),
+                    "timing_sha256": digest(self.launch.timing.model_dump(mode="json")),
+                }
+            self._write(ledger, runs=expanded_runs, reading_cohort=held, **updates)
+            if self.launch.timing:
+                self._reader_phase_receipt = updates["sam_phase"]
+                # The phase may change only after the complete atomic write
+                # returned before SAM expiry. The original worker clock stays.
+                if self._phase_deadline is not None:
+                    self._phase_deadline.deadline = min(
+                        self._phase_deadline.monotonic() + self.useful_until - self.timing_now(),
+                        self._operation_outer_deadline,
+                    )
         else:
             self._write(ledger, reading_cohort=held)
         if issue:
@@ -955,6 +1106,14 @@ class PilotAdmission:
         # Claim before the paid boundary. A lost response retains the claim and
         # the original full hold; neither can authorize a replay after restart.
         self._write(ledger, reader_claims=claims)
+
+    def assert_sam_dispatch(self, specimen):
+        if self.launch.timing:
+            ledger = self._ledger()
+            if self._phase(ledger) or "segment" in specimen.run.completed_steps:
+                raise OperationalBlock("pilot_reader_phase_cannot_return_to_sam")
+            self.observe_timing_record(specimen)
+            self._sam_time(ledger)
 
 
 def verify_source_manifest(path: Path, launch: PilotLaunch):

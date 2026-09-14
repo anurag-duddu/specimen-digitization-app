@@ -1,5 +1,9 @@
 # CI/CD and production deployment contract
 
+Current approved budget/duration: see the [September 14 amendment](execution/APPROVED_RELEASE_BUDGET.md).
+Historical USD5/30-minute statements below remain applicable to legacy artifacts;
+new release inputs must explicitly select the approved additive contracts.
+
 This document is the authoritative release runbook for Specimen Digitization.
 It applies to humans, automation, agents, every branch, every worktree, and every
 Codex session. `AGENTS.md` points all sessions here.

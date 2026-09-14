@@ -1,5 +1,9 @@
 # Production product acceptance
 
+Current approved budget/duration: see the [September 14 amendment](APPROVED_RELEASE_BUDGET.md).
+Historical USD5/30-minute statements below remain applicable to legacy artifacts;
+new release inputs must explicitly select the approved additive contracts.
+
 Owner: `01a082b4-a9bc-7413-a3c5-5077dd5c3a9f` (Flutter/acceptance).
 Coordinator: `01a082b2-c2c3-70d2-be90-7bfb622c9102`.
 Model: `gpt-6-astra`, `xhigh` (coordinator verified actual turn context).

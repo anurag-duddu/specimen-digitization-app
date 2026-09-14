@@ -44,7 +44,7 @@ def actual_production_handler_continuation(payload):
 
     observability.configure_observability = lambda **kwargs: None
     worker.production_launch = lambda args: SimpleNamespace(
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=60))
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=60), timing=None)
     os.environ["SPECIMEN_WORKER_ACTOR_UID"] = "synthetic-deadline-fixture"
 
     def sdk_constructor():

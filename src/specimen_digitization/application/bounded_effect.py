@@ -132,10 +132,12 @@ def _callable_reference(function: Callable) -> tuple[str, str]:
     return function.__module__, function.__name__
 
 
-def _cleanup(process: subprocess.Popen, *, process_group=False) -> bool:
+def _cleanup(process: subprocess.Popen, *, process_group=False, cleanup_until=None) -> bool:
     """Bounded cleanup. Worker groups get no useful-work grace after cutoff."""
     if process_group:
         cleanup_deadline = time.monotonic() + KILL_GRACE_SECONDS
+        if cleanup_until is not None:
+            cleanup_deadline = min(cleanup_deadline, cleanup_until)
         # Only used with our own start_new_session child. Its ordinary effect
         # children inherit this group. A graceful handler or TERM-resistant SDK
         # can continue dispatching during a grace period, so hard-stop the whole
@@ -204,6 +206,8 @@ def run_isolated(
     *,
     max_input_bytes: int = 1024 * 1024,
     process_group: bool = False,
+    deadline_monotonic: float | None = None,
+    cleanup_until: float | None = None,
 ) -> IsolatedResult:
     """Budget covers serialization, startup, import, authentication, HTTP and result.
 
@@ -222,6 +226,12 @@ def run_isolated(
     ):
         raise ValueError("JSON byte limits must be in [1, 16777216]")
     deadline = started + timeout_seconds
+    if deadline_monotonic is not None or cleanup_until is not None:
+        if (not process_group or any(type(n) not in (int, float) or not math.isfinite(n)
+                                    for n in (deadline_monotonic, cleanup_until))
+                or not deadline_monotonic < cleanup_until <= deadline_monotonic + 15):
+            raise ValueError("Fixed worker work/cleanup deadlines required")
+        deadline = min(deadline, deadline_monotonic)
     module, name = _callable_reference(trusted_callable)
     input_size = 0
     process = None
@@ -232,7 +242,7 @@ def run_isolated(
         nonlocal cleanup_attempted
         if process_group and process is not None and not cleanup_attempted:
             cleanup_attempted = True
-            cleanup = _cleanup(process, process_group=True)
+            cleanup = _cleanup(process, process_group=True, cleanup_until=cleanup_until)
         if process_group and status == "completed" and (
             stopping or not cleanup or time.monotonic() >= deadline
         ):
@@ -358,16 +368,16 @@ def run_isolated(
             )
         except _Deadline:
             cleanup_attempted = True
-            cleaned = _cleanup(process, process_group=process_group) if process else True
+            cleaned = _cleanup(process, process_group=process_group, cleanup_until=cleanup_until) if process else True
             return result("deadline_exceeded", "overall_deadline", cleanup=cleaned)
         except (OSError, ValueError, _JsonLimit):
             cleanup_attempted = True
-            cleaned = _cleanup(process, process_group=process_group) if process else True
+            cleaned = _cleanup(process, process_group=process_group, cleanup_until=cleanup_until) if process else True
             return result("worker_failed", "worker_transport_failed", cleanup=cleaned)
         finally:
             try:
                 if process and not cleanup_attempted and (process_group or process.poll() is None):
-                    _cleanup(process, process_group=process_group)
+                    _cleanup(process, process_group=process_group, cleanup_until=cleanup_until)
             finally:
                 for signum, handler in previous_handlers.items():
                     signal.signal(signum, handler)

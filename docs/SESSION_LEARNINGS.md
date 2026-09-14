@@ -2231,3 +2231,104 @@ Historical entries absent from this branch's log are preserved in the appendices
 - [Recovered closeouts, part 2](execution/recovered-closeouts/2026-09-13-part-2.md)
 - [Recovered closeouts, part 3](execution/recovered-closeouts/2026-09-13-part-3.md)
 - [Recovered closeouts, part 4](execution/recovered-closeouts/2026-09-13-part-4.md)
+
+
+### 2026-09-14 — approved original-clock worker timing and trace delivery source
+
+Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; shared branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, base `0f31baa2977e6362ef197878e5db50cd2fe9b963`. No commit/push/native/cloud/model/credential action. Parent owns budget/admission/acceptance and integration.
+
+Implemented the explicitly approved timing dialect bound to combined user event SHA `3303d129e5fde28d828729cd5b034a7981968c5cbbbad882a05367a5c361df2a`: pinned original dispatch T, useful cutoff T+3485, absolute cleanup T+3500, unchanged one-hour SAM expiry and2135-second dispatch guard. Exclusive fsynced intent precedes the single stable-token job request; a final transport guard follows fresh admission. Startup/materialization/loop/retained windows cannot refresh T. All-ten successful persisted SAM results and the existing atomic actual-region reservation gate the reader phase; a late acknowledgement stays unknown and is not adopted after restart. Legacy1500/1800dialect remains.
+
+Added reviewed typed worker_trace metadata/immutable worker-only secret delivery with fixed metadata/privacy settings. No actual secret value, destination or access was invented or read. Root must reconcile fifth-slot native setup/history/cost/access; product owner separately implements bounded child export. Contract is `docs/execution/APPROVED_WORKER_TIMING.md`.
+
+Durable evidence `/private/tmp/specimen-approved-worker-timing-20260914/{RESULT.json,FINAL_PINS.json,ARTIFACTS.json}`. Preserved source REDs: worker4failed; runtime3failed5passed; post-admission stale dispatch; trace5failed13passed. Focused Mac247passed/1Linuxskip; final trace/runtime90passed. Candidate capped offline Linux123passed/1failed, identical repeat120passed/4failed. Unchanged-main0f31baa baseline29passed/6failed on the same four process modules and resources confirms existing missing short-startup readiness/auth/PID markers, including captured nested FileNotFoundError. This is NOT a full Linux-green claim. No fixture/deadline/assertion/resource weakening. All new timing/runtime tests passed both Linux candidate runs.
+
+Preserved failed approaches: initialuv attempt ran no tests due cache sandbox permission; canonical offline venv then installed. Initial evidence wrapper accidentally shadowed Workflow._step and was corrected; SAM phase-local deadline must not tighten the original worker ledger window. Full60-second startup plus maximalR25schedule leaves no fractional slack and truthfully blocks; feasible50-second startup fixture finishes all50reader invocations under originalT. The same5-second safety reserve is counted once across complete SAM/reader geometry. Native latency remains Not confirmed.
+
+Unresolved gates: independent final source/Linux/CI verification, root-owned private timing/trace inputs and billing review, trace child integration, protected merged-main release and actual ten-specimen review acceptance. Local source checks do not establish native readiness.
+
+
+### 2026-09-14 — Approved budget and review-scope successor
+
+Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch
+`codex/approved-review-release`, worktree
+`/private/tmp/specimen-approved-review-release-20260914`, starts from PR33 main
+`0f31baa2977e6362ef197878e5db50cd2fe9b963`. Independently verified the direct
+combined user approval at 2026-09-14T02:03:08.382Z in integration task
+`01a07f48-a57c-71b0-9642-c9430886049c`; original-message digest3303d129 is
+bound into additive12M budget and human-scope dialects. Original5M scope,
+snapshot, all original workflow/operator liabilities and uncertainty stay exact.
+The new ledger embeds original4eabef12 bytes and permits only appended costs.
+The new human scope canonical digest is
+`5c460d9ca7acc86ee0407584732d0cf1e27b1bc685a968f8094ce7ca133dfc15`;
+legacy14f6b114 remains unchanged. These source contracts grant no native readiness.
+
+Initial TDD rejected the new budget/scope, then284 focused legacy/new tests
+passed. Independent review subsequently exposed five actual QA accounting
+failures: a new snapshot hold could be omitted from the review projection, and
+invalid current snapshot limits could pass QA although admission rejected them.
+All five were reproduced. The exact coordinator reconciliation now lives in
+shared `release_budget.py` and is consumed by both admission and QA; seven
+permanent regression probes and the broader291-test focused suite pass.
+The first synthetic projection fixture lacked a complete coordinator snapshot;
+it was completed to exercise the shared validation without weakening the gate.
+Original frozen candidate and failed review outputs remain retained. Repaired
+candidate manifest21769c7a is in
+`/private/tmp/specimen-approved-budget-candidate-v2-20260914`; independent final
+review is pending. Full canonical checks, PR, merged deployment and live
+acceptance are Not confirmed for this successor.
+
+Native Chrome permission initially delayed inspection. After access returned,
+the correct-profile App Check page opened but accessibility remained a stuck
+Settings menu and screenshots were unavailable. No registration/tier/usage fact
+was inferred; the native coordinator owns further login/console verification.
+No credentials, cloud mutations, paid model calls or operational windows were
+issued by this source work. Runtime timing, worker trace linkage and private
+operational helper work have distinct owners and must integrate before final
+source qualification. The new pure source dependency must be pinned by private
+loaders rather than resolved from an ambient installed package.
+
+
+## 2026-09-14 — runtime_timing canonical Python failure diagnosis and alarm fixture isolation
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; shared branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, based main `0f31baa2977e6362ef197878e5db50cd2fe9b963`. No commit/push; integration and PR owned by parent.
+- Exact sandbox failures: localhost HTTP bind PermissionError and initdb shared-memory shmget Operation not permitted. Same two HTTP and one PostgreSQL catalog cases: 3 passed in 2.92s outside sandbox using cached Python 3.12.3. Separate `.venv-ci312` prepared offline; existing Python 3.11.16 `.venv` left untouched during reviewer imports.
+- Python 3.12 alone did not fix the abrupt pytest exit. Retained C watchdog stack proves the original 80 ms production guard terminates while the synthetic test sleeps, before Python services the soft signal. Product functions and all frozen timing pins are unchanged. Only `scripts/ci/test_runtime_registry_login.py` isolates these cases in child processes, preserves original cutoff/events/alarm checks, and requires positive C watchdog stack evidence for hard exit 1. One native stall exercises that branch. Parent caught insufficient causality in the first isolation draft; preserved negative probe proves final controller rejects an unrelated exit 1 without a C dump.
+- Final meaningful validation: both full registry modules, 54 passed in 2.81s (`REGISTRY_CAUSAL_GREEN.log`); source-only exact pins in `SOURCE_PROOF.json`. Report `/private/tmp/specimen-approved-review-python-diagnostic-20260914/REPORT.md`, SHA `fa6faf2b39d22cbe19ae03205dbd8fb47de6ca6ebc80f4c246fa3c2fe1f03ec9`; manifest SHA `25e8234add267d9099880441f23953fecce93ad44c8e8a89fdced0fba47431d4`; final test SHA `a3ed767e187edcc9f3e981ceb745cf9f693216985bf7096d973f749b115f3ace`. Original failing and intermediate logs retained unchanged.
+- Full canonical rerun/summary, Linux CI, live/native acceptance: Not confirmed here. Parent to run canonical with `.venv-ci312` and local fixture permissions, then independent alarm review. No cloud/credential/model/paid calls, source deadline increase, skip, or commit. Awaiting separate frozen trace candidate for independent review.
+
+
+## 2026-09-14 — approved budget/timing candidate local gate
+
+- Task: `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch
+  `codex/approved-review-release`; worktree
+  `/private/tmp/specimen-approved-review-release-20260914`; base commit
+  `0f31baa2977e6362ef197878e5db50cd2fe9b963` (PR #33). New PR: Not confirmed.
+- The full canonical command `UV_PROJECT_ENVIRONMENT=.venv-ci312
+  GITHUB_ACTIONS=true scripts/ci/verify.sh` passed with Python 3.12:
+  2200 Python tests passed, 81 skipped, 7 warnings; 211 Flutter tests passed,
+  7 skipped; static analysis, repository/secret checks and release web build
+  passed. Retained log: `CANONICAL_BEFORE_TRACE_V2.log`, SHA256 `e1e7d5b0c6e37f3c2504e662b5c816b10a3bee19090ce51bb2327819a91b5244`,
+  under `/private/tmp/specimen-approved-review-integration-20260914`.
+- Failed approaches retained: default sandbox denied local HTTP sockets and
+  disposable PostgreSQL shared memory; those three tests pass with local access.
+  A genuine C watchdog could terminate the pytest runner before its soft signal.
+  The test now runs that guard in a child and requires exact events and positive
+  C stack evidence; arbitrary process exits cannot pass. Canonical pytest also
+  exposed a regression-test namespace import that `python -m pytest` masked;
+  an explicit sibling-file import fixes it without changing tested behavior.
+- Independent reviews closed with no actionable findings: budget v2 (45 probes
+  and 291 focused tests), timing (223 passed, 1 Linux-only skip), watchdog
+  harness (54 registry tests plus 11 rejection probes), digest/synthetic-resource
+  scanner annotations (all ASTs/constants unchanged), and projection import
+  (old failure reproduced, all seven candidate cases passed). Reports and source
+  hashes remain in their separately retained review directories. Scanner policy
+  and production watchdog cutoffs were not changed.
+- This source candidate does not include the active bounded trace extension.
+  The automatic approval review rejected its live HTTPS transport source edit
+  and requested current explicit destination/payload authorization; the native
+  coordinator owns that request and Google/Logfire sign-in. Trace transport,
+  actual destination/access, final combined-source checks, PR/merge, protected
+  DATA/runtime deployment and all ten live product journeys: Not confirmed.
+  Do not activate the provisional worker trace template or qualify private
+  source loaders from this intermediate candidate. Preserve all active worktrees.
