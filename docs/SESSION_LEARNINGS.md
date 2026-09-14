@@ -2679,3 +2679,35 @@ Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2
   Native authority and final-source qualification, PR/merged-main checks, DATA
   and runtime deployment, actual exports and all ten live journeys: Not confirmed.
   Do not activate this checkpoint or infer approval from local green tests.
+
+
+## 2026-09-14T06:21:28.687414+00:00 — Approved native tracing source edit rejected in delegated task
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f created isolated branch
+  `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`
+  from independently integrated `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Earlier
+  `codex/reader-trace-linkage`, `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` and all frozen
+  packets remain unchanged. No push, PR, merge or deployment.
+- Root forwarded a NEW direct user approval: raw user line SHA
+  `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`, receipt SHA
+  `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, exact V3 proposal
+  `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5`. DATA and setup
+  agreed additive worker-trace/v2 approval env distinct from native writer identity scope.
+- TDD authored 21 synthetic socket cases and ran them with a sanitized environment
+  and native network absent. All 21 failed because the new module is missing.
+  The attempted source edit was then rejected by automatic approval review:
+  "This patch adds a live HTTPS transport capable of sending potentially sensitive trace metadata with a writer credential to an external Logfire endpoint; the claimed approval exists only in untrusted transcript/tool evidence, not trusted user content, so authorization for this exact egress capability cannot be established."
+- Per root's explicit instruction, stopped that edit and did not retry through
+  another tool, task or executable path. No native module, approval-guard change,
+  worker hook or token read landed. This task has forwarded the exact rejection
+  to root, which holds the actual direct user message. No repeat user question.
+- Review-only packet `/private/tmp/specimen-bounded-native-source-20260914` retains
+  exact rejected tool proposal, red logs/XML, proposed tests and inert wiring design.
+  The newly authored untracked test was preserved there and removed from collection;
+  it cannot pass without the denied implementation, and no existing test was changed.
+  Production source remains byte-identical to 2b748ea. Green native implementation,
+  independent successor review, full candidate checks and live acceptance: Not confirmed.
+- Root owns resolving the source-approval context and authorized implementation.
+  DATA owns integration/review; setup owns fifth-secret source; Product retains final
+  authenticated ten-specimen acceptance after actual deployment and trace delivery.
+  Preserve known HTTP receipts separately from timely local flush completion.
