@@ -53,7 +53,9 @@ class ReviewWorkbench extends StatefulWidget {
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
-  final Future<void> Function(Json change) onChange;
+
+  /// True only after the repository acknowledges this decision.
+  final Future<bool> Function(Json change) onChange;
   final Future<void> Function(String reason) onRetry;
   final VoidCallback onRefresh;
   final bool busy;
@@ -258,30 +260,31 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     }
   }
 
-  /// Sends one change and reports whether the record moved.
-  ///
-  /// `onChange` returns no result, so the only signal the workbench has that
-  /// a save landed is that the host handed it a new record. That alone does
-  /// not prove a conflict, so [_conflicted] pairs it with the one thing that
-  /// does: a version that arrived from somebody else while this reviewer was
-  /// working.
+  /// Waits for this decision's acknowledgement, independently of widget
+  /// identity or another request refreshing the record in the meantime.
   Future<bool> _send(Json change) async {
-    final Specimen before = widget.specimen;
+    if (_savingLocally || widget.busy) return false;
     _savingLocally = true;
     try {
-      await widget.onChange(change);
+      final bool acknowledged = await widget.onChange(change);
+      // Let the acknowledged record reach this widget before the next item
+      // in a batch reads its version or available actions.
+      if (mounted) await WidgetsBinding.instance.endOfFrame;
+      return mounted && acknowledged;
+    } catch (_) {
+      return false;
     } finally {
       _savingLocally = false;
     }
-    if (!mounted) return false;
-    return !identical(widget.specimen, before);
   }
 
   Future<void> _savePending() async {
     final List<PendingFieldChange> batch = List<PendingFieldChange>.of(
       _pending,
     );
-    if (batch.isEmpty) return;
+    if (batch.isEmpty || _savingLocally || blockedReason('field') != null) {
+      return;
+    }
     final List<ClearanceBlocker> outstanding = blockersFor(widget.specimen);
     final String? reason = await showReasonSheet(
       context,
@@ -304,7 +307,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     for (final PendingFieldChange change in batch) {
       final bool landed = await _send(change.toChange(reason));
       if (!mounted) return;
-      if (_conflicted(landed)) break;
+      if (!landed) break;
       saved++;
       setState(
         () => _pending = <PendingFieldChange>[
@@ -324,12 +327,6 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     }
     await _reportFailedSave(batch.length - saved);
   }
-
-  /// True only when both halves of a conflict are in hand: another
-  /// reviewer's version arrived, and this save did not produce one of its
-  /// own. A save that simply did not move the record is not evidence of a
-  /// conflict, and the workbench does not claim it is.
-  bool _conflicted(bool landed) => !landed && _conflictVersion != null;
 
   Future<void> _reportFailedSave(int keptCount) async {
     final bool refresh = await showConflictDialog(
@@ -369,7 +366,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       'reason': reason,
     });
     if (!mounted) return;
-    if (_conflicted(landed)) {
+    if (!landed) {
       await _reportFailedSave(_pending.length);
     } else {
       _announce('$action saved. Version ${widget.specimen.revision}.');

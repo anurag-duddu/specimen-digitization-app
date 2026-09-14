@@ -108,6 +108,8 @@ class WorkspaceController extends ChangeNotifier {
   bool _scopesLoaded = false;
   bool _scopesVerified = false;
   bool _started = false;
+  String? _startedUserId;
+  int _mutationEpoch = 0;
 
   List<Specimen> _items = <Specimen>[];
   Specimen? _selected;
@@ -223,8 +225,10 @@ class WorkspaceController extends ChangeNotifier {
   /// verified. Called by the app, never by a screen, so an unverified account
   /// never reaches the collection API.
   void start() {
-    if (_started || _disposed) return;
+    if (_disposed || (_started && _startedUserId == session.userId)) return;
+    if (_started) resetSession();
     _started = true;
+    _startedUserId = session.userId;
     final SpecimenRepository source = repository;
     if (source is AccessFailureSource) {
       _accessSubscription = (source as AccessFailureSource).accessFailures
@@ -246,6 +250,43 @@ class WorkspaceController extends ChangeNotifier {
         unawaited(refresh(quiet: true));
       }
     });
+  }
+
+  /// Invalidates requests, timers and cached permissions when an account
+  /// leaves. A later verified session must load its own collection access.
+  void resetSession() {
+    _generation++;
+    _mutationEpoch++;
+    _started = false;
+    _startedUserId = null;
+    _accessSubscription?.cancel();
+    _accessSubscription = null;
+    _poll?.cancel();
+    _poll = null;
+    _search?.cancel();
+    _search = null;
+    _scopes = <CollectionScope>[];
+    _scope = null;
+    _scopesLoaded = false;
+    _scopesVerified = false;
+    _items = <Specimen>[];
+    _selected = null;
+    _selectedId = null;
+    _nextCursor = null;
+    _seenCursors.clear();
+    _updatedAt = null;
+    _query = '';
+    _disposition = '';
+    _filters = <String, String>{};
+    _holds = 0;
+    _deferredPage = null;
+    _mutationKeys.clear();
+    _loading = true;
+    _loadingMore = false;
+    _mutating = false;
+    _error = null;
+    if (queueScroll.hasClients) queueScroll.jumpTo(0);
+    _notify();
   }
 
   @override
@@ -520,11 +561,12 @@ class WorkspaceController extends ChangeNotifier {
   ///
   /// A mutation key is retained for an uncertain response, so an identical
   /// retry reconciles on the server rather than recording twice.
-  Future<void> mutate(Json? change, String? retryReason) async {
+  Future<bool> mutate(Json? change, String? retryReason) async {
     final Specimen? current = _selected;
     final CollectionScope? scope = _scope;
-    if (current == null || scope == null || _mutating) return;
+    if (current == null || scope == null || _mutating) return false;
     final int generation = _generation;
+    final int mutationEpoch = _mutationEpoch;
     final String payload =
         '${current.id}:${current.revision}:${change ?? retryReason}';
     final String key = _mutationKeys.putIfAbsent(
@@ -538,14 +580,23 @@ class WorkspaceController extends ChangeNotifier {
       final Specimen result = change != null
           ? await repository.review(scope, current, change, key)
           : await repository.retry(scope, current, retryReason!, key);
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _generation) return false;
+      if (result.id != current.id ||
+          (change != null && result.revision <= current.revision)) {
+        throw const ApiFailure(
+          'The server has not confirmed this save with a newer record version.',
+          code: 'unconfirmed_save',
+        );
+      }
       _selected = result;
       _mutationKeys.remove(payload);
+      return true;
     } catch (error) {
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _generation) return false;
       _recordFailure(error);
+      return false;
     } finally {
-      if (!_disposed) {
+      if (!_disposed && mutationEpoch == _mutationEpoch) {
         _mutating = false;
         _notify();
       }
