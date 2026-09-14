@@ -226,9 +226,10 @@ void main() {
       find.widgetWithText(TextFormField, 'Password'),
       'fixture-only-password',
     );
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Test environment.'), findsOneWidget);
+    expect(find.textContaining('Synthetic environment.'), findsOneWidget);
     // The queue row sits below the fold, so scroll the queue list to it
     // rather than assuming it was laid out. Row heights move with the type
     // scale, so this must not depend on the header happening to be short.

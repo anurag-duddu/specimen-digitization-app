@@ -20,10 +20,10 @@ import 'thumbnail.dart';
 /// A relative age, for the queue list only.
 ///
 /// Deliberately coarse: a reviewer scanning a queue needs "3 days", not
-/// "3 days, 4 hours". Anything under a minute reads as "just now".
+/// "3 days, 4 hours". Anything under a minute reads as "moments ago".
 String relativeAge(DateTime moment, {DateTime? now}) {
   final Duration age = (now ?? DateTime.now()).difference(moment);
-  if (age.isNegative || age.inMinutes < 1) return 'just now';
+  if (age.isNegative || age.inMinutes < 1) return 'moments ago';
   if (age.inHours < 1) return '${age.inMinutes} min';
   if (age.inDays < 1) return '${age.inHours} h';
   if (age.inDays < _daysInWeek) return '${age.inDays} d';
@@ -174,63 +174,15 @@ class QueueRow extends StatelessWidget {
                       context.space.space2,
                       context.space.space2,
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: <Widget>[
-                        SpecimenThumbnail(bytes: thumbnail),
-                        SizedBox(width: context.space.space3),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                title,
-                                style: context.mono.identifier,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                reason,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: context.space.space2),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            StatusChip(status, dense: true),
-                            SizedBox(height: context.space.space1),
-                            RiskMeter(
-                              composite: riskComposite,
-                              components: riskComponents,
-                              calibrated: riskCalibrated,
-                              compact: true,
-                            ),
-                          ],
-                        ),
-                        if (updated != null) ...<Widget>[
-                          SizedBox(width: context.space.space2),
-                          Text(
-                            relativeAge(updated, now: now),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                        Icon(
-                          Symbols.chevron_right,
-                          size: context.sizes.iconInline,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ],
+                    child: LayoutBuilder(
+                      builder:
+                          (BuildContext context, BoxConstraints constraints) {
+                            final bool compact =
+                                constraints.maxWidth < _compactBreakpoint;
+                            return compact
+                                ? _compactBody(context, theme, updated)
+                                : _wideBody(context, theme, updated);
+                          },
                     ),
                   ),
                 ),
@@ -241,6 +193,135 @@ class QueueRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Below this content width the status chip and risk meter drop to a
+  /// second line, so they never compete with the title and reason for a
+  /// narrow list-detail pane (design system, section 7.3, `QueueRow`).
+  static const double _compactBreakpoint = 500;
+
+  /// The identifier over the reason, both clipped so neither can push the
+  /// row wider than the space it is given.
+  Widget _titleAndReason(BuildContext context, ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          title,
+          style: context.mono.identifier,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        Text(
+          reason,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _ageText(ThemeData theme) => Text(
+    relativeAge(updatedAt!, now: now),
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+  );
+
+  Widget _chevron(BuildContext context, ThemeData theme) => Icon(
+    Symbols.chevron_right,
+    size: context.sizes.iconInline,
+    color: theme.colorScheme.onSurfaceVariant,
+  );
+
+  Widget _riskMeter() => RiskMeter(
+    composite: riskComposite,
+    components: riskComponents,
+    calibrated: riskCalibrated,
+    compact: true,
+  );
+
+  /// 500dp and up: thumbnail, title and reason, then the chip, meter and
+  /// age in one trailing column, all on a single line.
+  Widget _wideBody(BuildContext context, ThemeData theme, DateTime? updated) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        SpecimenThumbnail(bytes: thumbnail),
+        SizedBox(width: context.space.space3),
+        Expanded(child: _titleAndReason(context, theme)),
+        SizedBox(width: context.space.space2),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _metaMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              StatusChip(status, dense: true),
+              SizedBox(height: context.space.space1),
+              _riskMeter(),
+            ],
+          ),
+        ),
+        if (updated != null) ...<Widget>[
+          SizedBox(width: context.space.space2),
+          _ageText(theme),
+        ],
+        _chevron(context, theme),
+      ],
+    );
+  }
+
+  /// Under 500dp: the thumbnail, title and reason keep the first line to
+  /// themselves, with the chevron; the status chip, risk meter and age move
+  /// to a second line that wraps rather than overflows, so a 320dp pane
+  /// never clips.
+  Widget _compactBody(
+    BuildContext context,
+    ThemeData theme,
+    DateTime? updated,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            SpecimenThumbnail(bytes: thumbnail),
+            SizedBox(width: context.space.space3),
+            Expanded(child: _titleAndReason(context, theme)),
+            SizedBox(width: context.space.space2),
+            _chevron(context, theme),
+          ],
+        ),
+        SizedBox(height: context.space.space1),
+        Padding(
+          padding: EdgeInsetsDirectional.only(
+            start: context.sizes.iconDisplay + context.space.space3,
+          ),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: context.space.space2,
+            runSpacing: context.space.space1,
+            children: <Widget>[
+              StatusChip(status, dense: true),
+              _riskMeter(),
+              if (updated != null) _ageText(theme),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The trailing chip and meter column never grows past this, in either
+  /// layout, so a long status label or an uncalibrated caveat wraps inside
+  /// the meter instead of pushing the title out of the row.
+  static const double _metaMaxWidth = 220;
 
   /// The focus fill behind a keyboard focused row. Low enough to keep the
   /// text legible, high enough to find at a glance.

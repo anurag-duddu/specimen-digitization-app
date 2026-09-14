@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/auth.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/email_verification.dart';
 import 'widget_test.dart' show TestSession;
 
@@ -30,6 +31,7 @@ void main() {
     addTearDown(session.controller.close);
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: EmailVerificationGate(
           session: session,
           child: const Text('protected workspace'),
@@ -51,6 +53,7 @@ void main() {
       addTearDown(session.controller.close);
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: EmailVerificationGate(
             session: session,
             child: const Text('protected workspace'),
