@@ -85,10 +85,19 @@ Future<T?> showAdaptiveForm<T>(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(dialogRadius),
       ),
+      // Height as well as width. Without a height bound a scrolling body
+      // inside the dialog is given more room than the dialog has, and the
+      // last control in it is drawn over the primary action (finding V-6).
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: width),
+        constraints: BoxConstraints(
+          maxWidth: width,
+          maxHeight: MediaQuery.sizeOf(dialogContext).height * _dialogHeight,
+        ),
         child: builder(dialogContext),
       ),
     ),
   );
 }
+
+/// The share of the window a dialog may take before its body scrolls.
+const double _dialogHeight = 0.9;

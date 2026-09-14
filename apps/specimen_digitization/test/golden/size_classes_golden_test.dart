@@ -12,6 +12,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
@@ -37,34 +38,11 @@ String scaleTag(double scale) => 'text${scale.toStringAsFixed(1)}';
 
 /// The record screens that still lay out past the window they were given.
 ///
-/// Finding V-1 in `design/08-verification-report.md`. The pinned source pane
-/// is given a floor of [pinnedSourceMinHeight], 160, which is below the
-/// height of its own fixed rows, so when the record header and the decision
-/// bar leave it no more than that it draws its overflow stripe and the
-/// photograph disappears. At 200 percent text the same thing happens at every
-/// width, which is pass criterion 8.5 failing.
-///
-/// This list is a backlog, not a permission: an overflow that is not in it
-/// fails the test, and an entry that stops overflowing fails it too, so the
-/// list can only shrink and only on purpose. The goldens themselves show what
-/// each entry looks like.
-final Set<String> knownWorkbenchOverflows = <String>{
-  for (final String segment in <String>['readings', 'fields', 'history']) ...{
-    // Compact, at both text scales: the photograph is gone at 100 percent
-    // already, because the header and the decision bar take the room first.
-    'workbench-${segment}__compact-390x844__light__text1.0',
-    'workbench-${segment}__compact-390x844__dark__text1.0',
-    'workbench-${segment}__compact-390x844__light__text2.0',
-    'workbench-${segment}__compact-390x844__dark__text2.0',
-    // Every other width, at 200 percent text only.
-    'workbench-${segment}__medium-768x1024__light__text2.0',
-    'workbench-${segment}__medium-768x1024__dark__text2.0',
-    'workbench-${segment}__expanded-1180x820__light__text2.0',
-    'workbench-${segment}__expanded-1180x820__dark__text2.0',
-    'workbench-${segment}__large-1440x900__light__text2.0',
-    'workbench-${segment}__large-1440x900__dark__text2.0',
-  },
-};
+/// Finding V-1 in `design/08-verification-report.md` is fixed, so this set is
+/// empty. It stays here because it is a gate rather than a note: an overflow
+/// that is not listed fails the test, and an entry that stops overflowing
+/// fails it too, so the list can only change on purpose.
+final Set<String> knownWorkbenchOverflows = <String>{};
 
 /// The errors the frames of the current test reported.
 ///
@@ -75,17 +53,33 @@ final Set<String> knownWorkbenchOverflows = <String>{
 /// overflow fails the test.
 List<String> capturedLayoutErrors = <String>[];
 
+/// The handler in place before this test installed its collector.
+FlutterExceptionHandler? _previousOnError;
+
 /// Starts collecting this test's layout errors, and stops at the end of it.
 void captureLayoutErrors() {
-  final FlutterExceptionHandler? previous = FlutterError.onError;
+  _previousOnError = FlutterError.onError;
   capturedLayoutErrors = <String>[];
   FlutterError.onError = (FlutterErrorDetails details) =>
       capturedLayoutErrors.add(details.exceptionAsString());
-  addTearDown(() => FlutterError.onError = previous);
+  addTearDown(stopCapturingLayoutErrors);
+}
+
+/// Puts the framework's own handler back.
+///
+/// Called before the assertions below rather than only in the tear down: an
+/// `expect` that fails while the collector is installed is swallowed by it,
+/// and the binding then reports "a test overrode FlutterError.onError"
+/// instead of the failure that actually happened.
+void stopCapturingLayoutErrors() {
+  if (_previousOnError == null) return;
+  FlutterError.onError = _previousOnError;
+  _previousOnError = null;
 }
 
 /// Asserts that [name] overflowed exactly when the backlog says it does.
 void expectKnownOverflow(WidgetTester tester, String name) {
+  stopCapturingLayoutErrors();
   final List<String> errors = capturedLayoutErrors;
   final bool overflowed = errors.any(
     (String error) => error.contains('overflowed by'),
@@ -96,7 +90,7 @@ void expectKnownOverflow(WidgetTester tester, String name) {
   expect(
     other,
     isEmpty,
-    reason: 'a golden must not be captured from a broken frame',
+    reason: 'a golden must not be captured from a broken frame: $other',
   );
   if (knownWorkbenchOverflows.contains(name)) {
     expect(
@@ -113,7 +107,7 @@ void expectKnownOverflow(WidgetTester tester, String name) {
       isFalse,
       reason:
           '$name overflowed its window. Look at the golden: content that '
-          'cannot be seen is pass criterion 8.5 failing.',
+          'cannot be seen is pass criterion 8.5 failing. $errors',
     );
   }
 }
@@ -237,11 +231,13 @@ void main() {
               // on a large window the History golden is the persistent pane
               // rather than a third segment.
               //
-              // Scoped to the selector, and scrolled into view first: the
-              // segment word also appears in the help sheet and in the
-              // history pane's own heading, and an unscoped finder at 200
-              // percent text taps whatever happens to sit under the first
-              // match instead.
+              // Chosen from the keyboard rather than by tapping. At 200
+              // percent text on a phone the record scrolls as one, so the
+              // selector's position depends on the scroll offset, and a
+              // capture that had to scroll the pane to reach a control is a
+              // capture of a scrolled pane. The shortcut moves the segment
+              // without moving anything else, and it is the same binding the
+              // keyboard walkthrough proves.
               final Finder tab = find
                   .descendant(
                     of: find.byType(SegmentedButton<WorkbenchSegment>),
@@ -249,12 +245,39 @@ void main() {
                   )
                   .first;
               if (tab.evaluate().isNotEmpty) {
-                await tester.ensureVisible(tab);
-                await tester.pumpAndSettle();
-                await tester.tap(tab);
+                await tester.sendKeyEvent(switch (segment) {
+                  WorkbenchSegment.readings => LogicalKeyboardKey.keyR,
+                  WorkbenchSegment.fields => LogicalKeyboardKey.keyF,
+                  WorkbenchSegment.history => LogicalKeyboardKey.keyH,
+                });
                 await tester.pumpAndSettle();
                 await settleImages(tester);
+                expect(
+                  tester
+                      .widget<SegmentedButton<WorkbenchSegment>>(
+                        find.byType(SegmentedButton<WorkbenchSegment>),
+                      )
+                      .selected,
+                  <WorkbenchSegment>{segment},
+                  reason: 'the golden is of the wrong segment',
+                );
               }
+              // Every scroll view is returned to its top before the capture.
+              // Focus pulls a scroll view to the control it lands on, and
+              // which control that is depends on timing, so without this the
+              // same screen is captured scrolled on one run and not on the
+              // next. A capture of a scrolled pane is not a capture of the
+              // screen.
+              for (final ScrollableState scroll
+                  in tester.stateList<ScrollableState>(
+                    find.byType(Scrollable),
+                  )) {
+                if (scroll.position.hasPixels && scroll.position.pixels != 0) {
+                  scroll.position.jumpTo(0);
+                }
+              }
+              await tester.pumpAndSettle();
+
               // A golden of the record must be a golden of the record, not of
               // a dialog a stray tap opened over it.
               expect(

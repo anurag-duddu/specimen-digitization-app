@@ -386,6 +386,26 @@ Future<void> pumpGoldenDialog(
   await settleImages(tester);
 }
 
+/// Why a golden comparison does not run away from a macOS host.
+///
+/// The PNGs in `test/golden/images/` are generated on macOS. A Linux CI
+/// runner draws the same widget tree with the same deterministic test font but
+/// antialiases it differently, which moves 1 to 4 percent of the pixels in
+/// about half the files: a real difference in bytes and no difference at all
+/// in what the golden is evidence of. Comparing them there reports failures
+/// nobody can act on and hides the ones that matter.
+///
+/// Everything else in this suite still runs on every platform. In particular
+/// the overflow assertions in `size_classes_golden_test.dart`, the semantics
+/// fixtures and the keyboard walkthrough are layout and semantics checks
+/// rather than pixel checks, and they are the ones that carry the findings.
+const String goldenPlatformSkip =
+    'Goldens are generated on macOS; Linux font rendering differs by 1 to 4 '
+    'percent';
+
+/// True where a golden comparison is meaningful.
+bool get goldensCompare => Platform.isMacOS;
+
 /// Where a golden for [name] lives.
 ///
 /// One flat directory of PNGs named `screen__window__theme__scale`, so a
@@ -397,11 +417,61 @@ Future<void> expectGolden(WidgetTester tester, String name) =>
     expectGoldenFinder(tester, find.byType(SpecimenDigitizationApp), name);
 
 /// Matches [target] against the golden named [name].
+///
+/// Off a macOS host the comparison is skipped rather than failed, for the
+/// reason in [goldenPlatformSkip]. The test still built the screen, so every
+/// other assertion in it, including the overflow check, has already run.
 Future<void> expectGoldenFinder(
   WidgetTester tester,
   Finder target,
   String name,
 ) async {
+  if (!goldensCompare) {
+    markTestSkipped('$name: $goldenPlatformSkip');
+    await tester.pumpWidget(const SizedBox());
+    return;
+  }
   await expectLater(target, matchesGoldenFile(goldenPath(name)));
   await tester.pumpWidget(const SizedBox());
+}
+
+/// The records the queue answers when a test moves between specimens.
+///
+/// Built from [goldenVerifiedSpecimen] so every one of them draws the same
+/// rich record, with only the identifier and the name changing: the point of
+/// these is the order they are in, not what is on them.
+List<Specimen> goldenQueue(int count) => <Specimen>[
+  for (int i = 1; i <= count; i++)
+    Specimen(<String, dynamic>{
+      ...goldenVerifiedSpecimen().data,
+      'specimen_id': 'fixture-00$i',
+      'display_name': 'Pinned beetle $i',
+    }),
+];
+
+/// A repository whose queue holds more than one record.
+class GoldenQueueRepository extends GoldenRepository {
+  GoldenQueueRepository(this.records) : super.verified();
+
+  /// The queue, in the order the list shows it.
+  final List<Specimen> records;
+
+  @override
+  Future<List<Specimen>> specimens(
+    CollectionScope scope, {
+    String query = '',
+    String status = '',
+  }) async => records;
+
+  @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const <String, String>{},
+    String? cursor,
+  }) async => SpecimenPage(records);
+
+  @override
+  Future<Specimen> specimen(CollectionScope scope, String id) async =>
+      records.where((Specimen record) => record.id == id).firstOrNull ??
+      records.first;
 }

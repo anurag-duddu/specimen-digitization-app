@@ -249,10 +249,16 @@ class _Abstention extends StatelessWidget {
           color: theme.colorScheme.onSurfaceVariant,
         ),
         SizedBox(width: context.space.space1),
-        Text(
-          word,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        // Flexible, because a `Row` hands a non-flex child unbounded width
+        // and the row itself is inside a bounded column: "Not recorded"
+        // beside its glyph is four pixels wider than a field row on a phone
+        // (finding V-1, pass criterion 8.5).
+        Flexible(
+          child: Text(
+            word,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],

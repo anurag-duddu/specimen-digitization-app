@@ -474,8 +474,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
         setState(
           () => entry.preflightError = e is ApiFailure
               ? e.message
-              : 'The server check did not run. Retry, or ask your '
-                    'administrator to confirm your collection access.',
+              : 'The server check did not run. Retry, or have your '
+                    'collection access confirmed.',
         );
       }
     } finally {

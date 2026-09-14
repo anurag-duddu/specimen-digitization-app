@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import 'administrator_contact.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
@@ -177,6 +178,7 @@ class ProcessingDetail extends StatelessWidget {
                 'provider configuration.',
             why: 'Where a cost is not recorded, it is unknown, not zero.',
           ),
+          const AdministratorContactLine(),
         ],
         if (run['next_retry_at'] != null)
           _Measurement(

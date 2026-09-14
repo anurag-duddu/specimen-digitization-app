@@ -15,6 +15,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../../app/routes.dart';
 import '../../models.dart';
+import '../../saved_filters.dart';
 import '../../search_filters.dart';
 import '../../theme/icons.dart';
 import '../../theme/motion.dart';
@@ -139,6 +140,7 @@ class _QueuePaneState extends State<QueuePane> {
             builder: (BuildContext sheetContext) => SearchFilters(
               initial: controller.filters,
               configuration: scope?.configuration ?? const <String, dynamic>{},
+              savedFilters: scope == null ? null : SavedFilterStore(scope.key),
             ),
           );
       if (values != null && mounted) await controller.applyFilters(values);
@@ -209,12 +211,20 @@ class _QueuePaneState extends State<QueuePane> {
 
   Widget _body(BuildContext context, WorkspaceController controller) {
     final List<Specimen> items = controller.items;
-    final bool first = controller.loading && items.isEmpty;
+    // Placeholders until the server has answered at least once, never a claim
+    // about the collection. A deep link used to cancel the queue load and
+    // leave this pane saying "No specimens yet" about a collection with
+    // records (finding V-5); a list that has never been answered says only
+    // that it is loading.
+    final bool first = items.isEmpty && !controller.listAnswered;
     final double gutter = WindowClass.of(context).isCompact
         ? context.space.space4
         : context.space.space6;
 
     final Widget list = ListView(
+      // The offset survives a push to a record and back, on a window too
+      // narrow to keep the list mounted beside it (pass criterion 6.5).
+      key: const PageStorageKey<String>('queue-list'),
       controller: controller.queueScroll,
       padding: EdgeInsets.symmetric(
         horizontal: gutter,

@@ -1,5 +1,6 @@
 label="Approve record"
 label="The record is cleared for publication."
+label="This cannot be undone. The decision is recorded on this version and is superseded by a later one, never removed."
 label="Every earlier decision stays in the history."
 label="Still outstanding"
 label="A supported collector is required"

@@ -21,6 +21,7 @@ import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/models.dart';
@@ -354,39 +355,30 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets(
-      'the evidence switcher announces itself as a tab list',
-      (WidgetTester tester) async {
-        final SemanticsHandle handle = tester.ensureSemantics();
-        await pumpGoldenApp(
-          tester,
-          window: dumpWindow,
-          brightness: Brightness.light,
-          location: goldenSpecimenLocation,
-        );
-        final List<SemanticsRole> roles = <SemanticsRole>[];
-        void walk(SemanticsNode node) {
-          roles.add(node.getSemanticsData().role);
-          node.visitChildren((SemanticsNode child) {
-            walk(child);
-            return true;
-          });
-        }
+    testWidgets('the evidence switcher announces itself as a tab list', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpGoldenApp(
+        tester,
+        window: dumpWindow,
+        brightness: Brightness.light,
+        location: goldenSpecimenLocation,
+      );
+      final List<SemanticsRole> roles = <SemanticsRole>[];
+      void walk(SemanticsNode node) {
+        roles.add(node.getSemanticsData().role);
+        node.visitChildren((SemanticsNode child) {
+          walk(child);
+          return true;
+        });
+      }
 
-        walk(
-          tester.getSemantics(find.byType(SegmentedButton<WorkbenchSegment>)),
-        );
-        expect(roles, contains(SemanticsRole.tab));
-        handle.dispose();
-        await tester.pumpWidget(const SizedBox());
-      },
-      // Finding V-3 in design/08-verification-report.md. Material's
-      // `SegmentedButton` exposes `checked` and `inMutuallyExclusiveGroup`,
-      // which VoiceOver reads as a radio button rather than the
-      // "tab, 1 of 3, selected" that accessibility section 3.2 asks for.
-      // Delete this skip when the selector carries `SemanticsRole.tab`.
-      skip: true,
-    );
+      walk(tester.getSemantics(find.byType(SegmentedButton<WorkbenchSegment>)));
+      expect(roles, contains(SemanticsRole.tab));
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
 
     testWidgets('a region overlay and its chip answer to the same name', (
       WidgetTester tester,
@@ -485,32 +477,56 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets(
-      'a silent wait still announces that the queue is loading',
-      (WidgetTester tester) async {
-        final SemanticsHandle handle = tester.ensureSemantics();
-        await pumpSurface(
-          tester,
-          const Column(
-            children: <Widget>[
-              LoadingAnnouncement(thing: 'queue'),
-              SkeletonRow(),
-              SkeletonRow(),
-            ],
+    testWidgets('a silent wait still announces that the queue is loading', (
+      WidgetTester tester,
+    ) async {
+      // Finding V-4. With `visible` false, which is how the queue's own first
+      // load uses it, there is no text on screen to host a live region and a
+      // zero-size node is dropped from the semantics tree. The wait is
+      // carried by an announcement instead, which is what a momentary event
+      // with no text host is for.
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final List<String> announced = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<
+        dynamic
+      >(SystemChannels.accessibility, (dynamic message) async {
+        final Map<Object?, Object?> event = message! as Map<Object?, Object?>;
+        if (event['type'] != 'announce') return;
+        final Map<Object?, Object?> data =
+            event['data']! as Map<Object?, Object?>;
+        announced.add(data['message'].toString());
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger
+            .setMockDecodedMessageHandler<dynamic>(
+              SystemChannels.accessibility,
+              null,
+            ),
+      );
+
+      await pumpSurface(
+        tester,
+        Builder(
+          builder: (BuildContext context) => MediaQuery(
+            // The platform flag the framework gates `sendAnnouncement` on.
+            data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
+            child: const Column(
+              children: <Widget>[
+                LoadingAnnouncement(thing: 'queue'),
+                SkeletonRow(),
+                SkeletonRow(),
+              ],
+            ),
           ),
-        );
-        expect(spokenNames(tester), contains('Loading queue'));
-        handle.dispose();
-        await tester.pumpWidget(const SizedBox());
-      },
-      // Finding V-4 in design/08-verification-report.md. With `visible`
-      // false, which is how the queue's own first load uses it, the
-      // announcement's child is a zero-size box, its semantics node has an
-      // empty rect, and an empty rect is dropped from the tree. A reviewer
-      // using a screen reader hears nothing at all during the wait, which is
-      // the exact failure the widget exists to prevent.
-      skip: true,
-    );
+        ),
+      );
+      await tester.pump();
+      expect(announced, contains('Loading queue'));
+      // And no focusable node nobody can see was left behind to carry it.
+      expect(spokenNames(tester), isNot(contains('Loading queue')));
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
 
     testWidgets('a dialog takes focus and gives it back on close', (
       WidgetTester tester,

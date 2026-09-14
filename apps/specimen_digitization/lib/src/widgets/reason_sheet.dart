@@ -20,12 +20,18 @@ import 'adaptive_form.dart';
 /// what will change, [retained] is one sentence saying what survives, and
 /// [outstanding] lists the findings the action does not resolve.
 /// [recentReasons] are offered as chips that fill the field.
+///
+/// [reversal] names the way back, where the server exposes one. The review
+/// API exposes none: a decision is recorded against a version and superseded
+/// by the next one rather than removed, so the sheet states that instead of
+/// offering an Undo it could not honour (pass criterion 3.4).
 Future<String?> showReasonSheet(
   BuildContext context, {
   required String title,
   required String action,
   required String consequence,
   String? retained,
+  String? reversal,
   List<String> outstanding = const <String>[],
   List<String> recentReasons = const <String>[],
 }) => showAdaptiveForm<String>(
@@ -36,6 +42,7 @@ Future<String?> showReasonSheet(
     action: action,
     consequence: consequence,
     retained: retained,
+    reversal: reversal,
     outstanding: outstanding,
     recentReasons: recentReasons,
   ),
@@ -50,6 +57,7 @@ class ReasonForm extends StatefulWidget {
     required this.action,
     required this.consequence,
     this.retained,
+    this.reversal,
     this.outstanding = const <String>[],
     this.recentReasons = const <String>[],
   });
@@ -58,8 +66,24 @@ class ReasonForm extends StatefulWidget {
   final String action;
   final String consequence;
   final String? retained;
+
+  /// How the action is taken back, when the server exposes a way.
+  ///
+  /// Null means there is none, and the sheet says so with [finality]. One of
+  /// the two is always on screen before the confirm button, which is what
+  /// pass criterion 3.4 asks for.
+  final String? reversal;
+
   final List<String> outstanding;
   final List<String> recentReasons;
+
+  /// The sentence every decision without a reversal carries.
+  ///
+  /// Fixed here rather than written out at each call site, so no sheet can
+  /// ship without it and no two sheets can word it differently.
+  static const String finality =
+      'This cannot be undone. The decision is recorded on this version and '
+      'is superseded by a later one, never removed.';
 
   @override
   State<ReasonForm> createState() => _ReasonFormState();
@@ -124,6 +148,11 @@ class _ReasonFormState extends State<ReasonForm> {
               Text(widget.title, style: theme.textTheme.titleLarge),
               SizedBox(height: context.space.space2),
               Text(widget.consequence, style: theme.textTheme.bodyMedium),
+              SizedBox(height: context.space.space2),
+              Text(
+                widget.reversal ?? ReasonForm.finality,
+                style: theme.textTheme.titleSmall,
+              ),
               if (widget.retained != null) ...<Widget>[
                 SizedBox(height: context.space.space2),
                 Text(

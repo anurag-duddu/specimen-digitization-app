@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'administrator_contact.dart';
 import 'models.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
@@ -197,10 +198,13 @@ class _ClassificationDialogState extends State<ClassificationDialog> {
                   'The record stays in this collection.',
                 ),
                 const SizedBox(height: 12),
-                if (nodes.isEmpty)
+                if (nodes.isEmpty) ...<Widget>[
                   const Text(
-                    'No classifications were returned. Refresh collection access, or ask your administrator.',
+                    'No classifications were returned. Refresh collection '
+                    'access, or ask the person named below.',
                   ),
+                  const AdministratorContactLine(),
+                ],
                 DropdownButtonFormField<String>(
                   initialValue: _node,
                   isExpanded: true,

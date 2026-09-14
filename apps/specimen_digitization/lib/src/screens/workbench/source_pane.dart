@@ -20,6 +20,7 @@ import '../../theme/icons.dart';
 import '../../theme/motion.dart';
 import '../../widgets/widgets.dart';
 import 'source_geometry.dart';
+import 'workbench_layout.dart';
 
 /// The zoom limits of the source viewer. Named here so the buttons, the
 /// keyboard and the zoom to region all clamp to the same range.
@@ -43,6 +44,7 @@ class WorkbenchSourcePane extends StatefulWidget {
     this.onExpand,
     this.fullScreen = false,
     this.compact = false,
+    this.imageHeight,
     this.controller,
   });
 
@@ -72,6 +74,16 @@ class WorkbenchSourcePane extends StatefulWidget {
   /// editor control and the source details then live in the evidence column
   /// beneath, because the pinned header has a fixed height to keep.
   final bool compact;
+
+  /// The height the photograph's own pixels are given, or null to take
+  /// whatever is left of the pane.
+  ///
+  /// The pinned header of a stacked layout passes a band rather than a pane
+  /// height, so the pane's chrome is never squeezed by a box that was sized
+  /// without it. That squeeze is finding V-1: a pane given less height than
+  /// its own controls and region list overflows its column and the photograph
+  /// is what disappears.
+  final double? imageHeight;
 
   /// Lets the workbench drive zoom and rotation from the keyboard.
   final SourceViewController? controller;
@@ -147,8 +159,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   /// The preview has no verified orientation, so overlays and region editing
   /// would be drawn against coordinates the client cannot map. The pane says
   /// so rather than drawing boxes it cannot stand behind.
-  bool get _unverifiedOrientation =>
-      _asset['media_type'] != null && _asset['preview_is_derivative'] != true;
+  bool get _unverifiedOrientation => SourceOrientationCaveat.unverified(_asset);
 
   List<Json> get _regions =>
       _unverifiedOrientation ? const <Json>[] : widget.specimen.regions;
@@ -248,42 +259,107 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
     return _rotation + ((region?['rotation_quarter_turns'] as int?) ?? 0);
   }
 
-  Widget _controls(BuildContext context) => Wrap(
-    spacing: context.space.space1,
-    children: <Widget>[
-      IconButton(
-        tooltip: 'Rotate the view 90 degrees',
-        onPressed: rotate,
-        icon: const Icon(Symbols.rotate_right),
+  /// One view control: what it is called, what it draws, and what it does.
+  ///
+  /// Named once so the row of buttons and the overflow menu below a narrow
+  /// width offer exactly the same set with exactly the same words.
+  List<({String label, IconData icon, VoidCallback onPressed})> _viewActions(
+    BuildContext context,
+  ) => <({String label, IconData icon, VoidCallback onPressed})>[
+    (
+      label: 'Rotate the view 90 degrees',
+      icon: Symbols.rotate_right,
+      onPressed: rotate,
+    ),
+    (
+      label: 'Zoom in',
+      icon: Symbols.zoom_in,
+      onPressed: () => zoomBy(sourceZoomStep),
+    ),
+    (
+      label: 'Zoom out',
+      icon: Symbols.zoom_out,
+      onPressed: () => zoomBy(1 / sourceZoomStep),
+    ),
+    (
+      label: 'Fit the whole photograph',
+      icon: Symbols.fit_screen,
+      onPressed: fit,
+    ),
+    if (widget.onExpand case final VoidCallback expand)
+      (
+        label: 'Open the photograph full screen',
+        icon: Symbols.open_in_full,
+        onPressed: expand,
       ),
-      IconButton(
-        tooltip: 'Zoom in',
-        onPressed: () => zoomBy(sourceZoomStep),
-        icon: const Icon(Symbols.zoom_in),
+    if (widget.fullScreen)
+      (
+        label: 'Close the full screen photograph',
+        icon: Symbols.close_fullscreen,
+        onPressed: () => Navigator.of(context).maybePop(),
       ),
-      IconButton(
-        tooltip: 'Zoom out',
-        onPressed: () => zoomBy(1 / sourceZoomStep),
-        icon: const Icon(Symbols.zoom_out),
-      ),
-      IconButton(
-        tooltip: 'Fit the whole photograph',
-        onPressed: fit,
-        icon: const Icon(Symbols.fit_screen),
-      ),
-      if (widget.onExpand != null)
-        IconButton(
-          tooltip: 'Open the photograph full screen',
-          onPressed: widget.onExpand,
-          icon: const Icon(Symbols.open_in_full),
+  ];
+
+  /// The view controls, as a row of buttons, or as one menu when the pane is
+  /// narrower than [sourceControlsOverflowWidth].
+  ///
+  /// Five 48 dp targets do not fit beside each other on a phone at a large
+  /// text scale without wrapping to a second row, and a second row of chrome
+  /// is height taken from the photograph (finding V-1).
+  Widget _controls(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints c) {
+      final List<({String label, IconData icon, VoidCallback onPressed})>
+      actions = _viewActions(context);
+      // One row of 48 dp targets, or one menu. The threshold is the width the
+      // row actually needs rather than a device width, so the controls stay
+      // in reach wherever they fit and never wrap to a second row, which
+      // would be chrome taken from the photograph (finding V-1).
+      final double needed =
+          actions.length * context.sizes.targetMin +
+          (actions.length - 1) * context.space.space1;
+      if (c.maxWidth >= needed) {
+        return Wrap(
+          spacing: context.space.space1,
+          children: <Widget>[
+            for (final (
+                  label: String label,
+                  icon: IconData icon,
+                  onPressed: VoidCallback onPressed,
+                )
+                in actions)
+              IconButton(
+                tooltip: label,
+                onPressed: onPressed,
+                icon: Icon(icon),
+              ),
+          ],
+        );
+      }
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: MenuAnchor(
+          builder: (BuildContext context, MenuController menu, Widget? _) =>
+              IconButton(
+                tooltip: 'Photograph view controls',
+                onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                icon: const Icon(Symbols.more_vert),
+              ),
+          menuChildren: <Widget>[
+            for (final (
+                  label: String label,
+                  icon: IconData icon,
+                  onPressed: VoidCallback onPressed,
+                )
+                in actions)
+              MenuItemButton(
+                leadingIcon: Icon(icon),
+                onPressed: onPressed,
+                child: Text(label),
+              ),
+          ],
         ),
-      if (widget.fullScreen)
-        IconButton(
-          tooltip: 'Close the full screen photograph',
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Symbols.close_fullscreen),
-        ),
-    ],
+      );
+    },
   );
 
   Widget _image(BuildContext context) => LayoutBuilder(
@@ -447,44 +523,118 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        if (_unverifiedOrientation)
-          Padding(
-            padding: EdgeInsets.only(bottom: context.space.space2),
-            child: const CaveatText(
-              label:
-                  'This photograph has no verified orientation, so label '
-                  'regions are not drawn.',
-              why:
-                  'The preview may be rotated differently from the recorded '
-                  'coordinates. Region correction needs a verified '
-                  'orientation.',
-            ),
-          ),
-        _controls(context),
-        Expanded(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              // The letterbox behind the photograph, so label paper reads as
-              // paper in both themes (blueprint 12).
-              color: context.sourceMatte,
-              borderRadius: BorderRadius.circular(context.shape.radiusSm),
-            ),
-            child: _image(context),
-          ),
+    final double? band = widget.imageHeight;
+    final Widget pixels = DecoratedBox(
+      decoration: BoxDecoration(
+        // The letterbox behind the photograph, so label paper reads as
+        // paper in both themes (blueprint 12).
+        color: context.sourceMatte,
+        borderRadius: BorderRadius.circular(context.shape.radiusSm),
+      ),
+      child: _image(context),
+    );
+
+    List<Widget> parts(Widget image) => <Widget>[
+      // The caveat is three lines of body text, and on a stacked layout the
+      // pinned header cannot afford them: it moves to the evidence column
+      // instead, next to the region editor control it is about
+      // (`SourceOrientationCaveat`, finding V-1).
+      if (_unverifiedOrientation && !widget.compact)
+        Padding(
+          padding: EdgeInsets.only(bottom: context.space.space2),
+          child: const SourceOrientationCaveat.text(),
         ),
-        SizedBox(height: context.space.space2),
-        _regionChips(context),
-        if (!widget.fullScreen && !widget.compact) ...<Widget>[
-          SourceRegionEditControl(
-            onEditRegions: widget.onEditRegions,
-            blockedReason: widget.editRegionsBlockedReason,
-          ),
-          _details(context),
-        ],
+      _controls(context),
+      image,
+      SizedBox(height: context.space.space2),
+      _regionChips(context),
+      if (!widget.fullScreen && !widget.compact) ...<Widget>[
+        SourceRegionEditControl(
+          onEditRegions: widget.onEditRegions,
+          blockedReason: widget.editRegionsBlockedReason,
+        ),
+        _details(context),
       ],
+    ];
+
+    if (band != null) {
+      // A band, so the pane is exactly as tall as its own parts and can never
+      // be handed a box shorter than its chrome (finding V-1).
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: parts(SizedBox(height: band, child: pixels)),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints c) {
+        // At a large text scale the pane's own fixed rows, the caveat, the
+        // controls, the region chips, the region editor control and the
+        // source details, are together taller than the pane. Pinning them
+        // around the photograph then lays the pane out past the box it was
+        // given, which is finding V-1 in the side by side regimes. The pane
+        // scrolls instead, and the photograph keeps the blueprint's share of
+        // it (pass criteria 8.4 and 8.5).
+        if (paneScrollsAtThisTextScale(MediaQuery.textScalerOf(context))) {
+          final double height = c.maxHeight.isFinite
+              ? c.maxHeight * sourcePaneMinViewportFraction
+              : sourceImageMinHeight;
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: parts(
+                SizedBox(
+                  height: height < sourceImageMinHeight
+                      ? sourceImageMinHeight
+                      : height,
+                  child: pixels,
+                ),
+              ),
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: parts(Expanded(child: pixels)),
+        );
+      },
+    );
+  }
+}
+
+/// Why the label regions are not drawn on this photograph.
+///
+/// Shown inside the pane at the widths where the pane has room for it, and in
+/// the evidence column beneath on a stacked layout, where the pinned header
+/// has a height to keep.
+class SourceOrientationCaveat extends StatelessWidget {
+  /// Shows the caveat when [asset] has no verified orientation.
+  const SourceOrientationCaveat({super.key, required this.asset});
+
+  /// The caveat itself, for a caller that has already decided to show it.
+  const SourceOrientationCaveat.text({super.key})
+    : asset = const <String, dynamic>{};
+
+  /// The photograph the caveat is about.
+  final Json asset;
+
+  /// True when the preview has no verified orientation, so overlays and
+  /// region editing would be drawn against coordinates the client cannot map.
+  static bool unverified(Json asset) =>
+      asset['media_type'] != null && asset['preview_is_derivative'] != true;
+
+  @override
+  Widget build(BuildContext context) {
+    if (asset.isNotEmpty && !unverified(asset)) return const SizedBox.shrink();
+    return const CaveatText(
+      label:
+          'This photograph has no verified orientation, so label regions are '
+          'not drawn.',
+      why:
+          'The preview may be rotated differently from the recorded '
+          'coordinates. Region correction needs a verified orientation.',
     );
   }
 }

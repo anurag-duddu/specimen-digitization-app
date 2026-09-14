@@ -121,11 +121,23 @@ class WorkspaceController extends ChangeNotifier {
   Map<String, String> _filters = <String, String>{};
 
   bool _loading = true;
+  bool _recordLoading = false;
   bool _loadingMore = false;
   bool _mutating = false;
   WorkspaceError? _error;
 
-  int _generation = 0;
+  /// Counts the list loads: `refresh`, `loadMore`, `search` and a change of
+  /// collection. Separate from [_recordGeneration] because the two are
+  /// independent requests and one must never cancel the other.
+  ///
+  /// One counter for both is finding V-5: a deep link mounted the workbench,
+  /// `openSpecimen` bumped the shared counter while `refresh` was still
+  /// awaiting its page, and `refresh` then threw away the page it had already
+  /// been given. The list pane told the reviewer the collection was empty.
+  int _listGeneration = 0;
+
+  /// Counts the record loads: `openSpecimen` and the save that follows one.
+  int _recordGeneration = 0;
   int _holds = 0;
   SpecimenPage? _deferredPage;
 
@@ -179,6 +191,18 @@ class WorkspaceController extends ChangeNotifier {
   /// True while a request that replaces the list is in flight.
   bool get loading => _loading;
 
+  /// True while the record a workbench route named is being fetched.
+  ///
+  /// Separate from [loading], which belongs to the list: a deep link loads
+  /// both at once and neither may report the other's state (finding V-5).
+  bool get recordLoading => _recordLoading;
+
+  /// True once the server has answered the list at least once.
+  ///
+  /// Until it has, the queue shows placeholders rather than a claim about
+  /// what the collection contains.
+  bool get listAnswered => _updatedAt != null;
+
   /// True while another page is being appended.
   bool get loadingMore => _loadingMore;
 
@@ -216,7 +240,7 @@ class WorkspaceController extends ChangeNotifier {
   /// The queue keys its cross-fade on this, so a search, a filter or a
   /// segment change swaps the rows and a poll that answered with the same
   /// records does not (motion catalog, rows 14 and 24).
-  int get listGeneration => _generation;
+  int get listGeneration => _listGeneration;
 
   /// The filters as the repository wants them. Unchanged from before the
   /// redesign: same keys, same string values.
@@ -319,12 +343,13 @@ class WorkspaceController extends ChangeNotifier {
     _scope = null;
     _items = <Specimen>[];
     _selected = null;
-    _generation++;
+    _listGeneration++;
+    _recordGeneration++;
     _notify();
-    final int generation = _generation;
+    final int generation = _listGeneration;
     try {
       final List<CollectionScope> scopes = await repository.scopes();
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _listGeneration) return;
       _scopesVerified = true;
       _scopesLoaded = true;
       _scopes = scopes;
@@ -333,7 +358,7 @@ class WorkspaceController extends ChangeNotifier {
       _notify();
       if (_scope != null) await refresh();
     } catch (error) {
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _listGeneration) return;
       _scopesLoaded = true;
       _loading = false;
       _recordFailure(error);
@@ -362,6 +387,8 @@ class WorkspaceController extends ChangeNotifier {
     _seenCursors.clear();
     _updatedAt = null;
     _loading = true;
+    _recordLoading = false;
+    _recordGeneration++;
     _error = null;
     scheduleMicrotask(() => unawaited(refresh()));
     return true;
@@ -378,7 +405,8 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> refresh({bool quiet = false}) async {
     final CollectionScope? scope = _scope;
     if (scope == null) return;
-    final int generation = ++_generation;
+    final int generation = ++_listGeneration;
+    final int openRecord = _recordGeneration;
     _nextCursor = null;
     _seenCursors.clear();
     _loadingMore = false;
@@ -392,26 +420,34 @@ class WorkspaceController extends ChangeNotifier {
         scope,
         filters: activeFilters,
       );
-      final Specimen? selected = _selectedId == null
+      final String? openId = _selectedId;
+      final Specimen? selected = openId == null
           ? null
-          : await repository.specimen(scope, _selectedId!);
-      if (_disposed || generation != _generation) return;
+          : await repository.specimen(scope, openId);
+      if (_disposed || generation != _listGeneration) return;
+      // The open record is the record load's to own. A refresh only carries
+      // it along when nothing opened or closed a record meanwhile.
+      final bool ownsRecord = openRecord == _recordGeneration;
       if (quiet && _holds > 0) {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
         _deferredPage = page;
-        _selected = selected ?? _selected;
+        if (ownsRecord) _selected = selected ?? _selected;
         _loading = false;
         _notify();
         return;
       }
       _applyPage(page);
-      _selected = selected;
+      if (ownsRecord) _selected = selected;
       _loading = false;
-      _error = null;
+      // A quiet poll is a background process. It may not clear a message the
+      // reviewer has not read: that is what the banner's own Dismiss is for
+      // (pass criterion 9.5). A refresh the reviewer asked for does clear it,
+      // because they are watching the result.
+      if (!quiet) _error = null;
       _notify();
     } catch (error) {
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _listGeneration) return;
       _loading = false;
       _recordFailure(error);
       _notify();
@@ -429,7 +465,7 @@ class WorkspaceController extends ChangeNotifier {
     final CollectionScope? scope = _scope;
     final String? cursor = _nextCursor;
     if (scope == null || cursor == null || _loadingMore || _loading) return;
-    final int generation = _generation;
+    final int generation = _listGeneration;
     _loadingMore = true;
     _error = null;
     _notify();
@@ -439,7 +475,7 @@ class WorkspaceController extends ChangeNotifier {
         filters: activeFilters,
         cursor: cursor,
       );
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _listGeneration) return;
       if (_seenCursors.contains(cursor) ||
           page.nextCursor == cursor ||
           (page.nextCursor != null && _seenCursors.contains(page.nextCursor))) {
@@ -460,11 +496,11 @@ class WorkspaceController extends ChangeNotifier {
       _nextCursor = page.nextCursor;
       _updatedAt = DateTime.now();
     } catch (error) {
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _listGeneration) return;
       _nextCursor = null;
       _recordFailure(error);
     } finally {
-      if (!_disposed && generation == _generation) {
+      if (!_disposed && generation == _listGeneration) {
         _loadingMore = false;
         _notify();
       }
@@ -474,7 +510,7 @@ class WorkspaceController extends ChangeNotifier {
   /// Sets the exact match search and reloads after the debounce.
   void search(String value) {
     _query = value;
-    _generation++;
+    _listGeneration++;
     _nextCursor = null;
     _loadingMore = false;
     _notify();
@@ -513,26 +549,41 @@ class WorkspaceController extends ChangeNotifier {
     return refresh();
   }
 
+  /// Asks for the list once, when a deep link opened a record before the
+  /// queue was ever shown.
+  ///
+  /// Silent when the list is already loaded or already in flight, so the
+  /// ordinary path from the queue to a record adds no request
+  /// (`test/app/request_budget_test.dart`).
+  void ensureListLoaded() {
+    if (_scope == null || _loading || _updatedAt != null) return;
+    scheduleMicrotask(() => unawaited(refresh()));
+  }
+
   /// Loads the record the workbench route names.
+  ///
+  /// Takes the record counter, never the list counter: a deep link opens a
+  /// record while the queue is still loading, and cancelling the queue load
+  /// is what left the list pane claiming an empty collection (finding V-5).
   Future<void> openSpecimen(String id) async {
     final CollectionScope? scope = _scope;
     if (scope == null) return;
     if (_selectedId == id && _selected != null) return;
     _selectedId = id;
     _selected = null;
-    _loading = true;
+    _recordLoading = true;
     _error = null;
     _notify();
-    final int generation = ++_generation;
+    final int generation = ++_recordGeneration;
     try {
       final Specimen item = await repository.specimen(scope, id);
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _recordGeneration) return;
       _selected = item;
-      _loading = false;
+      _recordLoading = false;
       _notify();
     } catch (error) {
-      if (_disposed || generation != _generation) return;
-      _loading = false;
+      if (_disposed || generation != _recordGeneration) return;
+      _recordLoading = false;
       _recordFailure(error);
       _notify();
     }
@@ -543,7 +594,40 @@ class WorkspaceController extends ChangeNotifier {
     if (_selectedId == null && _selected == null) return;
     _selectedId = null;
     _selected = null;
+    _recordLoading = false;
+    _recordGeneration++;
     _notify();
+  }
+
+  /// Where the open record sits in the loaded list, one based, or null when
+  /// the list does not carry it.
+  ///
+  /// The decision bar says "3 of 38" from this, and the next and previous
+  /// controls are derived from it (pass criterion 6.5).
+  int? get selectedPosition {
+    final String? id = _selectedId;
+    if (id == null) return null;
+    for (int i = 0; i < _items.length; i++) {
+      if (_items[i].id == id) return i + 1;
+    }
+    return null;
+  }
+
+  /// The record after the open one in the loaded list, or null at the end.
+  ///
+  /// Null at the ends rather than wrapping: a queue that loops has no end,
+  /// and a reviewer working it cannot tell when they are finished.
+  Specimen? get nextSpecimen {
+    final int? position = selectedPosition;
+    if (position == null || position >= _items.length) return null;
+    return _items[position];
+  }
+
+  /// The record before the open one, or null at the start of the list.
+  Specimen? get previousSpecimen {
+    final int? position = selectedPosition;
+    if (position == null || position <= 1) return null;
+    return _items[position - 2];
   }
 
   /// Saves a review decision, or a retry, against the open record.
@@ -554,7 +638,7 @@ class WorkspaceController extends ChangeNotifier {
     final Specimen? current = _selected;
     final CollectionScope? scope = _scope;
     if (current == null || scope == null || _mutating) return;
-    final int generation = _generation;
+    final int generation = _recordGeneration;
     final String payload =
         '${current.id}:${current.revision}:${change ?? retryReason}';
     final String key = _mutationKeys.putIfAbsent(
@@ -568,11 +652,11 @@ class WorkspaceController extends ChangeNotifier {
       final Specimen result = change != null
           ? await repository.review(scope, current, change, key)
           : await repository.retry(scope, current, retryReason!, key);
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _recordGeneration) return;
       _selected = result;
       _mutationKeys.remove(payload);
     } catch (error) {
-      if (_disposed || generation != _generation) return;
+      if (_disposed || generation != _recordGeneration) return;
       _recordFailure(error);
     } finally {
       if (!_disposed) {
@@ -617,7 +701,8 @@ class WorkspaceController extends ChangeNotifier {
       _selectedId = null;
       _nextCursor = null;
       _seenCursors.clear();
-      _generation++;
+      _listGeneration++;
+      _recordGeneration++;
     }
     _error = _failureFor(error, denied: denied);
   }

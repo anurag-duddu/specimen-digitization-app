@@ -137,43 +137,73 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets(
-    'J and K move to the next and the previous record',
-    (WidgetTester tester) async {
-      final GoldenRepository repository = GoldenRepository.verified();
-      await pumpGoldenApp(
-        tester,
-        window: keyboardWindow,
-        brightness: Brightness.light,
-        location: goldenSpecimenLocation,
-        repository: repository,
-      );
-      expect(find.byType(WorkbenchScreen), findsOneWidget);
-      final String opened = locationOf(tester);
+  testWidgets('J and K move to the next and the previous record', (
+    WidgetTester tester,
+  ) async {
+    // Finding V-2. The keys were bound, listed in the help sheet, and wired
+    // to a callback the record screen never supplied, so a reviewer who read
+    // the shortcut list and pressed J got nothing. They move along the loaded
+    // queue now, and the decision bar's own controls do the same thing.
+    await pumpGoldenApp(
+      tester,
+      window: keyboardWindow,
+      brightness: Brightness.light,
+      location: goldenSpecimenLocation,
+      repository: GoldenQueueRepository(goldenQueue(3)),
+    );
+    expect(find.byType(WorkbenchScreen), findsOneWidget);
+    final String opened = locationOf(tester);
+    expect(opened, endsWith('/fixture-001'));
 
-      await press(tester, LogicalKeyboardKey.keyJ);
-      expect(
-        locationOf(tester),
-        isNot(opened),
-        reason: 'J opens the next record in the queue',
-      );
+    await press(tester, LogicalKeyboardKey.keyJ);
+    expect(
+      locationOf(tester),
+      endsWith('/fixture-002'),
+      reason: 'J opens the next record in the queue',
+    );
 
-      await press(tester, LogicalKeyboardKey.keyK);
-      expect(
-        locationOf(tester),
-        opened,
-        reason: 'K returns to the record it came from',
-      );
-      await tester.pumpWidget(const SizedBox());
-    },
-    // Finding V-2 in design/08-verification-report.md. `ReviewWorkbench`
-    // takes `onNext` and `onPrevious`, the shortcut map binds J and K to
-    // them, and the help sheet lists both. `WorkbenchScreen` never supplies
-    // either, so on the real route the two keys are bound to a callback that
-    // is null and the record never changes. Delete this skip when the screen
-    // wires the queue position through.
-    skip: true,
-  );
+    await press(tester, LogicalKeyboardKey.keyK);
+    expect(
+      locationOf(tester),
+      opened,
+      reason: 'K returns to the record it came from',
+    );
+
+    // The queue does not wrap. At the head, the previous control is drawn and
+    // disabled with the reason on it rather than moving nowhere
+    // (pass criterion 5.6).
+    expect(
+      find.byTooltip('This is the first record in the queue.'),
+      findsOneWidget,
+    );
+    await press(tester, LogicalKeyboardKey.keyK);
+    expect(locationOf(tester), opened, reason: 'K at the head wraps nowhere');
+
+    // The reviewer's position is on the decision bar (pass criterion 6.5).
+    expect(find.text('1 of 3'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the decision bar moves between records without the keyboard', (
+    WidgetTester tester,
+  ) async {
+    await pumpGoldenApp(
+      tester,
+      window: keyboardWindow,
+      brightness: Brightness.light,
+      location: goldenSpecimenLocation,
+      repository: GoldenQueueRepository(goldenQueue(3)),
+    );
+    await tester.tap(find.byTooltip('Next specimen'));
+    await tester.pumpAndSettle();
+    expect(locationOf(tester), endsWith('/fixture-002'));
+    expect(find.text('2 of 3'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Previous specimen'));
+    await tester.pumpAndSettle();
+    expect(locationOf(tester), endsWith('/fixture-001'));
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('the shortcut list is one key away and names every binding', (
     WidgetTester tester,
