@@ -54,20 +54,25 @@ def test_approved_template_and_dispatch_use_same_original_clock(monkeypatch):
     assert worker["runExecutionToken"] == "pilot-" + packet["pilot"]["manifest_sha256"][:24]
 
 
-def test_trace_reference_is_worker_only_and_metadata_settings_are_exact(monkeypatch):
+@pytest.mark.parametrize("receipt_sha", ["b" * 64, "c" * 64])
+def test_trace_reference_is_worker_only_and_metadata_settings_are_exact(monkeypatch, receipt_sha):
     plan, packet = approved_activation(monkeypatch)
+    plan["activation"]["worker_trace"]["identity_receipt_sha256"] = receipt_sha
     images = {role: f"{M.REGISTRY}/{role}@sha256:" + "6" * 64 for role in ("api", "worker", "sam")}
     bodies = M.resource_bodies(plan, packet, images, "123", "1", now=NOW)
     worker = M.activation_worker(bodies["worker"], plan, packet, now=NOW)
     env = {v["name"]: v for v in worker["template"]["template"]["containers"][0]["env"]}
     assert env["LOGFIRE_TOKEN"] == M.env_secret("LOGFIRE_TOKEN", plan["activation"]["worker_trace"]["token_secret"])
-    expected = {"LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": "specimen-worker",
+    expected = {"SPECIMEN_TRACE_EXPORT_MODE": "bounded-v1", "SPECIMEN_TRACE_SCOPE_SHA256": receipt_sha,
+                "LOGFIRE_SEND_TO_LOGFIRE": "false", "LOGFIRE_SERVICE_NAME": "specimen-worker",
                 "APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "metadata", "LOGFIRE_HEAD_SAMPLE_RATE": "1.0",
                 "LOGFIRE_DISTRIBUTED_TRACING": "false"}
     assert {key: env[key]["value"] for key in expected} == expected
     assert "LOGFIRE_BASE_URL" not in env
+    assert "SPECIMEN_TRACE_LEDGER_PATH" not in env
     for role in ("api", "sam"):
-        assert not any(item["name"].startswith("LOGFIRE_") for item in bodies[role]["template"]["containers"][0]["env"])
+        assert not any(item["name"].startswith(("LOGFIRE_", "SPECIMEN_TRACE_"))
+                       for item in bodies[role]["template"]["containers"][0]["env"])
 
 
 @pytest.mark.parametrize("change", [

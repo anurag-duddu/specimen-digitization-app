@@ -2332,3 +2332,46 @@ loaders rather than resolved from an ambient installed package.
   DATA/runtime deployment and all ten live product journeys: Not confirmed.
   Do not activate the provisional worker trace template or qualify private
   source loaders from this intermediate candidate. Preserve all active worktrees.
+
+
+## 2026-09-14 — runtime_timing independent bounded trace partial review
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; read-only review of `codex/reader-trace-linkage` at `/private/tmp/specimen-reader-trace-linkage-20260914`, exact candidate `cf9fa4f50c30953704244fbb350a18f861c91c72` after `10e72aa505060c1969e80e38e2316c25be9a5567`, base `0f31baa`. Parent owns integration into `codex/approved-review-release` (timing/budget commit `ae87be49ee1f67e4458052a2d260a3eeb1160895`). No source edits, commit/push or native effects by reviewer.
+- Changes required on two reproduced local defects: (1) `variables=None` plus API-key sentinel permits Logfire's lazy remote-variable provider on actual application prompt resolution; the probe intercepted start before any background thread or network. (2) late 200 leaves the durable unknown hold correctly retained but processor force_flush incorrectly returns True. Root forwarded both exact REDs to author; the mutable successor is not qualified by this entry.
+- Independent existing focused modules: 43 passed, 1 SQL-emulator skip, 2 warnings in 112.52s; local additional probes 2 passed/2 failed as intended. Four fresh processes share one seven-claim cap and cannot reset it; expiry after authorization blocks dispatch and retains unknown. Existing mode gate remains fail closed, privacy encoder excludes arbitrary content/events/exception descriptions, and parent cleanup/original-clock behavior remains intact.
+- Evidence `/private/tmp/specimen-bounded-trace-independent-20260914/REVIEW.md` SHA `d27ff134984af638654373d846261636e1bc1d1878c44cd5732788669d3fdcb4`; RESULT.json SHA `9520537c0d79af7fdd36800d99f66ac1e44be68fac10d88f4710367212e3155e`; exact source/SDK excerpts, original REDs and focused log retained. No credential reads, real transport, cloud/model or paid calls.
+- Incomplete native transport/installation and final tightening/flush wiring are separate unresolved work; no integrated source/CI/live trace acceptance qualification. Full canonical/live acceptance: Not confirmed. Await immutable corrective successor for review; do not infer release readiness from this partial review.
+
+
+## 2026-09-14 — bounded trace template and partial source review
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch
+  `codex/approved-review-release`, worktree
+  `/private/tmp/specimen-approved-review-release-20260914`, parent commit
+  `ae87be49ee1f67e4458052a2d260a3eeb1160895`; no new PR or push.
+- The worker template now selects bounded-v1, copies the existing exact reviewed
+  destination receipt SHA into the trace scope, and disables the default SDK
+  exporter. The ledger path remains internally owned; API/SAM receive no trace
+  settings. Two mapping cases failed first, then 56 focused runtime tests passed.
+  Independent review added nine whole-request, hostile-environment and rejection
+  probes: all passed, with complete legacy requests unchanged. Pinned file hooks
+  passed. Full canonical verification after future trace integration: Not run.
+- Independent template report
+  `/private/tmp/specimen-bounded-trace-template-independent-20260914/REVIEW.md`,
+  SHA256 `b4ddd68e80d7f708893fae4794cb19822436120903791153a1a9e2b6a7d4626d`.
+- Product partial commit `cf9fa4f50c30953704244fbb350a18f861c91c72` and all
+  28 retained artifacts were hash-verified. Its source patch applies cleanly
+  against the timing source when append-only closeouts are handled separately;
+  no product code was imported because independent review found two defects:
+  late acknowledgements could report flush success, and variables=None allowed
+  lazy remote-variable startup on the actual prompt path. Both failing local
+  regressions were forwarded to the product owner for a reviewed successor.
+- Review report `/private/tmp/specimen-bounded-trace-independent-20260914/REVIEW.md`,
+  SHA256 `d27ff134984af638654373d846261636e1bc1d1878c44cd5732788669d3fdcb4`.
+  Existing focused modules: 43 passed, one SQL-emulator skip. Independent probes:
+  two passed and two failed. Remote-provider startup was intercepted before any
+  thread/network action; this session performed no credential reads or exports.
+- Native transport and its approval, final expiry/flush installation, combined
+  source qualification, protected release and live acceptance remain pending.
+  The destination receipt is root-owned input; no local metadata receipt or
+  synthetic value may substitute for native destination verification.

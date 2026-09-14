@@ -71,10 +71,18 @@ verify the receipt and actual destination/access; a well-formed digest alone is
 not that evidence. No token value belongs in the plan or launch.
 
 Only the worker receives the `LOGFIRE_TOKEN` secret reference. Its fixed settings
-enable sending, metadata capture, production environment, full head sampling and
-disable incoming distributed tracing. No endpoint override is allowed by this
-contract. API and SAM templates receive no writer reference. Model-child export,
-privacy, deadline and real trace acceptance are separately validated by the
-trace integration owner. Existing four-slot setup history does not by itself
-authorize another secret version or prove destination access; those native
-effects and their costs remain coordinator-owned gates.
+select `SPECIMEN_TRACE_EXPORT_MODE=bounded-v1`, copy the exact
+`identity_receipt_sha256` into `SPECIMEN_TRACE_SCOPE_SHA256`, and set
+`LOGFIRE_SEND_TO_LOGFIRE=false` to disable the SDK's default native exporter.
+Metadata capture, production environment, full head sampling and disabled
+incoming distributed tracing remain fixed. The worker creates its shared
+accounting ledger inside the existing supervisor-owned workspace; deployment
+must not set `SPECIMEN_TRACE_LEDGER_PATH`. No endpoint override is allowed.
+API and SAM templates receive neither writer reference nor trace settings.
+
+The currently retained local trace controls fail closed before SDK configuration
+when bounded mode is selected. The separate native transport, final expiry and
+flush wiring, privacy review and actual delivery evidence remain pending; this
+intermediate source is not an activation-ready release. Existing four-slot setup
+history does not by itself authorize another secret version or prove destination
+access. Those native effects and their costs remain coordinator-owned gates.

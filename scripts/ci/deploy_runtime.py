@@ -486,7 +486,9 @@ def activation_worker(body, plan, packet, *, now=None):
         container["env"].append({"name": "SPECIMEN_WORKER_TIMING", "value": launch.timing.model_dump_json()})
         trace = validate_worker_trace(activation["worker_trace"], plan)
         container["env"].append(env_secret("LOGFIRE_TOKEN", trace["token_secret"]))
-        tracing = {"LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": trace["service_name"],
+        tracing = {"SPECIMEN_TRACE_EXPORT_MODE": "bounded-v1",
+                   "SPECIMEN_TRACE_SCOPE_SHA256": trace["identity_receipt_sha256"],
+                   "LOGFIRE_SEND_TO_LOGFIRE": "false", "LOGFIRE_SERVICE_NAME": trace["service_name"],
                    "APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "metadata", "LOGFIRE_HEAD_SAMPLE_RATE": "1.0",
                    "LOGFIRE_DISTRIBUTED_TRACING": "false"}
         container["env"].extend({"name": key, "value": value} for key, value in sorted(tracing.items()))
