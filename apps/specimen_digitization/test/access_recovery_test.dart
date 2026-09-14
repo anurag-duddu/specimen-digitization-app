@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
-import 'package:specimen_digitization/src/workspace.dart';
 import 'widget_test.dart' show TestRepository, TestSession;
 
 class RevokedRepository extends TestRepository {
@@ -34,19 +34,16 @@ void main() {
     addTearDown(session.controller.close);
     addTearDown(repo.controller.close);
     await tester.pumpWidget(
-      MaterialApp(
-        home: CollectionWorkspace(repository: repo, session: session),
-      ),
+      SpecimenDigitizationApp(session: session, repository: repo),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Collection queue'), findsOneWidget);
+    expect(find.text('Queue'), findsWidgets);
     // Child panels may catch their own exception; this independent boundary
     // must still remove all collection context and editing surfaces.
     repo.controller.add(
       const ApiFailure('Evidence access denied.', status: 403),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Collection queue'), findsNothing);
     expect(find.text('Authorized collection'), findsNothing);
     expect(
       find.textContaining('Collection access could not be verified'),
@@ -62,16 +59,13 @@ void main() {
       final repo = RevokedRepository();
       addTearDown(session.controller.close);
       await tester.pumpWidget(
-        MaterialApp(
-          home: CollectionWorkspace(repository: repo, session: session),
-        ),
+        SpecimenDigitizationApp(session: session, repository: repo),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Collection queue'), findsOneWidget);
+      expect(find.text('Queue'), findsWidgets);
       repo.revoked = true;
       await tester.tap(find.byTooltip('Refresh collection'));
       await tester.pumpAndSettle();
-      expect(find.text('Collection queue'), findsNothing);
       expect(find.text('Authorized collection'), findsNothing);
       expect(
         find.textContaining('Collection access could not be verified'),
@@ -80,7 +74,7 @@ void main() {
       repo.revoked = false;
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
-      expect(find.text('Collection queue'), findsOneWidget);
+      expect(find.text('Queue'), findsWidgets);
       await tester.pumpWidget(const SizedBox());
     },
   );

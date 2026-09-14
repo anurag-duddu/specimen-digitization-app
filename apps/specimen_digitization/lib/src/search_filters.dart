@@ -1,112 +1,432 @@
+/// The queue filters (screen blueprints, section 4).
+///
+/// A bottom sheet on a compact window and a 480 dp dialog everywhere else,
+/// through `showAdaptiveForm`. Fields are grouped, every label is a word from
+/// the glossary rather than an API identifier, dates are picked and converted
+/// to UTC instants here, and risk is a range rather than two typed numbers.
+/// The value this sheet returns is unchanged: the same `Map<String, String>`
+/// with the same keys the repository has always accepted.
+library;
+
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
-import 'widgets/caveat_text.dart';
+import 'models.dart';
+import 'theme/icons.dart';
+import 'vocabulary.dart';
+import 'widgets/widgets.dart';
 
-const searchFields = {
-  'asset_id': 'Asset ID',
-  'active_run_id': 'Run ID',
-  'batch_id': 'Batch ID',
-  'uploader_id': 'Uploader ID',
+/// The wire keys this sheet can set, with the words a reviewer reads.
+const Map<String, String> searchFields = <String, String>{
   'stage': 'Processing step',
-  'profile_id': 'Profile ID',
-  'profile_version': 'Profile version',
-  'reason_code': 'Issue code',
   'blocker': 'Blocker',
-  'created_from': 'Created from (inclusive UTC)',
-  'created_before': 'Created before (exclusive UTC)',
-  'risk_min': 'Minimum risk (0 to 100)',
-  'risk_max': 'Maximum risk (0 to 100)',
+  'reason_code': 'Issue',
+  'uploader_id': 'Uploaded by',
+  'batch_id': 'Upload batch',
+  'profile_id': 'Profile',
+  'profile_version': 'Profile version',
+  'asset_id': 'Image file',
+  'active_run_id': 'Processing run',
+  'created_from': 'Created on or after',
+  'created_before': 'Created before',
+  'risk_min': 'Lowest risk',
+  'risk_max': 'Highest risk',
 };
 
+/// The reviewer-facing word for one filter key.
+String searchFieldLabel(String key) => searchFields[key] ?? labelOf(key);
+
+/// The keys whose values come from the collection configuration when it
+/// publishes them, and from a typed value when it does not.
+const Map<String, String> _configuredChoiceKeys = <String, String>{
+  'stage': 'stages',
+  'blocker': 'blockers',
+  'reason_code': 'reason_codes',
+  'uploader_id': 'uploaders',
+};
+
+/// The lowest and highest risk the server scores.
+const double _riskFloor = 0;
+const double _riskCeiling = 100;
+
+/// The filter form.
+///
+/// Rendered as the child of [showAdaptiveForm], so it sizes itself and does
+/// not carry a dialog of its own.
 class SearchFilters extends StatefulWidget {
-  const SearchFilters({super.key, required this.initial});
+  const SearchFilters({
+    super.key,
+    required this.initial,
+    this.configuration = const <String, dynamic>{},
+  });
+
+  /// The filters already applied.
   final Map<String, String> initial;
+
+  /// The collection document, which feeds the pickers where it names choices.
+  final Json configuration;
+
   @override
   State<SearchFilters> createState() => _SearchFiltersState();
 }
 
 class _SearchFiltersState extends State<SearchFilters> {
-  late final _values = Map<String, String>.from(widget.initial);
-  final _form = GlobalKey<FormState>();
-  String? _validate(String key, String? raw) {
-    final value = raw?.trim() ?? '';
-    if (value.isEmpty) return null;
-    if (key.startsWith('risk_')) {
-      final risk = double.tryParse(value);
-      if (risk == null || !risk.isFinite || risk < 0 || risk > 100) {
-        return 'Enter a number from 0 to 100.';
+  late final Map<String, String> _values = Map<String, String>.from(
+    widget.initial,
+  );
+  final GlobalKey<FormState> _form = GlobalKey<FormState>();
+
+  late DateTimeRange? _dates = _initialRange();
+  late RangeValues _risk = _initialRisk();
+  late bool _includeUnmeasured =
+      !_values.containsKey('risk_min') && !_values.containsKey('risk_max');
+
+  DateTimeRange? _initialRange() {
+    final DateTime? from = DateTime.tryParse(_values['created_from'] ?? '');
+    final DateTime? before = DateTime.tryParse(_values['created_before'] ?? '');
+    if (from == null || before == null) return null;
+    // `created_before` is exclusive, so the last day a reviewer picked is the
+    // day before it.
+    return DateTimeRange(
+      start: from.toLocal(),
+      end: before.subtract(const Duration(days: 1)).toLocal(),
+    );
+  }
+
+  RangeValues _initialRisk() {
+    final double low = double.tryParse(_values['risk_min'] ?? '') ?? _riskFloor;
+    final double high =
+        double.tryParse(_values['risk_max'] ?? '') ?? _riskCeiling;
+    return RangeValues(
+      low.clamp(_riskFloor, _riskCeiling),
+      high.clamp(low, _riskCeiling),
+    );
+  }
+
+  List<String> _choices(String key) {
+    final String? source = _configuredChoiceKeys[key];
+    if (source == null) return const <String>[];
+    final Object? published = widget.configuration[source];
+    if (published is! List) return const <String>[];
+    return published
+        .map(
+          (Object? value) => value is Map ? textOf(value['id'], '') : '$value',
+        )
+        .where((String value) => value.isNotEmpty)
+        .toList();
+  }
+
+  List<String> get _profileIds => objects(widget.configuration['profiles'])
+      .map((Json profile) => textOf(profile['id'], ''))
+      .where((String id) => id.isNotEmpty)
+      .toSet()
+      .toList();
+
+  List<String> get _profileVersions => objects(widget.configuration['profiles'])
+      .where(
+        (Json profile) =>
+            _values['profile_id'] == null ||
+            _values['profile_id']!.isEmpty ||
+            textOf(profile['id'], '') == _values['profile_id'],
+      )
+      .map((Json profile) => textOf(profile['version'], ''))
+      .where((String version) => version.isNotEmpty)
+      .toSet()
+      .toList();
+
+  void _set(String key, String? value) {
+    setState(() {
+      if (value == null || value.isEmpty) {
+        _values.remove(key);
+      } else {
+        _values[key] = value;
       }
-      if (key == 'risk_max' &&
-          risk < (double.tryParse(_values['risk_min'] ?? '') ?? 0)) {
-        return 'Maximum must be at least the minimum.';
-      }
+    });
+  }
+
+  Future<void> _pickDates() async {
+    final DateTime now = DateTime.now();
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - _yearsOfHistory),
+      lastDate: now,
+      initialDateRange: _dates,
+      helpText: 'Created between',
+      saveText: 'Use these dates',
+    );
+    if (picked == null) return;
+    setState(() => _dates = picked);
+  }
+
+  /// How far back the date picker offers. Collections predate the client, so
+  /// this is a picker range, not a claim about the data.
+  static const int _yearsOfHistory = 20;
+
+  /// Turns the picked local days into the UTC instants the API filters on.
+  void _writeDates() {
+    final DateTimeRange? range = _dates;
+    if (range == null) {
+      _values.remove('created_from');
+      _values.remove('created_before');
+      return;
     }
-    if (key.startsWith('created_')) {
-      final date = DateTime.tryParse(value);
-      if (date == null || !date.isUtc) {
-        return 'Use UTC, for example 2026-09-08T00:00:00Z.';
-      }
-      final from = DateTime.tryParse(_values['created_from'] ?? '');
-      if (key == 'created_before' && from != null && !date.isAfter(from)) {
-        return 'End must be after the start.';
-      }
+    final DateTime from = DateTime.utc(
+      range.start.year,
+      range.start.month,
+      range.start.day,
+    );
+    final DateTime before = DateTime.utc(
+      range.end.year,
+      range.end.month,
+      range.end.day,
+    ).add(const Duration(days: 1));
+    _values['created_from'] = from.toIso8601String();
+    _values['created_before'] = before.toIso8601String();
+  }
+
+  void _writeRisk() {
+    if (_includeUnmeasured) {
+      _values.remove('risk_min');
+      _values.remove('risk_max');
+      return;
     }
-    return null;
+    _values['risk_min'] = _risk.start.round().toString();
+    _values['risk_max'] = _risk.end.round().toString();
+  }
+
+  String _dateSummary() {
+    final DateTimeRange? range = _dates;
+    if (range == null) return 'Any date';
+    return '${absoluteDay(range.start)} to ${absoluteDay(range.end)}';
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Filter collection queue'),
-    content: SizedBox(
-      width: 520,
-      child: Form(
-        key: _form,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CaveatText(
-                label: 'All filters must match.',
-                why:
-                    'Risk filters exclude records with no measured risk. '
-                    'Risk never determines clearance.',
-              ),
-              for (final entry in searchFields.entries)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: TextFormField(
-                    initialValue: _values[entry.key],
-                    decoration: InputDecoration(labelText: entry.value),
-                    onChanged: (value) => _values[entry.key] = value.trim(),
-                    validator: (value) => _validate(entry.key, value),
-                  ),
-                ),
-            ],
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Form(
+      key: _form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              context.space.space6,
+              context.space.space4,
+              context.space.space6,
+              context.space.space0,
+            ),
+            child: Text('Filter the queue', style: theme.textTheme.titleLarge),
           ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(context.space.space6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const CaveatText(
+                    label: 'All filters must match.',
+                    why:
+                        'A risk range excludes records with no measured risk. '
+                        'Risk never determines clearance.',
+                  ),
+                  _Group(
+                    title: 'Status',
+                    children: <Widget>[
+                      for (final String key in <String>[
+                        'stage',
+                        'blocker',
+                        'reason_code',
+                      ])
+                        _field(key),
+                    ],
+                  ),
+                  _Group(
+                    title: 'Provenance',
+                    children: <Widget>[
+                      _field('uploader_id'),
+                      _field('batch_id'),
+                      _picker('profile_id', _profileIds),
+                      _picker('profile_version', _profileVersions),
+                    ],
+                  ),
+                  _Group(
+                    title: 'Dates',
+                    children: <Widget>[
+                      OutlinedButton.icon(
+                        onPressed: _pickDates,
+                        icon: const Icon(Symbols.date_range),
+                        label: Text('Created: ${_dateSummary()}'),
+                      ),
+                      if (_dates != null)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton(
+                            onPressed: () => setState(() => _dates = null),
+                            child: const Text('Any date'),
+                          ),
+                        ),
+                    ],
+                  ),
+                  _Group(
+                    title: 'Risk',
+                    children: <Widget>[
+                      SwitchListTile(
+                        value: _includeUnmeasured,
+                        onChanged: (bool value) =>
+                            setState(() => _includeUnmeasured = value),
+                        title: const Text('Include not measured'),
+                        subtitle: const Text(
+                          'Turn this off to narrow the queue to a risk range.',
+                        ),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      Semantics(
+                        label: 'Risk range, 0 to 100',
+                        child: RangeSlider(
+                          values: _risk,
+                          min: _riskFloor,
+                          max: _riskCeiling,
+                          divisions: _riskCeiling.round(),
+                          labels: RangeLabels(
+                            _risk.start.round().toString(),
+                            _risk.end.round().toString(),
+                          ),
+                          onChanged: _includeUnmeasured
+                              ? null
+                              : (RangeValues values) =>
+                                    setState(() => _risk = values),
+                        ),
+                      ),
+                      Text(
+                        _includeUnmeasured
+                            ? 'Every record, measured or not.'
+                            : 'Risk ${_risk.start.round()} to '
+                                  '${_risk.end.round()} of 100.',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  _Group(
+                    title: 'Identifiers',
+                    children: <Widget>[
+                      _field('asset_id'),
+                      _field('active_run_id'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              context.space.space4,
+              context.space.space0,
+              context.space.space4,
+              context.space.space4,
+            ),
+            child: OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: context.space.space2,
+              children: <Widget>[
+                TextButton(
+                  onPressed: () =>
+                      Navigator.pop(context, const <String, String>{}),
+                  child: const Text('Clear all'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (!_form.currentState!.validate()) return;
+                    _writeDates();
+                    _writeRisk();
+                    Navigator.pop(
+                      context,
+                      Map<String, String>.from(_values)..removeWhere(
+                        (String key, String value) => value.isEmpty,
+                      ),
+                    );
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A picker when the collection published the choices, a text field with the
+  /// plain label when it did not (screen blueprints, section 4).
+  Widget _field(String key) {
+    final List<String> choices = _choices(key);
+    if (choices.isNotEmpty) return _picker(key, choices);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: context.space.space2),
+      child: TextFormField(
+        initialValue: _values[key],
+        decoration: InputDecoration(labelText: searchFieldLabel(key)),
+        onChanged: (String value) => _values[key] = value.trim(),
+      ),
+    );
+  }
+
+  Widget _picker(String key, List<String> choices) {
+    if (choices.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: context.space.space2),
+        child: TextFormField(
+          initialValue: _values[key],
+          decoration: InputDecoration(labelText: searchFieldLabel(key)),
+          onChanged: (String value) => _values[key] = value.trim(),
         ),
+      );
+    }
+    final String? current = choices.contains(_values[key])
+        ? _values[key]
+        : null;
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: context.space.space2),
+      child: DropdownButtonFormField<String>(
+        initialValue: current,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: searchFieldLabel(key)),
+        items: <DropdownMenuItem<String>>[
+          const DropdownMenuItem<String>(child: Text('Any')),
+          for (final String choice in choices)
+            DropdownMenuItem<String>(
+              value: choice,
+              child: Text(vocabularyLabel(choice)),
+            ),
+        ],
+        onChanged: (String? value) => _set(key, value),
       ),
+    );
+  }
+}
+
+/// A titled group of fields.
+class _Group extends StatelessWidget {
+  const _Group({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(top: context.space.space4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        ...children,
+      ],
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      TextButton(
-        onPressed: () => Navigator.pop(context, <String, String>{}),
-        child: const Text('Clear filters'),
-      ),
-      FilledButton(
-        onPressed: () {
-          if (_form.currentState!.validate()) {
-            Navigator.pop(
-              context,
-              Map<String, String>.from(_values)
-                ..removeWhere((k, v) => v.isEmpty),
-            );
-          }
-        },
-        child: const Text('Apply filters'),
-      ),
-    ],
   );
 }
+
+/// A day, spelled the way the queue spells a date.
+String absoluteDay(DateTime moment) =>
+    absoluteTime(moment).split(',').first.trim();
