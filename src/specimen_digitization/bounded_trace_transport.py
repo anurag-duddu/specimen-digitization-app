@@ -157,7 +157,9 @@ def _read_response(reader):
         if transfer:
             body = bytearray()
             while True:
-                chunk = reader.readline()[:-2].split(b";", 1)[0]
+                # Extensions are outside this bounded parser's supported
+                # framing. Never discard unvalidated text and acknowledge it.
+                chunk = reader.readline()[:-2]
                 if not re.fullmatch(rb"[0-9A-Fa-f]{1,16}", chunk):
                     raise TraceTransportError("trace_response_framing")
                 size = int(chunk, 16)

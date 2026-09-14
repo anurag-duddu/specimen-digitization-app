@@ -321,7 +321,7 @@ def encode_metadata_spans(spans):
             if type(value) is int and 0 <= value <= 10**12:
                 output.attributes.add(key=key).value.int_value = value
         for key, allowed in (
-            ("specimen.model.operation", {"transcribe", "extract"}),
+            ("specimen.model.operation", {"classify", "transcribe", "extract"}),
             ("specimen.model.outcome", {"completed", "adapter_failure", "blocked", "failed"}),
         ):
             value = attributes.get(key)

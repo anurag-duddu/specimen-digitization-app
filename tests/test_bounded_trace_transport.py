@@ -242,3 +242,15 @@ def test_slow_drip_checks_absolute_deadline_and_counts_actual_received_bytes(mon
     assert sender(b"fixture", 1) is None
     assert 1 <= sock.read_bytes <= 11
     assert len(opens) == 1 and sock.closed
+
+
+@pytest.mark.parametrize("extension", [
+    b";\x00", b";=invalid", b';name="unterminated', b";name=value",
+])
+def test_chunk_extensions_are_rejected_without_retry(monkeypatch, extension):
+    # The bounded transport accepts only the extension-free framing it parses.
+    response = (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0"
+                + extension + b"\r\n\r\n")
+    _, sender, sock, opens, _ = setup_transport(monkeypatch, response)
+    assert sender(b"fixture", 1) is None
+    assert len(opens) == len(sock.sent) == 1 and sock.closed

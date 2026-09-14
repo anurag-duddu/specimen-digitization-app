@@ -104,11 +104,12 @@ def test_classifier_runtime_requires_child_trace_completion(tmp_path, monkeypatc
         approved=True, total_deadline_seconds=5,
     )
     facade = ConfiguredClassifier(LocalBlobs(tmp_path / "blobs"), config)
-    run = SimpleNamespace(profile=SimpleNamespace(execution=SimpleNamespace(
+    run = SimpleNamespace(id="synthetic-run", profile=SimpleNamespace(execution=SimpleNamespace(
         external_timeout_seconds=5,
     )), dependencies={})
     run.dependencies["classifier"] = facade.pin(run)
-    specimen = SimpleNamespace(run=run, asset=SimpleNamespace(model_dump=lambda **kwargs: {}))
+    specimen = SimpleNamespace(id="synthetic-specimen", run=run,
+                               asset=SimpleNamespace(model_dump=lambda **kwargs: {}))
     classifier = facade.bind(specimen, SimpleNamespace(nodes=[]))
     with pytest.raises(OperationalBlock, match="external_outcome_unknown"):
         classifier.classify(SimpleNamespace(model_dump=lambda **kwargs: {}))
