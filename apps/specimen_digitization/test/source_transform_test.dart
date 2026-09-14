@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/source_pixels.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 
 void main() {
   final bytes = File(
@@ -27,6 +28,7 @@ void main() {
         final vh = orientation >= 5 ? width : height;
         await tester.pumpWidget(
           MaterialApp(
+            theme: AppTheme.light(),
             home: Scaffold(
               body: Center(
                 child: SizedBox(

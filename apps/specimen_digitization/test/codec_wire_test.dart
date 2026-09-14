@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/source_pixels.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 
 void main() {
   final fixture =
@@ -131,6 +132,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: SingleChildScrollView(child: SourceBasisNotice(asset: asset)),
         ),

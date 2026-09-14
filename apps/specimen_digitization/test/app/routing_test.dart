@@ -38,9 +38,11 @@ Future<void> systemBack(WidgetTester tester) async {
 Future<TestSession> pumpApp(
   WidgetTester tester, {
   String initialLocation = AppRoutes.setup,
+  Size window = routingWindow,
+  List<NavigatorObserver> observers = const <NavigatorObserver>[],
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = routingWindow;
+  tester.view.physicalSize = window;
   addTearDown(tester.view.reset);
   final TestSession session = TestSession();
   addTearDown(session.controller.close);
@@ -49,6 +51,7 @@ Future<TestSession> pumpApp(
       session: session,
       repository: TestRepository(),
       initialLocation: initialLocation,
+      navigatorObservers: observers,
     ),
   );
   await tester.pumpAndSettle();
@@ -56,6 +59,39 @@ Future<TestSession> pumpApp(
 }
 
 void main() {
+  testWidgets('Help and shortcuts opens, and closes back to the queue', (
+    tester,
+  ) async {
+    // The redirect used to read a collection out of every location and send
+    // anything without one home, so the help control opened a route that
+    // immediately closed itself.
+    await pumpApp(tester);
+    final String before = locationOf(tester);
+    expect(find.text('Keyboard shortcuts'), findsNothing);
+
+    await tester.tap(find.byTooltip('Help and shortcuts'));
+    await tester.pumpAndSettle();
+    // The panel is on screen and stays there. Before the redirect learned
+    // that a route without a collection is not a route with a missing one,
+    // this pushed /help and was sent straight back to the queue.
+    expect(find.text('Keyboard shortcuts'), findsOneWidget);
+    expect(find.text('Glossary'), findsOneWidget);
+
+    await systemBack(tester);
+    expect(find.text('Keyboard shortcuts'), findsNothing);
+    expect(locationOf(tester), before);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a deep link to help is honoured rather than bounced', (
+    tester,
+  ) async {
+    await pumpApp(tester, initialLocation: AppRoutes.help);
+    expect(locationOf(tester), AppRoutes.help);
+    expect(find.text('Glossary'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('a signed in window lands on its collection queue', (
     tester,
   ) async {

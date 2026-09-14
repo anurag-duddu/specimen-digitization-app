@@ -329,11 +329,26 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                   spacing: context.space.space2,
                   runSpacing: context.space.space2,
                   children: <Widget>[
-                    for (final (int i, Json _) in _regions.indexed)
+                    for (final (int i, Json r) in _regions.indexed)
                       ChoiceChip(
-                        label: Text('Label ${i + 1}'),
+                        // Reordering a `Wrap` cannot be animated and is not
+                        // worth building. The numbering change is carried by
+                        // a label cross-fade (motion catalog, row 79).
+                        label: AnimatedSwitcher(
+                          duration: context.motion.quick,
+                          switchInCurve: MotionTokens.standardCurve,
+                          child: Text(
+                            'Label ${i + 1}',
+                            key: ValueKey<String>(
+                              'editor-chip-${r['region_id'] ?? i}-${i + 1}',
+                            ),
+                          ),
+                        ),
                         selected: _selected == i,
-                        onSelected: (_) => setState(() => _selected = i),
+                        onSelected: (_) {
+                          SpecimenHaptics.selectionChanged();
+                          setState(() => _selected = i);
+                        },
                       ),
                   ],
                 ),
@@ -464,6 +479,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
             ),
             for (final (int i, Json r) in _regions.indexed)
               _RegionBox(
+                key: ValueKey<Object>(r['region_id'] ?? i),
                 index: i + 1,
                 selected: i == _selected,
                 bbox: (r['bbox'] as List<num>),
@@ -556,19 +572,23 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                   helperText: reasonHelperText,
                 ),
               ),
-              if (error != null)
-                Padding(
+              // No shake. The message names the fix; the motion only gets it
+              // on screen without a jump (motion catalog, row 80).
+              MotionReveal(
+                visible: error != null,
+                child: Padding(
                   padding: EdgeInsets.only(top: context.space.space2),
                   child: Semantics(
                     liveRegion: true,
                     child: Text(
-                      error,
+                      error ?? '',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.error,
                       ),
                     ),
                   ),
                 ),
+              ),
               SizedBox(height: context.space.space3),
               Wrap(
                 alignment: WrapAlignment.end,
@@ -599,8 +619,9 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 }
 
 /// One draggable region over the preview.
-class _RegionBox extends StatelessWidget {
+class _RegionBox extends StatefulWidget {
   const _RegionBox({
+    super.key,
     required this.index,
     required this.selected,
     required this.bbox,
@@ -623,16 +644,57 @@ class _RegionBox extends StatelessWidget {
   final void Function(int, Offset)? onDragCorner;
 
   @override
+  State<_RegionBox> createState() => _RegionBoxState();
+}
+
+class _RegionBoxState extends State<_RegionBox> {
+  /// False for the single frame after a region is added, which is what gives
+  /// the opacity somewhere to come from (motion catalog, row 77).
+  bool _shown = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _shown = true);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final List<num> bbox = widget.bbox;
+    final int index = widget.index;
+    final bool selected = widget.selected;
+    final Size size = widget.size;
     if (bbox.length != 4) return const SizedBox.shrink();
     final Rect rect = Rect.fromLTRB(
-      bbox[0] / imageWidth * size.width,
-      bbox[1] / imageHeight * size.height,
-      bbox[2] / imageWidth * size.width,
-      bbox[3] / imageHeight * size.height,
+      bbox[0] / widget.imageWidth * size.width,
+      bbox[1] / widget.imageHeight * size.height,
+      bbox[2] / widget.imageWidth * size.width,
+      bbox[3] / widget.imageHeight * size.height,
     );
-    final void Function(Offset)? body = onDragBody;
+    final void Function(Offset)? body = widget.onDragBody;
+    final MotionTokens motion = context.motion;
 
+    // The rectangle itself follows the numbers with zero animation, always:
+    // typing a coordinate and watching the box lag two hundred milliseconds
+    // behind makes a reviewer distrust the coordinate (row 74). Only its
+    // arrival is animated (row 77).
+    return AnimatedOpacity(
+      opacity: _shown ? 1 : 0,
+      duration: motion.standard,
+      curve: MotionTokens.enterCurve,
+      child: _box(context, rect, index, selected, body),
+    );
+  }
+
+  Widget _box(
+    BuildContext context,
+    Rect rect,
+    int index,
+    bool selected,
+    void Function(Offset)? body,
+  ) {
     return Stack(
       clipBehavior: Clip.none,
       children: <Widget>[
@@ -640,7 +702,7 @@ class _RegionBox extends StatelessWidget {
           index: index,
           rect: rect,
           selected: selected,
-          onTap: onSelect,
+          onTap: widget.onSelect,
         ),
         if (body != null)
           Positioned.fromRect(
@@ -654,7 +716,7 @@ class _RegionBox extends StatelessWidget {
               ),
             ),
           ),
-        if (onDragCorner != null)
+        if (widget.onDragCorner != null)
           for (int corner = 0; corner < 4; corner++)
             _CornerHandle(
               corner: corner,
@@ -664,7 +726,7 @@ class _RegionBox extends StatelessWidget {
               ),
               label: _cornerNames[corner],
               index: index,
-              onDrag: (Offset d) => onDragCorner!(corner, d),
+              onDrag: (Offset d) => widget.onDragCorner!(corner, d),
             ),
       ],
     );

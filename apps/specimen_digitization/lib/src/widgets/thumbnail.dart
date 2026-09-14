@@ -44,7 +44,9 @@ class SpecimenThumbnail extends StatelessWidget {
           child: Container(
             width: side,
             height: side,
-            color: theme.colorScheme.surfaceContainerHighest,
+            // The same matte the source pane uses, so a photograph sits on
+            // the same ground wherever it appears (blueprint 12).
+            color: context.sourceMatte,
             alignment: Alignment.center,
             child: data == null
                 ? placeholder

@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../theme/icons.dart';
+import '../theme/motion.dart';
 import 'specimen_status.dart';
 
 /// A non-interactive chip stating one status.
@@ -19,6 +20,7 @@ class StatusChip extends StatelessWidget {
     super.key,
     this.count,
     this.dense = false,
+    this.decisive = false,
   }) : _status = status,
        _presentation = null;
 
@@ -29,6 +31,7 @@ class StatusChip extends StatelessWidget {
     super.key,
     this.count,
     this.dense = false,
+    this.decisive = false,
   }) : _status = null,
        _presentation = presentation;
 
@@ -40,6 +43,11 @@ class StatusChip extends StatelessWidget {
 
   /// Drops the chip to the smaller label role, for a chip inside a dense row.
   final bool dense;
+
+  /// True for the one chip that reports a decision the reviewer just
+  /// committed, which settles over `standard` rather than `quick`
+  /// (motion catalog, rows 50 and 64).
+  final bool decisive;
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +64,20 @@ class StatusChip extends StatelessWidget {
         ? style.semanticsLabel
         : '${style.semanticsLabel}, $total';
 
+    final MotionTokens motion = context.motion;
+    // A state change is a colour and a word, never a movement: the chip does
+    // not resize, bounce or flash. `AnimatedContainer` carries the fill and
+    // the border, `AnimatedSwitcher` carries the glyph and the word
+    // (motion catalog, rows 42, 50, 64, 66 and 68).
+    final Duration change = decisive ? motion.standard : motion.quick;
+
     return Semantics(
       container: true,
       label: semantics,
       excludeSemantics: true,
-      child: DecoratedBox(
+      child: AnimatedContainer(
+        duration: change,
+        curve: MotionTokens.standardCurve,
         decoration: BoxDecoration(
           color: style.fill,
           borderRadius: BorderRadius.circular(context.shape.radiusXs),
@@ -79,28 +96,46 @@ class StatusChip extends StatelessWidget {
             children: <Widget>[
               SizedBox.square(
                 dimension: glyph,
-                child: style.progress == null
-                    ? Icon(
-                        style.icon,
-                        size: glyph,
-                        fill: style.fill01,
-                        color: style.onFill,
-                      )
-                    // A determinate ring reports a measured fraction, so it
-                    // keeps its motion under reduced motion (motion, 2.5).
-                    : CircularProgressIndicator(
-                        value: style.progress,
-                        strokeWidth: context.shape.strokeEmphasis,
-                        color: style.onFill,
-                      ),
+                child: AnimatedSwitcher(
+                  duration: change,
+                  switchInCurve: MotionTokens.standardCurve,
+                  child: style.progress == null
+                      ? Icon(
+                          style.icon,
+                          key: ValueKey<String>('glyph-${style.label}'),
+                          size: glyph,
+                          fill: style.fill01,
+                          color: style.onFill,
+                        )
+                      // A determinate ring reports a measured fraction, so
+                      // it keeps its motion under reduced motion, and its
+                      // key does not change with the value, so the ring is
+                      // never cross-faded with itself (motion, 2.5).
+                      : CircularProgressIndicator(
+                          key: const ValueKey<String>('glyph-progress'),
+                          value: style.progress,
+                          strokeWidth: context.shape.strokeEmphasis,
+                          color: style.onFill,
+                        ),
+                ),
               ),
               SizedBox(width: context.space.space1),
               Flexible(
-                child: Text(
-                  label,
-                  style: text?.copyWith(color: style.onFill),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
+                child: AnimatedSwitcher(
+                  duration: change,
+                  switchInCurve: MotionTokens.standardCurve,
+                  layoutBuilder: (Widget? current, List<Widget> previous) =>
+                      Stack(
+                        alignment: AlignmentDirectional.centerStart,
+                        children: <Widget>[...previous, ?current],
+                      ),
+                  child: Text(
+                    label,
+                    key: ValueKey<String>(label),
+                    style: text?.copyWith(color: style.onFill),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
                 ),
               ),
             ],

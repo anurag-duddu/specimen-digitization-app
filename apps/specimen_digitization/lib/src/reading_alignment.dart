@@ -3,6 +3,7 @@ import 'models.dart';
 import 'review_context.dart';
 import 'vocabulary.dart';
 import 'widgets/caveat_text.dart';
+import 'widgets/evidence_drawer.dart';
 
 /// Offsets describe the unchanged original text. Never normalize before slicing.
 String exactUtf16Span(String source, int start, int end) {
@@ -110,9 +111,9 @@ class ReadingAlignmentView extends StatelessWidget {
                 'This is not agreement. Check the independent readings and the '
                 'saved raw responses.',
           ),
-        EvidenceDetails(
+        EvidenceDrawer(
           title: 'Comparison provenance and bounds',
-          value: alignment,
+          payload: alignment,
         ),
       ],
     );
@@ -133,9 +134,9 @@ class ReadingMetadataView extends StatelessWidget {
         Text(
           '${declaration['kind']}: ${declaration['value'] ?? 'Unknown'} · ${vocabularyLabel(textOf(declaration['method']))}\n${declaration['producer']} · ${declaration['version']}',
         ),
-      EvidenceDetails(
+      EvidenceDrawer(
         title: 'Declared language, script and heuristic limits',
-        value: metadata,
+        payload: metadata,
       ),
     ],
   );

@@ -2316,3 +2316,92 @@ Historical entries absent from this branch's log are preserved in the appendices
 - Durable learnings: An indeterminate `LinearProgressIndicator` that is always built, as motion catalog row 11 asks, makes `pumpAndSettle` never return, because the fake clock only advances while frames are scheduled and this schedules them forever; reserve the row with a `SizedBox` of the same height and build the indicator only while busy. The same trap applies to any `CircularProgressIndicator` left on a transient screen. Dart does not promote a variable to an unrelated interface, so `session is EmailLinkAccess` and `access is! VerifiedEmailAccess` narrow nothing when the declared type is `SessionAccess?`; an explicit cast is the only way through, which is why the pre-existing code casts. `State.dispose` cannot reach an inherited widget, so a screen that must tell a controller it is leaving has to hold the controller from `didChangeDependencies`. `go_router`'s `redirect` must return null, not the current location, when it wants the window to stay put, or the router loops. A collection key that carries a slash survives a path segment through `Uri.encodeComponent`, and `Uri.pathSegments` decodes it back, so one encode and one decode function are enough and no route pattern has to change. With `go_router`, a list-detail layout cannot put the list inside both the parent route's page and the child's, because two `ListView`s would attach the same `ScrollController`; put the list pane in the shell above the `Navigator` and let the parent route render the detail placeholder instead. A screen outside the shell does not rebuild on a `ChangeNotifier` it was handed by a route builder; wrap it in `ListenableBuilder` or it shows stale state. Widget tests that pump a screen which reads theme extensions must pump `AppTheme.light()`, because a hand-built `ThemeData` has no extensions and `context.space` throws a null check.
 - Failed approaches: The queue's `Shortcuts` subtree needs a focused descendant to receive keys, and a single `Focus` node that both autofocuses and reports "a row has focus" holds the poll open forever; the split is one autofocus node at the root of the pane for key delivery and a second, non-focusable node around the rows only, which is what "never swap the list while a row is focused" actually means. A first cut of the filter sheet kept the risk slider always live, which implied the server can include unmeasured records inside a range; it cannot, so the "Include not measured" switch now governs whether `risk_min` and `risk_max` are sent at all and disables the slider when it is on.
 - Remaining follow-ups: `QueueRow` overflows horizontally below about 500 dp, so the queue cannot render a row on a phone or in the 360 dp list pane; its status chip and risk meter lay out at their natural width beside an `Expanded` title. The check is the skipped test in `test/screens/queue_test.dart` and the change is requested in the pull request, since this task does not own `lib/src/widgets/`. `lib/src/widgets/queue_row.dart:26` still says "just now" and fails the string gate; it needs a rewording such as "under a minute". The queue list endpoint returns no preview bytes, so every `QueueRow` thumbnail is the placeholder until the API sends them, and it returns no total, so the summary line says what is loaded. `RiskMeter` refuses a composite with no components even in `compact: true`, where it never draws them, so the queue passes a constant naming where the signals are. The blueprint's `history/:revision`, `intake/capture` and `queue/:specimen/regions` routes are not registered here; they belong with the workbench and intake steps. Saved filter sets, multi-select and bulk actions are absent because the repository interface exposes no bulk action.
+
+### 2026-09-14 — Front-end north star step 6: motion and polish
+
+- Task: `feat/motion-and-polish`
+- Branch/worktree: `feat/motion-and-polish` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a44bb40017c82ba1e`
+- Outcome: In progress
+- Commits/PRs: see the pull request opened from this branch against `main`
+- Validation: `flutter analyze --fatal-infos` clean; `flutter test` 624 passing,
+  7 skipped (all seven are live-API suites gated on environment variables);
+  `flutter test test/accessibility/` green; `dart format` on every touched file;
+  `python3 scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt`
+  reports zero violations; `test/theme/no_color_literals_test.dart` reports zero
+  literals outside `lib/src/theme/`.
+- Durable learnings:
+  - **A nested `Navigator` erases the semantics of everything painted before it
+    in the same semantics boundary.** A route's modal barrier sets
+    `isBlockingSemanticsOfPreviouslyPaintedNodes`, and an app shell that paints
+    its chrome before the routed child therefore disappears from the
+    accessibility tree entirely: the navigation rail and the environment band
+    produced no nodes at all while looking perfectly normal on screen. The fix
+    is one line, `Semantics(container: true, explicitChildNodes: true)` around
+    the routed child, which keeps the blocking inside the route. Any shell that
+    wraps a `Navigator` needs it, and only a semantics-tree assertion catches
+    it: the four `flutter_test` guideline matchers all pass on a screen whose
+    chrome is invisible, because they only inspect the nodes that exist.
+  - **`Flexible(fit: loose)` strands the space it does not use.** Where one
+    child has a target height and another needs a floor, the flex algorithm
+    cannot express it: a loose child is capped at its share and the remainder
+    stays in its slot rather than passing to the `Expanded`. The workable shape
+    is to measure the fixed chrome with a `RenderProxyBox` that reports its
+    height on the next frame, then size the flexible part arithmetically. The
+    photograph pinned above the workbench evidence needed exactly this, and the
+    symptom of getting it wrong was a scroll view with a zero-height viewport,
+    which on a device reads as "the screen is frozen" rather than as a layout
+    bug.
+  - **A sticky bar inside the scrolling pane's own flex share eats that share.**
+    The decision bar was a sibling of the evidence scroll view inside the pane,
+    so the pane's 50 percent of the column went to the bar first. Lifting the
+    bar out to the enclosing column is what made the pane scrollable again.
+  - **`tester.hasRunningAnimations` is not usable after `tester.tap`.** Material's
+    ink splash is a running animation and reduced motion does not stop it; the
+    policy drops ripples through the theme. Reduced-motion tests drive state by
+    rebuilding with a new value rather than by pressing a control, and where a
+    press is unavoidable they assert on the tree and on the value instead.
+  - **`find.bySemanticsLabel` misses merged labels.** A label folded into an
+    ancestor node belongs to no widget, so the finder returns nothing while a
+    screen reader reads it perfectly well. Walk the tree from
+    `tester.getSemantics(find.byType(MaterialApp))` and collect both `label`
+    and `tooltip`: an icon-only control names itself through its tooltip.
+  - **`MediaQuery` carries no reduced-motion signal on iOS and none at all on
+    web in Flutter 3.38.5.** The client reads four sources: `MediaQuery`'s
+    `disableAnimations` for Android, `AccessibilityFeatures.reduceMotion` for
+    iOS, a hand-written `matchMedia` bridge for web, and a stored in-app
+    preference. `AccessibilityFeatures` is not inherited, so a `MotionScope`
+    above the router rebuilds on `didChangeAccessibilityFeatures`.
+  - **`NavigationRail` with `labelType: none` contributes no semantics for its
+    destinations**, because the label widget is simply not built. A collapsed
+    rail is a column of unnamed buttons unless the words are drawn or a label is
+    supplied by hand.
+  - **`Image.memory` without `gaplessPlayback` blanks on every rebuild that
+    resolves a new provider instance**, which is what made the specimen
+    photograph flash black on a panel change.
+- Failed approaches:
+  - Trying to reproduce the phone scrolling defect at 390x844 with a plain
+    scaffold host, and then through the real router, both passed. The condition
+    that reproduces it is a short viewport plus a system inset, where the
+    wrapped decision bar consumes the pane's whole share. A regression test that
+    cannot fail is worse than none; the squeezed-viewport case is the one that
+    holds this.
+  - Computing the pinned photograph's height from `MediaQuery.sizeOf`. That is
+    the window, not the pane, and on a phone the two differ by the app bar, the
+    navigation bar, the environment band, the progress row and the insets.
+  - Giving the photograph a larger flex so it could exceed half the remainder.
+    It cannot: see the stranded-space note above.
+- Remaining follow-ups:
+  - The smoke report named in the handoff,
+    `apps/specimen_digitization/design/screenshots/rebuild-smoke.md`, does not
+    exist on `origin/main`; the six defects were worked from the handoff text
+    alone, without the screenshots.
+  - Catalog rows 35 and 75, the animated quarter turn of the photograph and of
+    the region editor preview, remain instant. `AnimatedRotation` does not
+    re-lay-out, so a non-square photograph overflows its pane mid-turn;
+    `RotatedBox` swaps the constraints and keeps the image inside it. This is
+    the same deviation PR #41 recorded.
+  - Row 55, the processing-stage indicator, stays a plain stepper, as the
+    document instructs, until it is measured against reviewers.
+  - The web reduced-motion bridge in `lib/src/theme/reduced_motion_platform_web.dart`
+    is deleted on the Flutter 3.44 upgrade, where the engine reports the media
+    query itself. A `TODO` marks it.

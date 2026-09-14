@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/capture_quality.dart';
+import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 
 import 'widgets/harness.dart';
 
@@ -49,6 +51,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: CaptureQualityView(
             quality: CaptureQuality.measure(pixels([0, 255, 0, 255]), 2, 2),
@@ -68,7 +71,8 @@ void main() {
     );
     expect(find.textContaining('Near-black pixels 50.0%'), findsOneWidget);
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(body: CaptureQualityView(quality: null)),
       ),
     );

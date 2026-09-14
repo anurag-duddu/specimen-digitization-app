@@ -121,6 +121,24 @@ class ManifestEntry {
 ///
 /// Reads "8 of 12 accepted, 1 skipped". Counts that are zero are left out,
 /// because a zero is noise in a line an operator reads at a glance.
+/// True when every file in the batch reached a state the server holds.
+///
+/// The summary line and the one per batch haptic both key off this, so the
+/// buzz and the sentence can never disagree (motion catalog, row 67).
+bool batchComplete(Iterable<ManifestEntry> entries) {
+  final List<ManifestEntry> all = entries.toList(growable: false);
+  return all.isNotEmpty && all.every((ManifestEntry e) => e.settled);
+}
+
+/// The sentence that appears once a whole batch has landed.
+String batchCompleteLine(Iterable<ManifestEntry> entries) {
+  final int count = entries.length;
+  return count == 1
+      ? 'This batch is complete. The drawer can move on.'
+      : 'All $count photographs are in the collection. The drawer can move '
+            'on.';
+}
+
 String batchProgressLine(Iterable<ManifestEntry> entries) {
   final List<ManifestEntry> all = entries.toList(growable: false);
   if (all.isEmpty) return 'No files selected yet';

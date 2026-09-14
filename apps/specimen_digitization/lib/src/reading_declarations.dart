@@ -86,9 +86,9 @@ class LabelLanguagePolicy extends StatelessWidget {
             ),
           ),
         ),
-      EvidenceDetails(
+      EvidenceDrawer(
         title: 'Versioned language policy and label evidence',
-        value: handling,
+        payload: handling,
       ),
     ],
   );
@@ -201,17 +201,17 @@ class ReadingDeclarationView extends StatelessWidget {
                     'Recorded by ${textOf(human['actor'])} · ${textOf(human['created_at'])}',
                   ),
                   Text('Reason: ${textOf(human['reason'])}'),
-                  EvidenceDetails(
+                  EvidenceDrawer(
                     title: 'Human declaration lineage',
-                    value: human,
+                    payload: human,
                   ),
                 ],
               ),
             ),
           ),
-        EvidenceDetails(
+        EvidenceDrawer(
           title: 'Retained model response and declaration history',
-          value: provenance,
+          payload: provenance,
         ),
         if (onChange != null)
           OutlinedButton(

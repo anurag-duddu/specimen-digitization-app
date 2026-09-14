@@ -4,6 +4,8 @@ import 'email_link_browser.dart';
 import 'app/auth_layout.dart';
 import 'magic_link.dart';
 import 'theme/icons.dart';
+import 'theme/motion.dart';
+import 'widgets/motion_reveal.dart';
 import 'widgets/caveat_text.dart';
 
 class EmailLinkEntry extends StatefulWidget {
@@ -122,6 +124,19 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
     );
   }
 
+  /// The primary button's label for the state the controller is in.
+  ///
+  /// One function, so the `AnimatedSwitcher`'s key and the text it draws can
+  /// never disagree and leave the label frozen mid-request.
+  static String _submitLabel(
+    MagicLinkController controller, {
+    required bool confirm,
+  }) {
+    if (controller.busy) return confirm ? 'Signing in…' : 'Sending link…';
+    if (confirm) return 'Confirm and sign in';
+    return controller.sent ? 'Resend sign-in link' : 'Send sign-in link';
+  }
+
   @override
   Widget build(BuildContext context) {
     final confirm = controller.handlingLink;
@@ -159,27 +174,37 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
                   if (!disabled) _submit();
                 },
               ),
-              if (controller.message != null)
-                Padding(
+              // The announcement is what tells a screen reader user; the
+              // reveal only keeps the column from snapping (catalog row 5).
+              MotionReveal(
+                visible: controller.message != null,
+                child: Padding(
                   padding: EdgeInsets.symmetric(vertical: context.space.space4),
                   child: Semantics(
                     liveRegion: true,
-                    child: Text(controller.message!),
+                    child: Text(controller.message ?? ''),
                   ),
                 ),
+              ),
               SizedBox(height: context.space.space6),
               FilledButton(
                 onPressed: disabled ? null : _submit,
-                child: Text(
-                  controller.busy
-                      ? (confirm ? 'Signing in…' : 'Sending link…')
-                      : confirm
-                      ? 'Confirm and sign in'
-                      : controller.sent
-                      ? 'Resend sign-in link'
-                      : 'Send sign-in link',
+                // The label cross-fades and the button keeps its width: a
+                // primary action that resizes while the request is out is a
+                // button the operator has to find again (catalog row 4).
+                child: AnimatedSwitcher(
+                  duration: context.motion.quick,
+                  switchInCurve: MotionTokens.standardCurve,
+                  child: Text(
+                    _submitLabel(controller, confirm: confirm),
+                    key: ValueKey<String>(
+                      _submitLabel(controller, confirm: confirm),
+                    ),
+                  ),
                 ),
               ),
+              // A number changing once a second is a fact, not a transition,
+              // so nothing here animates (catalog row 6).
               if (!confirm && cooldown > 0)
                 Padding(
                   padding: EdgeInsets.only(top: context.space.space3),

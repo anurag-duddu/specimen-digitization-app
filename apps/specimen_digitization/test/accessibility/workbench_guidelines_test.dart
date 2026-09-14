@@ -157,7 +157,7 @@ void main() {
       await pumpWorkbench(tester, windows['large']!);
       await tester.tap(find.text('Fields'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Edit as written').first);
+      await tester.tap(find.byTooltip(RegExp(r'^Edit as written')).first);
       await tester.pumpAndSettle();
       for (final AccessibilityGuideline guideline in guidelines.values) {
         await expectLater(tester, meetsGuideline(guideline));

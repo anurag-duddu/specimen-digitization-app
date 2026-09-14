@@ -3,6 +3,7 @@ import 'models.dart';
 import 'review_context.dart';
 import 'vocabulary.dart';
 import 'widgets/caveat_text.dart';
+import 'widgets/evidence_drawer.dart';
 
 String riskComposite(Json risk) {
   final partial =
@@ -43,9 +44,9 @@ class ReviewRiskPanel extends StatelessWidget {
           ),
           RiskAssessmentDetails(risk: risk),
           if (policy.isNotEmpty)
-            EvidenceDetails(
+            EvidenceDrawer(
               title: 'Published risk policy resolution and definition',
-              value: policy,
+              payload: policy,
             ),
           for (final scope in ['labels', 'fields'])
             if (objects(risk[scope]).isNotEmpty) ...[
@@ -132,9 +133,9 @@ class RiskAssessmentDetails extends StatelessWidget {
             Text(
               'Not measured: ${(risk['unmeasured'] as List).map((s) => vocabularyLabel(s.toString())).join(', ')}',
             ),
-          EvidenceDetails(
+          EvidenceDrawer(
             title: 'Risk components, versions and calibration',
-            value: details,
+            payload: details,
           ),
         ],
       ),
@@ -190,9 +191,9 @@ class ObservationExecutionDetails extends StatelessWidget {
           if (observation['parameters'] == null)
             const Text('Model parameters: Not reported')
           else
-            EvidenceDetails(
+            EvidenceDrawer(
               title: 'Reported model parameters',
-              value: observation['parameters'],
+              payload: observation['parameters'],
             ),
         ],
       ),

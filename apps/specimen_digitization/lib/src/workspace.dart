@@ -131,6 +131,8 @@ class WorkspaceController extends ChangeNotifier {
 
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
+  AppLifecycleListener? _lifecycle;
+  bool _foreground = true;
   Timer? _search;
   bool _disposed = false;
 
@@ -209,6 +211,13 @@ class WorkspaceController extends ChangeNotifier {
   /// How many filters the Filters button reports.
   int get activeFilterCount => _filters.length;
 
+  /// Counts the result sets this controller has produced.
+  ///
+  /// The queue keys its cross-fade on this, so a search, a filter or a
+  /// segment change swaps the rows and a poll that answered with the same
+  /// records does not (motion catalog, rows 14 and 24).
+  int get listGeneration => _generation;
+
   /// The filters as the repository wants them. Unchanged from before the
   /// redesign: same keys, same string values.
   Map<String, String> get activeFilters => <String, String>{
@@ -237,8 +246,17 @@ class WorkspaceController extends ChangeNotifier {
           });
     }
     unawaited(checkAccess());
+    // A poll that runs while nobody is looking is a request the collection
+    // pays for and no one reads. The listener is created here rather than in
+    // the constructor so a controller that was never started never installs
+    // one.
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (AppLifecycleState state) =>
+          _foreground = state == AppLifecycleState.resumed,
+    );
     _poll = Timer.periodic(pollInterval, (_) {
-      if (!_mutating &&
+      if (_foreground &&
+          !_mutating &&
           !_loading &&
           !_loadingMore &&
           _scope != null &&
@@ -248,10 +266,22 @@ class WorkspaceController extends ChangeNotifier {
     });
   }
 
+  /// True while the window is the one the operating system is showing.
+  ///
+  /// The poll is the only thing that reads it. Everything else in the client
+  /// happens because a reviewer asked for it.
+  bool get foreground => _foreground;
+
+  /// Tells the controller the window went to the background, for a test that
+  /// has no operating system to hear it from.
+  @visibleForTesting
+  void setForeground(bool value) => _foreground = value;
+
   @override
   void dispose() {
     _disposed = true;
     _accessSubscription?.cancel();
+    _lifecycle?.dispose();
     _poll?.cancel();
     _search?.cancel();
     queueScroll.dispose();

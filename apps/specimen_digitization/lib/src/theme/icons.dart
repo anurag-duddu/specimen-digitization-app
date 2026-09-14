@@ -79,6 +79,20 @@ extension SpecimenTokensX on BuildContext {
   /// Durations and curves, with the live reduced-motion state folded in.
   MotionTokens get motion => MotionTokens.of(this);
 
+  /// The letterbox behind a photograph (screen blueprints, section 12).
+  ///
+  /// The photograph itself is never re-toned; the matte is what changes. It
+  /// is the lowest container in light and the highest in dark, so label paper
+  /// reads as paper in both rather than as a glowing rectangle on black. This
+  /// is the one place in the app that reads `brightness`, and it reads it to
+  /// pick a token, never to compute a color.
+  Color get sourceMatte {
+    final ThemeData theme = Theme.of(this);
+    return theme.brightness == Brightness.dark
+        ? theme.colorScheme.surfaceContainerHighest
+        : theme.colorScheme.surfaceContainerLowest;
+  }
+
   /// The icon, word and colors for a status key.
   DispositionStyle dispositionStyle(String key) {
     final SpecimenColors t = tokens;

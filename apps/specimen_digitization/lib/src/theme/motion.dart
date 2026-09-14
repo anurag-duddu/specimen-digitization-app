@@ -6,8 +6,15 @@
 /// a millisecond literal.
 library;
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
+
+import 'motion_preference.dart';
+import 'reduced_motion_platform.dart';
 
 @immutable
 class MotionTokens extends ThemeExtension<MotionTokens> {
@@ -75,23 +82,35 @@ class MotionTokens extends ThemeExtension<MotionTokens> {
   Duration meaningful(Duration token) => token;
 
   /// Reads the tokens and the live reduced-motion state.
-  ///
-  /// Two sources, because neither covers our platforms alone on Flutter
-  /// 3.38.5: `MediaQueryData.disableAnimations` carries Android's "Remove
-  /// animations", and `AccessibilityFeatures.reduceMotion` carries the iOS
-  /// setting, which `MediaQuery` omits. The web has no signal at all in this
-  /// toolchain, so a web bridge and an in-app override arrive with the motion
-  /// step of the redesign.
   static MotionTokens of(BuildContext context) {
     final MotionTokens base =
         Theme.of(context).extension<MotionTokens>() ?? const MotionTokens();
     return base.copyWith(reduced: prefersReducedMotion(context));
   }
 
-  /// True when any source asks for reduced motion.
+  /// True when any of the four sources asks for reduced motion.
+  ///
+  /// Four, because no single one covers our platforms on Flutter 3.38.5
+  /// (motion and microinteractions, section 2.5, verified against the
+  /// installed SDK):
+  ///
+  ///   Android -> `MediaQueryData.disableAnimations`, which the engine sets
+  ///              from the three animator duration scales.
+  ///   iOS     -> `AccessibilityFeatures.reduceMotion`. `MediaQueryData`
+  ///              carries no field for it, so an iPad with Reduce Motion on
+  ///              reports `disableAnimations` false. The iPad is our primary
+  ///              review surface, which is why reading `MediaQuery` alone
+  ///              would ship a spec that is broken for the reviewers most
+  ///              likely to need it.
+  ///   Web     -> our own `matchMedia` bridge. The 3.38.5 web engine reports
+  ///              `highContrast` and nothing else.
+  ///   Any     -> the stored in-app preference, so a reviewer on a managed
+  ///              desktop can force it without an operating system setting.
   static bool prefersReducedMotion(BuildContext context) =>
+      MotionPreference.forcedOf(context) ||
       MediaQuery.disableAnimationsOf(context) ||
-      SemanticsBinding.instance.accessibilityFeatures.reduceMotion;
+      SemanticsBinding.instance.accessibilityFeatures.reduceMotion ||
+      platformPrefersReducedMotion();
 
   @override
   MotionTokens copyWith({bool? reduced}) =>
@@ -101,4 +120,47 @@ class MotionTokens extends ThemeExtension<MotionTokens> {
   @override
   MotionTokens lerp(MotionTokens? other, double t) =>
       t < 0.5 ? this : (other ?? this);
+}
+
+/// The app's entire haptic surface (motion and microinteractions, 4.7).
+///
+/// Two delight moments are approved, and only two: the disposition settling
+/// after a save the reviewer committed (catalog row 50), and a whole upload
+/// batch finishing while the operator is at a copy stand rather than looking
+/// at the screen (row 67). The per-item version of row 67 is banned outright,
+/// because a two hundred image batch would produce two hundred buzzes, which
+/// is noise rather than feedback. The selection tick the catalog attaches to
+/// choosing a region and a segment is the only other call, and it is the one
+/// Flutter documents as the lightest of the five.
+///
+/// `HapticFeedback` is already a no-op on web and desktop, but every call is
+/// gated here anyway, so the platform rule is a line of code a reviewer can
+/// read rather than a property of a plugin.
+abstract final class SpecimenHaptics {
+  /// True on the two platforms whose system haptics these calls reach.
+  static bool get available =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
+
+  /// Delight moment 1: a decision the reviewer committed has landed.
+  ///
+  /// The reviewer is looking at the screen, so this is redundancy beside the
+  /// chip change and the spoken announcement, never the only channel.
+  static void decisionLanded() {
+    if (available) unawaited(HapticFeedback.mediumImpact());
+  }
+
+  /// Delight moment 2: one upload batch reached its final states.
+  ///
+  /// Fired once per batch, never once per item.
+  static void batchComplete() {
+    if (available) unawaited(HapticFeedback.lightImpact());
+  }
+
+  /// The selection tick for choosing a region (catalog rows 36 and 37) and
+  /// for the segment that changes which panel a reviewer is reading (row 41).
+  static void selectionChanged() {
+    if (available) unawaited(HapticFeedback.selectionClick());
+  }
 }

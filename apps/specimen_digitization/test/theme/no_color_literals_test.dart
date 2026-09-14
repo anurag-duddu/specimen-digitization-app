@@ -12,8 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Widget files that still carry color literals, with the count each holds at
 /// the time of writing. Shrink this list; never add to it.
-const Map<String, int> migrationBacklog = <String, int>{
-};
+const Map<String, int> migrationBacklog = <String, int>{};
 
 final RegExp _colorLiteral = RegExp(r'Color\(0x');
 

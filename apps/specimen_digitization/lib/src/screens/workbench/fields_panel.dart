@@ -220,6 +220,11 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
               onEdit: blocked != null
                   ? null
                   : (FieldLayer layer) => _startEdit(field, layer),
+              // A reader that lands on the pencil directly hears the field as
+              // well as the layer, rather than the fortieth "Edit read as".
+              editSemanticsLabel: (FieldLayer layer) =>
+                  'Edit ${layer.label.toLowerCase()} for '
+                  '${textOf(field['display_name'], key)}',
               findings: findings.isEmpty
                   ? null
                   : Column(

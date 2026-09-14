@@ -4,6 +4,8 @@
 /// string has somewhere to point.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -11,6 +13,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../models.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
+import '../theme/motion_preference.dart';
 import '../vocabulary.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
@@ -170,6 +173,10 @@ class _HelpBody extends StatelessWidget {
                 'Account: ${controller?.session.displayName ?? 'Not signed in'}',
               ),
               SizedBox(height: context.space.space6),
+              Text('Motion', style: theme.textTheme.titleMedium),
+              SizedBox(height: context.space.space2),
+              const ReduceMotionSetting(),
+              SizedBox(height: context.space.space6),
               Text('Administrator contact', style: theme.textTheme.titleMedium),
               SizedBox(height: context.space.space2),
               Text(contact),
@@ -186,5 +193,39 @@ class _HelpBody extends StatelessWidget {
     final WorkspaceScope? scope = context
         .getInheritedWidgetOfExactType<WorkspaceScope>();
     return scope?.notifier;
+  }
+}
+
+/// The in-app "Reduce motion" switch (motion and microinteractions, 6.2b).
+///
+/// The fourth reduced-motion source, and the only one a reviewer on a managed
+/// desktop can reach: an operating system accessibility setting may not be
+/// theirs to change, and on this toolchain a browser preference never reaches
+/// the framework at all.
+class ReduceMotionSetting extends StatelessWidget {
+  const ReduceMotionSetting({super.key});
+
+  /// The switch label, fixed so the tests and the copy cannot drift.
+  static const String label = 'Reduce motion';
+
+  /// What turning it on does, and what it deliberately leaves alone.
+  static const String helper =
+      'Removes sliding and zooming. Progress bars keep moving.';
+
+  @override
+  Widget build(BuildContext context) {
+    final MotionPreferenceController? controller = MotionPreference.maybeOf(
+      context,
+    );
+    // Outside the application scope, such as a component test that pumps this
+    // panel on a bare MaterialApp, there is no setting to offer.
+    if (controller == null) return const SizedBox.shrink();
+    return SwitchListTile(
+      value: controller.forceReducedMotion,
+      onChanged: (bool value) => unawaited(controller.set(value)),
+      title: const Text(label),
+      subtitle: const Text(helper),
+      contentPadding: EdgeInsets.zero,
+    );
   }
 }
