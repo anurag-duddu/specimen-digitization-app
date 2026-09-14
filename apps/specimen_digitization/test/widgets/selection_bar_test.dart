@@ -101,7 +101,7 @@ void main() {
         bar(count: 6, allLoadedSelected: true, moreToLoad: true),
       );
       await tester.pumpAndSettle();
-      expect(find.text(SelectionBar.moreMatchLabel), findsOneWidget);
+      expect(find.text(SelectionBar.recordsMoreMatch), findsOneWidget);
       expect(
         find.text(SelectionBar.selectAllLabel),
         findsNothing,
@@ -117,7 +117,41 @@ void main() {
         bar(count: 6, allLoadedSelected: true),
       );
       await tester.pumpAndSettle();
-      expect(find.text(SelectionBar.moreMatchLabel), findsNothing);
+      expect(find.text(SelectionBar.recordsMoreMatch), findsNothing);
+    });
+
+    testWidgets('a list of things that are not records says so', (
+      WidgetTester tester,
+    ) async {
+      // The queue's rows are records. A browse screen over a storage source
+      // lists objects that nothing has imported yet, and calling one of those
+      // a record names the very thing that screen exists to distinguish.
+      await pumpComponent(
+        tester,
+        SelectionBar(
+          count: 6,
+          loadedCount: 6,
+          moreToLoad: true,
+          allLoadedSelected: true,
+          onSelectAllLoaded: () {},
+          onClear: () {},
+          actions: <SelectionAction>[action('Run processing')],
+          countLabel: (int count) => count == 1 ? '1 object' : '$count objects',
+          moreMatchLabel:
+              'More objects match this filter. Load more to select them.',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('6 objects selected'), findsOneWidget);
+      expect(
+        find.text('More objects match this filter. Load more to select them.'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('record'),
+        findsNothing,
+        reason: 'one bar must not use two nouns for one thing',
+      );
     });
 
     testWidgets('a bulk action in flight holds every control', (

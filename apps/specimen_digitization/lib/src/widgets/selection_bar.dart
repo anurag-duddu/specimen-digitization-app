@@ -76,6 +76,12 @@ extension BulkDecisionCopy on BulkDecisionKind {
 
 /// "1 record" or "6 records". One place, because six call sites agreeing
 /// on the plural by hand is six chances to disagree.
+///
+/// The default for [SelectionBar.countLabel], and the right words wherever the
+/// rows are records. A list whose rows are not records yet, such as objects in
+/// a storage inventory that nothing has imported, passes its own noun instead:
+/// calling one of those a record would name the very thing the screen exists
+/// to distinguish.
 String recordsLabel(int count) => count == 1 ? '1 record' : '$count records';
 
 /// One thing the bar offers to do with a selection.
@@ -206,6 +212,8 @@ class SelectionBar extends StatelessWidget {
     required this.onClear,
     required this.actions,
     this.busy = false,
+    this.countLabel = recordsLabel,
+    this.moreMatchLabel = SelectionBar.recordsMoreMatch,
   });
 
   /// How many records are selected.
@@ -232,13 +240,26 @@ class SelectionBar extends StatelessWidget {
   /// hidden, so the bar keeps its footprint and its count.
   final bool busy;
 
+  /// What one of these rows is called, counted.
+  ///
+  /// Defaults to [recordsLabel]. A list of things that are not records yet
+  /// passes its own noun, so the bar names what the reviewer is looking at
+  /// rather than what this bar happened to be written for.
+  final String Function(int count) countLabel;
+
+  /// What the reviewer is told when a select all cannot reach the whole
+  /// filter, which is whenever the server still has a page to give.
+  ///
+  /// Defaults to [recordsMoreMatch]. A caller that changed [countLabel] should
+  /// change this too, so one bar does not use two nouns for one thing.
+  final String moreMatchLabel;
+
   /// The two words the select all control uses, fixed so the label and the
   /// sentence under it cannot drift apart.
   static const String selectAllLabel = 'Select all loaded';
 
-  /// What the reviewer is told when a select all cannot reach the whole
-  /// filter, which is whenever the server still has a page to give.
-  static const String moreMatchLabel =
+  /// The default [moreMatchLabel], for a list whose rows are records.
+  static const String recordsMoreMatch =
       'More records match this filter. Load more to select them.';
 
   @override
@@ -288,7 +309,7 @@ class SelectionBar extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.only(top: context.space.space2),
                   child: Text(
-                    SelectionBar.moreMatchLabel,
+                    moreMatchLabel,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -306,7 +327,7 @@ class SelectionBar extends StatelessWidget {
   Widget _summary(BuildContext context, ThemeData theme) => Semantics(
     liveRegion: true,
     child: Text(
-      '${recordsLabel(count)} selected',
+      '${countLabel(count)} selected',
       style: theme.textTheme.titleSmall,
     ),
   );

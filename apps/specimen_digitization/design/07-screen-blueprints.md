@@ -105,10 +105,38 @@ dialog closes (H6.5).
   the one action that resolves it.
 - **Refresh.** The 20 second poll stays but shows "Updated 12 s ago" in the header
   and never swaps the list while a row is focused or a sheet is open.
-- **Multi-select.** Long press on touch or checkbox column on pointer windows
-  selects rows; the only bulk actions are the non-destructive ones the server
-  permits (assign, defer with reason). Absent server support, the affordance is
-  hidden, not disabled.
+- **Multi-select.** A checkbox column at medium and wider; below that, a long
+  press opens one. The window decides, not the platform, and the long press
+  carries a named accessibility action so it is not a gesture only a sighted
+  reviewer can find. The row body always opens the record and only the checkbox
+  selects: a mode in which the same tap means two different things makes a row
+  announce itself as a button that does not open anything.
+  - **The bulk actions are the ones the server takes across records**, which
+    today is approve and confirm label coverage, through
+    `POST /decisions:batch`. A field correction or a transcription names a
+    target inside one record and is not offered. Absent server support the
+    affordance is hidden, not disabled.
+  - **"Select all" means every record loaded, and the control says so.** The
+    list API answers a page and a cursor, never a total, and the decisions
+    endpoint takes named records at named versions, so a control claiming the
+    whole filter would claim authority over records the client has never seen
+    and could not state a count on the confirmation. The label is "Select all
+    loaded", and once it has been taken, the bar says "More records match this
+    filter. Load more to select them." whenever the server still has a page.
+    The shared model (`lib/src/selection.dart`) has no way to express the other
+    reading, which is how the rule is kept rather than remembered.
+  - **The count is always visible**, in a bar pinned under the list rather than
+    placed in it, and announced as a live region when it changes.
+  - **A live selection holds the poll**, the same way a focused row and an open
+    sheet already do: a count the reviewer is about to confirm must not change
+    between being read and being confirmed.
+  - **The confirmation names the exact count** before anything is written, in
+    the title and on the primary button, through the same `ReasonSheet` as every
+    other decision, so it also carries the finality sentence. This product has
+    no true delete, so the count is the last honest moment.
+  - **A partial result is a surface the reviewer dismisses, not one that times
+    out.** It names every record that did not change, and it distinguishes
+    refused from never attempted. A whole success is a snackbar.
 
 **Layout.** Single pane through expanded; list-detail at 1200 dp and above with
 a 360 dp list pane. Keyboard: `J`/`K` or arrows move selection, `Enter` opens,
