@@ -427,11 +427,7 @@ independent integrated SQL/HTTP acceptance are still required.
 ## Source registry, inventory and server-side import
 
 Status: contract recorded 2026-09-14, before implementation, for workstreams A
-and B of the source browse-and-run design, which lands separately as
-`docs/execution/SOURCE_BROWSE_AND_RUN.md` in
-[PR #56](https://github.com/anurag-duddu/specimen-digitization-app/pull/56); if
-that file is not beside this one yet, that pull request has not merged.
-Workstream C
+and B of [`SOURCE_BROWSE_AND_RUN.md`](SOURCE_BROWSE_AND_RUN.md). Workstream C
 (bulk run and cost estimation) is deliberately absent: it is blocked on an
 ongoing-budget decision the owner has not made, and no route below can dispatch
 inference or spend. This section is a specification. It is not evidence that a
