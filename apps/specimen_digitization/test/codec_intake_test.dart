@@ -110,20 +110,17 @@ void main() {
       await tester.tap(find.text('I checked framing and readability'));
       await tester.pump();
       await tester.scrollUntilVisible(
-        find.text('Upload / resume selected files'),
+        find.text('Upload selected files'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Upload / resume selected files'));
+      await tester.tap(find.text('Upload selected files'));
       await tester.pumpAndSettle();
       expect(offset, bytes.length);
       expect(completions, 1);
       expect(accepted, 0);
-      expect(
-        find.textContaining('The uploaded original is retained.'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Your upload is kept.'), findsOneWidget);
       final stored = (await SharedPreferences.getInstance()).getString(
         'upload-handles-v1:owner:org/c',
       )!;

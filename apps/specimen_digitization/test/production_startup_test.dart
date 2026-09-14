@@ -80,7 +80,7 @@ void main() {
       expect(calls, isEmpty);
       expect(result.session, isNull);
       expect(result.repository, isNull);
-      expect(result.setupMessage, contains('no live Firebase configuration'));
+      expect(result.setupMessage, contains('no live sign-in configuration'));
     },
   );
 

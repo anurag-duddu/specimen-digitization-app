@@ -88,7 +88,7 @@ void main() {
     expect(session.tokenCalls, 0);
     expect(session.verificationRequests, 0);
     expect(find.text('Send verification email'), findsOneWidget);
-    expect(find.text('I verified my email — check again'), findsOneWidget);
+    expect(find.text('Check verification again'), findsOneWidget);
     await tester.tap(find.text('Send verification email'));
     await tester.pumpAndSettle();
     expect(session.verificationRequests, 1);
@@ -145,7 +145,7 @@ void main() {
     await tester.tap(find.text('Send verification email'));
     await tester.pumpAndSettle();
     expect(session.verificationRequests, 1);
-    await tester.tap(find.text('I verified my email — check again'));
+    await tester.tap(find.text('Check verification again'));
     await tester.pumpAndSettle();
     expect(session.refreshes, 1);
     expect(find.text(backendPending), findsOneWidget);
@@ -166,7 +166,7 @@ void main() {
     await tester.pumpWidget(
       SpecimenDigitizationApp(session: session, setupMessage: backendPending),
     );
-    await tester.tap(find.text('I verified my email — check again'));
+    await tester.tap(find.text('Check verification again'));
     await tester.pumpAndSettle();
     expect(session.refreshes, 1);
     expect(find.text('Verify your account'), findsOneWidget);

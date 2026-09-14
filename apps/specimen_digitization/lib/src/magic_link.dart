@@ -182,12 +182,12 @@ class MagicLinkController extends ChangeNotifier {
           _link = uri.toString();
         } else {
           _clearLink();
-          message = 'This sign-in link is invalid. Request a new link.';
+          message = 'This sign-in link cannot be used. Request a new link.';
         }
       }
     } catch (_) {
       _clearLink();
-      message = 'This sign-in link is invalid. Request a new link.';
+      message = 'This sign-in link cannot be used. Request a new link.';
     }
     initialized = true;
     _changed();
@@ -300,9 +300,8 @@ String emailLinkError(Object error) {
       'operation-not-allowed' ||
       'unauthorized-continue-uri' ||
       'invalid-continue-uri' =>
-        'Email-link sign-in is not available yet. Contact your administrator.',
-      'user-disabled' =>
-        'This account cannot sign in. Contact your administrator.',
+        'Email-link sign-in is not available yet. Ask your administrator.',
+      'user-disabled' => 'This account cannot sign in. Ask your administrator.',
       'invalid-email' => staffEmailMessage,
       _ => 'Sign-in could not be completed. Request a new link or try again.',
     };

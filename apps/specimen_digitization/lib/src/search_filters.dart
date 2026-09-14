@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 
+import 'widgets/caveat_text.dart';
+
 const searchFields = {
   'asset_id': 'Asset ID',
   'active_run_id': 'Run ID',
   'batch_id': 'Batch ID',
   'uploader_id': 'Uploader ID',
-  'stage': 'Processing stage',
+  'stage': 'Processing step',
   'profile_id': 'Profile ID',
   'profile_version': 'Profile version',
   'reason_code': 'Issue code',
   'blocker': 'Blocker',
   'created_from': 'Created from (inclusive UTC)',
   'created_before': 'Created before (exclusive UTC)',
-  'risk_min': 'Minimum risk (0–100)',
-  'risk_max': 'Maximum risk (0–100)',
+  'risk_min': 'Minimum risk (0 to 100)',
+  'risk_max': 'Maximum risk (0 to 100)',
 };
 
 class SearchFilters extends StatefulWidget {
@@ -63,8 +65,11 @@ class _SearchFiltersState extends State<SearchFilters> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'All filters must match. Risk filters exclude unmeasured records; risk does not establish clearance.',
+              const CaveatText(
+                label: 'All filters must match.',
+                why:
+                    'Risk filters exclude records with no measured risk. '
+                    'Risk never determines clearance.',
               ),
               for (final entry in searchFields.entries)
                 Padding(

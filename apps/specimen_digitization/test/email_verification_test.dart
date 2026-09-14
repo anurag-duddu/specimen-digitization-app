@@ -36,13 +36,13 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('I verified my email — check again'));
+    await tester.tap(find.text('Check verification again'));
     await tester.pump();
     session.refreshed.completeError(StateError('Token refresh failed'));
     await tester.pumpAndSettle();
     expect(session.emailVerified, true);
     expect(find.text('protected workspace'), findsNothing);
-    expect(find.text('I verified my email — check again'), findsOneWidget);
+    expect(find.text('Check verification again'), findsOneWidget);
   });
   testWidgets(
     'verification is explicit and workspace waits for token refresh',
@@ -63,7 +63,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(session.sent, 1);
       expect(find.text('protected workspace'), findsNothing);
-      await tester.tap(find.text('I verified my email — check again'));
+      await tester.tap(find.text('Check verification again'));
       await tester.pump();
       expect(session.emailVerified, true);
       expect(find.text('protected workspace'), findsNothing);

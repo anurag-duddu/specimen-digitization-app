@@ -43,7 +43,7 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
         setState(
           () => _error = e is ApiFailure
               ? e.message
-              : 'Evidence unavailable. Retry to read the same revision.',
+              : 'Evidence unavailable. Retry to read the same version.',
         );
       }
     } finally {
@@ -83,19 +83,22 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Large record · Revision ${widget.specimen.revision}',
+          'Large record · Version ${widget.specimen.revision}',
           style: Theme.of(context).textTheme.titleLarge,
         ),
         if (widget.specimen.data['mutation_saved'] == true ||
             receipt['mutation_committed'] == true)
           Text(
-            'Action saved at revision ${widget.specimen.revision}. Do not repeat it. The complete evidence requires separate retrieval.',
+            'Your action was saved on version ${widget.specimen.revision}. Do not repeat it.',
           ),
-        const Text(
-          'The standard workspace exceeds its response limit. Complete evidence is available as a read-only artifact. Field edits and approval are unavailable in this view.',
+        const Text('This record is too large for the normal view.'),
+        Text(
+          'You can read the complete evidence here. Editing and approval are '
+          'unavailable.',
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         Text(
-          'Retained artifact: ${receipt['artifact_size_bytes']} bytes · SHA-256 ${receipt['artifact_sha256']}',
+          'Evidence file ${receipt['artifact_size_bytes']} bytes · Checksum (SHA-256) ${receipt['artifact_sha256']}',
         ),
         if (widget.specimen.data['artifact_summary_error'] != null)
           Text(widget.specimen.data['artifact_summary_error']),
@@ -115,7 +118,7 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
           ),
         if (_artifact != null) ...[
           const Text(
-            'Complete artifact verified. Choose a section; every text page remains available.',
+            'The complete evidence file is verified. Choose a section to read.',
           ),
           Semantics(
             container: true,

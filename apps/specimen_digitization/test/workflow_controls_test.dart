@@ -107,7 +107,7 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('Its outcome is unknown'), findsOneWidget);
+      expect(find.textContaining('Its result is unknown'), findsOneWidget);
       expect(find.textContaining('Actual cost: Not measured'), findsOneWidget);
       final resume = find.ancestor(
         of: find.text('Resume processing'),
@@ -122,7 +122,7 @@ void main() {
       await tester.tap(find.byType(FilledButton));
       await tester.pumpAndSettle();
       expect(action, isNull);
-      expect(find.text('A reason is required.'), findsOneWidget);
+      expect(find.text('Enter a reason for this decision.'), findsOneWidget);
       await tester.enterText(
         find.byType(TextFormField),
         'Reconcile synthetic unknown request',

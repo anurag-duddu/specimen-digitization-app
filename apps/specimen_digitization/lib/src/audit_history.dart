@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'large_record.dart';
+import 'vocabulary.dart';
 
 /// Historical snapshots are read-only and never replace the active review model.
 class AuditHistoryPanel extends StatefulWidget {
@@ -123,7 +124,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         ? before['revision'] as int
         : null;
     return ExpansionTile(
-      title: Text('$sequence · ${labelOf(textOf(event['action']))}'),
+      title: Text('$sequence · ${vocabularyLabel(textOf(event['action']))}'),
       subtitle: Text(
         '${textOf(event['created_at'])} · ${textOf(event['actor_id'], textOf(event['actor']))}',
       ),
@@ -148,7 +149,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
                             runSha256: textOf(before['run_sha256']),
                           ),
                     icon: const Icon(Icons.history),
-                    label: Text('Read prior record · revision $reference'),
+                    label: Text('Read earlier record · version $reference'),
                   ),
                 ),
             ],
@@ -174,20 +175,20 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
 
   Widget _historicalRecord(
     Specimen record,
-  ) => _card('Historical revision ${record.revision} · read only', [
-    const Text(
-      'This retained record is historical evidence. It cannot be edited or used as the current review revision.',
-    ),
+  ) => _card('Version ${record.revision} · read only', [
+    const Text('This is a past version. It is read only.'),
     const SizedBox(height: 8),
     Text(
-      'Current review remains revision ${widget.specimen.revision}. Historical status: ${record.status}.',
+      'Your current review is on version ${widget.specimen.revision}. '
+      'This version: ${record.status}.',
+      style: Theme.of(context).textTheme.bodySmall,
     ),
     Text(
       'Profile ${record.profile} · Record ${textOf(record.data['record_version_id'])}',
     ),
     if (record.data['history_through_revision'] != null)
       Text(
-        'Earlier history through revision ${record.data['history_through_revision']} is retained in the revision browser below.',
+        'Earlier history through version ${record.data['history_through_revision']} is in the version browser below.',
       ),
     if (record.data['artifact_receipt'] is Map)
       LargeRecordEvidence(
@@ -244,12 +245,12 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     ],
     const SizedBox(height: 12),
     Text(
-      'Retained audit events · revision ${record.revision}',
+      'Audit events · version ${record.revision}',
       style: Theme.of(context).textTheme.titleSmall,
     ),
     if (record.audit.isEmpty)
       const Text(
-        'No inline events in this revision. Use earlier revisions to inspect retained history.',
+        'No events in this version. Open earlier versions to see more history.',
       ),
     ...record.audit.indexed.map(
       (entry) => _event(
@@ -263,7 +264,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         _requestedRevision = null;
         ++_generation;
       }),
-      child: const Text('Close historical record'),
+      child: const Text('Close past version'),
     ),
   ]);
 
@@ -272,13 +273,13 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _card('Current decision history', [
-        Text('Current review revision ${widget.specimen.revision}'),
+        Text('Current review version ${widget.specimen.revision}'),
         if (widget.specimen.data['history_through_revision'] != null)
           Text(
-            'Earlier audit and run evidence through revision ${widget.specimen.data['history_through_revision']} is retained in immutable record history. Browse revisions below for the complete prior record.',
+            'Earlier audit and run evidence through version ${widget.specimen.data['history_through_revision']} is kept in record history. Browse versions below for the complete earlier record.',
           ),
         if (widget.specimen.audit.isEmpty)
-          const Text('No inline audit events in the current snapshot.'),
+          const Text('No audit events in the current snapshot.'),
         ...widget.specimen.audit.indexed.map(
           (entry) => _event(
             entry.$2,
@@ -291,11 +292,11 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
           liveRegion: true,
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Text('Loading historical revision $_requestedRevision…'),
+            child: Text('Loading version $_requestedRevision…'),
           ),
         ),
       if (_recordError != null)
-        _card('Historical record unavailable', [
+        _card('Past version unavailable', [
           Semantics(liveRegion: true, child: Text(_recordError!)),
           TextButton(
             onPressed: _requestedRevision == null
@@ -305,24 +306,22 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
                     runId: _runId,
                     runSha256: _runSha256,
                   ),
-            child: const Text('Retry historical record'),
+            child: const Text('Retry loading version'),
           ),
         ]),
       if (_historical != null) _historicalRecord(_historical!),
-      _card('Browse retained record revisions', [
+      _card('Record versions', [
         Text(
-          'History is bounded through the current review revision ${widget.specimen.revision}. Opening a revision rechecks your current access.',
+          'History goes up to your current review version ${widget.specimen.revision}. Opening a version rechecks your access.',
         ),
         const SizedBox(height: 12),
         if (widget.loadPage == null || widget.loadRevision == null)
-          const Text(
-            'Historical retrieval is unavailable in this client connection.',
-          ),
+          const Text('Past versions cannot be loaded on this connection.'),
         ..._revisions.map(
           (item) => ListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Revision ${item['revision']}'),
-            subtitle: Text('Snapshot SHA-256 ${item['sha256']}'),
+            title: Text('Version ${item['revision']}'),
+            subtitle: Text('Checksum (SHA-256) ${item['sha256']}'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _open(item['revision'] as int),
           ),
@@ -330,7 +329,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         if (_pageError != null)
           Semantics(liveRegion: true, child: Text(_pageError!)),
         if (_started && _cursor == null)
-          const Text('All revisions through this review snapshot are listed.'),
+          const Text('All versions through this snapshot are listed.'),
         if (!_started || _cursor != null)
           Align(
             alignment: Alignment.centerLeft,
@@ -339,12 +338,12 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
               icon: const Icon(Icons.history),
               label: Text(
                 _loadingPage
-                    ? 'Loading revisions…'
+                    ? 'Loading versions…'
                     : _pageError != null
                     ? 'Retry history page'
                     : _started
-                    ? 'Load more revisions'
-                    : 'Browse record revisions',
+                    ? 'Load more versions'
+                    : 'Browse record versions',
               ),
             ),
           ),

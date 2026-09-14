@@ -25,11 +25,11 @@ class ConnectionConfig {
         (uri.scheme != 'https' &&
             !(synthetic && local && uri.scheme == 'http'))) {
       throw const FormatException(
-        'The collection service address is missing or invalid. Ask your administrator to check the approved connection configuration.',
+        'The collection service address is missing or unusable. Ask your administrator to check the connection configuration.',
       );
     }
     if (synthetic && !local) {
-      throw const FormatException('Synthetic access requires a local API.');
+      throw const FormatException('Test access requires a local API.');
     }
     if (!synthetic && authEmulatorHost.isNotEmpty) {
       throw const FormatException(

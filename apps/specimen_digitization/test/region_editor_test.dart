@@ -53,11 +53,9 @@ void main() {
       await tester.ensureVisible(left);
       await tester.enterText(left, '800');
       await tester.pump();
-      await tester.ensureVisible(
-        find.widgetWithText(TextField, 'Reason for segmentation correction'),
-      );
+      await tester.ensureVisible(find.widgetWithText(TextField, 'Reason'));
       await tester.enterText(
-        find.widgetWithText(TextField, 'Reason for segmentation correction'),
+        find.widgetWithText(TextField, 'Reason'),
         'Correct orientation',
       );
       await tester.tap(find.text('Save region version'));
@@ -116,10 +114,7 @@ void main() {
     (tester) async {
       Json? decision;
       await openSmallEditor(tester, (value) => decision = value);
-      final reason = find.widgetWithText(
-        TextField,
-        'Reason for segmentation correction',
-      );
+      final reason = find.widgetWithText(TextField, 'Reason');
       await tester.ensureVisible(reason);
       await tester.enterText(reason, 'Synthetic coordinate replacement');
       final left = find.widgetWithText(TextFormField, 'Left x');
@@ -141,7 +136,7 @@ void main() {
       await tester.tap(find.text('Save region version'));
       await tester.pumpAndSettle();
       expect(
-        find.text('Correct invalid pixel coordinates before saving.'),
+        find.text('Enter whole pixel numbers before you save.'),
         findsOneWidget,
       );
       expect(decision, isNull);
@@ -153,7 +148,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.text('Correct invalid pixel coordinates before saving.'),
+        find.text('Enter whole pixel numbers before you save.'),
         findsNothing,
       );
       await tester.tap(find.text('Save region version'));
@@ -172,7 +167,7 @@ void main() {
       await openSmallEditor(tester, (value) => decision = value);
       await tester.tap(find.text('Save region version'));
       await tester.pumpAndSettle();
-      expect(find.text('A reason is required.'), findsOneWidget);
+      expect(find.text('Enter a reason for this decision.'), findsOneWidget);
       final left = find.widgetWithText(TextFormField, 'Left x');
       await tester.ensureVisible(left);
       await tester.enterText(left, '');
@@ -187,7 +182,7 @@ void main() {
         find.text('Coordinates must be whole pixel numbers.'),
         findsNothing,
       );
-      expect(find.text('A reason is required.'), findsOneWidget);
+      expect(find.text('Enter a reason for this decision.'), findsOneWidget);
       await tester.tap(find.text('Save region version'));
       await tester.pumpAndSettle();
       expect(decision, isNull);

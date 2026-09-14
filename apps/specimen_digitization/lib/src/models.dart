@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'vocabulary.dart';
+
 /// Protected-access denials must reach the workspace even when a child panel
 /// handles its own request failure. Only an explicit role recheck recovers.
 abstract interface class AccessFailureSource {
@@ -22,6 +24,10 @@ String textOf(dynamic value, [String fallback = 'Not recorded']) =>
 List<Json> objects(dynamic value) => value is List
     ? value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
     : [];
+/// The mechanical part of turning a server enum into words.
+///
+/// User-facing text goes through `vocabularyLabel` instead, which renames
+/// the terms the UX writing guidelines retire before falling back to this.
 String labelOf(String value) => value.replaceAll('_', ' ');
 
 class ApiFailure implements Exception {
@@ -69,7 +75,7 @@ class Specimen {
       textOf(data['operational_state'], textOf(data['status'], 'unknown'));
   String? get disposition =>
       data['disposition'] is String ? data['disposition'] : null;
-  String get status => labelOf(disposition ?? state);
+  String get status => vocabularyLabel(disposition ?? state);
   String get profile => textOf(data['profile_version']);
   List<Json> get assets => objects(data['assets']);
   List<Json> get regions => objects(data['regions']);

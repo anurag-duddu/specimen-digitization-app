@@ -37,7 +37,7 @@ Future<void> showReadings(WidgetTester tester, List<Json> observations) async {
   await tester.pumpAndSettle();
 }
 
-Finder get disagreementBadges => find.textContaining('≠ Differs');
+Finder get disagreementBadges => find.textContaining('Differs');
 
 void main() {
   testWidgets(
@@ -50,7 +50,7 @@ void main() {
         reading('r2-b', 'r2', 'Museum 25'),
       ]);
       expect(disagreementBadges, findsNothing);
-      expect(find.text('Independent observation'), findsNWidgets(4));
+      expect(find.text('Independent reading'), findsNWidgets(4));
     },
   );
 
@@ -64,7 +64,7 @@ void main() {
       reading('r2-b', 'r2', 'Museum 26'),
     ]);
     expect(disagreementBadges, findsOneWidget);
-    expect(find.text('Independent observation'), findsNWidgets(3));
+    expect(find.text('Independent reading'), findsNWidgets(3));
   });
 
   testWidgets('a single reading in each region has no peer disagreement', (

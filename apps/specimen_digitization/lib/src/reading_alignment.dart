@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 /// Offsets describe the unchanged original text. Never normalize before slicing.
 String exactUtf16Span(String source, int start, int end) {
@@ -74,11 +76,11 @@ class ReadingAlignmentView extends StatelessWidget {
               ? 'Exact retained readings agree'
               : status == 'disagreement'
               ? 'Differences between retained readings'
-              : 'Unsupported comparison state',
+              : 'Comparison state not recognized',
           style: Theme.of(context).textTheme.titleSmall,
         ),
         for (final reason in alignment['reasons'] as List? ?? [])
-          Text(labelOf(reason.toString())),
+          Text(vocabularyLabel(reason.toString())),
         if (status == 'disagreement')
           for (final alternative in objects(alignment['alternatives']))
             Card.outlined(
@@ -87,7 +89,7 @@ class ReadingAlignmentView extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(labelOf(textOf(alternative['operation']))),
+                    Text(vocabularyLabel(textOf(alternative['operation']))),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -101,8 +103,12 @@ class ReadingAlignmentView extends StatelessWidget {
               ),
             ),
         if (status == 'policy_blocked')
-          const Text(
-            'A comparison limit or incomplete input prevented alignment. This is not agreement; inspect the independent readings and retained raw responses.',
+          const CaveatText(
+            label:
+                'A comparison limit or incomplete input stopped the alignment.',
+            why:
+                'This is not agreement. Check the independent readings and the '
+                'saved raw responses.',
           ),
         EvidenceDetails(
           title: 'Comparison provenance and bounds',
@@ -121,11 +127,11 @@ class ReadingMetadataView extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        'Language: ${labelOf(textOf(metadata['language_state'], 'unknown'))} · Script: ${labelOf(textOf(metadata['script_state'], 'unknown'))}',
+        'Language: ${vocabularyLabel(textOf(metadata['language_state'], 'unknown'))} · Script: ${vocabularyLabel(textOf(metadata['script_state'], 'unknown'))}',
       ),
       for (final declaration in objects(metadata['declarations']))
         Text(
-          '${declaration['kind']}: ${declaration['value'] ?? 'Unknown'} · ${labelOf(textOf(declaration['method']))}\n${declaration['producer']} · ${declaration['version']}',
+          '${declaration['kind']}: ${declaration['value'] ?? 'Unknown'} · ${vocabularyLabel(textOf(declaration['method']))}\n${declaration['producer']} · ${declaration['version']}',
         ),
       EvidenceDetails(
         title: 'Declared language, script and heuristic limits',
