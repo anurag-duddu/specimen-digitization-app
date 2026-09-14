@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../../capture_quality.dart';
+import '../../administrator_contact.dart';
 import '../../models.dart';
 import '../../review_context.dart';
 import '../../theme/icons.dart';
@@ -403,13 +404,16 @@ class IntakeManifestRow extends StatelessWidget {
               'memory_limit_unavailable')
             const CaveatText(
               label:
-                  'The server check is not available. Ask the service '
-                  'administrator to enable memory-limit enforcement.',
+                  'The server check is not available. Memory-limit '
+                  'enforcement has to be turned on for this collection.',
               why:
                   'Changing the image format will not help. Ordinary '
                   'image intake is checked separately and is '
                   'unaffected.',
             ),
+          if (objectOf(preflight['decode'])['reason'] ==
+              'memory_limit_unavailable')
+            const AdministratorContactLine(),
           Text(
             'Server check: '
             '${vocabularyLabel(textOf(preflight['status']))}. '

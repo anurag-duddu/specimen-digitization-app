@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../administrator_contact.dart';
 import '../models.dart';
 import '../theme/icons.dart';
 import '../vocabulary.dart';
@@ -78,10 +79,14 @@ class AppShell extends StatelessWidget {
         children: <Widget>[
           EnvironmentBanner(environment: controller.environment),
           _BlockerNotice(blockers: controller.repository.blockers),
-          _ErrorBanner(error: controller.error),
+          _ErrorBanner(
+            error: controller.error,
+            onDismiss: controller.clearError,
+          ),
           _ProgressRow(
             busy:
                 controller.loading ||
+                controller.recordLoading ||
                 controller.mutating ||
                 controller.loadingMore,
           ),
@@ -162,7 +167,15 @@ class AppShell extends StatelessWidget {
       actions: <Widget>[
         if (inlineSwitcher)
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: context.space.space2),
+            // The vertical space is what keeps the field's floating label
+            // inside the toolbar. An `AppBar` stretches an action to the full
+            // 56 dp height, and an outlined field that tall draws its label
+            // across its own top border, which then sits on the window's top
+            // edge and loses its upper half.
+            padding: EdgeInsets.symmetric(
+              horizontal: context.space.space2,
+              vertical: context.space.space1,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: switcherMaxWidth),
               child: _CollectionDropdown(controller: controller),
@@ -422,9 +435,10 @@ class _BlockerNotice extends StatelessWidget {
           children: <Widget>[
             Text('Processing is blocked: $named.'),
             Text(
-              'Ask your collection administrator to review it.',
+              'A person has to review it.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            const AdministratorContactLine(),
           ],
         ),
       ),
@@ -435,9 +449,14 @@ class _BlockerNotice extends StatelessWidget {
 /// The screen level error surface: one banner, one recovery action for the
 /// failure class it is reporting (screen blueprints, section 11).
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.error});
+  const _ErrorBanner({required this.error, required this.onDismiss});
 
   final WorkspaceError? error;
+
+  /// Drops the banner. The reviewer's, never a background process's: a poll
+  /// that answers successfully must not take away a message nobody has read
+  /// yet (pass criterion 9.5).
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -456,6 +475,7 @@ class _ErrorBanner extends StatelessWidget {
               ),
               leading: const Icon(Symbols.info),
               actions: <Widget>[
+                TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
                 TextButton(
                   onPressed: () => failure.action(),
                   child: Text(failure.actionLabel),

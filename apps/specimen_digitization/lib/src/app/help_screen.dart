@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../administrator_contact.dart';
 import '../models.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
@@ -17,6 +18,35 @@ import '../theme/motion_preference.dart';
 import '../vocabulary.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
+
+/// A first review, in the order a reviewer does it (screen blueprints,
+/// section 10; pass criteria 10.1 and 10.4).
+///
+/// Five steps, because a walkthrough nobody finishes is a walkthrough nobody
+/// read. Each names the control it is about, in the words that control uses,
+/// so the step and the screen agree.
+const List<String> reviewWalkthrough = <String>[
+  'Open a record from the queue. The photograph is the evidence; everything '
+      'else is a claim about it.',
+  'Read the two independent readings side by side. Where they differ, the '
+      'difference is counted rather than hinted at.',
+  'Correct what is wrong in Fields. Corrections collect, and save together '
+      'under one reason.',
+  'Check what blocks clearance. Every entry in that list goes to the control '
+      'that resolves it.',
+  'Approve the record, or confirm label coverage. Both ask for a reason, and '
+      'neither can be taken back.',
+];
+
+/// What this build is, for a message to an administrator.
+///
+/// Passed in at build time rather than read from a package, because this
+/// client has no platform channel for it on every target it ships to. A build
+/// that was not stamped says so rather than naming a version it invented.
+const String appBuild = String.fromEnvironment(
+  'APP_BUILD',
+  defaultValue: 'Not stamped by the build',
+);
 
 /// The shortcuts this step of the redesign ships, in the order they are
 /// learned (screen blueprints, section 3; responsive, section 4).
@@ -77,7 +107,12 @@ class HelpScreen extends StatelessWidget {
         child: Align(
           alignment: compact ? Alignment.bottomCenter : Alignment.center,
           child: Padding(
-            padding: EdgeInsets.all(context.space.space4),
+            // No side gutter on a phone: the sheet is the screen there, and a
+            // centred card with a scrim around it gives the glossary less
+            // measure than the window has (finding V-14).
+            padding: compact
+                ? EdgeInsets.only(top: context.space.space4)
+                : EdgeInsets.all(context.space.space4),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: compact ? double.infinity : DialogWidths.standard,
@@ -103,12 +138,6 @@ class _HelpBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final WorkspaceController? controller = _controllerOf(context);
-    final Json configuration =
-        controller?.scope?.configuration ?? const <String, dynamic>{};
-    final String contact = textOf(
-      configuration['administrator_contact'],
-      'Your collection administrator has not published a contact address.',
-    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -155,6 +184,14 @@ class _HelpBody extends StatelessWidget {
                   ),
                 ),
               SizedBox(height: context.space.space6),
+              Text('A first review', style: theme.textTheme.titleMedium),
+              SizedBox(height: context.space.space2),
+              for (final (int i, String step) in reviewWalkthrough.indexed)
+                Padding(
+                  padding: EdgeInsets.only(bottom: context.space.space2),
+                  child: MergeSemantics(child: Text('${i + 1}. $step')),
+                ),
+              SizedBox(height: context.space.space6),
               Text('Glossary', style: theme.textTheme.titleMedium),
               SizedBox(height: context.space.space2),
               for (final MapEntry<String, String> entry
@@ -172,14 +209,27 @@ class _HelpBody extends StatelessWidget {
               Text(
                 'Account: ${controller?.session.displayName ?? 'Not signed in'}',
               ),
+              Text('Build: $appBuild'),
+              SelectableText(
+                'Service: ${controller?.repository.mode ?? 'none'}',
+              ),
               SizedBox(height: context.space.space6),
               Text('Motion', style: theme.textTheme.titleMedium),
               SizedBox(height: context.space.space2),
               const ReduceMotionSetting(),
               SizedBox(height: context.space.space6),
+              Text('Report a problem', style: theme.textTheme.titleMedium),
+              SizedBox(height: context.space.space2),
+              const Text(
+                'Write to the contact below, with the build line above and '
+                'the record identifier.',
+              ),
+              SizedBox(height: context.space.space6),
               Text('Administrator contact', style: theme.textTheme.titleMedium),
               SizedBox(height: context.space.space2),
-              Text(contact),
+              // Read from the collection document, which is the only place
+              // the server publishes one (pass criterion 10.3).
+              const AdministratorContactLine(dense: false),
             ],
           ),
         ),

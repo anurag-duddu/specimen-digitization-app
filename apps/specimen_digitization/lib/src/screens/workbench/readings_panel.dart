@@ -350,16 +350,29 @@ class WorkbenchReadings extends StatelessWidget {
             message:
                 transcriptionBlockedReason ??
                 'Record which reading the source supports',
-            child: Semantics(
-              hint: transcriptionBlockedReason ?? '',
-              child: FilledButton.tonalIcon(
-                onPressed:
-                    transcriptionBlockedReason != null ||
-                        specimen.observations.isEmpty
-                    ? null
-                    : () => _resolve(context),
-                icon: const Icon(Symbols.edit_note),
-                label: const Text('Resolve transcription'),
+            // `MergeSemantics` is what puts the reason on the button's own
+            // node. Without it the hint sits on a parent node and the
+            // disabled button is a separate child, so a screen reader hears
+            // the name and the dimmed state but never why (accessibility,
+            // section 3.2).
+            child: MergeSemantics(
+              child: Semantics(
+                hint: transcriptionBlockedReason ?? '',
+                // Repeated here because a merge boundary keeps its own flags:
+                // a node that does not say it is disabled is read as if it
+                // were live.
+                enabled:
+                    transcriptionBlockedReason == null &&
+                    specimen.observations.isNotEmpty,
+                child: FilledButton.tonalIcon(
+                  onPressed:
+                      transcriptionBlockedReason != null ||
+                          specimen.observations.isEmpty
+                      ? null
+                      : () => _resolve(context),
+                  icon: const Icon(Symbols.edit_note),
+                  label: const Text('Resolve transcription'),
+                ),
               ),
             ),
           ),

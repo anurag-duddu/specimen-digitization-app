@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../theme/icons.dart';
 
@@ -89,7 +90,15 @@ class SkeletonBlock extends StatelessWidget {
 /// Pair exactly one of these with any number of placeholders, so a screen
 /// reader hears "Loading queue" once rather than hearing nothing at all from
 /// a screen full of hidden boxes.
-class LoadingAnnouncement extends StatelessWidget {
+///
+/// The invisible form is an announcement, not a node. A live region whose
+/// child is a zero-sized box has an empty rect, an empty rect is dropped from
+/// the semantics tree, and a reviewer using a screen reader then got silence
+/// for the whole first load: finding V-4. A momentary event with no text on
+/// screen to host it is exactly what `sendAnnouncement` is for. It is not
+/// given a one-pixel box instead: a node a screen reader can focus and nobody
+/// can see is worse than the announcement.
+class LoadingAnnouncement extends StatefulWidget {
   const LoadingAnnouncement({
     super.key,
     required this.thing,
@@ -109,18 +118,50 @@ class LoadingAnnouncement extends StatelessWidget {
   String get message => 'Loading $thing';
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    liveRegion: true,
-    label: message,
-    excludeSemantics: true,
-    child: visible
-        ? Text(
-            // The ellipsis character, never three periods.
-            '$message…',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          )
-        : const SizedBox.shrink(),
-  );
+  State<LoadingAnnouncement> createState() => _LoadingAnnouncementState();
+}
+
+class _LoadingAnnouncementState extends State<LoadingAnnouncement> {
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.visible) _announce();
+  }
+
+  @override
+  void didUpdateWidget(covariant LoadingAnnouncement oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.visible && oldWidget.message != widget.message) _announce();
+  }
+
+  /// Says it once, after the frame that mounted this widget.
+  void _announce() {
+    final String message = widget.message;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!MediaQuery.supportsAnnounceOf(context)) return;
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        message,
+        Directionality.of(context),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.visible) return const SizedBox.shrink();
+    return Semantics(
+      liveRegion: true,
+      label: widget.message,
+      excludeSemantics: true,
+      child: Text(
+        // The ellipsis character, never three periods.
+        '${widget.message}\u2026',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
 }

@@ -6,8 +6,8 @@
 // the bug these tests exist to catch.
 
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
@@ -156,19 +156,88 @@ void main() {
   );
 
   test('the photograph never takes the evidence pane below its floor', () {
+    // `free` is what is left once every fixed row has had its height: the
+    // record header, the decision bar and the source pane's own chrome. What
+    // this function decides is how many pixels of photograph sit inside the
+    // pane, never how tall the pane itself is (finding V-1).
+    //
     // Room for both: the blueprint's forty percent of the pane, outright.
     expect(pinnedSourceHeight(1000, 900), closeTo(400, 0.001));
     // The chrome has taken enough that the two cannot both be satisfied. The
-    // floor wins and the photograph takes the difference.
+    // evidence floor wins and the photograph takes the difference.
     expect(pinnedSourceHeight(1000, 500), closeTo(320, 0.001));
     // Below the height the photograph can be read at, it stops shrinking and
-    // takes its minimum instead: a box shorter than its own controls and
-    // region list overflows its own column.
-    expect(pinnedSourceHeight(600, 300), pinnedSourceMinHeight);
-    // Less room than even that: the photograph goes rather than the pane,
-    // because a pane with no viewport is a screen that will not scroll.
+    // takes its minimum instead, as long as the evidence pane can still
+    // scroll at its hard minimum.
+    expect(pinnedSourceHeight(600, 300), sourceImageMinHeight);
+    expect(pinnedSourceHeight(600, 260), sourceImageMinHeight);
+    // Less room than even that: the pinned photograph goes, and the workbench
+    // scrolls the whole record instead so the pixels are still on screen.
+    expect(pinnedSourceHeight(600, 200), 0);
     expect(pinnedSourceHeight(600, 160), 0);
     expect(pinnedSourceHeight(600, 100), 0);
+  });
+
+  testWidgets(
+    'the photograph survives 200 percent text on a phone, without an overflow',
+    (WidgetTester tester) async {
+      // Finding V-1, and pass criteria 6.1 and 8.5: at 200 percent text the
+      // record header and the decision bar leave the pinned pane less than
+      // its own chrome. It used to draw at a floor smaller than that chrome
+      // and overflow, and the photograph was what disappeared.
+      final List<String> errors = <String>[];
+      final FlutterExceptionHandler? previous = FlutterError.onError;
+      FlutterError.onError = (FlutterErrorDetails details) =>
+          errors.add(details.exceptionAsString());
+      addTearDown(() => FlutterError.onError = previous);
+
+      useWindow(tester, compactWindow);
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+
+      expect(
+        errors.where((String e) => e.contains('overflowed by')),
+        isEmpty,
+        reason: 'the record laid out past the window it was given',
+      );
+      expect(
+        find.byType(InteractiveViewer),
+        findsOneWidget,
+        reason: 'the photograph is not on the screen',
+      );
+      expect(
+        tester.getSize(find.byType(InteractiveViewer)).height,
+        greaterThanOrEqualTo(sourceImageMinHeight - 0.5),
+      );
+      // The evidence pane is still reachable, which is what the whole-record
+      // scroll buys at this text scale.
+      expect(find.byKey(evidenceScrollKey), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('the photograph collapses and comes back on a phone', (
+    WidgetTester tester,
+  ) async {
+    // Blueprint 6.1: the pinned pane is collapsible, and the control that
+    // brings it back is explicit rather than a second tap on the same word.
+    useWindow(tester, compactWindow);
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Collapse the photograph'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsNothing);
+    // With the photograph put away there is still a way to the pixels.
+    expect(find.byTooltip('Open the photograph full screen'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Show the photograph'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('the decision bar never covers the end of the evidence', (

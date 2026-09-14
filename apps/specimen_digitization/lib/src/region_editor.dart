@@ -119,7 +119,18 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   final Set<String> _invalidCoordinates = <String>{};
   bool _coordinateSubmitAttempted = false;
   final TextEditingController _reason = TextEditingController();
-  _Undo? _undo;
+
+  /// Every local change, newest last (pass criterion 3.5).
+  ///
+  /// One step was not enough: the criterion asks for local edits inside the
+  /// dialog to be reversible, and an editor that can take back the last
+  /// change and not the one before it is an editor a reviewer stops trusting
+  /// halfway through a merge (finding V-11's neighbour, criterion 3.5).
+  final List<_Undo> _undo = <_Undo>[];
+
+  /// How far back the editor can go. Deep enough to cover a whole pass over
+  /// one photograph, shallow enough that the snapshots stay small.
+  static const int _undoDepth = 20;
 
   String? get _visibleError => _invalidCoordinates.isEmpty
       ? _error
@@ -145,12 +156,14 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       )
       .toList();
 
-  void _remember(String label) =>
-      _undo = (regions: _snapshot(), selected: _selected, label: label);
+  void _remember(String label) {
+    _undo.add((regions: _snapshot(), selected: _selected, label: label));
+    if (_undo.length > _undoDepth) _undo.removeAt(0);
+  }
 
   void _applyUndo() {
-    final _Undo? step = _undo;
-    if (step == null) return;
+    if (_undo.isEmpty) return;
+    final _Undo step = _undo.removeLast();
     setState(() {
       _regions
         ..clear()
@@ -159,7 +172,6 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       _coordinateVersion++;
       _invalidCoordinates.clear();
       _error = null;
-      _undo = null;
     });
   }
 
@@ -331,6 +343,11 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                   children: <Widget>[
                     for (final (int i, Json r) in _regions.indexed)
                       ChoiceChip(
+                        // The region list takes focus on open (accessibility,
+                        // section 4.2 step 5; finding V-10). Deliberately not
+                        // a coordinate field: a touch reviewer opening the
+                        // editor should see the photograph, not a keyboard.
+                        autofocus: i == 0,
                         // Reordering a `Wrap` cannot be animated and is not
                         // worth building. The numbering change is carried by
                         // a label cross-fade (motion catalog, row 79).
@@ -447,13 +464,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                     label: const Text('Add label region'),
                   ),
                 ),
-                if (_undo != null)
+                if (_undo.isNotEmpty)
                   Align(
                     alignment: AlignmentDirectional.centerStart,
                     child: TextButton.icon(
                       onPressed: _applyUndo,
                       icon: const Icon(Symbols.undo),
-                      label: Text('Undo ${_undo!.label.toLowerCase()}'),
+                      label: Text('Undo ${_undo.last.label.toLowerCase()}'),
                     ),
                   ),
               ],
