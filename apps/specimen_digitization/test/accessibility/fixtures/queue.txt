@@ -1,4 +1,4 @@
-label="Synthetic environment. Results here are fixtures. Not real model processing, and not approved museum records."
+label="Test environment. Not approved museum records. Nothing here carries institutional approval. Each reading names the model and provider that produced it."
 selected=true tap label="Queue Tab 1 of 2"
 selected=false tap label="Intake Tab 2 of 2"
 liveRegion label="Queue 1 record loaded. 1 needs review, 0 blocked. Updated <age> ago"
