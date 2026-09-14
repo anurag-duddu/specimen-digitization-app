@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/audit_history.dart';
 import 'package:specimen_digitization/src/models.dart';
 
+import 'workbench_harness.dart';
+
 void main() {
   const current = Specimen({'specimen_id': 's', 'revision': 3});
-  Widget host(Widget child) => MaterialApp(
-    home: Scaffold(body: SingleChildScrollView(child: child)),
-  );
+  Widget host(Widget child) => scrollingHost(child);
   testWidgets('history available without compaction and keeps current bound', (
     tester,
   ) async {
@@ -49,8 +49,9 @@ void main() {
       find.textContaining('Your current review is on version 3.'),
       findsOneWidget,
     );
-    await tester.ensureVisible(find.text('1 · legacy'));
-    await tester.tap(find.text('1 · legacy'));
+    expect(find.text('1 · legacy'), findsOneWidget);
+    await tester.ensureVisible(find.text('Technical detail').last);
+    await tester.tap(find.text('Technical detail').last);
     await tester.pumpAndSettle();
     expect(find.textContaining('Retained original evidence'), findsOneWidget);
     await tester.ensureVisible(find.text('Load more versions'));
@@ -101,10 +102,9 @@ void main() {
       find.textContaining('Earlier audit and run evidence through version 2'),
       findsOneWidget,
     );
-    await tester.tap(find.text('31 · review'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Read earlier record · version 2'));
-    await tester.tap(find.text('Read earlier record · version 2'));
+    expect(find.text('31 · review'), findsOneWidget);
+    await tester.ensureVisible(find.text('Open version 2'));
+    await tester.tap(find.text('Open version 2'));
     await tester.pumpAndSettle();
     expect(find.text('Digest could not be verified'), findsOneWidget);
     await tester.ensureVisible(find.text('Retry loading version'));

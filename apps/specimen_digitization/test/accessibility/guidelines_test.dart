@@ -99,7 +99,15 @@ Future<void> pumpScreen(WidgetTester tester, Widget child) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = const Size(1024, 2400);
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(MaterialApp(theme: AppTheme.light(), home: child));
+  await tester.pumpWidget(
+    MaterialApp(
+      // The product theme, not a stand-in: a screen that reads the product
+      // `ThemeExtension`s cannot be checked against a bare Material theme,
+      // and the contrast guideline must see the colors that ship.
+      theme: AppTheme.light(),
+      home: child,
+    ),
+  );
   await tester.pumpAndSettle();
 }
 

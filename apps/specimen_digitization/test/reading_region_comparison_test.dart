@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
+import 'workbench_harness.dart';
+
 Json reading(
   String model,
   Object? region,
@@ -16,28 +18,30 @@ Json reading(
 };
 
 Future<void> showReadings(WidgetTester tester, List<Json> observations) async {
+  useWindow(tester, largeWindow);
   await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ReviewWorkbench(
-          specimen: Specimen({
-            'specimen_id': 'synthetic-region-comparison',
-            'display_name': 'Synthetic local comparison',
-            'revision': 1,
-            'available_actions': <String>[],
-            'observations': observations,
-          }),
-          onChange: (_) async => fail('Viewing readings must not mutate data'),
-          onRetry: (_) async => fail('Viewing readings must not run models'),
-          onRefresh: () {},
-        ),
+    workbenchHost(
+      ReviewWorkbench(
+        specimen: Specimen({
+          'specimen_id': 'synthetic-region-comparison',
+          'display_name': 'Synthetic local comparison',
+          'revision': 1,
+          'available_actions': <String>[],
+          'observations': observations,
+        }),
+        onChange: (_) async => fail('Viewing readings must not mutate data'),
+        onRetry: (_) async => fail('Viewing readings must not run models'),
+        onRefresh: () {},
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
-Finder get disagreementBadges => find.textContaining('Differs');
+Finder get disagreementBadges => find.textContaining('Differs at');
+
+Finder get matchingBadges =>
+    find.textContaining('Matches the reference reading');
 
 void main() {
   testWidgets(
@@ -50,7 +54,7 @@ void main() {
         reading('r2-b', 'r2', 'Museum 25'),
       ]);
       expect(disagreementBadges, findsNothing);
-      expect(find.text('Independent reading'), findsNWidgets(4));
+      expect(matchingBadges, findsNWidgets(2));
     },
   );
 
@@ -64,7 +68,7 @@ void main() {
       reading('r2-b', 'r2', 'Museum 26'),
     ]);
     expect(disagreementBadges, findsOneWidget);
-    expect(find.text('Independent reading'), findsNWidgets(3));
+    expect(matchingBadges, findsOneWidget);
   });
 
   testWidgets('a single reading in each region has no peer disagreement', (

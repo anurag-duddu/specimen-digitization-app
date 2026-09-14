@@ -1,12 +1,29 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'theme/icons.dart';
 import 'vocabulary.dart';
-import 'widgets/caveat_text.dart';
+import 'widgets/widgets.dart';
 
+/// The declared languages and scripts per label, as chips with a Declare
+/// action (screen blueprints, 6.3).
 class LabelLanguagePolicy extends StatelessWidget {
-  const LabelLanguagePolicy({super.key, required this.handling});
+  const LabelLanguagePolicy({
+    super.key,
+    required this.handling,
+    this.regionName,
+    this.onDeclare,
+  });
   final Json handling;
+
+  /// Names a region the way the region list names it. Defaults to the raw
+  /// identifier only when the caller has nothing better.
+  final String Function(Object?)? regionName;
+
+  /// Opens the declaration form for one region. Null when the server does not
+  /// permit a declaration on this version.
+  final Future<void> Function(String regionId)? onDeclare;
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -24,14 +41,26 @@ class LabelLanguagePolicy extends StatelessWidget {
       for (final label in objects(handling['labels']))
         Card.outlined(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(context.space.space3),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Label ${textOf(label['region_id'])}'),
                 Text(
-                  'Languages: ${_labels(label['language_candidates'])} · Scripts: ${_labels(label['script_candidates'])}',
+                  regionName == null
+                      ? 'Label ${textOf(label['region_id'])}'
+                      : regionName!(label['region_id']),
+                  style: Theme.of(context).textTheme.titleSmall,
                 ),
+                if (_hasValues(label['language_candidates']) ||
+                    _hasValues(label['script_candidates']))
+                  _DeclarationChips(
+                    languages: label['language_candidates'],
+                    scripts: label['script_candidates'],
+                  )
+                else
+                  Text(
+                    'Languages: ${_labels(label['language_candidates'])} · Scripts: ${_labels(label['script_candidates'])}',
+                  ),
                 Text(
                   'Multiple languages declared together: ${_state(label['mixed_declared'], 'Declared', 'Not declared')}',
                 ),
@@ -45,6 +74,14 @@ class LabelLanguagePolicy extends StatelessWidget {
                   const Text('Language is not measured.'),
                 for (final reason in label['reasons'] as List? ?? [])
                   Text(vocabularyLabel(reason.toString())),
+                if (onDeclare != null && label['region_id'] is String)
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton(
+                      onPressed: () => onDeclare!(label['region_id'] as String),
+                      child: const Text('Declare'),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -56,6 +93,34 @@ class LabelLanguagePolicy extends StatelessWidget {
     ],
   );
 }
+
+/// The declared languages and scripts, each as its own chip.
+class _DeclarationChips extends StatelessWidget {
+  const _DeclarationChips({required this.languages, required this.scripts});
+
+  final dynamic languages;
+  final dynamic scripts;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: context.space.space2,
+    runSpacing: context.space.space2,
+    children: <Widget>[
+      for (final value in languages is List ? languages : const [])
+        Chip(
+          avatar: Icon(Icons.translate, size: context.sizes.iconInline),
+          label: Text('Language: $value'),
+        ),
+      for (final value in scripts is List ? scripts : const [])
+        Chip(
+          avatar: Icon(Icons.abc, size: context.sizes.iconInline),
+          label: Text('Script: $value'),
+        ),
+    ],
+  );
+}
+
+bool _hasValues(dynamic values) => values is List && values.isNotEmpty;
 
 String _labels(dynamic values) =>
     values is List && values.isNotEmpty ? values.join(', ') : 'Not declared';
@@ -168,6 +233,17 @@ class ReadingDeclarationView extends StatelessWidget {
     );
   }
 }
+
+/// Opens the declaration form for one reading.
+Future<Json?> showDeclarationForm(
+  BuildContext context, {
+  required String observationId,
+  Json initial = const {},
+}) => showDialog<Json>(
+  context: context,
+  builder: (_) =>
+      ReadingDeclarationDialog(observationId: observationId, initial: initial),
+);
 
 class ReadingDeclarationDialog extends StatefulWidget {
   const ReadingDeclarationDialog({
