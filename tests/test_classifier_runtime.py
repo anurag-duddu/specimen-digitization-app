@@ -32,6 +32,8 @@ def local_classifier_factory(payload):
 
         def model_for(self, route_id):
             def respond(messages, info):
+                with (Path(payload["storage"]["root"]).parent / "classifier-model-calls").open("a") as calls:
+                    calls.write("called\n")
                 return ModelResponse(
                     parts=[
                         ToolCallPart(

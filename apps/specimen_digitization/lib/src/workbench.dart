@@ -69,15 +69,28 @@ class ReviewWorkbench extends StatefulWidget {
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
-  final Future<void> Function(Json change) onChange;
+
+  /// True only after the repository acknowledges this decision.
+  final Future<bool> Function(Json change) onChange;
 
   /// Saves several corrections as one reviewer action under one reason, and
-  /// answers how many the server accepted (pass criterion 7.2).
+  /// answers how many the server acknowledged (pass criterion 7.2).
   ///
-  /// Optional so a component test can pump the workbench with the one change
+  /// `stillApplies` is asked before each call, against the record the call
+  /// before it produced. It is how the batch keeps the guarantee the one at a
+  /// time path gets for free: a draft whose field moved under the reviewer is
+  /// never sent automatically against a newer revision. The batch stops there
+  /// and reports how many landed.
+  ///
+  /// Optional, so a component test can pump the workbench with the one change
   /// callback alone; where it is absent the corrections go one at a time and
-  /// the screen moves once per change, which is what shipped before.
-  final Future<int> Function(List<Json> changes, String reason)? onChangeBatch;
+  /// the screen moves once per correction, which is what shipped before.
+  final Future<int> Function(
+    List<Json> changes,
+    String reason,
+    bool Function(Specimen current, Json change) stillApplies,
+  )?
+  onChangeBatch;
 
   final Future<void> Function(String reason) onRetry;
 
@@ -239,16 +252,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       _conflictVersion = null;
       return;
     }
-    if (oldWidget.specimen.revision != widget.specimen.revision) {
-      // Pending work survives a new version, but only where the field has not
-      // moved under the reviewer (blueprint 6.7).
-      final ({List<PendingFieldChange> keep, List<PendingFieldChange> stale})
-      split = reapply(_pending, widget.specimen);
-      _pending = split.keep;
-      if (split.stale.isNotEmpty) _stale = split.stale;
-      if (!_savingLocally) {
-        _conflictVersion = widget.specimen.revision;
-      }
+    if (oldWidget.specimen.revision != widget.specimen.revision &&
+        !_savingLocally) {
+      _reapplyPending();
+      _conflictVersion = widget.specimen.revision;
+    }
+  }
+
+  void _reapplyPending() {
+    final split = reapply(_pending, widget.specimen);
+    _pending = split.keep;
+    if (split.stale.isNotEmpty) {
+      _stale = split.stale;
+      _conflictVersion = widget.specimen.revision;
     }
   }
 
@@ -369,43 +385,51 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// The machine's reasons this record is in the queue, in plain words.
   List<String> get _recordReasons => recordReasonCodes(widget.specimen);
 
-  /// Sends one change and reports whether the record moved.
+  /// True when [draft] is still against the value the record now holds.
   ///
-  /// `onChange` returns no result, so the only signal the workbench has that
-  /// a save landed is that the host handed it a new record. That alone does
-  /// not prove a conflict, so [_conflicted] pairs it with the one thing that
-  /// does: a version that arrived from somebody else while this reviewer was
-  /// working.
-  Future<bool> _send(Json change) async {
-    final Specimen before = widget.specimen;
-    _savingLocally = true;
-    try {
-      await widget.onChange(change);
-    } finally {
-      _clearSavingAfterFrame();
-    }
-    if (!mounted) return false;
-    return !identical(widget.specimen, before);
-  }
+  /// The same rule `reapply` uses, asked about one draft, so the batch path
+  /// and the one at a time path agree on what "still applies" means.
+  bool _draftStillApplies(Specimen current, PendingFieldChange draft) =>
+      reapply(<PendingFieldChange>[draft], current).keep.isNotEmpty;
 
-  /// Drops the local-save flag after the frame that carries the new record.
-  ///
-  /// Not when the future completes. The host sets the new record and notifies
-  /// during the await, which schedules a build; the await resumes in a
-  /// microtask before that build runs. A flag cleared at the microtask is
-  /// already false when `didUpdateWidget` sees the new revision, and the
-  /// reviewer is told their own save was somebody else's version. Found while
-  /// measuring pass criterion 1.2, which is the first test that watched a
-  /// save land frame by frame.
-  void _clearSavingAfterFrame() {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _savingLocally = false);
+  /// Waits for this decision's acknowledgement, independently of widget
+  /// identity or another request refreshing the record in the meantime.
+  Future<bool> _send(Json change) async {
+    if (_savingLocally || widget.busy) return false;
+    _savingLocally = true;
+    bool acknowledged = false;
+    try {
+      acknowledged = await widget.onChange(change);
+      // Let the acknowledged record reach this widget before the next item
+      // in a batch reads its version or available actions.
+      if (mounted) await WidgetsBinding.instance.endOfFrame;
+      return mounted && acknowledged;
+    } catch (_) {
+      return false;
+    } finally {
+      _savingLocally = false;
+      if (mounted) {
+        setState(() {
+          // The fresh readback can include this acknowledged correction and
+          // unrelated concurrent edits. Remove only the acknowledged field
+          // before checking whether the remaining drafts are still current.
+          if (acknowledged && change['kind'] == 'field_correction') {
+            _pending.removeWhere((p) => p.fieldKey == change['target_id']);
+            _stale.removeWhere((p) => p.fieldKey == change['target_id']);
+          }
+          _reapplyPending();
+        });
+      }
+    }
   }
 
   Future<void> _savePending() async {
     final List<PendingFieldChange> batch = List<PendingFieldChange>.of(
       _pending,
     );
-    if (batch.isEmpty) return;
+    if (batch.isEmpty || _savingLocally || blockedReason('field') != null) {
+      return;
+    }
     final List<ClearanceBlocker> outstanding = blockersFor(widget.specimen);
     final String? reason = await showReasonSheet(
       context,
@@ -443,59 +467,82 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// Pass criterion 7.2. Where the host gave the workbench a batch callback,
   /// the whole set goes out under one idempotency key prefix and the screen
   /// moves once, at the end, rather than once per correction. Where it did
-  /// not, this is the loop that shipped before, kept so a component test can
-  /// still drive the workbench with the one change callback alone.
+  /// not, this is the one at a time loop, kept so a component test can still
+  /// drive the workbench with the one change callback alone.
   ///
-  /// Returns how many corrections the server accepted, and clears exactly
+  /// Both paths obey the same rule: a draft whose field moved under the
+  /// reviewer is never sent automatically against a newer revision. The one
+  /// at a time path checks between calls, because a readback has already
+  /// reached this widget by then; the batch path hands the same check to the
+  /// repository, which applies it against the record each call produced.
+  ///
+  /// Returns how many corrections the server acknowledged, and clears exactly
   /// those from the pending list.
   Future<int> _sendBatch(List<PendingFieldChange> batch, String reason) async {
-    final Future<int> Function(List<Json>, String)? send = widget.onChangeBatch;
-    if (send != null) {
-      _savingLocally = true;
-      final int saved;
-      try {
-        saved = await send(<Json>[
-          for (final PendingFieldChange change in batch)
-            change.toChange(reason),
-        ], reason);
-      } finally {
-        _clearSavingAfterFrame();
+    final Future<int> Function(
+      List<Json>,
+      String,
+      bool Function(Specimen, Json),
+    )?
+    send = widget.onChangeBatch;
+
+    if (send == null) {
+      int saved = 0;
+      for (final PendingFieldChange change in batch) {
+        // A preceding readback may have invalidated a later draft. Never send
+        // it from the original batch against a newer revision automatically.
+        if (!_pending.contains(change) || blockedReason('field') != null) break;
+        final bool landed = await _send(change.toChange(reason));
+        if (!mounted) return saved;
+        if (!landed) break;
+        saved++;
       }
-      if (!mounted) return 0;
-      final Set<String> landed = <String>{
-        for (final PendingFieldChange change in batch.take(saved))
-          change.fieldKey,
-      };
-      setState(
-        () => _pending = <PendingFieldChange>[
-          for (final PendingFieldChange p in _pending)
-            if (!landed.contains(p.fieldKey)) p,
-        ],
-      );
       return saved;
     }
 
+    if (_savingLocally || widget.busy) return 0;
+    final Map<String, PendingFieldChange> drafts = <String, PendingFieldChange>{
+      for (final PendingFieldChange change in batch) change.fieldKey: change,
+    };
+    _savingLocally = true;
     int saved = 0;
-    for (final PendingFieldChange change in batch) {
-      final bool landed = await _send(change.toChange(reason));
-      if (!mounted) return saved;
-      if (_conflicted(landed)) break;
-      saved++;
-      setState(
-        () => _pending = <PendingFieldChange>[
-          for (final PendingFieldChange p in _pending)
-            if (p.fieldKey != change.fieldKey) p,
+    try {
+      saved = await send(
+        <Json>[
+          for (final PendingFieldChange change in batch)
+            change.toChange(reason),
         ],
+        reason,
+        (Specimen current, Json change) {
+          final PendingFieldChange? draft = drafts[change['target_id']];
+          return draft != null && _draftStillApplies(current, draft);
+        },
       );
+      // Let the acknowledged record reach this widget before anything reads
+      // its version, exactly as the one at a time path does.
+      if (mounted) await WidgetsBinding.instance.endOfFrame;
+      return mounted ? saved : 0;
+    } catch (_) {
+      return 0;
+    } finally {
+      _savingLocally = false;
+      if (mounted) {
+        setState(() {
+          final Set<String> landed = <String>{
+            for (final PendingFieldChange change in batch.take(saved))
+              change.fieldKey,
+          };
+          _pending.removeWhere(
+            (PendingFieldChange p) => landed.contains(p.fieldKey),
+          );
+          _stale.removeWhere(
+            (PendingFieldChange p) => landed.contains(p.fieldKey),
+          );
+          _reapplyPending();
+        });
+      }
     }
-    return saved;
   }
-
-  /// True only when both halves of a conflict are in hand: another
-  /// reviewer's version arrived, and this save did not produce one of its
-  /// own. A save that simply did not move the record is not evidence of a
-  /// conflict, and the workbench does not claim it is.
-  bool _conflicted(bool landed) => !landed && _conflictVersion != null;
 
   Future<void> _reportFailedSave(int keptCount) async {
     final bool refresh = await showConflictDialog(
@@ -537,7 +584,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       'reason': reason,
     });
     if (!mounted) return;
-    if (_conflicted(landed)) {
+    if (!landed) {
       await _reportFailedSave(_pending.length);
     } else {
       _announce('$action saved. Version ${widget.specimen.revision}.');

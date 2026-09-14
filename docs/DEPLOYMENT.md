@@ -1,5 +1,11 @@
 # CI/CD and production deployment contract
 
+Current approved budget/duration: see the [September 14 amendment](execution/APPROVED_RELEASE_BUDGET.md).
+The additive [bounded Logfire approval](execution/APPROVED_LOGFIRE_TRACING.md)
+governs the existing US destination and worker-only writer secret.
+Historical USD5/30-minute statements below remain applicable to legacy artifacts;
+new release inputs must explicitly select the approved additive contracts.
+
 This document is the authoritative release runbook for Specimen Digitization.
 It applies to humans, automation, agents, every branch, every worktree, and every
 Codex session. `AGENTS.md` points all sessions here.
@@ -99,8 +105,13 @@ restores the encrypted production FlutterFire configuration, builds once, adds
 3. enters the GitHub `production` environment;
 4. obtains a short-lived Google credential through OIDC;
 5. runs the guarded Hosting-only deploy script;
-6. verifies the page title and the public deployment marker's repository and
-   exact commit SHA.
+6. verifies the page title and the public deployment marker's repository,
+   exact commit SHA, workflow run ID and run attempt.
+
+Artifact names bind that same SHA, run ID and attempt at upload and download.
+The deploy guard rejects malformed, duplicate or mismatched marker fields before
+invoking Firebase. A rerun of failed jobs cannot reuse an artifact from an earlier
+attempt; rerun all jobs to produce and test a current-attempt artifact.
 
 Deploy concurrency is one-at-a-time and is never cancelled mid-deploy. Pull
 request runs can be cancelled when superseded.
@@ -279,7 +290,7 @@ them as a hand-deployment process:
 |---|---|---|
 | `scripts/ci/write_deployment_metadata.sh` | Adds repository, SHA, run, and build-time evidence to the tested artifact | GitHub Actions only |
 | `scripts/ci/deploy_hosting.sh` | Validates CI identity and deploys only Hosting | GitHub Actions `push` to `main` only |
-| `scripts/ci/smoke_hosting.sh` | Confirms title and exact public commit marker | Workflow-required; local read-only diagnosis is allowed |
+| `scripts/ci/smoke_hosting.sh` | Confirms title and exact public repository/SHA/run/attempt marker | Workflow-required; local read-only diagnosis is allowed |
 
 A read-only production recheck is allowed when investigating status:
 
@@ -288,6 +299,10 @@ scripts/ci/smoke_hosting.sh \
   https://specimen-digitization.web.app \
   EXPECTED_40_CHARACTER_MERGE_SHA
 ```
+
+This two-argument diagnosis proves the repository and SHA only. Release
+verification supplies the expected run ID and attempt as the third and fourth
+arguments; both must be canonical positive integers from the actual workflow run.
 
 ## Standard change and release procedure
 
@@ -397,7 +412,8 @@ The run must show the exact merged commit and all six job results green, includi
 ```bash
 scripts/ci/smoke_hosting.sh \
   https://specimen-digitization.web.app \
-  "$(git rev-parse HEAD)"
+  "$(git rev-parse HEAD)" \
+  EXPECTED_RUN_ID EXPECTED_RUN_ATTEMPT
 ```
 
 Record the merge SHA, pull-request URL, workflow-run URL, deploy-job result,
@@ -435,7 +451,7 @@ weakening them.
 - **Secret exposure on pull requests:** production FlutterFire configuration
   and OIDC permissions belong only to the `main` deploy path.
 - **Stale or wrong artifact:** `/deployment.json` must equal the exact workflow
-  SHA; an HTTP 200 or page title alone is insufficient.
+  repository, SHA, run ID and attempt; an HTTP 200 or page title alone is insufficient.
 - **CDN caching:** `deployment.json` is served with `Cache-Control: no-store`,
   and smoke requests use cache-busting query parameters.
 - **Concurrent releases:** never cancel an in-progress production deployment.

@@ -105,7 +105,22 @@ a disclosure that opens the rest to a second line. Two lines is the cap at
 every text scale. At 390 wide and 200 percent text the band was about half the
 window; it is now under a fifth of it, and the test measures that.
 
-Gates: `flutter analyze --fatal-infos` clean, `flutter test` 846 passing
+**Merged with pull request #42.** The approved review release landed on `main`
+while this branch was open and touched the same three files: `workbench.dart`,
+`workspace.dart` and the status strip. Its "reliable saves" work is kept whole
+and this branch's work is layered on it rather than beside it. Two of its
+rules now reach the batch path as well as the one at a time path, because a
+batch cannot re-read the screen between its own calls: `reviewBatch` asks a
+`stillApplies` predicate before each call, so a correction whose field moved
+under the reviewer is never sent automatically against a newer revision, and
+it refuses a result that is not a newer version of the same record. Its
+idempotency rule is kept too: the batch prefix names the batch, and each call's
+key is memoised on the record version it was sent against, so a call retried
+after an uncertain answer carries the key it carried the first time. One of
+this branch's own fixes, V-16, turned out to be the same defect #42 fixed more
+thoroughly, so #42's version is what ships and this branch keeps only the test.
+
+Gates: `flutter analyze --fatal-infos` clean, `flutter test` 863 passing
 and 7 skipped with no failures, string lint 0 violations, color-literal
 backlog 0, `flutter build web --release` succeeds.
 
@@ -114,7 +129,7 @@ backlog 0, `flutter build web --release` succeeds.
 | Gate | Result |
 |---|---|
 | `flutter analyze --fatal-infos` | No issues found |
-| `flutter test` | 846 passed, 7 skipped, 0 failed |
+| `flutter test` | 863 passed, 7 skipped, 0 failed |
 | `python3 scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt` | 100 files scanned, 0 violations, 0 baselined, 0 warnings |
 | `test/theme/no_color_literals_test.dart` | 0 literals outside `lib/src/theme/`, backlog empty |
 | `flutter build web --release` | Built `build/web` |
@@ -203,6 +218,10 @@ skipped still built its screen and still ran every other assertion in its test.
   size classes and four text scales.
 - `test/screens/help_and_contact_test.dart`: the walkthrough against the
   controls it names, and the build-time administrator contact.
+- After the merge with pull request #42, `test/review_batch_test.dart` also
+  holds the two rules its "reliable saves" work added, applied to the batch
+  path: a correction that no longer applies stops the batch, and a result that
+  is not a newer version of the same record is refused.
 - `test/region_editor_test.dart` and `test/widgets/environment_banner_test.dart`
   gained the V-7 and V-15 groups.
 
@@ -211,9 +230,12 @@ skipped still built its screen and still ran every other assertion in its test.
 `workbench-readings__medium-768x1024__{light,dark}__text2.0.png` failed on
 `main` before this branch changed anything: the checked-in PNG had been
 captured before the photograph finished decoding, so it showed the record with
-an empty source pane. The regenerated pair shows the photograph. This is
-recorded rather than quietly corrected because it means the second pass's claim
-of a fully green suite was, on this host, 766 passing and 2 failing.
+an empty source pane. This is recorded rather than quietly corrected because it
+means the second pass's claim of a fully green suite was, on this host, 766
+passing and 2 failing. Pull request #42 found the same two and regenerated them
+independently; the merge keeps this branch's pair, and regenerating the whole
+suite after the merge changes no byte in either, which is the check that the
+two renders agree.
 
 ### How to read the goldens
 
@@ -301,7 +323,7 @@ criterion is not met.
 | # | Criterion | Verdict | Evidence |
 |---|---|---|---|
 | 7.1 | Approve, confirm coverage, next, previous, switch tab, focus search, zoom and back are all on the keyboard, and `?` lists them | Pass | All eight, proven key by key in `test/accessibility/keyboard_walkthrough_test.dart`, including `J` and `K` against the routed application; `?` opens the list and the list is complete |
-| 7.2 | Five fields corrected on one record save with one round trip and one reason | Partial | One reason and one reviewer action, yes. One round trip, no, and not from the client: the wire takes one decision per call. What is new is `SpecimenRepository.reviewBatch` (`lib/src/models.dart`), which takes the whole set and one reason, sends them in order under a single idempotency key prefix (`<prefix>-0`, `<prefix>-1`, …), threads the record forward so each call carries the revision the one before it produced, and returns only the last result, so `WorkspaceController.mutateBatch` replaces the open record once instead of five times. A batch that stops part way throws `ReviewBatchFailure`, which carries the record as the server now has it and how many landed, so the reviewer is told what is still theirs to make rather than that the save failed. `test/review_batch_test.dart`, six tests, including "the workbench moves the screen once, on the last result". **Stays Partial, and the API change that would close it:** `POST /collections/{id}/specimens/{specimen}/decisions:batch` taking `{expected_revision, reason, decisions: [{kind, target_id, after, evidence_ids}, …]}` and answering the record at the single revision all of them produced, with one `Idempotency-Key`. Nothing in the client blocks that; `reviewBatch` becomes a method on the interface and `ApiSpecimenRepository` overrides it with one call |
+| 7.2 | Five fields corrected on one record save with one round trip and one reason | Partial | One reason and one reviewer action, yes. One round trip, no, and not from the client: the wire takes one decision per call. What is new is `SpecimenRepository.reviewBatch` (`lib/src/models.dart`), which takes the whole set and one reason, sends them in order under a single idempotency key prefix (`<prefix>-0`, `<prefix>-1`, …), threads the record forward so each call carries the revision the one before it produced, and returns only the last result, so `WorkspaceController.mutateBatch` replaces the open record once instead of five times. A batch that stops part way throws `ReviewBatchFailure`, which carries the record as the server now has it and how many landed, so the reviewer is told what is still theirs to make rather than that the save failed. Merged with pull request #42, the batch path carries that work's two rules as well: `reviewBatch` asks a `stillApplies` predicate before each call, against the record the call before it produced, so a correction whose field moved under the reviewer is never sent automatically against a newer revision, and it refuses a result that is not a newer version of the same record. Each call's key is memoised on the version it was sent against, so a retry after an uncertain answer reuses its original key while the prefix still names the batch. `test/review_batch_test.dart`, nine tests, including "the workbench moves the screen once, on the last result", "a correction that no longer applies stops the batch" and "a result that is not a newer version is refused". **Stays Partial, and the API change that would close it:** `POST /collections/{id}/specimens/{specimen}/decisions:batch` taking `{expected_revision, reason, decisions: [{kind, target_id, after, evidence_ids}, …]}` and answering the record at the single revision all of them produced, with one `Idempotency-Key`. Nothing in the client blocks that; `reviewBatch` becomes a method on the interface and `ApiSpecimenRepository` overrides it with one call. It would also be strictly safer than what ships: one `expected_revision` for the whole set means the server, not the client, decides whether a later correction still applies |
 | 7.3 | The queue supports multi-select and the non-destructive bulk actions the server permits | Partial | Not built, and deliberately not built: the repository exposes no bulk action over more than one record, so a selection model would select into nothing and a bulk control would be an affordance for a capability the server does not have. What the criterion can be held to today is the second half of its own wording, "the bulk actions the server permits", which is none, and that half is now a test rather than a claim: `test/review_batch_test.dart`, "no selection model, no select all, no bulk control", renders a six record queue and asserts there is no checkbox and no copy implying a bulk capability. Nothing was added here that would; `reviewBatch` is one record and several corrections, which is criterion 7.2. Stays Partial pending an API. The moment the server accepts a decision across records, this is a selection model over `QueueRow` and one confirmation stating the exact count, which criterion 5.2 already has a pattern for |
 | 7.4 | Filter sets can be named, saved, reapplied in one action, and survive a restart | Pass | `lib/src/saved_filters.dart` keeps named sets per collection in `shared_preferences`; the filter form lists them at the top, applies one in a single tap, and deletes one from its own chip (`lib/src/search_filters.dart`, `_SavedSets`). `test/saved_filters_test.dart` covers all four, including the restart, which is read back through a second store object. Said out loud on the screen: the sets live on the device, because the collection API has nowhere to put one. `test/golden/images/filters__medium-768x1024__light.png` |
 | 7.5 | Every specimen has a URL that opens it directly on web and by deep link on mobile | Pass | `test/app/routing_test.dart`, "a link to a record opens that record"; every golden in the workbench group is produced by a deep link |
@@ -399,12 +421,18 @@ version.** `_ReviewWorkbenchState._send` cleared its local-save flag when the
 save's future completed. The host sets the new record and notifies during that
 await, which schedules a build, and the await resumes in a microtask before
 that build runs, so the flag was already false when `didUpdateWidget` saw the
-new revision and the conflict banner fired on the reviewer's own decision. The
-flag is now cleared in a post-frame callback, after the frame that carries the
-new record. `test/screens/status_timing_test.dart` asserts no `ConflictBanner`
-after a save and after an approve. It was invisible to every earlier test
-because none of them watched a save land frame by frame; a `pumpAndSettle` runs
-the banner up and back down inside one call.
+new revision and the conflict banner fired on the reviewer's own decision. It
+was invisible to every earlier test because none of them watched a save land
+frame by frame; a `pumpAndSettle` runs the banner up and back down inside one
+call.
+
+Found independently in both passes. Pull request #42 fixed it more thoroughly,
+by holding the flag across `WidgetsBinding.instance.endOfFrame` inside `_send`
+and reading the repository's own acknowledgement rather than comparing widget
+identity, so that is what ships; this branch's post-frame callback is gone and
+its test stays. `test/screens/status_timing_test.dart` asserts no
+`ConflictBanner` after a save and after an approve, and the batch path holds
+the flag across the same frame for the same reason.
 
 ## Fixed in the first pass
 
@@ -448,9 +476,9 @@ Eight trivial defects, each one a hint, a label or a padding.
 | V-8 | `ProductPalette.disabledContentLight/Dark` and `disabledOutlineLight/Dark`, wired through `specimenFilledButtonTheme`, `specimenOutlinedButtonTheme`, `specimenTextButtonTheme`, `specimenIconButtonTheme`, `specimenChipTheme` and `specimenInputTheme` | `test/theme/contrast_test.dart`, five disabled-state tests per mode, including that the content beats the Material default on every surface and still reads as quieter than `onSurfaceVariant`; design system section 3.6 carries the measured ratios; 93 of the 97 goldens moved |
 | V-9 | `_CollectionSwitcher`, a `MenuAnchor` button with no floating label, capped at `AppShell.switcherMaxWidth` including its padding, carrying its own tap action on its semantics node | `test/app/app_bar_switcher_test.dart`, eleven tests: two size classes by four text scales inside the toolbar, plus the target size, the menu, and that no floating-label field is left in the app bar. `test/golden/images/queue__medium-768x1024__light.png` and `queue__expanded-1180x820__light.png` |
 | V-15 | The band is one line that truncates, the whole sentence on a tooltip and on its semantics node, and a disclosure that opens it to two lines. `EnvironmentBanner.maxLines` is the cap | `test/widgets/environment_banner_test.dart`, "finding V-15, the band at 200 percent text on a phone", four tests; `test/golden/images/workbench-readings__compact-390x844__light__text2.0.png` |
-| V-16 | `_clearSavingAfterFrame`, so the local-save flag outlives the frame that carries the new record | `test/screens/status_timing_test.dart` |
+| V-16 | Pull request #42's `_send`, which holds the local-save flag across `endOfFrame` and reads the repository's own acknowledgement, kept whole in the merge. The batch path holds the flag across the same frame | `test/screens/status_timing_test.dart` |
 | 1.2 | Both timings measured on load more, save and approve | `test/screens/status_timing_test.dart` |
-| 7.2 | `SpecimenRepository.reviewBatch` and `WorkspaceController.mutateBatch`: one reason, one key prefix, the record moved once. The row stays Partial and names the endpoint that would close it | `test/review_batch_test.dart` |
+| 7.2 | `SpecimenRepository.reviewBatch` and `WorkspaceController.mutateBatch`: one reason, one key prefix naming the batch, a key per decision memoised on the version it was sent against, the record moved once, and pull request #42's still-applies and newer-version rules applied inside the batch. The row stays Partial and names the endpoint that would close it | `test/review_batch_test.dart` |
 | 7.6 | `lib/src/reason_codes.dart`: configured codes, the record's own reason codes, and recent reasons kept across sessions per reviewer | `test/reason_codes_test.dart` |
 | 10.2 | `lib/src/glossary.dart` and `TermText`, applied in five components | `test/widgets/term_text_test.dart` |
 | 10.3 | The `SPECIMEN_ADMIN_CONTACT` build stamp, read wherever no collection document carries a contact, including on sign-in, setup and verification, with the whole `mailto:` link carrying the record. The row stays Partial because nothing sets it here | `test/screens/help_and_contact_test.dart` |

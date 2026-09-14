@@ -137,6 +137,7 @@ GoRouter buildAppRouter({
               environment: environment,
               child: EmailVerificationGate(
                 session: session!,
+                refreshVerification: sessionNotifier.refreshVerification,
                 child: const _LeaveVerification(),
               ),
             ),

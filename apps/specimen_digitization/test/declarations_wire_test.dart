@@ -185,7 +185,7 @@ void main() {
             ReviewWorkbench(
               specimen: record,
               canReview: reviewer,
-              onChange: (_) async {},
+              onChange: (_) async => false,
               onRetry: (_) async {},
               onRefresh: () {},
               loadArtifact: (_) async =>

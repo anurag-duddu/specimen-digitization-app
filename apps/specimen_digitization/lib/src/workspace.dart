@@ -108,6 +108,8 @@ class WorkspaceController extends ChangeNotifier {
   bool _scopesLoaded = false;
   bool _scopesVerified = false;
   bool _started = false;
+  String? _startedUserId;
+  int _mutationEpoch = 0;
 
   List<Specimen> _items = <Specimen>[];
   Specimen? _selected;
@@ -256,8 +258,10 @@ class WorkspaceController extends ChangeNotifier {
   /// verified. Called by the app, never by a screen, so an unverified account
   /// never reaches the collection API.
   void start() {
-    if (_started || _disposed) return;
+    if (_disposed || (_started && _startedUserId == session.userId)) return;
+    if (_started) resetSession();
     _started = true;
+    _startedUserId = session.userId;
     final SpecimenRepository source = repository;
     if (source is AccessFailureSource) {
       _accessSubscription = (source as AccessFailureSource).accessFailures
@@ -288,6 +292,44 @@ class WorkspaceController extends ChangeNotifier {
         unawaited(refresh(quiet: true));
       }
     });
+  }
+
+  /// Invalidates requests, timers and cached permissions when an account
+  /// leaves. A later verified session must load its own collection access.
+  void resetSession() {
+    _listGeneration++;
+    _recordGeneration++;
+    _mutationEpoch++;
+    _started = false;
+    _startedUserId = null;
+    _accessSubscription?.cancel();
+    _accessSubscription = null;
+    _poll?.cancel();
+    _poll = null;
+    _search?.cancel();
+    _search = null;
+    _scopes = <CollectionScope>[];
+    _scope = null;
+    _scopesLoaded = false;
+    _scopesVerified = false;
+    _items = <Specimen>[];
+    _selected = null;
+    _selectedId = null;
+    _nextCursor = null;
+    _seenCursors.clear();
+    _updatedAt = null;
+    _query = '';
+    _disposition = '';
+    _filters = <String, String>{};
+    _holds = 0;
+    _deferredPage = null;
+    _mutationKeys.clear();
+    _loading = true;
+    _loadingMore = false;
+    _mutating = false;
+    _error = null;
+    if (queueScroll.hasClients) queueScroll.jumpTo(0);
+    _notify();
   }
 
   /// True while the window is the one the operating system is showing.
@@ -634,11 +676,12 @@ class WorkspaceController extends ChangeNotifier {
   ///
   /// A mutation key is retained for an uncertain response, so an identical
   /// retry reconciles on the server rather than recording twice.
-  Future<void> mutate(Json? change, String? retryReason) async {
+  Future<bool> mutate(Json? change, String? retryReason) async {
     final Specimen? current = _selected;
     final CollectionScope? scope = _scope;
-    if (current == null || scope == null || _mutating) return;
+    if (current == null || scope == null || _mutating) return false;
     final int generation = _recordGeneration;
+    final int mutationEpoch = _mutationEpoch;
     final String payload =
         '${current.id}:${current.revision}:${change ?? retryReason}';
     final String key = _mutationKeys.putIfAbsent(
@@ -652,14 +695,23 @@ class WorkspaceController extends ChangeNotifier {
       final Specimen result = change != null
           ? await repository.review(scope, current, change, key)
           : await repository.retry(scope, current, retryReason!, key);
-      if (_disposed || generation != _recordGeneration) return;
+      if (_disposed || generation != _recordGeneration) return false;
+      if (result.id != current.id ||
+          (change != null && result.revision <= current.revision)) {
+        throw const ApiFailure(
+          'The server has not confirmed this save with a newer record version.',
+          code: 'unconfirmed_save',
+        );
+      }
       _selected = result;
       _mutationKeys.remove(payload);
+      return true;
     } catch (error) {
-      if (_disposed || generation != _recordGeneration) return;
+      if (_disposed || generation != _recordGeneration) return false;
       _recordFailure(error);
+      return false;
     } finally {
-      if (!_disposed) {
+      if (!_disposed && mutationEpoch == _mutationEpoch) {
         _mutating = false;
         _notify();
       }
@@ -675,40 +727,62 @@ class WorkspaceController extends ChangeNotifier {
   /// the whole batch shares one idempotency key prefix.
   ///
   /// Returns how many of [changes] the server accepted.
-  Future<int> mutateBatch(List<Json> changes, String reason) async {
+  Future<int> mutateBatch(
+    List<Json> changes,
+    String reason, {
+    bool Function(Specimen current, Json change)? stillApplies,
+  }) async {
     final Specimen? current = _selected;
     final CollectionScope? scope = _scope;
     if (current == null || scope == null || _mutating || changes.isEmpty) {
       return 0;
     }
     final int generation = _recordGeneration;
-    final String payload =
-        '${current.id}:${current.revision}:batch:${changes.length}:$reason';
-    final String prefix = _mutationKeys.putIfAbsent(
-      payload,
-      () => 'review-batch-${DateTime.now().microsecondsSinceEpoch}',
-    );
+    final int mutationEpoch = _mutationEpoch;
+    final String prefix =
+        'review-batch-${DateTime.now().microsecondsSinceEpoch}';
+    // One key per decision, memoised on the record version it was sent
+    // against, exactly as `mutate` does for a single decision: a call retried
+    // after an uncertain answer carries the key it carried the first time, so
+    // the server reconciles rather than recording twice. The prefix names the
+    // batch, the key identifies the decision, and the two jobs stay separate.
+    final List<String> payloads = <String>[];
+    String keyFor(Specimen atVersion, Json body, int index) {
+      final String payload = '${atVersion.id}:${atVersion.revision}:$body';
+      payloads.add(payload);
+      return _mutationKeys.putIfAbsent(payload, () => '$prefix-$index');
+    }
+
     _mutating = true;
     _error = null;
     _notify();
     try {
-      final Specimen result = await repository.reviewBatch(
+      final ReviewBatchResult result = await repository.reviewBatch(
         scope,
         current,
         changes,
         reason,
         prefix,
+        stillApplies: stillApplies,
+        keyFor: keyFor,
       );
-      if (_disposed || generation != _recordGeneration) return changes.length;
-      _selected = result;
-      _mutationKeys.remove(payload);
-      return changes.length;
+      if (_disposed || generation != _recordGeneration) return result.saved;
+      if (result.saved > 0) _selected = result.specimen;
+      for (final String payload in payloads.take(result.saved)) {
+        _mutationKeys.remove(payload);
+      }
+      return result.saved;
     } on ReviewBatchFailure catch (failure) {
       if (_disposed || generation != _recordGeneration) return failure.saved;
       // What landed, landed. The screen shows the record the server has now
       // rather than the one the reviewer opened, and the caller reports the
       // corrections that are still outstanding.
       if (failure.saved > 0) _selected = failure.specimen;
+      // The key of the call that failed is deliberately retained: its answer
+      // is uncertain, so a retry has to reconcile rather than record twice.
+      for (final String payload in payloads.take(failure.saved)) {
+        _mutationKeys.remove(payload);
+      }
       _recordFailure(failure.cause);
       return failure.saved;
     } catch (error) {
@@ -716,7 +790,7 @@ class WorkspaceController extends ChangeNotifier {
       _recordFailure(error);
       return 0;
     } finally {
-      if (!_disposed) {
+      if (!_disposed && mutationEpoch == _mutationEpoch) {
         _mutating = false;
         _notify();
       }

@@ -40,7 +40,7 @@ void main() {
     ReviewWorkbench(
       key: key,
       specimen: specimen,
-      onChange: (_) async {},
+      onChange: (_) async => false,
       onRetry: (_) async {},
       onRefresh: () {},
     ),

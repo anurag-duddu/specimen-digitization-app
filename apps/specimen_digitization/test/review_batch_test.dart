@@ -29,6 +29,10 @@ class RecordingRepository extends TestRepository {
   /// fails.
   int failOnCall = 0;
 
+  /// True for a server that answers without a newer version, which pull
+  /// request #42 taught this client to treat as an unconfirmed save.
+  bool freezeRevision = false;
+
   @override
   Future<Specimen> review(
     CollectionScope scope,
@@ -44,7 +48,7 @@ class RecordingRepository extends TestRepository {
     }
     return Specimen(<String, dynamic>{
       ...specimen.data,
-      'revision': specimen.revision + 1,
+      'revision': freezeRevision ? specimen.revision : specimen.revision + 1,
     });
   }
 }
@@ -114,7 +118,7 @@ void main() {
 
     test('each call carries the version the one before it produced', () async {
       final RecordingRepository repository = RecordingRepository();
-      final Specimen result = await repository.reviewBatch(
+      final ReviewBatchResult result = await repository.reviewBatch(
         scope,
         fixture,
         corrections(3),
@@ -126,7 +130,56 @@ void main() {
         fixture.revision + 1,
         fixture.revision + 2,
       ]);
-      expect(result.revision, fixture.revision + 3);
+      expect(result.specimen.revision, fixture.revision + 3);
+      expect(result.saved, 3);
+      expect(result.stopped, isFalse);
+    });
+
+    // Pull request #42's rule, applied where a batch cannot re-read the
+    // screen between its own calls: a correction whose field moved under the
+    // reviewer is never sent automatically against a newer revision.
+    test('a correction that no longer applies stops the batch', () async {
+      final RecordingRepository repository = RecordingRepository();
+      final ReviewBatchResult result = await repository.reviewBatch(
+        scope,
+        fixture,
+        corrections(4),
+        'One reason',
+        'review-batch-5',
+        stillApplies: (Specimen current, Json change) =>
+            change['target_id'] != 'field_2',
+      );
+      expect(result.saved, 2);
+      expect(result.stopped, isTrue);
+      expect(repository.sent, hasLength(2));
+      expect(result.specimen.revision, fixture.revision + 2);
+    });
+
+    test('a result that is not a newer version is refused', () async {
+      final RecordingRepository repository = RecordingRepository()
+        ..freezeRevision = true;
+      await expectLater(
+        repository.reviewBatch(
+          scope,
+          fixture,
+          corrections(3),
+          'One reason',
+          'review-batch-6',
+        ),
+        throwsA(
+          isA<ReviewBatchFailure>()
+              .having((ReviewBatchFailure f) => f.saved, 'saved', 0)
+              .having(
+                (ReviewBatchFailure f) => f.cause,
+                'cause',
+                isA<ApiFailure>().having(
+                  (ApiFailure e) => e.code,
+                  'code',
+                  'unconfirmed_save',
+                ),
+              ),
+        ),
+      );
     });
 
     test(
@@ -162,7 +215,7 @@ void main() {
 
     test('an empty batch is not a call', () async {
       final RecordingRepository repository = RecordingRepository();
-      final Specimen result = await repository.reviewBatch(
+      final ReviewBatchResult result = await repository.reviewBatch(
         scope,
         fixture,
         const <Json>[],
@@ -170,7 +223,8 @@ void main() {
         'review-batch-4',
       );
       expect(repository.keys, isEmpty);
-      expect(result.revision, fixture.revision);
+      expect(result.specimen.revision, fixture.revision);
+      expect(result.saved, 0);
     });
   });
 
@@ -179,6 +233,8 @@ void main() {
   ) async {
     useWindow(tester, largeWindow);
     final List<List<Json>> batches = <List<Json>>[];
+    final List<bool Function(Specimen, Json)> guards =
+        <bool Function(Specimen, Json)>[];
     int rebuilds = 0;
     final Specimen many = Specimen(<String, dynamic>{
       ...fixture.data,
@@ -202,11 +258,20 @@ void main() {
             rebuilds++;
             return ReviewWorkbench(
               specimen: many,
-              onChange: (Json change) async {},
-              onChangeBatch: (List<Json> changes, String reason) async {
-                batches.add(changes);
-                return changes.length;
-              },
+              onChange: (Json change) async => true,
+              onChangeBatch:
+                  (
+                    List<Json> changes,
+                    String reason,
+                    bool Function(Specimen, Json) stillApplies,
+                  ) async {
+                    batches.add(changes);
+                    // The workbench has to hand the batch a way to ask, or
+                    // the guarantee the one at a time path gets for free is
+                    // lost the moment the batch path is used.
+                    guards.add(stillApplies);
+                    return changes.length;
+                  },
               onRetry: (String reason) async {},
               onRefresh: () {},
             );
@@ -252,6 +317,29 @@ void main() {
       'Nothing on the label supports these fields',
     });
     expect(find.textContaining('pending change'), findsNothing);
+    expect(guards, hasLength(1));
+    expect(
+      guards.single(many, batches.single.first),
+      isTrue,
+      reason: 'a draft against the record as it stands still applies',
+    );
+    expect(
+      guards.single(
+        Specimen(<String, dynamic>{
+          ...many.data,
+          'fields': <Json>[
+            for (final Json field in many.fields)
+              if (field['field_key'] == 'field_0')
+                <String, dynamic>{...field, 'literal_value': 'moved'}
+              else
+                field,
+          ],
+        }),
+        batches.single.first,
+      ),
+      isFalse,
+      reason: 'a draft whose field moved under the reviewer does not apply',
+    );
     expect(
       rebuilds - beforeSave,
       lessThanOrEqualTo(1),
