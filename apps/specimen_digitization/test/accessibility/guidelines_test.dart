@@ -33,6 +33,7 @@ import 'package:specimen_digitization/src/magic_link_screen.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 
 /// A `SessionAccess` that reaches nothing. `SignInScreen` renders its fixture
 /// form for any session that is not an `EmailLinkAccess`, which is the branch
@@ -98,18 +99,7 @@ Future<void> pumpScreen(WidgetTester tester, Widget child) async {
   tester.view.devicePixelRatio = 1.0;
   tester.view.physicalSize = const Size(1024, 2400);
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff174f3b),
-          surface: const Color(0xfff9fbf7),
-        ),
-        scaffoldBackgroundColor: const Color(0xfff4f6f3),
-      ),
-      home: child,
-    ),
-  );
+  await tester.pumpWidget(MaterialApp(theme: AppTheme.light(), home: child));
   await tester.pumpAndSettle();
 }
 
@@ -240,9 +230,16 @@ void main() {
     );
   });
 
+  // The filter form is the child of `showAdaptiveForm` now, not a dialog of
+  // its own, so it is pumped as a screen.
   guidelineSuite(
     'SearchFilters',
-    (tester) => pumpDialog(tester, const SearchFilters(initial: {})),
+    (tester) => pumpScreen(
+      tester,
+      const Scaffold(
+        body: SingleChildScrollView(child: SearchFilters(initial: {})),
+      ),
+    ),
   );
 
   guidelineSuite(

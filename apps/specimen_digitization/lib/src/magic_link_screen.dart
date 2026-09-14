@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'email_link_browser.dart';
+import 'app/auth_layout.dart';
 import 'magic_link.dart';
+import 'theme/icons.dart';
 import 'widgets/caveat_text.dart';
 
 class EmailLinkEntry extends StatefulWidget {
@@ -129,109 +131,79 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
         controller.busy ||
         (!confirm && cooldown > 0);
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: AutofillGroup(
-              child: Form(
-                key: _form,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.biotech_outlined, size: 48),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Specimen Digitization',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      confirm
-                          ? 'Confirm your email'
-                          : controller.sent
-                          ? 'Check your email'
-                          : 'Sign in to your collection',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      confirm
-                          ? 'Enter the fieldmuseum.org address that received this link.'
-                          : 'Use your fieldmuseum.org email to get a sign-in link. No password needed.',
-                    ),
-                    const SizedBox(height: 24),
-                    TextFormField(
-                      controller: _email,
-                      enabled: !controller.busy,
-                      keyboardType: TextInputType.emailAddress,
-                      autocorrect: false,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email address',
-                      ),
-                      validator: (value) =>
-                          normalizedStaffEmail(value ?? '') == null
-                          ? staffEmailMessage
-                          : null,
-                      onFieldSubmitted: (_) {
-                        if (!disabled) _submit();
-                      },
-                    ),
-                    if (controller.message != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Semantics(
-                          liveRegion: true,
-                          child: Text(controller.message!),
-                        ),
-                      ),
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      onPressed: disabled ? null : _submit,
-                      child: Text(
-                        controller.busy
-                            ? (confirm ? 'Signing in…' : 'Sending link…')
-                            : confirm
-                            ? 'Confirm and sign in'
-                            : controller.sent
-                            ? 'Resend sign-in link'
-                            : 'Send sign-in link',
-                      ),
-                    ),
-                    if (!confirm && cooldown > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Text(
-                          'You can request another link in ${cooldown}s.',
-                        ),
-                      ),
-                    if (controller.sent ||
-                        confirm ||
-                        controller.message != null)
-                      TextButton(
-                        onPressed: controller.busy
-                            ? null
-                            : () => unawaited(controller.changeEmail()),
-                        child: Text(
-                          confirm ? 'Cancel sign-in' : 'Use a different email',
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                    const CaveatText(
-                      label:
-                          'First time? Signing in with your verified staff email '
-                          'creates your account.',
-                      why:
-                          'Collection access is separate and is granted by your '
-                          'collection administrator.',
-                    ),
-                  ],
+      body: Form(
+        key: _form,
+        child: AutofillGroup(
+          child: AuthLayout(
+            title: confirm
+                ? 'Confirm your email'
+                : controller.sent
+                ? 'Check your email'
+                : 'Sign in to your collection',
+            purpose: confirm
+                ? 'Enter the fieldmuseum.org address that received this link.'
+                : 'Use your fieldmuseum.org email to get a sign-in link. '
+                      'No password needed.',
+            children: <Widget>[
+              TextFormField(
+                controller: _email,
+                enabled: !controller.busy,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(labelText: 'Email address'),
+                validator: (value) => normalizedStaffEmail(value ?? '') == null
+                    ? staffEmailMessage
+                    : null,
+                onFieldSubmitted: (_) {
+                  if (!disabled) _submit();
+                },
+              ),
+              if (controller.message != null)
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: context.space.space4),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(controller.message!),
+                  ),
+                ),
+              SizedBox(height: context.space.space6),
+              FilledButton(
+                onPressed: disabled ? null : _submit,
+                child: Text(
+                  controller.busy
+                      ? (confirm ? 'Signing in…' : 'Sending link…')
+                      : confirm
+                      ? 'Confirm and sign in'
+                      : controller.sent
+                      ? 'Resend sign-in link'
+                      : 'Send sign-in link',
                 ),
               ),
-            ),
+              if (!confirm && cooldown > 0)
+                Padding(
+                  padding: EdgeInsets.only(top: context.space.space3),
+                  child: Text('You can request another link in ${cooldown}s.'),
+                ),
+              if (controller.sent || confirm || controller.message != null)
+                TextButton(
+                  onPressed: controller.busy
+                      ? null
+                      : () => unawaited(controller.changeEmail()),
+                  child: Text(
+                    confirm ? 'Cancel sign-in' : 'Use a different email',
+                  ),
+                ),
+              SizedBox(height: context.space.space4),
+              const CaveatText(
+                label:
+                    'First time? Signing in with your verified staff email '
+                    'creates your account.',
+                why:
+                    'Collection access is separate and is granted by your '
+                    'collection administrator.',
+              ),
+            ],
           ),
         ),
       ),

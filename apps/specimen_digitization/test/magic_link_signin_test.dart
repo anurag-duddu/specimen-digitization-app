@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/auth.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/email_verification.dart';
 import 'package:specimen_digitization/src/models.dart';
@@ -39,6 +40,7 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: EmailVerificationGate(
             session: session,
             child: const Text('PRIVATE COLLECTION'),
@@ -57,6 +59,7 @@ void main() {
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: SignInScreen(session: FirebaseSession(NoNetworkAuth())),
         ),
       );
@@ -72,6 +75,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: SignInScreen(session: FirebaseSession(NoNetworkAuth())),
       ),
     );
