@@ -11,6 +11,8 @@
 /// versions them.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -96,6 +98,11 @@ class RegionEditorBody extends StatefulWidget {
   final List<Json> regions;
   final Json asset;
 
+  /// The shortest the photograph's band may be on a compact window
+  /// (finding V-7). Below this a corner handle has no room to be dragged and
+  /// the editor is a coordinate form with a thumbnail.
+  static const double compactPreviewMinHeight = 240;
+
   @override
   State<RegionEditorBody> createState() => _RegionEditorBodyState();
 }
@@ -118,6 +125,14 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   String? _error;
   final Set<String> _invalidCoordinates = <String>{};
   bool _coordinateSubmitAttempted = false;
+
+  /// True when the compact sheet's detail disclosure is open (finding V-7).
+  bool _detailsOpen = false;
+
+  /// Bumped only when the editor has to force the disclosure open, so the
+  /// tile is rebuilt in that state without losing focus on every toggle.
+  int _detailsVersion = 0;
+
   final TextEditingController _reason = TextEditingController();
 
   /// Every local change, newest last (pass criterion 3.5).
@@ -256,9 +271,19 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       ? null
       : _regions[_selected.clamp(0, _regions.length - 1)];
 
+  /// Opens the compact disclosure, for an error that lives inside it.
+  void _revealDetails() {
+    if (_detailsOpen) return;
+    _detailsOpen = true;
+    _detailsVersion++;
+  }
+
   void _save() {
     if (_invalidCoordinates.isNotEmpty) {
-      setState(() => _coordinateSubmitAttempted = true);
+      setState(() {
+        _coordinateSubmitAttempted = true;
+        _revealDetails();
+      });
       return;
     }
     if (_regions.isEmpty) {
@@ -306,6 +331,12 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     final List<num> box = selected == null
         ? const <num>[]
         : selected['bbox'] as List<num>;
+    // Finding V-7. On a phone the photograph was a thin strip between the
+    // region chips above it and the coordinate form below it, which is not
+    // enough to drag a 48 dp corner handle on. On a compact window the
+    // preview now comes first and everything that is not the photograph goes
+    // behind one disclosure, so the sheet's main content is the pixels.
+    final bool compact = WindowClass.of(context).isCompact;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -321,21 +352,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                 const Text(
                   'Add, resize, rotate, reorder or merge label regions.',
                 ),
-                const CaveatText(
-                  label:
-                      'Saving replaces the readings that depend on these '
-                      'regions.',
-                  why:
-                      'Coordinates follow the recorded source basis. Earlier '
-                      'readings stay in history.',
-                ),
-                SizedBox(height: context.space.space2),
-                Text(
-                  'Source coordinate dimensions: ${widget.asset['width']} by '
-                  '${widget.asset['height']} pixels',
-                  style: theme.textTheme.bodySmall,
-                ),
-                SourceBasisNotice(asset: widget.asset),
+                if (!compact) ..._provenance(context),
                 SizedBox(height: context.space.space3),
                 Wrap(
                   spacing: context.space.space2,
@@ -383,7 +400,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                 if (selected != null) ...<Widget>[
                   SizedBox(height: context.space.space4),
                   if (widget.asset['preview_bytes'] != null)
-                    _preview(context, box),
+                    _preview(context, box, compact: compact),
                   SizedBox(height: context.space.space2),
                   Text(
                     'Label reading rotation: '
@@ -404,57 +421,31 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                     ),
                   ),
                   SizedBox(height: context.space.space2),
-                  Text(
-                    'Exact coordinates',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  Text(
-                    'Typing here is the precise alternative to dragging, and '
-                    'the path that needs no pointer.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  SizedBox(height: context.space.space2),
-                  _coordinates(context, selected, box),
-                  SizedBox(height: context.space.space3),
-                  Wrap(
-                    spacing: context.space.space2,
-                    runSpacing: context.space.space2,
-                    children: <Widget>[
-                      TextButton.icon(
-                        onPressed: _delete,
-                        icon: const Icon(Symbols.delete),
-                        label: const Text('Delete region'),
+                  if (compact)
+                    // One disclosure, an `ExpansionTile` like every other
+                    // disclosure in the product (pass criterion 4.1). The
+                    // pointer free path WCAG 2.2 SC 2.5.7 asks for is inside
+                    // it, reachable by keyboard, and the editor opens it
+                    // itself when a coordinate it holds is wrong.
+                    ExpansionTile(
+                      key: ValueKey<String>('region-details-$_detailsVersion'),
+                      initiallyExpanded: _detailsOpen,
+                      onExpansionChanged: (bool open) => _detailsOpen = open,
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: EdgeInsets.zero,
+                      expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+                      title: const Text('Exact coordinates and region order'),
+                      subtitle: const Text(
+                        'Type coordinates, reorder, merge or delete.',
                       ),
-                      TextButton(
-                        onPressed: _selected == 0
-                            ? null
-                            : () => setState(() {
-                                final Json item = _regions.removeAt(_selected);
-                                _regions.insert(--_selected, item);
-                              }),
-                        child: const Text('Move earlier'),
-                      ),
-                      TextButton(
-                        onPressed: _selected >= _regions.length - 1
-                            ? null
-                            : () => setState(() {
-                                final Json item = _regions.removeAt(_selected);
-                                _regions.insert(++_selected, item);
-                              }),
-                        child: const Text('Move later'),
-                      ),
-                      TextButton(
-                        onPressed: _selected >= _regions.length - 1
-                            ? null
-                            : _merge,
-                        child: const Text('Merge with next'),
-                      ),
-                    ],
-                  ),
+                      children: <Widget>[
+                        ..._provenance(context),
+                        SizedBox(height: context.space.space2),
+                        ..._coordinateBlock(context, selected, box),
+                      ],
+                    )
+                  else
+                    ..._coordinateBlock(context, selected, box),
                 ],
                 Align(
                   alignment: AlignmentDirectional.centerStart,
@@ -482,7 +473,122 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     );
   }
 
-  Widget _preview(BuildContext context, List<num> box) => AspectRatio(
+  /// The provenance lines: what saving replaces, and the source basis.
+  ///
+  /// Shown inline on a dialog and behind the compact disclosure, so a phone
+  /// opens on the photograph rather than on three paragraphs about it.
+  List<Widget> _provenance(BuildContext context) => <Widget>[
+    const CaveatText(
+      label: 'Saving replaces the readings that depend on these regions.',
+      why:
+          'Coordinates follow the recorded source basis. Earlier readings '
+          'stay in history.',
+    ),
+    SizedBox(height: context.space.space2),
+    Text(
+      'Source coordinate dimensions: ${widget.asset['width']} by '
+      '${widget.asset['height']} pixels',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    SourceBasisNotice(asset: widget.asset),
+  ];
+
+  /// The numeric path and the region order controls.
+  List<Widget> _coordinateBlock(
+    BuildContext context,
+    Json selected,
+    List<num> box,
+  ) {
+    final ThemeData theme = Theme.of(context);
+    return <Widget>[
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          'Exact coordinates',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Text(
+          'Typing here is the precise alternative to dragging, and the path '
+          'that needs no pointer.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      SizedBox(height: context.space.space2),
+      _coordinates(context, selected, box),
+      SizedBox(height: context.space.space3),
+      Wrap(
+        spacing: context.space.space2,
+        runSpacing: context.space.space2,
+        children: <Widget>[
+          TextButton.icon(
+            onPressed: _delete,
+            icon: const Icon(Symbols.delete),
+            label: const Text('Delete region'),
+          ),
+          TextButton(
+            onPressed: _selected == 0
+                ? null
+                : () => setState(() {
+                    final Json item = _regions.removeAt(_selected);
+                    _regions.insert(--_selected, item);
+                  }),
+            child: const Text('Move earlier'),
+          ),
+          TextButton(
+            onPressed: _selected >= _regions.length - 1
+                ? null
+                : () => setState(() {
+                    final Json item = _regions.removeAt(_selected);
+                    _regions.insert(++_selected, item);
+                  }),
+            child: const Text('Move later'),
+          ),
+          TextButton(
+            onPressed: _selected >= _regions.length - 1 ? null : _merge,
+            child: const Text('Merge with next'),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// The photograph, with every region drawn over it.
+  ///
+  /// On a compact window the band is floored at
+  /// [RegionEditorBody.compactPreviewMinHeight] so
+  /// the image is the dominant element of the sheet and a 48 dp corner handle
+  /// has somewhere to go (finding V-7). The image itself keeps the asset's
+  /// own ratio at every width, because the overlay maps recorded pixel
+  /// coordinates onto it and a stretched image would move every handle off
+  /// the pixel it names.
+  Widget _preview(
+    BuildContext context,
+    List<num> box, {
+    required bool compact,
+  }) {
+    final Widget image = _previewImage(context, box);
+    if (!compact) return image;
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints outer) {
+        final double natural = outer.maxWidth.isFinite
+            ? outer.maxWidth * _height / _width
+            : RegionEditorBody.compactPreviewMinHeight;
+        return SizedBox(
+          height: math.max(natural, RegionEditorBody.compactPreviewMinHeight),
+          child: Center(child: image),
+        );
+      },
+    );
+  }
+
+  Widget _previewImage(BuildContext context, List<num> box) => AspectRatio(
     aspectRatio: _width / _height,
     child: LayoutBuilder(
       builder: (BuildContext context, BoxConstraints c) {

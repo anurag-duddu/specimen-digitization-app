@@ -170,22 +170,28 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
                 _SavedCheck(shown: _settled),
               ],
             ),
-            Text(
-              'Version ${s.revision}',
+            // Version, Run and Step are the three words the strip uses
+            // that a first-time reviewer has no way to guess, so each
+            // carries its own definition (pass criterion 10.2).
+            TermText(
+              'Version',
+              trailing: ' ${s.revision}',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             if (s.data['active_run_id'] != null)
-              Text(
-                'Run ${textOf(s.data['active_run_id'])}',
+              TermText(
+                'Run',
+                trailing: ' ${textOf(s.data['active_run_id'])}',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             if (stage.isNotEmpty && stage != 'Not recorded')
-              Text(
-                'Step $stage',
+              TermText(
+                'Step',
+                trailing: ' $stage',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

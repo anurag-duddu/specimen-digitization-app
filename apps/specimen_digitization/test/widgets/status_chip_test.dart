@@ -36,7 +36,15 @@ void main() {
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpComponent(tester, const StatusChip(SpecimenStatus.needsReview));
-    expect(find.bySemanticsLabel('Queue: needs human review'), findsOneWidget);
+    // The chip is also its own definition affordance (pass criterion 10.2),
+    // so the phrase carries the invitation as well as the status. The
+    // vocabulary prefix criterion 4.16 asks for is still the head of it.
+    expect(
+      find.bySemanticsLabel(
+        'Queue: needs human review, term, double tap for definition',
+      ),
+      findsOneWidget,
+    );
     // The visible word is not a second node.
     expect(find.bySemanticsLabel('Needs human review'), findsNothing);
     handle.dispose();
@@ -51,7 +59,12 @@ void main() {
       const StatusChip(SpecimenStatus.deferred, count: 12),
     );
     expect(find.text('Deferred 12'), findsOneWidget);
-    expect(find.bySemanticsLabel('Queue: deferred, 12'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(
+        'Queue: deferred, 12, term, double tap for definition',
+      ),
+      findsOneWidget,
+    );
     handle.dispose();
   });
 

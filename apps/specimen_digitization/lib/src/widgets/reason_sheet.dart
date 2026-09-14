@@ -21,6 +21,12 @@ import 'adaptive_form.dart';
 /// [outstanding] lists the findings the action does not resolve.
 /// [recentReasons] are offered as chips that fill the field.
 ///
+/// [configuredReasons] are the collection's or the profile's own decision
+/// reasons, offered first because a collection that publishes a vocabulary
+/// means its reviewers to use it. [recordReasons] are the machine's reasons
+/// this record is in the queue, offered under their own heading so nothing
+/// implies a reviewer wrote them (pass criterion 7.6).
+///
 /// [reversal] names the way back, where the server exposes one. The review
 /// API exposes none: a decision is recorded against a version and superseded
 /// by the next one rather than removed, so the sheet states that instead of
@@ -33,6 +39,8 @@ Future<String?> showReasonSheet(
   String? retained,
   String? reversal,
   List<String> outstanding = const <String>[],
+  List<String> configuredReasons = const <String>[],
+  List<String> recordReasons = const <String>[],
   List<String> recentReasons = const <String>[],
 }) => showAdaptiveForm<String>(
   context,
@@ -44,6 +52,8 @@ Future<String?> showReasonSheet(
     retained: retained,
     reversal: reversal,
     outstanding: outstanding,
+    configuredReasons: configuredReasons,
+    recordReasons: recordReasons,
     recentReasons: recentReasons,
   ),
 );
@@ -59,6 +69,8 @@ class ReasonForm extends StatefulWidget {
     this.retained,
     this.reversal,
     this.outstanding = const <String>[],
+    this.configuredReasons = const <String>[],
+    this.recordReasons = const <String>[],
     this.recentReasons = const <String>[],
   });
 
@@ -75,7 +87,21 @@ class ReasonForm extends StatefulWidget {
   final String? reversal;
 
   final List<String> outstanding;
+
+  /// Decision reasons the collection or the profile published.
+  final List<String> configuredReasons;
+
+  /// The machine's reasons this record is in the review queue.
+  final List<String> recordReasons;
+
+  /// Reasons this reviewer typed before, newest first.
   final List<String> recentReasons;
+
+  /// The heading over each group of chips, fixed so the sheet and its tests
+  /// cannot word them differently.
+  static const String configuredHeading = 'Reasons for this collection';
+  static const String recordHeading = 'Why this record is in review';
+  static const String recentHeading = 'Recent reasons';
 
   /// The sentence every decision without a reversal carries.
   ///
@@ -177,31 +203,21 @@ class _ReasonFormState extends State<ReasonForm> {
                     ),
                   ),
               ],
-              if (widget.recentReasons.isNotEmpty) ...<Widget>[
-                SizedBox(height: context.space.space4),
-                Text('Recent reasons', style: theme.textTheme.titleSmall),
-                SizedBox(height: context.space.space1),
-                Wrap(
-                  spacing: context.space.space2,
-                  runSpacing: context.space.space2,
-                  children: <Widget>[
-                    for (final String recent in widget.recentReasons)
-                      ActionChip(
-                        label: Text(recent),
-                        tooltip: 'Use this reason',
-                        onPressed: () {
-                          setState(() {
-                            _reason.text = recent;
-                            _reason.selection = TextSelection.collapsed(
-                              offset: recent.length,
-                            );
-                          });
-                          _field.requestFocus();
-                        },
-                      ),
-                  ],
-                ),
-              ],
+              ..._chipGroup(
+                context,
+                ReasonForm.configuredHeading,
+                widget.configuredReasons,
+              ),
+              ..._chipGroup(
+                context,
+                ReasonForm.recordHeading,
+                widget.recordReasons,
+              ),
+              ..._chipGroup(
+                context,
+                ReasonForm.recentHeading,
+                widget.recentReasons,
+              ),
               SizedBox(height: context.space.space4),
               TextField(
                 controller: _reason,
@@ -241,6 +257,44 @@ class _ReasonFormState extends State<ReasonForm> {
         ),
       ),
     );
+  }
+
+  /// One headed row of chips, each of which fills the field.
+  ///
+  /// Empty for an empty list, so a collection that publishes no vocabulary
+  /// gets no heading promising one.
+  List<Widget> _chipGroup(
+    BuildContext context,
+    String heading,
+    List<String> reasons,
+  ) {
+    if (reasons.isEmpty) return const <Widget>[];
+    final ThemeData theme = Theme.of(context);
+    return <Widget>[
+      SizedBox(height: context.space.space4),
+      Text(heading, style: theme.textTheme.titleSmall),
+      SizedBox(height: context.space.space1),
+      Wrap(
+        spacing: context.space.space2,
+        runSpacing: context.space.space2,
+        children: <Widget>[
+          for (final String reason in reasons)
+            ActionChip(
+              label: Text(reason),
+              tooltip: 'Use this reason',
+              onPressed: () => _fill(reason),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  void _fill(String reason) {
+    setState(() {
+      _reason.text = reason;
+      _reason.selection = TextSelection.collapsed(offset: reason.length);
+    });
+    _field.requestFocus();
   }
 
   static const int _reasonMinLines = 2;
