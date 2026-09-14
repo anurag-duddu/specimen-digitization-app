@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
 
 /// Undo the derivative's EXIF display transform so overlays and crops share
 /// original pixel-edge coordinates. The immutable bytes are never rewritten.
@@ -20,7 +21,7 @@ class SourcePixels extends StatelessWidget {
       asset['preview_bytes'],
       fit: BoxFit.fill,
       semanticLabel: asset['processing_derivative'] is Map
-          ? 'Decoded source preview; original file retained'
+          ? 'Decoded source preview. The original file is kept.'
           : semanticLabel,
       errorBuilder: (_, _, _) => const Center(
         child: Text('Source preview unavailable. Refresh to retry.'),
@@ -37,7 +38,9 @@ class SourcePixels extends StatelessWidget {
     final width = (transform['original_width'] as num).toDouble();
     final viewWidth = (transform['view_width'] as num).toDouble();
     final viewHeight = (transform['view_height'] as num).toDouble();
-    if (det == 0 || width <= 0) return const Text('Invalid source transform.');
+    if (det == 0 || width <= 0) {
+      return const Text('The source transform could not be read.');
+    }
     return LayoutBuilder(
       builder: (context, c) {
         final scale = c.maxWidth / width;
@@ -83,8 +86,8 @@ class SourceBasisNotice extends StatelessWidget {
       children: [
         Text(
           basis == 'decoded_heif_primary_pixel_edges'
-              ? 'Coordinates use the decoded HEIF primary image after container orientation. The original HEIC file is retained; mapping to its encoded grid is unavailable.'
-              : 'Source coordinate basis: ${labelOf(basis)}. The preview is a decoded derivative; original file bytes are retained.',
+              ? 'Coordinates use the decoded HEIF primary image after container orientation. The original HEIC file is kept, and mapping to its encoded grid is unavailable.'
+              : 'Source coordinate basis: ${vocabularyLabel(basis)}. The preview is decoded from the original, and the original bytes are kept.',
         ),
         Text(
           'Decoder: ${textOf(processing['codec'])} ${textOf(processing['codec_version'])} · Conversion: ${processing['conversion'] ?? 'Not recorded'}',

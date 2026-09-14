@@ -184,7 +184,7 @@ class RiskMeter extends StatelessWidget {
               SizedBox(height: context.space.space1),
               const CaveatText(
                 label: 'Not calibrated',
-                body:
+                why:
                     'A risk score orders the queue. It is not a probability '
                     'that the record is wrong. Scores never override '
                     'coverage, evidence or validation gates.',

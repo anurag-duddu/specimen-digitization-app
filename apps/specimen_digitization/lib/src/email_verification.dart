@@ -86,8 +86,12 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Open the verification link in your email, then check again. Collection access remains locked until your email and assigned role are verified.',
+                Text(
+                  'Open the link sent to ${access.displayName}, then check again.',
+                ),
+                Text(
+                  'Your collection role is checked separately after verification.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 if (_message != null)
                   Padding(
@@ -105,9 +109,7 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
                           },
                           'Email is not yet verified. Open the verification link and check again.',
                         ),
-                  child: Text(
-                    _busy ? 'Checking…' : 'I verified my email — check again',
-                  ),
+                  child: Text(_busy ? 'Checking…' : 'Check verification again'),
                 ),
                 TextButton(
                   onPressed: _busy

@@ -53,7 +53,7 @@ Widget environmentBanner() =>
 Widget caveat() => _surface(
   const CaveatText(
     label: 'Not calibrated',
-    body:
+    why:
         'A risk score orders the queue. It is not a probability that the '
         'record is wrong.',
   ),

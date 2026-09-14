@@ -129,20 +129,17 @@ void main() {
         );
         expect(
           find.text(
-            'Multiple languages declared together: ${name == 'mixed' ? 'Yes' : 'No'}',
+            'Multiple languages declared together: ${name == 'mixed' ? 'Declared' : 'Not declared'}',
           ),
           findsOneWidget,
         );
         expect(
           find.text(
-            'Conflicting candidate interpretations: ${name == 'conflicting' ? 'Yes' : 'No'}',
+            'Conflicting readings: ${name == 'conflicting' ? 'Recorded' : 'None recorded'}',
           ),
           findsOneWidget,
         );
-        expect(
-          find.text('Language confidence is not measured.'),
-          findsOneWidget,
-        );
+        expect(find.text('Language is not measured.'), findsOneWidget);
         expect(
           find.textContaining('Policy language-handling-v1'),
           findsOneWidget,
@@ -175,7 +172,7 @@ void main() {
       expect(find.text('Current human declaration'), findsOneWidget);
       expect(find.text('Languages: French · Scripts: Latin'), findsOneWidget);
       expect(find.text('Languages: Italian · Scripts: Latin'), findsOneWidget);
-      expect(find.text('Record language and script declaration'), findsNothing);
+      expect(find.text('Record declaration'), findsNothing);
     },
   );
   testWidgets(
@@ -215,14 +212,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Read declaration provenance'));
       await tester.pumpAndSettle();
-      expect(find.text('Record language and script declaration'), findsNothing);
+      expect(find.text('Record declaration'), findsNothing);
       await show(List<dynamic>.from(actions), true);
-      expect(
-        find.text('Record language and script declaration'),
-        findsOneWidget,
-      );
+      expect(find.text('Record declaration'), findsOneWidget);
       await show(List<dynamic>.from(actions), false);
-      expect(find.text('Record language and script declaration'), findsNothing);
+      expect(find.text('Record declaration'), findsNothing);
     },
   );
   testWidgets(
@@ -252,17 +246,17 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save declaration'));
       await tester.pumpAndSettle();
-      expect(find.text('A reason is required.'), findsOneWidget);
+      expect(find.text('Enter a reason for this decision.'), findsOneWidget);
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Language candidates'),
+        find.widgetWithText(TextFormField, 'Languages'),
         'English',
       );
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Script candidates'),
+        find.widgetWithText(TextFormField, 'Scripts'),
         'Latin',
       );
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Reason for declaration'),
+        find.widgetWithText(TextFormField, 'Reason'),
         'Visible two-language source',
       );
       await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
@@ -278,7 +272,7 @@ void main() {
         findsOneWidget,
       );
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Language candidates'),
+        find.widgetWithText(TextFormField, 'Languages'),
         'English\nDeutsch',
       );
       await tester.tap(find.text('Save declaration'));

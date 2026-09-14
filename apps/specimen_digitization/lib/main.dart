@@ -70,8 +70,8 @@ Future<void> main() async {
     setupMessage = error.message;
   } catch (_) {
     setupMessage = localSynthetic
-        ? 'Local synthetic setup could not be completed. Check the demo API configuration.'
-        : 'Application setup could not be completed. Ask your administrator to check Firebase and the API configuration.';
+        ? 'Test setup could not be completed. Check the demo API address.'
+        : 'Setup could not be completed. Ask your administrator to check the sign-in and API configuration.';
   }
   runApp(
     SpecimenDigitizationApp(
@@ -185,7 +185,7 @@ class _ConnectionSetupState extends State<_ConnectionSetup> {
             children: [
               if (widget.synthetic)
                 const Text(
-                  'SYNTHETIC ENVIRONMENT — local fixture access only; not museum-approved records.',
+                  'This is a test environment. Records here are fixtures, not museum records.',
                 ),
               const Icon(Icons.biotech_outlined, size: 56),
               const SizedBox(height: 24),
@@ -201,7 +201,7 @@ class _ConnectionSetupState extends State<_ConnectionSetup> {
               const SizedBox(height: 12),
               Text(
                 widget.setupMessage ??
-                    'Configure Firebase Authentication and the application API to begin.',
+                    'Ask your administrator to finish setting up sign-in and the collection API.',
                 textAlign: TextAlign.center,
               ),
               if (_error != null)

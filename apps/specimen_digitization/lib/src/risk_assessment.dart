@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'vocabulary.dart';
+import 'widgets/caveat_text.dart';
 
 String riskComposite(Json risk) {
   final partial =
@@ -8,8 +10,8 @@ String riskComposite(Json risk) {
       risk['status'] == 'unmeasured' ||
       risk['measurement_complete'] == false;
   return partial || risk['composite'] == null
-      ? 'Unmeasured'
-      : '${risk['composite']} / 100';
+      ? 'Not measured'
+      : '${risk['composite']} of 100';
 }
 
 class ReviewRiskPanel extends StatelessWidget {
@@ -26,12 +28,18 @@ class ReviewRiskPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Review risk${risk['calibrated'] == true ? '' : ' (uncalibrated)'}',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Review risk', style: Theme.of(context).textTheme.titleMedium),
+          if (risk['calibrated'] != true)
+            const CaveatText(
+              label: 'Not calibrated',
+              why:
+                  'A risk score orders the queue. It is not a probability that '
+                  'the record is wrong. Scores never override coverage, evidence '
+                  'or validation checks.',
+            ),
           const Text(
-            'Prioritization only. Scores never override coverage, evidence or validation gates. A partial assessment has no composite score.',
+            'Scores order the queue only. A partial assessment has no overall '
+            'score.',
           ),
           RiskAssessmentDetails(risk: risk),
           if (policy.isNotEmpty)
@@ -54,7 +62,7 @@ class ReviewRiskPanel extends StatelessWidget {
                     '${textOf(item['target_id'])} · ${riskComposite(item)}',
                   ),
                   subtitle: Text(
-                    'Assessment ${labelOf(textOf(item['status']))}',
+                    'Assessment: ${vocabularyLabel(textOf(item['status']))}',
                   ),
                   children: [
                     Padding(
@@ -85,23 +93,25 @@ class RiskAssessmentDetails extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '${labelOf(textOf(risk['scope'], 'specimen'))} · ${textOf(risk['target_id'])}',
+            '${vocabularyLabel(textOf(risk['scope'], 'specimen'))} · ${textOf(risk['target_id'])}',
           ),
           Text(
             riskComposite(risk),
             style: Theme.of(context).textTheme.titleLarge,
           ),
           if (risk['status'] != null)
-            Text('Assessment status: ${labelOf(textOf(risk['status']))}'),
+            Text(
+              'Assessment status: ${vocabularyLabel(textOf(risk['status']))}',
+            ),
           Text(
             'Policy ${textOf(reference['id'], textOf(risk['policy_id']))} · Version ${textOf(reference['version'], textOf(risk['policy_version']))}',
           ),
           Text(
-            'Policy digest: ${textOf(reference['digest'], textOf(risk['policy_digest']))}',
+            'Policy checksum: ${textOf(reference['digest'], textOf(risk['policy_digest']))}',
           ),
           if (risk['policy_resolution_status'] != null)
             Text(
-              'Policy resolution: ${labelOf(textOf(risk['policy_resolution_status']))} · ${labelOf(textOf(risk['policy_resolution_reason']))}',
+              'Policy resolution: ${vocabularyLabel(textOf(risk['policy_resolution_status']))} · ${vocabularyLabel(textOf(risk['policy_resolution_reason']))}',
             ),
           Text(
             'Registry ${textOf(risk['registry_version'])} · Features ${textOf(risk['feature_version'])}',
@@ -111,16 +121,16 @@ class RiskAssessmentDetails extends StatelessWidget {
               builder: (context) {
                 final signal = objectOf(component['signal']);
                 return Text(
-                  '${labelOf(textOf(signal['code']))} · Count ${textOf(signal['count'], 'Unmeasured')} · Weight ${textOf(component['weight'], 'Unmeasured')} · Contribution ${textOf(component['contribution'], 'Unmeasured')}',
+                  '${vocabularyLabel(textOf(signal['code']))} · Count ${textOf(signal['count'], 'Not measured')} · Weight ${textOf(component['weight'], 'Not measured')} · Contribution ${textOf(component['contribution'], 'Not measured')}',
                 );
               },
             ),
           for (final reason in risk['reasons'] as List? ?? [])
-            Text('Reason: ${labelOf(reason.toString())}'),
+            Text('Reason: ${vocabularyLabel(reason.toString())}'),
           if (risk['unmeasured'] is List &&
               (risk['unmeasured'] as List).isNotEmpty)
             Text(
-              'Unmeasured dimensions: ${(risk['unmeasured'] as List).map((s) => labelOf(s.toString())).join(', ')}',
+              'Not measured: ${(risk['unmeasured'] as List).map((s) => vocabularyLabel(s.toString())).join(', ')}',
             ),
           EvidenceDetails(
             title: 'Risk components, versions and calibration',
@@ -144,7 +154,7 @@ class ObservationExecutionDetails extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Reported observation execution',
+            'Reported reading execution',
             style: Theme.of(context).textTheme.titleSmall,
           ),
           Text(
@@ -159,13 +169,14 @@ class ObservationExecutionDetails extends StatelessWidget {
                 : 'Latency: $latency seconds',
           ),
           Text(
-            'Timing basis: ${labelOf(textOf(observation['latency_basis'], 'Not reported'))}',
+            'Timing basis: ${vocabularyLabel(textOf(observation['latency_basis'], 'Not reported'))}',
           ),
           Text(
-            'Finish state: ${labelOf(textOf(observation['finish_state'], 'Not reported'))} · Completion state: ${labelOf(textOf(observation['completion_state'], 'Not reported'))}',
+            'Finish state: ${vocabularyLabel(textOf(observation['finish_state'], 'Not reported'))} · Completion state: ${vocabularyLabel(textOf(observation['completion_state'], 'Not reported'))}',
           ),
-          const Text(
-            'Completion describes processing, not verified transcription accuracy.',
+          const CaveatText(
+            label: 'Completion describes processing only.',
+            why: 'It does not mean the transcription is correct.',
           ),
           Text(
             'Input tokens: ${textOf(observation['input_tokens'], 'Not reported')} · Output tokens: ${textOf(observation['output_tokens'], 'Not reported')}',
@@ -207,16 +218,16 @@ class TranscriptionComparisonSummary extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Comparison: ${labelOf(textOf(status, 'Not reported'))} · Difference fraction: ${measured ? transcription['disagreement_ratio'] : 'Unmeasured'}',
+            'Comparison: ${vocabularyLabel(textOf(status, 'Not reported'))} · Difference fraction: ${measured ? transcription['disagreement_ratio'] : 'Not measured'}',
           ),
           if (status == 'policy_blocked')
             const Text(
               'Comparison limits prevented measurement. This is not agreement.',
             ),
-          const Text('Reading agreement does not establish correctness.'),
+          const Text('Two readings agreeing does not make them right.'),
           for (final reason
               in transcription['alignment_reasons'] as List? ?? [])
-            Text(labelOf(reason.toString())),
+            Text(vocabularyLabel(reason.toString())),
         ],
       ),
     );

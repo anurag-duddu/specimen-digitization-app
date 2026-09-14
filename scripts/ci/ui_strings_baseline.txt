@@ -1,0 +1,8 @@
+# Baselined UI string violations for scripts/ci/check_ui_strings.py.
+#
+# Format: path:line:rule, relative to the repository root.
+# This list is a ratchet. It may shrink, never grow. Read the module
+# docstring of scripts/ci/check_ui_strings.py before editing it.
+#
+# Regenerate line numbers with --write-baseline and confirm that the
+# diff shows only line-number churn, never a new path:line:rule triple.

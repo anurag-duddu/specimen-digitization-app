@@ -93,11 +93,11 @@ void main() {
     await tester.tap(quality);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Upload / resume selected files'),
+      find.text('Upload selected files'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Upload / resume selected files'));
+    await tester.tap(find.text('Upload selected files'));
     await tester.pumpAndSettle();
   }
 

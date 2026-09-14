@@ -42,7 +42,11 @@ void main() {
           status: risk['status'] as String?,
           measurementComplete: risk['measurement_complete'] as bool? ?? true,
         );
-        expect(riskComposite(risk) != 'Unmeasured', measured, reason: '$risk');
+        expect(
+          riskComposite(risk) != 'Not measured',
+          measured,
+          reason: '$risk',
+        );
       }
     });
   });

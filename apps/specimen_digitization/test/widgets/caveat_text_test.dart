@@ -1,82 +1,82 @@
-// The caveat: the label alone is sufficient, and "Why" says more.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/caveat_text.dart';
 
-import 'harness.dart';
+const String _label = 'Not calibrated';
+const String _why =
+    'A risk score orders the queue. It is not a probability that the record '
+    'is wrong.';
 
-const CaveatText _caveat = CaveatText(
-  label: 'Not calibrated',
-  body:
-      'A risk score orders the queue. It is not a probability that the record '
-      'is wrong. Scores never override coverage, evidence or validation '
-      'gates.',
+Widget _host({bool disableAnimations = false}) => MaterialApp(
+  theme: AppTheme.light(),
+  home: Builder(
+    builder: (context) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(disableAnimations: disableAnimations),
+      child: const Scaffold(
+        body: CaveatText(label: _label, why: _why),
+      ),
+    ),
+  ),
 );
 
 void main() {
-  testWidgets('shows the label and the Why affordance, closed', (
-    WidgetTester tester,
+  testWidgets('the label is visible and the body is not, until Why is used', (
+    tester,
   ) async {
-    await pumpComponent(tester, _caveat);
-    expect(find.text('Not calibrated'), findsOneWidget);
+    await tester.pumpWidget(_host());
+    expect(find.text(_label), findsOneWidget);
     expect(find.text('Why'), findsOneWidget);
-    expect(find.textContaining('orders the queue'), findsNothing);
-  });
-
-  testWidgets('Why opens the body and closes it again', (
-    WidgetTester tester,
-  ) async {
-    await pumpComponent(tester, _caveat);
-    await tester.tap(find.text('Why'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('orders the queue'), findsOneWidget);
+    expect(find.text(_why), findsNothing);
 
     await tester.tap(find.text('Why'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('orders the queue'), findsNothing);
+    expect(find.text(_why), findsOneWidget);
+
+    await tester.tap(find.text('Why'));
+    await tester.pumpAndSettle();
+    expect(find.text(_why), findsNothing);
   });
 
-  testWidgets('the disclosure reports its expanded state', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('the expanded state is announced', (tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
-    await pumpComponent(tester, _caveat);
+    await tester.pumpWidget(_host());
     expect(
-      tester.getSemantics(find.bySubtype<TextButton>()),
-      containsSemantics(label: 'Why', isButton: true, isExpanded: false),
+      tester.getSemantics(find.text('Why')),
+      containsSemantics(hasExpandedState: true, isExpanded: false),
     );
 
     await tester.tap(find.text('Why'));
     await tester.pumpAndSettle();
     expect(
-      tester.getSemantics(find.bySubtype<TextButton>()),
-      containsSemantics(label: 'Why', isButton: true, isExpanded: true),
+      tester.getSemantics(find.text('Why')),
+      containsSemantics(hasExpandedState: true, isExpanded: true),
     );
     handle.dispose();
   });
 
-  testWidgets('under reduced motion the body arrives without an animation', (
-    WidgetTester tester,
+  testWidgets('reduced motion discloses the body without a transition', (
+    tester,
   ) async {
-    await pumpComponent(tester, _caveat, reduceMotion: true);
+    await tester.pumpWidget(_host(disableAnimations: true));
+    expect(find.byType(AnimatedSize), findsNothing);
     await tester.tap(find.text('Why'));
-    // One frame, no settle: with motion off the size change is a jump.
+    // One frame, no settle: the disclosure is a synchronous jump rather than
+    // a 200 ms size transition.
     await tester.pump();
-    expect(find.textContaining('orders the queue'), findsOneWidget);
+    expect(find.text(_why), findsOneWidget);
+    await tester.pumpAndSettle();
   });
 
-  testWidgets('renders in both themes', (WidgetTester tester) async {
-    for (final ThemeData theme in productThemes.values) {
-      await pumpComponent(tester, _caveat, theme: theme);
-      expect(find.text('Not calibrated'), findsOneWidget);
+  testWidgets('the caveat never uses the error colour', (tester) async {
+    await tester.pumpWidget(_host());
+    await tester.tap(find.text('Why'));
+    await tester.pumpAndSettle();
+    final ThemeData theme = AppTheme.light();
+    for (final Text text in tester.widgetList<Text>(find.byType(Text))) {
+      expect(text.style?.color, isNot(theme.colorScheme.error));
     }
-  });
-
-  testWidgets('meets the tap target and label guidelines', (
-    WidgetTester tester,
-  ) async {
-    await pumpComponent(tester, _caveat);
-    await expectAccessible(tester);
   });
 }

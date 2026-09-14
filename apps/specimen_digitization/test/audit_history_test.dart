@@ -40,21 +40,21 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Browse record revisions'));
+    await tester.tap(find.text('Browse record versions'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Revision 1'));
+    await tester.tap(find.text('Version 1'));
     await tester.pumpAndSettle();
-    expect(find.text('Historical revision 1 · read only'), findsOneWidget);
+    expect(find.text('Version 1 · read only'), findsOneWidget);
     expect(
-      find.textContaining('Current review remains revision 3.'),
+      find.textContaining('Your current review is on version 3.'),
       findsOneWidget,
     );
     await tester.ensureVisible(find.text('1 · legacy'));
     await tester.tap(find.text('1 · legacy'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Retained original evidence'), findsOneWidget);
-    await tester.ensureVisible(find.text('Load more revisions'));
-    await tester.tap(find.text('Load more revisions'));
+    await tester.ensureVisible(find.text('Load more versions'));
+    await tester.tap(find.text('Load more versions'));
     await tester.pumpAndSettle();
     expect(calls, [
       [0, 3],
@@ -98,23 +98,23 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('Earlier audit and run evidence through revision 2'),
+      find.textContaining('Earlier audit and run evidence through version 2'),
       findsOneWidget,
     );
     await tester.tap(find.text('31 · review'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Read prior record · revision 2'));
-    await tester.tap(find.text('Read prior record · revision 2'));
+    await tester.ensureVisible(find.text('Read earlier record · version 2'));
+    await tester.tap(find.text('Read earlier record · version 2'));
     await tester.pumpAndSettle();
     expect(find.text('Digest could not be verified'), findsOneWidget);
-    await tester.ensureVisible(find.text('Retry historical record'));
-    await tester.tap(find.text('Retry historical record'));
+    await tester.ensureVisible(find.text('Retry loading version'));
+    await tester.tap(find.text('Retry loading version'));
     await tester.pumpAndSettle();
     expect(calls, [
       [2, 'r2', 'b' * 64],
       [2, 'r2', 'b' * 64],
     ]);
-    expect(find.text('Historical revision 2 · read only'), findsOneWidget);
+    expect(find.text('Version 2 · read only'), findsOneWidget);
   });
   testWidgets('late response cannot survive scope replacement', (tester) async {
     final pending = Completer<Specimen>();
@@ -133,9 +133,9 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Browse record revisions'));
+    await tester.tap(find.text('Browse record versions'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Revision 1'));
+    await tester.tap(find.text('Version 1'));
     await tester.pump();
     await tester.pumpWidget(
       host(
@@ -154,7 +154,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('PRIVATE_OLD_SCOPE'), findsNothing);
-    expect(find.text('Historical revision 1 · read only'), findsNothing);
+    expect(find.text('Version 1 · read only'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

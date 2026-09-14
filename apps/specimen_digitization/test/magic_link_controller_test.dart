@@ -310,7 +310,7 @@ void main() {
       expect(access.completed, isEmpty);
       expect(c.handlingLink, false);
       expect(browser.clearCount, 1);
-      expect(c.message, contains('invalid'));
+      expect(c.message, contains('cannot be used'));
     });
   }
   test('SDK rejects malformed link even if URL shape is valid', () async {
@@ -334,7 +334,10 @@ void main() {
         expect(c.initialized, true);
         expect(c.busy, false);
         expect(c.handlingLink, false);
-        expect(c.message, 'This sign-in link is invalid. Request a new link.');
+        expect(
+          c.message,
+          'This sign-in link cannot be used. Request a new link.',
+        );
         expect(browser.clearCount, 1);
         expect(access.completed, isEmpty);
         await c.send('staff@fieldmuseum.org');
@@ -355,7 +358,10 @@ void main() {
         await c.initialize();
         expect(c.initialized, true);
         expect(c.handlingLink, false);
-        expect(c.message, 'This sign-in link is invalid. Request a new link.');
+        expect(
+          c.message,
+          'This sign-in link cannot be used. Request a new link.',
+        );
         expect(browser.clearCount, 1);
         expect(access.completed, isEmpty);
       },

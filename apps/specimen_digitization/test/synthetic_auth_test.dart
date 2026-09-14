@@ -46,7 +46,7 @@ void main() {
         setupMessage: 'Local synthetic setup failed.',
       ),
     );
-    expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
+    expect(find.textContaining('This is a test environment'), findsOneWidget);
     expect(find.text('Local synthetic setup failed.'), findsOneWidget);
   });
   test(
@@ -138,7 +138,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();
       expect(find.textContaining('rejected the fixture token'), findsOneWidget);
-      expect(find.textContaining('SYNTHETIC ONLY.'), findsOneWidget);
+      expect(find.textContaining('Test data only.'), findsOneWidget);
       expect(find.text('Collection queue'), findsNothing);
       expect(session.signedIn, false);
       offline = true;
@@ -146,7 +146,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
-      expect(find.textContaining('SYNTHETIC ONLY.'), findsOneWidget);
+      expect(find.textContaining('Test data only.'), findsOneWidget);
       expect(session.signedIn, false);
       await tester.pumpWidget(const SizedBox());
       session.dispose();
@@ -172,10 +172,10 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: repo),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
+      expect(find.textContaining('Test environment.'), findsOneWidget);
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(
-        find.textContaining('Your account has no assigned collection'),
+        find.textContaining('You have no collection assigned'),
         findsNothing,
       );
       repo.accessFailure = const ApiFailure(
@@ -189,7 +189,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('Your account has no assigned collection'),
+        find.textContaining('You have no collection assigned'),
         findsNothing,
       );
       repo.accessFailure = null;
@@ -197,10 +197,10 @@ void main() {
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
       expect(
-        find.textContaining('Your account has no assigned collection'),
+        find.textContaining('You have no collection assigned'),
         findsOneWidget,
       );
-      expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
+      expect(find.textContaining('Test environment.'), findsOneWidget);
       repo.empty = false;
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
@@ -214,10 +214,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(
-        find.textContaining('Your account has no assigned collection'),
+        find.textContaining('You have no collection assigned'),
         findsNothing,
       );
-      expect(find.textContaining('SYNTHETIC ENVIRONMENT'), findsOneWidget);
+      expect(find.textContaining('Test environment.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       session.dispose();
     },
