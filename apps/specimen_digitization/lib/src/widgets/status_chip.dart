@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
 import 'specimen_status.dart';
+import 'term_text.dart';
 
 /// A non-interactive chip stating one status.
 class StatusChip extends StatelessWidget {
@@ -71,74 +72,82 @@ class StatusChip extends StatelessWidget {
     // (motion catalog, rows 42, 50, 64, 66 and 68).
     final Duration change = decisive ? motion.standard : motion.quick;
 
-    return Semantics(
-      container: true,
-      label: semantics,
-      excludeSemantics: true,
-      child: AnimatedContainer(
-        duration: change,
-        curve: MotionTokens.standardCurve,
-        decoration: BoxDecoration(
-          color: style.fill,
-          borderRadius: BorderRadius.circular(context.shape.radiusXs),
-          border: Border.all(
-            color: style.content,
-            width: context.shape.strokeBoundary,
+    // The status word is a domain term, so the chip is its own definition
+    // affordance (pass criterion 10.2). The spoken phrase keeps the
+    // vocabulary prefix criterion 4.16 asks for, so gaining a definition
+    // does not cost a screen reader the "Queue:" or "Field:" it had.
+    return TermAffordance(
+      term: style.label,
+      spokenTerm: semantics,
+      child: Semantics(
+        container: true,
+        label: semantics,
+        excludeSemantics: true,
+        child: AnimatedContainer(
+          duration: change,
+          curve: MotionTokens.standardCurve,
+          decoration: BoxDecoration(
+            color: style.fill,
+            borderRadius: BorderRadius.circular(context.shape.radiusXs),
+            border: Border.all(
+              color: style.content,
+              width: context.shape.strokeBoundary,
+            ),
           ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: context.space.space2,
-            vertical: context.space.space1,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              SizedBox.square(
-                dimension: glyph,
-                child: AnimatedSwitcher(
-                  duration: change,
-                  switchInCurve: MotionTokens.standardCurve,
-                  child: style.progress == null
-                      ? Icon(
-                          style.icon,
-                          key: ValueKey<String>('glyph-${style.label}'),
-                          size: glyph,
-                          fill: style.fill01,
-                          color: style.onFill,
-                        )
-                      // A determinate ring reports a measured fraction, so
-                      // it keeps its motion under reduced motion, and its
-                      // key does not change with the value, so the ring is
-                      // never cross-faded with itself (motion, 2.5).
-                      : CircularProgressIndicator(
-                          key: const ValueKey<String>('glyph-progress'),
-                          value: style.progress,
-                          strokeWidth: context.shape.strokeEmphasis,
-                          color: style.onFill,
-                        ),
-                ),
-              ),
-              SizedBox(width: context.space.space1),
-              Flexible(
-                child: AnimatedSwitcher(
-                  duration: change,
-                  switchInCurve: MotionTokens.standardCurve,
-                  layoutBuilder: (Widget? current, List<Widget> previous) =>
-                      Stack(
-                        alignment: AlignmentDirectional.centerStart,
-                        children: <Widget>[...previous, ?current],
-                      ),
-                  child: Text(
-                    label,
-                    key: ValueKey<String>(label),
-                    style: text?.copyWith(color: style.onFill),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: context.space.space2,
+              vertical: context.space.space1,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: glyph,
+                  child: AnimatedSwitcher(
+                    duration: change,
+                    switchInCurve: MotionTokens.standardCurve,
+                    child: style.progress == null
+                        ? Icon(
+                            style.icon,
+                            key: ValueKey<String>('glyph-${style.label}'),
+                            size: glyph,
+                            fill: style.fill01,
+                            color: style.onFill,
+                          )
+                        // A determinate ring reports a measured fraction, so
+                        // it keeps its motion under reduced motion, and its
+                        // key does not change with the value, so the ring is
+                        // never cross-faded with itself (motion, 2.5).
+                        : CircularProgressIndicator(
+                            key: const ValueKey<String>('glyph-progress'),
+                            value: style.progress,
+                            strokeWidth: context.shape.strokeEmphasis,
+                            color: style.onFill,
+                          ),
                   ),
                 ),
-              ),
-            ],
+                SizedBox(width: context.space.space1),
+                Flexible(
+                  child: AnimatedSwitcher(
+                    duration: change,
+                    switchInCurve: MotionTokens.standardCurve,
+                    layoutBuilder: (Widget? current, List<Widget> previous) =>
+                        Stack(
+                          alignment: AlignmentDirectional.centerStart,
+                          children: <Widget>[...previous, ?current],
+                        ),
+                    child: Text(
+                      label,
+                      key: ValueKey<String>(label),
+                      style: text?.copyWith(color: style.onFill),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -718,6 +718,85 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  /// Saves several corrections as one reviewer action under one reason.
+  ///
+  /// Pass criterion 7.2. The wire takes one decision per call, so this is
+  /// still several calls; what it is not is several screen updates. The
+  /// record is replaced once, from the last result, so a reviewer saving
+  /// five corrections sees the version move once instead of five times, and
+  /// the whole batch shares one idempotency key prefix.
+  ///
+  /// Returns how many of [changes] the server accepted.
+  Future<int> mutateBatch(
+    List<Json> changes,
+    String reason, {
+    bool Function(Specimen current, Json change)? stillApplies,
+  }) async {
+    final Specimen? current = _selected;
+    final CollectionScope? scope = _scope;
+    if (current == null || scope == null || _mutating || changes.isEmpty) {
+      return 0;
+    }
+    final int generation = _recordGeneration;
+    final int mutationEpoch = _mutationEpoch;
+    final String prefix =
+        'review-batch-${DateTime.now().microsecondsSinceEpoch}';
+    // One key per decision, memoised on the record version it was sent
+    // against, exactly as `mutate` does for a single decision: a call retried
+    // after an uncertain answer carries the key it carried the first time, so
+    // the server reconciles rather than recording twice. The prefix names the
+    // batch, the key identifies the decision, and the two jobs stay separate.
+    final List<String> payloads = <String>[];
+    String keyFor(Specimen atVersion, Json body, int index) {
+      final String payload = '${atVersion.id}:${atVersion.revision}:$body';
+      payloads.add(payload);
+      return _mutationKeys.putIfAbsent(payload, () => '$prefix-$index');
+    }
+
+    _mutating = true;
+    _error = null;
+    _notify();
+    try {
+      final ReviewBatchResult result = await repository.reviewBatch(
+        scope,
+        current,
+        changes,
+        reason,
+        prefix,
+        stillApplies: stillApplies,
+        keyFor: keyFor,
+      );
+      if (_disposed || generation != _recordGeneration) return result.saved;
+      if (result.saved > 0) _selected = result.specimen;
+      for (final String payload in payloads.take(result.saved)) {
+        _mutationKeys.remove(payload);
+      }
+      return result.saved;
+    } on ReviewBatchFailure catch (failure) {
+      if (_disposed || generation != _recordGeneration) return failure.saved;
+      // What landed, landed. The screen shows the record the server has now
+      // rather than the one the reviewer opened, and the caller reports the
+      // corrections that are still outstanding.
+      if (failure.saved > 0) _selected = failure.specimen;
+      // The key of the call that failed is deliberately retained: its answer
+      // is uncertain, so a retry has to reconcile rather than record twice.
+      for (final String payload in payloads.take(failure.saved)) {
+        _mutationKeys.remove(payload);
+      }
+      _recordFailure(failure.cause);
+      return failure.saved;
+    } catch (error) {
+      if (_disposed || generation != _recordGeneration) return 0;
+      _recordFailure(error);
+      return 0;
+    } finally {
+      if (!_disposed && mutationEpoch == _mutationEpoch) {
+        _mutating = false;
+        _notify();
+      }
+    }
+  }
+
   /// Ends the session.
   Future<void> signOut() async {
     try {

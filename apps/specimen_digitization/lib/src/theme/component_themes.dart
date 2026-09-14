@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'semantic_colors.dart';
 import 'tokens.dart';
 
 /// Rounded rectangle at one of the six radius steps.
@@ -45,92 +46,135 @@ CardThemeData specimenCardTheme(ColorScheme scheme) => CardThemeData(
 
 /// Input fields: a boundary the user must be able to find, so `outline`
 /// rather than `outlineVariant`.
-InputDecorationTheme specimenInputTheme(ColorScheme scheme) =>
-    InputDecorationTheme(
-      filled: true,
-      fillColor: scheme.surfaceContainerLowest,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
-        borderSide: BorderSide(
-          color: scheme.outline,
-          width: ShapeScale.strokeBoundary,
-        ),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
-        borderSide: BorderSide(
-          color: scheme.outline,
-          width: ShapeScale.strokeBoundary,
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
-        borderSide: BorderSide(
-          color: scheme.primary,
-          width: ShapeScale.strokeEmphasis,
-        ),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
-        borderSide: BorderSide(
-          color: scheme.error,
-          width: ShapeScale.strokeBoundary,
-        ),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
-        borderSide: BorderSide(
-          color: scheme.error,
-          width: ShapeScale.strokeEmphasis,
-        ),
-      ),
-    );
-
-/// Buttons are `radius.sm`, not fully rounded, and always carry a 48dp box.
-FilledButtonThemeData specimenFilledButtonTheme() => FilledButtonThemeData(
-  style: FilledButton.styleFrom(
-    minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
-    shape: _shape(ShapeScale.radiusSm),
+InputDecorationTheme specimenInputTheme(
+  ColorScheme scheme,
+  SpecimenColors tokens,
+) => InputDecorationTheme(
+  filled: true,
+  fillColor: scheme.surfaceContainerLowest,
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderSide: BorderSide(
+      color: scheme.outline,
+      width: ShapeScale.strokeBoundary,
+    ),
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderSide: BorderSide(
+      color: scheme.outline,
+      width: ShapeScale.strokeBoundary,
+    ),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderSide: BorderSide(
+      color: scheme.primary,
+      width: ShapeScale.strokeEmphasis,
+    ),
+  ),
+  errorBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderSide: BorderSide(
+      color: scheme.error,
+      width: ShapeScale.strokeBoundary,
+    ),
+  ),
+  focusedErrorBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderSide: BorderSide(
+      color: scheme.error,
+      width: ShapeScale.strokeEmphasis,
+    ),
+  ),
+  // Finding V-8. Material draws the disabled border and the disabled
+  // label at 38 percent of `onSurface`, which measures 2.3:1. A field a
+  // reviewer cannot use still has to be a field they can find.
+  disabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderSide: BorderSide(
+      color: tokens.disabledOutline,
+      width: ShapeScale.strokeBoundary,
+    ),
   ),
 );
 
-OutlinedButtonThemeData specimenOutlinedButtonTheme(ColorScheme scheme) =>
-    OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
+/// Buttons are `radius.sm`, not fully rounded, and always carry a 48dp box.
+///
+/// Every one of these passes the disabled pair explicitly (finding V-8).
+/// A disabled control in this product states why the server forbids the
+/// decision, and Material's 38 percent default draws that sentence at 2.3:1.
+FilledButtonThemeData specimenFilledButtonTheme(SpecimenColors tokens) =>
+    FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
+        shape: _shape(ShapeScale.radiusSm),
+        disabledForegroundColor: tokens.disabledContent,
+        disabledBackgroundColor: tokens.disabledContainer,
+        disabledIconColor: tokens.disabledContent,
+      ),
+    );
+
+OutlinedButtonThemeData specimenOutlinedButtonTheme(
+  ColorScheme scheme,
+  SpecimenColors tokens,
+) => OutlinedButtonThemeData(
+  style:
+      OutlinedButton.styleFrom(
         minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
         shape: _shape(ShapeScale.radiusSm),
         side: BorderSide(
           color: scheme.outline,
           width: ShapeScale.strokeBoundary,
         ),
+        disabledForegroundColor: tokens.disabledContent,
+        disabledIconColor: tokens.disabledContent,
+      ).copyWith(
+        // `styleFrom` has no disabled side, and a disabled outlined button that
+        // keeps the live `outline` border reads as available.
+        side: WidgetStateProperty.resolveWith<BorderSide>(
+          (Set<WidgetState> states) => BorderSide(
+            color: states.contains(WidgetState.disabled)
+                ? tokens.disabledOutline
+                : scheme.outline,
+            width: ShapeScale.strokeBoundary,
+          ),
+        ),
+      ),
+);
+
+TextButtonThemeData specimenTextButtonTheme(SpecimenColors tokens) =>
+    TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
+        shape: _shape(ShapeScale.radiusSm),
+        disabledForegroundColor: tokens.disabledContent,
+        disabledIconColor: tokens.disabledContent,
       ),
     );
 
-TextButtonThemeData specimenTextButtonTheme() => TextButtonThemeData(
-  style: TextButton.styleFrom(
-    minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
-    shape: _shape(ShapeScale.radiusSm),
-  ),
-);
-
-IconButtonThemeData specimenIconButtonTheme() => IconButtonThemeData(
-  style: IconButton.styleFrom(
-    minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
-    iconSize: SizeScale.iconAction,
-  ),
-);
+IconButtonThemeData specimenIconButtonTheme(SpecimenColors tokens) =>
+    IconButtonThemeData(
+      style: IconButton.styleFrom(
+        minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
+        iconSize: SizeScale.iconAction,
+        disabledForegroundColor: tokens.disabledContent,
+      ),
+    );
 
 /// Chips: `radius.xs`, a 1dp boundary, no shadow.
-ChipThemeData specimenChipTheme(ColorScheme scheme) => ChipThemeData(
-  backgroundColor: scheme.surfaceContainerLow,
-  selectedColor: scheme.secondaryContainer,
-  surfaceTintColor: ThemePolicy.noSurfaceTint,
-  shadowColor: ThemePolicy.noSurfaceTint,
-  elevation: 0,
-  pressElevation: 0,
-  side: BorderSide(color: scheme.outline, width: ShapeScale.strokeBoundary),
-  shape: _shape(ShapeScale.radiusXs),
-);
+ChipThemeData specimenChipTheme(ColorScheme scheme, SpecimenColors tokens) =>
+    ChipThemeData(
+      backgroundColor: scheme.surfaceContainerLow,
+      selectedColor: scheme.secondaryContainer,
+      surfaceTintColor: ThemePolicy.noSurfaceTint,
+      shadowColor: ThemePolicy.noSurfaceTint,
+      elevation: 0,
+      pressElevation: 0,
+      disabledColor: tokens.disabledContainer,
+      side: BorderSide(color: scheme.outline, width: ShapeScale.strokeBoundary),
+      shape: _shape(ShapeScale.radiusXs),
+    );
 
 /// Level 3: dialogs sit on `surfaceContainerHigh` in light and `surfaceBright`
 /// in dark, with a scrim behind them.

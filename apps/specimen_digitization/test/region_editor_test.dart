@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
+import 'package:specimen_digitization/src/source_pixels.dart';
+import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'workbench_harness.dart';
 
@@ -407,5 +409,121 @@ void main() {
     await tester.tap(find.text('Save region version'));
     await tester.pumpAndSettle();
     expect(saved!['regions'][0]['bbox'][0], isNot(100));
+  });
+
+  // Finding V-7. On a phone the photograph was a thin strip between the
+  // region chips and the coordinate form, which is not enough to drag a
+  // corner handle on. These four hold the fix the verification report asked
+  // for: a floored preview, the coordinate form behind a disclosure, the
+  // handles still at a full target, and the pointer free path still reachable.
+  group('finding V-7, the editor on a phone', () {
+    Json wideAsset() => <String, dynamic>{
+      'width': 1000,
+      'height': 520,
+      'preview_bytes': File(
+        'test/fixtures/synthetic-wide-label.png',
+      ).readAsBytesSync(),
+    };
+
+    List<Json> oneRegion() => <Json>[
+      <String, dynamic>{
+        'region_id': 'r',
+        'bbox': <num>[100, 52, 700, 312],
+        'order': 0,
+        'rotation_quarter_turns': 0,
+      },
+    ];
+
+    Future<void> pumpPhoneEditor(WidgetTester tester) async {
+      useWindow(tester, compactWindow);
+      await tester.pumpWidget(
+        workbenchHost(
+          Scaffold(
+            appBar: AppBar(title: const Text('Correct label regions')),
+            body: RegionEditorBody(regions: oneRegion(), asset: wideAsset()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the photograph gets the height the report specifies', (
+      WidgetTester tester,
+    ) async {
+      await pumpPhoneEditor(tester);
+      final Finder preview = find.byType(RegionOverlay).first;
+      final Rect band = tester.getRect(
+        find.ancestor(of: preview, matching: find.byType(SizedBox)).last,
+      );
+      expect(
+        band.height,
+        greaterThanOrEqualTo(RegionEditorBody.compactPreviewMinHeight),
+        reason:
+            'the compact preview is floored so a 48 dp handle has room; '
+            'finding V-7',
+      );
+    });
+
+    testWidgets('the preview is the dominant element of the sheet', (
+      WidgetTester tester,
+    ) async {
+      await pumpPhoneEditor(tester);
+      final double image = tester
+          .getSize(find.byType(SourcePixels).first)
+          .height;
+      // Everything that is not the photograph and not the footer now sits
+      // behind one closed disclosure, so nothing else on the scrolled body
+      // is taller than the pixels.
+      expect(find.text('Exact coordinates'), findsNothing);
+      expect(find.widgetWithText(TextFormField, 'Left x'), findsNothing);
+      expect(find.text('Exact coordinates and region order'), findsOneWidget);
+      expect(image, greaterThan(compactWindow.height * 0.15));
+    });
+
+    testWidgets('every corner handle is still a full target', (
+      WidgetTester tester,
+    ) async {
+      await pumpPhoneEditor(tester);
+      final Finder handles = find.bySemanticsLabel(
+        RegExp('Label 1 (top|bottom) (left|right) corner'),
+      );
+      expect(handles, findsNWidgets(4));
+      for (final Element element in handles.evaluate()) {
+        final Size size = tester.getSize(
+          find.byElementPredicate((Element e) => e == element),
+        );
+        expect(size.width, greaterThanOrEqualTo(48));
+        expect(size.height, greaterThanOrEqualTo(48));
+      }
+    });
+
+    testWidgets('the pointer free path is one tap away, and opens on error', (
+      WidgetTester tester,
+    ) async {
+      await pumpPhoneEditor(tester);
+      final Finder disclosure = find.text('Exact coordinates and region order');
+      await tester.ensureVisible(disclosure);
+      await tester.tap(disclosure);
+      await tester.pumpAndSettle();
+      final Finder left = find.widgetWithText(TextFormField, 'Left x');
+      expect(left, findsOneWidget);
+      await tester.enterText(left, '');
+      await tester.pump();
+      // Close it again, then ask to save: the editor has to bring the field
+      // that is wrong back on screen rather than reporting an error about
+      // something the reviewer cannot see.
+      await tester.ensureVisible(disclosure);
+      await tester.tap(disclosure);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, 'Left x'), findsNothing);
+      await tester.ensureVisible(find.text('Save region version'));
+      await tester.tap(find.text('Save region version'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextFormField, 'Left x'), findsOneWidget);
+      expect(
+        find.textContaining('whole pixel numbers before you save'),
+        findsOneWidget,
+      );
+    });
   });
 }

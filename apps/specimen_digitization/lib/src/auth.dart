@@ -6,6 +6,7 @@ import 'api_repository.dart';
 import 'models.dart';
 import 'magic_link.dart';
 import 'magic_link_screen.dart';
+import 'administrator_contact.dart';
 import 'widgets/caveat_text.dart';
 
 abstract class SessionAccess {
@@ -286,7 +287,7 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
                           : 'Sign in',
                     ),
                   ),
-                  if (widget.session is! LocalFixtureSession)
+                  if (widget.session is! LocalFixtureSession) ...<Widget>[
                     const Padding(
                       padding: EdgeInsets.only(top: 16),
                       child: CaveatText(
@@ -298,6 +299,15 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
                             'Both are managed by your collection administrator.',
                       ),
                     ),
+                    // Sign-in is raised before any collection exists, so the
+                    // collection document cannot be read here. The build
+                    // stamp is the only source there is, and this is where it
+                    // earns its keep (pass criterion 10.3).
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: AdministratorContactLine(),
+                    ),
+                  ],
                   if (widget.session is! LocalFixtureSession)
                     TextButton(
                       onPressed: _busy ? null : () => _submit(reset: true),

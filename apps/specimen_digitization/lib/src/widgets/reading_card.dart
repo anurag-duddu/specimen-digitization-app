@@ -11,6 +11,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../theme/icons.dart';
 import 'diff_text.dart';
+import 'term_text.dart';
 
 /// A model reading, its provenance, and what it differs from.
 class ReadingCard extends StatelessWidget {
@@ -80,8 +81,12 @@ class ReadingCard extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (region != null) ...<Widget>[
-                Text(
-                  region,
+                // The region is the part of the photograph this reading was
+                // taken from, which is the word a first-time reviewer asks
+                // about first (pass criterion 10.2).
+                TermText(
+                  'Region',
+                  displayText: region,
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -110,8 +115,9 @@ class ReadingCard extends StatelessWidget {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: <Widget>[
                         Text(modelName, style: theme.textTheme.titleSmall),
-                        Text(
-                          provider,
+                        TermText(
+                          'Provider',
+                          displayText: provider,
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),

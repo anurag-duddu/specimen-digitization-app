@@ -12,6 +12,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../theme/icons.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
+import 'term_text.dart';
 
 /// The three layers of one field value, in reading order.
 enum FieldLayer {
@@ -87,6 +88,28 @@ class FieldRow extends StatelessWidget {
     FieldLayer.standardized => standardized,
   };
 
+  /// The word shown in place of a missing layer.
+  String get _abstention => state.isRecordStatus ? 'Not recorded' : state.label;
+
+  /// Everything the row says, in one phrase.
+  ///
+  /// Written out rather than left to Flutter's merge. Each layer label is now
+  /// its own definition link (pass criterion 10.2), and a node with an action
+  /// of its own is not merged into its parent, so a row that relied on the
+  /// merge would have stopped telling a screen reader what its three layers
+  /// hold. This states it directly, so the row's spoken summary cannot be
+  /// changed by how its children are built.
+  String get _spoken => <String>[
+    required ? '$name, required' : name,
+    for (final FieldLayer layer in FieldLayer.values)
+      '${layer.label}: ${_valueOf(layer) ?? _abstention}',
+  ].map(_withoutTrailingStop).join('. ');
+
+  /// A value that already ends in a full stop does not get a second one.
+  /// "U.S.A." is a real transcription, and "U.S.A.." is not a sentence.
+  static String _withoutTrailingStop(String part) =>
+      part.endsWith('.') ? part.substring(0, part.length - 1) : part;
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -96,7 +119,7 @@ class FieldRow extends StatelessWidget {
       // The field's own name leads the label. Without it twenty rows announce
       // as "Field: supported" and a screen reader user cannot tell which
       // field they are standing on.
-      label: required ? '$name, required' : name,
+      label: _spoken,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: context.space.space2),
         child: Column(
@@ -190,7 +213,10 @@ class _Layer extends StatelessWidget {
             // Wide enough for "Standardized" at `labelSmall`, composed from
             // the grid rather than measured by eye.
             width: context.space.space16 + context.space.space8,
-            child: Text(
+            // "As written", "Read as" and "Standardized" are the three
+            // words this product asks a reviewer to keep apart, so each one
+            // carries its own definition (pass criterion 10.2).
+            child: TermText(
               layer.label,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -254,7 +280,7 @@ class _Abstention extends StatelessWidget {
         // beside its glyph is four pixels wider than a field row on a phone
         // (finding V-1, pass criterion 8.5).
         Flexible(
-          child: Text(
+          child: TermText(
             word,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

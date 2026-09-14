@@ -312,16 +312,38 @@ void main() {
         // workbench correctly refuses region correction on one of those. The
         // editor still has to be laid out at every width, so it is pumped on
         // the product theme the way the app opens it.
-        await pumpGoldenDialog(
-          tester,
-          window: size,
-          brightness: brightness,
-          dialog: RegionEditor(
-            regions: goldenRegions,
-            asset: goldenEditableAsset(),
-          ),
-        );
-        expect(find.byType(RegionEditor), findsOneWidget);
+        //
+        // `showRegionEditor` picks the container from the window class: a
+        // dialog at expanded and above, a full screen route below. The golden
+        // used to pump the dialog at every width, so the compact PNG finding
+        // V-7 was written against showed a container a phone never gets. It
+        // now takes the same branch the app takes.
+        if (size.width >= expandedWindowFloor) {
+          await pumpGoldenDialog(
+            tester,
+            window: size,
+            brightness: brightness,
+            dialog: RegionEditor(
+              regions: goldenRegions,
+              asset: goldenEditableAsset(),
+            ),
+          );
+          expect(find.byType(RegionEditor), findsOneWidget);
+        } else {
+          await pumpGoldenRoute(
+            tester,
+            window: size,
+            brightness: brightness,
+            child: Scaffold(
+              appBar: AppBar(title: const Text('Correct label regions')),
+              body: RegionEditorBody(
+                regions: goldenRegions,
+                asset: goldenEditableAsset(),
+              ),
+            ),
+          );
+          expect(find.byType(RegionEditorBody), findsOneWidget);
+        }
         await expectGoldenFinder(
           tester,
           find.byType(MaterialApp),

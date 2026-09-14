@@ -12,6 +12,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../theme/icons.dart';
 import 'caveat_text.dart';
 import 'not_calibrated_chip.dart';
+import 'term_text.dart';
 
 /// A prioritization score, with the reason it can be trusted only that far.
 class RiskMeter extends StatelessWidget {
@@ -134,8 +135,13 @@ class RiskMeter extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-        Text(
-          text,
+        // "Risk" and "Not measured" are both domain terms, and a score
+        // without its meaning is the thing principle 1.4 forbids
+        // (pass criterion 10.2).
+        TermText(
+          _measured ? 'Risk' : text,
+          trailing: _measured ? text.substring('Risk'.length) : null,
+          spokenTerm: spoken,
           style: compact
               ? theme.textTheme.labelMedium
               : theme.textTheme.titleMedium,

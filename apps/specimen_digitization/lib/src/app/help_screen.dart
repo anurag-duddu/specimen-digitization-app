@@ -11,10 +11,10 @@ import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../administrator_contact.dart';
-import '../models.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
 import '../theme/motion_preference.dart';
+import '../glossary.dart';
 import '../vocabulary.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
@@ -23,19 +23,34 @@ import '../workspace.dart';
 /// section 10; pass criteria 10.1 and 10.4).
 ///
 /// Five steps, because a walkthrough nobody finishes is a walkthrough nobody
-/// read. Each names the control it is about, in the words that control uses,
-/// so the step and the screen agree.
+/// read. Every control is named by the exact words on it, in single quotes,
+/// so a first-time reviewer can match the step to the screen without
+/// guessing which button the sentence meant. `test/screens/help_test.dart`
+/// holds the naming: each quoted control has to exist in the product.
 const List<String> reviewWalkthrough = <String>[
-  'Open a record from the queue. The photograph is the evidence; everything '
-      'else is a claim about it.',
-  'Read the two independent readings side by side. Where they differ, the '
-      'difference is counted rather than hinted at.',
-  'Correct what is wrong in Fields. Corrections collect, and save together '
-      'under one reason.',
-  'Check what blocks clearance. Every entry in that list goes to the control '
-      'that resolves it.',
-  'Approve the record, or confirm label coverage. Both ask for a reason, and '
-      'neither can be taken back.',
+  "Open a record from the queue: tap its row, or press Enter on it. The "
+      "photograph is the evidence; everything else is a claim about it.",
+  "Read the two readings side by side under 'Readings'. Where they differ, "
+      "the difference is counted rather than hinted at.",
+  "Correct what is wrong under 'Fields': tap a layer, then 'Keep this "
+      "correction'. Corrections collect rather than sending one at a time.",
+  "Open the blockers line at the top of the record. Every entry in that list "
+      "goes to the control that resolves it.",
+  "Finish on the decision bar: save the pending changes, which names the "
+      "exact count, then 'Approve record' or 'Confirm label coverage'. Each "
+      "asks for a reason, and none can be taken back.",
+];
+
+/// The controls [reviewWalkthrough] names, in the words the product uses.
+///
+/// Listed once so the walkthrough and the screens cannot drift: a control
+/// renamed without this list being renamed fails the help test.
+const List<String> walkthroughControls = <String>[
+  'Readings',
+  'Fields',
+  'Keep this correction',
+  'Approve record',
+  'Confirm label coverage',
 ];
 
 /// What this build is, for a message to an administrator.
@@ -194,11 +209,27 @@ class _HelpBody extends StatelessWidget {
               SizedBox(height: context.space.space6),
               Text('Glossary', style: theme.textTheme.titleMedium),
               SizedBox(height: context.space.space2),
-              for (final MapEntry<String, String> entry
-                  in userFacingTerms.entries)
+              // One sentence per word, from `glossary.dart`, which is the
+              // same text the term itself opens where it appears
+              // (pass criterion 10.2). The old list paired each word with
+              // the wire value it came from, which is a mapping rather than
+              // a definition.
+              for (final MapEntry<String, String> entry in glossary.entries)
                 Padding(
-                  padding: EdgeInsets.only(bottom: context.space.space1),
-                  child: Text('${entry.value}: ${labelOf(entry.key)}'),
+                  padding: EdgeInsets.only(bottom: context.space.space2),
+                  child: MergeSemantics(
+                    child: Text.rich(
+                      TextSpan(
+                        children: <InlineSpan>[
+                          TextSpan(
+                            text: _sentenceCase(entry.key),
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          TextSpan(text: '. ${entry.value}'),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               SizedBox(height: context.space.space6),
               Text('This build', style: theme.textTheme.titleMedium),
@@ -236,6 +267,9 @@ class _HelpBody extends StatelessWidget {
       ],
     );
   }
+
+  static String _sentenceCase(String value) =>
+      value.isEmpty ? value : '${value[0].toUpperCase()}${value.substring(1)}';
 
   /// The help sheet is pushed over any route, including routes outside the
   /// collection shell, so the controller may be absent.

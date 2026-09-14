@@ -30,7 +30,7 @@ class AppShell extends StatelessWidget {
   /// The routed screen.
   final Widget child;
 
-  /// The widest the app bar's collection dropdown may grow.
+  /// The widest the app bar's collection switcher may grow.
   static const double switcherMaxWidth = 280;
 
   /// The permanent drawer's width, from the Material navigation drawer spec.
@@ -167,19 +167,8 @@ class AppShell extends StatelessWidget {
       actions: <Widget>[
         if (inlineSwitcher)
           Padding(
-            // The vertical space is what keeps the field's floating label
-            // inside the toolbar. An `AppBar` stretches an action to the full
-            // 56 dp height, and an outlined field that tall draws its label
-            // across its own top border, which then sits on the window's top
-            // edge and loses its upper half.
-            padding: EdgeInsets.symmetric(
-              horizontal: context.space.space2,
-              vertical: context.space.space1,
-            ),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: switcherMaxWidth),
-              child: _CollectionDropdown(controller: controller),
-            ),
+            padding: EdgeInsets.symmetric(horizontal: context.space.space2),
+            child: _CollectionSwitcher(controller: controller),
           ),
         IconButton(
           onPressed: controller.loading
@@ -277,6 +266,96 @@ class _CompactTitle extends StatelessWidget {
 }
 
 /// The collection switcher, as a dropdown.
+/// The app bar's collection switcher (finding V-9).
+///
+/// Deliberately not a form field. An `AppBar` stretches an action to the full
+/// 56 dp toolbar, and a 48 dp outlined field, which is the minimum target
+/// size, draws its floating label across its own top border: the label's box
+/// then started 1.5 px above y 0, which a status-bar inset hides on a phone
+/// and a browser toolbar starting at y 0 does not. A menu button has no
+/// floating label to clip, keeps the 48 dp target the theme gives every
+/// button, and fits inside the toolbar at every size class and text scale.
+class _CollectionSwitcher extends StatelessWidget {
+  const _CollectionSwitcher({required this.controller});
+
+  final WorkspaceController controller;
+
+  /// Why the switcher is unavailable, or null when it is available.
+  String? get _blockedReason => controller.mutating
+      ? 'A save is still going out. The collection can change once it lands.'
+      : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final String name = controller.scope?.name ?? 'No collection chosen';
+    final String? blocked = _blockedReason;
+
+    return MenuAnchor(
+      menuChildren: <Widget>[
+        for (final CollectionScope scope in controller.scopes)
+          MenuItemButton(
+            leadingIcon: Icon(
+              scope.key == controller.scope?.key
+                  ? Symbols.check
+                  : Symbols.inventory_2,
+            ),
+            onPressed: () =>
+                context.go(AppRoutes.queueOf(encodeCollectionKey(scope.key))),
+            child: Text(scope.name),
+          ),
+      ],
+      builder: (BuildContext context, MenuController menu, Widget? child) {
+        void toggle() => menu.isOpen ? menu.close() : menu.open();
+        return Semantics(
+          button: true,
+          enabled: blocked == null,
+          label: 'Authorized collection, $name. Switch collection',
+          hint: blocked ?? '',
+          // The node carries the action itself. Excluding the button's own
+          // semantics would otherwise leave a labelled node a screen reader
+          // can read and cannot activate.
+          onTap: blocked == null ? toggle : null,
+          excludeSemantics: true,
+          child: ConstrainedBox(
+            // The cap is on the whole control, padding included, so a long
+            // collection name cannot push the toolbar's other actions out.
+            constraints: const BoxConstraints(
+              maxWidth: AppShell.switcherMaxWidth,
+            ),
+            child: Tooltip(
+              message: blocked ?? 'Switch the authorized collection',
+              child: TextButton(
+                onPressed: blocked != null ? null : toggle,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Icon(
+                      Symbols.arrow_drop_down,
+                      size: context.sizes.iconInline,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The permanent drawer's collection switcher.
+///
+/// A form field is right here and wrong in the app bar: the drawer gives it
+/// its own row with space above the floating label, which is what finding
+/// V-9 was about.
 class _CollectionDropdown extends StatelessWidget {
   const _CollectionDropdown({required this.controller, this.dense = true});
 
