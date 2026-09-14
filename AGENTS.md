@@ -16,6 +16,10 @@ the shared, append-only closeout log.
   validation actually run. Use `Not confirmed` when evidence is unavailable.
 - Do not rewrite or delete another session's entry. Correct an earlier entry by
   appending a dated correction that links back to it.
+- Two branches appending to this file no longer conflict. `.gitattributes`
+  marks it `merge=union`, so Git keeps both sides automatically. That works
+  only while the rule above holds: never edit a region another session wrote,
+  or union will keep both versions of it.
 - A coordinating session may prune only after it has reconciled the entry with
   live Git/GitHub state and confirmed that no uncommitted or unmerged work will
   be lost.
