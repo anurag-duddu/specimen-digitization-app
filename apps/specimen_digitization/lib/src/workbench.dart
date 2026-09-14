@@ -173,16 +173,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       _conflictVersion = null;
       return;
     }
-    if (oldWidget.specimen.revision != widget.specimen.revision) {
-      // Pending work survives a new version, but only where the field has not
-      // moved under the reviewer (blueprint 6.7).
-      final ({List<PendingFieldChange> keep, List<PendingFieldChange> stale})
-      split = reapply(_pending, widget.specimen);
-      _pending = split.keep;
-      if (split.stale.isNotEmpty) _stale = split.stale;
-      if (!_savingLocally) {
-        _conflictVersion = widget.specimen.revision;
-      }
+    if (oldWidget.specimen.revision != widget.specimen.revision &&
+        !_savingLocally) {
+      _reapplyPending();
+      _conflictVersion = widget.specimen.revision;
+    }
+  }
+
+  void _reapplyPending() {
+    final split = reapply(_pending, widget.specimen);
+    _pending = split.keep;
+    if (split.stale.isNotEmpty) {
+      _stale = split.stale;
+      _conflictVersion = widget.specimen.revision;
     }
   }
 
@@ -265,8 +268,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   Future<bool> _send(Json change) async {
     if (_savingLocally || widget.busy) return false;
     _savingLocally = true;
+    bool acknowledged = false;
     try {
-      final bool acknowledged = await widget.onChange(change);
+      acknowledged = await widget.onChange(change);
       // Let the acknowledged record reach this widget before the next item
       // in a batch reads its version or available actions.
       if (mounted) await WidgetsBinding.instance.endOfFrame;
@@ -275,6 +279,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       return false;
     } finally {
       _savingLocally = false;
+      if (mounted) {
+        setState(() {
+          // The fresh readback can include this acknowledged correction and
+          // unrelated concurrent edits. Remove only the acknowledged field
+          // before checking whether the remaining drafts are still current.
+          if (acknowledged && change['kind'] == 'field_correction') {
+            _pending.removeWhere((p) => p.fieldKey == change['target_id']);
+            _stale.removeWhere((p) => p.fieldKey == change['target_id']);
+          }
+          _reapplyPending();
+        });
+      }
     }
   }
 
@@ -305,16 +321,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
     int saved = 0;
     for (final PendingFieldChange change in batch) {
+      // A preceding readback may have invalidated a later draft. Never send
+      // it from the original batch against a newer revision automatically.
+      if (!_pending.contains(change) || blockedReason('field') != null) break;
       final bool landed = await _send(change.toChange(reason));
       if (!mounted) return;
       if (!landed) break;
       saved++;
-      setState(
-        () => _pending = <PendingFieldChange>[
-          for (final PendingFieldChange p in _pending)
-            if (p.fieldKey != change.fieldKey) p,
-        ],
-      );
     }
 
     if (!mounted) return;

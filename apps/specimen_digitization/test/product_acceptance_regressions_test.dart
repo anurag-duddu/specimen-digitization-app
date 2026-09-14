@@ -76,6 +76,22 @@ class ReviewRepository extends TestRepository {
     current = Specimen(<String, dynamic>{
       ...current.data,
       'revision': current.revision + 1,
+      'fields': [
+        for (final field in current.fields)
+          if (change['kind'] == 'field_correction' &&
+              field['field_key'] == change['target_id'])
+            {
+              ...field,
+              'literal_value': change['value'],
+              'state': change['state'],
+              'parsed_value': change['parsed'],
+              'normalized': change['normalized'],
+              'authority_id': change['authority_id'],
+              'evidence_ids': change['evidence_ids'],
+            }
+          else
+            field,
+      ],
     });
     return current;
   }
