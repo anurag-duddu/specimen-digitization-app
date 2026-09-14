@@ -158,7 +158,9 @@ void main() {
     test('is singular for one and plural for the rest', () {
       expect(photographsLabel(1), '1 photograph');
       expect(photographsLabel(0), '0 photographs');
-      expect(photographsLabel(1000), '1000 photographs');
+      expect(photographsLabel(1000), '1,000 photographs');
+      expect(photographsLabel(999), '999 photographs');
+      expect(photographsLabel(1000000), '1,000,000 photographs');
     });
   });
 }

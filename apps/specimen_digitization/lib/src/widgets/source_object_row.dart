@@ -75,7 +75,23 @@ extension SourceObjectStatePresentation on SourceObjectState {
 /// "Object" is the storage model's word, and the vocabulary table has no row
 /// for it (UX writing, rule 7).
 String photographsLabel(int count) =>
-    count == 1 ? '1 photograph' : '$count photographs';
+    count == 1 ? '1 photograph' : '${groupedCount(count)} photographs';
+
+/// A count with thousands separators (UX writing, section 4.14).
+///
+/// This screen is the first in the client to render a number over 999: a
+/// source holds a thousand slides, and the guideline asks for a separator on
+/// every count past that. No localization package is in the dependency set,
+/// and the separator here is the one the guideline itself writes.
+String groupedCount(int count) {
+  final String digits = count.abs().toString();
+  final StringBuffer out = StringBuffer(count < 0 ? '-' : '');
+  for (int index = 0; index < digits.length; index++) {
+    if (index > 0 && (digits.length - index) % 3 == 0) out.write(',');
+    out.write(digits[index]);
+  }
+  return out.toString();
+}
 
 /// The media type as a reviewer reads it: `image/jpeg` becomes `JPEG`.
 ///

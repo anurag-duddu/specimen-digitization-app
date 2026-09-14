@@ -348,7 +348,7 @@ class _Header extends StatelessWidget {
     final String count = photographsLabel(controller.objectCount);
     return captured == null
         ? count
-        : '$count · listed ${relativeAge(captured)}';
+        : '$count · listed ${absoluteTime(captured)}';
   }
 
   @override
@@ -419,7 +419,7 @@ class _Controls extends StatelessWidget {
             // The noun is left off: the budget for a button label is 24
             // characters and "Select all 1000 photographs" is past it. The
             // list above the control is already photographs.
-            label: Text('Select all $reach'),
+            label: Text('Select all ${groupedCount(reach)}'),
           ),
       ],
     );

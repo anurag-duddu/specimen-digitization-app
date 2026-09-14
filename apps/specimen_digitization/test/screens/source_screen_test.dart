@@ -55,7 +55,27 @@ void main() {
     await pumpBrowse(tester, FakeSourceRepository());
 
     expect(find.text('microscopic-slides'), findsOneWidget);
-    expect(find.textContaining('10 photographs'), findsOneWidget);
+    // Absolute, not relative: relative time is allowed only in the queue
+    // list, and when a snapshot was taken decides whether an import will
+    // still bind, so it is a citable value rather than a sense of recency.
+    expect(
+      find.text('10 photographs · listed 14 Sep 2026, 10:22 UTC'),
+      findsOneWidget,
+    );
+    // No relative age anywhere in the header.
+    expect(find.textContaining('ago'), findsNothing);
+  });
+
+  testWidgets('separates a count over 999', (WidgetTester tester) async {
+    await pumpBrowse(
+      tester,
+      FakeSourceRepository(objects: manyObjects(1000), pageSize: 4),
+    );
+
+    // Section 4.14: thousands separators on every count over 999. This is
+    // the first screen in the client to render one.
+    expect(find.textContaining('1,000 photographs'), findsOneWidget);
+    expect(find.text('Select all 1,000'), findsOneWidget);
   });
 
   testWidgets('draws a placeholder rather than fetching originals', (

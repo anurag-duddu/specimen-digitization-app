@@ -40,9 +40,9 @@ void main() {
 
       // A gesture that picked a thousand and one that picked one look
       // identical on screen, so the number is stated in words.
-      expect(find.text('Add 1000 photographs to the queue?'), findsOneWidget);
+      expect(find.text('Add 1,000 photographs to the queue?'), findsOneWidget);
       // The primary button repeats the title's verb and the count.
-      expect(find.text('Add 1000 photographs'), findsOneWidget);
+      expect(find.text('Add 1,000 photographs'), findsOneWidget);
     });
 
     testWidgets('says what the gesture costs', (WidgetTester tester) async {
