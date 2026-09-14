@@ -199,7 +199,7 @@ def test_flush_success_requires_ledger_acceptance_before_original_deadline(
     for span in fixture_spans(capfire):
         processor.on_end(span)
     timely = acknowledged_at < 110
-    assert processor.force_flush() is timely
+    assert processor.force_flush(timeout_millis=10000) is timely
     processor.shutdown()
     assert processor.force_flush() is timely
     assert len(calls) == 1

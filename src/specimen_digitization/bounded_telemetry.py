@@ -12,6 +12,7 @@ import stat
 import threading
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -24,6 +25,17 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 from opentelemetry.sdk.trace import SpanProcessor
 
 HEADER_ALLOWANCE = 8192
+_worker_completion = ContextVar("worker_trace_completion", default=None)
+
+
+def record_child_completion(report):
+    """Keep a child reporting failure sticky even if its SQLite write failed."""
+    retained = _worker_completion.get()
+    if retained is not None:
+        retained["complete"] = retained["complete"] and (
+            type(report) is dict and report.get("configured") is True
+            and report.get("complete") is True
+        )
 
 
 class TraceBudgetError(RuntimeError):
@@ -66,7 +78,7 @@ class Ledger:
                 db.execute("CREATE TABLE config (payload TEXT NOT NULL)")
                 db.execute(
                     "INSERT INTO config VALUES (?)",
-                    (json.dumps({"deadline": deadline, "scope": scope,
+                    (json.dumps({"deadline": deadline, "scope": scope, "completion": True,
                                  "limits": asdict(limits)}),),
                 )
                 db.execute(
@@ -113,6 +125,7 @@ class Ledger:
             config = json.loads(rows[0][0])
             limits = Limits(**config["limits"])
             if (not math.isfinite(config["deadline"])
+                    or type(config["completion"]) is not bool
                     or not re.fullmatch(r"[0-9a-f]{64}", config["scope"])):
                 raise ValueError
             return config, limits
@@ -141,7 +154,27 @@ class Ledger:
             if any(result[key] > getattr(limits, key)
                    for key in ("requests", "records", "request_bytes")):
                 raise TraceBudgetError("invalid_trace_ledger")
-            return dict(result, scope=config["scope"], limits=asdict(limits))
+            retained = _worker_completion.get()
+            complete = config["completion"]
+            if retained is not None and retained["path"] == self.path:
+                complete = complete and retained["complete"]
+            return dict(result, scope=config["scope"], limits=asdict(limits),
+                        completion=complete)
+
+    def record_completion(self, complete):
+        """Retain incomplete process drains independently of HTTP receipts."""
+        if type(complete) is not bool:
+            raise TraceBudgetError("invalid_trace_completion")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            config, _ = self._config(db)
+            if time.monotonic() >= config["deadline"]:
+                raise TraceBudgetError("trace_completion_expired")
+            config["completion"] = config["completion"] and complete
+            db.execute("UPDATE config SET payload=?", (json.dumps(config),))
+            db.commit()
+        if time.monotonic() >= config["deadline"]:
+            raise TraceBudgetError("trace_completion_expired")
 
     def remaining(self):
         with self._connect() as db:
@@ -350,22 +383,31 @@ class MetadataBatchProcessor(SpanProcessor):
                 self.force_flush()
 
     def force_flush(self, timeout_millis=1000):
+        if (type(timeout_millis) not in (int, float) or not math.isfinite(timeout_millis)
+                or timeout_millis <= 0):
+            self.complete = False
+            return False
+        deadline = time.monotonic() + timeout_millis / 1000
         with self.lock:
-            if not self.pending:
-                return self.complete
-            spans, self.pending = self.pending, []
             try:
+                if self.ledger.remaining() <= 0 or time.monotonic() >= deadline:
+                    self.complete = False
+                    return False
+                if not self.pending:
+                    return self.complete
+                spans, self.pending = self.pending, []
                 batch = self.preparer.prepare(spans)
                 if batch is None or not self.ledger.authorize_dispatch(batch):
                     self.complete = False
                     return False
-                remaining = min(self.ledger.remaining(), timeout_millis / 1000, 2.0)
+                remaining = min(self.ledger.remaining(), deadline - time.monotonic(), 2.0)
                 if remaining <= 0:
                     self.complete = False
                     return False
                 with logfire.suppress_instrumentation():
                     status = self.dispatch(batch.body, remaining)
-                if not self.ledger.finish(batch.attempt, status):
+                if (not self.ledger.finish(batch.attempt, status)
+                        or time.monotonic() >= deadline):
                     self.complete = False
             except Exception:
                 self.complete = False
@@ -373,8 +415,9 @@ class MetadataBatchProcessor(SpanProcessor):
 
     def shutdown(self):
         with self.lock:
-            self.force_flush()
+            complete = self.force_flush()
             self.closed = True
+            return complete
 
 
 def bounded_sdk_options(processor):
@@ -433,7 +476,10 @@ def worker_trace_scope():
         owner.workspace / "trace-budget.sqlite3", deadline=owner.deadline, scope=scope,
     )
     os.environ["SPECIMEN_TRACE_LEDGER_PATH"] = str(ledger.path)
+    token = _worker_completion.set({"path": ledger.path, "complete": True})
     try:
-        yield ledger
+        with owner.track_tightening(ledger.tighten):
+            yield ledger
     finally:
+        _worker_completion.reset(token)
         os.environ.pop("SPECIMEN_TRACE_LEDGER_PATH", None)

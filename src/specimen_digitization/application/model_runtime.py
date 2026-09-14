@@ -148,6 +148,7 @@ def invoke_model(adapter, specimen, operation, *, region=None, route=None):
         ),
         4 * 1024 * 1024,
         max_input_bytes=4 * 1024 * 1024,
+        trace_required=True,
     )
     if result.status != "completed" or not result.cleanup_complete:
         raise OperationalBlock("external_outcome_unknown")

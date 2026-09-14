@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = f"us-east4-docker.pkg.dev/{PROJECT}/specimen-runtime"
 PREFIX = f"projects/{PROJECT}/locations/us-east4"
 SECRET = re.compile(rf"projects/{PROJECT}/secrets/[a-zA-Z0-9_-]+/versions/[1-9][0-9]*")
+TRACE_APPROVAL_SHA256 = "06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48"  # pragma: allowlist secret (approval digest)
+TRACE_WRITER_PARENT = f"projects/{PROJECT}/secrets/specimen-worker-logfire"
 API_ENV = {"SPECIMEN_FIREBASE_PROJECT", "SPECIMEN_FIREBASE_PROJECT_NUMBER", "SPECIMEN_FIREBASE_APP_IDS",
            "SPECIMEN_SQL_LOCATION", "SPECIMEN_SQL_SERVICE", "SPECIMEN_SQL_CONNECTOR", "SPECIMEN_GCS_BUCKET",
            "SPECIMEN_CORS_ORIGINS", "SPECIMEN_READINESS_OBJECT", "SPECIMEN_READINESS_GENERATION"}
@@ -367,8 +369,11 @@ def validate_activation_inputs(plan, packet, *, now=None):
 
 
 def validate_worker_trace(value, plan):
-    trace = exact_keys(value, {"version", "project_id", "token_secret", "service_name", "identity_receipt_sha256"}, "worker trace")
-    require(trace["version"] == "worker-trace/v1", "unsupported worker trace binding")
+    keys = {"version", "project_id", "token_secret", "service_name", "identity_receipt_sha256"}
+    if isinstance(value, dict) and value.get("version") == "worker-trace/v2":
+        keys.add("approval_sha256")
+    trace = exact_keys(value, keys, "worker trace")
+    require(trace["version"] in {"worker-trace/v1", "worker-trace/v2"}, "unsupported worker trace binding")
     require(isinstance(trace["project_id"], str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,127}", trace["project_id"]),
             "reviewed existing trace project identity required")
     require(isinstance(trace["service_name"], str) and re.fullmatch(r"[a-z][a-z0-9-]{0,62}", trace["service_name"]),
@@ -376,6 +381,11 @@ def validate_worker_trace(value, plan):
     digest(trace["identity_receipt_sha256"], "trace destination identity receipt")
     require(isinstance(trace["token_secret"], str) and SECRET.fullmatch(trace["token_secret"]),
             "immutable same-project worker trace writer reference required")
+    if trace["version"] == "worker-trace/v2":
+        require(trace["approval_sha256"] == TRACE_APPROVAL_SHA256,
+                "approved bounded trace authority required")
+        require(trace["token_secret"].startswith(TRACE_WRITER_PARENT + "/versions/"),
+                "approved fifth worker trace writer parent required")
     others = {plan["worker"]["launch_secret"], plan["worker"]["manifest_secret"],
               plan["activation"]["profile_secret"], plan["activation"]["hf_secret"]}
     require(trace["token_secret"] not in others, "separate worker trace writer reference required")
@@ -491,6 +501,8 @@ def activation_worker(body, plan, packet, *, now=None):
                    "LOGFIRE_SEND_TO_LOGFIRE": "false", "LOGFIRE_SERVICE_NAME": trace["service_name"],
                    "APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "metadata", "LOGFIRE_HEAD_SAMPLE_RATE": "1.0",
                    "LOGFIRE_DISTRIBUTED_TRACING": "false"}
+        if trace["version"] == "worker-trace/v2":
+            tracing["SPECIMEN_TRACE_APPROVAL_SHA256"] = trace["approval_sha256"]
         container["env"].extend({"name": key, "value": value} for key, value in sorted(tracing.items()))
     body["runExecutionToken"] = "pilot-" + packet["pilot"]["manifest_sha256"][:24]
     return body

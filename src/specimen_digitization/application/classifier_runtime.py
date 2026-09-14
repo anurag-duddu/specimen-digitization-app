@@ -146,6 +146,7 @@ class ConfiguredClassifier:
                     },
                     pinned["config"]["total_deadline_seconds"],
                     65536,
+                    trace_required=True,
                 )
                 if result.status != "completed" or not result.cleanup_complete:
                     raise OperationalBlock("external_outcome_unknown")
