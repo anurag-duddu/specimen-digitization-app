@@ -63,9 +63,14 @@ The original SAM activation lifetime remains at most one hour in both dialects.
 
 ## Worker trace delivery
 
-Approved activation also requires `worker_trace` with version `worker-trace/v1`,
-the reviewed existing `project_id`, a distinct immutable same-project
-`token_secret`, reviewed `service_name`, and `identity_receipt_sha256`. The
+Approved native tracing requires `worker_trace` with version `worker-trace/v2`,
+the reviewed existing `project_id`, the distinct immutable worker writer
+`token_secret`, reviewed `service_name`, `identity_receipt_sha256`, and
+`approval_sha256`. The approval is the original bounded tracing authorization
+`06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`;
+the secret must use the exact `specimen-worker-logfire` parent and an acknowledged
+positive numeric version. Legacy `worker-trace/v1` keeps its five-field template
+compatibility but does not activate the newly approved native transport. The
 private plan pin binds those metadata fields together. The coordinator must
 verify the receipt and actual destination/access; a well-formed digest alone is
 not that evidence. No token value belongs in the plan or launch.
@@ -74,6 +79,9 @@ Only the worker receives the `LOGFIRE_TOKEN` secret reference. Its fixed setting
 select `SPECIMEN_TRACE_EXPORT_MODE=bounded-v1`, copy the exact
 `identity_receipt_sha256` into `SPECIMEN_TRACE_SCOPE_SHA256`, and set
 `LOGFIRE_SEND_TO_LOGFIRE=false` to disable the SDK's default native exporter.
+Version 2 also copies its distinct `approval_sha256` into
+`SPECIMEN_TRACE_APPROVAL_SHA256`; it never substitutes that approval for the
+actual writer identity receipt.
 Metadata capture, production environment, full head sampling and disabled
 incoming distributed tracing remain fixed. The worker creates its shared
 accounting ledger inside the existing supervisor-owned workspace; deployment
@@ -84,8 +92,10 @@ The [additive bounded tracing approval](APPROVED_LOGFIRE_TRACING.md) authorizes
 the reviewed native transport and distinct fifth writer-secret setup. Its approval
 digest is separate from the budget authority and native writer identity receipt.
 Existing four-slot setup history alone still authorizes neither another secret
-version nor an unverified destination. The currently retained local trace controls
-fail closed before SDK configuration when bounded mode is selected; final native
-transport/expiry/flush wiring and independent review remain implementation gates.
+version nor an unverified destination. Explicit writer use and bounded transport
+initialization require the exact approval, verified identity scope and original
+supervised deadline. Imports may read local SDK environment settings; that is
+distinct from initializing an exporter or sending a request. Source implementation
+and independent transport/privacy/completion review remain release gates.
 Actual identity, owned setup, cost admission and delivery evidence remain
 coordinator-owned gates even after the final source is reviewed.
