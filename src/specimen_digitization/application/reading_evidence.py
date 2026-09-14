@@ -14,7 +14,14 @@ import unicodedata
 from pydantic import Field, model_validator
 
 from .authority_registry import Frozen, canonical, digest
+from .reading_declarations import language_keys, script_keys
 from .review_risk import RiskSignal
+
+
+# Distinct declarations of one kind, folded so that the vocabulary a reader drew
+# from is not read as a second candidate. The stored declarations keep whatever
+# each reader actually wrote; only these comparison keys are normalized.
+DECLARATION_KEYS = {"language": language_keys, "script": script_keys}
 
 
 class MetadataDeclaration(Frozen):
@@ -126,16 +133,17 @@ def summarize_reading(
     reading: ReadingEvidenceInput, limits: ReadingLimits = ReadingLimits()
 ) -> ReadingMetadata:
     reference, blocked = _reference(reading, limits)
-    languages = {
-        d.value
-        for d in reading.declarations
-        if d.kind == "language" and d.value is not None
-    }
-    scripts = {
-        d.value
-        for d in reading.declarations
-        if d.kind == "script" and d.value is not None
-    }
+    # One observation carries the model declaration and the latest human
+    # declaration for that same reading, so two forms of one language arrive
+    # here routinely; counting raw label strings would call that two candidates.
+    languages, scripts = (
+        DECLARATION_KEYS[kind](
+            d.value
+            for d in reading.declarations
+            if d.kind == kind and d.value is not None
+        )
+        for kind in ("language", "script")
+    )
     state = lambda values: (
         "unknown"
         if not values
@@ -453,12 +461,15 @@ def reading_risk_evidence(
     ):
         raise ValueError("Metadata does not belong to compared reading versions")
     for kind in ("language", "script"):
-        values = {
+        # Both observations have to have declared the same one language or
+        # script. This is a separate count from either observation's own state,
+        # and it compares across readers, so it folds the vocabulary too.
+        values = DECLARATION_KEYS[kind](
             d.value
             for m in metadata
             for d in m.declarations
             if d.kind == kind and d.value is not None
-        }
+        )
         if (
             len(metadata) != 2
             or len(values) != 1
