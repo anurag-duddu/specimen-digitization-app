@@ -1,9 +1,35 @@
-import 'package:flutter/material.dart';
-import 'models.dart';
-import 'risk_assessment.dart';
-import 'review_context.dart';
-import 'vocabulary.dart';
+/// Authority evidence and phase results (screen blueprints, 6.4).
+///
+/// Authority candidates are cards with a name, an identifier, a relation and
+/// one action; phase results are a stepped list with a lazy "View evidence"
+/// that renders typed proposals. Raw JSON stays behind the shared disclosure
+/// (audit finding H8.1, severity 4).
+library;
 
+import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+
+import 'models.dart';
+import 'review_context.dart';
+import 'risk_assessment.dart';
+import 'screens/workbench/moments.dart';
+import 'theme/icons.dart';
+import 'theme/motion.dart';
+import 'vocabulary.dart';
+import 'widgets/widgets.dart';
+
+/// The phases the server runs, in the order it runs them.
+const List<String> evidencePhases = <String>[
+  'parse',
+  'plan',
+  'lookup',
+  'resolve',
+  'normalize',
+  'validate',
+  'finalize',
+];
+
+/// A payload fetched only when the reviewer asks for it.
 class LazyEvidence extends StatefulWidget {
   const LazyEvidence({
     super.key,
@@ -22,20 +48,22 @@ class _LazyEvidenceState extends State<LazyEvidence> {
   Json? _data;
   String? _error;
   bool _busy = false;
+
   Future<void> _load() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await widget.load();
+      final Json result = await widget.load();
       if (mounted) setState(() => _data = result);
     } catch (e) {
       if (mounted) {
         setState(
           () => _error = e is ApiFailure
               ? e.message
-              : 'Evidence could not be loaded. Retry or check current collection access.',
+              : 'Evidence could not be loaded. Retry or check current '
+                    'collection access.',
         );
       }
     } finally {
@@ -44,29 +72,67 @@ class _LazyEvidenceState extends State<LazyEvidence> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      if (_data == null)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton(
-            onPressed: _busy ? null : _load,
-            child: Text(
-              _busy
-                  ? 'Loading evidence…'
-                  : _error == null
-                  ? widget.label
-                  : 'Retry ${widget.label.toLowerCase()}',
+  Widget build(BuildContext context) {
+    final MotionTokens motion = context.motion;
+    final Widget content = _data == null
+        ? const SizedBox(width: double.infinity)
+        : widget.render(_data!);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (_data == null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            // The footprint does not move while the request is out: the label
+            // swaps for an inline indicator of the same height (motion 44).
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _load,
+              icon: _busy
+                  ? SizedBox.square(
+                      dimension: context.sizes.iconInline,
+                      child: CircularProgressIndicator(
+                        strokeWidth: context.shape.strokeEmphasis,
+                      ),
+                    )
+                  : Icon(
+                      _error == null ? Symbols.visibility : Symbols.refresh,
+                      size: context.sizes.iconInline,
+                    ),
+              label: Text(
+                _busy
+                    ? 'Loading evidence'
+                    : _error == null
+                    ? widget.label
+                    : 'Retry ${widget.label.toLowerCase()}',
+              ),
             ),
           ),
-        ),
-      if (_error != null) Semantics(liveRegion: true, child: Text(_error!)),
-      if (_data != null) widget.render(_data!),
-    ],
-  );
+        if (_error != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _error!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        if (motion.reduced)
+          content
+        else
+          AnimatedSize(
+            duration: motion.standard,
+            curve: MotionTokens.enterCurve,
+            alignment: Alignment.topLeft,
+            child: content,
+          ),
+      ],
+    );
+  }
 }
 
+/// Risk, the phase stepper, and the authority results.
 class EvidencePanel extends StatelessWidget {
   const EvidencePanel({
     super.key,
@@ -79,273 +145,348 @@ class EvidencePanel extends StatelessWidget {
   final Future<Json> Function(ArtifactRequest) load;
   final Future<void> Function(Json) onChange;
   final bool canReview;
+
   Future<void> _select(
     BuildContext context,
     Json metadata,
     Json candidate,
   ) async {
-    final reason = TextEditingController();
-    final form = GlobalKey<FormState>();
-    final result = await showDialog<Json>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Use this match?'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Form(
-              key: form,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '${vocabularyLabel(textOf(metadata['field_key']))}: ${candidate['name']}',
-                  ),
-                  SelectableText(textOf(candidate['identifier'])),
-                  if (candidate['identity'] != null)
-                    EvidenceDetails(
-                      title: 'Qualified authority identity',
-                      value: candidate['identity'],
-                    ),
-                  const Text(
-                    'This uses a saved authority match and reruns the checks that '
-                    'depend on it. The text as written is unchanged and the record '
-                    'is not approved.',
-                  ),
-                  TextFormField(
-                    controller: reason,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Reason',
-                      helperText: reasonHelperText,
-                    ),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? reasonRequired : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (form.currentState!.validate()) {
-                Navigator.pop(context, <String, dynamic>{
-                  'kind': 'authority_resolution',
-                  'target_id': metadata['field_key'],
-                  'tool_id': metadata['tool_id'],
-                  'identifier': candidate['identifier'],
-                  'reason': reason.text.trim(),
-                });
-              }
-            },
-            child: const Text('Use this match'),
-          ),
-        ],
-      ),
+    final String? reason = await showReasonSheet(
+      context,
+      title: 'Use this match?',
+      action: AuthorityCandidateCard.useLabel,
+      consequence:
+          'The saved authority match is applied to '
+          '${vocabularyLabel(textOf(metadata['field_key']))} and the checks '
+          'that depend on it run again.',
+      retained:
+          'The text as written is unchanged and the record is not approved.',
     );
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    reason.dispose();
-    if (result != null && context.mounted) await onChange(result);
+    if (reason == null || !context.mounted) return;
+    await onChange(<String, dynamic>{
+      'kind': 'authority_resolution',
+      'target_id': metadata['field_key'],
+      'tool_id': metadata['tool_id'],
+      'identifier': candidate['identifier'],
+      'reason': reason,
+    });
   }
 
-  Widget _authority(BuildContext context, Json metadata, Json result) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        '${vocabularyLabel(textOf(result['status']))} · Source ${result['source_id']} · ${result['source_version']}',
-      ),
-      Text(
-        'Retrieved ${result['retrieved_at']} · Adapter ${result['adapter_version']}',
-      ),
-      Text('As written: ${textOf(result['literal'])}'),
-      if (result['retry_after_seconds'] != null)
-        Text(
-          'Provider retry instruction: ${result['retry_after_seconds']} seconds',
-        ),
-      for (final reason in result['reasons'] as List? ?? [])
-        Text('• ${vocabularyLabel(reason.toString())}'),
-      for (final candidate in objects(result['candidates']))
-        Card.outlined(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  textOf(candidate['name']),
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                SelectionArea(child: Text(textOf(candidate['identifier']))),
-                Text(
-                  '${vocabularyLabel(textOf(candidate['relation']))}: ${textOf(candidate['reason'])}',
-                ),
-                EvidenceDetails(
-                  title: 'Match identity, context and support',
-                  value: candidate,
-                ),
-                if (canReview &&
-                    ['success', 'ambiguous'].contains(result['status']) &&
-                    (metadata['tool_id'] != 'parties' ||
-                        candidate['identity'] != null))
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () => _select(context, metadata, candidate),
-                      child: const Text('Use this match'),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      if (objects(result['candidates']).isEmpty)
-        const Text('No saved match is available to use.'),
-      EvidenceDetails(
-        title: 'Authority query and captured evidence',
-        value: result,
-      ),
-      if (result['raw_ref'] != null)
-        LazyEvidence(
-          key: ValueKey(
-            'raw:${specimen.id}:${specimen.revision}:${metadata['tool_id']}:${metadata['field_key']}',
-          ),
-          label: 'Read raw authority response',
-          load: () => load(
-            ArtifactRequest(
-              ArtifactKind.authorityRaw,
-              textOf(metadata['tool_id']),
-              fieldKey: textOf(metadata['field_key']),
-              sha256: result['response_sha256'] as String?,
-            ),
-          ),
-          render: (raw) =>
-              EvidenceDetails(title: 'Raw authority response', value: raw),
-        ),
-    ],
-  );
-  @override
-  Widget build(BuildContext context) {
-    final run = objectOf(specimen.data['run']);
-    final phases = objectOf(run['phase_results']);
-    final authorities = objectOf(run['authority_results']);
-    final risk = objectOf(run['review_risk']);
+  Widget _authority(BuildContext context, Json metadata, Json result) {
+    final ThemeData theme = Theme.of(context);
+    final List<Json> candidates = objects(result['candidates']);
+    final bool usable =
+        canReview &&
+        <String>['success', 'ambiguous'].contains(result['status']);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          '${vocabularyLabel(textOf(result['status']))} · Source '
+          '${textOf(result['source_id'])} · ${textOf(result['source_version'])}',
+          style: theme.textTheme.bodySmall,
+        ),
+        Text(
+          'Retrieved ${relativeInstant(result['retrieved_at'])} · Adapter '
+          '${textOf(result['adapter_version'])}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Text('As written: ${textOf(result['literal'])}'),
+        if (result['retry_after_seconds'] != null)
+          Text(
+            'Provider retry instruction: ${result['retry_after_seconds']} '
+            'seconds',
+            style: theme.textTheme.bodySmall,
+          ),
+        for (final Object? reason in result['reasons'] as List? ?? <Object?>[])
+          Text(vocabularyLabel(reason.toString())),
+        SizedBox(height: context.space.space2),
+        for (final Json candidate in candidates)
+          Padding(
+            padding: EdgeInsets.only(bottom: context.space.space2),
+            child: AuthorityCandidateCard(
+              name: textOf(candidate['name']),
+              identifier: textOf(candidate['identifier']),
+              relation: vocabularyLabel(textOf(candidate['relation'])),
+              reason: textOf(candidate['reason'], 'No reason recorded'),
+              authorityName: textOf(metadata['tool_id'], 'Authority'),
+              raw: candidate,
+              onUse:
+                  usable &&
+                      (metadata['tool_id'] != 'parties' ||
+                          candidate['identity'] != null)
+                  ? () => _select(context, metadata, candidate)
+                  : null,
+            ),
+          ),
+        if (candidates.isEmpty)
+          const Text('No saved match is available to use.'),
+        EvidenceDrawer(
+          title: 'Authority query and captured evidence',
+          payload: result,
+        ),
+        if (result['raw_ref'] != null)
+          LazyEvidence(
+            key: ValueKey<String>(
+              'raw:${specimen.id}:${specimen.revision}:${metadata['tool_id']}:${metadata['field_key']}',
+            ),
+            label: 'Read raw authority response',
+            load: () => load(
+              ArtifactRequest(
+                ArtifactKind.authorityRaw,
+                textOf(metadata['tool_id']),
+                fieldKey: textOf(metadata['field_key']),
+                sha256: result['response_sha256'] as String?,
+              ),
+            ),
+            render: (Json raw) =>
+                EvidenceDrawer(title: 'Raw authority response', payload: raw),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final Json run = objectOf(specimen.data['run']);
+    final Json phases = objectOf(run['phase_results']);
+    final Json authorities = objectOf(run['authority_results']);
+    final Json risk = objectOf(run['review_risk']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
         if (risk.isNotEmpty)
           ReviewRiskPanel(
             risk: risk,
             policy: objectOf(run['risk_policy_snapshot']),
           ),
-        if (phases.isNotEmpty)
-          Text(
-            'Evidence steps',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        for (final name in [
-          'parse',
-          'plan',
-          'lookup',
-          'resolve',
-          'normalize',
-          'validate',
-          'finalize',
-        ])
-          if (phases[name] != null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Builder(
-                  builder: (context) {
-                    final metadata = objectOf(phases[name]);
-                    return Column(
+        if (phases.isNotEmpty) ...<Widget>[
+          SizedBox(height: context.space.space4),
+          Text('Evidence steps', style: theme.textTheme.titleMedium),
+          SizedBox(height: context.space.space2),
+          for (final (int i, String name) in evidencePhases.indexed)
+            if (phases[name] != null)
+              _PhaseStep(
+                position: i + 1,
+                name: name,
+                metadata: objectOf(phases[name]),
+                last: name == evidencePhases.last,
+                evidence: LazyEvidence(
+                  key: ValueKey<String>(
+                    'phase:${specimen.id}:${specimen.revision}:$name',
+                  ),
+                  label: 'View evidence',
+                  load: () => load(ArtifactRequest(ArtifactKind.phase, name)),
+                  render: (Json result) =>
+                      _Proposals(name: name, result: result),
+                ),
+              ),
+        ],
+        if (authorities.isNotEmpty) ...<Widget>[
+          SizedBox(height: context.space.space4),
+          Text('Authority evidence', style: theme.textTheme.titleMedium),
+          SizedBox(height: context.space.space2),
+          for (final Object? value in authorities.values)
+            Builder(
+              builder: (BuildContext context) {
+                final Json metadata = objectOf(value);
+                return Card.outlined(
+                  child: Padding(
+                    padding: EdgeInsets.all(context.space.space4),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
                         Text(
-                          '${vocabularyLabel(name)} · ${vocabularyLabel(textOf(metadata['applicability']))}',
+                          '${vocabularyLabel(textOf(metadata['field_key']))} · '
+                          '${metadata['tool_id']} · '
+                          '${vocabularyLabel(textOf(metadata['status']))}',
+                          style: theme.textTheme.titleSmall,
                         ),
-                        Text(vocabularyLabel(textOf(metadata['reason']))),
-                        for (final finding in objects(metadata['findings']))
-                          Text(
-                            '${finding['severity']}: ${vocabularyLabel(textOf(finding['code']))} ${textOf(finding['field_key'], '')}',
-                          ),
                         LazyEvidence(
-                          key: ValueKey(
-                            'phase:${specimen.id}:${specimen.revision}:$name',
+                          key: ValueKey<String>(
+                            'authority:${specimen.id}:${specimen.revision}:${metadata['tool_id']}:${metadata['field_key']}',
                           ),
-                          label: 'Read $name evidence',
-                          load: () =>
-                              load(ArtifactRequest(ArtifactKind.phase, name)),
-                          render: (result) => Column(
-                            children: [
-                              for (final proposal in objects(
-                                result['proposals'],
-                              ))
-                                ListTile(
-                                  title: Text(
-                                    vocabularyLabel(
-                                      textOf(proposal['field_key']),
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    'As written: ${proposal['literal']}\nSuggested match: ${proposal['candidate']}\n${vocabularyLabel(textOf(proposal['relation']))}: ${textOf(proposal['reason'])}',
-                                  ),
-                                ),
-                              EvidenceDetails(
-                                title: 'Complete $name result',
-                                value: result,
-                              ),
-                            ],
+                          label: 'Read authority alternatives',
+                          load: () => load(
+                            ArtifactRequest(
+                              ArtifactKind.authority,
+                              textOf(metadata['tool_id']),
+                              fieldKey: textOf(metadata['field_key']),
+                            ),
                           ),
+                          render: (Json result) =>
+                              _authority(context, metadata, result),
                         ),
                       ],
-                    );
-                  },
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One step of the seven phase run, drawn as a step rather than a card so the
+/// order and the completion read at a glance.
+class _PhaseStep extends StatelessWidget {
+  const _PhaseStep({
+    required this.position,
+    required this.name,
+    required this.metadata,
+    required this.last,
+    required this.evidence,
+  });
+
+  final int position;
+  final String name;
+  final Json metadata;
+  final bool last;
+  final Widget evidence;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final String applicability = textOf(metadata['applicability']);
+    final bool blocked = applicability == 'blocked';
+    final Color accent = blocked
+        ? context.tokens.blockedContent
+        : context.tokens.clearedContent;
+
+    return Semantics(
+      container: true,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Column(
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: context.sizes.iconAction,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: accent,
+                        width: context.shape.strokeEmphasis,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$position',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: accent,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (!last)
+                  Expanded(
+                    child: Container(
+                      width: context.shape.strokeEmphasis,
+                      color: theme.colorScheme.outlineVariant,
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(width: context.space.space3),
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: context.space.space4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      '${vocabularyLabel(name)} · '
+                      '${vocabularyLabel(applicability)}',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    Text(vocabularyLabel(textOf(metadata['reason']))),
+                    for (final Json finding in objects(metadata['findings']))
+                      Text(
+                        '${finding['severity']}: '
+                        '${vocabularyLabel(textOf(finding['code']))} '
+                        '${textOf(finding['field_key'], '')}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    evidence,
+                  ],
                 ),
               ),
             ),
-        for (final value in authorities.values)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Builder(
-                builder: (context) {
-                  final metadata = objectOf(value);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '${vocabularyLabel(textOf(metadata['field_key']))} · ${metadata['tool_id']} · ${vocabularyLabel(textOf(metadata['status']))}',
-                      ),
-                      LazyEvidence(
-                        key: ValueKey(
-                          'authority:${specimen.id}:${specimen.revision}:${metadata['tool_id']}:${metadata['field_key']}',
-                        ),
-                        label: 'Read authority alternatives',
-                        load: () => load(
-                          ArtifactRequest(
-                            ArtifactKind.authority,
-                            textOf(metadata['tool_id']),
-                            fieldKey: textOf(metadata['field_key']),
-                          ),
-                        ),
-                        render: (result) =>
-                            _authority(context, metadata, result),
-                      ),
-                    ],
-                  );
-                },
-              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The typed rendering of a phase payload.
+class _Proposals extends StatelessWidget {
+  const _Proposals({required this.name, required this.result});
+
+  final String name;
+  final Json result;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final List<Json> proposals = objects(result['proposals']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (proposals.isEmpty)
+          Text(
+            'This step proposed nothing.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
+        for (final Json proposal in proposals)
+          Padding(
+            padding: EdgeInsets.only(bottom: context.space.space2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  vocabularyLabel(textOf(proposal['field_key'])),
+                  style: theme.textTheme.titleSmall,
+                ),
+                Text(
+                  'As written: ${textOf(proposal['literal'])}',
+                  style: context.mono.literalDense,
+                ),
+                Text('Suggested match: ${textOf(proposal['candidate'])}'),
+                Text(
+                  '${vocabularyLabel(textOf(proposal['relation']))}: '
+                  '${textOf(proposal['reason'])}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        EvidenceDrawer(
+          title: 'Complete ${vocabularyLabel(name)} result',
+          payload: result,
+        ),
       ],
     );
   }

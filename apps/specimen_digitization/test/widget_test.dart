@@ -4,7 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+
+import 'workbench_harness.dart';
 
 class TestSession implements SessionAccess {
   TestSession({this.signedIn = true});
@@ -226,9 +229,10 @@ void main() {
       find.widgetWithText(TextFormField, 'Password'),
       'fixture-only-password',
     );
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Test environment.'), findsOneWidget);
+    expect(find.textContaining('Synthetic environment.'), findsOneWidget);
     // The queue row sits below the fold, so scroll the queue list to it
     // rather than assuming it was laid out. Row heights move with the type
     // scale, so this must not depend on the header happening to be short.
@@ -280,60 +284,129 @@ void main() {
       await session.controller.close();
     },
   );
-  testWidgets('critical correction requires reason and source support', (
-    tester,
-  ) async {
-    Json? saved;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ReviewWorkbench(
+  testWidgets(
+    'a correction is made in place, batched, and saved with one reason',
+    (tester) async {
+      useWindow(tester, largeWindow);
+      final saved = <Json>[];
+      await tester.pumpWidget(
+        workbenchHost(
+          ReviewWorkbench(
             specimen: fixture,
-            onChange: (c) async => saved = c,
+            onChange: (c) async => saved.add(c),
             onRetry: (_) async {},
             onRefresh: () {},
           ),
         ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fields'));
+      await tester.pumpAndSettle();
+      // Tapping a layer turns it into an editor in place, with the
+      // photograph still on screen (audit finding H6.2).
+      await scrollAndTap(tester, find.byTooltip('Edit as written').first);
+      expect(find.text('Correct Country'), findsOneWidget);
+      await tester.tap(find.text('Keep this correction'));
+      await tester.pumpAndSettle();
+      // Nothing reached the server yet: the correction is pending.
+      expect(saved, isEmpty);
+      expect(find.text('1 pending change'), findsWidgets);
+
+      await tester.tap(find.text('Save 1 pending change').last);
+      await tester.pumpAndSettle();
+      final save = find.descendant(
+        of: find.byType(ReasonForm),
+        matching: find.widgetWithText(FilledButton, 'Save 1 pending change'),
+      );
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+      expect(saved, isEmpty);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Reason'),
+        'No country appears in the original label',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(saved, hasLength(1));
+      expect(saved.single['state'], 'unknown');
+      expect(saved.single['value'], isNull);
+      expect(saved.single['target_id'], 'country');
+      expect(saved.single['reason'], contains('No country'));
+    },
+  );
+
+  testWidgets('five corrections save under one reason, in one action', (
+    tester,
+  ) async {
+    useWindow(tester, largeWindow);
+    final saved = <Json>[];
+    final many = Specimen({
+      ...fixture.data,
+      'fields': [
+        for (var i = 0; i < 5; i++)
+          {
+            'field_key': 'field_$i',
+            'display_name': 'Field $i',
+            'required': true,
+            'state': 'unknown',
+            'literal_value': null,
+          },
+      ],
+      'validation_findings': const <Json>[],
+    });
+    await tester.pumpWidget(
+      workbenchHost(
+        ReviewWorkbench(
+          specimen: many,
+          onChange: (c) async => saved.add(c),
+          onRetry: (_) async {},
+          onRefresh: () {},
+        ),
       ),
     );
-    await tester.scrollUntilVisible(
-      find.text('Fields and evidence'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Fields and evidence'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Country *'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Country *'));
+    await tester.tap(find.text('Fields'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Correct supported value'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Correct supported value'));
+    for (var i = 0; i < 5; i++) {
+      // One row per field: the nth edit control belongs to the nth field.
+      await scrollAndTap(tester, find.byTooltip('Edit as written').at(i));
+      await tester.tap(find.text('Keep this correction'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('5 pending changes'), findsWidgets);
+    await tester.tap(find.text('Save 5 pending changes').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save correction'));
-    await tester.pumpAndSettle();
-    expect(find.text('Enter a reason for this decision.'), findsOneWidget);
-    expect(saved, isNull);
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Reason'),
-      'No country appears in the original label',
+      find.widgetWithText(TextField, 'Reason'),
+      'Nothing on the label supports these fields',
     );
-    await tester.tap(find.text('Save correction'));
     await tester.pumpAndSettle();
-    expect(saved?['state'], 'unknown');
-    expect(saved?['value'], isNull);
-    expect(saved?['reason'], contains('No country'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ReasonForm),
+        matching: find.widgetWithText(FilledButton, 'Save 5 pending changes'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // One reason, one user action. The wire takes one decision per call, so
+    // the batch is five calls carrying the same reason.
+    expect(saved, hasLength(5));
+    expect(saved.map((c) => c['reason']).toSet(), {
+      'Nothing on the label supports these fields',
+    });
+    expect(saved.map((c) => c['target_id']).toSet(), {
+      'field_0',
+      'field_1',
+      'field_2',
+      'field_3',
+      'field_4',
+    });
   });
+
   testWidgets('future field state remains visible and editing is disabled', (
     tester,
   ) async {
+    useWindow(tester, largeWindow);
     final future = Specimen({
       ...fixture.data,
       'fields': [
@@ -346,30 +419,23 @@ void main() {
       ],
     });
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ReviewWorkbench(
-            specimen: future,
-            onChange: (_) async {},
-            onRetry: (_) async {},
-            onRefresh: () {},
-          ),
+      workbenchHost(
+        ReviewWorkbench(
+          specimen: future,
+          onChange: (_) async {},
+          onRetry: (_) async {},
+          onRefresh: () {},
         ),
       ),
     );
-    await tester.scrollUntilVisible(
-      find.text('Fields and evidence'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Fields and evidence'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fields'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Country *'),
-      300,
+      find.text('Country (required)'),
+      200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Country *'));
     await tester.pumpAndSettle();
     expect(
       find.text('This field cannot be edited in this version of the app.'),
@@ -384,89 +450,56 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      tester
-          .widget<ButtonStyleButton>(
-            find
-                .ancestor(
-                  of: find.text('Correct supported value'),
-                  matching: find.byWidgetPredicate(
-                    (w) => w is ButtonStyleButton,
-                  ),
-                )
-                .first,
-          )
-          .onPressed,
-      isNull,
-    );
+    expect(find.byTooltip('Edit as written'), findsNothing);
+    // The state the server sent is still shown, never swallowed.
+    expect(find.text('State unknown'), findsWidgets);
   });
 
-  testWidgets('viewer cannot invoke reviewer controls or run retry', (
+  testWidgets('viewer cannot invoke reviewer controls, and hears why', (
     tester,
   ) async {
+    useWindow(tester, largeWindow);
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ReviewWorkbench(
-            specimen: fixture,
-            canReview: false,
-            canOperate: false,
-            onChange: (_) async {},
-            onRetry: (_) async {},
-            onRefresh: () {},
-          ),
+      workbenchHost(
+        ReviewWorkbench(
+          specimen: fixture,
+          canReview: false,
+          canOperate: false,
+          onChange: (_) async {},
+          onRetry: (_) async {},
+          onRefresh: () {},
         ),
       ),
     );
-    expect(
-      tester
-          .widget<ButtonStyleButton>(
-            find
-                .ancestor(
-                  of: find.text('Approve record'),
-                  matching: find.byWidgetPredicate(
-                    (w) => w is ButtonStyleButton,
-                  ),
-                )
-                .first,
-          )
-          .onPressed,
-      isNull,
+    await tester.pumpAndSettle();
+    for (final label in ['Approve record', 'Confirm label coverage']) {
+      expect(buttonWithLabel(tester, label).onPressed, isNull);
+      final tooltip = find
+          .ancestor(of: find.text(label), matching: find.byType(Tooltip))
+          .evaluate()
+          .map((e) => (e.widget as Tooltip).message)
+          .whereType<String>();
+      expect(
+        tooltip.any((m) => m.contains('does not include reviewing')),
+        isTrue,
+        reason: 'the disabled reason must be on the control itself',
+      );
+    }
+    await tester.tap(find.text('Fields'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Retry processing'),
+      200,
+      scrollable: find.byType(Scrollable).first,
     );
-    expect(
-      tester
-          .widget<ButtonStyleButton>(
-            find
-                .ancestor(
-                  of: find.text('Retry processing'),
-                  matching: find.byWidgetPredicate(
-                    (w) => w is ButtonStyleButton,
-                  ),
-                )
-                .first,
-          )
-          .onPressed,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<ButtonStyleButton>(
-            find
-                .ancestor(
-                  of: find.text('Correct label regions'),
-                  matching: find.byWidgetPredicate(
-                    (w) => w is ButtonStyleButton,
-                  ),
-                )
-                .first,
-          )
-          .onPressed,
-      isNull,
-    );
+    expect(buttonWithLabel(tester, 'Retry processing').onPressed, isNull);
   });
+
   testWidgets(
-    'transcription editor records unreadable state without inventing text',
+    'resolving a transcription keeps both readings on screen and never '
+    'invents text',
     (tester) async {
+      useWindow(tester, largeWindow);
       Json? saved;
       final specimen = Specimen({
         ...fixture.data,
@@ -478,74 +511,71 @@ void main() {
         ],
       });
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ReviewWorkbench(
-              specimen: specimen,
-              onChange: (c) async => saved = c,
-              onRetry: (_) async {},
-              onRefresh: () {},
-            ),
+        workbenchHost(
+          ReviewWorkbench(
+            specimen: specimen,
+            onChange: (c) async => saved = c,
+            onRetry: (_) async {},
+            onRefresh: () {},
           ),
         ),
       );
-      await tester.scrollUntilVisible(
-        find.text('Resolve reading'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(find.text('Resolve reading'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await scrollAndTap(tester, find.text('Resolve transcription'));
+      // Both readings are visible beside the field, not behind it.
+      expect(find.text('Synthetic reading A'), findsWidgets);
+      expect(find.text('Synthetic reading B'), findsWidgets);
+      await tester.tap(find.byType(DropdownButtonFormField<String>).last);
       await tester.pumpAndSettle();
       expect(find.text('Not applicable'), findsNothing);
       await tester.tap(find.text('Unreadable').last);
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Reason'),
+        find.widgetWithText(TextField, 'Reason'),
         'Source damaged; no supported reading',
       );
-      await tester.tap(find.text('Save correction'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Resolve transcription'),
+      );
       await tester.pumpAndSettle();
       expect(saved?['state'], 'unreadable');
       expect(saved?['value'], isNull);
     },
   );
+
   testWidgets(
     'server action list restricts reviews while permitting operator retry',
     (tester) async {
+      useWindow(tester, largeWindow);
       final specimen = Specimen({
         ...fixture.data,
         'available_actions': ['retry'],
       });
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ReviewWorkbench(
-              specimen: specimen,
-              canReview: true,
-              canOperate: true,
-              onChange: (_) async {},
-              onRetry: (_) async {},
-              onRefresh: () {},
-            ),
+        workbenchHost(
+          ReviewWorkbench(
+            specimen: specimen,
+            onChange: (_) async {},
+            onRetry: (_) async {},
+            onRefresh: () {},
           ),
         ),
       );
-      ButtonStyleButton button(String label) =>
-          tester.widget<ButtonStyleButton>(
-            find
-                .ancestor(
-                  of: find.text(label),
-                  matching: find.byWidgetPredicate(
-                    (w) => w is ButtonStyleButton,
-                  ),
-                )
-                .first,
-          );
-      expect(button('Approve record').onPressed, isNull);
-      expect(button('Confirm label coverage').onPressed, isNull);
-      expect(button('Retry processing').onPressed, isNotNull);
+      await tester.pumpAndSettle();
+      expect(buttonWithLabel(tester, 'Approve record').onPressed, isNull);
+      expect(
+        buttonWithLabel(tester, 'Confirm label coverage').onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('Fields'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Retry processing'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(buttonWithLabel(tester, 'Retry processing').onPressed, isNotNull);
     },
   );
 }

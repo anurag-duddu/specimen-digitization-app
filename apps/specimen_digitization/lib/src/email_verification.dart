@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'app/auth_layout.dart';
 import 'auth.dart';
+import 'theme/icons.dart';
 
 /// Email verification is a client gate as well as a server policy. Constructing
 /// the child does not mount it or start repository requests until verified.
@@ -39,26 +41,19 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
     final access = widget.session;
     if (access is FirebaseSession && !access.staffEmailAllowed) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Use a Field Museum account'),
-                const SizedBox(height: 12),
-                const Text('Sign in with your fieldmuseum.org email address.'),
-                if (_message != null)
-                  Semantics(liveRegion: true, child: Text(_message!)),
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _act(access.signOut, 'Signed out.'),
-                  child: const Text('Sign out'),
-                ),
-              ],
+        body: AuthLayout(
+          title: 'Use a Field Museum account',
+          purpose: 'Sign in with your fieldmuseum.org email address.',
+          children: <Widget>[
+            if (_message != null)
+              Semantics(liveRegion: true, child: Text(_message!)),
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () => _act(access.signOut, 'Signed out.'),
+              child: const Text('Sign out'),
             ),
-          ),
+          ],
         ),
       );
     }
@@ -71,65 +66,48 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
     final verification = access as VerifiedEmailAccess;
     return Scaffold(
       appBar: AppBar(title: const Text('Verify your account')),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.mark_email_unread_outlined, size: 48),
-                const SizedBox(height: 16),
-                Text(
-                  'Verify ${access.displayName}',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Open the link sent to ${access.displayName}, then check again.',
-                ),
-                Text(
-                  'Your collection role is checked separately after verification.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                if (_message != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Semantics(liveRegion: true, child: Text(_message!)),
-                  ),
-                FilledButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _act(
-                          () async {
-                            _refreshRequired = true;
-                            await verification.refreshVerification();
-                            _refreshRequired = false;
-                          },
-                          'Email is not yet verified. Open the verification link and check again.',
-                        ),
-                  child: Text(_busy ? 'Checking…' : 'Check verification again'),
-                ),
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _act(
-                          verification.sendVerification,
-                          'Verification email requested. Check your inbox and spam folder.',
-                        ),
-                  child: const Text('Send verification email'),
-                ),
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _act(access.signOut, 'Signed out.'),
-                  child: const Text('Sign out'),
-                ),
-              ],
-            ),
+      body: AuthLayout(
+        wordmark: false,
+        title: 'Verify ${access.displayName}',
+        purpose:
+            'Open the link sent to ${access.displayName}, then check again.',
+        children: <Widget>[
+          Text(
+            'Your collection role is checked separately after verification.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-        ),
+          if (_message != null)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: context.space.space4),
+              child: Semantics(liveRegion: true, child: Text(_message!)),
+            ),
+          FilledButton(
+            onPressed: _busy
+                ? null
+                : () => _act(
+                    () async {
+                      _refreshRequired = true;
+                      await verification.refreshVerification();
+                      _refreshRequired = false;
+                    },
+                    'Email is not yet verified. Open the verification link and check again.',
+                  ),
+            child: Text(_busy ? 'Checking…' : 'Check verification again'),
+          ),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => _act(
+                    verification.sendVerification,
+                    'Verification email requested. Check your inbox and spam folder.',
+                  ),
+            child: const Text('Send verification email'),
+          ),
+          TextButton(
+            onPressed: _busy ? null : () => _act(access.signOut, 'Signed out.'),
+            child: const Text('Sign out'),
+          ),
+        ],
       ),
     );
   }

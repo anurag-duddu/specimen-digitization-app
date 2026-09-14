@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/auth.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/magic_link.dart';
 import 'package:specimen_digitization/src/magic_link_screen.dart';
 import 'package:specimen_digitization/src/workspace.dart';
@@ -146,6 +147,7 @@ void main() {
       await controller.initialize();
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: MagicLinkSignInScreen(access: access, controller: controller),
         ),
       );

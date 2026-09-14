@@ -10,6 +10,8 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/large_record.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
+import 'workbench_harness.dart';
+
 void main() {
   final fixture =
       jsonDecode(
@@ -216,22 +218,21 @@ void main() {
       });
       int loads = 0;
       final value = 'q' * 13000 + '😀 end';
+      useWindow(tester, largeWindow);
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ReviewWorkbench(
-              specimen: record,
-              onChange: (_) async {},
-              onRetry: (_) async {},
-              onRefresh: () {},
-              loadArtifact: (_) async {
-                loads++;
-                return {
-                  'contract_version': 'active-run-v1',
-                  'run': {'observations': value},
-                };
-              },
-            ),
+        workbenchHost(
+          ReviewWorkbench(
+            specimen: record,
+            onChange: (_) async {},
+            onRetry: (_) async {},
+            onRefresh: () {},
+            loadArtifact: (_) async {
+              loads++;
+              return {
+                'contract_version': 'active-run-v1',
+                'run': {'observations': value},
+              };
+            },
           ),
         ),
       );
@@ -244,8 +245,9 @@ void main() {
       await tester.tap(find.text('Load complete evidence'));
       await tester.pumpAndSettle();
       expect(loads, 1);
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
+      // Two sections on a wide window, so the picker is the segmented
+      // control rather than the dropdown (blueprint section 9).
+      expect(find.byType(SegmentedButton<String>), findsOneWidget);
       await tester.tap(find.text('observations').last);
       await tester.pumpAndSettle();
       expect(find.text('Text page 1 of 2'), findsOneWidget);

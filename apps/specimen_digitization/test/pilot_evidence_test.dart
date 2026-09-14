@@ -4,6 +4,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/operational_panel.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 import 'widget_test.dart' show fixture;
+import 'workbench_harness.dart';
 
 void main() {
   testWidgets(
@@ -21,29 +22,19 @@ void main() {
           'coverage',
         ],
       });
+      useWindow(tester, largeWindow);
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ReviewWorkbench(
-              specimen: specimen,
-              onChange: (_) async => fail('No mutation requested'),
-              onRetry: (_) async => fail('No replay permitted'),
-              onRefresh: () {},
-            ),
+        workbenchHost(
+          ReviewWorkbench(
+            specimen: specimen,
+            onChange: (_) async => fail('No mutation requested'),
+            onRetry: (_) async => fail('No replay permitted'),
+            onRefresh: () {},
           ),
         ),
       );
-      ButtonStyleButton button(String label) =>
-          tester.widget<ButtonStyleButton>(
-            find
-                .ancestor(
-                  of: find.text(label),
-                  matching: find.byWidgetPredicate(
-                    (w) => w is ButtonStyleButton,
-                  ),
-                )
-                .first,
-          );
+      await tester.pumpAndSettle();
+      ButtonStyleButton button(String label) => buttonWithLabel(tester, label);
       expect(button('Correct label regions').onPressed, isNull);
       expect(button('Approve record').onPressed, isNull);
       expect(button('Confirm label coverage').onPressed, isNotNull);
@@ -57,26 +48,24 @@ void main() {
     'pilot blocker explains evidence review without offering replay',
     (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: OperationalPanel(
-              specimen: const Specimen({
-                'operational_state': 'processing_blocked',
-                'disposition': null,
-                'run': {'blocker': 'pilot_evidence_review_required'},
-                'available_actions': [
-                  'field',
-                  'transcription',
-                  'reading_metadata',
-                  'coverage',
-                ],
-              }),
-              canOperate: true,
-              busy: false,
-              onAction: (_) async {
-                fail('No run action authorized');
-              },
-            ),
+        scrollingHost(
+          OperationalPanel(
+            specimen: const Specimen({
+              'operational_state': 'processing_blocked',
+              'disposition': null,
+              'run': {'blocker': 'pilot_evidence_review_required'},
+              'available_actions': [
+                'field',
+                'transcription',
+                'reading_metadata',
+                'coverage',
+              ],
+            }),
+            canOperate: true,
+            busy: false,
+            onAction: (_) async {
+              fail('No run action authorized');
+            },
           ),
         ),
       );
