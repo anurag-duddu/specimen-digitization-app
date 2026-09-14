@@ -2679,3 +2679,77 @@ Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2
   Native authority and final-source qualification, PR/merged-main checks, DATA
   and runtime deployment, actual exports and all ten live journeys: Not confirmed.
   Do not activate this checkpoint or infer approval from local green tests.
+
+### 2026-09-14 — independent approved tracing documentation closeout
+
+Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/approved-review-release`, `/private/tmp/specimen-approved-review-release-20260914`, base `2b748ea21896c66320a1e4126095ef1246b8d3e9`, new PR Not confirmed. Frozen three tracing/runbook docs reviewed against exact direct role=user06af8483 approval, immutable V3cf0319a5, prior3303 budget/worker timing and current read-only account receipt1550139b. All18 table rows/arithmetic and exact targets agree; no widening, dropped bound or native readiness claim found. Personal plan/no-overage/30-day Logfire observation does not verify token/delivery or erase liabilities;31-day secret horizon is not expiry, disabled storage still bills, no destruction authorized. Timing/metadata-only/owned secret/protected release/full-ten acceptance gates preserved. Evidence `/private/tmp/specimen-approved-trace-contract-independent-20260914/REVIEW.md` SHA `a4f51c943d70f39b5e54aff4977e456e44f8438129df7a49857177e79dd60b19`, exact three-file hashes/copies and deterministic checks retained. Validation: complete docs and authority/source hash/role/cap comparisons only, no functional suite required. No author edits/native/credential/browser/GitHub/model calls. Executable worker-trace/v2 gate, final transport/privacy/IAM applicability/cost and live readiness remain separate reviews; this qualifies documentation only.
+
+
+
+## 2026-09-14 — runtime_timing V3 transport review preparation
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; preparing independent local-only timing/privacy review for Product's `codex/bounded-logfire-transport`, based on immutable integrated `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Product and integration files were not edited or reviewed while moving. This required closeout is appended only in the original4a25 checkout.
+- Verified exact V3 proposal SHA `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5` and direct approval receipt SHA `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, preserving all original scope/deadline/cost/native gates. The immutable base retains the earlier qualified local telemetry/observability/model source; worker/process changes belong to already integrated timing composition.
+- Matrix and reusable local-only fixtures at `/private/tmp/specimen-native-trace-independent-20260914`. MATRIX.md SHA `7bdc739b4e8cae2ed6dfe61194ba09a24165db4b3a63396d3c614a51e94cc0fb`; PREPARATION.json SHA `8e0771a87308a1bcda19968fda9587466249b106031f19f9ad24c254597aceee`. Four prior independent probe files copied byte-identically, original reports unchanged; Python syntax parsed only. No tests repeated/candidate imported or run; no credentials, socket/network, cloud/model or native effects.
+- Important future test seam: shared ledger uses original root work deadline; each shorter reader effect deadline must constrain that child without prematurely expiring every subsequent child. Matrix covers exact endpoint/identity, final byte/header bounds, all transport/flush phases, SQLite contention, one-use shared accounting, metadata privacy, prompt/SDK/proxy/redirect/retry/background escapes and parent-owned cleanup.
+- Await exact frozen candidate before adapting/running transport tests. Current implementation qualification, native identity/secret/cost/retention, integrated CI and final ten-specimen trace/app acceptance: Not confirmed by this preparation task. Parent retains execution and integration ownership.
+
+
+
+### 2026-09-14 - Additive trace approval documentation and blocked source gate
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch
+  `codex/approved-review-release`, worktree
+  `/private/tmp/specimen-approved-review-release-20260914`, baseline
+  `2b748ea21896c66320a1e4126095ef1246b8d3e9`. No new PR, push or merge.
+- Independently verified direct root-role=user tracing approval at original
+  line 37417, `2026-09-14T06:09:07.640Z`, raw SHA256
+  `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`,
+  exact V3 `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5`.
+  Added approved tracing contract and two runbook links; original 3303 budget
+  authority, human scope, costs/holds and clocks are preserved.
+- Independent documentation review: no actionable findings, all 18 table and
+  accounting checks match. Report
+  `/private/tmp/specimen-approved-trace-contract-independent-20260914/REVIEW.md`,
+  SHA256 `a4f51c943d70f39b5e54aff4977e456e44f8438129df7a49857177e79dd60b19`.
+  Changed-document hooks passed, including both secret scans. First offline
+  hook attempt could not access the installed uv cache; the same read-only
+  documentation check passed after explicit cache access review.
+- Seventeen new synthetic worker-trace/v2 tests recorded 2 expected failures
+  and 15 passes on unchanged 2b (new explicit approval shape unsupported).
+  Automatic approval review then rejected the persistent v2 binding edit
+  because delegated/tool approval evidence was not accepted as trusted direct
+  user instruction in this task. No runtime code changed; no retry or alternate
+  tool applied the rejected patch. Exact new tests were byte-verified and
+  retained outside collection as text before removing only our untracked file.
+- Inert binding packet:
+  `/private/tmp/specimen-trace-binding-proposal-20260914/PROPOSAL.json`,
+  SHA256 `48c2d5e499ae4ff14c1349d078b61bfbae93882e80ba7fb5138a15f2e8b644b5`.
+  Product likewise has only an inert denied-source packet, not a new runtime
+  candidate. Existing runtime_timing reviewer prepared frozen local-only
+  adversarial probes; no candidate/source/native qualification was claimed.
+- A duplicate async approval card was issued before the coordinator's crossed
+  ownership message. No answer or approval was inferred. The user was told it
+  can be disregarded and no further approval is needed here. Root, which has
+  the actual direct user instruction, owns implementation/context resolution;
+  this task remains review-only until root provides final applied source.
+- No token/native/API/browser/ledger/IAM/environment action, transport attempt,
+  paid call, full canonical rerun or deployment. Final tracing implementation,
+  exact-source review, five checks, PR/merge, protected workflows and live
+  original-ten acceptance: Not confirmed. Preserve both worktrees and prior
+  dirty closeout logs; do not prune the source checkpoint or proposal artifacts.
+
+### 2026-09-14 — static review of inert tracing binding proposal
+
+Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; integration branch `codex/approved-review-release`, immutable baseline `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Text-only proposal48c2d5e4/denied patchb9911660/test text e1c9a546 independently reviewed, no actionable static findings. New v2 tracing approval06af remains separate from3303 budget and native identity receipt; full secret regex plus exact fifth-parent prefix retains canonical numeric version/same project, v1 shape unchanged/no new approval env, API/SAM untouched. Reported2RED/15PASS only establishes baseline lacks v2; actual frozen executable must later pass positive/negative cases and retain v1 complete request equivalence. Evidence `/private/tmp/specimen-trace-binding-static-independent-20260914/REVIEW.md` SHA `c1e7adc7a5ac018819891dc087f1edb8749abfe710cff886ef460a24a7fd388a` with immutable input/baseline hashes. No rejected patch applied/executed, tests imported/executed, moving Product worktree inspected, alternate implementation or native/credential action. Automatic approval rejection not retried. Root with direct user instruction owns implementation; future executable/source/privacy/IAM/cost/live qualification remains separate.
+
+
+## 2026-09-14 — DATA independent Hosting attempt and applied trace binding review
+
+- Task: `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; DATA integration `/private/tmp/specimen-approved-review-release-20260914`, branch `codex/approved-review-release`, base `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Original 4a25 and all owner worktrees remain preserved. Native coordinator remains sole owner of credentials, cloud effects, cost/identity admission and live pilot.
+- Hosting source author worked separately in `/private/tmp/specimen-hosting-attempt-binding-20260914`. Parent independently checked five frozen source/test pins in candidate `c2b828bbfd0eea9e5c1edf01d8b9a93977b8bf56e7cd57389379f7e352d21097`. Its exact artifact and public marker now bind repository, SHA, run ID and attempt. Duplicate/malformed markers fail closed. Remaining workflow fields, pinned actions, five-job dependency, environment, permissions, concurrency and timeout compare equal to base. No real Firebase command or credentials were used by the synthetic tests.
+- The same frozen independent tests reproduced 17 failures/one pass on base, then passed all 18 on the candidate. Initial candidate run retained 17 passes and one existing synthetic harness 30-second wall timeout. An external plugin raised only that host subprocess allowance to 120 seconds; product 300-second/60-pass bounds and every frozen test byte stayed unchanged. Final elapsed 39.51 seconds. Review `/private/tmp/specimen-hosting-attempt-independent-20260914/REVIEW.json` SHA `b69e0f2c3f90b7e54a2d76b79d516c73efcdf9c8da63430d46dd9a50888a5352`; artifact manifest `45878e76ad1e886d18b2bb9eab7ebf736b77f13ad8cfcc72c01663f0414c8405`.
+- Hosting author independently reviewed the accompanying runbook change: strict four-argument release smoke, explicitly limited two-argument diagnosis, and full-rerun requirement for a current-attempt build artifact. No actionable finding; reviewed DEPLOYMENT SHA `c88d6c930eae90effe35e578b5aaef0d3756b16339f760c6d90e7ab2ed6cf38f`.
+- Root applied tracing commit `029d2cc4cac219f7a92ce12478978e3a6bd71bd3` is frozen. DATA independently ran the same 17 v2 binding regressions previously retained as inert tests; all passed against actual root source in 1.29 seconds. Review `/private/tmp/specimen-approved-trace-binding-applied-independent-20260914/REVIEW.json` SHA `6c1e2d5b4c5e15116e2f5d9370b9e7fb70b56eedc7c27f6974e3e9b4c5df4940`. This proves only template/binding behavior; independent transport/application review is still running. No private helper or native identity is qualified by these local tests.
+- Refreshed main is `96e8bc8efc802f0fc28f4b18bdfabf7d954213ec` (PR37 writing pass). CI/CD run `34815218118` passed all five checks and Deploy Firebase Hosting; read-only public repository/SHA/title smoke passed. This legacy smoke does not prove strict run/attempt matching. PR34–37 UI/theme/dependency/quality-gate changes must be retained in final integration.
+- Integration coordinator explicitly assigned this DATA task the final combined source/canonical/PR ownership. Final main merge and native acceptance require a stable source window coordinated with root. Full new integrated canonical, candidate PR, final merge, native data/runtime and original-ten application acceptance: Not confirmed.

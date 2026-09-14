@@ -80,9 +80,12 @@ accounting ledger inside the existing supervisor-owned workspace; deployment
 must not set `SPECIMEN_TRACE_LEDGER_PATH`. No endpoint override is allowed.
 API and SAM templates receive neither writer reference nor trace settings.
 
-The currently retained local trace controls fail closed before SDK configuration
-when bounded mode is selected. The separate native transport, final expiry and
-flush wiring, privacy review and actual delivery evidence remain pending; this
-intermediate source is not an activation-ready release. Existing four-slot setup
-history does not by itself authorize another secret version or prove destination
-access. Those native effects and their costs remain coordinator-owned gates.
+The [additive bounded tracing approval](APPROVED_LOGFIRE_TRACING.md) authorizes
+the reviewed native transport and distinct fifth writer-secret setup. Its approval
+digest is separate from the budget authority and native writer identity receipt.
+Existing four-slot setup history alone still authorizes neither another secret
+version nor an unverified destination. The currently retained local trace controls
+fail closed before SDK configuration when bounded mode is selected; final native
+transport/expiry/flush wiring and independent review remain implementation gates.
+Actual identity, owned setup, cost admission and delivery evidence remain
+coordinator-owned gates even after the final source is reviewed.
