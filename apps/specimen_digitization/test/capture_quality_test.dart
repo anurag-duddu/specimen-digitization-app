@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/capture_quality.dart';
 
+import 'widgets/harness.dart';
+
 void main() {
   Uint8List pixels(List<int> values) =>
       Uint8List.fromList(values.expand((v) => [v, v, v, 255]).toList());
@@ -82,5 +84,39 @@ void main() {
       find.textContaining('The server decodes it and records its dimensions.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('the three labelled values carry the calibration boundary', (
+    tester,
+  ) async {
+    await pumpComponent(
+      tester,
+      CaptureQualitySummary(
+        quality: CaptureQuality.measure(pixels([0, 255, 0, 255]), 2, 2),
+      ),
+    );
+    expect(CaptureQualitySummary.labels, hasLength(3));
+    for (final label in CaptureQualitySummary.labels) {
+      expect(find.text(label), findsOneWidget);
+    }
+    expect(find.text(NotCalibratedChip.label), findsOneWidget);
+  });
+
+  testWidgets('an unmeasurable image abstains in all three slots', (
+    tester,
+  ) async {
+    await pumpComponent(tester, const CaptureQualitySummary(quality: null));
+    expect(find.text('Not measured'), findsNWidgets(3));
+    // The boundary stays even when there is nothing to qualify, because a
+    // blank slot must never read as a passing measurement.
+    expect(find.text(NotCalibratedChip.label), findsOneWidget);
+  });
+
+  test('the summary values abstain rather than defaulting to zero', () {
+    expect(CaptureQualitySummary.valuesOf(null), <String>[
+      'Not measured',
+      'Not measured',
+      'Not measured',
+    ]);
   });
 }

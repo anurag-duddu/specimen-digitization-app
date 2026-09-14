@@ -1,17 +1,21 @@
+import 'dart:async';
+
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'firebase_options.dart';
 import 'src/api_repository.dart';
+import 'src/app/app_router.dart';
+import 'src/app/routes.dart';
+import 'src/app/session_notifier.dart';
 import 'src/app_check.dart';
 import 'src/auth.dart';
 import 'src/connection_config.dart';
-import 'src/email_verification.dart';
 import 'src/email_link_browser.dart';
 import 'src/magic_link.dart';
-import 'src/magic_link_screen.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
 import 'src/theme/app_theme.dart';
@@ -84,7 +88,8 @@ Future<void> main() async {
   );
 }
 
-class SpecimenDigitizationApp extends StatelessWidget {
+/// The application: one theme, one router, one workspace controller.
+class SpecimenDigitizationApp extends StatefulWidget {
   const SpecimenDigitizationApp({
     super.key,
     this.session,
@@ -92,134 +97,125 @@ class SpecimenDigitizationApp extends StatelessWidget {
     this.setupMessage,
     this.synthetic = false,
     this.emailLinkBrowser,
+    this.initialLocation = AppRoutes.setup,
   });
+
+  /// A browser for the incoming email sign-in link, on web.
   final EmailLinkBrowser? emailLinkBrowser;
+
+  /// The session, or null in a build with no sign-in configured.
   final SessionAccess? session;
+
+  /// The collection API, or null before one is configured.
   final SpecimenRepository? repository;
-  final String? setupMessage;
-  final bool synthetic;
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Specimen Digitization',
-    initialRoute: '/',
-    debugShowCheckedModeBanner: false,
-    theme: AppTheme.light(),
-    darkTheme: AppTheme.dark(),
-    themeMode: ThemeMode.system,
-    home: session == null
-        ? _ConnectionSetup(setupMessage: setupMessage, synthetic: synthetic)
-        : session is EmailLinkAccess
-        ? EmailLinkEntry(
-            access: session! as EmailLinkAccess,
-            browser: emailLinkBrowser ?? createEmailLinkBrowser(),
-            builder: (context, controller) => controller.handlingLink
-                ? SignInScreen(session: session!, magicLink: controller)
-                : _sessionHome(controller),
-          )
-        : _sessionHome(null),
-  );
 
-  Widget _sessionHome(MagicLinkController? magicLink) => StreamBuilder<bool>(
-    stream: session!.changes,
-    initialData: session!.signedIn,
-    builder: (context, snapshot) => snapshot.data == true
-        ? EmailVerificationGate(
-            session: session!,
-            child: repository == null
-                ? _ConnectionSetup(
-                    setupMessage: setupMessage ?? collectionPendingMessage,
-                    synthetic: synthetic,
-                    session: session,
-                  )
-                : CollectionWorkspace(
-                    key: ValueKey(session!.userId),
-                    repository: repository!,
-                    session: session!,
-                  ),
-          )
-        : SignInScreen(session: session!, magicLink: magicLink),
-  );
-}
-
-class _ConnectionSetup extends StatefulWidget {
-  const _ConnectionSetup({
-    this.setupMessage,
-    this.synthetic = false,
-    this.session,
-  });
+  /// What the build already knows is missing.
   final String? setupMessage;
+
+  /// True for the local fixture build.
   final bool synthetic;
-  final SessionAccess? session;
+
+  /// Where the window starts. A test uses this to open a deep link.
+  final String initialLocation;
 
   @override
-  State<_ConnectionSetup> createState() => _ConnectionSetupState();
+  State<SpecimenDigitizationApp> createState() =>
+      _SpecimenDigitizationAppState();
 }
 
-class _ConnectionSetupState extends State<_ConnectionSetup> {
-  bool _signingOut = false;
-  String? _error;
+class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
+  late final AppSessionNotifier _sessionNotifier;
+  WorkspaceController? _workspace;
+  MagicLinkController? _magicLink;
+  late final GoRouter _router;
 
-  Future<void> _signOut() async {
-    setState(() {
-      _signingOut = true;
-      _error = null;
-    });
-    try {
-      await widget.session!.signOut();
-    } catch (error) {
-      if (mounted) setState(() => _error = authErrorMessage(error));
-    } finally {
-      if (mounted) setState(() => _signingOut = false);
+  @override
+  void initState() {
+    super.initState();
+    _sessionNotifier = AppSessionNotifier(session: widget.session)
+      ..addListener(_sessionChanged);
+    final SessionAccess? session = widget.session;
+    if (session is EmailLinkAccess) {
+      _magicLink = MagicLinkController(
+        access: session as EmailLinkAccess,
+        browser: widget.emailLinkBrowser ?? createEmailLinkBrowser(),
+      );
+      unawaited(_magicLink!.initialize());
+    }
+    final SpecimenRepository? repository = widget.repository;
+    if (session != null && repository != null) {
+      _workspace = WorkspaceController(
+        repository: repository,
+        session: session,
+      );
+    }
+    _router = buildAppRouter(
+      sessionNotifier: _sessionNotifier,
+      controller: _workspace,
+      magicLink: _magicLink,
+      setupMessage: widget.setupMessage,
+      synthetic: widget.synthetic,
+      initialLocation: widget.initialLocation,
+    );
+    _sessionChanged();
+  }
+
+  /// Starts collection loading the moment the session is signed in and
+  /// verified, and never before, so an unverified account sends no token.
+  void _sessionChanged() {
+    if (_sessionNotifier.signedIn && _sessionNotifier.verified) {
+      _workspace?.start();
     }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.synthetic)
-                const Text(
-                  'This is a test environment. Records here are fixtures, not museum records.',
-                ),
-              const Icon(Icons.biotech_outlined, size: 56),
-              const SizedBox(height: 24),
-              Text(
-                'Specimen Digitization',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Collection connection required',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                widget.setupMessage ??
-                    'Ask your administrator to finish setting up sign-in and the collection API.',
-                textAlign: TextAlign.center,
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Semantics(liveRegion: true, child: Text(_error!)),
-                ),
-              if (widget.session != null) ...[
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: _signingOut ? null : _signOut,
-                  child: Text(_signingOut ? 'Signing out…' : 'Sign out'),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
+  void dispose() {
+    _sessionNotifier
+      ..removeListener(_sessionChanged)
+      ..dispose();
+    _router.dispose();
+    _magicLink?.dispose();
+    _workspace?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final WorkspaceController? workspace = _workspace;
+    final Widget app = MaterialApp.router(
+      title: 'Specimen Digitization',
+      debugShowCheckedModeBanner: false,
+      theme: _lightTheme,
+      darkTheme: _darkTheme,
+      themeMode: ThemeMode.system,
+      routerConfig: _router,
+    );
+    return workspace == null
+        ? app
+        : WorkspaceScope(controller: workspace, child: app);
+  }
 }
+
+/// The page transitions the motion document specifies (section 6.1).
+///
+/// The mobile entries restate Flutter's own defaults so a future SDK change is
+/// a visible diff; the desktop and web entries move off the zoom transition
+/// onto the Material 3 forward transition.
+const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
+  builders: <TargetPlatform, PageTransitionsBuilder>{
+    TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+    TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+    TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
+  },
+);
+
+final ThemeData _lightTheme = AppTheme.light().copyWith(
+  pageTransitionsTheme: specimenPageTransitions,
+);
+
+final ThemeData _darkTheme = AppTheme.dark().copyWith(
+  pageTransitionsTheme: specimenPageTransitions,
+);

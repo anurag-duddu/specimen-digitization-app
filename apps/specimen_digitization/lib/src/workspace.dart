@@ -1,221 +1,415 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'auth.dart';
-import 'intake.dart';
-import 'models.dart';
-import 'search_filters.dart';
-import 'vocabulary.dart';
-import 'workbench.dart';
+/// The collection workspace: the state every collection screen reads, and the
+/// shell the router renders it inside (screen blueprints, sections 1 and 3).
+///
+/// The controller lives above the router so a redirect can ask which
+/// collections this account has before a screen is built, and so the queue
+/// keeps its records, its scroll offset and its poll across a route change.
+library;
 
-class CollectionWorkspace extends StatefulWidget {
-  const CollectionWorkspace({
-    super.key,
-    required this.repository,
-    required this.session,
-    this.mode = 'production',
-  });
-  final SpecimenRepository repository;
-  final SessionAccess session;
-  final String mode;
-  @override
-  State<CollectionWorkspace> createState() => _CollectionWorkspaceState();
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import 'app/shell.dart';
+import 'auth.dart';
+import 'models.dart';
+import 'screens/queue/queue_screen.dart';
+import 'widgets/widgets.dart';
+
+/// How often the queue asks the server for the current page.
+const Duration queuePollInterval = Duration(seconds: 20);
+
+/// How long the search field waits after the last keystroke.
+const Duration searchDebounce = Duration(milliseconds: 350);
+
+/// The two collection destinations.
+enum WorkspaceDestination {
+  /// The review queue.
+  queue,
+
+  /// Photograph intake.
+  intake,
 }
 
-class _CollectionWorkspaceState extends State<CollectionWorkspace> {
-  List<CollectionScope> _scopes = [];
+/// A screen level failure: what happened, and the one action that recovers it
+/// (screen blueprints, section 11).
+@immutable
+class WorkspaceError {
+  const WorkspaceError({
+    required this.message,
+    required this.actionLabel,
+    required this.action,
+    this.clearsAccess = false,
+  });
+
+  /// The sentence the banner carries.
+  final String message;
+
+  /// The verb phrase on the banner's single action.
+  final String actionLabel;
+
+  /// What the action does.
+  final Future<void> Function() action;
+
+  /// True when this failure removed collection access, so the banner is the
+  /// only thing left on screen.
+  final bool clearsAccess;
+}
+
+/// The disposition segments over the queue (screen blueprints, section 3).
+///
+/// The key is the wire value; the empty key is every record. A key the search
+/// API treats as an operational state rather than a disposition is sent as
+/// `state`, which is the split `specimenPage` already expects.
+const Map<String, String> queueDispositions = <String, String>{
+  '': 'All',
+  'needs_human_review': 'Needs review',
+  'cleared': 'Cleared',
+  'deferred': 'Deferred',
+  'processing_blocked': 'Blocked',
+  'running': 'Processing',
+};
+
+/// The disposition values the API filters as `disposition`. Everything else in
+/// [queueDispositions] is an operational `state`.
+const Set<String> queueDispositionValues = <String>{
+  'cleared',
+  'needs_human_review',
+  'deferred',
+};
+
+/// Everything the collection screens read and act on.
+///
+/// A `ChangeNotifier` rather than screen state, because the router's redirect,
+/// the shell and the queue all read the same collection list, and because the
+/// queue has to survive a push to a specimen and back.
+class WorkspaceController extends ChangeNotifier {
+  WorkspaceController({
+    required this.repository,
+    required this.session,
+    this.pollInterval = queuePollInterval,
+  });
+
+  /// The collection API.
+  final SpecimenRepository repository;
+
+  /// The signed in account.
+  final SessionAccess session;
+
+  /// How often the queue quietly refreshes.
+  final Duration pollInterval;
+
+  /// The scroll offset of the queue list, kept here so a push to a specimen
+  /// and back returns the reviewer to the row they left.
+  final ScrollController queueScroll = ScrollController();
+
+  List<CollectionScope> _scopes = <CollectionScope>[];
   CollectionScope? _scope;
-  List<Specimen> _items = [];
-  Specimen? _selected;
-  String _query = '';
-  Map<String, String> _filters = {};
-  String? _nextCursor;
-  final _seenCursors = <String>{};
-  bool _loadingMore = false;
-  String _filter = '';
-  String? _error;
-  bool _loading = true;
+  bool _scopesLoaded = false;
   bool _scopesVerified = false;
+  bool _started = false;
+
+  List<Specimen> _items = <Specimen>[];
+  Specimen? _selected;
+  String? _selectedId;
+  String? _nextCursor;
+  final Set<String> _seenCursors = <String>{};
+  DateTime? _updatedAt;
+
+  String _query = '';
+  String _disposition = '';
+  Map<String, String> _filters = <String, String>{};
+
+  bool _loading = true;
+  bool _loadingMore = false;
   bool _mutating = false;
-  int _page = 0;
+  WorkspaceError? _error;
+
   int _generation = 0;
+  int _holds = 0;
+  SpecimenPage? _deferredPage;
+
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
   Timer? _search;
-  final _searchController = TextEditingController();
-  @override
-  void initState() {
-    super.initState();
-    final repository = widget.repository;
-    if (repository is AccessFailureSource) {
-      _accessSubscription = (repository as AccessFailureSource).accessFailures
-          .listen((failure) {
-            if (!mounted) return;
-            setState(() {
-              _error = _message(failure);
-              _loading = false;
-              _loadingMore = false;
-            });
+  bool _disposed = false;
+
+  final Map<String, String> _mutationKeys = <String, String>{};
+
+  /// The collections this account may open.
+  List<CollectionScope> get scopes =>
+      List<CollectionScope>.unmodifiable(_scopes);
+
+  /// The open collection, if one is resolved.
+  CollectionScope? get scope => _scope;
+
+  /// True once the collection list has been answered, either way.
+  bool get scopesLoaded => _scopesLoaded;
+
+  /// True when the server confirmed the collection list. False after a denial,
+  /// which is not the same as an account with no collections.
+  bool get scopesVerified => _scopesVerified;
+
+  /// The records on screen.
+  List<Specimen> get items => List<Specimen>.unmodifiable(_items);
+
+  /// The record the workbench has open.
+  Specimen? get selected => _selected;
+
+  /// The identifier the workbench route asked for.
+  String? get selectedId => _selectedId;
+
+  /// A cursor for the next page, or null at the end of the results.
+  String? get nextCursor => _nextCursor;
+
+  /// When the records on screen were last answered by the server.
+  DateTime? get updatedAt => _updatedAt;
+
+  /// The exact match search text.
+  String get query => _query;
+
+  /// The selected disposition segment.
+  String get disposition => _disposition;
+
+  /// The filter sheet's values, in the wire format the repository expects.
+  Map<String, String> get filters => Map<String, String>.unmodifiable(_filters);
+
+  /// True while a request that replaces the list is in flight.
+  bool get loading => _loading;
+
+  /// True while another page is being appended.
+  bool get loadingMore => _loadingMore;
+
+  /// True while a decision is being saved.
+  bool get mutating => _mutating;
+
+  /// The screen level failure, if any.
+  WorkspaceError? get error => _error;
+
+  /// The environment name the banner states.
+  String get environment =>
+      session is LocalFixtureSession ? 'synthetic' : repository.mode;
+
+  /// How many records need a person, of those loaded.
+  int get needsReview => _items
+      .where((Specimen s) => s.disposition == 'needs_human_review')
+      .length;
+
+  /// How many loaded records are blocked.
+  int get blocked => _items
+      .where(
+        (Specimen s) => s.state == 'processing_blocked' || s.state == 'blocked',
+      )
+      .length;
+
+  /// True when no search, segment or filter is narrowing the list.
+  bool get unfiltered =>
+      _query.isEmpty && _disposition.isEmpty && _filters.isEmpty;
+
+  /// How many filters the Filters button reports.
+  int get activeFilterCount => _filters.length;
+
+  /// The filters as the repository wants them. Unchanged from before the
+  /// redesign: same keys, same string values.
+  Map<String, String> get activeFilters => <String, String>{
+    ..._filters,
+    if (_query.trim().isNotEmpty) 'specimen_id': _query.trim(),
+    if (_disposition.isNotEmpty)
+      (queueDispositionValues.contains(_disposition) ? 'disposition' : 'state'):
+          _disposition,
+  };
+
+  /// Starts collection loading once, after the session is signed in and
+  /// verified. Called by the app, never by a screen, so an unverified account
+  /// never reaches the collection API.
+  void start() {
+    if (_started || _disposed) return;
+    _started = true;
+    final SpecimenRepository source = repository;
+    if (source is AccessFailureSource) {
+      _accessSubscription = (source as AccessFailureSource).accessFailures
+          .listen((ApiFailure failure) {
+            if (_disposed) return;
+            _loading = false;
+            _loadingMore = false;
+            _recordFailure(failure);
+            notifyListeners();
           });
     }
-    _initialize();
-    _poll = Timer.periodic(const Duration(seconds: 20), (_) {
+    unawaited(checkAccess());
+    _poll = Timer.periodic(pollInterval, (_) {
       if (!_mutating &&
           !_loading &&
+          !_loadingMore &&
           _scope != null &&
-          _page == 0 &&
-          _selected == null &&
-          _seenCursors.isEmpty &&
-          !_loadingMore) {
-        _refresh(quiet: true);
+          _seenCursors.isEmpty) {
+        unawaited(refresh(quiet: true));
       }
     });
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _accessSubscription?.cancel();
     _poll?.cancel();
     _search?.cancel();
-    _searchController.dispose();
+    queueScroll.dispose();
     super.dispose();
   }
 
-  Future<void> _initialize() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _scopesVerified = false;
-      _scopes = [];
-      _scope = null;
-      _items = [];
-      _selected = null;
-      ++_generation;
-    });
-    final generation = _generation;
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  /// Holds the list still while a row has focus or a sheet is open, so a quiet
+  /// poll never moves what the reviewer is looking at (blueprints, section 3).
+  void holdList() => _holds++;
+
+  /// Releases one hold and applies whatever the poll answered meanwhile.
+  void releaseList() {
+    if (_holds > 0) _holds--;
+    final SpecimenPage? deferred = _deferredPage;
+    if (_holds == 0 && deferred != null) {
+      _deferredPage = null;
+      _applyPage(deferred);
+      _notify();
+    }
+  }
+
+  /// True while the list is held.
+  bool get listHeld => _holds > 0;
+
+  /// Loads the collection list, or reloads it after a denial.
+  Future<void> checkAccess() async {
+    _loading = true;
+    _error = null;
+    _scopesVerified = false;
+    _scopes = <CollectionScope>[];
+    _scope = null;
+    _items = <Specimen>[];
+    _selected = null;
+    _generation++;
+    _notify();
+    final int generation = _generation;
     try {
-      final scopes = await widget.repository.scopes();
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        _scopesVerified = true;
-        _scopes = scopes;
-        _scope = scopes.firstOrNull;
-        _loading = false;
-      });
-      if (_scope != null) await _refresh();
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(() {
-          _error = _message(e);
-          _loading = false;
-        });
-      }
+      final List<CollectionScope> scopes = await repository.scopes();
+      if (_disposed || generation != _generation) return;
+      _scopesVerified = true;
+      _scopesLoaded = true;
+      _scopes = scopes;
+      _scope = scopes.isEmpty ? null : scopes.first;
+      _loading = false;
+      _notify();
+      if (_scope != null) await refresh();
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      _scopesLoaded = true;
+      _loading = false;
+      _recordFailure(error);
+      _notify();
     }
   }
 
-  String _message(Object error) {
-    if (error is ApiFailure && (error.status == 401 || error.status == 403)) {
-      // Do not retain an editable workspace after current access is denied.
-      _scopesVerified = false;
-      _scopes = [];
-      _scope = null;
-      _items = [];
-      _selected = null;
-      _nextCursor = null;
-      ++_generation;
+  /// Opens the collection whose route key matches, if it is not already open.
+  ///
+  /// Returns false when the key names no collection this account holds, which
+  /// is the router's signal to send the window to a collection that exists.
+  bool selectRouteKey(String routeKey) {
+    if (!_scopesLoaded || _scopes.isEmpty) return true;
+    final String key = decodeCollectionKey(routeKey);
+    CollectionScope? match;
+    for (final CollectionScope scope in _scopes) {
+      if (scope.key == key) match = scope;
     }
-    if (widget.session is LocalFixtureSession && error is ApiFailure) {
-      if (error.status == 401 || error.status == 403) {
-        return 'The local server did not authorize this request. Your collection access is unverified, so sign out and sign in with the current fixture token.';
-      }
-      if (['network', 'timeout'].contains(error.code) ||
-          (error.status ?? 0) >= 500) {
-        return 'The test server is unavailable and collection permissions were not checked. Reconnect the demo server, then refresh.';
-      }
-    }
-    return error is ApiFailure
-        ? error.message
-        : 'The service could not be reached. Check your connection and retry.';
+    if (match == null) return false;
+    if (identical(match, _scope) || match.key == _scope?.key) return true;
+    _scope = match;
+    _items = <Specimen>[];
+    _selected = null;
+    _selectedId = null;
+    _nextCursor = null;
+    _seenCursors.clear();
+    _updatedAt = null;
+    _loading = true;
+    _error = null;
+    scheduleMicrotask(() => unawaited(refresh()));
+    return true;
   }
 
-  Future<void> _refresh({bool quiet = false}) async {
-    final scope = _scope;
+  /// The route key for the collection a window should open by default.
+  String? get defaultRouteKey {
+    final CollectionScope? scope =
+        _scope ?? (_scopes.isEmpty ? null : _scopes.first);
+    return scope == null ? null : encodeCollectionKey(scope.key);
+  }
+
+  /// Replaces the list with the current filters.
+  Future<void> refresh({bool quiet = false}) async {
+    final CollectionScope? scope = _scope;
     if (scope == null) return;
-    final generation = ++_generation;
+    final int generation = ++_generation;
     _nextCursor = null;
     _seenCursors.clear();
     _loadingMore = false;
     if (!quiet) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
-    try {
-      final page = await widget.repository.specimenPage(
-        scope,
-        filters: _activeFilters,
-      );
-      final items = page.items;
-      final selected = _selected == null
-          ? null
-          : await widget.repository.specimen(scope, _selected!.id);
-      if (mounted && generation == _generation) {
-        setState(() {
-          _items = items;
-          _nextCursor = page.nextCursor;
-          _selected = selected;
-          _loading = false;
-          _error = null;
-        });
-      }
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(() {
-          _error = _message(e);
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  bool get _unfiltered => _filter.isEmpty && _query.isEmpty && _filters.isEmpty;
-  int get _needsReview =>
-      _items.where((s) => s.disposition == 'needs_human_review').length;
-  void _clearFilters() {
-    _searchController.clear();
-    setState(() {
-      _query = '';
-      _filter = '';
-      _filters = {};
-    });
-    _refresh();
-  }
-
-  Map<String, String> get _activeFilters => {
-    ..._filters,
-    if (_query.trim().isNotEmpty) 'specimen_id': _query.trim(),
-    if (_filter.isNotEmpty)
-      (['cleared', 'needs_human_review', 'deferred'].contains(_filter)
-              ? 'disposition'
-              : 'state'):
-          _filter,
-  };
-  Future<void> _loadMore() async {
-    final scope = _scope;
-    final cursor = _nextCursor;
-    if (scope == null || cursor == null || _loadingMore || _loading) return;
-    final generation = _generation;
-    setState(() {
-      _loadingMore = true;
+      _loading = true;
       _error = null;
-    });
+      _notify();
+    }
     try {
-      final page = await widget.repository.specimenPage(
+      final SpecimenPage page = await repository.specimenPage(
         scope,
-        filters: _activeFilters,
+        filters: activeFilters,
+      );
+      final Specimen? selected = _selectedId == null
+          ? null
+          : await repository.specimen(scope, _selectedId!);
+      if (_disposed || generation != _generation) return;
+      if (quiet && _holds > 0) {
+        // A row has focus or a sheet is open. Keep the answer until it does
+        // not, rather than moving the list under the reviewer.
+        _deferredPage = page;
+        _selected = selected ?? _selected;
+        _loading = false;
+        _notify();
+        return;
+      }
+      _applyPage(page);
+      _selected = selected;
+      _loading = false;
+      _error = null;
+      _notify();
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      _loading = false;
+      _recordFailure(error);
+      _notify();
+    }
+  }
+
+  void _applyPage(SpecimenPage page) {
+    _items = page.items;
+    _nextCursor = page.nextCursor;
+    _updatedAt = DateTime.now();
+  }
+
+  /// Appends the next page.
+  Future<void> loadMore() async {
+    final CollectionScope? scope = _scope;
+    final String? cursor = _nextCursor;
+    if (scope == null || cursor == null || _loadingMore || _loading) return;
+    final int generation = _generation;
+    _loadingMore = true;
+    _error = null;
+    _notify();
+    try {
+      final SpecimenPage page = await repository.specimenPage(
+        scope,
+        filters: activeFilters,
         cursor: cursor,
       );
-      if (!mounted || generation != _generation) return;
+      if (_disposed || generation != _generation) return;
       if (_seenCursors.contains(cursor) ||
           page.nextCursor == cursor ||
           (page.nextCursor != null && _seenCursors.contains(page.nextCursor))) {
@@ -224,512 +418,357 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
           code: 'pagination',
         );
       }
-      final ids = _items.map((s) => s.id).toSet();
-      if (page.items.any((s) => !ids.add(s.id))) {
+      final Set<String> ids = _items.map((Specimen s) => s.id).toSet();
+      if (page.items.any((Specimen s) => !ids.add(s.id))) {
         throw const ApiFailure(
           'Records changed across pages. Refresh the queue.',
           code: 'pagination',
         );
       }
-      setState(() {
-        _items.addAll(page.items);
-        _seenCursors.add(cursor);
-        _nextCursor = page.nextCursor;
-      });
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(() {
-          _error = '${_message(e)} Refresh the queue to restart this search.';
-          _nextCursor = null;
-        });
-      }
+      _items = <Specimen>[..._items, ...page.items];
+      _seenCursors.add(cursor);
+      _nextCursor = page.nextCursor;
+      _updatedAt = DateTime.now();
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      _nextCursor = null;
+      _recordFailure(error);
     } finally {
-      if (mounted && generation == _generation) {
-        setState(() => _loadingMore = false);
+      if (!_disposed && generation == _generation) {
+        _loadingMore = false;
+        _notify();
       }
     }
   }
 
-  Future<void> _open(Specimen s) async {
-    final generation = ++_generation;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// Sets the exact match search and reloads after the debounce.
+  void search(String value) {
+    _query = value;
+    _generation++;
+    _nextCursor = null;
+    _loadingMore = false;
+    _notify();
+    _search?.cancel();
+    _search = Timer(searchDebounce, () => unawaited(refresh()));
+  }
+
+  /// Selects a disposition segment and reloads.
+  Future<void> selectDisposition(String value) {
+    _disposition = value;
+    _notify();
+    return refresh();
+  }
+
+  /// Applies the filter sheet's result.
+  Future<void> applyFilters(Map<String, String> values) {
+    _filters = Map<String, String>.from(values)
+      ..removeWhere((String key, String value) => value.isEmpty);
+    _notify();
+    return refresh();
+  }
+
+  /// Removes one active filter, from its chip.
+  Future<void> removeFilter(String key) {
+    final Map<String, String> next = Map<String, String>.from(_filters)
+      ..remove(key);
+    return applyFilters(next);
+  }
+
+  /// Clears the search, the segment and every filter.
+  Future<void> clearFilters() {
+    _query = '';
+    _disposition = '';
+    _filters = <String, String>{};
+    _notify();
+    return refresh();
+  }
+
+  /// Loads the record the workbench route names.
+  Future<void> openSpecimen(String id) async {
+    final CollectionScope? scope = _scope;
+    if (scope == null) return;
+    if (_selectedId == id && _selected != null) return;
+    _selectedId = id;
+    _selected = null;
+    _loading = true;
+    _error = null;
+    _notify();
+    final int generation = ++_generation;
     try {
-      final item = await widget.repository.specimen(_scope!, s.id);
-      if (mounted && generation == _generation) {
-        setState(() {
-          _selected = item;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(() {
-          _error = _message(e);
-          _loading = false;
-        });
-      }
+      final Specimen item = await repository.specimen(scope, id);
+      if (_disposed || generation != _generation) return;
+      _selected = item;
+      _loading = false;
+      _notify();
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      _loading = false;
+      _recordFailure(error);
+      _notify();
     }
   }
 
-  // Retain a mutation key for an uncertain response; identical retries reconcile on the server.
-  final Map<String, String> _mutationKeys = {};
-  Future<void> _mutate(Json? change, String? retryReason) async {
-    if (_selected == null || _mutating) return;
-    final generation = _generation;
-    final current = _selected!;
-    final payload =
+  /// Forgets the open record when the workbench route is left.
+  void closeSpecimen() {
+    if (_selectedId == null && _selected == null) return;
+    _selectedId = null;
+    _selected = null;
+    _notify();
+  }
+
+  /// Saves a review decision, or a retry, against the open record.
+  ///
+  /// A mutation key is retained for an uncertain response, so an identical
+  /// retry reconciles on the server rather than recording twice.
+  Future<void> mutate(Json? change, String? retryReason) async {
+    final Specimen? current = _selected;
+    final CollectionScope? scope = _scope;
+    if (current == null || scope == null || _mutating) return;
+    final int generation = _generation;
+    final String payload =
         '${current.id}:${current.revision}:${change ?? retryReason}';
-    final key = _mutationKeys.putIfAbsent(
+    final String key = _mutationKeys.putIfAbsent(
       payload,
       () => 'review-${DateTime.now().microsecondsSinceEpoch}',
     );
-    setState(() {
-      _mutating = true;
-      _error = null;
-    });
+    _mutating = true;
+    _error = null;
+    _notify();
     try {
-      final result = change != null
-          ? await widget.repository.review(_scope!, current, change, key)
-          : await widget.repository.retry(_scope!, current, retryReason!, key);
-      if (mounted && generation == _generation) {
-        setState(() {
-          _selected = result;
-          _mutationKeys.remove(payload);
-        });
-      }
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(
-          () => _error = e is ApiFailure && e.conflict
-              ? 'Another reviewer saved a new version while you were working. Your decision was not saved.'
-              : _message(e),
-        );
-      }
+      final Specimen result = change != null
+          ? await repository.review(scope, current, change, key)
+          : await repository.retry(scope, current, retryReason!, key);
+      if (_disposed || generation != _generation) return;
+      _selected = result;
+      _mutationKeys.remove(payload);
+    } catch (error) {
+      if (_disposed || generation != _generation) return;
+      _recordFailure(error);
     } finally {
-      if (mounted) setState(() => _mutating = false);
+      if (!_disposed) {
+        _mutating = false;
+        _notify();
+      }
     }
   }
 
-  Color _color(String? disposition) => switch (disposition) {
-    'cleared' => const Color(0xff14513d),
-    'needs_human_review' => const Color(0xff754300),
-    'deferred' => const Color(0xff594d7c),
-    _ => const Color(0xff374b60),
-  };
-  Widget _queue() => ListView(
-    padding: const EdgeInsets.all(24),
-    children: [
-      Text(
-        'Collection queue',
-        style: Theme.of(context).textTheme.headlineMedium,
-      ),
-      const SizedBox(height: 8),
-      Text('${_items.length} records · $_needsReview need review'),
-      const SizedBox(height: 24),
-      TextField(
-        controller: _searchController,
-        decoration: const InputDecoration(
-          labelText: 'Search specimens',
-          hintText: 'Exact specimen ID. Use Filters for anything else.',
-          prefixIcon: Icon(Icons.search),
-        ),
-        onChanged: (q) {
-          _query = q;
-          ++_generation;
-          setState(() {
-            _nextCursor = null;
-            _loadingMore = false;
-          });
-          _search?.cancel();
-          _search = Timer(const Duration(milliseconds: 350), _refresh);
-        },
-      ),
-      const SizedBox(height: 16),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children:
-            {
-                  '': 'All records',
-                  'needs_human_review': 'Needs review',
-                  'cleared': 'Cleared',
-                  'deferred': 'Deferred',
-                  'processing_blocked': 'Blocked',
-                  'running': 'Processing',
-                }.entries
-                .map(
-                  (e) => FilterChip(
-                    label: Text(e.value),
-                    selected: _filter == e.key,
-                    onSelected: (_) {
-                      setState(() => _filter = e.key);
-                      _refresh();
-                    },
-                  ),
-                )
-                .toList(),
-      ),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          icon: const Icon(Icons.filter_list),
-          label: Text('Filters (${_filters.length})'),
-          onPressed: () async {
-            final values = await showDialog<Map<String, String>>(
-              context: context,
-              builder: (_) => SearchFilters(initial: _filters),
-            );
-            if (values != null && mounted) {
-              setState(() => _filters = values);
-              _refresh();
-            }
-          },
-        ),
-      ),
-      const SizedBox(height: 20),
-      Text(
-        '${_items.length} matching records loaded',
-        style: Theme.of(context).textTheme.labelLarge,
-      ),
-      const SizedBox(height: 8),
-      if (!_loading && _items.isEmpty)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              children: [
-                const Icon(Icons.inventory_2_outlined, size: 40),
-                const SizedBox(height: 16),
-                Text(
-                  _unfiltered ? 'No specimens yet' : 'No matches',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _unfiltered
-                      ? 'Upload a photograph to create the first record.'
-                      : 'No records match the current search and filters.',
-                ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _unfiltered
-                      ? () => setState(() => _page = 1)
-                      : _clearFilters,
-                  child: Text(
-                    _unfiltered ? 'Add photographs' : 'Clear filters',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ..._items.map(
-        (s) => Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
-            ),
-            leading: Icon(
-              s.disposition == 'cleared'
-                  ? Icons.verified_outlined
-                  : Icons.description_outlined,
-              color: _color(s.disposition),
-            ),
-            title: Text(
-              s.title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '${s.status}\nProfile ${s.profile} · ${textOf(s.data['updated_at'], textOf(s.data['created_at']))}\nRisk ${s.data['risk'] == null ? 'Not measured' : '${s.data['risk']} of 100'}${s.data['risk_calibrated'] == true ? '' : ' · Not calibrated'}',
-              ),
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _open(s),
-          ),
-        ),
-      ),
-      if (_nextCursor != null)
-        OutlinedButton(
-          onPressed: _loadingMore || _loading ? null : _loadMore,
-          child: Text(_loadingMore ? 'Loading more…' : 'Load more records'),
-        ),
-    ],
-  );
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final wide = constraints.maxWidth >= 800;
-      final environment = widget.session is LocalFixtureSession
-          ? 'synthetic'
-          : widget.repository.mode;
-      final historyScope = _scope;
-      final historySpecimen = _selected;
-      final body = _scope == null
-          ? SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lock_outline, size: 40),
-                    const SizedBox(height: 16),
-                    Text(
-                      _loading
-                          ? 'Checking collection access…'
-                          : _scopesVerified
-                          ? 'You have no collection assigned. Ask your administrator to assign one, then check again.'
-                          : 'Collection access could not be verified. Reconnect or sign in again, then retry.',
-                    ),
-                    const SizedBox(height: 12),
-                    Text('Account: ${widget.session.displayName}'),
-                    TextButton(
-                      onPressed: _loading ? null : _initialize,
-                      child: const Text('Check access again'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : _page == 1
-          ? IntakeScreen(
-              key: ValueKey(_scope!.key),
-              repository: widget.repository,
-              scope: _scope!,
-              userId: widget.session.userId,
-              onComplete: () => _refresh(quiet: true),
-            )
-          : _selected == null
-          ? _queue()
-          : Column(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _selected = null),
-                    icon: const Icon(Icons.arrow_back),
-                    label: const Text('Back to queue'),
-                  ),
-                ),
-                Expanded(
-                  child: ReviewWorkbench(
-                    key: ValueKey('${_scope!.key}:${_selected!.id}'),
-                    specimen: _selected!,
-                    loadArtifact: (artifact) => widget.repository.artifact(
-                      historyScope!,
-                      historySpecimen!,
-                      artifact,
-                    ),
-                    loadHistoricalArtifact: (record, artifact) => widget
-                        .repository
-                        .artifact(historyScope!, record, artifact),
-                    loadHistoryPage: (after, through) =>
-                        widget.repository.historyPage(
-                          historyScope!,
-                          historySpecimen!.id,
-                          afterRevision: after,
-                          throughRevision: through,
-                        ),
-                    loadHistoricalRevision: (revision, runId, runSha256) =>
-                        widget.repository.historicalSpecimen(
-                          historyScope!,
-                          historySpecimen!.id,
-                          revision,
-                          runId: runId,
-                          runSha256: runSha256,
-                        ),
-                    collections: _scopes,
-                    canReview: _scope!.permissions.any(
-                      (p) => ['reviewer', 'manager', 'admin'].contains(p),
-                    ),
-                    canOperate: _scope!.permissions.any(
-                      (p) => [
-                        'operator',
-                        'reviewer',
-                        'manager',
-                        'admin',
-                      ].contains(p),
-                    ),
-                    busy:
-                        _mutating ||
-                        (_selected!.disposition != null &&
-                            ![
-                              'cleared',
-                              'needs_human_review',
-                              'deferred',
-                            ].contains(_selected!.disposition)),
-                    onChange: (c) => _mutate(c, null),
-                    onRetry: (r) => _mutate(null, r),
-                    onRefresh: _refresh,
-                  ),
-                ),
-              ],
-            );
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Specimen Digitization'),
-          actions: [
-            IconButton(
-              onPressed: _loading
-                  ? null
-                  : _scope == null
-                  ? _initialize
-                  : _refresh,
-              tooltip: 'Refresh collection',
-              icon: const Icon(Icons.refresh),
-            ),
-            IconButton(
-              onPressed: () async {
-                try {
-                  await widget.session.signOut();
-                } catch (_) {
-                  if (mounted) {
-                    setState(
-                      () => _error = 'Sign-out did not complete. Try again.',
-                    );
-                  }
-                }
-              },
-              tooltip: 'Sign out',
-              icon: const Icon(Icons.logout),
-            ),
-          ],
-        ),
-        bottomNavigationBar: wide
-            ? null
-            : NavigationBar(
-                selectedIndex: _page,
-                onDestinationSelected: (p) => setState(() => _page = p),
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.inventory_2_outlined),
-                    label: 'Queue',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.add_photo_alternate_outlined),
-                    label: 'Intake',
-                  ),
-                ],
-              ),
-        body: Column(
-          children: [
-            if (environment != 'production')
-              Container(
-                width: double.infinity,
-                color: const Color(0xffffe7a3),
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  '${environmentLabel(environment)} environment. Results are fixtures, not model processing or museum records.',
-                  style: const TextStyle(color: Color(0xff483500)),
-                ),
-              ),
-            if (widget.repository.blockers.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Processing is blocked: ${widget.repository.blockers.map((b) => vocabularyLabel(b.toString())).join(', ')}.',
-                    ),
-                    Text(
-                      'Ask your collection administrator to review it.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-            if (_scopes.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _scope?.key,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Authorized collection',
-                        ),
-                        items: _scopes
-                            .map(
-                              (s) => DropdownMenuItem(
-                                value: s.key,
-                                child: Text(s.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _mutating
-                            ? null
-                            : (key) {
-                                setState(() {
-                                  _scope = _scopes.firstWhere(
-                                    (s) => s.key == key,
-                                  );
-                                  _selected = null;
-                                  _items = [];
-                                });
-                                _refresh();
-                              },
-                      ),
-                    ),
-                    if (wide)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 24),
-                        child: Text(widget.session.displayName),
-                      ),
-                  ],
-                ),
-              ),
-            if (_error != null)
-              MaterialBanner(
-                content: Semantics(liveRegion: true, child: Text(_error!)),
-                leading: const Icon(Icons.info_outline),
-                actions: [
-                  TextButton(
-                    onPressed: _scope == null ? _initialize : _refresh,
-                    child: const Text('Refresh'),
-                  ),
-                ],
-              ),
-            if (_loading || _mutating)
-              const LinearProgressIndicator(
-                semanticsLabel: 'Loading collection data',
-              ),
-            Expanded(
-              child: Row(
-                children: [
-                  if (wide)
-                    NavigationRail(
-                      selectedIndex: _page,
-                      labelType: NavigationRailLabelType.all,
-                      onDestinationSelected: (p) => setState(() => _page = p),
-                      destinations: const [
-                        NavigationRailDestination(
-                          icon: Icon(Icons.inventory_2_outlined),
-                          label: Text('Queue'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.add_photo_alternate_outlined),
-                          label: Text('Intake'),
-                        ),
-                      ],
-                    ),
-                  Expanded(child: body),
-                ],
-              ),
-            ),
-          ],
-        ),
+  /// Ends the session.
+  Future<void> signOut() async {
+    try {
+      await session.signOut();
+    } catch (_) {
+      _error = WorkspaceError(
+        message: 'Sign-out did not complete. Try again.',
+        actionLabel: 'Try again',
+        action: signOut,
       );
-    },
-  );
+      _notify();
+    }
+  }
+
+  /// Drops the banner once the reviewer has acted on it.
+  void clearError() {
+    if (_error == null) return;
+    _error = null;
+    _notify();
+  }
+
+  void _recordFailure(Object error) {
+    final ApiFailure? failure = error is ApiFailure ? error : null;
+    final bool denied =
+        failure != null && (failure.status == 401 || failure.status == 403);
+    if (denied) {
+      // Do not retain an editable workspace after current access is denied.
+      _scopesVerified = false;
+      _scopes = <CollectionScope>[];
+      _scope = null;
+      _items = <Specimen>[];
+      _selected = null;
+      _selectedId = null;
+      _nextCursor = null;
+      _seenCursors.clear();
+      _generation++;
+    }
+    _error = _failureFor(error, denied: denied);
+  }
+
+  WorkspaceError _failureFor(Object error, {required bool denied}) {
+    final ApiFailure? failure = error is ApiFailure ? error : null;
+    if (denied) {
+      return WorkspaceError(
+        message: session is LocalFixtureSession
+            ? 'The local server did not authorize this request. Your collection '
+                  'access is unverified, so sign out and sign in with the '
+                  'current fixture token.'
+            : '${failure!.message} Your collection access could not be verified.',
+        actionLabel: 'Check access again',
+        action: checkAccess,
+        clearsAccess: true,
+      );
+    }
+    if (failure != null && failure.conflict) {
+      return WorkspaceError(
+        message:
+            'Another reviewer saved a new version while you were working. '
+            'Your decision was not saved.',
+        actionLabel: 'Refresh and compare',
+        action: refresh,
+      );
+    }
+    if (failure != null && failure.code == 'pagination') {
+      return WorkspaceError(
+        message: '${failure.message} Refresh the queue to restart this search.',
+        actionLabel: 'Refresh the queue',
+        action: refresh,
+      );
+    }
+    final bool unreachable =
+        failure == null ||
+        <String>['network', 'timeout', 'unavailable'].contains(failure.code) ||
+        (failure.status ?? 0) >= 500;
+    if (unreachable) {
+      final String base = session is LocalFixtureSession && failure != null
+          ? 'The test server is unavailable and collection permissions were '
+                'not checked. Reconnect the demo server, then refresh.'
+          : failure?.message ??
+                'The service could not be reached. Check your connection and retry.';
+      return WorkspaceError(
+        message: '$base ${lastSyncSentence()}',
+        actionLabel: 'Retry',
+        action: () => refresh(),
+      );
+    }
+    return WorkspaceError(
+      message: failure.message,
+      actionLabel: 'Retry',
+      action: () => refresh(),
+    );
+  }
+
+  /// Names the last answer from the server, so an unreachable banner says what
+  /// the records on screen still are (blueprints, section 11).
+  String lastSyncSentence() {
+    final DateTime? moment = _updatedAt;
+    if (moment == null) return 'No records have been loaded yet.';
+    return 'These records were last loaded ${_secondsSince(moment)} ago.';
+  }
+
+  static String _secondsSince(DateTime moment) {
+    final Duration age = DateTime.now().difference(moment);
+    if (age.inMinutes < 1) return '${age.inSeconds.clamp(0, 59)} s';
+    if (age.inHours < 1) return '${age.inMinutes} min';
+    return '${age.inHours} h';
+  }
+}
+
+/// A collection key inside a URL path segment.
+///
+/// A scope key is `organization/collection`, so it carries a slash that a path
+/// segment cannot. One encode, one decode, both named, so no call site invents
+/// a second spelling.
+String encodeCollectionKey(String key) => Uri.encodeComponent(key);
+
+/// The inverse of [encodeCollectionKey], tolerant of an already decoded value.
+String decodeCollectionKey(String routeKey) {
+  try {
+    return Uri.decodeComponent(routeKey);
+  } on ArgumentError {
+    return routeKey;
+  }
+}
+
+/// Publishes the [WorkspaceController] to everything under the router.
+class WorkspaceScope extends InheritedNotifier<WorkspaceController> {
+  const WorkspaceScope({
+    super.key,
+    required WorkspaceController controller,
+    required super.child,
+  }) : super(notifier: controller);
+
+  /// The controller, rebuilding the caller when it changes.
+  static WorkspaceController of(BuildContext context) {
+    final WorkspaceScope? scope = context
+        .dependOnInheritedWidgetOfExactType<WorkspaceScope>();
+    assert(scope != null, 'no WorkspaceScope above this widget');
+    return scope!.notifier!;
+  }
+
+  /// The controller without subscribing to its changes, for a callback that
+  /// acts on it rather than drawing it.
+  static WorkspaceController read(BuildContext context) {
+    final WorkspaceScope? scope = context
+        .getInheritedWidgetOfExactType<WorkspaceScope>();
+    assert(scope != null, 'no WorkspaceScope above this widget');
+    return scope!.notifier!;
+  }
+}
+
+/// The collection shell: navigation, the environment band, the error banner
+/// and the routed screen inside them.
+///
+/// Constructed only on a collection route, so a session that is not signed in,
+/// not verified, or not connected to an API never builds one.
+class CollectionWorkspace extends StatefulWidget {
+  const CollectionWorkspace({
+    super.key,
+    required this.routeKey,
+    required this.destination,
+    required this.child,
+  });
+
+  /// The collection the location names, still encoded.
+  final String routeKey;
+
+  /// Which navigation destination the current route belongs to.
+  final WorkspaceDestination destination;
+
+  /// The routed screen.
+  final Widget child;
+
+  @override
+  State<CollectionWorkspace> createState() => _CollectionWorkspaceState();
+}
+
+class _CollectionWorkspaceState extends State<CollectionWorkspace> {
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(CollectionWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.routeKey != widget.routeKey) _sync();
+  }
+
+  /// Opens the collection the location names, after the frame the router is
+  /// building, so selecting one never notifies during a navigation.
+  void _sync() {
+    if (widget.routeKey.isEmpty) return;
+    scheduleMicrotask(() {
+      if (mounted) WorkspaceScope.read(context).selectRouteKey(widget.routeKey);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool listDetail =
+        widget.destination == WorkspaceDestination.queue &&
+        WindowClass.of(context).isAtLeast(WindowClass.large);
+
+    return AppShell(
+      destination: widget.destination,
+      child: listDetail
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const SizedBox(width: queueListPaneWidth, child: QueuePane()),
+                const VerticalDivider(width: 1),
+                Expanded(child: widget.child),
+              ],
+            )
+          : widget.child,
+    );
+  }
 }

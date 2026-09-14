@@ -238,9 +238,16 @@ void main() {
     );
   });
 
+  // The filter form is the child of `showAdaptiveForm` now, not a dialog of
+  // its own, so it is pumped as a screen.
   guidelineSuite(
     'SearchFilters',
-    (tester) => pumpDialog(tester, const SearchFilters(initial: {})),
+    (tester) => pumpScreen(
+      tester,
+      const Scaffold(
+        body: SingleChildScrollView(child: SearchFilters(initial: {})),
+      ),
+    ),
   );
 
   guidelineSuite(
