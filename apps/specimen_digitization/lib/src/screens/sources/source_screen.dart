@@ -33,6 +33,13 @@ import 'source_controller.dart';
 /// How many rows stand in for the first page while it loads.
 const int sourceSkeletonRows = 6;
 
+/// What a long press does on a narrow window, in this screen's noun.
+///
+/// The only way into a selection where the checkbox column is closed, so a
+/// reader that announces custom actions has to hear the right word for what
+/// it is picking.
+const String sourceLongPressHint = 'Select this photograph';
+
 /// Browsing one registered source.
 class SourceBrowsePane extends StatefulWidget {
   const SourceBrowsePane({
@@ -104,25 +111,6 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
   void _onSelectionChanged() {
     if (mounted) setState(() {});
   }
-
-  /// A row that cannot be selected, holding the column open beside it.
-  ///
-  /// Dropping the checkbox would let the row slide left and break the
-  /// alignment a reviewer scans a thousand rows down. The width is
-  /// `SelectableRow`'s own leading metric, repeated here because that
-  /// component has no disabled state yet; delete this the moment it does.
-  Widget _unselectable(
-    BuildContext context, {
-    required bool column,
-    required Widget child,
-  }) => column
-      ? Padding(
-          padding: EdgeInsetsDirectional.only(
-            start: context.sizes.targetMin + context.space.space1,
-          ),
-          child: child,
-        )
-      : child;
 
   void _onScroll() {
     final SourceBrowseController controller = widget.controller;
@@ -322,19 +310,20 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
         return Padding(
           key: ValueKey<String>('source-row-${object.objectName}'),
           padding: EdgeInsets.symmetric(vertical: context.space.space1),
-          child: object.state.selectable
-              ? SelectableRow(
-                  selected: _selection.isSelected(object),
-                  label: object.displayName,
-                  showCheckbox: column,
-                  onToggle: () => _selection.toggle(object),
-                  onExtend: () => _selection.selectRange(object),
-                  onLongPress: column
-                      ? null
-                      : () => _selection.select(object),
-                  child: row,
-                )
-              : _unselectable(context, column: column, child: row),
+          child: SelectableRow(
+            selected: _selection.isSelected(object),
+            label: object.displayName,
+            showCheckbox: column,
+            // Drawn and unavailable rather than absent: a photograph this
+            // source does not admit cannot be added, and a reader hearing
+            // nothing at all could not tell it from a row they missed.
+            enabled: object.state.selectable,
+            longPressHint: sourceLongPressHint,
+            onToggle: () => _selection.toggle(object),
+            onExtend: () => _selection.selectRange(object),
+            onLongPress: column ? null : () => _selection.select(object),
+            child: row,
+          ),
         );
       },
     );

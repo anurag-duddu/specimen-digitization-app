@@ -98,7 +98,7 @@ void main() {
       expect(find.textContaining('record'), findsNothing);
     });
 
-    testWidgets('an unsupported photograph offers no checkbox', (
+    testWidgets('an unsupported photograph is drawn but unavailable', (
       WidgetTester tester,
     ) async {
       await pumpBrowse(
@@ -111,8 +111,56 @@ void main() {
         ),
       );
 
-      expect(checkboxFor('a.jpg'), findsOneWidget);
-      expect(checkboxFor('b.pdf'), findsNothing);
+      // Drawn and disabled, not absent: a reader hearing nothing at all
+      // could not tell an unavailable row from one they missed.
+      expect(
+        tester.widget<Checkbox>(checkboxFor('a.jpg')).onChanged,
+        isNotNull,
+      );
+      expect(
+        tester.widget<Checkbox>(checkboxFor('b.pdf')).onChanged,
+        isNull,
+      );
+    });
+
+    testWidgets('an unavailable row stays aligned with the rest', (
+      WidgetTester tester,
+    ) async {
+      await pumpBrowse(
+        tester,
+        FakeSourceRepository(
+          objects: <SourceObject>[
+            object('a.jpg'),
+            object('b.pdf', state: 'unsupported_media_type'),
+          ],
+        ),
+      );
+
+      // The alignment a reviewer scans a thousand rows down does not break
+      // on the one row that cannot be picked.
+      expect(
+        tester.getTopLeft(find.text('b.pdf')).dx,
+        tester.getTopLeft(find.text('a.jpg')).dx,
+      );
+    });
+
+    testWidgets('an unavailable row cannot be picked by long press', (
+      WidgetTester tester,
+    ) async {
+      await pumpBrowse(
+        tester,
+        FakeSourceRepository(
+          objects: <SourceObject>[
+            object('b.pdf', state: 'unsupported_media_type'),
+          ],
+        ),
+        size: const Size(390, 844),
+      );
+
+      await tester.longPress(find.text('b.pdf'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('selected'), findsNothing);
     });
   });
 
