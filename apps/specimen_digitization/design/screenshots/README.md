@@ -23,6 +23,12 @@ save image files); see web-evidence.md.
 | tablet-landscape-03-workbench-scroll.png | 1180 x 820 dp | After one scroll the image pane is empty: the source image scrolls away with the page. |
 | desktop-01-workbench.png | 1600 x 1000 dp | Same failure at desktop width. Processing card with four run actions; the tab selector is the last thing on the second screen. |
 | ios-iphone-01-signin.png | iPhone 17 Pro | iOS sign-in. Material styling unchanged on iOS; same 30-word caveat above the fields. |
+| ios-iphone-02-queue.png | iPhone 17 Pro | Queue. With the Dynamic Island and bottom bar the first record title is clipped at the screen edge. |
+| ios-iphone-03-workbench-top.png, -scroll1..2.png | iPhone 17 Pro | Workbench sequence; same chrome budget and scroll-away image as Android. |
+| ios-iphone-04-intake.png | iPhone 17 Pro | Intake; two caveat paragraphs before the first button. |
+| ios-ipad-02-queue.png | iPad Pro 13 inch, portrait | Rail plus queue at 1032 dp; dropdown and search stretch to 1150 pt. |
+| ios-ipad-03-workbench-top.png, -scroll1.png | iPad Pro 13 inch, portrait | Two-pane workbench at expanded width; the image pane scrolls away with the page. |
+| ios-ipad-04-intake.png | iPad Pro 13 inch, portrait | Intake at expanded width: single column, 1200 pt paragraphs, manifest below. |
 | ios-ipad-01-signin.png | iPad Pro 13 inch, portrait | iOS sign-in on the iPad: the 400 dp column sits in a 1024 dp window with no adaptation. |
 | web-evidence.md | 1440 x 900 and 1024 x 768 | Written log of the web client: sign-in, queue, workbench scroll behaviour, tabs, filters, intake, browser Back behaviour and keyboard focus. |
 | (no desktop queue capture) | 1600 x 1000 dp | Pressing the system back control on the workbench exited the app to the launcher instead of returning to the queue (audit H3.1). |
