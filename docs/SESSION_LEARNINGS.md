@@ -4197,3 +4197,93 @@ Correction/addition to “Hosting exact run/attempt provenance author closeout�
 - Product provenance: exact save review SHA256 `7b3143fa1644fe65b2e57710d8be0adef13a14e82b69ddbc1934fb4a29713d71`, six-pass terminal and 12 artifact entries verify. Auth nine artifacts and successor addendum verify preserved source; eight distinct cases are five supplied regressions plus three independent cases after a documented fixture correction, not duplicated rerun totals. All 86 committed library pins match. The synthetic Firebase configuration placeholder is excluded from production configuration proof and is absent from final checkout. Retained component reports support the PR's tracing137/Hosting18 counts. This task did not re-review solved product semantics.
 - Reusable learning: distinguish final executable equality from log-only closeout commits; test provenance can bind the clean tested predecessor when final source is exact. Reconstruct log unions from Git, preserve failed review evidence, and state local canonical success separately from remote CI and native acceptance. Failed approaches: two redirected PR metadata captures returned API connection errors; direct read-only gh succeeded, and structured output was retained. No permission change or source workaround was needed.
 - Follow-ups: at the retained PR42 snapshot, repository/Flutter-web/runtime candidate checks were successful while Python/mobile checks remained in progress and merge state was BLOCKED. DATA owns ongoing remote CI; no fresh green/merge/main deploy/public marker or live DATA/runtime/all-ten acceptance is claimed here. Native identity/permissions, setup, cumulative cost and actual remaining original-ten review time remain separate gates. No native credentials/settings, browser, paid model, workflow mutation or deployment was used. Required closeout appended only to original 4a25 branch `codex/release-data-verification` with flock, flush and fsync; exact separate suffix retained. The final release commit remains unchanged, and this review does not require chasing fresh helper closeouts.
+
+### 2026-09-14 — The reading diff had no golden; a component sheet now covers it
+
+- Task: golden coverage for `DiffText`
+- Branch/worktree: `test/diff-text-golden` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/silly-vaughan-0400bc`
+- Outcome: Completed
+- Commits/PRs: see the pull request opened against `main` from this branch
+- Validation: the gap was reproduced before it was closed and the coverage was
+  proved after. Three perturbations of `lib/src/widgets/diff_text.dart`, each
+  run against the whole `test/golden` directory and each reverted afterwards:
+  appending 30 characters to `summaryFor`, restyling a `changed` run to a green
+  double underline on `diffAddedFill`, and classifying characters past the end
+  of the reference as `changed` rather than `added`. Before this change all
+  three moved 0 of 97 goldens. After it the first two fail 8 of the 8 new
+  goldens (`+98 -8`) and the third fails 8 goldens and the coverage guard
+  (`+97 -9`). Reverted, `flutter test test/golden` is 106 passed.
+  `flutter analyze --fatal-infos` no issues; `flutter test` 872 passed, 7
+  skipped, 0 failed. `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 scripts/ci/verify.sh`
+  exited 0 on the first run: pre-commit gates passed, Python 2449 passed / 81
+  skipped in 483.68s, Flutter analysis clean, client 872 passed / 7 skipped,
+  `flutter build web --release` built `build/web`. Every new PNG was read back
+  and inspected rather than only regenerated. No file under `lib/` changed.
+- Durable learnings:
+  - A screen golden suite that normalises scroll position cannot, as a matter
+    of structure, cover anything below the fold. `size_classes_golden_test.dart`
+    returns every `Scrollable` to offset 0 before capturing, and it is right to:
+    a capture of a scrolled pane is not a capture of the screen. The cost is
+    that the readings pane only ever shows its first card, and the first
+    reading of a region is the reference, which `readings_panel.dart` gives a
+    null comparison. The component that draws the comparison was therefore off
+    frame in all eight window and text-scale combinations, measured at `top`
+    798 to 2908 against windows 820 to 1024 tall. When a component only ever
+    appears below a normalised fold, no amount of screen goldens will reach it;
+    it needs an entry point of its own.
+  - Framing is only half of a blind spot. The other half is the fixture's data
+    shape: `goldenSpecimen()` compares `Chicago 1912` with `Chicago 1917`, two
+    literals of equal length, which produce `changed` runs and nothing else.
+    `DiffRunKind.added`, a reference longer than the literal, the identical
+    summary and the dense field row role were unreachable at *any* scroll
+    offset. The third perturbation above is the proof: it is a real regression
+    in the classification the widget's own docstring says it fixed, and no
+    capture of that fixture could ever have caught it. Check what a fixture can
+    express before concluding that better framing would close a gap.
+  - A `RepaintBoundary` composites only its own subtree, so a component capture
+    does not include the `Scaffold` background painted behind it. For a diff
+    that is fatal rather than cosmetic: `backgroundColor` fills and
+    `decorationColor` underlines are the whole subject, and capturing them
+    against transparency makes the golden evidence of nothing. Paint the
+    product surface *inside* the boundary.
+  - Capturing a content-sized boundary rather than the window decouples the
+    golden from the canvas, which is what lets the canvas be made generously
+    tall for 200 percent text without every PNG gaining a field of empty
+    pixels. Verified rather than assumed: raising `goldenComponentCanvas` from
+    3200 to 4200 left every one of the eight PNGs byte-identical.
+  - A golden sheet is only worth its bytes while it still reaches every case,
+    and a case list is an easy thing to edit down. `diff_text_golden_test.dart`
+    therefore asserts over `diffCases` that every `DiffRunKind` is still drawn,
+    that both the identical and the absent summary are still drawn, and that
+    the dense role is still drawn. That assertion is a guard on the coverage
+    rather than on the component, and unlike the pixel comparison it runs on
+    the Linux CI where `goldensCompare` is false. The third perturbation was
+    caught by it as well as by the goldens.
+  - The suite was already less screen-only than it looks. `pumpGoldenDialog`
+    and `pumpGoldenRoute` pump a bare `MaterialApp`, and `expectGoldenFinder`
+    takes any `Finder`; the region editor goldens have been using both since
+    finding V-7. A component entry point extends that convention rather than
+    introducing one.
+- Failed approaches:
+  - Taking the readings capture at a scroll offset that includes the second
+    card, which was the other shape considered. Rejected on measurement, not on
+    taste: the comparing card sits at `top` 798, 1180, 1305, 1488, 1562, 1866,
+    2228 and 2908 across the eight window and scale combinations, so it needs
+    eight hand-tuned offsets, every one of which has to be re-derived whenever
+    the readings panel's layout changes. That couples the golden's framing to
+    the layout it exists to hold still, and it still only reaches `changed`
+    runs. The safer correction is the component sheet.
+  - Expecting `scripts/ci/verify.sh` to fail its first run on `detect-secrets`
+    rewriting `.secrets.baseline`, as earlier sessions recorded. It did not
+    here; the baseline was already current and this change adds only test files
+    and PNGs. Treat that first-run failure as a possibility to re-run through,
+    not as a step to plan around.
+- Remaining follow-ups: the `plainFallbackRunes` branch, the caveat shown when
+  a literal is too long to mark position by position, deliberately has no
+  golden. Covering it means rendering 4001 runes, which at these measures is
+  roughly two hundred lines of pixels that would dominate the sheet and bury
+  the six cases that matter. It stays covered structurally by
+  `test/widgets/diff_text_test.dart`, which asserts the branch renders plain
+  text rather than a run of spans. If that branch ever grows a visual treatment
+  beyond the caveat line, it needs a sheet of its own rather than a row on this
+  one.
