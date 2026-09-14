@@ -15,8 +15,10 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../../app/routes.dart';
 import '../../models.dart';
+import '../../reason_codes.dart';
 import '../../saved_filters.dart';
 import '../../search_filters.dart';
+import '../../selection.dart';
 import '../../theme/icons.dart';
 import '../../theme/motion.dart';
 import '../../vocabulary.dart';
@@ -97,11 +99,155 @@ class _QueuePaneState extends State<QueuePane> {
   final FocusNode _searchFocus = FocusNode(debugLabel: 'Queue search');
   int? _cursor;
 
+  /// The records this reviewer has picked out of the loaded page.
+  ///
+  /// Shared with every other list a reviewer picks from, so the browse screen
+  /// over a data source gets the same reach, the same keyboard behaviour and
+  /// the same honesty about what a select all could not see.
+  final PagedSelection<Specimen> _selection = PagedSelection<Specimen>(
+    identify: (Specimen specimen) => specimen.id,
+  );
+
+  /// True while this pane is holding the list still for a live selection.
+  bool _holdingForSelection = false;
+
+  /// The controller this pane is listening to, so the listener is removed
+  /// from the same object it was added to.
+  WorkspaceController? _listening;
+
+  /// This reviewer's own recent reasons, offered as chips in the
+  /// confirmation exactly as the workbench offers them.
+  List<String> _recentReasons = <String>[];
+  RecentReasonStore _reasonStore = const RecentReasonStore('');
+
+  @override
+  void initState() {
+    super.initState();
+    _selection.addListener(_onSelectionChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final WorkspaceController controller = _controller;
+    if (!identical(_listening, controller)) {
+      _listening?.removeListener(_syncSelection);
+      controller.addListener(_syncSelection);
+      _listening = controller;
+      _syncSelection();
+    }
+    final String reviewer = controller.session.userId;
+    if (_reasonStore.userId != reviewer) {
+      _reasonStore = RecentReasonStore(reviewer);
+      _recentReasons = <String>[];
+      unawaited(_loadRecentReasons());
+    }
+  }
+
   @override
   void dispose() {
+    _listening?.removeListener(_syncSelection);
+    _selection.removeListener(_onSelectionChanged);
+    if (_holdingForSelection) _listening?.releaseList();
+    _selection.dispose();
     _search.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRecentReasons() async {
+    final List<String> stored = await _reasonStore.load();
+    if (mounted) setState(() => _recentReasons = stored);
+  }
+
+  /// Keeps the selection a subset of what is loaded.
+  ///
+  /// Driven from the controller rather than from `build`, because reconciling
+  /// the selection can release the list hold, and a widget must not push a
+  /// change back into the thing it is drawing.
+  void _syncSelection() {
+    final WorkspaceController controller = _controller;
+    _selection.syncLoaded(
+      controller.items,
+      moreToLoad: controller.nextCursor != null,
+    );
+  }
+
+  /// A selection that is live holds the list still.
+  ///
+  /// The poll already defers while a row has focus or a sheet is open, for
+  /// the same reason: a count a reviewer is about to act on must not change
+  /// under them between reading it and confirming it.
+  void _onSelectionChanged() {
+    final bool hold = _selection.isNotEmpty;
+    if (hold != _holdingForSelection) {
+      _holdingForSelection = hold;
+      hold ? _controller.holdList() : _controller.releaseList();
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Asks for one reason, then takes [kind] across the whole selection.
+  ///
+  /// The confirmation names the exact count before anything is written,
+  /// because this product has no true delete: a bulk decision is recorded on
+  /// the version it was taken against and superseded by a later one, never
+  /// removed. That is what the reason sheet's own finality sentence says, and
+  /// it is why the count comes first.
+  Future<void> _decideOnSelection(BulkDecisionKind kind) async {
+    final WorkspaceController controller = _controller;
+    final List<Specimen> chosen = _selection.items;
+    if (chosen.isEmpty || controller.mutating) return;
+    final Map<String, String> names = <String, String>{
+      for (final Specimen specimen in chosen) specimen.id: specimen.title,
+    };
+    final int count = chosen.length;
+    controller.holdList();
+    final String? reason;
+    try {
+      reason = await showReasonSheet(
+        context,
+        title: kind.title(count),
+        action: kind.action(count),
+        consequence: kind.consequence(count),
+        retained: kind.retained,
+        recentReasons: _recentReasons,
+      );
+    } finally {
+      controller.releaseList();
+    }
+    if (reason == null || !mounted) return;
+    final BulkDecisionReport? report = await controller.reviewSelection(
+      chosen,
+      kind,
+      reason,
+    );
+    if (!mounted) return;
+    // A call that did not complete leaves the selection alone: the reviewer's
+    // work is still on screen, and the controller's banner says what happened.
+    if (report == null) return;
+    unawaited(_rememberReason(reason));
+    _selection.clear();
+    await controller.refresh();
+    if (!mounted) return;
+    if (report.complete) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(kind.done(report.applied))));
+      return;
+    }
+    // Anything less than whole is something the reviewer has to act on, so it
+    // is a surface they dismiss rather than one that times out.
+    await showBulkOutcome(
+      context,
+      report: report,
+      nameOf: (String id) => names[id] ?? id,
+    );
+  }
+
+  Future<void> _rememberReason(String reason) async {
+    final List<String> stored = await _reasonStore.remember(reason);
+    if (mounted) setState(() => _recentReasons = stored);
   }
 
   WorkspaceController get _controller => WorkspaceScope.read(context);
@@ -165,6 +311,7 @@ class _QueuePaneState extends State<QueuePane> {
         SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
         SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
         SingleActivator(LogicalKeyboardKey.keyF): _OpenFiltersIntent(),
+        SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
@@ -193,6 +340,15 @@ class _QueuePaneState extends State<QueuePane> {
             onInvoke: (_) {
               if (_searchFocus.hasFocus) return null;
               unawaited(_openFilters());
+              return null;
+            },
+          ),
+          // The way out of a selection without reaching for a control. Not
+          // suppressed while the search field has focus, because leaving a
+          // selection is what a reviewer means by Escape wherever they are.
+          _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
+            onInvoke: (_) {
+              _selection.clear();
               return null;
             },
           ),
@@ -294,9 +450,39 @@ class _QueuePaneState extends State<QueuePane> {
     // browser's own pull to refresh, so it is offered on the two touch
     // platforms only (motion catalog, row 21). The list is never cleared
     // while the refresh is out: the rows that are there stay there.
-    return _pullToRefresh
+    final Widget scrollable = _pullToRefresh
         ? RefreshIndicator(onRefresh: () => controller.refresh(), child: list)
         : list;
+
+    // The bar is pinned under the list rather than placed in it, because the
+    // count has to stay on screen while the reviewer scrolls the records they
+    // are counting (blueprint 3, "the selection count always visible").
+    return Column(
+      children: <Widget>[
+        Expanded(child: scrollable),
+        MotionReveal(
+          alignment: Alignment.bottomLeft,
+          visible: _selection.isNotEmpty,
+          child: SelectionBar(
+            count: _selection.count,
+            loadedCount: _selection.loadedCount,
+            moreToLoad: _selection.moreToLoad,
+            allLoadedSelected: _selection.allLoadedSelected,
+            onSelectAllLoaded: _selection.selectAllLoaded,
+            onClear: _selection.clear,
+            busy: controller.mutating,
+            actions: <SelectionAction>[
+              for (final BulkDecisionKind kind in BulkDecisionKind.values)
+                (
+                  label: kind.label,
+                  icon: kind.icon,
+                  onPressed: () => unawaited(_decideOnSelection(kind)),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   /// True on the two platforms whose pull gesture is the app's to own.
@@ -363,44 +549,65 @@ class _QueuePaneState extends State<QueuePane> {
     BuildContext context,
     WorkspaceController controller,
     List<Specimen> items,
-  ) => Focus(
-    canRequestFocus: false,
-    skipTraversal: true,
-    onFocusChange: (bool focused) =>
-        focused ? controller.holdList() : controller.releaseList(),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        for (int index = 0; index < items.length; index++)
-          Padding(
-            key: ValueKey<String>('queue-row-${items[index].id}'),
-            padding: EdgeInsets.symmetric(vertical: context.space.space1),
-            child: QueueRow(
-              id: items[index].id,
-              title: items[index].title,
-              reason: queueReason(items[index]),
-              status: SpecimenStatus.fromWire(
-                items[index].disposition ?? items[index].state,
+  ) {
+    // A window wide enough for a checkbox column keeps one open, so a
+    // reviewer on a pointer never has to discover a gesture. A narrow one
+    // reveals it on a long press and hides it again when the selection
+    // empties (blueprint 3, "Multi-select"). The window decides, never the
+    // platform.
+    final bool column =
+        WindowClass.of(context).isAtLeast(WindowClass.medium) ||
+        _selection.active;
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (bool focused) =>
+          focused ? controller.holdList() : controller.releaseList(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (int index = 0; index < items.length; index++)
+            Padding(
+              key: ValueKey<String>('queue-row-${items[index].id}'),
+              padding: EdgeInsets.symmetric(vertical: context.space.space1),
+              child: SelectableRow(
+                selected: _selection.isSelected(items[index]),
+                label: items[index].title,
+                showCheckbox: column,
+                onToggle: () => _selection.toggle(items[index]),
+                onExtend: () => _selection.selectRange(items[index]),
+                onLongPress: column
+                    ? null
+                    : () => _selection.select(items[index]),
+                child: QueueRow(
+                  id: items[index].id,
+                  title: items[index].title,
+                  reason: queueReason(items[index]),
+                  status: SpecimenStatus.fromWire(
+                    items[index].disposition ?? items[index].state,
+                  ),
+                  riskComposite: items[index].data['risk'] as num?,
+                  // The search endpoint answers a bare composite and leaves
+                  // the contributing signals on the record. The compact meter
+                  // never draws them, so the row says nothing rather than
+                  // naming a signal the list response did not carry.
+                  riskComponents: const <String>[],
+                  riskCalibrated: items[index].data['risk_calibrated'] == true,
+                  updatedAt: queueUpdatedAt(items[index]),
+                  selected:
+                      index == _cursor ||
+                      items[index].id == controller.selectedId,
+                  onOpen: () {
+                    setState(() => _cursor = index);
+                    _open(items[index]);
+                  },
+                ),
               ),
-              riskComposite: items[index].data['risk'] as num?,
-              // The search endpoint answers a bare composite and leaves the
-              // contributing signals on the record. The compact meter never
-              // draws them, so the row says nothing rather than naming a
-              // signal the list response did not carry.
-              riskComponents: const <String>[],
-              riskCalibrated: items[index].data['risk_calibrated'] == true,
-              updatedAt: queueUpdatedAt(items[index]),
-              selected:
-                  index == _cursor || items[index].id == controller.selectedId,
-              onOpen: () {
-                setState(() => _cursor = index);
-                _open(items[index]);
-              },
             ),
-          ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 /// The title, the live summary line and when the list was last answered.
@@ -598,4 +805,8 @@ class _FocusSearchIntent extends Intent {
 
 class _OpenFiltersIntent extends Intent {
   const _OpenFiltersIntent();
+}
+
+class _ClearSelectionIntent extends Intent {
+  const _ClearSelectionIntent();
 }

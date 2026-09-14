@@ -181,6 +181,26 @@ class TestRepository implements SpecimenRepository {
     String reason,
     String key,
   ) async => fixture;
+
+  /// Every record changes, unless a test says otherwise.
+  @override
+  Future<BulkDecisionReport> reviewMany(
+    CollectionScope scope,
+    List<Specimen> specimens,
+    BulkDecisionKind kind,
+    String reason,
+    String key,
+  ) async {
+    if (conflict) throw const ApiFailure('Stale', status: 409);
+    return BulkDecisionReport([
+      for (final Specimen specimen in specimens)
+        BulkDecisionResult(
+          specimenId: specimen.id,
+          outcome: BulkOutcome.applied,
+          revision: specimen.revision + 1,
+        ),
+    ]);
+  }
   @override
   Future<Json> createIntake(
     CollectionScope scope,
