@@ -214,6 +214,72 @@ def record_human(specimen, observation, candidates, actor, reason, blobs):
     )
 
 
+# English name -> the ISO 639-1 and 639-2 codes and alternate ISO names that
+# denote the same language. Reader routes pick from these vocabularies
+# independently, so the forms have to be reconciled before two readings can be
+# called a disagreement. Extend this table when a route is observed emitting a
+# language this repository has not seen; an absent language is never merged,
+# only reported.
+_LANGUAGE_CODES = {
+    "arabic": ("ar", "ara"),
+    "chinese": ("zh", "zho", "chi"),
+    "czech": ("cs", "ces", "cze"),
+    "danish": ("da", "dan"),
+    "dutch": ("nl", "nld", "dut", "flemish"),
+    "english": ("en", "eng"),
+    "finnish": ("fi", "fin"),
+    "french": ("fr", "fra", "fre"),
+    "german": ("de", "deu", "ger"),
+    "greek": ("el", "ell", "gre", "modern greek"),
+    "hungarian": ("hu", "hun"),
+    "italian": ("it", "ita"),
+    "japanese": ("ja", "jpn"),
+    "korean": ("ko", "kor"),
+    "latin": ("la", "lat"),
+    "norwegian": ("no", "nor"),
+    "polish": ("pl", "pol"),
+    "portuguese": ("pt", "por"),
+    "russian": ("ru", "rus"),
+    "spanish": ("es", "spa", "castilian"),
+    "swedish": ("sv", "swe"),
+}
+
+LANGUAGE_ALIASES = {
+    alias: name
+    for name, aliases in _LANGUAGE_CODES.items()
+    for alias in (name, *aliases)
+}
+
+
+def language_key(label):
+    """Fold one opaque declared language label to a key used only for comparison.
+
+    Two reader routes name one language differently: a 2026-09-14 dual read of
+    FMNHINS 4486783 and 4486784 returned "en" from handwriting-qwen and
+    "English" from handwriting-muse. Comparing the raw forms reported a conflict
+    on every label both routes read. Human declarations are free text and carry
+    the same split.
+
+    Stored candidates are never rewritten. `DeclarationCandidates` keeps the raw
+    model output as evidence, and this key exists so that the conflict inference
+    does not mistake one vocabulary for another.
+
+    A label outside `LANGUAGE_ALIASES` folds to its own case-folded form, so it
+    still compares as a distinct language. Unrecognized vocabulary is routed to
+    review, never quietly merged.
+    """
+    text = " ".join(label.replace("_", "-").casefold().split())
+    head = text.split("-", 1)[0]
+    if head != text and head in LANGUAGE_ALIASES:
+        text = head
+    return LANGUAGE_ALIASES.get(text, text)
+
+
+def language_keys(candidates):
+    """Distinct languages a reader declared, independent of the forms it used."""
+    return frozenset(language_key(value) for value in candidates)
+
+
 def label_handling(specimen, sources):
     policy = specimen.run.profile.language_handling
     labels = []
@@ -226,15 +292,17 @@ def label_handling(specimen, sources):
             {value for group in groups for value in group.script_candidates}
         )
         mixed = any(group.language_relation == "cooccurring" for group in groups)
-        sets = {
-            tuple(sorted(group.language_candidates))
+        # Compare declared languages, not the vocabulary each reader used, and
+        # leave every explicit relation to speak for itself.
+        declared = {
+            language_keys(group.language_candidates)
             for group in groups
             if group.language_candidates
         }
-        conflicting = len(sets) > 1 or any(
+        conflicting = len(declared) > 1 or any(
             group.language_relation == "alternatives"
             or (
-                len(group.language_candidates) > 1
+                len(language_keys(group.language_candidates)) > 1
                 and group.language_relation == "unspecified"
             )
             for group in groups
