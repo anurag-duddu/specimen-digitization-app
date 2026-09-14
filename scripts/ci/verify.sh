@@ -53,6 +53,8 @@ fi
 uvx --from pre-commit==4.5.1 pre-commit run --all-files
 uv sync --frozen
 uv run pytest -q
+uv run python scripts/ci/check_ui_strings.py \
+  --baseline scripts/ci/ui_strings_baseline.txt
 
 cd "$flutter_root"
 flutter pub get --enforce-lockfile
