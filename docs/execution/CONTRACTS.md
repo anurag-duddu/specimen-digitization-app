@@ -427,7 +427,11 @@ independent integrated SQL/HTTP acceptance are still required.
 ## Source registry, inventory and server-side import
 
 Status: contract recorded 2026-09-14, before implementation, for workstreams A
-and B of [`SOURCE_BROWSE_AND_RUN.md`](SOURCE_BROWSE_AND_RUN.md). Workstream C
+and B of the source browse-and-run design, which lands separately as
+`docs/execution/SOURCE_BROWSE_AND_RUN.md` in
+[PR #56](https://github.com/anurag-duddu/specimen-digitization-app/pull/56); if
+that file is not beside this one yet, that pull request has not merged.
+Workstream C
 (bulk run and cost estimation) is deliberately absent: it is blocked on an
 ongoing-budget decision the owner has not made, and no route below can dispatch
 inference or spend. This section is a specification. It is not evidence that a
@@ -504,6 +508,13 @@ shows what is already in the queue instead of offering duplicates. Two retained
 specimens sharing one source checksum is the same administrator-review conflict
 that intake already raises; a listing does not paper over it.
 
+That resolution is one `find_checksum` per row returned, which against SQL
+Connect is one round trip per row: a fifty-row page costs fifty. It is bounded
+and correct, and it reuses the index intake already depends on rather than
+inventing a second notion of "already ingested", which is why it is written this
+way. A batched checksum lookup in the connector is the obvious optimisation if
+paging a source ever feels slow; it is not needed for correctness.
+
 ### Routes
 
 The organization prefix is `/v1/organizations/{organization_id}`.
@@ -535,6 +546,22 @@ the rows it addresses are no longer the rows the reviewer was choosing from.
 The response repeats `inventory_id`, `captured_at` and `object_count` so a client
 can detect the change rather than silently page across two snapshots. Cursors
 carry no authorization authority.
+
+It also returns `matching_count`: how many rows a select-all over the active
+filter set would cover, so a confirmation can name a number the server actually
+counted. It is exact and page-independent when the filters need no checksum
+resolution — no filter, or `media_type`, both of which are on the row and scan
+an in-memory snapshot. It is `null` when `imported` is set, because that state
+is resolved per row through `find_checksum` and counting a whole snapshot under
+it would cost a lookup per object on every page. `null` means the server did not
+count; it never means zero, and a client must not render it as one. Select-all
+over the unfiltered snapshot needs no such filter and keeps an exact count,
+which is safe because re-importing an already-imported object is a no-op that
+reads nothing and is reported back as `duplicate`.
+
+Making `matching_count` exact under `imported` needs a batched checksum lookup
+in the connector, which is the same follow-up the per-row listing cost wants.
+It is not in this change.
 
 ### The integrity guarantee does not weaken
 

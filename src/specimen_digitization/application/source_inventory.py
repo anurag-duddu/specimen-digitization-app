@@ -267,6 +267,26 @@ def entry_state(entry: InventoryEntry, source, resolve) -> tuple[str, str | None
     return AVAILABLE, None
 
 
+def matching_count(entries, filters: InventoryFilters) -> int | None:
+    """How many rows a select-all over the active filter set would cover.
+
+    Returned only when the server actually counted. `media_type` is on the row,
+    so filtering by it is a scan of an in-memory snapshot and the count is exact
+    and free. `imported` is not on the row — it is resolved per row through
+    `find_checksum`, which is one round trip each against SQL Connect — so
+    counting a whole snapshot under that filter would cost a lookup per object
+    on every page. That is refused rather than estimated: `null` means the
+    server did not count, never that the count is zero. Select-all over the
+    unfiltered snapshot needs no such filter and stays exact, because
+    re-importing an object is a no-op that reads nothing.
+    """
+    if filters.imported is not None:
+        return None
+    if filters.media_type is None:
+        return len(entries)
+    return sum(1 for entry in entries if entry.media_type == filters.media_type)
+
+
 def page(entries, source, filters: InventoryFilters, after: str, limit: int, resolve):
     """One bounded page of an immutable snapshot, ordered by object name."""
     if not 1 <= limit <= 100:

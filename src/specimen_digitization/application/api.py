@@ -852,13 +852,18 @@ def create_app(
             for m in member_rows(user)
         )
 
-    def inventory_header(p, source):
+    def inventory_header(p, source, user):
         from .source_inventory import header
 
         try:
-            return header(repository, p.scope, source).wire()
+            inventory = header(repository, p.scope, source)
         except Missing:
             return None
+        if inventory.sensitive and not scope_sensitive(user, p):
+            # The rows are object names under this collection's prefix, which is
+            # collection information. A listing omits them rather than refusing.
+            return None
+        return inventory.wire()
 
     @app.get(prefix + "/sources")
     def sources(organization_id: str, user=Depends(identity)):
@@ -876,7 +881,7 @@ def create_app(
             items.append(
                 dict(
                     source.model_dump(mode="json"),
-                    inventory=inventory_header(p, source),
+                    inventory=inventory_header(p, source, user),
                 )
             )
         return {"items": items, "next_cursor": None}
@@ -885,7 +890,8 @@ def create_app(
     def source_detail(organization_id: str, source_id: str, user=Depends(identity)):
         p, source = resolve_source(user, organization_id, source_id)
         return dict(
-            source.model_dump(mode="json"), inventory=inventory_header(p, source)
+            source.model_dump(mode="json"),
+            inventory=inventory_header(p, source, user),
         )
 
     @app.post(prefix + "/sources/{source_id}/inventory")
@@ -898,6 +904,9 @@ def create_app(
         from . import source_inventory
 
         p, source = resolve_source(user, organization_id, source_id, review=True)
+        # A snapshot is retained sensitive, so writing one needs that permission,
+        # exactly as the connector's own check requires of the stored document.
+        sensitivity_access(user, p, True)
         key(idempotency_key)
         ident = source_inventory.inventory_document_id(source_id)
         try:
@@ -939,6 +948,7 @@ def create_app(
             decode_cursor,
             encode_cursor,
             load,
+            matching_count,
             page,
         )
 
@@ -958,6 +968,7 @@ def create_app(
         if not 1 <= limit <= 100:
             raise ValueError("Source listing limit must be 1 to 100")
         inventory, entries = load(repository, p.scope, source, blobs)
+        sensitivity_access(user, p, inventory.sensitive)
         bound = binding(
             p.scope, inventory.inventory_id, filters, user, scope_sensitive(user, p)
         )
@@ -977,6 +988,7 @@ def create_app(
             "inventory_id": inventory.inventory_id,
             "captured_at": inventory.captured_at,
             "object_count": inventory.object_count,
+            "matching_count": matching_count(entries, filters),
         }
 
     @app.post(prefix + "/batches/{batch_id}/items:from-source")
@@ -997,7 +1009,8 @@ def create_app(
         if body.sensitive != batch.get("sensitive", True):
             raise ValueError("Item sensitivity must match its retained batch")
         source = registry.get(body.source_id, {p.scope.collection_id})
-        _, entries = load(repository, p.scope, source, blobs)
+        inventory, entries = load(repository, p.scope, source, blobs)
+        sensitivity_access(user, p, inventory.sensitive)
         # No dispatch: importing a selection and running one are separate decisions.
         return import_objects(
             principal=p,

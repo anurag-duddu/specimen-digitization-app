@@ -434,6 +434,41 @@ def test_imported_filter_separates_what_is_still_offerable(tmp_path):
     ]
 
 
+def test_the_listing_counts_what_select_all_would_cover(tmp_path):
+    """A confirmation may name a count only when the server actually counted."""
+    objects = tmp_path / "objects"
+    slides(objects, 3)
+    write_object(
+        objects, OBJECT_PREFIX + "subject_0004.png", png_bytes(), FIRST_GENERATION
+    )
+    client = source_client(tmp_path, objects)
+    capture(client)
+
+    unfiltered = listed(client, limit=2)
+    by_media = listed(client, limit=2, media_type="image/jpeg")
+    by_imported = listed(client, limit=2, imported="false")
+
+    # Exact, and independent of the page size.
+    assert unfiltered["object_count"] == 4
+    assert unfiltered["matching_count"] == 4
+    assert by_media["matching_count"] == 3
+    # Not counted rather than guessed: `imported` is resolved per row.
+    assert by_imported["matching_count"] is None
+    assert by_imported["object_count"] == 4
+
+
+def test_the_count_is_stable_across_pages(tmp_path):
+    objects = tmp_path / "objects"
+    slides(objects, 5)
+    client = source_client(tmp_path, objects)
+    capture(client)
+
+    first = listed(client, limit=2)
+    second = listed(client, limit=2, cursor=first["next_cursor"])
+
+    assert first["matching_count"] == second["matching_count"] == 5
+
+
 # Paging, matching the GET /specimens discipline.
 
 
