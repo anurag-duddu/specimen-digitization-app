@@ -167,13 +167,24 @@ class _Decision extends StatelessWidget {
         Flexible(child: Text(label)),
       ],
     );
+    // `MergeSemantics` is what puts the reason on the button's own node.
+    // Without it the hint sits on a parent node and the disabled button is a
+    // separate child, so a screen reader focusing the control hears its name
+    // and that it is dimmed, and never the sentence saying why
+    // (accessibility, section 3.2 and the section 4.2 VoiceOver script,
+    // step 4).
     return Tooltip(
       message: reason ?? label,
-      child: Semantics(
-        hint: reason ?? '',
-        child: filled
-            ? FilledButton.tonal(onPressed: action, child: content)
-            : OutlinedButton(onPressed: action, child: content),
+      child: MergeSemantics(
+        child: Semantics(
+          hint: reason ?? '',
+          // Repeated here because a merge boundary keeps its own flags: a
+          // node that does not say it is disabled is read as if it were live.
+          enabled: action != null,
+          child: filled
+              ? FilledButton.tonal(onPressed: action, child: content)
+              : OutlinedButton(onPressed: action, child: content),
+        ),
       ),
     );
   }

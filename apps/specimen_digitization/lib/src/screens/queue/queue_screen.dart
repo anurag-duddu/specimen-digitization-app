@@ -431,8 +431,11 @@ class _QueueHeaderState extends State<_QueueHeader> {
     final String loaded = count == 1
         ? '1 record loaded'
         : '$count records loaded';
-    return '$loaded. ${controller.needsReview} need review, '
-        '${controller.blocked} blocked.';
+    // One record needs review; two need it. The count is read aloud as part
+    // of a live region, so the verb has to agree with it.
+    final int review = controller.needsReview;
+    final String needs = review == 1 ? '1 needs review' : '$review need review';
+    return '$loaded. $needs, ${controller.blocked} blocked.';
   }
 
   String? _updated() {

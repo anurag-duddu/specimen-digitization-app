@@ -503,17 +503,26 @@ class SourceRegionEditControl extends StatelessWidget {
   /// Why the region editor is unavailable, when it is.
   final String? blockedReason;
 
+  // `MergeSemantics` is what puts the reason on the button's own node. A bare
+  // `Semantics(hint:)` around a disabled button leaves the hint on a parent
+  // node, and a screen reader focusing the control then hears the name and
+  // the dimmed state but never why (accessibility, section 3.2).
   @override
   Widget build(BuildContext context) => Tooltip(
     message: blockedReason ?? 'Add, resize, reorder or merge the label regions',
-    child: Semantics(
-      hint: blockedReason ?? '',
-      child: Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: TextButton.icon(
-          onPressed: onEditRegions,
-          icon: const Icon(Symbols.crop),
-          label: const Text('Correct label regions'),
+    child: MergeSemantics(
+      child: Semantics(
+        hint: blockedReason ?? '',
+        // Repeated here because a merge boundary keeps its own flags: a node
+        // that does not say it is disabled is read as if it were live.
+        enabled: onEditRegions != null,
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            onPressed: onEditRegions,
+            icon: const Icon(Symbols.crop),
+            label: const Text('Correct label regions'),
+          ),
         ),
       ),
     ),

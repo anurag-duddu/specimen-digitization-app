@@ -162,7 +162,15 @@ class AppShell extends StatelessWidget {
       actions: <Widget>[
         if (inlineSwitcher)
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: context.space.space2),
+            // The vertical space is what keeps the field's floating label
+            // inside the toolbar. An `AppBar` stretches an action to the full
+            // 56 dp height, and an outlined field that tall draws its label
+            // across its own top border, which then sits on the window's top
+            // edge and loses its upper half.
+            padding: EdgeInsets.symmetric(
+              horizontal: context.space.space2,
+              vertical: context.space.space1,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: switcherMaxWidth),
               child: _CollectionDropdown(controller: controller),

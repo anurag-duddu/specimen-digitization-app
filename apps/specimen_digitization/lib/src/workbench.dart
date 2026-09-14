@@ -638,9 +638,28 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     WorkbenchSegment.history => _history(const ValueKey<String>('history')),
   };
 
+  /// A control, plus the reason it cannot be used.
+  ///
+  /// `MergeSemantics` is what makes the reason audible. Without it the hint
+  /// lands on a node of its own and the disabled button becomes a separate
+  /// child node beneath it, so a screen reader focusing the control hears
+  /// "Approve record, dimmed" and never the sentence saying why
+  /// (accessibility, section 3.2 and the section 4.2 VoiceOver script,
+  /// step 4).
+  ///
+  /// The enabled state is repeated on the merged node rather than left to the
+  /// button underneath it, because a merge boundary keeps its own flags and a
+  /// node that does not say it is disabled is read, and checked, as if it
+  /// were live.
   Widget _reasoned(String? reason, Widget child) => Tooltip(
     message: reason ?? '',
-    child: Semantics(hint: reason ?? '', child: child),
+    child: MergeSemantics(
+      child: Semantics(
+        hint: reason ?? '',
+        enabled: reason == null,
+        child: child,
+      ),
+    ),
   );
 
   Widget _history(Key key) => AuditHistoryPanel(
