@@ -747,3 +747,268 @@ Current orchestration uses the same inherited coding-model configuration, with n
 | Existing read-only release monitor01a08342-516e-7d53-a6ce-0f28cf63d1a3 | Tracks actual workflow completion/failure; root handles public access where monitor DNS is unavailable |
 
 Next: finish the Hosting repair and independent review; run combined verification; use normal PR and exact-source checks. Issue one fresh final-source catalog after these changes, carrying all prior commitments. Then qualify backup/owned restore, initialize/dispose temporary privilege, publish compatible data, qualify runtime/cache/model access and run the one bounded ten-specimen worker. Verify authenticated human review/save/reopen on the live URL. The older-project reCAPTCHA usage question and verified owner authentication remain separate owner facts; backend preparation continues without inventing answers or overriding identity.
+
+
+## Coordinator checkpoint — 2026-09-09T20:10:59.540540+00:00
+
+PR21 source aa7cdc0613fb4887ba5265a5aab29ac9df7eb4d8 is publicly verified: all six main jobs green, exact deployment marker/run/attempt and strict public smoke pass. Fresh browser still shows API unconfigured. The next protected read-only catalog is being bound to original data34397935824 attempt2. Current cumulative commitments remain USD1.081; one next USD0.020 remains unissued. Actual34-read native state is unchanged from the independently closed registration. Historical observations retain their original age; refresh before issuance.
+
+Current work assignments, preserving configured models and inherited reasoning settings:
+
+| Task / agent | Current bounded work | Root acceptance gate |
+|---|---|---|
+| Root coordinator | Actual GitHub/public/native observations, reviewed packet issuance, all production effects | Exact source, current independent proof, cumulative budget and final live acceptance |
+| next_catalog_issuer | Original-only issue/install controller source and offline TDD | Independently reviewed source; no author effects |
+| identity_registration_review | Actual source/catalog/native proof review | v3 current-input review and exact final bundle review |
+| complete_pilot_cost | Controller independent review; frozen complete cache cost/retention reconciliation | No duplicated allocations; original operation fences |
+| Release: runtime and model processing | Local merged-source Linux amd64 image geometry and network-none smoke | Immutable source/image evidence before protected publication |
+| Release: data and cloud readiness | Minimal initializer/disposal permissions and typed setup preparation | Actual next catalog and separately reviewed bounded action packet |
+| Existing release monitor | Read-only exact-source workflows | Quiet on unchanged state; root owns mutations |
+
+The execution harness remains protected main-push GitHub workflows plus fixed typed native action packets, original-operation journals, disjoint cumulative budget reservations and offline fault-injection tests. The application harness uses all10 segmentation reservations, then atomic allocation for both readers over every retained region and the fixed worker/reader deadlines. Human correction/save/reopen remains the chosen release; classification and automated clearance stay deferred.
+
+
+## Coordinator checkpoint — 2026-09-09T20:35:53.227249+00:00
+
+PR21 public source remains aa7cdc0/all6mainCIgreen. Original current catalog issued exactlyonce and installed; run34397935824/attempt2 admissionpassed, native catalogrunning. Current cumulative commitments USD1.101/55rows including the new20k hold; exactlyten unchanged. Root owns protected execution/attestation/decryption/native review. Identity reviewer is checking current local image qualification; next_catalog_issuer prepares offline outcome checks; complete_pilot_cost independently reviews minimal IAM draft. Existing data task prepares concrete bounded setup transport; runtime task has completed all3localimages/fiveCLIchecks; product journey task completed its offline149-test runbook. Actual data initialization, runtime publication, real all-ten model pipeline, browser correction/save/reopen and final release remain pending. No new tasks, model overrides, budget resets or specimen substitutions.
+
+
+### 2026-09-09 21:15 UTC — root catalog closure, cache reservation and backend corrections
+
+Task `01a082b2-c2c3-70d2-be90-7bfb622c9102`; canonical `codex/cohort-budget-admission` at `defbb1df1ca0417dfb89f203077ff16303d3affb`, preserved dirty shared logs and all other worktrees. Source PR21 merged `aa7cdc0613fb4887ba5265a5aab29ac9df7eb4d8`; all six main CI jobs, exact public deployment marker and strict smoke already verified. This is source delivery, not full product acceptance.
+
+- Original data main-push run34397935824 attempt2 completed successful catalog with downstream mutation jobs skipped. Root verified exact artifact IDs10123780879/10123778884, ZIP digests, keyless attestation source/run and encrypted envelope before one private decryption. Actual catalog confirms application database absent and registered SQL Connect IAM role present. Independent159 checks25 files PASS, review4466ca89c9dfa71d02e547459341565708984bf22e656566c5fe5e68cefa8fb4. Native catalog SHAe7a2285e4c8bd50df2980bd6629a78903a1155501ecb244675ae8bbd87562a97. The historical verifier3f67 vs final49e source difference was reconciled using actual retained bytes and AST; no duplicate decryption or rerun.
+- One cache upload/cleanup reservation140000micros was appended without changing prior55 workflow rows, operator hold or1M uncertainty. Current cumulative commitments1241000micros, ledgera53e2ba59e594321493385c7a9069807b95dcdc74e73b7bcd5bd58d51b46ab5a; independent187checks44files PASSc61dfbb2943e424b142ce7457e1508411252704bb182ebf1df0adc30dcb25d2e. Cache network120400/storage19600 are subsets of full650000/90000, never extra funding or a second cleanup hold. Same-second local snapshot validation failure was reconciled before saving ledger, without altering original snapshot/intent or issuing twice.
+- Existing Firebase credentials normally refreshed at21:05:14; no new account/key. Fresh exact four cache metadata GETs were recorded. First prospective T21:09:32 was missed during coordinator compaction, with zero operative binding/fence/native upload. All original reviews/evidence remain immutable. Second prospective T21:17:07 has actual fresh four GETs, 223 independent checks, review62525bf072c3813f0751d8f883bf5c9b6a88bfe89e7882635ebc9ce847648f1d. Root activation wrapper6a2d17f725784a189c8a1e3a3029c6ac67e84e927db1ece3d01ec0fcc15a8531 passed independent static read. At this log instant upload remains Not started. Later exact eight-generation cleanup after SAM quiescence is still required; no automatic TTL claim.
+- Concrete data IAM executor independent tests found a real Requests slow-drip total-deadline gap (3.156seconds return against2.1);31other tests+17subtests passed. Data task is repairing test-first, with no native grants yet. Runtime task found SAM original-read/old-claim-prefix mismatch; focused correction reads verified application copy and preserves provenance/idempotence, independent acceptance-task source review now active. Source successor and actual cache-mount least-privilege qualification remain required. No specimen or model execution has occurred.
+- Google billing browser requires fresh private sign-in for existing anurag account. Owner question is pending; backend work continues. No password, MFA code, email or verification override requested/executed. API URL/sitekey remain unpublished until data/runtime/App Check admission. Entire ten-specimen human review/save/reopen acceptance remains Not confirmed.
+
+
+## Coordinator checkpoint — 2026-09-09 22:16 UTC
+
+**Production dispatch is blocked; end-to-end acceptance remains Not confirmed.** The existing accounts/tools work, and the sole reviewed IAM setup succeeded (eight exact custom roles, one additive project-policy write, all prior policy state preserved). Cloud SQL then returned403notAuthorized for the exact owned-clone operation-history read. This failed required readback stopped the sequence; the original phase issue window elapsed without a packet, data workflow rerun, database change, backup or restore clone. Full failure evidence and independent review are retained. The failure does not establish missing history or prove its permission cause.
+
+Current public source is PR21/aa7cdc0613fb4887ba5265a5aab29ac9df7eb4d8; main CI/Hosting and earlier strict smoke are verified, latest22:05 public marker still matches. Original data34397935824 remains successful catalog attempt2 only. SAM application-copy/storage correction is draftPR22/e1666f6 with canonical verification and independent review; it remains unmerged. Runtime setup contract v2 fixes the independently reproduced mask-create permission gap; its source/design review passes, native runtime setup remains pending.
+
+| Owner | Current concrete work / next gate | State |
+|---|---|---|
+| Root coordinator | Preserve exact native failure and finite authority; reconcile source/native path before any new protected release operation | Production stopped |
+| Release: data and cloud readiness | Diagnose exact Cloud SQL clone-history403 using retained response, same-source code and primary documentation; TDD repair only if substantiated | In progress, no cloud effects |
+| Release: runtime and model processing | Corrected least-permission runtime contract, managed-folder cache design and actual SAM mask path | Independent source/design PASS; native pending |
+| Release: product journey and acceptance | Reviewed runtime grant correction; actual original-ten browser/auth/pipeline/correction/save/reopen/denial evidence remains pending | Offline harness ready; live Not confirmed |
+| identity_registration_review | Native IAM outcome and stopped47-metadata-read sequence reconstructed independently; no phase admission | Verified outcome / blocked release |
+| complete_pilot_cost | Reconcile actual metadata traffic while preserving full previous holds, no duplicated accounting | Current commitments USD1.256; billed cost Not confirmed |
+| next_catalog_issuer | Two-plane controllers and truthful current43+7 input derivation qualified offline; no active phase packet | Source PASS; actual history gate failed |
+
+Exactlytenexisting specimens/allretainedregions/bothreaders/fullhumanreview remain required. USD5 is cumulative across all tasks/days/retries; no reset or undocumented spending release. The cache's original8objects require owned-generation cleanup by Sep10 21:17:07UTC, with the existing140k upload+cleanuphold. Timestamprepair is independently verified; futurebucketIAMetag drift needs a distinct preservation correction before operationalcleanup. No cache TTL or finishedcleanup is claimed.
+
+The only pending user interaction is privateGooglebillingreauth in the existing Chrome Release billing session, needed to verify App Check assessment cost. Do not request new keys or share passwords. Final owner sign-in/verification remains a private product step. No App Check assessment, specimen import, model processing or accepted human review has yet occurred. All existing task IDs, inherited coding models, TDD/independent-review and protected main-only deployment harness remain as listed above.
+
+
+Update 2026-09-09 22:23:19 UTC: the data diagnosis is complete. Seven unchanged-source regression tests verify safe stopping in both precreation paths. No source patch is justified yet: optional-instance REST syntax is documented, while deleted-target history coverage and release-identity authorization remain unconfirmed. Root has the frozen diagnostic design for a later fresh read-only scope. The production stop, original expired window, USD1.256 reservations and pending private billing sign-in remain unchanged.
+
+Update2026-09-09 22:48UTC: project-level SQL history diagnostic ran once and returned HTTP400 INVALID_ARGUMENT (285bytes); earlier absent-clone filtered request remains403. No retry or cloud mutation. Fourteen pure safety tests passed; a local private-file mode issue was corrected before the sole cloud request, preserving both attempts. Production remains stopped. DATA is evaluating a supported pre-creation correction preserving the one-clone/no-replay requirement; issuer agent audits cross-run evidence. Reservations remainUSD1.256; actual billing and live acceptance Not confirmed. Google billing sign-in remains pending.
+
+Update 2026-09-09 23:32 UTC: complete captured GitHub data-workflow history now accounts for all seven runs/twelve attempts; none entered a clone-creation-capable phase. Independent baseline reconciliation a37900389a91b36e37f1acf951af2dc103be8dbb74244db59289a499e7a0282b closes the earlier PR15/PR20/enumeration gaps. DATA is finishing TDD repair for one shared recovery claim, no application resend, and hard native response deadlines. Root will integrate reviewed SAM commit e1666f6 with the frozen recovery candidate into one PR and run final gates. Acceptance task investigates the newly identified API-configuration/sign-in/bootstrap dependency cycle before any UI correction. Original403/400 failures, expired phase authority, USD1.256 commitments, private billing sign-in and cache cleanup deadline remain unchanged. No new production admission or full-app result is claimed.
+
+Timestamp correction at 2026-09-09T23:30:28.669028+00:00: the preceding root checkpoint labelled 23:32 UTC was written at approximately 23:30 UTC. The heading was an incorrect manual timestamp; all linked native scope and result timestamps remain unchanged.
+
+
+## Coordinator checkpoint — 2026-09-10T00:34:54.354167+00:00
+
+PR23 is merged and the public sign-in release is verified at source f542604dc67ae12a6579b3dfe0d01d1e4b5b2e46: all five main checks, Hosting34420166543/1, matching public marker and strict smoke. Combined local validation1845 Python/149 Flutter passed with documented66/7 skips. Backend release remains pending; data34420166597/1 stopped at credential-free admission and all privileged jobs skipped.
+
+| Owner | Current work | Next acceptance gate |
+| --- | --- | --- |
+| Root coordinator | Actual source/proof binding and cloud dispatch | Reviewed executable inputs, cumulative budget, one finite scope, exact native outcome |
+| Release: data and cloud readiness | Successor evidence assembler, issuer and two-plane installer | Complete offline path and independent review; observed1 versus planned2 preserved |
+| Release: runtime and model processing | Finite API setup, later public policy and owned cleanup | Offline TDD, independent source/cost review, then actual IAM evidence |
+| identity_registration_review | Source/Hosting/baseline PASS; same-account refresh independent review | Additive corrected wrapper and later actual effective IAM review |
+| complete_pilot_cost | Correct bounded refresh selection; preserve accounting | Frozen source and known additional public marker traffic within existing network hold |
+| next_catalog_issuer | DATA executable independent review | Current catalog compatibility, budget preservation and no-replay installation |
+
+Current ledger commitsUSD1.2684, retainingUSD1 prior uncertainty; this is not an invoice. Conditional full ten-specimen forecastUSD4.4434 assumes exactlyten total regions; all actual regions and both readers must fit before admission. No new IAM time window, token refresh, native held claim or SQL deployment has been issued. Existing models/tasks and protected main-only GitHub harness continue; no architecture expansion or specimen substitution.
+
+User-only gates are now concrete: complete Google organization's password check on the prepared billing page, and use the live app reset/sign-in/email-verification flow for the approved owner. Backend work continues independently. Cache cleanup remains due2026-09-10T21:17:07Z with the existing budget hold and exact generations; no automatic TTL or full-product completion is claimed.
+
+
+### Current coordination checkpoint — 2026-09-10T01:09:14.118962+00:00
+
+Public Hosting remains verified PR23/f542604 with sign-in available. Data initialization, runtime publication/promotion and all-ten live human review remain pending. The configured Google account is present: a single sanitized local diagnostic found a helper schema mismatch between requested scopes and native granted scopes. The original refresh made zero HTTP requests; its failed operation is preserved while a separately reviewed correction is prepared. No user key or account recreation is needed for that local defect.
+
+| Owner | Current work | Exit evidence |
+|---|---|---|
+| Root | Existing-account refresh correction, exact DATA setup and protected execution | Retained successful token receipt, fresh reviewed native inputs, protected workflow results |
+| Release: data and cloud readiness | Frozen32-check phase tools; fresh20-request GitHub collector preparation | Reviewed current source/environment and full baseline observations |
+| Release: runtime and model processing | API-first least-permission helper | Final source freeze and independent review, distinct bounded cost admission |
+| identity_registration_review | Minimal granted-scope refresh successor | Preserved original failure plus meaningful TDD and frozen source |
+| next_catalog_issuer | Independent refresh successor review | Exact source/transport/account/budget and no-replay checks |
+| complete_pilot_cost | Runtime helper independent review and finite request-cost quote | No duplicate holds; current cumulative ledger preserved |
+
+Current commitments remain USD1.2684 including the original USD1 uncertainty. The285000+20000 DATA phase is a proposal, not a reservation. New API-first control traffic is separate and must be reconciled. All ten frozen specimens, every actual region and both readings remain required; no full-pipeline cost guarantee or acceptance claim is made. Existing Browser Billing session requires private sign-in; product owner sign-in/email verification remains private. No new product choice, model override, task duplication or architecture expansion.
+
+
+## Coordinator checkpoint — 2026-09-10T01:57:51.912041+00:00
+
+Task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, canonical `codex/cohort-budget-admission` at defbb1df. Public Hosting remains verified PR23/f542604: sign-in, all five exact-source checks, successful Hosting job, matching public marker and strict smoke. Full data/runtime and ten-specimen acceptance remain pending.
+
+The configured Google account successfully refreshed once using its actual native granted scopes; safe RESULT241f2d46 and independent/root verification293acf56 are retained. No new account/key, credential-cache rewrite or original failed-operation replay. Browser Billing still requires the organization's private password check for anurag@infinative.com; root left the existing Chrome tab ready and asked only for completion there.
+
+The first current GitHub collector stopped after eleven read-only requests because its protection predicate incorrectly expected five protected contexts. The actual policy matches DEPLOYMENT: three strict protected contexts, with all five successful CI jobs independently required. Additive v2 collector107be309 passed25 author tests and10 focused independent tests; existing GitHub protection was not changed. New scope1bbd32bd has its original300-second interval and separate source/cost reviews; its actual outcome will be appended. Old scope, eleven responses, STOP and both network holds are preserved. Current shared ledger80c69752 commits USD1.2724 including USD1 uncertainty, independently reviewed4ef1bf37. Current six-proof bundle d79bac9c has independent input reviewad93d2e5. Neither amount nor proof set establishes native billing or full-pilot affordability.
+
+Read-only integration reviewad4b39c2 identifies remaining sequencing work: publisher setup is separate and its historical preservation baseline needs explicit reconciliation after DATA policy changes; API-first permissions cover reads, while imports/save and worker/SAM require additional reviewed setup; SAM must be prepared before its worker-only invoker is verified; a second full runtime prepare currently repeats three-image publication. These dependencies must be included in the complete cost before new DATA mutations.
+
+| Owner | Bounded work | Required evidence |
+| --- | --- | --- |
+| Root | Actual read-only GitHub preflight, current coordination and private sign-in handoff | Fresh source/protection/environment/baseline outcome; no premature production dispatch |
+| next_catalog_issuer | Exact scope and actual twenty-read outcome review | Independent current-source and baseline judgment |
+| complete_pilot_cost | Collector scope review, complete-pilot sequencing cost, final API helper review | Current cumulative budget, required second build/setup accounted for |
+| identity_registration_review | Prepared DATA comparator and current proof bundle | Actual effective IAM review only when a new scope is admitted |
+| Release: product journey and acceptance | Publisher successor TDD against legitimate policy lineage | Preserve historical baseline and reject unrelated drift; no native action |
+| Release: runtime and model processing | Minimum executable full-runtime sequence and cost dimensions | Imports/save grants, SAM preparation/policy and publication count |
+
+The protected GitHub workflow harness, existing task/model assignments, exact ten frozen specimens, all regions and both readings remain unchanged. Human compare/correct/save/reopen is the release; automated classification and clearance remain deferred. DATA600-second setup, native recovery claim, SQL deployment, runtime publication and real inference remain unissued. Cache cleanup remains due2026-09-10T21:17:07Z against its original eight generations and existing reservation.
+
+
+### 2026-09-10 — current integration handoff
+
+See `CURRENT_RELEASE_CHECKLIST.md` for the current owners and exact review references. The publisher IAM source is qualified; the runtime setup additive repair, five-bundle control package and minimal publication cutoff correction remain in progress. Independent review found and preserved concrete account-policy method, dispatch/history freshness, raw-evidence and credential-contract gaps. Source qualification is separate from actual operation approval. Cost proposal aadeba67 corrects earlier metadata-fee attribution, with count-label addendum0fba1558; the original ledger remains USD1.2724 and full affordability is unqualified. Google Billing private sign-in, post-test retention, original cache cleanup deadline and exact-ten/all-regions/two-reader constraints remain unchanged. No new source release, native packet, IAM/database/secret/environment change, authentication refresh or cloud execution occurred in this handoff.
+
+
+## 2026-09-10T04:45:03Z — runtime source repair qualified; remaining code fixes isolated
+
+Root accepted the frozen runtime completion source review `b97caf38383a29e8c1ff5379afb8ef359a6d83122c6eeb80a466acc9dea3b906`: all 33 targeted independent tests pass, closing the two reproduced defects. The publication auth-cutoff design review `031a267ed82ba5591b510fa38dfe02f69dabcce040b52e3580650a9c3f2f2d1f` is frozen; the product task is implementing and testing the owned authentication/publication deadline and dedicated local cleanup entrypoint.
+
+The runtime controls package `e4d164f8c660eedb224c8f92edfc5189c9f25664908915391c10ea21b11d90af` passed 109 author checks and is under independent review. Its retained complete-ledger fixture exposes a concrete transport size failure (65,888 bytes against 48,000). The DATA task now owns a separate minimal lossless transport correction, preserving the single secret, raw evidence hashes, all prior ledger rows and the current caps. Root will integrate reviewed source fixes before issuing any new-source operational inputs. No fresh scope, credential refresh, ledger hold, environment write or production action has occurred. Billing and storage-cost inputs remain pending; all-ten live acceptance and complete budget admission remain unconfirmed.
+
+### 2026-09-10 05:40 UTC — root combined release-control regression checkpoint
+
+- Coordinator task `01a082b2-c2c3-70d2-be90-7bfb622c9102`; canonical branch `codex/cohort-budget-admission` at `defbb1d` retains existing coordination edits. Isolated worktree `/private/tmp/specimen-release-controls-integration-20260910`, branch `codex/release-controls-integration`, base `f542604dc67ae12a6579b3dfe0d01d1e4b5b2e46`, contains 18 intended source/test/document files. Commit/PR: Not confirmed; none created at this checkpoint.
+- Transport independent review `8f54725e111cd63605f9b43c320a31e9cda74ecd84749596d2ce82d84d3c18e8` passed 59 focused checks. The exact retained 65,888-byte complete fixture encodes to 7,076 bytes, while raw hashes and legacy small bundles remain unchanged. This is source qualification, not future-source or actual-input issuance.
+- Publication first final-output repair `c6cc8fe1847d42eb0a9a292880099a4f2746d0f547820d62d010604593a42490` closes the original late-close defect; original probe plus preservation tests pass 20 cases. The additive independent review `c56d25b0825b9eaaf737c3205fc4fa93d234324da30b4909d584b59d48d3dc5c` found one new gap: checking the pathname before append does not bind the actual opened descriptor. Replacement file/symlink cases fail; seven controls pass.
+- Root reproduced the exact new probe `2491ccd8596b35511b6e1af4558b67f1958bbfc213a4f90d0ea33f9c6218a44f` against the combined checkout: 2 failed / 7 passed. Durable RED log `/Users/anuragduddu/.codex/rollout-state/specimen-live/release-controls-integration-20260910/descriptor-red/RED.log`, SHA `a3d40d7eee145af6b333d3da47330fb56e0aa4af254e2c977d59e4ea47380f81`. Both observed substitute-byte files are retained separately from later GREEN evidence.
+- Product task owns the minimal descriptor correction and regression-first verification; original and first-repair artifacts remain immutable. Mechanical `fileno()` delegation in file wrappers must have new test hashes while preserving injected faults, clocks and assertions. No production test-double bypass is acceptable. Source reviewer checks combined interfaces while root waits to run canonical verification on the corrected candidate.
+- Read-only `git ls-remote` observed main still f542; GitHub repository metadata reports PUBLIC. These observations do not renew historical source/environment scopes. No new credential refresh, cost reservation, cloud/data mutation, publication, import or inference occurred. Billing private sign-in and image-retention answer are still pending; whole-release affordability and live acceptance remain Not confirmed.
+
+### 2026-09-10 — PR24 final release-control source candidate
+
+- Coordinator task `01a082b2-c2c3-70d2-be90-7bfb622c9102`; isolated branch/worktree `codex/release-controls-integration` / `/private/tmp/specimen-release-controls-integration-20260910`; committed candidate `a9639c4c782fdc20e7e2ad7323be0997c07455ba`, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/24. Canonical `codex/cohort-budget-admission` retains append-only coordination files. No worktree or branch was removed.
+- Final 20-file staged candidate passed `scripts/ci/verify.sh`: 1,919 Python passed / 80 skipped / 7 warnings; 149 Flutter passed / 7 skipped, clean analysis, release web build and every safety hook. All source hashes remained unchanged. Final log SHA `8834947b233e73e9409e2d0000a616e364f5951e82360ae9e877cd2a98c0600d`; earlier run `66c55b6a...` remains historical predecessor evidence. Real commit and pre-push hooks also passed.
+- Independent exact-source reviews: transport `8f54725e111cd63605f9b43c320a31e9cda74ecd84749596d2ce82d84d3c18e8` (59 focused); final publication `c514e49c2e1690e2bb2c6663547efcb2574d98baaa3937c21a03751581516a5b` (31 focused); combined interfaces `da85edc47730c1da1b8add9456d34c514e42170feb247bd722d3851fc2cb9332`; exact public-revision scanner exception `30178978888fbd18bc3889c3f1abe1252ebed5e220f155aca656eca2bcc9bfc6` (10 directory/staged controls). Publication source4434f70a and consumerfb31b7a remain unchanged by the two scanner/doc additions.
+- Initial real commit was correctly rejected by Gitleaks for public AUTH_SHA. It created no commit. A dependent push was mistakenly already issued and only created the remote branch at existing f542; no new source or production effect occurred. The exact public revision is freshly confirmed through GitHub’s public commit API. An initial anchored exception failed on staged fragments; pinned scanner source showed that its line slice retains the preceding LF. Final exception allows only that optional LF plus the exact declaration/path. Changed values, other paths and adjacent dummy credentials remain detected. Do not mistake `pre-commit --all-files` with an empty index for a staged candidate scan, and never issue dependent mutations before checking the preceding result.
+- PR24 GitHub checks are running for the exact candidate. Root waits for all five expected checks before merge, then requires main CI, Hosting deploy, exact public marker and smoke. PR/commit alone does not complete a release. Native DATA/runtime admission remains paused: Billing identity confirmation, unresolved retention and whole-sequence cost/input qualification, plus future merged-source helper qualification are still outstanding. No model calls, specimen import, new Google refresh, ledger mutation or DATA/runtime deployment was performed in this checkpoint.
+
+### 2026-09-10 — PR24 Linux launch-gate failure retained
+
+- Root coordinator `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `codex/release-controls-integration`, candidate `a9639c4c782fdc20e7e2ad7323be0997c07455ba`, PR24. CI/CD run `34443480373`, Python job `102763181777`, failed with 6 failed / 1,918 passed / 75 skipped / 7 warnings. All four other required checks and runtime candidate/image CI passed. Root did not merge or rerun this failed candidate.
+- Durable log `/Users/anuragduddu/.codex/rollout-state/specimen-live/release-controls-integration-20260910/PR24_PYTHON_FAILED.log`, SHA `e89c670a7aebc52a8d9e03184df1bcb6bd36c1b27d19b79e7d00798d80176c01`. Two inherited-grandchild and four swallowed-soft-deadline tests fail because their marker files never appear. This is not evidence that the intended child work or cutoff behavior was exercised successfully.
+- Product task owns deterministic diagnosis and an additive repair; identity reviewer investigates independently. Current hypothesis is Linux /bin/sh inherited-descriptor redirection above9, which narrow Linux runs with fewer open descriptors may not expose. Root requires actual reproduction, no deadline padding, skips or blind CI rerun. A normal offline Linux fixture is allowed; no privileged/network/native/credential/model effects are authorized for this source test.
+- Current public f542 Hosting smoke was refreshed successfully before merge, observed at Unix1789020429.3417149, log SHA `4944bfe68eee274f0fec0ba83bb4f8d2ace899c3ec2122038a89c86e408bc102`. No main deployment occurred. Prior source reviews and local passes remain their recorded evidence; final Linux CI gate is open. Billing, retention, whole-sequence cost/input and ten-specimen live acceptance gates remain open.
+
+### 2026-09-10 — PR24 gate successor validated and pushed
+
+- Root coordinator `01a082b2-c2c3-70d2-be90-7bfb622c9102`; `codex/release-controls-integration` now commits `1df16bea090b1535c442c6fd543f25affc964374` on prior `a9639c4c782fdc20e7e2ad7323be0997c07455ba`, same PR24. Only the launch source, new regression file and append-only session entry changed; actual commit/pre-push hooks passed. No branch/worktree cleanup occurred.
+- Fresh `scripts/ci/verify.sh` passed on the unchanged final staged successor: 1,924 Python / 80 skips / 7 warnings; 149 Flutter / 7 skips; clean analysis, release web build and safety hooks. Log SHA `ed024dc3cfd11dd823837b4956f75534a6ab9eb96880e52cfd5b31b84adee890`.
+- Independent exact gate review `ff8b083015fa7570118d3d63ffd9abd7d78e222bfee83c36412692e01785c7c7` passed18 focused Linux cases with64 open descriptors, including all six original failures plus11 gate/isolation/boundary cases. It verifies pre-release startup isolation, durable-record/cancel/deadline failures, exact argument/environment/process identity, bounded EOF/token handling and descriptor closure. Only the gate segment differs in AST; no concrete concern warranted broad unrelated Node/Docker replay. Earlier Node/Docker runs remain predecessor evidence.
+- Final source `ef089ea38e8c908d22a714b07e0558a30d6ad730c7d04d615a6755be08dadd31`; unchanged consumerfb31b7a and scanner configd55da329. Original CI failures and deterministic7-failure Linux RED remain intact. New GitHub checks run on the new exact source; no blind retry of the failed candidate or merge before checks. Native DATA/runtime, billing, retention, whole-cost and live-ten acceptance remain outstanding.
+
+### 2026-09-10 — PR24 pre-merge checkpoint
+
+- Coordinator `01a082b2-c2c3-70d2-be90-7bfb622c9102`, `codex/release-controls-integration`, PR24 candidate `1df16bea090b1535c442c6fd543f25affc964374`. Exact CI/CD pull-request run `34445501996` completed successfully; all five required jobs passed, Hosting correctly skipped on the PR. Full CI record SHA `b9885859c3ff5b2f734fa39bd028b99e5b108dda163e943c305722dea097f62e`; main freshly remains `f542604dc67ae12a6579b3dfe0d01d1e4b5b2e46`, PR merge state CLEAN.
+- Local canonical1924Python/149Flutter and independent gate18-case review `ff8b083015fa7570118d3d63ffd9abd7d78e222bfee83c36412692e01785c7c7` are retained. Root may perform the normal exact-head merge; no branch deletion, force/admin merge, source bypass or direct deploy. Main CI, Hosting deploy and exact public marker/smoke remain required afterward. Native DATA/runtime and live-ten cost/access acceptance remain blocked separately.
+
+
+## Coordinator Hosting delivery checkpoint — 2026-09-10T06:49:15Z
+
+PR24 is merged as `6e6d5b814ee8103d109bd811d871957fe6a9c611`. Final candidate `1df16bea090b1535c442c6fd543f25affc964374` passed all five PR checks before normal merge. Main CI/CD `34446008176/1` passed all six jobs, including Hosting `102772591575`; runtime candidate `34446008215/1` passed all four jobs. The public marker matches source/run/attempt and strict root smoke passes. Public verification SHA `b1afc4ad7b38cccf6a0cb992fdef7b2f28d679f7697fdd90eb0090fadb82258e`; frozen delivery manifest `5a4a7909443b8ecac7940ca1df6dee4afc8f552f57e11fa5afd2b60fcd6abaef` under the private `release-controls-integration-20260910/gate-successor` evidence directory.
+
+This is a verified Hosting/tooling release. DATA `34446008196/1` and runtime `34446008278/1` failed admission; all seven privileged follow-on jobs skipped with zero steps, independently verified in review `67ae21142859918402412afb089ad1dd91b9fda046bce86e16197c6e0ad2079a`. DATA still exposes the older aa7 source authorization; runtime release inputs are empty. The exact private first failing predicate is unprinted. Do not rerun these attempts or relabel old f542 source certificates; future reviewed input production must include these new actual history rows and explicitly qualify the new merged source.
+
+Next engineering work remains: finish current-source operational helper and complete cost/input qualification, protected DATA/runtime preparation and activation, paired API/Hosting configuration, then all-ten authenticated import, all-region/two-reader processing and human compare/correct/save/reopen. Billing's private Google identity check and the pending post-test image-retention choice are unresolved user gates. The image-only proposal does not authorize secret retention or other unspecified liabilities. No new tool/key/account is requested. Current commitments remain USD1.2724, not an invoice; full USD5 eligibility and live product acceptance are Not confirmed. Cache cleanup remains due2026-09-10T21:17:07Z with the original exact generations and reservation.
+
+Existing task/model assignments and protected workflow harness remain in place. Canonical coordination edits and all worktrees/branches are preserved; no archive, deletion or pruning. See `CURRENT_RELEASE_CHECKLIST.md` for current decisions and todos.
+
+Additive final Hosting review `755a6fbd775cd531b6341b6e515998f4b75b08544287f5e786e39f4a3429eac4` passed the retained exact-source main/run/attempt/marker/smoke chain. Its scope is Hosting only; prior source/admission review and remaining gates are unchanged.
+
+
+## 2026-09-10T15:06:21Z — resumed release with confirmed console access and retention approval
+
+- Root task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, canonical branch `codex/cohort-budget-admission`; coordination edits only. User said they are logged into GCP/Firebase and accepted the previously proposed additional USD1. In context this approves up toUSD1/month ongoing release-image retention; original USD5 cumulative test/all-ten/all-regions/two-reader scope remains. Do not ask this decision again or infer unlimited pay-as-you-go authority.
+- Actual Firebase connector and native Chrome now confirm the configured operator, active production project716045864126, billing enabled and Blaze. The browser extension inventory exposed another Chrome profile; native Chrome reached the existing configured profile. Original open GCP tab used another project/account. Root verified the production project's linked Firebase Payment account before reading costs. No password, key or account recreation is required; no identity challenge remains on this access check.
+- Actual Billing report has one project option, specimen-digitization, and Sep1–10 Cloud SQL usageUSD0.71/other savings-minusUSD0.71/rounded totalUSD0.00. The previous overview renderedUSD0.69 before the report loaded. These are actual displayed observations, not a settled invoice, complete provider bill or ledger refund. Original ledger80c69752/1.2724 remains unchanged. Existing Cloud SQL trial banner says87days remain and standard pricing beginsDec6; no trial/plan/resource modification performed.
+- Live app still shows collection sign-in. Firebase owner account exists and is enabled but emailVerified remainsfalse. No password reset/verification message or app sign-in was submitted. Console authentication is resolved; future owner app sign-in/verification remains a distinct acceptance step.
+- Private normalized actual observations `/private/tmp/specimen-login-billing-recheck-20260910/CHECK_RESULT.json` SHA `99468a8bedf87187208f00879148854bc588fae65edb54085c4791c59215cd29`. Root GitHub Git commit API confirms merge6e6d5b8 tree1709b781978dcd8f0ed35322059e87e7e08b2d72, identical to local1df16bea tree; parentsf542/1df retained in MERGE_TREE_OBSERVATION.json. This confirms source equality without renewing native packets or changing Git refs.
+- Cost/source agents are performing bounded follow-ups for the now-approved image allowance and exact PR24 helper dependencies. Current finding: new release_google imports release_publication_deadline; prepared DATA/runtime source snapshots must include that module, and actual issuers must use the already-reviewed lossless encoding seam. Root owns native effects. No deployment, model processing, import, authentication-refresh command, ledger mutation, cloud permission change or pruning in this checkpoint. Full end-to-end acceptance remains Not confirmed. Original SAM cache cleanup remains due2026-09-10T21:17:07Z.
+
+
+## 2026-09-13T00:56:50.632059+00:00 — Current live release and remaining admission gates
+
+Magic-link sign-in shipped independently on `codex/magic-link-signin` through PR25 and was completed with the existing museum account. After PR27 Hosting deployed source `0875f15dd9e56e82d14a5b6a7bf90bc73719fba2`, a live browser reload retained that signed-in session. It still shows **Collection connection required**. The authenticated import, both-reader pipeline, correction/save/reopen journey is not accepted. Current source passed canonical2,050Python/205Flutter tests, all five exact-source checks, main Hosting103644198036, matching public marker and strict smoke. DATA34727278181/1 and runtime34727278145/1 stopped at admission with no privileged steps; no hand deployment substitutes for them.
+
+The PR27 operational helper package is frozen at `/private/tmp/specimen-pr27-operational-helpers-20260912`, manifest979bd376e70f448c118c26c8245412857176abeb05a053f8f723209edd979c1d. Author83 focused tests and four import/constructor checks passed; independent review is active. Its descriptive current operator count12 is incorrect: actual prior11 plus five new cleanup rows equals16. Root preserved the package and appended correctiond63c673d41f44514ab807591bf8644c4adcfc60d6f467be7063d870e4c5d7cf9 at `/private/tmp/specimen-pr27-helper-accounting-correction-20260913/CORRECTION.json`. The reviewer is exercising the16-row synthetic constructor/codec case without touching the active ledger.
+
+The reviewed locale successor completed one ordinary Firebase SDK refresh and four Storage metadata reads. Independent actual outcome501361181bdca6fd7e71a1d5fd717da356286cf290871b74d51ba1c0038d6546 verifies the original eight live cache generations, complete unchanged bucket/policy and no soft deletion. Five management reads then returned404SAMservice,404workerjob,200emptyexecutions,200two standard project sinks and403organization sink inventory. The helper stopped correctly at403. No model invocation or deletion occurred; the refresh fence is consumed while the cleanup fence remains absent. Organization destination-cost applicability remains unresolved; review8b61e4241b3b2a62fc00e7f1c48424859377041ffac84b85ea5611b40b26efb6 explains why another project-only read cannot close it. Nine of20 diagnostic GETs used.
+
+The latest unchanged ledger0ce36a8bd10f2abec173772ed206d80059d53844948e847637efdd828f284c34 reservesUSD1.3224, including priorUSD1uncertainty. Exactly10 local originals produced25SAM regions; unchanged both-reader and SAM bounds already bring the incomplete subtotal toUSD5.5224 before other release costs. The user's USD5-versus-USD8 choice remains pending; current ceiling staysUSD5. Separate up-to-USD1/month image-retention approval remains in force. Neither Blaze nor an expired execution window increases this authority. Current-source native qualification, full-sequence cost/time fit, protected DATA/runtime and independent live acceptance remain required.
+
+No branch, worktree, prior evidence, intent or ledger history was removed. Current checklist and shared closeout retain owner assignments and the precise remaining work.
+
+
+### 2026-09-13T01:07:46.514778+00:00 — PR27 helper source review closed
+
+Independent review `b04a3d9b5277a45b5cf4cdb0ca4bac608963c9cce19786ce1dc5eb767839cf5b` passes83focused cases, two fresh imports, two constructor replays and both16-operator synthetic integrations, including allfive runtime bundles and four liability/history negatives. All757predecessors and250author artifacts remain unchanged. The descriptive operator count is resolved by pinned additive correctiond63c673d; no executable finding or further source repair. Review manifestacbe8b8fc4e057305f335f017ef6f6f41907f307becf016e560037ccfc611398 is retained. Source-only work is complete; actual current inputs, budget decision/full-cost fit, protected DATA/runtime and ten-specimen live acceptance remain gated.
+
+
+## 2026-09-13 — DATA initialization priority after PR29
+
+Magic-link work remains isolated on `codex/magic-link-signin` (PR25); its recorded real-account sign-in and session persistence are accepted. The parallel DATA repair merged as PR29 `f9a445437efd59e0fe3b20c041b25811bf677a03`, with exact main CI34768186129/1, Hosting103753711665, public marker and canonical smoke verified by the DATA task. This establishes source/Hosting delivery, not a connected collection or full product acceptance.
+
+The shortest active path is initialization, with later owner-bootstrap work prepared independently:
+
+| Owner | Current bounded task | Completion gate |
+| --- | --- | --- |
+| Root coordinator | Exact operator/phase budget, bounded credential refresh/handoff, actual input assembly and protected execution | Current independent reviews, original immutable fences and finite source/run/attempt scope |
+| `/root/cache_cleanup_reconcile` | Initialization helper v2 accepting only the complete observed SQL revision12 configuration | Author121 tests/134 subtests passed; independent review pending; author paused for priority |
+| `/root/identity_registration_review` | Actual IAM/claim/input review, v2 compatibility and credential-wrapper adversarial review | Fresh49-value capture and literal exact action review before unchanged two-effect setup |
+| `/root/complete_pilot_cost` | Exact candidate ledger/category/duration and one new refresh accounting | All historical rows/uncertainty preserved; cumulative total belowUSD5 |
+| `/root/sam_results_cost` | Separate three-permission owner-bootstrap IAM helper | Core23 tests pass; native wrapper still unfinished; paused to free the initialization review slot |
+| DATA task `01a082b4-a9bc-7413-a3c5-505b61c2f4db` | Source/CI coordination and current static proof package | Current source proof package delivered; bootstrap and product work remain separate |
+
+Agents retain the existing task model settings and the recorded TDD/independent-review harness. Current read-only evidence confirms only the original empty temporary schema, no application database/connector, unchanged eight expired initializer-related IAM bindings, and empty current/versioned/soft-deleted release-claim lists. The sole historical preservation difference is the SQL etag/settings revision6→12. The new helper binds the entire actual revision12 body; it does not ignore etags or adopt future drift.
+
+The numerical DATA-only engineering proposal isUSD4.016903 including the unchangedUSD1.3224 ledger, current diagnostics/shared artifacts, initialization, optional inventory/owner-bootstrap headroom, the newUSD0.0003 SDK-refresh allowance andUSD2.25 for the entire existing SQL lifetime through2026-09-14T18:00:00Z. This remains an uninstalled review candidate; it is not an invoice guarantee or a model-pilot budget. No historical uncertainty is refunded. The source horizon is fixed and does not authorize source shutdown/deletion. Later bootstrap IAM helper expenses still require their own finite mapping within remaining headroom.
+
+A separate optional catalog inventory is not mandatory absent a concrete discrepancy: the protected initializer verifies actual source catalog/absence before acquiring the original restore claim or creating backup/clone liabilities. Once exact inputs qualify, use the original DATA34768186119 main-push run's next reviewed attempt; no manual dispatch or workstation deploy. Bootstrap follows persistent schema readiness, with exact original scope/identity and encrypted evidence. Runtime activation, ten real imports, all25 regions/two readers and human compare/correct/save/reopen are still outstanding; the paid model scope is not silently reduced.
+
+
+### 2026-09-13 execution gate after successful actual metadata capture
+
+Magic-link sign-in remains the independently branched and already released slice. PR29 source/Hosting and initializer-v2/source/cost checks are complete. The current live DATA setup reached actual49-read capture and independent exact two-action review. Automatic approval review then rejected the IAM execution twice before process creation, requiring explicit user approval for the persistent create-only claim role plus eight existing temporary DATA bindings. A single decision card is pending. Preserve original scope expiry1789319973, all captures, the consumed SDK-refresh fence, and every budget hold. No IAM/database/backup/claim/schema/environment/workflow mutation occurred. Hold fresh GitHub capture and bootstrap; after approval reconcile only expired actual inputs and any additional read cost, without resetting original evidence or bypassing protected workflows.
+
+
+### 2026-09-13 explicit IAM approval received
+
+The user replied “Approve these exact IAM changes” in root. The permission gate in the preceding entry is resolved; preserve the earlier rejection and expired-scope evidence. Current private approval is d389e138; current recorded cumulative ledger e37d1a59 totals3.7243, with proposed protected initialization4.0293 and total including optional allowances4.059303 under USD5. No new credential refresh is required: current cached identity and exact grants passed the unchanged exporter check.
+
+Next: finish the two narrowly identified GitHub collector defects and private descriptor staging, open one fresh bounded setup scope, capture/review/apply the exact two IAM effects, verify readback, then derive/issue/install the reviewed DATA inputs and replay the original main-push run through its protected workflow. No fresh scope is opened while collector preparation is incomplete. Source PR29 f9a remains unchanged pending fresh source verification. End-to-end product acceptance remains outstanding.
+
+
+### 2026-09-13T20:37Z — Approved IAM applied; final reconciliation pending
+
+The explicit IAM approval was executed. Both requested native effects returned HTTP200; independent review af5590b5 confirms the exact role and all23 policy bindings. The original helper stopped on reordered bindings, leaving final readback unperformed. The effect fence is consumed and must never be replayed. Author, identity reviewer and cost reviewer are preparing a separately reserved read-only49+6 reconciliation that preserves this partial transcript.
+
+The initializer requires3600 seconds remaining before its original21:40:15UTC expiry, so issuance closes20:40:15UTC. Original write scope ended20:35:15; no automatic renewal or reduced timing margin is allowed. Hold a new GitHub capture and protected initialization until the entire actual contract passes. Current ledgerUSD3.7243 retains every old reservation. No database, restore, schema, environment or workflow effect has been performed; the ten-specimen live journey remains outstanding.
+
+
+### 2026-09-13T20:56:42Z — IAM verified; initialization start window closed
+
+The user's exact IAM approval is complete: role creation and the conditional policy update succeeded, then55 independent read-only observations verified the entire resulting state. Independent actual review714e6dbe confirms all23 policy bindings and same native etag, the create-only role, original transcript preservation and no repeated IAM effects. Root final outcome is `/private/tmp/specimen-pr29-root-iam-final-readback-20260913/FINAL_OUTCOME.json`.
+
+Initialization remains paused at its original3600-second remaining-validity gate, whose20:40:15UTC start cutoff passed during verifier repair/review. No database, schema, environment or workflow mutation ran. The distinct read-only68866299/a55ba43c receipts cannot substitute for original setup success. Original scopes/fences and unchanged controllers remain preserved; no new permission window has been issued. Current cumulative commitments areUSD3.7344, not an invoice; the full-ten model pilot and live compare/correct/save/reopen journey remain outstanding.
+
+
+### 2026-09-13T21:38Z — Review-readiness work resumed before new clocks
+
+The owner explicitly resumed completion in the DATA task; root verified the actual user record (b766d135). Prepare all source, consumer compatibility and input constructors before the next reviewed temporary permission window. Root owns native effects and ledger; author/reviewer/cost lanes work independently; DATA owns the comparison-screen regression and app acceptance audit. Any resulting source change must pass the normal PR/main/Hosting path before final operational source qualification.
+
+Full cost fit is now an early dependency: current reservations3.7344 +readers3.70 +DATA0.305 +SAM0.50 =8.2394 before remaining work. Keep the unchanged5 ceiling until an explicit current decision; do not reuse the old8 suggestion as an adequate quote. Budget source gates require a reviewed source/authority change for any approved higher ceiling. No fresh credentials, clocks, IAM renewal or paid workflow starts while whole-path affordability is unresolved. The same ten specimens,25 regions,both readers and human compare/correct/save/reopen remain the acceptance scope.
