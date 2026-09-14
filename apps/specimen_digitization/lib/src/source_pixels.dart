@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'widgets/evidence_drawer.dart';
 import 'vocabulary.dart';
 
 /// Undo the derivative's EXIF display transform so overlays and crops share
@@ -20,6 +21,12 @@ class SourcePixels extends StatelessWidget {
     Widget image() => Image.memory(
       asset['preview_bytes'],
       fit: BoxFit.fill,
+      // The photograph stays on screen while a rebuild resolves the same
+      // bytes again. Without this a panel change, which rebuilds the row the
+      // image sits in, blanks the specimen for a frame: the reviewer sees a
+      // black rectangle where the evidence was, which is the one thing this
+      // screen must never do (motion and microinteractions, 5.4).
+      gaplessPlayback: true,
       semanticLabel: asset['processing_derivative'] is Map
           ? 'Decoded source preview. The original file is kept.'
           : semanticLabel,
@@ -92,9 +99,9 @@ class SourceBasisNotice extends StatelessWidget {
         Text(
           'Decoder: ${textOf(processing['codec'])} ${textOf(processing['codec_version'])} · Conversion: ${processing['conversion'] ?? 'Not recorded'}',
         ),
-        EvidenceDetails(
+        EvidenceDrawer(
           title: 'Codec and source coordinate provenance',
-          value: {'pixel_basis': basis, 'processing_derivative': processing},
+          payload: {'pixel_basis': basis, 'processing_derivative': processing},
         ),
       ],
     );

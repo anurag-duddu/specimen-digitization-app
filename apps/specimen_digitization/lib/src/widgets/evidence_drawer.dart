@@ -24,6 +24,7 @@ class EvidenceDrawer extends StatefulWidget {
     required this.payload,
     this.title = defaultTitle,
     this.emptyMessage = 'No raw payload for this phase',
+    this.section,
   });
 
   /// The label on the trigger. Kept constant across the app so the control is
@@ -38,6 +39,15 @@ class EvidenceDrawer extends StatefulWidget {
 
   /// What the drawer says when the server returned nothing.
   final String emptyMessage;
+
+  /// What this payload belongs to, for the trigger's spoken name.
+  ///
+  /// Every drawer in the app carries the same visible word, which is correct:
+  /// the control is learned once. But a history panel with a drawer per
+  /// revision then announces "Technical detail" a dozen times over, and a
+  /// screen reader user cannot tell one from another. The section is added to
+  /// the spoken label only, so the visible word stays constant.
+  final String? section;
 
   /// Pretty prints a payload the way the drawer renders it.
   ///
@@ -81,6 +91,9 @@ class _EvidenceDrawerState extends State<EvidenceDrawer> {
         MergeSemantics(
           child: Semantics(
             expanded: _open,
+            label: widget.section == null
+                ? null
+                : '${widget.title}, ${widget.section}',
             child: TextButton.icon(
               onPressed: () => setState(() => _open = !_open),
               icon: AnimatedRotation(

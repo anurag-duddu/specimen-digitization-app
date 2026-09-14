@@ -31,6 +31,14 @@ import 'theme/motion.dart';
 import 'operational_panel.dart';
 import 'widgets/widgets.dart';
 
+/// The evidence pane's own scroll view.
+///
+/// Named, because "the first `Scrollable` in the tree" is not the evidence
+/// pane: the source pane's region chip strip and the segment selector are
+/// both scroll views too, and a test that addresses the wrong one proves
+/// nothing about whether the pane a reviewer reads actually scrolls.
+const Key evidenceScrollKey = ValueKey<String>('workbench-evidence-scroll');
+
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
     super.key,
@@ -82,6 +90,24 @@ class ReviewWorkbench extends StatefulWidget {
 
 class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   WorkbenchSegment _segment = WorkbenchSegment.readings;
+
+  /// The height of the stacked layout's fixed chrome: the record header, the
+  /// photograph's own title row and the decision bar.
+  ///
+  /// Measured rather than guessed, because the decision bar wraps to two or
+  /// three rows on a phone and carries the gesture inset, and the photograph's
+  /// share has to be taken from what is left after it rather than from the
+  /// window. Getting that wrong is what collapsed the evidence pane to a
+  /// zero-height viewport, which reads as a screen that will not scroll.
+  double _stackedChrome = 0;
+
+  /// Which way the last segment change moved along the chip row.
+  ///
+  /// Forward, meaning left to right in the chip row on LTR, sends the
+  /// incoming panel in from the leading side and the outgoing one out the
+  /// other way. Read from the chip order, never hard-coded, and mirrored
+  /// under RTL by `Directionality` (motion catalog, row 41; choreography 5.3).
+  bool _segmentForward = true;
   String? _region;
   bool _sourceCollapsed = false;
   List<PendingFieldChange> _pending = <PendingFieldChange>[];
@@ -212,7 +238,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   void _selectRegion(String? id) {
     setState(() {
       _region = id;
-      if (id != null) _segment = WorkbenchSegment.readings;
+      if (id != null) _moveSegment(WorkbenchSegment.readings);
     });
     if (id == null) return;
     // The readings scroll to the region the photograph just moved to.
@@ -234,7 +260,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   void _goToBlocker(ClearanceBlocker blocker) {
-    setState(() => _segment = blocker.segment);
+    setState(() => _moveSegment(blocker.segment));
     final String? region = blocker.regionId;
     if (region != null) _region = region;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -521,6 +547,14 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         ),
       );
 
+  /// Moves to [next], remembering which way along the chip row it went.
+  ///
+  /// Call inside `setState`; it assigns, it does not schedule a rebuild.
+  void _moveSegment(WorkbenchSegment next) {
+    _segmentForward = next.index >= _segment.index;
+    _segment = next;
+  }
+
   Widget _segmentContent(BuildContext context) => switch (_segment) {
     WorkbenchSegment.readings => WorkbenchReadings(
       key: const ValueKey<String>('readings'),
@@ -617,7 +651,23 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     loadArtifact: widget.loadHistoricalArtifact,
   );
 
-  Widget _evidencePane(BuildContext context, WorkbenchRegime regime) {
+  /// The evidence pane: the scrolling evidence, with the decision bar pinned
+  /// beneath it.
+  ///
+  /// The two are separate widgets rather than one column, because on a phone
+  /// the bar's height has to come out of the layout before the photograph and
+  /// the evidence split what is left. Taking it out of the evidence pane's
+  /// own share is what left the pane with no viewport, and a scroll view with
+  /// no viewport does not scroll.
+  Widget _evidencePane(BuildContext context, WorkbenchRegime regime) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      Expanded(child: _evidenceContent(context, regime)),
+      _decisionBar(context, regime),
+    ],
+  );
+
+  Widget _evidenceContent(BuildContext context, WorkbenchRegime regime) {
     final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(regime);
     final WorkbenchSegment selected = segments.contains(_segment)
         ? _segment
@@ -629,6 +679,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       children: <Widget>[
         Expanded(
           child: SingleChildScrollView(
+            key: evidenceScrollKey,
             controller: _evidenceScroll,
             padding: EdgeInsets.symmetric(horizontal: context.space.space4),
             child: Column(
@@ -678,7 +729,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                       selected: <WorkbenchSegment>{selected},
                       showSelectedIcon: false,
                       onSelectionChanged: (Set<WorkbenchSegment> next) =>
-                          setState(() => _segment = next.first),
+                          setState(() {
+                            _moveSegment(next.first);
+                            SpecimenHaptics.selectionChanged();
+                          }),
                     ),
                   ),
                 ),
@@ -700,7 +754,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                             ? child
                             : SlideTransition(
                                 position: Tween<Offset>(
-                                  begin: const Offset(_panelSlide, 0),
+                                  begin: Offset(_panelOffset(context), 0),
                                   end: Offset.zero,
                                 ).animate(value),
                                 child: child,
@@ -708,33 +762,59 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                       ),
                   child: _segmentContent(context),
                 ),
-                SizedBox(height: context.space.space8),
+                // The decision bar is pinned below this pane and a phone puts
+                // a gesture bar below that. The content ends clear of both,
+                // so the last row is reachable rather than sitting under
+                // them.
+                SizedBox(
+                  height:
+                      context.space.space8 +
+                      MediaQuery.viewPaddingOf(context).bottom,
+                ),
               ],
             ),
           ),
         ),
-        WorkbenchDecisionBar(
-          compact: regime.isStacked,
-          onConfirmCoverage: () => _decide(
-            'coverage',
-            'Confirm label coverage?',
-            WorkbenchDecisionBar.coverageLabel,
-          ),
-          onApprove: () => _decide(
-            'approve',
-            'Approve this record?',
-            WorkbenchDecisionBar.approveLabel,
-          ),
-          coverageBlockedReason: blockedReason('coverage'),
-          approveBlockedReason: blockedReason('approve'),
-          pendingCount: _pending.length,
-          onSavePending: _savePending,
-          onNext: widget.onNext,
-          onPrevious: widget.onPrevious,
-        ),
       ],
     );
   }
+
+  /// Records a measured piece of the stacked layout's fixed chrome.
+  void _measureChrome(String part, double height) {
+    final double previous = _chromeParts[part] ?? 0;
+    if ((previous - height).abs() < 0.5) return;
+    _chromeParts[part] = height;
+    final double total = _chromeParts.values.fold(
+      0,
+      (double a, double b) => a + b,
+    );
+    if ((total - _stackedChrome).abs() < 0.5) return;
+    if (mounted) setState(() => _stackedChrome = total);
+  }
+
+  final Map<String, double> _chromeParts = <String, double>{};
+
+  Widget _decisionBar(BuildContext context, WorkbenchRegime regime) =>
+      WorkbenchDecisionBar(
+        compact: regime.isStacked,
+        busy: widget.busy,
+        onConfirmCoverage: () => _decide(
+          'coverage',
+          'Confirm label coverage?',
+          WorkbenchDecisionBar.coverageLabel,
+        ),
+        onApprove: () => _decide(
+          'approve',
+          'Approve this record?',
+          WorkbenchDecisionBar.approveLabel,
+        ),
+        coverageBlockedReason: blockedReason('coverage'),
+        approveBlockedReason: blockedReason('approve'),
+        pendingCount: _pending.length,
+        onSavePending: _savePending,
+        onNext: widget.onNext,
+        onPrevious: widget.onPrevious,
+      );
 
   /// The pinned source header of a stacked layout.
   ///
@@ -742,33 +822,50 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// through a loose `Flexible` so that a window too short to give it that
   /// much takes it from the photograph rather than pushing the decision bar
   /// off the screen.
-  List<Widget> _stackedSource(BuildContext context) => <Widget>[
-    Row(
-      children: <Widget>[
-        Expanded(
-          child: Text(
-            'Source photograph',
-            style: Theme.of(context).textTheme.titleSmall,
+  List<Widget> _stackedSource(
+    BuildContext context,
+    double available,
+    double free,
+  ) => <Widget>[
+    MeasuredHeight(
+      onHeight: (double h) => _measureChrome('sourceTitle', h),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              'Source photograph',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
           ),
-        ),
-        IconButton(
-          tooltip: _sourceCollapsed
-              ? 'Show the photograph'
-              : 'Collapse the photograph',
-          onPressed: () => setState(() => _sourceCollapsed = !_sourceCollapsed),
-          icon: Icon(
-            _sourceCollapsed ? Symbols.expand_more : Symbols.expand_less,
+          IconButton(
+            tooltip: _sourceCollapsed
+                ? 'Show the photograph'
+                : 'Collapse the photograph',
+            onPressed: () =>
+                setState(() => _sourceCollapsed = !_sourceCollapsed),
+            icon: Icon(
+              _sourceCollapsed ? Symbols.expand_more : Symbols.expand_less,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
-    if (!_sourceCollapsed)
-      Flexible(
-        fit: FlexFit.loose,
-        child: SizedBox(
-          height: pinnedSourceHeight(context),
-          child: _sourcePane(context, compact: true),
-        ),
+    // Non-flex, and deliberately so: a loose `Flexible` is capped at its
+    // share of the free space and strands whatever it does not use, which is
+    // how the photograph ended up smaller than the blueprint asks for while
+    // the evidence pane ended up with nothing at all. The height is computed
+    // instead, from the pane and the measured chrome, and the evidence pane
+    // takes everything that is left.
+    //
+    // It waits one frame for that measurement. Drawing the photograph at a
+    // height the column cannot hold would overflow the layout, and an
+    // overflow is worse than a frame.
+    if (!_sourceCollapsed &&
+        _stackedChrome > 0 &&
+        pinnedSourceHeight(available, free) > 0)
+      SizedBox(
+        height: pinnedSourceHeight(available, free),
+        child: _sourcePane(context, compact: true),
       ),
   ];
 
@@ -879,7 +976,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           onInvoke: (ShowSegmentIntent intent) {
             final List<WorkbenchSegment> all = WorkbenchSegment.values;
             if (intent.index < all.length) {
-              setState(() => _segment = all[intent.index]);
+              setState(() => _moveSegment(all[intent.index]));
             }
             return null;
           },
@@ -946,14 +1043,38 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         padding: EdgeInsets.symmetric(
           horizontal: context.space.space4,
         ).copyWith(top: context.space.space4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            _header(context),
-            ..._stackedSource(context),
-            SizedBox(height: context.space.space2),
-            Expanded(child: _evidencePane(context, regime)),
-          ],
+        // The photograph's share is measured against the height this pane was
+        // actually given, not against the window. On a phone the two differ by
+        // the app bar, the navigation bar, the environment band and the system
+        // insets, and the difference is the whole evidence pane.
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints box) {
+            final double available = box.maxHeight.isFinite
+                ? box.maxHeight
+                : MediaQuery.sizeOf(context).height;
+            // The photograph's share is taken from what is left once the
+            // fixed chrome has had its height, not from the window. The two
+            // differ by the decision bar, which wraps to three rows and
+            // carries the gesture inset on a phone.
+            final double free =
+                available - _stackedChrome - context.space.space2;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                MeasuredHeight(
+                  onHeight: (double h) => _measureChrome('header', h),
+                  child: _header(context),
+                ),
+                ..._stackedSource(context, available, free),
+                SizedBox(height: context.space.space2),
+                Expanded(child: _evidenceContent(context, regime)),
+                MeasuredHeight(
+                  onHeight: (double h) => _measureChrome('bar', h),
+                  child: _decisionBar(context, regime),
+                ),
+              ],
+            );
+          },
         ),
       );
     }
@@ -996,5 +1117,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   static const int _recentReasonLimit = 5;
+
   static const double _panelSlide = 0.06;
+
+  /// The incoming panel's starting offset, as a fraction of its own width.
+  ///
+  /// Capped at a fraction rather than a full width because the panel sits
+  /// beside a stationary photograph: a large horizontal slide next to a still
+  /// image produces induced motion, and the photograph appears to drift the
+  /// other way (choreography 5.4).
+  double _panelOffset(BuildContext context) {
+    final bool rtl = Directionality.of(context) == TextDirection.rtl;
+    final bool fromEnd = _segmentForward != rtl;
+    return fromEnd ? _panelSlide : -_panelSlide;
+  }
 }

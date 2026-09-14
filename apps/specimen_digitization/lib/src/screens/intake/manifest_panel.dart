@@ -16,11 +16,13 @@ import '../../theme/icons.dart';
 import '../../theme/motion.dart';
 import '../../vocabulary.dart';
 import '../../widgets/caveat_text.dart';
+import '../../widgets/evidence_drawer.dart';
+import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
 import 'manifest_entry.dart';
 
 /// The manifest header and its rows.
-class IntakeManifest extends StatelessWidget {
+class IntakeManifest extends StatefulWidget {
   const IntakeManifest({
     super.key,
     required this.entries,
@@ -59,13 +61,41 @@ class IntakeManifest extends StatelessWidget {
   final bool nested;
 
   @override
+  State<IntakeManifest> createState() => _IntakeManifestState();
+}
+
+class _IntakeManifestState extends State<IntakeManifest> {
+  /// Every file this manifest has already drawn, by checksum.
+  ///
+  /// A card that was already there is not new, and an entrance animation on
+  /// a row that already existed is on the blocklist. Only a card the
+  /// operator has just added animates, and only when there was already a
+  /// manifest for it to join (motion catalog, row 62).
+  final Set<String> _drawn = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    // The first manifest did not arrive; it was there when the screen was.
+    _drawn.addAll(widget.entries.map((ManifestEntry e) => e.digest));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final List<ManifestEntry> entries = widget.entries;
+    final bool hadCards = _drawn.isNotEmpty;
+    final Set<String> arriving = <String>{
+      for (final ManifestEntry entry in entries)
+        if (hadCards && !_drawn.contains(entry.digest)) entry.digest,
+    };
+    _drawn.addAll(entries.map((ManifestEntry e) => e.digest));
+
     return ListView(
-      padding: padding ?? EdgeInsets.all(context.space.space6),
-      shrinkWrap: nested,
-      primary: nested ? false : null,
-      physics: nested ? const NeverScrollableScrollPhysics() : null,
+      padding: widget.padding ?? EdgeInsets.all(context.space.space6),
+      shrinkWrap: widget.nested,
+      primary: widget.nested ? false : null,
+      physics: widget.nested ? const NeverScrollableScrollPhysics() : null,
       children: <Widget>[
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,12 +119,12 @@ class IntakeManifest extends StatelessWidget {
                 ],
               ),
             ),
-            if (busy)
+            if (widget.busy)
               OutlinedButton.icon(
                 key: const ValueKey<String>('intake-stop'),
-                onPressed: stopping ? null : onStop,
+                onPressed: widget.stopping ? null : widget.onStop,
                 icon: const Icon(Symbols.stop_circle),
-                label: Text(stopping ? 'Stopping' : 'Stop'),
+                label: Text(widget.stopping ? 'Stopping' : 'Stop'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: Size(
                     context.sizes.targetMin,
@@ -104,16 +134,46 @@ class IntakeManifest extends StatelessWidget {
               ),
           ],
         ),
-        if (stopping) ...<Widget>[
-          SizedBox(height: context.space.space2),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              'Stopping. The file already sending finishes first.',
-              style: theme.textTheme.bodySmall,
+        // The one summary line the whole batch earns, arriving with height
+        // and opacity beside the one light impact (motion catalog, row 67).
+        MotionReveal(
+          visible: batchComplete(entries) && !widget.busy,
+          child: Padding(
+            padding: EdgeInsets.only(top: context.space.space2),
+            child: Semantics(
+              liveRegion: true,
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Symbols.check_circle,
+                    size: context.sizes.iconInline,
+                    color: context.tokens.clearedContent,
+                  ),
+                  SizedBox(width: context.space.space2),
+                  Flexible(
+                    child: Text(
+                      batchCompleteLine(entries),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
+        ),
+        MotionReveal(
+          visible: widget.stopping,
+          child: Padding(
+            padding: EdgeInsets.only(top: context.space.space2),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                'Stopping. The file already sending finishes first.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+        ),
         SizedBox(height: context.space.space3),
         const CaveatText(
           label: 'After a restart, select the same files again to resume.',
@@ -134,18 +194,53 @@ class IntakeManifest extends StatelessWidget {
           ),
         for (final ManifestEntry entry in entries)
           Padding(
+            key: ValueKey<String>('manifest-slot-${entry.digest}'),
             padding: EdgeInsets.only(bottom: context.space.space4),
-            child: IntakeManifestRow(
-              key: ValueKey<String>(entry.digest),
-              entry: entry,
-              busy: busy,
-              onRemove: () => onRemove(entry),
-              onServerCheck: () => onServerCheck(entry),
+            // Fade and size, never a slide: the card did not come from
+            // anywhere, the operator made it (motion catalog, row 62).
+            child: _ArrivingCard(
+              arriving: arriving.contains(entry.digest),
+              child: IntakeManifestRow(
+                key: ValueKey<String>(entry.digest),
+                entry: entry,
+                busy: widget.busy,
+                onRemove: () => widget.onRemove(entry),
+                onServerCheck: () => widget.onServerCheck(entry),
+              ),
             ),
           ),
       ],
     );
   }
+}
+
+/// One manifest card, revealed on the frame it is added and static after
+/// that (motion catalog, row 62).
+class _ArrivingCard extends StatefulWidget {
+  const _ArrivingCard({required this.arriving, required this.child});
+
+  final bool arriving;
+  final Widget child;
+
+  @override
+  State<_ArrivingCard> createState() => _ArrivingCardState();
+}
+
+class _ArrivingCardState extends State<_ArrivingCard> {
+  late bool _revealed = !widget.arriving;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_revealed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _revealed = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      MotionReveal(visible: _revealed, child: widget.child);
 }
 
 /// One manifest row: the shared `UploadItem`, the local measurements, and the
@@ -181,7 +276,6 @@ class IntakeManifestRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final MotionTokens motion = MotionTokens.of(context);
-    final Json? preflight = entry.preflight;
     // A determinate value is information, so it keeps its motion and its
     // linear curve under reduced motion (motion, rows 65 and 2.5).
     final Widget item = TweenAnimationBuilder<double>(
@@ -198,6 +292,14 @@ class IntakeManifestRow extends StatelessWidget {
         progress: value,
         reason: entry.why == null ? entry.reason : null,
         onRemove: entry.removable && !busy ? onRemove : null,
+        removeBlockedReason: entry.removable
+            ? null
+            : 'The server has taken this file, so it cannot be removed from '
+                  'the batch.',
+        // The per-row action and the per-row evidence live inside the
+        // component rather than in a column around it, so a manifest row is
+        // one thing a reviewer learns once.
+        details: _details(context, theme),
       ),
     );
 
@@ -220,93 +322,6 @@ class IntakeManifestRow extends StatelessWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            if (entry.file != null) ...<Widget>[
-              SizedBox(height: context.space.space3),
-              CaptureQualitySummary(quality: entry.quality),
-              SizedBox(height: context.space.space3),
-              const CaveatText(
-                label: 'Focus, glare and label coverage are not measured.',
-                why:
-                    'These three values describe exposure and detail in a '
-                    'thumbnail. Compare the photograph with the specimen '
-                    'yourself before you confirm this batch.',
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: entry.checking || busy ? null : onServerCheck,
-                  icon: const Icon(Symbols.cloud_sync),
-                  label: Text(
-                    entry.checking ? 'Checking' : 'Send for server check',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: Size(
-                      context.sizes.targetMin,
-                      context.sizes.targetMin,
-                    ),
-                  ),
-                ),
-              ),
-              const CaveatText(
-                label: 'The server check creates nothing.',
-                why:
-                    'Nothing is created and no outside service is called. '
-                    'Your local measurements stay on this device until you '
-                    'choose an action.',
-              ),
-              if (entry.preflightError != null)
-                Semantics(
-                  liveRegion: true,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Icon(
-                        Symbols.error,
-                        size: context.sizes.iconInline,
-                        color: theme.colorScheme.error,
-                      ),
-                      SizedBox(width: context.space.space2),
-                      Expanded(
-                        child: Text(
-                          entry.preflightError!,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.error,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              if (preflight != null) ...<Widget>[
-                if (objectOf(preflight['decode'])['reason'] ==
-                    'memory_limit_unavailable')
-                  const CaveatText(
-                    label:
-                        'The server check is not available. Ask the service '
-                        'administrator to enable memory-limit enforcement.',
-                    why:
-                        'Changing the image format will not help. Ordinary '
-                        'image intake is checked separately and is '
-                        'unaffected.',
-                  ),
-                Text(
-                  'Server check: '
-                  '${vocabularyLabel(textOf(preflight['status']))}. '
-                  'Check quality yourself as well.',
-                ),
-                for (final dynamic issue
-                    in preflight['issues'] as List<dynamic>? ??
-                        const <dynamic>[])
-                  Text(vocabularyLabel(issue.toString())),
-                Text(
-                  'Not measured: ${preflight['unmeasured'] ?? 'Not recorded'}',
-                ),
-                EvidenceDetails(
-                  title: 'Server codec support and check evidence',
-                  value: preflight,
-                ),
-              ],
-            ],
             SizedBox(height: context.space.space2),
             SelectableText(
               'Checksum (SHA-256) ${entry.digest}',
@@ -317,6 +332,99 @@ class IntakeManifestRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// The local measurements, the server check result, and the two caveats
+  /// that keep either from reading as a verdict. Rendered inside the
+  /// component through its `details` slot.
+  Widget? _details(BuildContext context, ThemeData theme) {
+    if (entry.file == null) return null;
+    final Json? preflight = entry.preflight;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        CaptureQualitySummary(quality: entry.quality),
+        SizedBox(height: context.space.space3),
+        const CaveatText(
+          label: 'Focus, glare and label coverage are not measured.',
+          why:
+              'These three values describe exposure and detail in a '
+              'thumbnail. Compare the photograph with the specimen '
+              'yourself before you confirm this batch.',
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: entry.checking || busy ? null : onServerCheck,
+            icon: const Icon(Symbols.cloud_sync),
+            label: Text(entry.checking ? 'Checking' : 'Send for server check'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: Size(
+                context.sizes.targetMin,
+                context.sizes.targetMin,
+              ),
+            ),
+          ),
+        ),
+        const CaveatText(
+          label: 'The server check creates nothing.',
+          why:
+              'Nothing is created and no outside service is called. '
+              'Your local measurements stay on this device until you '
+              'choose an action.',
+        ),
+        if (entry.preflightError != null)
+          Semantics(
+            liveRegion: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  Symbols.error,
+                  size: context.sizes.iconInline,
+                  color: theme.colorScheme.error,
+                ),
+                SizedBox(width: context.space.space2),
+                Expanded(
+                  child: Text(
+                    entry.preflightError!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (preflight != null) ...<Widget>[
+          if (objectOf(preflight['decode'])['reason'] ==
+              'memory_limit_unavailable')
+            const CaveatText(
+              label:
+                  'The server check is not available. Ask the service '
+                  'administrator to enable memory-limit enforcement.',
+              why:
+                  'Changing the image format will not help. Ordinary '
+                  'image intake is checked separately and is '
+                  'unaffected.',
+            ),
+          Text(
+            'Server check: '
+            '${vocabularyLabel(textOf(preflight['status']))}. '
+            'Check quality yourself as well.',
+          ),
+          for (final dynamic issue
+              in preflight['issues'] as List<dynamic>? ?? const <dynamic>[])
+            Text(vocabularyLabel(issue.toString())),
+          Text('Not measured: ${preflight['unmeasured'] ?? 'Not recorded'}'),
+          EvidenceDrawer(
+            title: 'Server codec support and check evidence',
+            payload: preflight,
+          ),
+        ],
+      ],
     );
   }
 }

@@ -25,6 +25,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../capture_quality.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
+import '../widgets/not_calibrated_chip.dart';
 import 'capture_camera.dart';
 
 /// What the capture route hands back to the intake screen.

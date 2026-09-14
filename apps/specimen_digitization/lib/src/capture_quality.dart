@@ -2,10 +2,10 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
 
 import 'theme/icons.dart';
 import 'widgets/caveat_text.dart';
+import 'widgets/not_calibrated_chip.dart';
 
 /// Descriptive thumbnail measurements, not calibrated blur or readability grades.
 class CaptureQuality {
@@ -206,61 +206,6 @@ class CapturePreviewReading {
       'Brightness ${mean.toStringAsFixed(0)} of 255. '
       'Clipped dark ${(darkFraction * 100).toStringAsFixed(0)}%. '
       'Clipped bright ${(brightFraction * 100).toStringAsFixed(0)}%.';
-}
-
-/// The abstention chip that follows every local measurement in this client.
-///
-/// The chip exists because a number with no boundary beside it reads as a
-/// grade. It is built from the token layer only. It is a candidate to move
-/// into the shared component library once a second screen needs it.
-class NotCalibratedChip extends StatelessWidget {
-  const NotCalibratedChip({super.key});
-
-  /// The word, used by the widget and by the tests that assert on it.
-  static const String label = 'Not calibrated';
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: 'Measurement: not calibrated',
-      excludeSemantics: true,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(context.shape.radiusXs),
-          border: Border.all(
-            color: theme.colorScheme.outline,
-            width: context.shape.strokeBoundary,
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: context.space.space2,
-            vertical: context.space.space1,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(
-                Symbols.hide_source,
-                size: context.sizes.iconInline,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              SizedBox(width: context.space.space1),
-              Text(
-                label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// The three local measurements as short labelled values, with the

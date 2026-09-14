@@ -13,6 +13,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_entry.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
+import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
 import 'widgets/harness.dart';
 

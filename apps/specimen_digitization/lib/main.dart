@@ -19,6 +19,8 @@ import 'src/magic_link.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
 import 'src/theme/app_theme.dart';
+import 'src/theme/motion.dart';
+import 'src/theme/motion_preference.dart';
 import 'src/workspace.dart';
 
 Future<void> main() async {
@@ -98,6 +100,8 @@ class SpecimenDigitizationApp extends StatefulWidget {
     this.synthetic = false,
     this.emailLinkBrowser,
     this.initialLocation = AppRoutes.setup,
+    this.motionPreferences,
+    this.navigatorObservers = const <NavigatorObserver>[],
   });
 
   /// A browser for the incoming email sign-in link, on web.
@@ -118,6 +122,16 @@ class SpecimenDigitizationApp extends StatefulWidget {
   /// Where the window starts. A test uses this to open a deep link.
   final String initialLocation;
 
+  /// Where the stored "Reduce motion" setting lives. A test passes an
+  /// in-memory store so no test reaches the platform preference store
+  /// (motion and microinteractions, 6.2b).
+  final MotionPreferenceStore? motionPreferences;
+
+  /// Observers installed on the router's navigator. Empty in the app; a test
+  /// puts `TransitionDurationObserver` here to pump past a route transition
+  /// without naming its duration.
+  final List<NavigatorObserver> navigatorObservers;
+
   @override
   State<SpecimenDigitizationApp> createState() =>
       _SpecimenDigitizationAppState();
@@ -128,10 +142,15 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   WorkspaceController? _workspace;
   MagicLinkController? _magicLink;
   late final GoRouter _router;
+  late final MotionPreferenceController _motion;
 
   @override
   void initState() {
     super.initState();
+    _motion = MotionPreferenceController(
+      store: widget.motionPreferences ?? const SharedMotionPreferenceStore(),
+    );
+    unawaited(_motion.load());
     _sessionNotifier = AppSessionNotifier(session: widget.session)
       ..addListener(_sessionChanged);
     final SessionAccess? session = widget.session;
@@ -156,6 +175,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       setupMessage: widget.setupMessage,
       synthetic: widget.synthetic,
       initialLocation: widget.initialLocation,
+      observers: widget.navigatorObservers,
     );
     _sessionChanged();
   }
@@ -174,6 +194,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       ..removeListener(_sessionChanged)
       ..dispose();
     _router.dispose();
+    _motion.dispose();
     _magicLink?.dispose();
     _workspace?.dispose();
     super.dispose();
@@ -189,10 +210,31 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       darkTheme: _darkTheme,
       themeMode: ThemeMode.system,
       routerConfig: _router,
+      builder: (BuildContext context, Widget? child) => ExpansionTileTheme(
+        // `ExpansionTile` animates at Material's own 200 ms on a linear
+        // curve. The duration is already the `standard` token; the curve is
+        // not, and the reduced-motion collapse is ours to apply because a
+        // theme built once at startup cannot read an accessibility feature
+        // (motion catalog, row 43).
+        data: ExpansionTileThemeData(
+          expansionAnimationStyle: AnimationStyle(
+            duration: MotionTokens.of(context).standard,
+            curve: MotionTokens.standardCurve,
+            reverseCurve: MotionTokens.standardCurve,
+          ),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
-    return workspace == null
-        ? app
-        : WorkspaceScope(controller: workspace, child: app);
+    // One scope above the router, because an accessibility feature change and
+    // a browser media query change both arrive outside the widget tree and
+    // would otherwise rebuild nothing (motion and microinteractions, 6.2).
+    return MotionScope(
+      controller: _motion,
+      child: workspace == null
+          ? app
+          : WorkspaceScope(controller: workspace, child: app),
+    );
   }
 }
 

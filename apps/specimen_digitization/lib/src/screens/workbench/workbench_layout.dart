@@ -6,8 +6,6 @@
 /// detail pane that is narrower than the window it sits in.
 library;
 
-import 'package:flutter/widgets.dart';
-
 import '../../layout/window_class.dart';
 
 /// How the source pane, the evidence pane and the history pane are arranged.
@@ -78,11 +76,50 @@ enum WorkbenchSegment {
       : <WorkbenchSegment>[WorkbenchSegment.readings, WorkbenchSegment.fields];
 }
 
+/// The floor the evidence pane keeps on a stacked layout.
+///
+/// Enough for the segment selector and two rows beneath it, which is what
+/// makes a pane worth scrolling. A pane squeezed below this has nowhere to
+/// scroll to, which on a device reads as "the screen is frozen" rather than
+/// as "the photograph is large".
+///
+/// Deliberately smaller than the photograph's target share: on a phone in
+/// portrait both cannot have what they would like, and the photograph is the
+/// one the blueprint says may shrink.
+const double evidencePaneMinHeight = 180;
+
 /// The height the pinned source header asks for on a stacked layout.
 ///
-/// The blueprint asks for 40 percent of the viewport, which a tall window
-/// gives outright. The workbench offers it through a loose `Flexible`, so a
-/// window too short to give it that much takes the difference out of the
-/// photograph rather than pushing the decision bar off the screen.
-double pinnedSourceHeight(BuildContext context) =>
-    MediaQuery.sizeOf(context).height * sourcePaneMinViewportFraction;
+/// [available] is the height the workbench itself was given, never the height
+/// of the window: the blueprint's forty percent is measured against the pane
+/// the reviewer is looking at. [free] is what is left of it once the fixed
+/// chrome, meaning the record header, the photograph's title row and the
+/// decision bar, has had its height.
+///
+/// Splitting those two apart is the fix for the record screen that would not
+/// scroll on a phone. Taking the decision bar's height out of the evidence
+/// pane's own share left the pane with a zero-height viewport, and a scroll
+/// view with no viewport does not move under a finger.
+///
+/// The forty percent is a target. [evidencePaneMinHeight] is the floor, and
+/// the floor wins: a window too short for both takes the difference out of
+/// the photograph rather than out of the evidence.
+double pinnedSourceHeight(double available, double free) {
+  final double target = available * sourcePaneMinViewportFraction;
+  final double ceiling = free - evidencePaneMinHeight;
+  final double height = target < ceiling ? target : ceiling;
+  if (height >= pinnedSourceMinHeight) return height;
+  // Neither can have what it wants. The photograph keeps the least height it
+  // can be read at, rather than being drawn smaller than its own controls and
+  // region list, and the evidence pane takes whatever is left. A pane with a
+  // small viewport still scrolls; a pane with none does not.
+  return free - pinnedSourceMinHeight > 0 ? pinnedSourceMinHeight : 0;
+}
+
+/// The least height the pinned photograph is worth drawing at.
+///
+/// Its own zoom controls and its region list are fixed rows inside it, so a
+/// box shorter than this has no room left for the photograph and overflows
+/// its own column. Below this the header is dropped entirely and the
+/// photograph is reached through the full screen control instead.
+const double pinnedSourceMinHeight = 160;

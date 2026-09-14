@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../../theme/icons.dart';
+import '../../widgets/widgets.dart';
 import 'pending_changes.dart';
 
 /// The pinned bar at the foot of the evidence pane.
@@ -25,6 +26,7 @@ class WorkbenchDecisionBar extends StatelessWidget {
     this.onNext,
     this.onPrevious,
     this.compact = false,
+    this.busy = false,
   });
 
   /// Opens the coverage reason sheet.
@@ -55,6 +57,14 @@ class WorkbenchDecisionBar extends StatelessWidget {
   /// navigation bar rather than right aligned in a pane.
   final bool compact;
 
+  /// True while a decision is in flight.
+  ///
+  /// The pressed button reports it inline and keeps its width; nothing is
+  /// dimmed and nothing is covered, because the reviewer must still be able
+  /// to read the evidence they just judged while the request is out
+  /// (motion catalog, row 49).
+  final bool busy;
+
   /// The two decision labels, fixed across the app.
   static const String coverageLabel = 'Confirm label coverage';
 
@@ -67,8 +77,8 @@ class WorkbenchDecisionBar extends StatelessWidget {
     final List<Widget> actions = <Widget>[
       if (pendingCount > 0)
         FilledButton.icon(
-          onPressed: onSavePending,
-          icon: const Icon(Symbols.save),
+          onPressed: busy ? null : onSavePending,
+          icon: InFlightGlyph(busy: busy, resting: Symbols.save),
           label: Text('Save ${pendingChangesLabel(pendingCount)}'),
         ),
       _Decision(
@@ -76,12 +86,14 @@ class WorkbenchDecisionBar extends StatelessWidget {
         reason: coverageBlockedReason,
         onPressed: onConfirmCoverage,
         filled: false,
+        busy: busy,
       ),
       _Decision(
         label: approveLabel,
         reason: approveBlockedReason,
         onPressed: onApprove,
         filled: true,
+        busy: busy,
       ),
     ];
 
@@ -130,23 +142,38 @@ class _Decision extends StatelessWidget {
     required this.reason,
     required this.onPressed,
     required this.filled,
+    required this.busy,
   });
 
   final String label;
   final String? reason;
   final VoidCallback onPressed;
   final bool filled;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
-    final VoidCallback? action = reason == null ? onPressed : null;
+    final VoidCallback? action = reason == null && !busy ? onPressed : null;
+    // The label stays; the indicator arrives beside it. Swapping the label
+    // out would change the button's width, and a decision bar that resizes
+    // while the request is out is a decision bar the reviewer has to find
+    // again (motion catalog, row 49).
+    final Widget content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        InFlightGlyph(busy: busy, resting: null),
+        // Flexible, because a `Row` hands a non-flex child unbounded main
+        // axis constraints, and a decision label is long.
+        Flexible(child: Text(label)),
+      ],
+    );
     return Tooltip(
       message: reason ?? label,
       child: Semantics(
         hint: reason ?? '',
         child: filled
-            ? FilledButton.tonal(onPressed: action, child: Text(label))
-            : OutlinedButton(onPressed: action, child: Text(label)),
+            ? FilledButton.tonal(onPressed: action, child: content)
+            : OutlinedButton(onPressed: action, child: content),
       ),
     );
   }

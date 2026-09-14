@@ -159,28 +159,8 @@ class WorkbenchReadings extends StatelessWidget {
     return anchors[regionId];
   }
 
-  Widget _card(BuildContext context, Json o, String? reference) {
-    final String regionName = _regionName(o['region_id']);
-
-    // The region name sits above the card rather than inside its title row:
-    // `ReadingCard` lays its model name and provider out in one unwrapped
-    // row, so a long pair overflows. The PR asks for the shared component to
-    // make its provider flexible.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          regionName,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        SizedBox(height: context.space.space1),
-        _reading(context, o, reference, regionName),
-      ],
-    );
-  }
+  Widget _card(BuildContext context, Json o, String? reference) =>
+      _reading(context, o, reference, _regionName(o['region_id']));
 
   Widget _reading(
     BuildContext context,
@@ -193,6 +173,7 @@ class WorkbenchReadings extends StatelessWidget {
       modelName: textOf(o['model_id'], 'Model'),
       provider: textOf(o['provider'], 'Not recorded'),
       literal: literal,
+      regionName: regionName,
       // The first reading of a region has nothing before it to differ from.
       reference: reference,
       selected: selectedRegionId != null && selectedRegionId == o['region_id'],

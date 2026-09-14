@@ -7,6 +7,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +17,7 @@ import '../../app/routes.dart';
 import '../../models.dart';
 import '../../search_filters.dart';
 import '../../theme/icons.dart';
+import '../../theme/motion.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import '../../workspace.dart';
@@ -25,15 +27,6 @@ const double queueListPaneWidth = 360;
 
 /// How many placeholder rows stand in for the first page.
 const int queueSkeletonRows = 5;
-
-/// The contributing signals behind a queue row's risk score.
-///
-/// The search endpoint returns a bare composite; the signals that produced it
-/// are on the record itself. The compact meter never draws this list, so this
-/// names where the signals are rather than inventing one.
-const List<String> queueRiskComponents = <String>[
-  'Contributing signals are on the record',
-];
 
 /// One line of plain language saying why a record is in the queue.
 String queueReason(Specimen specimen) {
@@ -221,7 +214,7 @@ class _QueuePaneState extends State<QueuePane> {
         ? context.space.space4
         : context.space.space6;
 
-    return ListView(
+    final Widget list = ListView(
       controller: controller.queueScroll,
       padding: EdgeInsets.symmetric(
         horizontal: gutter,
@@ -257,53 +250,105 @@ class _QueuePaneState extends State<QueuePane> {
         ),
         _ActiveFilterChips(controller: controller),
         SizedBox(height: context.space.space4),
-        if (first) ...<Widget>[
-          const LoadingAnnouncement(thing: 'queue'),
-          for (int index = 0; index < queueSkeletonRows; index++)
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: context.space.space2),
-              child: const SkeletonRow(),
-            ),
-        ] else if (items.isEmpty) ...<Widget>[
-          if (controller.unfiltered)
-            EmptyState(
-              icon: Symbols.inventory_2,
-              title: 'No specimens yet',
-              body: 'Upload a photograph to create the first record.',
-              actionLabel: 'Add photographs',
-              onAction: () {
-                final CollectionScope? scope = controller.scope;
-                if (scope == null) return;
-                context.go(AppRoutes.intakeOf(encodeCollectionKey(scope.key)));
-              },
-            )
-          else
-            EmptyState(
-              icon: Symbols.search_off,
-              title: 'No records match these filters',
-              body: 'Clear the search and filters to see the whole queue.',
-              actionLabel: 'Clear all',
-              onAction: () => unawaited(controller.clearFilters()),
-            ),
-        ] else
-          _rows(context, controller, items),
+        // Placeholders to rows, and one result set to the next, are the same
+        // cross-fade: nothing slides, nothing staggers, and a poll that
+        // answered with the same records produces no motion at all, because
+        // the key does not change (motion catalog, rows 13, 24 and 28).
+        AnimatedSwitcher(
+          duration: context.motion.standard,
+          switchInCurve: MotionTokens.standardCurve,
+          switchOutCurve: MotionTokens.standardCurve,
+          // The incoming child is pinned to the top left, so a swap never
+          // lurches the scroll position.
+          layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
+            alignment: AlignmentDirectional.topStart,
+            children: <Widget>[...previous, ?current],
+          ),
+          child: KeyedSubtree(
+            key: ValueKey<String>(_bodyKey(controller, first, items)),
+            child: first
+                ? _skeleton(context)
+                : items.isEmpty
+                ? _empty(context, controller)
+                : _rows(context, controller, items),
+          ),
+        ),
         if (controller.nextCursor != null) ...<Widget>[
           SizedBox(height: context.space.space4),
-          OutlinedButton(
-            onPressed: controller.loadingMore || controller.loading
-                ? null
-                : () => unawaited(controller.loadMore()),
-            child: Text(
-              controller.loadingMore ? 'Loading more…' : 'Load more records',
-            ),
-          ),
+          _LoadMoreButton(controller: controller),
         ],
       ],
     );
+
+    // Pull to refresh is a touch gesture, and on the web it fights the
+    // browser's own pull to refresh, so it is offered on the two touch
+    // platforms only (motion catalog, row 21). The list is never cleared
+    // while the refresh is out: the rows that are there stay there.
+    return _pullToRefresh
+        ? RefreshIndicator(onRefresh: () => controller.refresh(), child: list)
+        : list;
   }
+
+  /// True on the two platforms whose pull gesture is the app's to own.
+  bool get _pullToRefresh =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
+
+  /// What identity the list body has right now.
+  ///
+  /// Only three things change it: the placeholders giving way to an answer,
+  /// the answer being empty or not, and a new result set. A twenty second
+  /// poll that returns the same page keeps the same generation and therefore
+  /// the same key, which is what makes row 14 true.
+  String _bodyKey(
+    WorkspaceController controller,
+    bool first,
+    List<Specimen> items,
+  ) {
+    if (first) return 'skeleton';
+    if (items.isEmpty) return 'empty-${controller.unfiltered}';
+    return 'rows-${controller.listGeneration}';
+  }
+
+  Widget _skeleton(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      const LoadingAnnouncement(thing: 'queue'),
+      for (int index = 0; index < queueSkeletonRows; index++)
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: context.space.space2),
+          child: const SkeletonRow(),
+        ),
+    ],
+  );
+
+  Widget _empty(BuildContext context, WorkspaceController controller) =>
+      controller.unfiltered
+      ? EmptyState(
+          icon: Symbols.inventory_2,
+          title: 'No specimens yet',
+          body: 'Upload a photograph to create the first record.',
+          actionLabel: 'Add photographs',
+          onAction: () {
+            final CollectionScope? scope = controller.scope;
+            if (scope == null) return;
+            context.go(AppRoutes.intakeOf(encodeCollectionKey(scope.key)));
+          },
+        )
+      : EmptyState(
+          icon: Symbols.search_off,
+          title: 'No records match these filters',
+          body: 'Clear the search and filters to see the whole queue.',
+          actionLabel: 'Clear all',
+          onAction: () => unawaited(controller.clearFilters()),
+        );
 
   /// The rows, under one node that holds the list still while a row has
   /// keyboard focus (screen blueprints, section 3).
+  ///
+  /// The rows themselves never animate in: they existed before the rebuild,
+  /// and an entrance animation on an existing row is on the blocklist.
   Widget _rows(
     BuildContext context,
     WorkspaceController controller,
@@ -328,7 +373,11 @@ class _QueuePaneState extends State<QueuePane> {
                 items[index].disposition ?? items[index].state,
               ),
               riskComposite: items[index].data['risk'] as num?,
-              riskComponents: queueRiskComponents,
+              // The search endpoint answers a bare composite and leaves the
+              // contributing signals on the record. The compact meter never
+              // draws them, so the row says nothing rather than naming a
+              // signal the list response did not carry.
+              riskComponents: const <String>[],
               riskCalibrated: items[index].data['risk_calibrated'] == true,
               updatedAt: queueUpdatedAt(items[index]),
               selected:
@@ -452,26 +501,68 @@ class _ActiveFilterChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Map<String, String> filters = controller.filters;
-    if (filters.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: EdgeInsets.only(top: context.space.space2),
-      child: Wrap(
-        spacing: context.space.space2,
-        runSpacing: context.space.space1,
-        children: <Widget>[
-          for (final MapEntry<String, String> entry in filters.entries)
-            InputChip(
-              key: ValueKey<String>('filter-chip-${entry.key}'),
-              label: Text('${searchFieldLabel(entry.key)}: ${entry.value}'),
-              onDeleted: () => unawaited(controller.removeFilter(entry.key)),
-              deleteIcon: const Icon(Symbols.close),
-              deleteButtonTooltipMessage:
-                  'Remove the ${searchFieldLabel(entry.key)} filter',
+    // Adding and removing a filter changes the height of the row above the
+    // list, so the chips arrive and leave through the shared reveal rather
+    // than snapping the rows down (motion catalog, rows 10 and 23).
+    return MotionReveal(
+      visible: filters.isNotEmpty,
+      child: filters.isEmpty
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: EdgeInsets.only(top: context.space.space2),
+              child: Wrap(
+                spacing: context.space.space2,
+                runSpacing: context.space.space1,
+                children: <Widget>[
+                  for (final MapEntry<String, String> entry in filters.entries)
+                    InputChip(
+                      key: ValueKey<String>('filter-chip-${entry.key}'),
+                      label: Text(
+                        '${searchFieldLabel(entry.key)}: ${entry.value}',
+                      ),
+                      onDeleted: () =>
+                          unawaited(controller.removeFilter(entry.key)),
+                      deleteIcon: const Icon(Symbols.close),
+                      deleteButtonTooltipMessage:
+                          'Remove the ${searchFieldLabel(entry.key)} filter',
+                    ),
+                  TextButton(
+                    onPressed: () => unawaited(controller.clearFilters()),
+                    child: const Text('Clear all'),
+                  ),
+                ],
+              ),
             ),
-          TextButton(
-            onPressed: () => unawaited(controller.clearFilters()),
-            child: const Text('Clear all'),
-          ),
+    );
+  }
+}
+
+/// The load more control (motion catalog, row 27).
+///
+/// The label swaps for an inline indicator of the same height, so the button
+/// keeps its footprint while the request is out. The appended rows have no
+/// entrance animation: they arrive below the fold, and animating something
+/// nobody can see is decoration.
+class _LoadMoreButton extends StatelessWidget {
+  const _LoadMoreButton({required this.controller});
+
+  final WorkspaceController controller;
+
+  /// The label, fixed so the copy and the tests cannot drift.
+  static const String label = 'Load more records';
+
+  @override
+  Widget build(BuildContext context) {
+    final bool busy = controller.loadingMore;
+    return OutlinedButton(
+      onPressed: busy || controller.loading
+          ? null
+          : () => unawaited(controller.loadMore()),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          InFlightGlyph(busy: busy, resting: null),
+          Flexible(child: Text(busy ? 'Loading more…' : label)),
         ],
       ),
     );

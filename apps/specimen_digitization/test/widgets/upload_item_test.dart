@@ -12,6 +12,8 @@ Widget _item({
   double? progress,
   String? reason,
   VoidCallback? onRemove,
+  String? removeBlockedReason,
+  Widget? details,
 }) => SizedBox(
   width: 600,
   child: UploadItem(
@@ -23,6 +25,8 @@ Widget _item({
     progress: progress,
     reason: reason,
     onRemove: onRemove,
+    removeBlockedReason: removeBlockedReason,
+    details: details,
   ),
 );
 
@@ -97,20 +101,30 @@ void main() {
     );
   });
 
-  testWidgets('the remove action fires and disables when it is null', (
+  testWidgets('the remove action fires, and a row that cannot be removed '
+      'says why instead of spending a target on a dead control', (
     WidgetTester tester,
   ) async {
     int removed = 0;
     await pumpComponent(tester, _item(onRemove: () => removed++));
-    await tester.tap(find.byTooltip('Remove from this batch'));
+    await tester.tap(find.byTooltip(UploadItem.removeLabel));
     await tester.pumpAndSettle();
     expect(removed, 1);
 
+    // No callback and no reason: no control at all.
     await pumpComponent(tester, _item());
-    expect(
-      tester.widget<IconButton>(find.byType(IconButton)).onPressed,
-      isNull,
+    expect(find.byType(IconButton), findsNothing);
+
+    // A reason: the control is there, disabled, and names the reason.
+    await pumpComponent(
+      tester,
+      _item(removeBlockedReason: 'The server has taken this file.'),
     );
+    final IconButton button = tester.widget<IconButton>(
+      find.byType(IconButton),
+    );
+    expect(button.onPressed, isNull);
+    expect(button.tooltip, contains('The server has taken this file.'));
   });
 
   testWidgets('the duplicate state uses the agreed words', (

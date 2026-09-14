@@ -20,6 +20,7 @@ import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
 import 'widget_test.dart' show TestRepository;
 import 'widgets/harness.dart';

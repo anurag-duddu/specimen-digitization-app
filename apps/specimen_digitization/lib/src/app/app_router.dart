@@ -36,6 +36,7 @@ GoRouter buildAppRouter({
   MagicLinkController? magicLink,
   bool synthetic = false,
   String initialLocation = AppRoutes.setup,
+  List<NavigatorObserver> observers = const <NavigatorObserver>[],
 }) {
   final SessionAccess? session = sessionNotifier.session;
   final String environment = synthetic
@@ -86,6 +87,11 @@ GoRouter buildAppRouter({
       return location == AppRoutes.setup ? null : AppRoutes.setup;
     }
 
+    // A route that belongs to no collection is not a route with a missing
+    // collection. Help opens over whatever the reviewer had open and closes
+    // back to it.
+    if (AppRoutes.isGlobalLocation(location)) return null;
+
     final String home = AppRoutes.queueOf(controller.defaultRouteKey!);
     if (entry || location == '/') {
       final String? pending = sessionNotifier.pendingLocation;
@@ -104,6 +110,11 @@ GoRouter buildAppRouter({
 
   return GoRouter(
     initialLocation: initialLocation,
+    // Empty in the app. A test installs `TransitionDurationObserver` here,
+    // because a page transition's length is no longer a literal a test may
+    // assume: Flutter 3.38 moved the Android default to 450 ms
+    // (motion and microinteractions, 6.1 and 6.3 A).
+    observers: observers,
     refreshListenable: Listenable.merge(<Listenable?>[
       sessionNotifier,
       controller,

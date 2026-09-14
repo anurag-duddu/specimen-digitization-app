@@ -23,7 +23,8 @@ class RegionOverlay extends StatelessWidget {
     required this.rect,
     this.selected = false,
     this.onTap,
-  });
+    this.viewerScale = 1,
+  }) : assert(viewerScale > 0, 'a viewer scale is a magnification, never zero');
 
   /// The region's one based position in the region list.
   final int index;
@@ -37,6 +38,16 @@ class RegionOverlay extends StatelessWidget {
   /// Selects the region.
   final VoidCallback? onTap;
 
+  /// The magnification the enclosing `InteractiveViewer` is currently at.
+  ///
+  /// The overlay is drawn inside the transformed subtree, so everything it
+  /// paints is multiplied by this. Stroke widths, the number tab and the
+  /// minimum hit box are therefore divided by it, which is what keeps a 2dp
+  /// outline 2dp on the glass at 12x instead of a 24dp band over the label
+  /// the reviewer is trying to read (motion and microinteractions, catalog
+  /// row 38 and section 6.4).
+  final double viewerScale;
+
   /// The name shown on the tab and spoken by the overlay. Computed once, and
   /// shared with the region list so the two can never disagree.
   String get label => 'Label $index';
@@ -46,10 +57,12 @@ class RegionOverlay extends StatelessWidget {
     final ThemeData theme = Theme.of(context);
     // 48dp: the app's own minimum target, which is stricter than the 44
     // logical pixels the accessibility document requires for this overlay.
-    final double minTarget = context.sizes.targetMin;
+    final double minTarget = context.sizes.targetMin / viewerScale;
     final double hitWidth = rect.width < minTarget ? minTarget : rect.width;
     final double hitHeight = rect.height < minTarget ? minTarget : rect.height;
     final Offset center = rect.center;
+    final double tabGap =
+        (context.sizes.iconInline + context.space.space1) / viewerScale;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -65,10 +78,12 @@ class RegionOverlay extends StatelessWidget {
                 casing: selected
                     ? context.tokens.regionSelectedCasing
                     : context.tokens.regionOverlayCasing,
-                strokeWidth: selected
-                    ? context.shape.strokeStrong
-                    : context.shape.strokeEmphasis,
-                casingWidth: context.shape.strokeHairline,
+                strokeWidth:
+                    (selected
+                        ? context.shape.strokeStrong
+                        : context.shape.strokeEmphasis) /
+                    viewerScale,
+                casingWidth: context.shape.strokeHairline / viewerScale,
               ),
             ),
           ),
@@ -77,9 +92,15 @@ class RegionOverlay extends StatelessWidget {
         // it never covers the pixels the reviewer is reading.
         Positioned(
           left: rect.left,
-          top: rect.top - context.sizes.iconInline - context.space.space1,
+          top: rect.top - tabGap,
           child: IgnorePointer(
-            child: _NumberTab(index: index, selected: selected),
+            // The tab is type, so it is counter-scaled rather than redrawn:
+            // a legible number at 1x is an unreadable slab at 12x.
+            child: Transform.scale(
+              scale: 1 / viewerScale,
+              alignment: AlignmentDirectional.bottomStart,
+              child: _NumberTab(index: index, selected: selected),
+            ),
           ),
         ),
         Positioned(

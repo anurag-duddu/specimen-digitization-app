@@ -153,6 +153,13 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   List<Json> get _regions =>
       _unverifiedOrientation ? const <Json>[] : widget.specimen.regions;
 
+  /// The magnification the viewer is currently at. Never zero: the matrix is
+  /// only ever scaled and translated, and the viewer clamps the scale.
+  double get _viewerScale {
+    final double scale = _transform.value.getMaxScaleOnAxis();
+    return scale > 0 ? scale : 1;
+  }
+
   /// Runs the view to [target], instantly under reduced motion.
   void _driveTo(Matrix4 target) {
     final MotionTokens motion = context.motion;
@@ -302,55 +309,79 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
           ),
         );
       }
-      return ClipRect(
-        child: InteractiveViewer(
-          transformationController: _transform,
-          minScale: sourceMinScale,
-          maxScale: sourceMaxScale,
-          child: Center(
-            // A quarter turn swaps the constraints, which is what keeps a
-            // rotated landscape photograph inside the pane.
-            child: RotatedBox(
-              quarterTurns: _quarterTurns,
-              child: AspectRatio(
-                aspectRatio: _width / _height,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    SourcePixels(
-                      asset: _asset,
-                      semanticLabel: 'Immutable original specimen image',
-                    ),
-                    if (_regions.isNotEmpty)
-                      Positioned.fill(
-                        child: LayoutBuilder(
-                          builder: (BuildContext context, BoxConstraints box) =>
-                              Stack(
-                                clipBehavior: Clip.none,
-                                children: <Widget>[
-                                  for (final (int i, Json r)
-                                      in _regions.indexed)
-                                    if (_boxOf(r) case final List<num> bbox)
-                                      RegionOverlay(
-                                        index: i + 1,
-                                        rect: Rect.fromLTRB(
-                                          bbox[0] / _width * box.maxWidth,
-                                          bbox[1] / _height * box.maxHeight,
-                                          bbox[2] / _width * box.maxWidth,
-                                          bbox[3] / _height * box.maxHeight,
-                                        ),
-                                        selected:
-                                            widget.selectedRegionId ==
-                                            r['region_id'],
-                                        onTap: () =>
-                                            _select(r['region_id'].toString()),
-                                      ),
-                                ],
-                              ),
-                        ),
+      // No `ClipRect` here: `InteractiveViewer` already defaults to
+      // `Clip.hardEdge`, and two clips is one extra layer for no benefit
+      // (motion and microinteractions, 6.4 item 4).
+      return InteractiveViewer(
+        transformationController: _transform,
+        minScale: sourceMinScale,
+        maxScale: sourceMaxScale,
+        child: Center(
+          // A quarter turn swaps the constraints, which is what keeps a
+          // rotated landscape photograph inside the pane.
+          child: RotatedBox(
+            quarterTurns: _quarterTurns,
+            child: AspectRatio(
+              aspectRatio: _width / _height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  // A forty megapixel photograph appearing as a hard pop
+                  // reads as a rendering glitch; a 200 ms fade reads as
+                  // "it loaded". No blur-up, no progressive reveal, and a
+                  // repaint boundary so an overlay repaint on every hover
+                  // does not re-rasterise the decoded image
+                  // (motion catalog, row 30; performance 6.4 item 3).
+                  RepaintBoundary(
+                    child: _FadeInPixels(
+                      assetId: textOf(_asset['asset_id']),
+                      child: SourcePixels(
+                        asset: _asset,
+                        semanticLabel: 'Immutable original specimen image',
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                  if (_regions.isNotEmpty)
+                    Positioned.fill(
+                      child: LayoutBuilder(
+                        builder: (BuildContext context, BoxConstraints box) =>
+                            // The overlays sit inside the transformed
+                            // subtree, so they are redrawn against the
+                            // live magnification and hand it to each box.
+                            // Without that a 2dp outline is a 24dp band at
+                            // 12x, straight over the label (motion,
+                            // catalog row 38).
+                            ListenableBuilder(
+                              listenable: _transform,
+                              builder: (BuildContext context, Widget? _) =>
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: <Widget>[
+                                      for (final (int i, Json r)
+                                          in _regions.indexed)
+                                        if (_boxOf(r) case final List<num> bbox)
+                                          RegionOverlay(
+                                            index: i + 1,
+                                            viewerScale: _viewerScale,
+                                            rect: Rect.fromLTRB(
+                                              bbox[0] / _width * box.maxWidth,
+                                              bbox[1] / _height * box.maxHeight,
+                                              bbox[2] / _width * box.maxWidth,
+                                              bbox[3] / _height * box.maxHeight,
+                                            ),
+                                            selected:
+                                                widget.selectedRegionId ==
+                                                r['region_id'],
+                                            onTap: () => _select(
+                                              r['region_id'].toString(),
+                                            ),
+                                          ),
+                                    ],
+                                  ),
+                            ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -395,8 +426,18 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
     ),
     for (final (int i, Json r) in _regions.indexed)
       ChoiceChip(
-        // The overlay speaks the same name, computed the same way.
-        label: Text('Label ${i + 1}'),
+        // The overlay speaks the same name, computed the same way. A `Wrap`
+        // cannot animate a reorder and building one is not worth a week, so
+        // the numbering change is carried by a label cross-fade
+        // (motion catalog, row 40).
+        label: AnimatedSwitcher(
+          duration: context.motion.quick,
+          switchInCurve: MotionTokens.standardCurve,
+          child: Text(
+            'Label ${i + 1}',
+            key: ValueKey<String>('region-chip-${r['region_id']}-${i + 1}'),
+          ),
+        ),
         selected: widget.selectedRegionId == r['region_id'],
         onSelected: (_) => _select(r['region_id'].toString()),
       ),
@@ -406,7 +447,6 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -429,7 +469,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
             decoration: BoxDecoration(
               // The letterbox behind the photograph, so label paper reads as
               // paper in both themes (blueprint 12).
-              color: theme.colorScheme.surfaceContainerLowest,
+              color: context.sourceMatte,
               borderRadius: BorderRadius.circular(context.shape.radiusSm),
             ),
             child: _image(context),
@@ -582,4 +622,57 @@ Future<void> showSourceFullScreen(
       ),
     ),
   );
+}
+
+/// The photograph's one and only entrance (motion catalog, row 30).
+///
+/// It fades once, when the bytes for a given asset first paint. Changing
+/// panel, selecting a region or rotating the view never replays it: the fade
+/// is keyed by asset id, and the source pixels are the reference, so they do
+/// not move unless the reviewer moves them.
+class _FadeInPixels extends StatefulWidget {
+  const _FadeInPixels({required this.assetId, required this.child});
+
+  final String assetId;
+  final Widget child;
+
+  @override
+  State<_FadeInPixels> createState() => _FadeInPixelsState();
+}
+
+class _FadeInPixelsState extends State<_FadeInPixels> {
+  bool _painted = false;
+  String? _asset;
+
+  @override
+  void initState() {
+    super.initState();
+    _asset = widget.assetId;
+    _schedule();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FadeInPixels oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.assetId == _asset) return;
+    _asset = widget.assetId;
+    _painted = false;
+    _schedule();
+  }
+
+  void _schedule() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted) setState(() => _painted = true);
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final MotionTokens motion = context.motion;
+    if (motion.reduced) return widget.child;
+    return AnimatedOpacity(
+      opacity: _painted ? 1 : 0,
+      duration: motion.standard,
+      curve: MotionTokens.enterCurve,
+      child: widget.child,
+    );
+  }
 }
