@@ -127,6 +127,12 @@ def test_cli_supervisor_timeout_is_sanitized_unknown_and_nonzero(monkeypatch, ca
 
 
 def signal_supervisor(directory):
+    if sys.platform == "linux":
+        import ctypes
+
+        # This nested fixture represents the production PID1 supervisor. Keep
+        # orphan adoption inside this child, never in the pytest process.
+        assert ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0
     root = Path(directory)
     result = run_isolated(leave_descendant,
                           {"ready": str(root / "ready"), "late": str(root / "late"),
@@ -149,6 +155,11 @@ def test_supervisor_term_cleans_owned_process_group(tmp_path):
         outer.wait(timeout=4)
         assert (tmp_path / "report").exists(), "Supervisor must finish owned cleanup on TERM"
         assert json.loads((tmp_path / "report").read_text()) == {"status": "deadline_exceeded", "clean": True}
+        with pytest.raises(ProcessLookupError):
+            os.kill(int((tmp_path / "pid").read_text()), 0)
+        with pytest.raises(ProcessLookupError):
+            os.killpg(int((tmp_path / "worker_pid").read_text()), 0)
+        time.sleep(max(0, float((tmp_path / "ready").read_text()) + 0.05 - time.monotonic()))
         assert not (tmp_path / "late").exists()
     finally:
         # The preserved RED must not leave the deliberately stubborn fixture alive.
