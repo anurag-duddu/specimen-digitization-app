@@ -185,6 +185,8 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   void _sessionChanged() {
     if (_sessionNotifier.signedIn && _sessionNotifier.verified) {
       _workspace?.start();
+    } else {
+      _workspace?.resetSession();
     }
   }
 

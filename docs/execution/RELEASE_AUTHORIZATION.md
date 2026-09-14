@@ -1,5 +1,9 @@
 # Approved release authority — 2026-09-08
 
+The September 14 approved amendment below supersedes only the original budget,
+worker-duration and explicitly listed IAM setup limits. The original text remains
+the authority for legacy artifacts and all unchanged release boundaries.
+
 The user submitted both approvals in release decision packet v1 in task
 `01a082b2-c2c3-70d2-be90-7bfb622c9102`. This records the actual submitted
 decisions, superseding earlier statements that these two approvals were pending.
@@ -74,3 +78,34 @@ quote, native SAM timing or live production readiness. Those are facts to verify
 not approvals to request again. Retain the private authority artifact and its
 digest with the private execution packet; no private identity or object path
 belongs in this public record.
+
+## Approved combined amendment — 2026-09-14
+
+The user explicitly approved the combined decision at 2026-09-14T02:03:08.382Z
+in integration task `01a07f48-a57c-71b0-9642-c9430886049c` after presentation of
+the exact budget, worker and Firebase IAM proposal. Its direct user-record digest
+and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md).
+
+- USD 12 cumulative and daily, preserving every previous cost and reservation.
+- One worker execution, 1 CPU/1 GiB, one task, zero platform retries, at most
+  3500 seconds from original dispatch. Useful work stops by 3485; cleanup by 3500.
+  The original SAM one-hour expiry remains unchanged. See
+  [APPROVED_WORKER_TIMING.md](APPROVED_WORKER_TIMING.md).
+- One fresh ten-minute bounded Firebase setup window for exactly three effects:
+  create persistent role `specimenDataOwnerBootstrap` with only
+  `firebaseauth.users.get`, `firebasedataconnect.services.executeGraphql` and
+  `firebasedataconnect.services.executeGraphqlRead`; grant it at project scope
+  to the existing DATA release identity for at most two hours; renew only 18
+  timestamps in nine existing DATA/restore-claim bindings, preserving all other
+  permissions, members and resource predicates. Initializer/disposal/ordinary
+  access expires after 75/115/120 minutes respectively. The role definition
+  persists after the conditional grant expires. Reviewed bootstrap code binds
+  the approved owner and service; sensitive access stays disabled.
+
+This includes finishing, independently reviewing and using the bounded helpers
+for those effects with at most 187 metadata/IAM requests. Prepare all source,
+review, cost and private inputs before the single setup clock starts. Never
+replay a completed effect or consumed fence. Protected merged-main workflows
+still perform database/runtime deployments. This amendment does not itself
+establish credential access, free service quotas, managed database capability,
+trace delivery, actual complete region counts or live product acceptance.

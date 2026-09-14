@@ -221,6 +221,9 @@ class Google:
                     if response is not None:
                         response.close()
         with request_deadline(timing["max_allowed_time"]) if recovery_deadline else nullcontext():
+            dispatch_guard = getattr(self, "worker_dispatch_guard", None)
+            if method != "GET" and dispatch_guard is not None:
+                dispatch_guard(api, method, resource, body)
             response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=timeout, **timing,
                                             allow_redirects=False)
             if missing and response.status_code == 404:

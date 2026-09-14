@@ -14,6 +14,71 @@ from specimen_digitization.application.bounded_effect import run_isolated
 from specimen_digitization.application.worker_deadline import current_deadline
 
 
+def observe_dispatch_deadline(monkeypatch):
+    """Observe the existing request clock without changing it or child startup."""
+    from specimen_digitization.application import bounded_effect
+
+    popen = bounded_effect.subprocess.Popen
+    deadlines = []
+
+    def observed(command, *args, **kwargs):
+        request = json.loads((Path(command[-1]) / "request.json").read_text())
+        deadlines.append(request["deadline"])
+        return popen(command, *args, **kwargs)
+
+    monkeypatch.setattr(bounded_effect.subprocess, "Popen", observed)
+    return deadlines
+
+
+def blocking_stage(payload, stage):
+    """Leave a late-write opportunity just after the unchanged dispatch clock."""
+    from specimen_digitization.application.bounded_effect import current_effect_deadline
+
+    deadline = current_effect_deadline()
+    owner = current_deadline()
+    marker = payload.get("entered", payload.get("started"))
+    Path(marker).write_text(json.dumps({
+        "stage": stage, "entered_at": time.monotonic(), "deadline": deadline,
+        "worker_deadline": owner.deadline if owner is not None else None,
+        "late_at": deadline + 0.2, "pid": os.getpid(),
+    }))
+    time.sleep(max(0, deadline + 0.2 - time.monotonic()))
+    Path(payload["late"]).write_text("forbidden late effect")
+
+
+def assert_stopped_before_late_effect(
+    result, marker, late, deadlines, timeout, *, process_group=False,
+):
+    assert marker.exists(), ("fixture must reach the blocking dependency", result)
+    observed = json.loads(marker.read_text())
+    assert deadlines == [observed["deadline"]], "startup cannot reset the dispatch clock"
+    assert observed["entered_at"] < observed["deadline"]
+    assert result.status == "deadline_exceeded" and result.cleanup_complete
+    assert result.reason == "overall_deadline" and result.value is None
+    assert observed["pid"] == result.worker_pid
+    with pytest.raises(ProcessLookupError):
+        os.kill(result.worker_pid, 0)
+    assert (observed["worker_deadline"] is not None) is process_group
+    if process_group:
+        assert observed["worker_deadline"] == observed["deadline"]
+        with pytest.raises(ProcessLookupError):
+            os.killpg(result.worker_pid, 0)
+    time.sleep(max(0, observed["late_at"] + 0.05 - time.monotonic()))
+    assert not late.exists()
+    assert result.elapsed_seconds < timeout + 3
+
+
+def lightweight_startup_then_stall(payload):
+    # Exercise the original short clock without depending on SDK import speed.
+    assert "pydantic_ai" not in sys.modules
+    assert "specimen_digitization.application.worker" not in sys.modules
+    time.sleep(0.4)
+    if payload["process_group"]:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    blocking_stage(payload, "lightweight_startup")
+    return b"forbidden late success"
+
+
 def retained_window_then_hang(payload):
     current_deadline().tighten_until(time.time() + 0.3, time.time())
     Path(payload["started"]).write_text("started")
@@ -47,10 +112,8 @@ def stalled_materialization(payload):
 
     @contextmanager
     def stalled(args):
-        Path(payload["started"]).write_text("materialization started")
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        time.sleep(10)
-        Path(payload["late"]).write_text("materialization finished")
+        blocking_stage(payload, "materialization")
         yield args
 
     worker.materialized_worker_args = stalled
@@ -94,14 +157,29 @@ def test_owned_group_kills_descendant_even_when_leader_has_exited(tmp_path, hang
     assert result.elapsed_seconds < 4
 
 
-def test_startup_and_materialization_share_supervisor_original_clock(tmp_path):
+def test_startup_and_materialization_share_supervisor_original_clock(tmp_path, monkeypatch):
+    # Cold worker/SDK imports have exceeded two seconds under canonical load.
+    # All imports and actual materialization still share one dispatch deadline.
+    deadlines = observe_dispatch_deadline(monkeypatch)
     result = run_isolated(stalled_materialization,
                           {"started": str(tmp_path / "started"), "late": str(tmp_path / "late")},
-                          2, 1000, process_group=True)
-    assert (tmp_path / "started").exists()
-    assert not (tmp_path / "late").exists()
-    assert result.status == "deadline_exceeded" and result.value is None
-    assert result.cleanup_complete
+                          8, 1000, process_group=True)
+    assert_stopped_before_late_effect(
+        result, tmp_path / "started", tmp_path / "late", deadlines, 8, process_group=True,
+    )
+
+
+@pytest.mark.parametrize("process_group", [False, True])
+def test_two_second_startup_cutoff_includes_cleanup(tmp_path, monkeypatch, process_group):
+    deadlines = observe_dispatch_deadline(monkeypatch)
+    result = run_isolated(lightweight_startup_then_stall,
+                          {"started": str(tmp_path / "started"), "late": str(tmp_path / "late"),
+                           "process_group": process_group},
+                          2, 1000, process_group=process_group)
+    assert_stopped_before_late_effect(
+        result, tmp_path / "started", tmp_path / "late", deadlines, 2,
+        process_group=process_group,
+    )
     assert result.elapsed_seconds < 5
 
 

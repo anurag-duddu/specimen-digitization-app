@@ -442,16 +442,18 @@ Future<bool> showConflictDialog(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
-              'This save was not recorded',
+              anotherReviewer
+                  ? 'This save was not recorded'
+                  : 'Save not confirmed',
               style: Theme.of(formContext).textTheme.titleLarge,
             ),
             SizedBox(height: formContext.space.space2),
             Text(
               anotherReviewer
                   ? ConflictBanner.copyFor(version)
-                  : 'The record is still on version $version and your decision '
-                        'was not saved. Refresh and compare before you try '
-                        'again.',
+                  : 'The server has not confirmed this decision. The displayed '
+                        'record is version $version. Refresh and compare '
+                        'before you try again.',
             ),
             SizedBox(height: formContext.space.space2),
             Text(

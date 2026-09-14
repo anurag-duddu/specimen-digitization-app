@@ -293,7 +293,10 @@ void main() {
         workbenchHost(
           ReviewWorkbench(
             specimen: fixture,
-            onChange: (c) async => saved.add(c),
+            onChange: (c) async {
+              saved.add(c);
+              return true;
+            },
             onRetry: (_) async {},
             onRefresh: () {},
           ),
@@ -361,7 +364,10 @@ void main() {
       workbenchHost(
         ReviewWorkbench(
           specimen: many,
-          onChange: (c) async => saved.add(c),
+          onChange: (c) async {
+            saved.add(c);
+            return true;
+          },
           onRetry: (_) async {},
           onRefresh: () {},
         ),
@@ -428,7 +434,7 @@ void main() {
       workbenchHost(
         ReviewWorkbench(
           specimen: future,
-          onChange: (_) async {},
+          onChange: (_) async => false,
           onRetry: (_) async {},
           onRefresh: () {},
         ),
@@ -471,7 +477,7 @@ void main() {
           specimen: fixture,
           canReview: false,
           canOperate: false,
-          onChange: (_) async {},
+          onChange: (_) async => false,
           onRetry: (_) async {},
           onRefresh: () {},
         ),
@@ -520,7 +526,10 @@ void main() {
         workbenchHost(
           ReviewWorkbench(
             specimen: specimen,
-            onChange: (c) async => saved = c,
+            onChange: (c) async {
+              saved = c;
+              return true;
+            },
             onRetry: (_) async {},
             onRefresh: () {},
           ),
@@ -562,7 +571,7 @@ void main() {
         workbenchHost(
           ReviewWorkbench(
             specimen: specimen,
-            onChange: (_) async {},
+            onChange: (_) async => false,
             onRetry: (_) async {},
             onRefresh: () {},
           ),

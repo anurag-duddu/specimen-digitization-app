@@ -90,7 +90,7 @@ void main() {
   }) => workbenchHost(
     ReviewWorkbench(
       specimen: specimen,
-      onChange: (_) async {},
+      onChange: (_) async => false,
       onRetry: (_) async {},
       onRefresh: () {},
       onNext: onNext,
