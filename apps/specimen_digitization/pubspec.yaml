@@ -46,6 +46,7 @@ dependencies:
   firebase_app_check: ^0.4.7
   google_fonts: ^8.2.1
   material_symbols_icons: ^4.2960.0
+  camera: ^0.11.0
 
 # firebase_core_web 3.11.0 requires a JS interop API not available in the
 # repository's Flutter 3.38 / Dart 3.10 toolchain. Remove this override after

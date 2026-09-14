@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/intake.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/widgets/caveat_text.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'intake_harness.dart';
 import 'widget_test.dart' show TestRepository;
 
 class PreflightRepository extends TestRepository {
@@ -57,6 +60,7 @@ void main() {
     final repo = DeniedIntakeRepository();
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: IntakeScreen(
             repository: repo,
@@ -83,21 +87,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Choose files'));
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-    });
-    await tester.pumpAndSettle();
-    expect(find.text('Selected files · 2'), findsOneWidget);
-    await tester.tap(find.text('I checked framing and readability'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Upload selected files'),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Upload selected files'));
-    await tester.pumpAndSettle();
+    await chooseFiles(tester);
+    expect(find.text('0 of 2 accepted'), findsOneWidget);
+    await submitBatch(tester);
     expect(repo.attempts, 1);
   });
 
@@ -117,6 +109,7 @@ void main() {
       });
       var recovered = 0;
       Widget app(String user) => MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: IntakeScreen(
             key: ValueKey(user),
@@ -146,24 +139,18 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(recovered, 1);
-      await tester.scrollUntilVisible(find.text('recovered.png'), 300);
+      await tester.ensureVisible(find.text('recovered.png'));
+      await tester.pumpAndSettle();
       expect(find.text('recovered.png'), findsOneWidget);
       expect(
         find.textContaining('Recovered an interrupted photograph'),
         findsOneWidget,
       );
-      await tester.scrollUntilVisible(
-        find.text('Upload selected files'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      final upload = tester.widget<FilledButton>(
-        find.ancestor(
-          of: find.text('Upload selected files'),
-          matching: find.byWidgetPredicate((w) => w is FilledButton),
-        ),
-      );
-      expect(upload.onPressed, isNull);
+      // A recovered photograph is queued, never sent: the batch confirmation
+      // was cleared by the file arriving.
+      await tester.ensureVisible(uploadButton);
+      await tester.pumpAndSettle();
+      expect(buttonEnabled(tester, uploadButton), isFalse);
       expect(
         (await SharedPreferences.getInstance()).containsKey(
           'pending-camera-owner-v1',
@@ -178,6 +165,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
       MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           body: IntakeScreen(
             repository: TestRepository(),
@@ -192,31 +180,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('I checked framing and readability'));
+    await confirmBatch(tester);
+    expect(batchConfirmed(tester), isTrue);
+    await chooseFiles(tester);
+    expect(batchConfirmed(tester), isFalse);
+    await tester.ensureVisible(find.text('chosen.png'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('I checked framing and readability'));
-    await tester.pump();
-    await tester.ensureVisible(find.text('Choose files'));
-    await tester.pumpAndSettle();
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Choose files'));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    });
-    await tester.pumpAndSettle();
-    final checked = tester
-        .widget<CheckboxListTile>(find.byType(CheckboxListTile))
-        .value;
-    await tester.scrollUntilVisible(
-      find.text('chosen.png'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
     expect(find.text('chosen.png'), findsOneWidget);
-    expect(checked, isFalse);
-    expect(
-      find.text('Not calibrated. Measured from a thumbnail.'),
-      findsOneWidget,
-    );
+    expect(find.text('Not calibrated'), findsOneWidget);
   });
   testWidgets(
     'server preflight requires explicit transmission and leaves quality confirmation unchecked',
@@ -225,6 +196,7 @@ void main() {
       final repository = PreflightRepository();
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: IntakeScreen(
               repository: repository,
@@ -243,20 +215,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Choose files'));
-      await tester.pumpAndSettle();
-      await tester.runAsync(() async {
-        await tester.tap(find.text('Choose files'));
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-      });
-      await tester.pumpAndSettle();
+      await chooseFiles(tester);
       expect(repository.checks, 0);
       expect(repository.uploads, 0);
-      await tester.scrollUntilVisible(
-        find.text('Send for server check'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.ensureVisible(find.text('Send for server check'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Send for server check'));
       await tester.pumpAndSettle();
@@ -266,23 +228,28 @@ void main() {
         find.textContaining('The server check is not available.'),
         findsOneWidget,
       );
-      // The format caveat moved behind "Why" and must still be reachable.
-      await tester.tap(find.text('Why').last);
+      // The format caveat moved behind this row's own "Why" and must still be
+      // reachable there, not at some other caveat on the screen.
+      final Finder unavailable = find.ancestor(
+        of: find.textContaining('The server check is not available.'),
+        matching: find.byType(CaveatText),
+      );
+      expect(unavailable, findsOneWidget);
+      final Finder why = find.descendant(
+        of: unavailable,
+        matching: find.text('Why'),
+      );
+      await tester.ensureVisible(why);
+      await tester.pumpAndSettle();
+      await tester.tap(why);
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Changing the image format will not help.'),
         findsOneWidget,
       );
-      await tester.scrollUntilVisible(
-        find.byType(CheckboxListTile),
-        -300,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.ensureVisible(confirmCheckbox);
       await tester.pumpAndSettle();
-      expect(
-        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
-        isFalse,
-      );
+      expect(batchConfirmed(tester), isFalse);
     },
   );
 }
