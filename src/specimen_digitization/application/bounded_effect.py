@@ -36,6 +36,43 @@ class IsolatedResult:
     reason: str
     worker_pid: int | None = None
     cleanup_complete: bool = True
+    trace_export: dict | None = None
+
+
+def current_effect_deadline():
+    """The original local effect clock; it never tightens the shared worker clock."""
+    from .worker_deadline import _active_effect
+
+    return _active_effect.get()
+
+
+def _flush_child_observability(deadline):
+    """Drain within this effect; telemetry failure cannot discard known output."""
+    _check_deadline(deadline)
+    module = sys.modules.get("specimen_digitization.observability")
+    report = {"configured": module is not None, "complete": False}
+    try:
+        if module is not None:
+            observed = module.flush_bounded_observability()
+            if (type(observed) is dict and set(observed) == {"configured", "complete"}
+                    and all(type(value) is bool for value in observed.values())):
+                report = observed
+    except Exception:
+        report["complete"] = False
+    _check_deadline(deadline)
+    try:
+        path = os.getenv("SPECIMEN_TRACE_LEDGER_PATH")
+        telemetry = sys.modules.get("specimen_digitization.bounded_telemetry")
+        if path is not None and telemetry is not None:
+            telemetry.Ledger(path).record_completion(report["configured"] and report["complete"])
+        else:
+            # Missing configuration must not import the SDK or discover ambient
+            # credentials just to record failure. The parent retains this IPC.
+            report["complete"] = False
+    except Exception:
+        report["complete"] = False
+    _check_deadline(deadline)
+    return report
 
 
 class _JsonLimit(Exception):
@@ -206,6 +243,7 @@ def run_isolated(
     *,
     max_input_bytes: int = 1024 * 1024,
     process_group: bool = False,
+    trace_required: bool = False,
     deadline_monotonic: float | None = None,
     cleanup_until: float | None = None,
 ) -> IsolatedResult:
@@ -214,8 +252,12 @@ def run_isolated(
     The helper returns raw response bytes; no provider deserialization occurs here.
     No automatic retry. Caller must persist intent/fence and treat unknown remote
     outcomes conservatively. Lease must exceed deadline by at least 30 seconds.
+    Only model helpers opt in to child trace completion. Generic HTTP helpers
+    remain covered by their parent spans and never configure child exporters.
     """
     started = time.monotonic()
+    if type(trace_required) is not bool or (trace_required and process_group):
+        raise ValueError("trace_required must be a boolean for a model child only")
     if process_group and os.name != "posix":
         raise ValueError("owned worker process groups require POSIX")
     if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 3600:
@@ -238,7 +280,7 @@ def run_isolated(
     cleanup_attempted = False
     stopping = False
 
-    def result(status, reason, *, value=None, result_bytes=0, cleanup=True):
+    def result(status, reason, *, value=None, result_bytes=0, cleanup=True, trace_export=None):
         nonlocal cleanup_attempted
         if process_group and process is not None and not cleanup_attempted:
             cleanup_attempted = True
@@ -249,6 +291,10 @@ def run_isolated(
             status, reason, value, result_bytes = (
                 "deadline_exceeded", "overall_deadline", None, 0
             )
+        if trace_required and os.getenv("SPECIMEN_TRACE_EXPORT_MODE") == "bounded-v1":
+            telemetry = sys.modules.get("specimen_digitization.bounded_telemetry")
+            if telemetry is not None:
+                telemetry.record_child_completion(trace_export if status == "completed" else None)
         return IsolatedResult(
             status=status,
             reason=reason,
@@ -258,6 +304,7 @@ def run_isolated(
             result_bytes=result_bytes,
             worker_pid=process.pid if process else None,
             cleanup_complete=cleanup,
+            trace_export=trace_export,
         )
 
     try:
@@ -291,6 +338,7 @@ def run_isolated(
                 deadline=deadline,
                 search_path=[str(p) for p in sys.path],
                 process_group=process_group,
+                trace_required=trace_required,
             )
             (root / "request.json").write_bytes(_json_bytes(request, 65536, deadline))
             _check_deadline(deadline)
@@ -352,6 +400,13 @@ def run_isolated(
                 return result("deadline_exceeded", "worker_deadline")
             if control.get("status") != "completed":
                 return result("worker_failed", "worker_call_failed")
+            trace_export = control.get("trace_export")
+            if trace_export is not None and (
+                not trace_required or type(trace_export) is not dict
+                or set(trace_export) != {"configured", "complete"}
+                or any(type(value) is not bool for value in trace_export.values())
+            ):
+                return result("worker_failed", "invalid_worker_control")
             output_path = root / "output.json"
             if not output_path.is_file():
                 return result("worker_failed", "missing_worker_output")
@@ -364,7 +419,8 @@ def run_isolated(
                 return result("output_limit", "result_limit", result_bytes=len(output))
             _check_deadline(deadline)
             return result(
-                "completed", "completed", value=output, result_bytes=len(output)
+                "completed", "completed", value=output, result_bytes=len(output),
+                trace_export=trace_export,
             )
         except _Deadline:
             cleanup_attempted = True
@@ -387,10 +443,17 @@ def _worker(directory: str):
     root = Path(directory)
     control = {"status": "worker_failed"}
     result_size = 0
+    from .worker_deadline import _active_effect
+
+    effect_token = None
     try:
         request = json.loads((root / "request.json").read_bytes())
+        if (type(request.get("trace_required")) is not bool
+                or (request["trace_required"] and request.get("process_group"))):
+            raise ValueError("invalid_trace_requirement")
         sys.path[:] = request["search_path"]
         _check_deadline(request["deadline"])
+        effect_token = _active_effect.set(request["deadline"])
         def invoke():
             function = getattr(importlib.import_module(request["module"]), request["name"])
             payload = json.loads((root / "input.json").read_bytes())
@@ -420,6 +483,9 @@ def _worker(directory: str):
                 value = invoke()
         else:
             value = invoke()
+        trace_export = None
+        if request["trace_required"] and os.getenv("SPECIMEN_TRACE_EXPORT_MODE") == "bounded-v1":
+            trace_export = _flush_child_observability(request["deadline"])
         _check_deadline(request["deadline"])
         if type(value) is not bytes:
             raise ValueError("helper_must_return_bytes")
@@ -429,6 +495,8 @@ def _worker(directory: str):
         (root / "output.json").write_bytes(value)
         _check_deadline(request["deadline"])
         control = {"status": "completed"}
+        if trace_export is not None:
+            control["trace_export"] = trace_export
     except _Deadline:
         control = {"status": "deadline_exceeded"}
     except _JsonLimit:
@@ -436,6 +504,9 @@ def _worker(directory: str):
     except BaseException:
         # No exception strings, payloads, credential values or tracebacks cross IPC.
         pass
+    finally:
+        if effect_token is not None:
+            _active_effect.reset(effect_token)
     (root / "control.json").write_text(json.dumps(control))
 
 

@@ -16,6 +16,7 @@ class WorkerDeadlineExceeded(BaseException):
 
 
 _active = ContextVar("worker_operation_deadline", default=None)
+_active_effect = ContextVar("isolated_effect_deadline", default=None)
 
 
 class WorkerDeadline:
@@ -24,21 +25,39 @@ class WorkerDeadline:
         self.monotonic = monotonic
         self.publish = publish
         self.workspace = workspace
+        self._tighteners = []
+        self._failed = False
 
     def remaining(self):
         return self.deadline - self.monotonic()
 
     def check(self):
-        if self.remaining() <= 0:
+        if self._failed or self.remaining() <= 0:
             raise WorkerDeadlineExceeded
 
     def tighten_until(self, deadline_unix, current_unix):
         self.deadline = min(
             self.deadline, self.monotonic() + deadline_unix - current_unix
         )
-        if self.publish is not None:
-            self.publish(self.deadline)
+        try:
+            if self.publish is not None:
+                self.publish(self.deadline)
+            for tighten in self._tighteners:
+                tighten(self.deadline)
+        except BaseException:
+            # A failed local accounting update cannot leave useful work using
+            # the previous, later ledger deadline.
+            self._failed = True
+            raise WorkerDeadlineExceeded from None
         self.check()
+
+    @contextmanager
+    def track_tightening(self, tighten):
+        self._tighteners.append(tighten)
+        try:
+            yield
+        finally:
+            self._tighteners.remove(tighten)
 
     @contextmanager
     def scope(self):

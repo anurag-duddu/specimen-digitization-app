@@ -700,7 +700,19 @@ def _production_operation(payload):
                 exit_code = 0 if exc.code is None else int(exc.code)
         report = {"output": output.getvalue(), "exit_code": exit_code}
         if trace_ledger is not None:
-            report["trace_export"] = trace_ledger.snapshot()
+            from ..observability import flush_bounded_observability
+
+            flushed = deadline_call(flush_bounded_observability)
+            complete = flushed["configured"] and flushed["complete"]
+            deadline_call(trace_ledger.record_completion, complete)
+            snapshot = deadline_call(trace_ledger.snapshot)
+            report["trace_export"] = dict(
+                snapshot, configured=flushed["configured"],
+                complete=complete and snapshot["completion"],
+            )
+            if not report["trace_export"]["complete"]:
+                report["exit_code"] = 2
+        current_deadline().check()
     return json.dumps(report).encode()
 
 

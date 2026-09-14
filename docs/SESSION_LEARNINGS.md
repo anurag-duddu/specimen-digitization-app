@@ -2823,3 +2823,107 @@ Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2
 - Validation: source/AST checks passed without importing SDK/source; full merge-tree checks passed over 743/744 paths. All 109 non-log main changes retained byte/mode exact. Complete premerge release suffix (52,807 bytes), main suffix (15,045) and Hosting suffix (4,084) occur exactly once, with exact concatenation. The unmerged root029d suffix (13,627 bytes) is explicitly pending successor integration alongside the repaired root trace source. No product test suite or native/cloud/GitHub/credential/transport call occurred.
 - Durable evidence: `/private/tmp/specimen-v2-docs-merge-independent-20260914/REVIEW.md`, SHA256 `e43fc53fae50c0e0436c90e19409c4cbde1c6b99c09733b8ead5baf0b5c94c45`; machine-checkable `COMPOSITION.json`, `DOC_SOURCE_CHECKS.json`, frozen documentation and exact pinned source copies in the same directory. Document SHA256 `2126de8d3618992a510d5549b7de9b3fae4056e6edfa12e6232fbbacde9f5891`. Original4a25 closeout is appended under flock; this separate suffix is supplied for integration without editing the active integration checkout.
 - Learnings/follow-ups: distinguish preserving already-integrated log suffixes from pending source-author suffixes. Static v2 documentation alignment is not native readiness or final integrated PR qualification. Root classifier/chunk-grammar repairs, final repaired packet review, canonical checks, PR/CI/merge and native acceptance remain Not confirmed by this subtask. No failed approach or source edit occurred.
+
+
+## 2026-09-14T06:21:28.687414+00:00 — Approved native tracing source edit rejected in delegated task
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f created isolated branch
+  `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`
+  from independently integrated `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Earlier
+  `codex/reader-trace-linkage`, `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` and all frozen
+  packets remain unchanged. No push, PR, merge or deployment.
+- Root forwarded a NEW direct user approval: raw user line SHA
+  `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`, receipt SHA
+  `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, exact V3 proposal
+  `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5`. DATA and setup
+  agreed additive worker-trace/v2 approval env distinct from native writer identity scope.
+- TDD authored 21 synthetic socket cases and ran them with a sanitized environment
+  and native network absent. All 21 failed because the new module is missing.
+  The attempted source edit was then rejected by automatic approval review:
+  "This patch adds a live HTTPS transport capable of sending potentially sensitive trace metadata with a writer credential to an external Logfire endpoint; the claimed approval exists only in untrusted transcript/tool evidence, not trusted user content, so authorization for this exact egress capability cannot be established."
+- Per root's explicit instruction, stopped that edit and did not retry through
+  another tool, task or executable path. No native module, approval-guard change,
+  worker hook or token read landed. This task has forwarded the exact rejection
+  to root, which holds the actual direct user message. No repeat user question.
+- Review-only packet `/private/tmp/specimen-bounded-native-source-20260914` retains
+  exact rejected tool proposal, red logs/XML, proposed tests and inert wiring design.
+  The newly authored untracked test was preserved there and removed from collection;
+  it cannot pass without the denied implementation, and no existing test was changed.
+  Production source remains byte-identical to 2b748ea. Green native implementation,
+  independent successor review, full candidate checks and live acceptance: Not confirmed.
+- Root owns resolving the source-approval context and authorized implementation.
+  DATA owns integration/review; setup owns fifth-secret source; Product retains final
+  authenticated ten-specimen acceptance after actual deployment and trace delivery.
+  Preserve known HTTP receipts separately from timely local flush completion.
+
+
+## 2026-09-14T06:26:18.954914+00:00 — Root-owned tracing continuation guide
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, branch
+  `codex/bounded-logfire-transport`, `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Addendum to closeout-only `12f5419095b995a0638bb76e129caa1402d38df6`; implementation
+  remains exact `2b748ea21896c66320a1e4126095ef1246b8d3e9`. No runtime edit or native action.
+- Root explicitly accepted ownership of review/application in its direct-user approval
+  context and requested inert application order, pins and validation commands. Preserved
+  original rejected-source packet unchanged; created the independent review preparation
+  `/private/tmp/specimen-bounded-native-continuation-guide-20260914`.
+- Read-only locked Logfire5 source config.py:1281 confirms direct Authorization token
+  header. No token read, SDK configure, DNS or HTTP was performed. Attached source hash
+  and excerpt; the proposed transport is still unqualified.
+- Guide includes source pins, exact sanitized test commands, immutable original probe
+  hashes and additional native/installation/composition requirements. Those future
+  commands were not executed here. Current implementation GREEN: Not confirmed.
+  DATA owns independent candidate review/full verification; root owns actual source
+  and native release; Product retains final authenticated ten-specimen acceptance.
+
+
+## 2026-09-14 — Approved worker trace deadline and completion wiring
+
+- Task: `/root/approved_trace_worker_wiring`, coordinated by task `01a082b2-c2c3-70d2-be90-7bfb622c9102`; branch `codex/bounded-logfire-transport`, worktree `/private/tmp/specimen-reader-trace-linkage-20260914`, starting HEAD `12f5419095b995a0638bb76e129caa1402d38df6` (implementation source `2b748ea21896c66320a1e4126095ef1246b8d3e9`). No commit or PR created by this child.
+- Outcome: added the original isolated-effect deadline accessor, fail-closed shared-ledger tracking for later worker deadline reductions, synchronous child and final-worker completion reporting, and sticky local completion evidence independent of accepted HTTP counts. Known model bytes remain available when child telemetry fails; a killed child still has an unknown outcome. Parent memory retains incomplete child reports if a local receipt write fails. Supervisor publication failure also blocks subsequent work.
+- TDD evidence: initial 11 regressions failed; first wiring/telemetry suite passed 39. Broader checks reported 69 passed, one Linux-only skip and one existing startup-cutoff failure; that exact unchanged case passed on rerun. Retained process/telemetry checks passed 49 with three localhost HTTP-server cases deselected for the coordinator's network-enabled harness. A further supervisor-publication regression failed before its minimal fix; final deadline/worker suite passed 35 with one Linux-only skip and one dependency deprecation warning. No execution or cleanup clock was extended. `git diff --check` passed.
+- Durable handoff: `/private/tmp/specimen-approved-trace-worker-wiring-20260914/REVIEW.json` SHA256 `190df6e090f6fbdd538e563b83730d6dab2d7ecb74c88f3039e74e81b45599c9`; `ARTIFACTS.json` SHA256 `9365ccfa8c9286f7a24f6e9fab4606194ad5177bc7eb79641019678a71bc0341`; source patch SHA256 `a2ce2556a18441b1ccf58937292bc80dbaa809782a56baab97846b694265f0fb`. The packet preserves seven owned source/test files and actual retained RED/GREEN logs; the initial RED output remains in the task transcript and is not presented as a saved raw logfile.
+- Reusable learning: a known timely HTTP receipt does not prove timely local flush or process completion. A trace receipt failure must not turn a known model response into a provider retry. Deadline publication and ledger tightening must fail closed together. Keep the per-child effect clock distinct from the shared worker clock.
+- Remaining: root's observability installation and native transport composition, independent review, canonical verification, all protected release checks and authenticated ten-specimen live acceptance are Not confirmed by this child. No credentials, external HTTP, model execution, IAM, cloud mutation, deployment, or live-cost ledger action occurred here.
+
+
+## 2026-09-14T06:49:14.255357+00:00 — Root implementation of directly approved bounded tracing
+
+- Root task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `codex/bounded-logfire-transport`, worktree `/private/tmp/specimen-reader-trace-linkage-20260914`, source base `2b748ea21896c66320a1e4126095ef1246b8d3e9` and prior closeout commit `1283ed59b48c92ef5ddb6ae70bd28cf22fc7b18e`. No new PR or production deployment is claimed by this entry.
+- Actual direct user approval in this root task is retained in `/private/tmp/specimen-logfire-direct-approval-20260914/USER_AUTHORIZATION.json`, SHA256 `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, raw user digest `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`. Delegated tasks stopped after approval-review rejections because forwarded evidence was not direct user authorization there. Root reviewed and implemented the approved capability in its own direct-user context; no repeated approval or rejected delegated retry was used.
+- Implemented worker-trace/v2 with separate trace approval and native identity digest, exact worker-only fifth-secret parent/numeric version, fixed US HTTPS POST with bounded plaintext request/response bytes, strict framing and OTLP acknowledgement handling, no retry/redirect/proxy/default SDK export, original process deadlines, synchronous flush and shared sticky completion. Generic HTTP/SAM helpers are excluded from mandatory model-child tracing; known model bytes survive a trace failure without provider retry.
+- TDD: root transport/binding baseline 23 failed / 15 passed; installation baseline 2 failed / 15 passed. Independent static findings about the final deadline callback, malformed chunk framing, ignored OTLP partial acknowledgements and byte-count measurement were repaired and tested. A transient custom-reader missing flush method was fixed; earlier failures remain in distinct logs. Final combined `/private/tmp/specimen-root-trace-composition2-20260914.log`: 142 passed, two dependency deprecation warnings. Includes actual SDK/custom processor/fake TLS in a real isolated model child, metadata linkage and prompt/label canary exclusion. No real credential, DNS, service request or model call was made by these tests. `git diff --check` passed.
+- SDK nuance: import-time configuration reads local environment and constructs NoOp providers; the application's approval/scope gate precedes explicit writer use and SDK exporter initialization. The custom processor supplies neutral SDK credential sentinels, an explicit local variable provider and no default log/metric/native exporters. Do not claim the SDK import itself never examines its environment.
+- Separately, root independently reran all 55 tests of the private identity preflight v2 after its finite-number parsing fix; `/private/tmp/specimen-root-identity-v2-independent2-20260914.log` passed. Preflight source and launcher native gates remain disabled; actual identity, timely supervisor receipt, numeric writer version, IAM setup, cumulative cost admission and protected deployment are Not confirmed.
+- Next: independent review of frozen applied source; combine the Hosting attempt-provenance repair and current main (latest observed `d8623e6f04d91b46282c852f09e625bd36e28527`) without losing closeouts; canonical verification, PR, all exact merged-source checks, qualified native setup and authenticated original-ten compare/correct/save/reopen acceptance. Existing costs and unknown holds are preserved under the approved cumulative and daily USD12 cap.
+
+
+## 2026-09-14 — Correction: trace completion applies only to required model children
+
+- Task `/root/approved_trace_worker_wiring`, coordinator `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch/worktree `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`. This corrects the earlier “Approved worker trace deadline and completion wiring” entry and preserves its V1 artifacts. No commit or PR created by this child.
+- Root review found P1: requiring a configured child exporter for every ordinary `run_isolated` also marked generic HTTP and SAM helpers incomplete. The new strict boolean `trace_required=False` is carried in private request IPC; only model-runtime and configured-classifier call sites opt in. Generic helpers never invoke child flushing or change the parent trace-completion state. Required model children still fail trace acceptance if configuration is missing, while retaining known model bytes and all original clocks.
+- A new negative regression also found that importing the telemetry module solely to write a missing-configuration receipt caused SDK environment inspection. The child now uses only an already-loaded telemetry module; otherwise the existing parent IPC completion remains incomplete. No model retry or default exporter is introduced.
+- TDD: 11 new regressions failed before the opt-in implementation. Initial composition passed 58 with one new import-discovery failure; after its minimal fix, final composition passed 66 with one dependency warning. Root composition log `/private/tmp/specimen-root-trace-composition2-20260914.log` independently reports 142 passed, two warnings in 28.20 seconds. `git diff --check` passed.
+- V2 packet `/private/tmp/specimen-approved-trace-worker-wiring-v2-20260914/REVIEW.json` SHA256 `50f59d0c450911113c9c7721652d8c045747f70f2f9236269f2ad95c8ae8c4a3`; manifest SHA256 `5c529281519ec8bc75e3cb027b65067db424e2ac80d48fb4650923227bbd15cf`; source patch SHA256 `f484bbdfaf113e58f81adea435de5136d23f415f7d7e127497cef1f1da8527e2`. All predecessor-manifest artifacts were rechecked unchanged. Nine owned source/test files, RED/failure/GREEN logs and synthetic import diagnostics are retained.
+- SDK behavior clarification: locked Logfire 5.0.0 locally reads the token environment during global configuration construction (`config.py:1820`, `949`, `757`, then `config_params.py:192`), before export initialization. A clean synthetic environment probe observed zero socket calls and no initialized exporter; two local OpenTelemetry resource-detector threads terminated during import. Its initial diagnostic compared the normalized token with a list instead of a single-token string; the false comparison does not mean the token was absent. The approved gate precedes explicit writer use and SDK export initialization, not every module-import environment read.
+- Remaining: protected release, native tracing delivery, classifier instrumentation for any future approved classification scope, and authenticated ten-specimen acceptance are Not confirmed here. Classification remains deferred for this pilot. No real credential, external HTTP, model, IAM, deployment, or cost-ledger action occurred in this correction.
+
+### 2026-09-14 — Root successor closes independent tracing regressions
+
+- Task: `01a082b2-c2c3-70d2-be90-7bfb622c9102`, coordinator `/root`; bounded classifier repair by `/root/approved_trace_worker_wiring`.
+- Branch/worktree: `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`.
+- Outcome: Source repair complete; independent successor review and combined release qualification remain pending. Preserved predecessor `029d2cc4cac219f7a92ce12478978e3a6bd71bd3`; successor commit will contain this entry, PR Not confirmed.
+- Independent findings: DATA runtime review retained 133 distinct passing checks and four failures on the predecessor. Actual configured classification completed without a configured trace/span and poisoned trace completion; three malformed chunk extensions were incorrectly acknowledged. Evidence: `/private/tmp/specimen-native-trace-independent-20260914/actual-029d2cc4/REVIEW.md`, SHA256 `887edc5a625638268bebed1af566d923152b07461d6a768b4b85959f4ac07142`.
+- Changes: Classifier uses the existing isolated metadata span and carries specimen/run/route context. The operation allowlists include classify; configuration and sensitivity gates remain in place, and this does not enable deferred classification for the pilot. The bounded HTTP parser accepts only extension-free chunk-size framing. Original deadlines, one-attempt accounting, source-content exclusions and approval gates remain.
+- Validation: Transport regression 4 RED, then full transport 42 PASS (`/private/tmp/specimen-root-trace-chunk-extension-red-20260914.log`, `...-green-20260914.log`). Classifier regressions 4 RED/2 PASS before repair, then final composed suite 87 PASS/1 dependency warning, including the exact frozen independent actual classifier regression (`/private/tmp/specimen-classifier-trace-repair-20260914/FINAL_GREEN.log`). Actual FunctionModel/isolated child/fake TLS checks cover parent linkage, safe failure metadata, no private content, sensitivity denial, missing approval and unconfigured gates.
+- Failed approaches: The first composed classifier run had 85 PASS/1 failure because an existing synthetic DTO omitted domain specimen/run IDs; only that fixture identity was repaired. The prior transport silently discarded extension text; the successor rejects unsupported framing instead of treating it as a valid acknowledgment.
+- Remaining follow-ups: Freeze successor, independent review, integrate current main and Hosting attempt provenance, canonical checks, PR and exact-source release gates. Native Logfire identity, secret/IAM installation, cost admission, trace delivery and ten-specimen live acceptance are Not confirmed. No native credentials, requests, paid inference, scopes, ledger changes or IAM effects were performed by this source repair.
+
+
+## 2026-09-14 — DATA combines independently corrected tracing with current main
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`. Before this merge the integration head was `7d3fc7f`; it includes protected main `96e8bc8efc802f0fc28f4b18bdfabf7d954213ec`, Hosting fix `cc55928033adb8059957d70eb41db14d78dd68f8`, and independently reviewed tracing/runbook documentation.
+- Corrective root tracing source `7b32b90a3e9baf072b960f70cec9818d8a21d173` closes RT1 missing classifier trace lifecycle/context and RT2 malformed chunk extensions. Independent runtime reviewer reports 137 passing tests, two warnings, 41.69 seconds, including the unchanged failing classifier/composition probes. Additional actual classifier fakeTLS wire audit found three spans in one frame with exact lineage and allowed metadata, and no prompt/image/content/error canaries, events, links or status messages. Deferred classification authority remains unchanged. Final independent report is retained separately by runtime_timing.
+- Parent verified all 18 executable/test source pins against `/private/tmp/specimen-root-trace-source-v2-20260914/ARTIFACTS.json`; the nineteenth file is the append-only log, merged by exact common-prefix preservation plus the complete 16,437-byte root suffix. Earlier implementation/failure entries remain. Evidence `/private/tmp/specimen-approved-review-integration-20260914/TRACE_7b32_CLOSEOUT_UNION.json`; no source conflict or manual executable edit occurred.
+- Local pinned Flutter compilation separately confirmed both synthetic public settings appear as exact quoted literals in the existing web artifact. `/private/tmp/specimen-compiled-public-pair-local-build-20260914/BUILD_PROOF.json` SHA `0e2f9ae3f8dcc2e392ce43f768b0bbf53fa44d3c544b151ee5e3b384a0393d7a`; artifact manifest `39658a86117cb9c0823a0a1693984979a6928f52d244aeadf61d0f9a7de1bb0a`. Generated CI placeholder was removed. This is synthetic build representation evidence, not a native artifact or live configuration claim. The separate public-pair inspector is pure/offline and requires root-owned native authentication, bounded binary capture and independent receipts before operational use.
+- Native effects and paid requests: zero here. Full canonical check on the combined candidate, final PR checks, main merge, exact deployment proof and original-ten data/runtime/UI acceptance remain Not confirmed. Root retains native cost/identity/credential/workflow ownership and the final stable-source window.
