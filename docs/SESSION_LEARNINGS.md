@@ -4239,7 +4239,7 @@ Correction/addition to â€œHosting exact run/attempt provenance author closeoutâ€
 - Task: Claude Code session, workstream E of `docs/execution/SOURCE_BROWSE_AND_RUN.md` (design PR [#56](https://github.com/anurag-duddu/specimen-digitization-app/pull/56))
 - Branch/worktree: `claude/nostalgic-rubin-f4bc3a` at `.claude/worktrees/nostalgic-rubin-f4bc3a`
 - Outcome: Completed. Pass criterion 7.3 and defect V-13 are closed; 7.2 keeps its Partial verdict and changes its reason. Nothing was deployed.
-- Commits/PRs: `95421c4` (feature), see the PR link in the correction appended below if one is not named here.
+- Commits/PRs: [PR #59](https://github.com/anurag-duddu/specimen-digitization-app/pull/59), commits `95421c4` (feature), `68494c8` (contract, report, blueprint, closeout), `38e9fcc` and `999e6e7` (two shared-widget fixes found by the workstream D session building on this branch).
 - Validation: `uv run pytest -q` 2,460 passed / 81 skipped; `flutter test` 922 passed / 7 skipped; `flutter analyze --fatal-infos` clean; `scripts/ci/check_ui_strings.py` 0 violations, 0 baselined; `uvx pre-commit run` on the staged set passed. Goldens regenerated on macOS: 26 moved, 8 added, 97 files to 105.
 
 - Durable learnings:
