@@ -268,10 +268,11 @@ String get goldenIntakeLocation =>
     AppRoutes.intakeOf(encodeCollectionKey(goldenCollection));
 
 /// The record location for the fixture collection.
-String get goldenSpecimenLocation => AppRoutes.specimenOf(
-  encodeCollectionKey(goldenCollection),
-  goldenSpecimenId,
-);
+String get goldenSpecimenLocation => goldenSpecimenLocationOf(goldenSpecimenId);
+
+/// The location of one record in the fixture collection.
+String goldenSpecimenLocationOf(String id) =>
+    AppRoutes.specimenOf(encodeCollectionKey(goldenCollection), id);
 
 /// Pumps the whole app at one window, one theme and one text scale.
 Future<void> pumpGoldenApp(
@@ -382,6 +383,34 @@ Future<void> pumpGoldenDialog(
     ),
   );
   await tester.tap(find.text('Open'));
+  await tester.pumpAndSettle();
+  await settleImages(tester);
+}
+
+/// The narrowest window that gets the dialog form of a surface.
+///
+/// `WindowClass.expanded` starts at 840; every surface in this product that
+/// chooses between a dialog and a full screen route chooses on that number.
+const double expandedWindowFloor = 840;
+
+/// Pumps one full screen route on the product theme, the way the app pushes
+/// it below the expanded breakpoint.
+Future<void> pumpGoldenRoute(
+  WidgetTester tester, {
+  required Size window,
+  required Brightness brightness,
+  required Widget child,
+}) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = window;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
+      home: child,
+    ),
+  );
   await tester.pumpAndSettle();
   await settleImages(tester);
 }

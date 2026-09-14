@@ -26,5 +26,6 @@ export 'risk_meter.dart';
 export 'skeleton.dart';
 export 'specimen_status.dart';
 export 'status_chip.dart';
+export 'term_text.dart';
 export 'thumbnail.dart';
 export 'upload_item.dart';

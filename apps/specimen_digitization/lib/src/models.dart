@@ -193,10 +193,123 @@ abstract class SpecimenRepository {
     Json change,
     String key,
   );
+
   Future<Specimen> retry(
     CollectionScope scope,
     Specimen specimen,
     String reason,
     String key,
   );
+}
+
+/// One reviewer action that the wire can only take one decision at a time.
+///
+/// An extension rather than a method on [SpecimenRepository] because every
+/// repository in this client `implements` that interface rather than
+/// extending it, so a default body on the interface would reach none of
+/// them. The moment the API publishes a batch endpoint this becomes a method
+/// on the interface and `ApiSpecimenRepository` overrides it with one call.
+extension ReviewBatch on SpecimenRepository {
+  /// Sends [changes] as one reviewer action under one [reason].
+  ///
+  /// Pass criterion 7.2 asks for five corrections on one record to save with
+  /// one round trip and one reason. One reason and one reviewer action are
+  /// what this delivers today. One round trip is not, and cannot be from the
+  /// client: the review API takes one decision per call, so five corrections
+  /// are five calls. Until it grows a batch endpoint this sends them in
+  /// order, threading the record forward so each call carries the revision
+  /// the one before it produced, and returns only the last result so the
+  /// caller moves the screen once rather than five times.
+  ///
+  /// [keyPrefix] is one prefix for the whole batch, so a reader of the
+  /// server's idempotency log can see which calls were one reviewer action.
+  /// Every call inside it is `<keyPrefix>-<index>` by default.
+  ///
+  /// [keyFor] overrides that per call, and the workspace supplies one: a call
+  /// that is being retried after an uncertain answer has to carry the key it
+  /// carried the first time, or the server records the decision twice. The
+  /// prefix names the batch; the key identifies the decision.
+  ///
+  /// [stillApplies] is asked before each call, against the record the call
+  /// before it produced. A batch cannot re-read the screen between its own
+  /// calls, so this is how it keeps the guarantee the one at a time path gets
+  /// for free: a correction whose field moved under the reviewer is never
+  /// sent automatically against a newer revision. The batch stops there and
+  /// reports how many landed, with `stopped` true.
+  ///
+  /// A result that is not a newer version of the same record is refused, the
+  /// same rule `WorkspaceController.mutate` applies to a single decision: the
+  /// server has not confirmed a save until it answers with one.
+  ///
+  /// The batch stops at the first failure and throws [ReviewBatchFailure].
+  /// Whatever landed before it stays landed, which is what the wire does; the
+  /// caller reports how many of the changes are still outstanding.
+  Future<ReviewBatchResult> reviewBatch(
+    CollectionScope scope,
+    Specimen specimen,
+    List<Json> changes,
+    String reason,
+    String keyPrefix, {
+    bool Function(Specimen current, Json change)? stillApplies,
+    String Function(Specimen current, Json change, int index)? keyFor,
+  }) async {
+    Specimen current = specimen;
+    for (final (int index, Json change) in changes.indexed) {
+      if (stillApplies != null && !stillApplies(current, change)) {
+        return (specimen: current, saved: index, stopped: true);
+      }
+      final Json body = <String, dynamic>{...change, 'reason': reason};
+      final String key =
+          keyFor?.call(current, body, index) ?? '$keyPrefix-$index';
+      final Specimen result;
+      try {
+        result = await review(scope, current, body, key);
+      } catch (error) {
+        throw ReviewBatchFailure(saved: index, specimen: current, cause: error);
+      }
+      if (result.id != current.id || result.revision <= current.revision) {
+        throw ReviewBatchFailure(
+          saved: index,
+          specimen: current,
+          cause: const ApiFailure(
+            'The server has not confirmed this save with a newer record '
+            'version.',
+            code: 'unconfirmed_save',
+          ),
+        );
+      }
+      current = result;
+    }
+    return (specimen: current, saved: changes.length, stopped: false);
+  }
+}
+
+/// What a batch did: the record it left behind, how many calls the server
+/// acknowledged, and whether it stopped because a later correction no longer
+/// applied rather than because it finished.
+typedef ReviewBatchResult = ({Specimen specimen, int saved, bool stopped});
+
+/// A batch that stopped part way through.
+///
+/// Carries the record as the server now has it, so the screen can still show
+/// what landed, and the count, so the reviewer is told how many corrections
+/// are still theirs to make rather than being told the save failed.
+class ReviewBatchFailure implements Exception {
+  const ReviewBatchFailure({
+    required this.saved,
+    required this.specimen,
+    required this.cause,
+  });
+
+  /// How many of the changes the server accepted before it stopped.
+  final int saved;
+
+  /// The record after the last change that landed.
+  final Specimen specimen;
+
+  /// What the failing call threw.
+  final Object cause;
+
+  @override
+  String toString() => cause.toString();
 }

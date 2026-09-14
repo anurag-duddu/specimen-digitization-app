@@ -189,12 +189,72 @@ void main() {
         }
       });
 
-      test('a disabled control stays legible, well above the 38% default', () {
+      // Finding V-8. Material draws a disabled control at 38 percent of the
+      // content color, which measured 2.38:1 and 2.25:1 on the two controls
+      // the verification report caught. Both disabled tokens are now held to
+      // the 3:1 non-text floor on every surface, in both modes, and the
+      // theme passes them to every button, chip and field rather than
+      // leaving Material's default in place.
+      test('both disabled tokens clear 3:1 on every surface', () {
+        for (final MapEntry<String, Color> t in tokens.disabledColors.entries) {
+          for (final MapEntry<String, Color> s in surfaces.entries) {
+            expect(
+              contrast(t.value, s.value),
+              greaterThanOrEqualTo(nonTextMinimum),
+              reason: '$name ${t.key} on ${s.key}',
+            );
+          }
+        }
+      });
+
+      test('disabled content clears 4.5:1, because it is a sentence', () {
         for (final MapEntry<String, Color> s in surfaces.entries) {
           expect(
             contrast(tokens.disabledContent, s.value),
-            greaterThanOrEqualTo(nonTextMinimum),
+            greaterThanOrEqualTo(textMinimum),
             reason: '$name disabled content on ${s.key}',
+          );
+        }
+      });
+
+      test('disabled content clears 3:1 on the disabled container', () {
+        for (final MapEntry<String, Color> s in surfaces.entries) {
+          final Color filled = Color.alphaBlend(
+            tokens.disabledContainer,
+            s.value,
+          );
+          expect(
+            contrast(tokens.disabledContent, filled),
+            greaterThanOrEqualTo(nonTextMinimum),
+            reason: '$name disabled content on its container over ${s.key}',
+          );
+        }
+      });
+
+      test('disabled content beats the 38 percent default it replaces', () {
+        for (final MapEntry<String, Color> s in surfaces.entries) {
+          final Color material = Color.alphaBlend(
+            scheme.onSurface.withValues(alpha: 0.38),
+            s.value,
+          );
+          expect(
+            contrast(material, s.value),
+            lessThan(contrast(tokens.disabledContent, s.value)),
+            reason:
+                '$name: Material draws a disabled control at 38 percent on '
+                '${s.key}, which is what finding V-8 measured at 2.3:1',
+          );
+        }
+      });
+
+      test('disabled content is quieter than live body text', () {
+        for (final MapEntry<String, Color> s in surfaces.entries) {
+          expect(
+            contrast(tokens.disabledContent, s.value),
+            lessThan(contrast(scheme.onSurfaceVariant, s.value)),
+            reason:
+                '$name: a disabled control has to be legible and still read '
+                'as disabled on ${s.key}',
           );
         }
       });

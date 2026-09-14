@@ -60,6 +60,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     required this.environmentSyntheticOnFill,
     required this.focusRing,
     required this.disabledContent,
+    required this.disabledOutline,
     required this.disabledContainer,
   });
 
@@ -136,9 +137,15 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
   /// Reserved. Never used for status, and never for more than one element.
   final Color focusRing;
 
-  /// A disabled control carries information, so it stays legible at
-  /// `outline` rather than Material's 38% (design system, section 3.6).
+  /// A disabled control carries information, so it stays legible at a named
+  /// neutral rather than Material's 38% (design system, section 3.6).
   final Color disabledContent;
+
+  /// The border of a disabled outlined control. A step quieter than
+  /// [disabledContent] and still over the 3:1 non-text floor, so the control
+  /// reads as disabled without the boundary disappearing.
+  final Color disabledOutline;
+
   final Color disabledContainer;
 
   static final SpecimenColors light = SpecimenColors(
@@ -181,7 +188,8 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     environmentSyntheticFill: ProductPalette.environmentFillLight,
     environmentSyntheticOnFill: ProductPalette.environmentOnFillLight,
     focusRing: ProductPalette.focusRingLight,
-    disabledContent: LightPalette.outline,
+    disabledContent: ProductPalette.disabledContentLight,
+    disabledOutline: ProductPalette.disabledOutlineLight,
     disabledContainer: LightPalette.onSurface.withValues(
       alpha: ProductPalette.disabledContainerOpacity,
     ),
@@ -227,7 +235,8 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     environmentSyntheticFill: ProductPalette.environmentFillDark,
     environmentSyntheticOnFill: ProductPalette.environmentOnFillDark,
     focusRing: ProductPalette.focusRingDark,
-    disabledContent: DarkPalette.outline,
+    disabledContent: ProductPalette.disabledContentDark,
+    disabledOutline: ProductPalette.disabledOutlineDark,
     disabledContainer: DarkPalette.onSurface.withValues(
       alpha: ProductPalette.disabledContainerOpacity,
     ),
@@ -306,6 +315,17 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     ),
   ];
 
+  /// The disabled-state colors, by token name.
+  ///
+  /// WCAG 2.2 exempts inactive components from both 1.4.3 and 1.4.11, but a
+  /// disabled control in this product carries the reason the server forbids
+  /// the decision, so the contrast test holds both of these to the 3:1
+  /// non-text floor on every surface (design system, section 3.6).
+  Map<String, Color> get disabledColors => <String, Color>{
+    'disabled.content': disabledContent,
+    'disabled.outline': disabledOutline,
+  };
+
   /// Diff fills carry body text in `onSurface`, not in an on-fill color, so
   /// they are checked against `onSurface` instead of against [fillPairs].
   List<FillPair> diffFillPairs(Color onSurface) => <FillPair>[
@@ -355,6 +375,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     Color? environmentSyntheticOnFill,
     Color? focusRing,
     Color? disabledContent,
+    Color? disabledOutline,
     Color? disabledContainer,
   }) => SpecimenColors(
     clearedContent: clearedContent ?? this.clearedContent,
@@ -401,6 +422,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
         environmentSyntheticOnFill ?? this.environmentSyntheticOnFill,
     focusRing: focusRing ?? this.focusRing,
     disabledContent: disabledContent ?? this.disabledContent,
+    disabledOutline: disabledOutline ?? this.disabledOutline,
     disabledContainer: disabledContainer ?? this.disabledContainer,
   );
 
@@ -476,6 +498,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
       ),
       focusRing: mix(focusRing, other.focusRing),
       disabledContent: mix(disabledContent, other.disabledContent),
+      disabledOutline: mix(disabledOutline, other.disabledOutline),
       disabledContainer: mix(disabledContainer, other.disabledContainer),
     );
   }

@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Golden comparison output, written by a failing pixel test.
+test/golden/failures/
