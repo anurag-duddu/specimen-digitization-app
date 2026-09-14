@@ -230,6 +230,7 @@ void main() {
     Widget row({
       bool selected = false,
       bool showCheckbox = true,
+      bool enabled = true,
       VoidCallback? onToggle,
       VoidCallback? onExtend,
       VoidCallback? onLongPress,
@@ -237,11 +238,17 @@ void main() {
       selected: selected,
       label: 'Pinned beetle 1',
       showCheckbox: showCheckbox,
+      enabled: enabled,
       onToggle: onToggle ?? () {},
       onExtend: onExtend,
       onLongPress: onLongPress,
       child: const SizedBox(height: 48, child: Text('Pinned beetle 1')),
     );
+
+    /// Where the row's own content starts, which is the edge a reviewer
+    /// scans a long list down.
+    double contentLeft(WidgetTester tester) =>
+        tester.getTopLeft(find.text('Pinned beetle 1')).dx;
 
     testWidgets('the checkbox names the record it selects', (
       WidgetTester tester,
@@ -277,6 +284,60 @@ void main() {
     testWidgets('the row keeps its own body', (WidgetTester tester) async {
       await pumpComponent(tester, row());
       expect(find.text('Pinned beetle 1'), findsOneWidget);
+    });
+
+    testWidgets('a row that cannot be picked keeps the column', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(tester, row());
+      final double picked = contentLeft(tester);
+      await pumpComponent(tester, row(enabled: false));
+      expect(
+        contentLeft(tester),
+        picked,
+        reason: 'a list needs only one unselectable row for every row below '
+            'it to be read against a different left edge',
+      );
+      // Drawn and unavailable, rather than absent. A reader told nothing
+      // cannot tell a row it may not pick from a row it missed.
+      expect(find.byType(Checkbox), findsOneWidget);
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox)).onChanged,
+        isNull,
+      );
+    });
+
+    testWidgets('a row that cannot be picked takes no long press', (
+      WidgetTester tester,
+    ) async {
+      int started = 0;
+      await pumpComponent(
+        tester,
+        row(enabled: false, onLongPress: () => started++),
+      );
+      await tester.longPress(find.text('Pinned beetle 1'));
+      expect(
+        started,
+        0,
+        reason: 'a gesture that picks a record the server will refuse is '
+            'worse than no gesture',
+      );
+    });
+
+    testWidgets('an unavailable checkbox says so to a reader', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(tester, row(enabled: false));
+      expect(
+        tester
+            .getSemantics(find.byType(Checkbox))
+            .flagsCollection
+            .isEnabled
+            .toBoolOrNull(),
+        isFalse,
+      );
+      handle.dispose();
     });
   });
 

@@ -103,6 +103,7 @@ class SelectableRow extends StatelessWidget {
     required this.onToggle,
     required this.child,
     this.showCheckbox = true,
+    this.enabled = true,
     this.onExtend,
     this.onLongPress,
   });
@@ -138,7 +139,24 @@ class SelectableRow extends StatelessWidget {
 
   /// False while the list is not in selection and the window is too narrow to
   /// keep the column open.
+  ///
+  /// This is about the list, not about the row. A row the list will not let
+  /// the reviewer pick sets [enabled] instead.
   final bool showCheckbox;
+
+  /// False for a row this list will not let the reviewer pick.
+  ///
+  /// The control is drawn and disabled rather than removed, for two reasons.
+  /// Removing it takes the leading column with it, so an unselectable row
+  /// slides out of the alignment a reviewer scans a long list down, and the
+  /// list only has to contain one such row for every row below it to be read
+  /// against a different left edge. And a reader told nothing at all cannot
+  /// tell a row it may not pick from a row it missed, where a disabled control
+  /// says which.
+  ///
+  /// A disabled row takes no long press either: a gesture that picks a record
+  /// the server will refuse is worse than no gesture.
+  final bool enabled;
 
   /// The row itself, which keeps its own tap, its own semantics and its own
   /// layout.
@@ -156,14 +174,16 @@ class SelectableRow extends StatelessWidget {
             child: Checkbox(
               value: selected,
               semanticLabel: label,
-              onChanged: (bool? _) {
-                final bool extending =
-                    onExtend != null &&
-                    HardwareKeyboard.instance.logicalKeysPressed.any(
-                      _shiftKeys.contains,
-                    );
-                extending ? onExtend!() : onToggle();
-              },
+              onChanged: enabled
+                  ? (bool? _) {
+                      final bool extending =
+                          onExtend != null &&
+                          HardwareKeyboard.instance.logicalKeysPressed.any(
+                            _shiftKeys.contains,
+                          );
+                      extending ? onExtend!() : onToggle();
+                    }
+                  : null,
             ),
           ),
           SizedBox(width: context.space.space1),
@@ -171,7 +191,7 @@ class SelectableRow extends StatelessWidget {
         Expanded(child: child),
       ],
     );
-    if (onLongPress == null) return row;
+    if (onLongPress == null || !enabled) return row;
     // A long press anywhere on the row starts a selection and picks that row.
     // The gesture is on a bare detector rather than an ink well so the row's
     // own tap, focus and ripple keep working exactly as they did, and its
