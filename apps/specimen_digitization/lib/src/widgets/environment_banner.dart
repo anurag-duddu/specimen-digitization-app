@@ -39,19 +39,33 @@ class EnvironmentBanner extends StatefulWidget {
       environment.trim().toLowerCase() != production;
 
   /// The environment's own name, sentence case.
+  ///
+  /// `synthetic` is the build's internal word. A reviewer reads "test"
+  /// (UX writing, vocabulary table row `synthetic`). The disclosure control
+  /// below already said "test environment", so this settles that
+  /// disagreement rather than introducing a new word.
   static String nameFor(String environment) {
     final String name = environment.trim().toLowerCase();
     if (name.isEmpty) return 'This environment';
+    if (name == 'synthetic') return 'Test environment';
     return '${name[0].toUpperCase()}${name.substring(1)} environment';
   }
 
   /// The clause the band always shows, short enough for one line.
+  ///
+  /// It carries only what the build can guarantee. The band cannot know
+  /// whether a reading came from a fixture or from a real provider, because a
+  /// non-production build can be wired to the real routes, so it does not say.
+  /// Each reading already names its own model and provider, which is the
+  /// honest place for that. UX writing 4.15: the label alone must be true for
+  /// a reader who never opens the disclosure.
   static String headlineFor(String environment) =>
-      '${nameFor(environment)}. Results here are fixtures.';
+      '${nameFor(environment)}. Not approved museum records.';
 
   /// The clause behind the disclosure.
   static const String detail =
-      'Not real model processing, and not approved museum records.';
+      'Nothing here carries institutional approval. Each reading names the '
+      'model and provider that produced it.';
 
   /// The sentence the band carries. Sentence case, no shouting, no dashes.
   ///
