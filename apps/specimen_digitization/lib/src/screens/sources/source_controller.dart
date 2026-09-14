@@ -268,7 +268,7 @@ class SourceBrowseController extends ChangeNotifier {
   ///
   /// An object the source refuses is reported against that object and never
   /// fails the rest, which is the server's own rule. Only an integrity failure
-  /// stops the run, and when it does the objects already added are named
+  /// stops the run, and when it does the photographs already added are named
   /// rather than concealed.
   Future<SourceImportProgress> importSelection(
     List<SourceObject> selection, {
@@ -282,7 +282,7 @@ class SourceBrowseController extends ChangeNotifier {
         start,
         (start + sourceImportBatchSize).clamp(0, selection.length),
       );
-      // Memoised on the objects at the generations they were selected at, so
+      // Memoised on the photographs at the generations they were picked at, so
       // a retry after an uncertain answer carries the key it carried the
       // first time and the server reconciles rather than importing twice.
       final String payload = chunk
@@ -308,8 +308,8 @@ class SourceBrowseController extends ChangeNotifier {
   /// One sentence saying why a run stopped, and what to do.
   static String _stopReason(ApiFailure failure) =>
       failure.code == 'source_object_changed'
-      ? 'This source changed while the objects were being added. Reload the '
-            'source and add the rest.'
+      ? 'This source changed while the photographs were being added. Reload '
+            'the source and add the rest.'
       : failure.message;
 
   @override

@@ -1,4 +1,4 @@
-/// Browse a registered source and add objects to the queue (screen
+/// Browse a registered source and add photographs to the queue (screen
 /// blueprints, section 13).
 ///
 /// The screen exists because the collection's images were invisible to the
@@ -126,7 +126,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
   /// asked for.
   static const double _loadMoreThreshold = 600;
 
-  /// Picks every object in the current filter, loading the rest first.
+  /// Picks every photograph in the current filter, loading the rest first.
   ///
   /// The count is stated on the control before this runs, so a reviewer who
   /// presses it has already been told how far it reaches.
@@ -462,7 +462,7 @@ class _RefreshedNotice extends StatelessWidget {
   /// What a reviewer is told when the snapshot changed while they were
   /// choosing.
   static const String body =
-      'This source was listed again, so the objects start from the top.';
+      'This source was listed again, so the photographs start from the top.';
 
   @override
   Widget build(BuildContext context) {
