@@ -11,6 +11,8 @@ import importlib
 import inspect
 import json
 import math
+import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -130,8 +132,47 @@ def _callable_reference(function: Callable) -> tuple[str, str]:
     return function.__module__, function.__name__
 
 
-def _cleanup(process: subprocess.Popen) -> bool:
-    """Bounded TERM -> KILL -> reap. Never return a late response after cleanup."""
+def _cleanup(process: subprocess.Popen, *, process_group=False) -> bool:
+    """Bounded cleanup. Worker groups get no useful-work grace after cutoff."""
+    if process_group:
+        cleanup_deadline = time.monotonic() + KILL_GRACE_SECONDS
+        # Only used with our own start_new_session child. Its ordinary effect
+        # children inherit this group. A graceful handler or TERM-resistant SDK
+        # can continue dispatching during a grace period, so hard-stop the whole
+        # group immediately, including descendants after their leader exits.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            return False
+        try:
+            process.wait(timeout=max(0, cleanup_deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            return False
+        while True:
+            # Container PID1 (or an existing subreaper) adopts killed orphan
+            # descendants. Reap only this owned group after preserving the
+            # direct leader's Popen status; never consume unrelated children.
+            while time.monotonic() < cleanup_deadline:
+                try:
+                    pid, _ = os.waitpid(-process.pid, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if not pid:
+                    break
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                return time.monotonic() < cleanup_deadline
+            except PermissionError:
+                # A denied observation is unknown, never proof of absence.
+                # Keep observing inside this same bound without another kill.
+                pass
+            remaining = cleanup_deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.01, remaining))
     if process.poll() is not None:
         process.wait()
         return True
@@ -162,6 +203,7 @@ def run_isolated(
     max_result_bytes: int,
     *,
     max_input_bytes: int = 1024 * 1024,
+    process_group: bool = False,
 ) -> IsolatedResult:
     """Budget covers serialization, startup, import, authentication, HTTP and result.
 
@@ -170,6 +212,8 @@ def run_isolated(
     outcomes conservatively. Lease must exceed deadline by at least 30 seconds.
     """
     started = time.monotonic()
+    if process_group and os.name != "posix":
+        raise ValueError("owned worker process groups require POSIX")
     if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 3600:
         raise ValueError("timeout_seconds must be finite and in (0, 3600]")
     if any(
@@ -182,8 +226,19 @@ def run_isolated(
     input_size = 0
     process = None
     cleanup_attempted = False
+    stopping = False
 
     def result(status, reason, *, value=None, result_bytes=0, cleanup=True):
+        nonlocal cleanup_attempted
+        if process_group and process is not None and not cleanup_attempted:
+            cleanup_attempted = True
+            cleanup = _cleanup(process, process_group=True)
+        if process_group and status == "completed" and (
+            stopping or not cleanup or time.monotonic() >= deadline
+        ):
+            status, reason, value, result_bytes = (
+                "deadline_exceeded", "overall_deadline", None, 0
+            )
         return IsolatedResult(
             status=status,
             reason=reason,
@@ -206,7 +261,16 @@ def run_isolated(
         return result("worker_failed", "invalid_json_input")
     with TemporaryDirectory(prefix="specimen-effect-") as directory:
         root = Path(directory)
+        previous_handlers = {}
+
+        def stop_supervisor(signum, frame):
+            nonlocal stopping
+            stopping = True
+
         try:
+            if process_group:
+                for signum in (signal.SIGTERM, signal.SIGINT):
+                    previous_handlers[signum] = signal.signal(signum, stop_supervisor)
             (root / "input.json").write_bytes(encoded)
             # sys.path propagation supports installed/editable application modules and
             # importable test fixtures. This trusted metadata is never client-controlled.
@@ -216,22 +280,51 @@ def run_isolated(
                 max_result_bytes=max_result_bytes,
                 deadline=deadline,
                 search_path=[str(p) for p in sys.path],
+                process_group=process_group,
             )
             (root / "request.json").write_bytes(_json_bytes(request, 65536, deadline))
             _check_deadline(deadline)
+            if stopping:
+                raise _Deadline
             process = subprocess.Popen(
                 [sys.executable, "-m", __name__, "--worker", directory],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                start_new_session=process_group,
             )
-            # Interpreter startup/import time is inside this same deadline.
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise _Deadline
-            try:
-                process.wait(timeout=remaining)
-            except subprocess.TimeoutExpired:
-                raise _Deadline from None
+            # A supervised worker may only tighten this original clock after
+            # reading its retained execution/launch window. Atomic local IPC is
+            # inspected while the child is blocked, not only after it returns.
+            def retained_deadline():
+                nonlocal deadline
+                if stopping:
+                    raise _Deadline
+                path = root / "deadline.json"
+                if process_group and path.exists():
+                    if path.stat().st_size > 128:
+                        raise ValueError("invalid_worker_deadline")
+                    value = json.loads(path.read_bytes())
+                    if type(value) not in (int, float) or not math.isfinite(value):
+                        raise ValueError("invalid_worker_deadline")
+                    deadline = min(deadline, value)
+                    # Do not let the child start useful work under a shorter
+                    # clock until this supervisor is enforcing that same clock.
+                    pending = root / "deadline-ack.pending"
+                    pending.write_text(json.dumps(deadline))
+                    pending.replace(root / "deadline-ack.json")
+
+            while True:
+                retained_deadline()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise _Deadline
+                try:
+                    process.wait(timeout=min(0.1, remaining) if process_group else remaining)
+                    break
+                except subprocess.TimeoutExpired:
+                    if not process_group:
+                        raise _Deadline from None
+            retained_deadline()
             _check_deadline(deadline)
             if process.returncode != 0:
                 return result("worker_failed", "worker_process_exit")
@@ -265,15 +358,19 @@ def run_isolated(
             )
         except _Deadline:
             cleanup_attempted = True
-            cleaned = _cleanup(process) if process else True
+            cleaned = _cleanup(process, process_group=process_group) if process else True
             return result("deadline_exceeded", "overall_deadline", cleanup=cleaned)
         except (OSError, ValueError, _JsonLimit):
             cleanup_attempted = True
-            cleaned = _cleanup(process) if process else True
+            cleaned = _cleanup(process, process_group=process_group) if process else True
             return result("worker_failed", "worker_transport_failed", cleanup=cleaned)
         finally:
-            if process and not cleanup_attempted and process.poll() is None:
-                _cleanup(process)
+            try:
+                if process and not cleanup_attempted and (process_group or process.poll() is None):
+                    _cleanup(process, process_group=process_group)
+            finally:
+                for signum, handler in previous_handlers.items():
+                    signal.signal(signum, handler)
 
 
 def _worker(directory: str):
@@ -284,10 +381,33 @@ def _worker(directory: str):
         request = json.loads((root / "request.json").read_bytes())
         sys.path[:] = request["search_path"]
         _check_deadline(request["deadline"])
-        function = getattr(importlib.import_module(request["module"]), request["name"])
-        payload = json.loads((root / "input.json").read_bytes())
-        _check_deadline(request["deadline"])
-        value = function(payload)
+        def invoke():
+            function = getattr(importlib.import_module(request["module"]), request["name"])
+            payload = json.loads((root / "input.json").read_bytes())
+            _check_deadline(request["deadline"])
+            return function(payload)
+
+        if request.get("process_group"):
+            from .worker_deadline import WorkerDeadline, WorkerDeadlineExceeded
+
+            def publish(deadline):
+                pending = root / "deadline.pending"
+                pending.write_text(json.dumps(deadline))
+                pending.replace(root / "deadline.json")
+                acknowledgement = root / "deadline-ack.json"
+                while True:
+                    if time.monotonic() >= deadline:
+                        raise WorkerDeadlineExceeded
+                    if acknowledgement.exists():
+                        acknowledged = json.loads(acknowledgement.read_bytes())
+                        if acknowledged <= deadline:
+                            return
+                    time.sleep(min(0.001, max(0, deadline - time.monotonic())))
+
+            with WorkerDeadline(request["deadline"], publish=publish).scope():
+                value = invoke()
+        else:
+            value = invoke()
         _check_deadline(request["deadline"])
         if type(value) is not bytes:
             raise ValueError("helper_must_return_bytes")

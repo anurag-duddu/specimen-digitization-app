@@ -33,6 +33,8 @@ from .workflow import OperationalBlock, crop_bytes
 from .reliability import run_agent_bounded
 from pydantic_ai.usage import UsageLimits
 
+from .worker_deadline import deadline_call, guarded
+
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 
 
@@ -80,8 +82,10 @@ class SqlConnectRepository:
             origin = "https://firebasedataconnect.googleapis.com"
         self.url = f"{origin}/v1/projects/{project}/locations/{location}/services/{service}/connectors/{connector}"
 
+    @guarded
     def execute(self, operation, variables, mutation=False):
-        response = self.session.post(
+        response = deadline_call(
+            self.session.post,
             self.url + (":impersonateMutation" if mutation else ":impersonateQuery"),
             json={"operationName": operation, "variables": variables},
             timeout=30,
@@ -90,7 +94,7 @@ class SqlConnectRepository:
             raise PermissionError("SQL Connect access denied")
         if response.status_code != 200:
             raise OperationalBlock("sql_connect_unavailable_or_connector_not_published")
-        body = response.json()
+        body = deadline_call(response.json)
         if body.get("errors"):
             raise Conflict(
                 "SQL Connect transaction rejected; reload current revision and membership"
@@ -501,17 +505,20 @@ class GcsBlobs:
     def __init__(self, bucket="specimen-digitization.firebasestorage.app"):
         self.bucket = storage.Client(project="specimen-digitization").bucket(bucket)
 
+    @guarded
     def put(self, data):
         checksum = hashlib.sha256(data).hexdigest()
         blob = self.bucket.blob("application/sha256/" + checksum)
         from google.api_core.exceptions import PreconditionFailed
 
         try:
-            blob.upload_from_string(data, if_generation_match=0, checksum="crc32c")
+            deadline_call(
+                blob.upload_from_string, data, if_generation_match=0, checksum="crc32c"
+            )
         except PreconditionFailed:
-            if blob.download_as_bytes() != data:
+            if deadline_call(blob.download_as_bytes) != data:
                 raise Conflict("Immutable object mismatch")
-        blob.reload()
+        deadline_call(blob.reload)
         return f"{checksum}:{blob.generation}"
 
     def get(self, ref):
@@ -519,6 +526,7 @@ class GcsBlobs:
 
         return self.get_bounded(ref, ORIGINAL_BYTES)
 
+    @guarded
     def get_bounded(self, ref, max_bytes):
         from urllib.parse import quote
         from .blob_limits import read_limited, verify_digest, BlobTooLarge
@@ -542,7 +550,8 @@ class GcsBlobs:
             + "/o/"
             + quote("application/sha256/" + checksum, safe="")
         )
-        response = self.bucket.client._http.get(
+        response = deadline_call(
+            self.bucket.client._http.get,
             url,
             params={"alt": "media", "generation": generation},
             stream=True,
@@ -566,7 +575,8 @@ class GcsBlobs:
                 if declared > max_bytes:
                     raise BlobTooLarge("Evidence exceeds the configured byte limit")
             data = read_limited(
-                lambda count: response.raw.read(count, decode_content=False), max_bytes
+                lambda count: deadline_call(response.raw.read, count, decode_content=False),
+                max_bytes
             )
         return verify_digest(data, checksum)
 
