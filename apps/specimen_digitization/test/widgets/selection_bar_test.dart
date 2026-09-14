@@ -230,6 +230,7 @@ void main() {
     Widget row({
       bool selected = false,
       bool showCheckbox = true,
+      bool enabled = true,
       VoidCallback? onToggle,
       VoidCallback? onExtend,
       VoidCallback? onLongPress,
@@ -237,11 +238,17 @@ void main() {
       selected: selected,
       label: 'Pinned beetle 1',
       showCheckbox: showCheckbox,
+      enabled: enabled,
       onToggle: onToggle ?? () {},
       onExtend: onExtend,
       onLongPress: onLongPress,
       child: const SizedBox(height: 48, child: Text('Pinned beetle 1')),
     );
+
+    /// Where the row's own content starts, which is the edge a reviewer
+    /// scans a long list down.
+    double contentLeft(WidgetTester tester) =>
+        tester.getTopLeft(find.text('Pinned beetle 1')).dx;
 
     testWidgets('the checkbox names the record it selects', (
       WidgetTester tester,
@@ -277,6 +284,102 @@ void main() {
     testWidgets('the row keeps its own body', (WidgetTester tester) async {
       await pumpComponent(tester, row());
       expect(find.text('Pinned beetle 1'), findsOneWidget);
+    });
+
+    testWidgets('the long press names what it does, in the list\'s own noun', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        SelectableRow(
+          selected: false,
+          label: 'Slide 0041',
+          showCheckbox: false,
+          onToggle: () {},
+          onLongPress: () {},
+          longPressHint: 'Select this object',
+          child: const SizedBox(height: 48, child: Text('Slide 0041')),
+        ),
+      );
+      // The hint is what a reader speaks instead of "double tap and hold".
+      // It defaults to the record wording and takes the list's own noun,
+      // exactly as the bar's count label does.
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Semantics &&
+              widget.properties.hintOverrides?.onLongPressHint ==
+                  'Select this object',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Semantics &&
+              widget.properties.hintOverrides?.onLongPressHint ==
+                  SelectableRow.recordLongPressHint,
+        ),
+        findsNothing,
+        reason: 'a list of objects must not be told to select a record',
+      );
+      expect(SelectableRow.recordLongPressHint, 'Select this record');
+      handle.dispose();
+    });
+
+    testWidgets('a row that cannot be picked keeps the column', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(tester, row());
+      final double picked = contentLeft(tester);
+      await pumpComponent(tester, row(enabled: false));
+      expect(
+        contentLeft(tester),
+        picked,
+        reason: 'a list needs only one unselectable row for every row below '
+            'it to be read against a different left edge',
+      );
+      // Drawn and unavailable, rather than absent. A reader told nothing
+      // cannot tell a row it may not pick from a row it missed.
+      expect(find.byType(Checkbox), findsOneWidget);
+      expect(
+        tester.widget<Checkbox>(find.byType(Checkbox)).onChanged,
+        isNull,
+      );
+    });
+
+    testWidgets('a row that cannot be picked takes no long press', (
+      WidgetTester tester,
+    ) async {
+      int started = 0;
+      await pumpComponent(
+        tester,
+        row(enabled: false, onLongPress: () => started++),
+      );
+      await tester.longPress(find.text('Pinned beetle 1'));
+      expect(
+        started,
+        0,
+        reason: 'a gesture that picks a record the server will refuse is '
+            'worse than no gesture',
+      );
+    });
+
+    testWidgets('an unavailable checkbox says so to a reader', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(tester, row(enabled: false));
+      expect(
+        tester
+            .getSemantics(find.byType(Checkbox))
+            .flagsCollection
+            .isEnabled
+            .toBoolOrNull(),
+        isFalse,
+      );
+      handle.dispose();
     });
   });
 
