@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+import time
 import hashlib
 import json
 import os
@@ -11,6 +12,11 @@ from pathlib import Path
 import re
 import stat
 from uuid import UUID
+
+from specimen_digitization.release_budget import (
+    APPROVAL_SHA256, APPROVED_LIMIT_MICROS, coordinator_liabilities, canonical,
+    predecessor_ledger, strict_json,
+)
 
 
 PRD_CASES = tuple(f"PRD-{number:02d}" for number in range(1, 21))
@@ -303,17 +309,59 @@ def skeleton(candidate_sha, manifest_sha):
     }
 
 
-def cohort_budget(budget, manifest_sha, root):
+def approved_budget_projection(budget, manifest_sha, root):
+    """Bind the displayed costs to the complete retained release ledger."""
+    descriptor = budget["release_ledger"]
+    path = artifact_path(root, descriptor)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Regular ledger evidence required")
+        raw = stream.read(1048577)
+    require(len(raw) <= 1048576 and hashlib.sha256(raw).hexdigest() == descriptor["sha256"],
+            "Retained release ledger bytes changed")
+    try:
+        ledger = strict_json(raw)
+        predecessor_ledger(ledger)
+        anchor = ledger["accounting"]
+        require(hashlib.sha256(anchor["snapshot_json"].encode()).hexdigest() == anchor["snapshot_sha256"],
+                "Accounting snapshot bytes changed")
+        packet = {"issued_at_unix": int(time.time()),
+                  "independent_review": {"coordinator_session": anchor["coordinator_task"]},
+                  "budget": {"total_limit_micros": budget["total_limit_microusd"]}}
+        coordinator_liabilities(ledger, packet, {row["operation_id"] for row in ledger["entries"]})
+    except (ValueError, KeyError, TypeError) as exc:
+        raise InvalidEvidence("Invalid amended release ledger") from exc
+    require(ledger["manifest_sha256"] == manifest_sha, "Release ledger cohort changed")
+    projected = []
+    for row in ledger["entries"] + ledger["operator_entries"]:
+        projected.append({"operation_id": row["operation_id"], "category": row["category"],
+            "day_utc": row["day_utc"], "state": row["state"], "amount_microusd": row["amount_micros"]})
+    require(sorted(map(canonical, projected)) == sorted(map(canonical, budget["entries"])),
+            "Review budget omitted or changed release liabilities")
+    prior = ledger["prior_uncertainty"]
+    require(prior["operation_id"] not in {row["operation_id"] for row in projected}
+            and prior["state"] == "unknown" and type(prior["amount_micros"]) is int
+            and prior["amount_micros"] > 0, "Prior uncertainty must remain separate and charged")
+    return prior["amount_micros"], prior["day_utc"]
+
+
+def cohort_budget(budget, manifest_sha, root, *, approval_sha256=None):
     """Reconcile a single cumulative ledger; this does not enforce cloud spending."""
+    amended = isinstance(budget, dict) and budget.get("schema_version") == "cohort-budget/v2"
+    extras = ("approval_sha256", "release_ledger") if amended else ()
+    maximum = APPROVED_LIMIT_MICROS if amended else 5_000_000
+    if amended:
+        require(approval_sha256 == budget.get("approval_sha256") == APPROVAL_SHA256,
+                "New budget needs the explicitly selected approved scope")
     keys(
         budget,
         (
             "schema_version", "currency", "manifest_sha256",
             "authorization_reference", "scope", "mode", "total_limit_microusd",
             "daily_limit_microusd", "categories", "entries",
-        ),
+        ) + extras,
     )
-    require(budget["schema_version"] == "cohort-budget/v1", "Unknown budget schema")
+    require(budget["schema_version"] in {"cohort-budget/v1", "cohort-budget/v2"}, "Unknown budget schema")
     require(budget["currency"] == "USD", "Budget must use USD")
     require(budget["manifest_sha256"] == manifest_sha, "Budget cohort changed")
     require(nonempty(budget["authorization_reference"]), "Budget authority missing")
@@ -324,8 +372,8 @@ def cohort_budget(budget, manifest_sha, root):
     require(budget["mode"] in MODES, "Invalid budget evidence mode")
     total, daily = budget["total_limit_microusd"], budget["daily_limit_microusd"]
     require(
-        type(total) is int and type(daily) is int and 0 < daily <= total <= 5_000_000,
-        "Shared total and daily limits must be at most USD 5",
+        type(total) is int and type(daily) is int and 0 < daily <= total <= maximum,
+        "Shared total and daily limits exceed the selected approval",
     )
     categories = budget["categories"]
     keys(categories, COST_CATEGORIES)
@@ -362,13 +410,17 @@ def cohort_budget(budget, manifest_sha, root):
         except ValueError as exc:
             raise InvalidEvidence("Invalid UTC cost day") from exc
         by_day[day] = by_day.get(day, 0) + amount
-    exposure = sum(by_day.values())
+    carry = 0
+    if amended:
+        carry, carry_day = approved_budget_projection(budget, manifest_sha, root)
+        by_day.setdefault(carry_day, 0)
+    exposure = sum(by_day.values()) + carry
     require(exposure <= total, "Cumulative budget exceeded across all days")
-    require(all(amount <= daily for amount in by_day.values()), "Daily budget exceeded")
+    require(all(amount + carry <= daily for amount in by_day.values()), "Daily budget exceeded")
     return exposure
 
 
-def evaluate(manifest, manifest_sha, report, root, candidate_sha):
+def evaluate(manifest, manifest_sha, report, root, candidate_sha, *, budget_approval_sha256=None):
     ids = manifest_ids(manifest)
     require(sha(candidate_sha, 40), "Expected full candidate SHA required")
     require(
@@ -460,7 +512,7 @@ def evaluate(manifest, manifest_sha, report, root, candidate_sha):
     budget = report.get("budget")
     exposure = None
     if budget:
-        exposure = cohort_budget(budget, manifest_sha, root)
+        exposure = cohort_budget(budget, manifest_sha, root, approval_sha256=budget_approval_sha256)
     if not budget or budget["mode"] != "live":
         pending.append("COHORT-BUDGET")
     return {
@@ -485,9 +537,11 @@ def main():
     parser.add_argument("--approved-manifest-sha256", required=True)
     parser.add_argument("--candidate-sha", required=True)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--budget-approval-sha256")
     parser.add_argument("--evidence-root", type=Path, default=Path.cwd())
     args = parser.parse_args()
     try:
+        require(args.budget_approval_sha256 in (None, APPROVAL_SHA256), "Unknown budget approval")
         require(sha(args.approved_manifest_sha256), "Approved manifest digest required")
         require(sha(args.candidate_sha, 40), "Candidate must be a full commit SHA")
         actual = args.approved_manifest_sha256
@@ -502,6 +556,7 @@ def main():
             read_json(args.report),
             args.evidence_root,
             args.candidate_sha,
+            budget_approval_sha256=args.budget_approval_sha256,
         )
         print(json.dumps(result, indent=2))
         return 0 if not result["pending"] else 1

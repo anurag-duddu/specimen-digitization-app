@@ -1,5 +1,9 @@
 # Release runtime qualification — 2026-09-08
 
+Current approved budget/duration: see the [September 14 amendment](APPROVED_RELEASE_BUDGET.md).
+Historical USD5/30-minute statements below remain applicable to legacy artifacts;
+new release inputs must explicitly select the approved additive contracts.
+
 Owner task `01a082b4-a9bd-7392-a73b-57ca45532fb7`, model/effort
 `gpt-6-astra/xhigh` confirmed by coordinator inspection of turn context.
 Worktree `/Users/anuragduddu/.codex/worktrees/7471/specimen-digitization-app`,

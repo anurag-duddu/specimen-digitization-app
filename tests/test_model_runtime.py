@@ -37,8 +37,20 @@ def local_model_factory(payload):
             "SPECIMEN_TEST_MODEL_SLOW_OPERATION", "transcribe"
         ):
             (root / "child-pid").write_text(str(os.getpid()))
-            time.sleep(10)
+            time.sleep(30)
             (root / "late-output").write_text(stage)
+
+    if phase in {"telemetry_configuration", "telemetry_shutdown"}:
+        import logfire
+
+        method = "configure" if phase == "telemetry_configuration" else "shutdown"
+        original = getattr(logfire, method)
+
+        def stalled_telemetry(*args, **kwargs):
+            pause(phase)
+            return original(*args, **kwargs)
+
+        setattr(logfire, method, stalled_telemetry)
 
     assert "observations" not in payload and "previous_runs" not in payload
     assert "PEER-CANARY" not in json.dumps(payload)
@@ -51,6 +63,7 @@ def local_model_factory(payload):
             "dependencies",
             "region",
             "route",
+            "telemetry",
         }
     if os.getenv("SPECIMEN_TEST_MODEL_CHECK_INTENT") == "true":
         repo = repository(root, os.environ["SPECIMEN_TEST_MODEL_REPO"])
@@ -127,7 +140,10 @@ def local_model_factory(payload):
 class ModelAdapters(SyntheticAdapters):
     def pin_dependencies(self, run):
         if os.getenv("SPECIMEN_TEST_MODEL_SLOW_PHASE"):
-            run.profile.execution.external_timeout_seconds = 3
+            # Leave time for importing this synthetic fixture on a busy test
+            # host, then kill its 30-second stall under the same owned clock.
+            # test_reader_effect_timeout separately exercises a 3-second reader.
+            run.profile.execution.external_timeout_seconds = 8
         return ProductionAdapters.pin_dependencies(self, run)
 
     transcribe = ProductionAdapters.transcribe
@@ -208,7 +224,13 @@ def test_hard_model_factories_independent_observations_extraction_and_restart(
 
 
 @pytest.mark.parametrize("operation", ["transcribe", "extract"])
-@pytest.mark.parametrize("phase", ["construction", "model", "sink"])
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "construction", "model", "sink",
+        "telemetry_configuration", "telemetry_shutdown",
+    ],
+)
 def test_whole_model_deadline_kills_child_preserves_unknown_and_no_replay(
     tmp_path, monkeypatch, phase, operation
 ):

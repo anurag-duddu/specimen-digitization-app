@@ -10,6 +10,7 @@ import stat
 from pathlib import Path
 
 from specimen_digitization.hub_models import SAM3_MODEL
+from specimen_digitization.release_budget import APPROVAL_SHA256, APPROVED_LIMIT_MICROS
 
 from acceptance import (
     InvalidEvidence, JOURNEY_CASES, LIVE_CASES, MODES, STATES, artifact, artifact_path,
@@ -35,6 +36,17 @@ APPROVED_SCOPE = {
 APPROVED_SCOPE_SHA256 = hashlib.sha256(
     (json.dumps(APPROVED_SCOPE, sort_keys=True, indent=2) + "\n").encode()
 ).hexdigest()
+# An additive decision; APPROVED_SCOPE and its original canonical digest are frozen.
+APPROVED_SCOPE_V2 = {
+    **APPROVED_SCOPE, "version": "human-review-release-scope/v2", "date": "2026-09-14",
+    "total_limit_micros": APPROVED_LIMIT_MICROS, "daily_limit_micros": APPROVED_LIMIT_MICROS,
+    "approval_sha256": APPROVAL_SHA256, "predecessor_scope_sha256": APPROVED_SCOPE_SHA256,
+}
+APPROVED_SCOPE_V2_SHA256 = hashlib.sha256(
+    (json.dumps(APPROVED_SCOPE_V2, sort_keys=True, indent=2) + "\n").encode()
+).hexdigest()
+SCOPES = {APPROVED_SCOPE_SHA256: APPROVED_SCOPE, APPROVED_SCOPE_V2_SHA256: APPROVED_SCOPE_V2}
+
 MANUAL_CASES = (
     "HUMAN-LABEL-COVERAGE", "HUMAN-FIELD-SEPARATION",
     "HUMAN-NO-AUTOMATIC-CLEARANCE", "HUMAN-ACCESSIBLE-REVIEW",
@@ -47,16 +59,19 @@ ROUTES = {
 
 
 def validate_scope(value):
-    expected = APPROVED_SCOPE
     require(isinstance(value, dict), "Scope decision missing")
+    expected = APPROVED_SCOPE_V2 if value.get("version") == "human-review-release-scope/v2" else APPROVED_SCOPE
+    if expected is APPROVED_SCOPE_V2:
+        require(set(value) == set(expected), "Approved human scope fields changed")
     for key, expected_value in expected.items():
         require(type(value.get(key)) is type(expected_value) and value[key] == expected_value,
                 "Approved human scope changed")
+    return APPROVED_SCOPE_V2_SHA256 if expected is APPROVED_SCOPE_V2 else APPROVED_SCOPE_SHA256
 
 
-def skeleton(candidate_sha, manifest_sha):
+def skeleton(candidate_sha, manifest_sha, scope_decision=None):
     result = full_skeleton(candidate_sha, manifest_sha)
-    result["scope_sha256"] = APPROVED_SCOPE_SHA256
+    result["scope_sha256"] = validate_scope(APPROVED_SCOPE if scope_decision is None else scope_decision)
     result.update(release_accepted=False, full_prd_qualified=False, human_review_preflight="not_run")
     template = result["results"][0]
     result["human_results"] = [dict(template, case_id=case) for case in MANUAL_CASES]
@@ -277,16 +292,22 @@ def human_records(rows, manifest, manifest_sha, root, deployment):
 
 
 def evaluate(manifest, manifest_sha, report, root, candidate_sha, scope_decision):
-    validate_scope(scope_decision)
-    require(report.get("scope_sha256") == APPROVED_SCOPE_SHA256, "Wrong approved scope pin")
-    full = full_evaluate(manifest, manifest_sha, report, root, candidate_sha)
+    scope_sha = validate_scope(scope_decision)
+    require(report.get("scope_sha256") == scope_sha, "Wrong approved scope pin")
+    amended = scope_sha == APPROVED_SCOPE_V2_SHA256
+    budget = report.get("budget")
+    if budget:
+        expected_version = "cohort-budget/v2" if amended else "cohort-budget/v1"
+        require(budget.get("schema_version") == expected_version, "Budget and human scope differ")
+    full = full_evaluate(manifest, manifest_sha, report, root, candidate_sha,
+                         budget_approval_sha256=APPROVAL_SHA256 if amended else None)
     pending = [case for case in full["pending"] if case in REQUIRED_CASES or not case.startswith("PRD-")]
     pending += manual_results(report.get("human_results"), root, candidate_sha,
                               manifest_sha, manifest_ids(manifest))
     if not human_records(report.get("human_records"), manifest, manifest_sha, root, report["deployment"]):
         pending.append("HUMAN-RECORDS")
     return {
-        **full, "scope": "human-review-first-ten/v1", "scope_sha256": APPROVED_SCOPE_SHA256,
+        **full, "scope": "human-review-first-ten/v2" if amended else "human-review-first-ten/v1", "scope_sha256": scope_sha,
         "human_review_preflight": "incomplete" if pending else "ready_for_independent_review",
         "full_prd_preflight": full["evidence_preflight"], "full_prd_pending": full["pending"],
         "full_prd_qualified": False, "release_accepted": False, "pending": pending,
@@ -306,14 +327,14 @@ def main():
     parser.add_argument("--evidence-root", type=Path, required=True)
     args = parser.parse_args()
     try:
-        require(args.approved_scope_sha256 == APPROVED_SCOPE_SHA256, "Scope authority changed")
+        require(args.approved_scope_sha256 in SCOPES, "Scope authority changed")
         scope = private_manifest(args.scope_decision, args.approved_scope_sha256)
-        validate_scope(scope)
+        require(validate_scope(scope) == args.approved_scope_sha256, "Scope selection changed")
         require(sha(args.approved_manifest_sha256) and sha(args.candidate_sha, 40), "Source pins missing")
         manifest = private_manifest(args.manifest, args.approved_manifest_sha256)
         manifest_ids(manifest)
         if args.report is None:
-            print(json.dumps(skeleton(args.candidate_sha, args.approved_manifest_sha256), indent=2))
+            print(json.dumps(skeleton(args.candidate_sha, args.approved_manifest_sha256, scope), indent=2))
             return 0
         result = evaluate(manifest, args.approved_manifest_sha256, read_json(args.report),
                           args.evidence_root, args.candidate_sha, scope)

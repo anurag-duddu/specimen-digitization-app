@@ -480,14 +480,12 @@ def test_running_loop_blocks_before_image_or_model():
 
 def isolated_classifier_fixture(payload):
     """Trusted test-only child factory mirrors the required backend composition."""
-    from pathlib import Path
+    from test_worker_supervisor import blocking_stage
 
     f = Fixture()
 
     def hang():
-        Path(payload["entered"]).write_text("entered")
-        time.sleep(10)
-        Path(payload["late"]).write_text("forbidden late effect")
+        blocking_stage(payload, payload["stage"])
 
     if payload["stage"] == "loader":
 
@@ -516,20 +514,22 @@ def isolated_classifier_fixture(payload):
 
 
 @pytest.mark.parametrize("stage", ["loader", "model", "sink"])
-def test_required_isolated_factory_bounds_entire_call_and_reaps(tmp_path, stage):
+def test_required_isolated_factory_bounds_entire_call_and_reaps(tmp_path, monkeypatch, stage):
     from specimen_digitization.application.bounded_effect import run_isolated
+    from test_worker_supervisor import observe_dispatch_deadline, assert_stopped_before_late_effect
 
     entered, late = tmp_path / "entered", tmp_path / "late"
+    deadlines = observe_dispatch_deadline(monkeypatch)
     result = run_isolated(
         isolated_classifier_fixture,
         {"stage": stage, "entered": str(entered), "late": str(late)},
-        timeout_seconds=2,
+        # Cold SDK imports measured over three seconds. This single clock still
+        # covers import, the actual selected stage, and the forbidden late write.
+        timeout_seconds=8,
         max_result_bytes=262144,
     )
-    assert entered.exists(), "fixture must reach the blocking dependency"
-    assert result.status == "deadline_exceeded" and result.cleanup_complete
-    assert result.value is None and not late.exists()
-    assert result.elapsed_seconds < 5
+    assert_stopped_before_late_effect(result, entered, late, deadlines, 8)
+    assert json.loads(entered.read_text())["stage"] == stage
 
 
 def test_trace_content_remains_private_even_with_global_capture(capfire):

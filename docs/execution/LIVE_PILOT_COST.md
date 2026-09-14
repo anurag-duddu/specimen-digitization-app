@@ -1,5 +1,9 @@
 # First-ten resource and cost proposal
 
+Current approved budget/duration: see the [September 14 amendment](APPROVED_RELEASE_BUDGET.md).
+Historical USD5/30-minute statements below remain applicable to legacy artifacts;
+new release inputs must explicitly select the approved additive contracts.
+
 Status updated 2026-09-08: the user supplied a **USD 5 total maximum** for testing
 the complete application/pipeline/agents/harness with the exact ten existing
 Firebase object-storage specimens. The maximum is shared by all sessions,

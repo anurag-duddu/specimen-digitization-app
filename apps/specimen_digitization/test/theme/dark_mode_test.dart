@@ -195,7 +195,7 @@ void main() {
     () => Scaffold(
       body: ReviewWorkbench(
         specimen: record(),
-        onChange: (Json _) async {},
+        onChange: (Json _) async => true,
         onRetry: (String _) async {},
         onRefresh: () {},
       ),
@@ -208,7 +208,7 @@ void main() {
     () => Scaffold(
       body: ReviewWorkbench(
         specimen: record(),
-        onChange: (Json _) async {},
+        onChange: (Json _) async => true,
         onRetry: (String _) async {},
         onRefresh: () {},
       ),

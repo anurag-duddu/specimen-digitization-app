@@ -69,7 +69,7 @@ sys.exit(code)
 '''
 
 
-def run_smoke(tmp_path, *, markers=None, html=None, site=SITE, sha=SHA, reverse_clock=False, freeze_clock=False):
+def run_smoke(tmp_path, *, markers=None, html=None, site=SITE, sha=SHA, reverse_clock=False, freeze_clock=False, extra_args=()):
     assert shutil.which('jq'), 'jq is required by the production shell'
     state = {'now': 1000, 'calls': [], 'sleeps': [], 'reverse_clock': reverse_clock, 'freeze_clock': freeze_clock,
              'marker': markers or [{'body': marker()}], 'html': html or [{'body': TITLE}]}
@@ -83,8 +83,10 @@ def run_smoke(tmp_path, *, markers=None, html=None, site=SITE, sha=SHA, reverse_
         target.chmod(0o700)
     env = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
            'SMOKE_TEST_STATE': str(state_path)}
-    result = subprocess.run(['bash', str(SCRIPT), site, sha], env=env, capture_output=True,
-                            text=True, timeout=30)
+    # Each fake command starts Python. Allow their host overhead while retaining
+    # the script's independently asserted 300-second clock and 60-pass limit.
+    result = subprocess.run(['bash', str(SCRIPT), site, sha, *extra_args], env=env, capture_output=True,
+                            text=True, timeout=120)
     return result, json.loads(state_path.read_text())
 
 
@@ -257,3 +259,76 @@ def test_separate_partial_json_documents_cannot_combine_into_one_marker(tmp_path
     assert result.returncode != 0
     assert not state['sleeps']
     assert 'Production smoke passed' not in result.stdout
+
+
+@pytest.mark.parametrize('field,value', [('runId', '122'), ('runAttempt', '2')])
+def test_same_sha_requires_requested_run_and_attempt_before_success(tmp_path, field, value):
+    result, state = run_smoke(tmp_path, extra_args=('123', '1'), markers=[
+        {'body': {**marker(), field: value}}, {'body': marker()}])
+    assert result.returncode == 0, result.stderr
+    assert len([c for c in state['calls'] if c['kind'] == 'marker']) == 2
+    assert state['sleeps'] == [5]
+    assert 'run 123 attempt 1' in result.stdout
+    assert_bounded(state)
+
+
+@pytest.mark.parametrize('field,value', [('runId', '122'), ('runAttempt', '2')])
+def test_same_sha_permanent_run_mismatch_never_qualifies(tmp_path, field, value):
+    result, state = run_smoke(tmp_path, extra_args=('123', '1'),
+        markers=[{'body': {**marker(), field: value}, 'elapsed': 10}])
+    assert result.returncode != 0
+    assert 'Production smoke passed' not in result.stdout
+    assert 'deadline' in result.stderr.lower()
+    assert len([c for c in state['calls'] if c['kind'] == 'marker']) > 1
+    assert_bounded(state)
+
+
+@pytest.mark.parametrize('extra_args', [
+    ('123',), ('123', '1', 'extra'), ('', '1'), ('unknown', '1'), ('0', '1'),
+    ('0123', '1'), ('123\n', '1'), ('123', ''), ('123', 'unknown'), ('123', '0'),
+    ('123', '01'), ('123', '1\n'), ('-1', '1'), ('123', '+1'),
+])
+def test_invalid_or_partial_attempt_arguments_make_no_public_reads(tmp_path, extra_args):
+    result, state = run_smoke(tmp_path, extra_args=extra_args)
+    assert result.returncode != 0
+    assert not state['calls']
+    assert not state['sleeps']
+    assert state.get('clock_calls', 0) == 0
+
+
+@pytest.mark.parametrize('field,value', [('runId', '123'), ('runAttempt', '1')])
+def test_duplicate_expected_run_identity_never_qualifies(tmp_path, field, value):
+    body = '{' + json.dumps(field) + ':"999",' + json.dumps(marker())[1:]
+    result, state = run_smoke(tmp_path, extra_args=('123', '1'), markers=[{'body': body}])
+    assert result.returncode != 0
+    assert not state['sleeps']
+    assert len([c for c in state['calls'] if c['kind'] == 'marker']) == 1
+
+
+def test_strict_matching_attempt_still_cannot_qualify_at_deadline(tmp_path):
+    responses = [{'body': {**marker(), 'runAttempt': '2'}, 'elapsed': 10} for _ in range(19)]
+    responses.append({'body': marker(), 'elapsed': 15})
+    result, state = run_smoke(tmp_path, extra_args=('123', '1'), markers=responses)
+    assert result.returncode != 0
+    assert state['now'] == 1300
+    assert 'deadline' in result.stderr.lower()
+    assert 'Production smoke passed' not in result.stdout
+    assert_bounded(state)
+
+
+def test_legacy_two_argument_diagnostic_does_not_claim_attempt_match(tmp_path):
+    result, _ = run_smoke(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert 'attempt' not in result.stdout
+
+
+@pytest.mark.parametrize('extra_args', [(), ('123', '1')])
+@pytest.mark.parametrize('field', ['commitSha', 'runId', 'runAttempt'])
+def test_marker_identity_with_trailing_newline_is_invalid_without_retry(tmp_path, extra_args, field):
+    invalid = marker()
+    invalid[field] += '\n'
+    result, state = run_smoke(tmp_path, extra_args=extra_args,
+        markers=[{'body': invalid}, {'body': marker()}])
+    assert result.returncode != 0
+    assert not state['sleeps']
+    assert len([c for c in state['calls'] if c['kind'] == 'marker']) == 1

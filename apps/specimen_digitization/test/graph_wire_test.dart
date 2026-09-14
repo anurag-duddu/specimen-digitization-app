@@ -223,7 +223,7 @@ void main() {
         workbenchHost(
           ReviewWorkbench(
             specimen: record,
-            onChange: (_) async {},
+            onChange: (_) async => false,
             onRetry: (_) async {},
             onRefresh: () {},
             loadArtifact: (_) async {

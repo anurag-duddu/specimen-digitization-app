@@ -2232,6 +2232,528 @@ Historical entries absent from this branch's log are preserved in the appendices
 - [Recovered closeouts, part 3](execution/recovered-closeouts/2026-09-13-part-3.md)
 - [Recovered closeouts, part 4](execution/recovered-closeouts/2026-09-13-part-4.md)
 
+
+### 2026-09-14 — approved original-clock worker timing and trace delivery source
+
+Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; shared branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, base `0f31baa2977e6362ef197878e5db50cd2fe9b963`. No commit/push/native/cloud/model/credential action. Parent owns budget/admission/acceptance and integration.
+
+Implemented the explicitly approved timing dialect bound to combined user event SHA `3303d129e5fde28d828729cd5b034a7981968c5cbbbad882a05367a5c361df2a`: pinned original dispatch T, useful cutoff T+3485, absolute cleanup T+3500, unchanged one-hour SAM expiry and2135-second dispatch guard. Exclusive fsynced intent precedes the single stable-token job request; a final transport guard follows fresh admission. Startup/materialization/loop/retained windows cannot refresh T. All-ten successful persisted SAM results and the existing atomic actual-region reservation gate the reader phase; a late acknowledgement stays unknown and is not adopted after restart. Legacy1500/1800dialect remains.
+
+Added reviewed typed worker_trace metadata/immutable worker-only secret delivery with fixed metadata/privacy settings. No actual secret value, destination or access was invented or read. Root must reconcile fifth-slot native setup/history/cost/access; product owner separately implements bounded child export. Contract is `docs/execution/APPROVED_WORKER_TIMING.md`.
+
+Durable evidence `/private/tmp/specimen-approved-worker-timing-20260914/{RESULT.json,FINAL_PINS.json,ARTIFACTS.json}`. Preserved source REDs: worker4failed; runtime3failed5passed; post-admission stale dispatch; trace5failed13passed. Focused Mac247passed/1Linuxskip; final trace/runtime90passed. Candidate capped offline Linux123passed/1failed, identical repeat120passed/4failed. Unchanged-main0f31baa baseline29passed/6failed on the same four process modules and resources confirms existing missing short-startup readiness/auth/PID markers, including captured nested FileNotFoundError. This is NOT a full Linux-green claim. No fixture/deadline/assertion/resource weakening. All new timing/runtime tests passed both Linux candidate runs.
+
+Preserved failed approaches: initialuv attempt ran no tests due cache sandbox permission; canonical offline venv then installed. Initial evidence wrapper accidentally shadowed Workflow._step and was corrected; SAM phase-local deadline must not tighten the original worker ledger window. Full60-second startup plus maximalR25schedule leaves no fractional slack and truthfully blocks; feasible50-second startup fixture finishes all50reader invocations under originalT. The same5-second safety reserve is counted once across complete SAM/reader geometry. Native latency remains Not confirmed.
+
+Unresolved gates: independent final source/Linux/CI verification, root-owned private timing/trace inputs and billing review, trace child integration, protected merged-main release and actual ten-specimen review acceptance. Local source checks do not establish native readiness.
+
+
+### 2026-09-14 — Approved budget and review-scope successor
+
+Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch
+`codex/approved-review-release`, worktree
+`/private/tmp/specimen-approved-review-release-20260914`, starts from PR33 main
+`0f31baa2977e6362ef197878e5db50cd2fe9b963`. Independently verified the direct
+combined user approval at 2026-09-14T02:03:08.382Z in integration task
+`01a07f48-a57c-71b0-9642-c9430886049c`; original-message digest3303d129 is
+bound into additive12M budget and human-scope dialects. Original5M scope,
+snapshot, all original workflow/operator liabilities and uncertainty stay exact.
+The new ledger embeds original4eabef12 bytes and permits only appended costs.
+The new human scope canonical digest is
+`5c460d9ca7acc86ee0407584732d0cf1e27b1bc685a968f8094ce7ca133dfc15`;
+legacy14f6b114 remains unchanged. These source contracts grant no native readiness.
+
+Initial TDD rejected the new budget/scope, then284 focused legacy/new tests
+passed. Independent review subsequently exposed five actual QA accounting
+failures: a new snapshot hold could be omitted from the review projection, and
+invalid current snapshot limits could pass QA although admission rejected them.
+All five were reproduced. The exact coordinator reconciliation now lives in
+shared `release_budget.py` and is consumed by both admission and QA; seven
+permanent regression probes and the broader291-test focused suite pass.
+The first synthetic projection fixture lacked a complete coordinator snapshot;
+it was completed to exercise the shared validation without weakening the gate.
+Original frozen candidate and failed review outputs remain retained. Repaired
+candidate manifest21769c7a is in
+`/private/tmp/specimen-approved-budget-candidate-v2-20260914`; independent final
+review is pending. Full canonical checks, PR, merged deployment and live
+acceptance are Not confirmed for this successor.
+
+Native Chrome permission initially delayed inspection. After access returned,
+the correct-profile App Check page opened but accessibility remained a stuck
+Settings menu and screenshots were unavailable. No registration/tier/usage fact
+was inferred; the native coordinator owns further login/console verification.
+No credentials, cloud mutations, paid model calls or operational windows were
+issued by this source work. Runtime timing, worker trace linkage and private
+operational helper work have distinct owners and must integrate before final
+source qualification. The new pure source dependency must be pinned by private
+loaders rather than resolved from an ambient installed package.
+
+
+## 2026-09-14 — runtime_timing canonical Python failure diagnosis and alarm fixture isolation
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; shared branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, based main `0f31baa2977e6362ef197878e5db50cd2fe9b963`. No commit/push; integration and PR owned by parent.
+- Exact sandbox failures: localhost HTTP bind PermissionError and initdb shared-memory shmget Operation not permitted. Same two HTTP and one PostgreSQL catalog cases: 3 passed in 2.92s outside sandbox using cached Python 3.12.3. Separate `.venv-ci312` prepared offline; existing Python 3.11.16 `.venv` left untouched during reviewer imports.
+- Python 3.12 alone did not fix the abrupt pytest exit. Retained C watchdog stack proves the original 80 ms production guard terminates while the synthetic test sleeps, before Python services the soft signal. Product functions and all frozen timing pins are unchanged. Only `scripts/ci/test_runtime_registry_login.py` isolates these cases in child processes, preserves original cutoff/events/alarm checks, and requires positive C watchdog stack evidence for hard exit 1. One native stall exercises that branch. Parent caught insufficient causality in the first isolation draft; preserved negative probe proves final controller rejects an unrelated exit 1 without a C dump.
+- Final meaningful validation: both full registry modules, 54 passed in 2.81s (`REGISTRY_CAUSAL_GREEN.log`); source-only exact pins in `SOURCE_PROOF.json`. Report `/private/tmp/specimen-approved-review-python-diagnostic-20260914/REPORT.md`, SHA `fa6faf2b39d22cbe19ae03205dbd8fb47de6ca6ebc80f4c246fa3c2fe1f03ec9`; manifest SHA `25e8234add267d9099880441f23953fecce93ad44c8e8a89fdced0fba47431d4`; final test SHA `a3ed767e187edcc9f3e981ceb745cf9f693216985bf7096d973f749b115f3ace`. Original failing and intermediate logs retained unchanged.
+- Full canonical rerun/summary, Linux CI, live/native acceptance: Not confirmed here. Parent to run canonical with `.venv-ci312` and local fixture permissions, then independent alarm review. No cloud/credential/model/paid calls, source deadline increase, skip, or commit. Awaiting separate frozen trace candidate for independent review.
+
+
+## 2026-09-14 — approved budget/timing candidate local gate
+
+- Task: `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch
+  `codex/approved-review-release`; worktree
+  `/private/tmp/specimen-approved-review-release-20260914`; base commit
+  `0f31baa2977e6362ef197878e5db50cd2fe9b963` (PR #33). New PR: Not confirmed.
+- The full canonical command `UV_PROJECT_ENVIRONMENT=.venv-ci312
+  GITHUB_ACTIONS=true scripts/ci/verify.sh` passed with Python 3.12:
+  2200 Python tests passed, 81 skipped, 7 warnings; 211 Flutter tests passed,
+  7 skipped; static analysis, repository/secret checks and release web build
+  passed. Retained log: `CANONICAL_BEFORE_TRACE_V2.log`, SHA256 `e1e7d5b0c6e37f3c2504e662b5c816b10a3bee19090ce51bb2327819a91b5244`,
+  under `/private/tmp/specimen-approved-review-integration-20260914`.
+- Failed approaches retained: default sandbox denied local HTTP sockets and
+  disposable PostgreSQL shared memory; those three tests pass with local access.
+  A genuine C watchdog could terminate the pytest runner before its soft signal.
+  The test now runs that guard in a child and requires exact events and positive
+  C stack evidence; arbitrary process exits cannot pass. Canonical pytest also
+  exposed a regression-test namespace import that `python -m pytest` masked;
+  an explicit sibling-file import fixes it without changing tested behavior.
+- Independent reviews closed with no actionable findings: budget v2 (45 probes
+  and 291 focused tests), timing (223 passed, 1 Linux-only skip), watchdog
+  harness (54 registry tests plus 11 rejection probes), digest/synthetic-resource
+  scanner annotations (all ASTs/constants unchanged), and projection import
+  (old failure reproduced, all seven candidate cases passed). Reports and source
+  hashes remain in their separately retained review directories. Scanner policy
+  and production watchdog cutoffs were not changed.
+- This source candidate does not include the active bounded trace extension.
+  The automatic approval review rejected its live HTTPS transport source edit
+  and requested current explicit destination/payload authorization; the native
+  coordinator owns that request and Google/Logfire sign-in. Trace transport,
+  actual destination/access, final combined-source checks, PR/merge, protected
+  DATA/runtime deployment and all ten live product journeys: Not confirmed.
+  Do not activate the provisional worker trace template or qualify private
+  source loaders from this intermediate candidate. Preserve all active worktrees.
+
+
+## 2026-09-14 — runtime_timing independent bounded trace partial review
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; read-only review of `codex/reader-trace-linkage` at `/private/tmp/specimen-reader-trace-linkage-20260914`, exact candidate `cf9fa4f50c30953704244fbb350a18f861c91c72` after `10e72aa505060c1969e80e38e2316c25be9a5567`, base `0f31baa`. Parent owns integration into `codex/approved-review-release` (timing/budget commit `ae87be49ee1f67e4458052a2d260a3eeb1160895`). No source edits, commit/push or native effects by reviewer.
+- Changes required on two reproduced local defects: (1) `variables=None` plus API-key sentinel permits Logfire's lazy remote-variable provider on actual application prompt resolution; the probe intercepted start before any background thread or network. (2) late 200 leaves the durable unknown hold correctly retained but processor force_flush incorrectly returns True. Root forwarded both exact REDs to author; the mutable successor is not qualified by this entry.
+- Independent existing focused modules: 43 passed, 1 SQL-emulator skip, 2 warnings in 112.52s; local additional probes 2 passed/2 failed as intended. Four fresh processes share one seven-claim cap and cannot reset it; expiry after authorization blocks dispatch and retains unknown. Existing mode gate remains fail closed, privacy encoder excludes arbitrary content/events/exception descriptions, and parent cleanup/original-clock behavior remains intact.
+- Evidence `/private/tmp/specimen-bounded-trace-independent-20260914/REVIEW.md` SHA `d27ff134984af638654373d846261636e1bc1d1878c44cd5732788669d3fdcb4`; RESULT.json SHA `9520537c0d79af7fdd36800d99f66ac1e44be68fac10d88f4710367212e3155e`; exact source/SDK excerpts, original REDs and focused log retained. No credential reads, real transport, cloud/model or paid calls.
+- Incomplete native transport/installation and final tightening/flush wiring are separate unresolved work; no integrated source/CI/live trace acceptance qualification. Full canonical/live acceptance: Not confirmed. Await immutable corrective successor for review; do not infer release readiness from this partial review.
+
+
+## 2026-09-14 — bounded trace template and partial source review
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch
+  `codex/approved-review-release`, worktree
+  `/private/tmp/specimen-approved-review-release-20260914`, parent commit
+  `ae87be49ee1f67e4458052a2d260a3eeb1160895`; no new PR or push.
+- The worker template now selects bounded-v1, copies the existing exact reviewed
+  destination receipt SHA into the trace scope, and disables the default SDK
+  exporter. The ledger path remains internally owned; API/SAM receive no trace
+  settings. Two mapping cases failed first, then 56 focused runtime tests passed.
+  Independent review added nine whole-request, hostile-environment and rejection
+  probes: all passed, with complete legacy requests unchanged. Pinned file hooks
+  passed. Full canonical verification after future trace integration: Not run.
+- Independent template report
+  `/private/tmp/specimen-bounded-trace-template-independent-20260914/REVIEW.md`,
+  SHA256 `b4ddd68e80d7f708893fae4794cb19822436120903791153a1a9e2b6a7d4626d`.
+- Product partial commit `cf9fa4f50c30953704244fbb350a18f861c91c72` and all
+  28 retained artifacts were hash-verified. Its source patch applies cleanly
+  against the timing source when append-only closeouts are handled separately;
+  no product code was imported because independent review found two defects:
+  late acknowledgements could report flush success, and variables=None allowed
+  lazy remote-variable startup on the actual prompt path. Both failing local
+  regressions were forwarded to the product owner for a reviewed successor.
+- Review report `/private/tmp/specimen-bounded-trace-independent-20260914/REVIEW.md`,
+  SHA256 `d27ff134984af638654373d846261636e1bc1d1878c44cd5732788669d3fdcb4`.
+  Existing focused modules: 43 passed, one SQL-emulator skip. Independent probes:
+  two passed and two failed. Remote-provider startup was intercepted before any
+  thread/network action; this session performed no credential reads or exports.
+- Native transport and its approval, final expiry/flush installation, combined
+  source qualification, protected release and live acceptance remain pending.
+  The destination receipt is root-owned input; no local metadata receipt or
+  synthetic value may substitute for native destination verification.
+
+
+## 2026-09-14 — runtime_timing corrective trace successor review
+
+- Read-only independent task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; exact `codex/reader-trace-linkage` candidate `9936d36a7726d1ea489d6deaeff2be01f7e6abf6` in `/private/tmp/specimen-reader-trace-linkage-20260914`, following cf9fa4f. All supplied pins matched. No source edits/commit/push/native actions by reviewer. Parent owns shared integration.
+- Both original failures now pass: explicit local variables prevents real prompt resolution selecting remote provider and preserves three code-owned fallbacks; late HTTP acknowledgement retains unknown and processor reports failure. Original independent probes plus permanent bounded telemetry module: 30 passed in10.06s. Five independent arbitrary claim-state/single-use cases pass.
+- One completion category remains open: a second SQLite writer delays finish UPDATE until after the retained deadline yet finish returns True; connection-scope finalization can likewise cross expiry after the return expression was evaluated. Exact deterministic/real-local-SQLite probes: 2 failed,5 passed. This concerns local completion; known timely HTTP receipt must be distinguished from finishing within the immutable deadline. No extra grace or post-expiry cleanup writes proposed. Root notified before author successor freeze.
+- Durable evidence `/private/tmp/specimen-bounded-trace-successor-independent-20260914/REVIEW.md` SHA `0af313c114186a61c7051e212c7b282abfd1e92172317a6ab8e17540c7dcd4cd`, RESULT.json SHA `fdc5f1090cb9e61291a957271cb776b8e1d79f360f597d7d988ba69289deac20`; exact reviewed source and original/additive failure logs retained. Corrective successor still requires changes. Worker hooks/caps/deadlines unchanged; bounded-v1 production remains fail closed; native transport absent. Native/CI/live acceptance: Not confirmed.
+
+
+## 2026-09-14T02:28:59.538288+00:00 — Reader trace deployment contract and isolated ownership
+
+- Product task01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; root01a082b2 sole native owner.
+  Root explicitly authorized separate branch `codex/reader-trace-linkage`,
+  worktree `/private/tmp/specimen-reader-trace-linkage-20260914`, base0f31baa.
+  Initial sandbox Git-ref write was denied; reviewed escalation created the
+  authorized worktree successfully. The unregistered residual ac0d directory
+  is not used as a Git checkout. DATA shared worktree remains untouched.
+- Root requested source verification of missing actual Logfire delivery.
+  Pinned committed deploy_runtime.py, current uncommitted DATA snapshot, and
+  named source-qualified PR27 completion_setup.py all contain no Logfire/OTEL
+  configuration. Setup exact slots launch/manifest/profile/hf; secret grants
+  are worker-only except shared manifest with SAM. Child configuration alone
+  cannot prove remote export. Native destination/access/token state Not confirmed.
+- Additive contract `/private/tmp/specimen-trace-deployment-contract-20260914`
+  captures exact bytes/hashes and worker-only immutable destination-secret,
+  setup/catalog/policy/template/receipt, metadata-only process, deadline and
+  actual-export acceptance requirements. Root's4versions/31days cost baseline
+  must be revisited for any extra version/access/policy/export cost before
+  freeze; no new price or zero-cost reuse assumption. Do not expand readers,
+  repurpose oldslots, or infer extra native authority from the combined3IAM
+  approval. No token values read; no native/model/credential calls or newtests.
+- Root owns privateSDK/cap/IAM and DATA/runtime own deployment integration.
+  This branch owns model_runtime.py/observability.py and focused tests for
+  local configuration/context linkage. No merge/push before DATA integration.
+  Subsequent TDD results are not yet available and will be appended separately.
+
+
+## 2026-09-14T02:48:58.876924+00:00 — Isolated reader trace linkage source handoff
+
+- Task: 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, product/acceptance. Branch
+  `codex/reader-trace-linkage`, worktree `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Source base `0f31baa2977e6362ef197878e5db50cd2fe9b963`; resulting local commit is
+  pinned in `/private/tmp/specimen-reader-trace-handoff-20260914/REVIEW.json`.
+  No PR, push, merge, or deployment by this task. DATA owns integration and the
+  canonical verification gates before its PR/push.
+- Outcome: model children configure metadata-only Logfire, attach only the W3C
+  parent (no baggage/tracestate), and correlate specimen/run/region/route plus
+  the existing persisted observation ID. Unknown errors preserve application
+  failure semantics while exporting only a fixed failed outcome. No domain or
+  SQL schema changes, prompt/result content logging, credential reads, provider
+  calls, native telemetry export, or cloud effects. Whole-effect deadlines and
+  provider retry controls remain unchanged; shutdown stays inside that clock.
+- TDD: initial subprocess test failed because child configuration was absent.
+  New buffered local-exporter tests pass for both independent readers, resolved
+  extraction, parent/agent/chat relationships, observation correlation, metadata
+  forcing under approved-content environment, private-content canaries, failure
+  sanitization/no replay, and excluding baggage/tracestate/invalid parent data.
+  Added stalls in telemetry configuration/shutdown to the existing real-process
+  deadline and no-replay tests.
+- Validation: final cleared-environment focused suite: 43 passed, 1 skipped
+  (SQL emulator explicitly not enabled), 1 existing Starlette deprecation warning,
+  121.00 seconds. Changed-file pre-commit checks passed, including secret scans;
+  `git diff --check` passed. Full canonical verify.sh and live acceptance Not
+  confirmed; integration owner must run those required gates. No claim of native
+  SQL, model, or Logfire execution follows from synthetic tests.
+- Failed approaches: first wider run had three localhost sandbox-bind failures
+  and one fixture startup timeout; targeted permission-reviewed localhost rerun
+  passed 13 tests. A consolidated run then exposed six startup-margin failures
+  under concurrent host load (37 passed, 1 skipped). The synthetic stall fixture
+  now allows 8 seconds for startup and stalls 30 seconds; the separate test of an
+  actual 3-second reader limit is unchanged and passes. Production timeouts were
+  not increased. Test-exporter assertions were corrected to its actual `parent`
+  context schema. Earlier failed consolidated output is retained in the packet.
+- Deployment interface sent to root/DATA: worker-only immutable writer-secret
+  reference -> LOGFIRE_TOKEN; reviewed LOGFIRE_SERVICE_NAME, APP_ENV=production,
+  metadata capture, explicit send-to-Logfire, sampling 1.0. Tokens never enter
+  IPC. Destination identity belongs to the reviewed plan/receipt; arbitrary
+  LOGFIRE_BASE_URL or additional credential readers are not authorized here.
+- Unresolved cost/export gate: SDK native mode has automatic trace/log/metric
+  exporters, token validation, and retries, with no shared cumulative record,
+  attempt, or byte cap. Three completed spans per reader in the local fixture is
+  not a whole-worker bound. A 10,000-record allowance is NOT source-qualified.
+  Normal SDK shutdown removes retry directories; forced process termination does
+  not prove that cleanup. Root must coordinate a bounded transport or verified
+  destination ceiling, costs, destination authentication, and actual export
+  verification before activation. DATA must integrate/review this isolated source;
+  product still owns the final authenticated ten-specimen acceptance journey.
+
+
+## 2026-09-14T03:27:38.391920+00:00 — Bounded trace local controls; native adapter blocked
+
+- Task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, product/acceptance. Isolated branch
+  `codex/reader-trace-linkage` at `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Prior trace-linkage commit `10e72aa505060c1969e80e38e2316c25be9a5567`, source
+  base `0f31baa2977e6362ef197878e5db50cd2fe9b963`. The local-control commit is
+  pinned in `/private/tmp/specimen-bounded-trace-local-review-20260914/REVIEW.json`.
+  No push/PR/merge/deployment by this task. DATA owns three-way integration,
+  independent review, the canonical verifier and protected release gates.
+- Root explicitly assigned bounded export source work. DATA reserved the small
+  worker.py / worker_deadline.py / bounded_effect.py workspace/scope/report hooks
+  for this isolated branch; their separate timing edits remain untouched.
+  Read all 645 lines of this branch's docs/DEPLOYMENT.md before those changes.
+- Implemented local-only controls: a private SQLite ledger with FULL synchronous
+  pre-dispatch claims, single-use hash-bound dispatch transitions, no refunds or
+  claim replay, 10,000 records / 500 requests / 64 MiB charged aggregate bytes /
+  2 MiB per request source ceilings, and an 8 KiB header allowance per claim.
+  Deadlines only tighten. The whole-worker private workspace is propagated
+  without changing any clock; parent cleanup removes its ledger even after kill.
+  The worker returns a bounded aggregate trace-accounting summary when available.
+- Metadata encoder builds protobuf directly from safe fields, never serializing
+  raw attributes/events first. It retains lineage/timestamps, fixed names, IDs,
+  request-model/provider names and token counts; drops logs/metrics, prompts,
+  images/results, exception bodies/events, arbitrary names/attributes, baggage,
+  tracestate and object references. The synchronous processor has no default
+  dispatcher, network implementation, credential lookup, retry, thread or spool.
+- Supported SDK options disable default native trace/log/metric exporters,
+  remote variables, console output, baggage attributes and ambient OTEL exporters.
+  Noncredential sentinels are required: SDK token=[] and api_key='' fall back to
+  ambient credentials in 5.0.0. The explicit nonempty sentinels avoid that fallback.
+  Bounded production mode currently raises bounded_trace_transport_approval_required
+  before SDK configuration; no accidental default native exporter fallback.
+- TDD/validation: initial new-module test was RED (module absent); local accounting
+  tests passed 12, expanded lifecycle/processor tests passed 17, broader worker and
+  privacy suite passed 59. Final combined focused suite: 94 passed, 1 skipped
+  (SQL emulator not explicitly enabled), 1 existing Starlette warning, 124.32s.
+  This includes real subprocess shared-ledger and forced-stop cleanup tests,
+  concurrent claims, restart/no-reset, per-request/cumulative limits, corruption,
+  single-use dispatch, deadline tightening, and local SDK no-network assertions.
+  Changed-file hooks and diff checks are recorded in the packet. Two scanner
+  false positives on explicit noncredential/test canary strings received narrow
+  inline allowlist comments; the failed hook output is retained. Full canonical
+  verify.sh and native acceptance Not confirmed; DATA owns the integrated run.
+- Automatic review rejected source-only native HTTPS adapter patches twice. First:
+  sensitive metadata/writer-credential export lacked trusted exact authorization.
+  Root then supplied original user tracing authorization and saved destination
+  metadata; this task independently matched original session line9371, role=user,
+  raw SHA3303d129e5fde28d828729cd5b034a7981968c5cbbbad882a05367a5c361df2a,
+  and nonsecret destination receipt d5c0ed139973aa7c10e241f49c5fa5df67f853e267e79adbd8740c43f165c9b8.
+  Second rejection said that tool/file provenance was untrusted and required
+  current trusted user authorization for the exact payload/destination. Neither
+  rejected module was written. No alternative tool/agent executed that edit.
+- Durable inert TRANSPORT_PROPOSAL.json / TRANSPORT_DESIGN.md in the packet
+  describe the exact payload, existing US endpoint, worker-only writer reference,
+  caps, original-deadline behavior and pending single-attempt transport. They
+  contain no credential value, are unimported documentation, and are not an
+  execution path. Root is preparing the precise current-user transport/secret
+  decision; existing $12/3500-second/three-IAM approval is unchanged. Native
+  credential reads, Logfire exports, provider calls and cloud effects here: zero.
+- Remaining work: root's exact transport approval; approved adapter and final
+  flush/tightening/wiring implementation; independent DATA/runtime_timing review
+  and three-way integration; native identity/secret/cost admission and actual
+  trace acceptance. These local per-worker ceilings do not replace the cumulative
+  cohort ledger or justify refunding unknown whole-job holds. TLS/TCP/DNS overhead
+  still needs root's conservative cost allowance. Final authenticated ten-specimen
+  acceptance remains this product task's responsibility after native readiness.
+
+
+## 2026-09-14T03:41:39.269305+00:00 — Independent bounded trace findings repaired
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; isolated branch
+  `codex/reader-trace-linkage`, `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Additive successor to `cf9fa4f50c30953704244fbb350a18f861c91c72`; no earlier
+  commit, frozen packet, or another task's files were rewritten. Successor SHA
+  is pinned in `/private/tmp/specimen-bounded-trace-deadline-fix-20260914/REVIEW.json`.
+  No PR/push/merge/deploy; DATA owns independent re-review and integration.
+- runtime_timing found two local defects on cf9fa4f. Evidence remains at
+  `/private/tmp/specimen-bounded-trace-independent-20260914`: LOCAL_EDGES.log
+  (1 failed, 2 passed) and VARIABLE_PROVIDER.log (1 failed). These probes used
+  synthetic inputs and blocked native I/O before any remote provider startup.
+- Late acknowledgement repair: Ledger.finish now returns whether the exact
+  dispatched claim was accepted before its immutable deadline. The processor
+  uses that result instead of treating a bare 200 as success. At/after-deadline
+  acknowledgements retain unknown holds and report flush failure; shutdown does
+  not retry. Permanent before/at/after tests reproduced RED: 2 failed, 1 passed.
+  No deadline or retry behavior was expanded.
+- Correction to the previous cf9fa4f closeout's remote-variable claim: in locked
+  Logfire 5.0.0, variables=None permits lazy remote provider startup at prompt
+  resolution when the API-key sentinel is truthy. The helper now explicitly
+  installs LocalVariablesOptions with an empty VariablesConfig, resource/baggage
+  context disabled and variable instrumentation disabled. Real resolution of all
+  three application prompts keeps exact code-owned defaults and starts no remote
+  provider/network call. Those permanent tests reproduced RED: 3 failed. Native
+  activation was already guarded and remains guarded; no actual token/provider/
+  Logfire/cloud call was made during these fixes.
+- Final focused verification: 70 passed, 1 existing Starlette deprecation warning,
+  12.04 seconds; includes both independent probe files, bounded controls,
+  worker launch/parent deadlines, observability/privacy and prompt tests. Earlier
+  single-finding GREEN: 65 passed. RED/GREEN XML and text outputs are retained in
+  the additive packet. Changed-file hooks and diff checks recorded separately.
+  Full canonical verification remains with DATA after integration; independent
+  successor acceptance is pending their re-run, not implied by this task's run.
+- Scope clarification sent to DATA/root: SPECIMEN_TRACE_SCOPE_SHA256 is exactly
+  activation.worker_trace.identity_receipt_sha256 from the final reviewed plan,
+  never a minted/fixture/local-metadata substitute. Deployment must omit
+  SPECIMEN_TRACE_LEDGER_PATH; only worker_trace_scope creates it internally.
+- The native HTTPS transport remains absent after automatic-review rejection;
+  bounded production mode still fails closed pending the precise current-user
+  approval handled by root. This repair does not change that gate, approve
+  secret/IAM changes, or establish actual export or final live app acceptance.
+
+
+## 2026-09-14T03:57:30.270174+00:00 — Local trace completion timing correction
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; `codex/reader-trace-linkage`
+  at `/private/tmp/specimen-reader-trace-linkage-20260914`. Additive successor to
+  `9936d36a7726d1ea489d6deaeff2be01f7e6abf6`; resulting commit is pinned in
+  `/private/tmp/specimen-bounded-trace-completion-fix-20260914/REVIEW.json`.
+  Prior frozen commits, packets and source closeouts remain unchanged.
+- runtime_timing re-review closed the original late-HTTP and remote-variable
+  triggers, but reproduced two local completion races: UPDATE/autocommit can
+  wait on a real SQLite writer past cutoff, and a return expression evaluated
+  inside _connect can precede late connection finalization. Original evidence
+  `/private/tmp/specimen-bounded-trace-successor-independent-20260914` includes
+  FINISH_COMPLETION_EDGES.log (2 RED/5 PASS), REVIEW.md SHA
+  0af313c114186a61c7051e212c7b282abfd1e92172317a6ab8e17540c7dcd4cd and RESULT.json
+  fdc5f1090cb9e61291a957271cb776b8e1d79f360f597d7d988ba69289deac20.
+- DATA clarified the semantics: a stored accepted row can truthfully retain an
+  HTTP receipt known before cutoff; it does not establish timely local completion.
+  Ledger.finish now checks success only after UPDATE/autocommit and the connection
+  scope have completed. A late local completion returns False without a late
+  compensating write, grace period, refund or retry. No ledger schema, transaction
+  acquisition, worker hooks or original deadlines changed. The earlier staged-ack
+  design discussed in coordination was not implemented after this clarification.
+- Permanent real-writer-contention and connection-exit tests reproduced RED:
+  2 failed. Final focused run: 79 passed, 1 existing Starlette warning, 12.44s,
+  including the original independent probes unchanged. Known receipts remain
+  stored while late completion returns False and cannot replay; the earlier
+  late-response-as-unknown and local-prompt-provider regressions still pass.
+  Applicable changed-file hooks/diff checks are retained in the new packet.
+  Independent successor qualification and integrated canonical verification are
+  still DATA's next gates; this author test run does not substitute for them.
+- Root's direct current-user V3 Logfire decision remains pending. Native transport
+  is absent and bounded mode remains guarded. No native/token/model/cloud calls
+  occurred. Inert LATER_TRANSPORT_LIMITS.json records root's later-only response/
+  header ceilings and their relation to existing accounting; it is not executable
+  configuration or activation authority. In particular a16KiB request-header
+  allowance cannot be silently charged as8KiB: later implementation must enforce
+  the stricter8KiB sender cap or explicitly increase the charge, within unchanged
+  inclusive64MiB aggregate/2MiB request ceilings. Root owns identityGET, physical
+  transport cost assumption, credentials/IAM and final native admission.
+- Subsequent root clarification selects the stricter8192-byte request-header
+  ceiling, including transport-added headers, within the existing charge. Response
+  header/body ceilings remain16KiB/64KiB plus overflow detection. Root retains
+  its conservative16KiB-per-direction conditional cost hold; no reduction or
+  denied transport retry is authorized.
+
+
+## 2026-09-14 — runtime_timing local trace completion correction independently passes
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; read-only review of exact `codex/reader-trace-linkage` commit `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b`, parent9936d36a, at `/private/tmp/specimen-reader-trace-linkage-20260914`. Source pinned directly from immutable Git while author packet metadata finalized. No reviewer source edits/commit/push or native actions.
+- Narrow fix evaluates local completion only after UPDATE/implicit commit and connection finalization. A known timely HTTP receipt may stay recorded while local completion is false. No schema/BEGIN redesign, compensating late write, refund, retry, added time or grace. Both earlier source defects and both local finish edges are closed within this partial-source scope.
+- Independent validation: 39 passed in10.11s across all permanent bounded telemetry tests and all original independent probe files unchanged. Additional actual held-reader/blocked-COMMIT probe:1 passed; it proves delayed commit cannot report timely local completion, keeps the known receipt charged and cannot replay/change snapshot on second finish. All worker/model/observability overlap files remain byte-identical to cf9fa4f.
+- Evidence `/private/tmp/specimen-bounded-trace-completion-independent-20260914/REVIEW.md` SHA `9db6c5016b86b83135a24b130222ab3d3c8d6c9c6fb4c78bc5715f7f2b45c426`; RESULT.json SHA `0542c26663fdba26c791e2ad4f4c0c146fe181f49b93fbcf2726257ad264b0a5` includes exact source/probe/log pins. Local corrective source PASS. Author packet crosscheck pending receipt; native adapter absent and bounded-v1 guard remains fail closed. Final deadline/flush wiring, integrated canonical CI, deployment/credential/cost/native trace/app acceptance: Not confirmed; parent owns these remaining gates. Accepted HTTP counters alone must not be treated as successful local completion or live trace acceptance.
+
+### 2026-09-14 — independent local trace source composition closeout
+
+Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; shared integration branch `codex/approved-review-release`, `/private/tmp/specimen-approved-review-release-20260914`, HEAD `929b5fa1f946929c1d3c1553241bf1134645d6a3` plus product `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` delta from `0f31baa2977e6362ef197878e5db50cd2fe9b963`, new PR Not confirmed. All seven non-overlap files exactly product; worker.py and bounded_effect.py exactly clean independent three-way merge. worker_deadline.py exact product. Original budget/template/timing sources and cleanup ASTs preserved. Before this append, full HEAD closeout prefix remained and exact17,525-byte product suffix occurred once; reviewer additions preserved. Independent combined Python3.12 probes16 passed3warnings, covering original timing, trace-ledger supervisor cleanup, bounded SDK refusal and late receipt/write completion. No actionable composition finding; no native transport/authority added. Evidence `/private/tmp/specimen-trace-composition-independent-20260914/REVIEW.md` SHA256 `dfa71dfa0478376e08c7c3caf8256590154e96a4afc5f7b5cd05843d329a81c4`, full nine-file pins/merge inputs/artifacts retained. No author source edits/cloud/model/credential/GitHub calls. Native trace delivery, full canonical/CI and authenticated live acceptance Not confirmed by this review; parent owns those gates.
+
+
+## 2026-09-14 — runtime_timing final trace packet crosscheck
+
+- Narrow read-only follow-up for task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`: final author packet `/private/tmp/specimen-bounded-trace-completion-fix-20260914` has all25 artifact checksums valid; manifest SHA `a004e5a643694d3a01523b27af18c868825fc4a200e564680cce6bc8539e9cd3`, REVIEW.json SHA `7414a5312713aea43721eb25f71de7b2c5986211c99ba4553d32df5157f01e8f`. Its exact commit `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` and all7 source pins match the immutable Git source and existing independent40-check qualification.
+- Additive receipt `/private/tmp/specimen-bounded-trace-completion-independent-20260914/PACKET_CROSSCHECK.json` SHA `4b0b893b4673e65158bb110fcea897c6bdec40ac65806faac64fd1c16010f23c`. Original review/result retained byte-for-byte. No tests repeated, source edits or native actions; parent owns integrated template/source composition and full canonical CI. Native/live acceptance: Not confirmed.
+
+
+## 2026-09-14 — integrated local trace controls verified
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, worktree
+  `/private/tmp/specimen-approved-review-release-20260914`, branch
+  `codex/approved-review-release`, parent commit
+  `929b5fa1f946929c1d3c1553241bf1134645d6a3`. Product source is exactly
+  `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b`, including the prior local-only
+  commits `10e72aa`, `cf9fa4f` and `9936d36a`. No PR, push or deployment.
+- Integrated the exact reviewed source patch. The two overlapping worker files
+  match independently constructed three-way merges, and the seven other product
+  files match their qualified source. Existing timing, cleanup, budget, template
+  and phase controls are preserved. All product-author closeouts were appended
+  verbatim once, retaining the integration and reviewer entries.
+- Canonical `UV_PROJECT_ENVIRONMENT=.venv-ci312 GITHUB_ACTIONS=true
+  scripts/ci/verify.sh` passed: 2238 Python tests passed, 81 skipped, 7 warnings;
+  211 Flutter tests passed, 7 skipped; static analysis, repository checks and
+  release web build passed. Separate changed-file hooks included all newly
+  created trace source/tests and passed. Canonical log SHA256 `d7a26b4b8f1508d2ca44880057312bc8767e39477403c7e24d9c9b3ea8e7d51d` at
+  `/private/tmp/specimen-approved-review-integration-20260914/CANONICAL_WITH_LOCAL_TRACE.log`.
+- Local trace findings all closed with 40 independent checks, including the
+  unchanged earlier regressions and a real blocked-COMMIT case. Final report
+  `/private/tmp/specimen-bounded-trace-completion-independent-20260914/REVIEW.md`,
+  SHA256 `9db6c5016b86b83135a24b130222ab3d3c8d6c9c6fb4c78bc5715f7f2b45c426`.
+  All 25 final packet artifacts and seven source pins were crosschecked.
+- Independent composition review plus 16 combined probes passed; report
+  `/private/tmp/specimen-trace-composition-independent-20260914/REVIEW.md`,
+  SHA256 `dfa71dfa0478376e08c7c3caf8256590154e96a4afc5f7b5cd05843d329a81c4`.
+- Durable lesson: a stored timely HTTP acknowledgement is distinct from timely
+  local flush completion. Future native wiring must propagate actual completion,
+  rather than infer it from accepted counters. SDK variables must select the
+  explicitly local provider; variables=None can start remote work lazily.
+- This remains a partial source checkpoint. The native HTTPS adapter and final
+  expiry/flush installation are absent; bounded production mode fails closed.
+  Root's direct user decision on the exact Logfire payload/destination/worker
+  secret proposal is pending, as are Google operator and existing Logfire sign-in.
+  Native authority and final-source qualification, PR/merged-main checks, DATA
+  and runtime deployment, actual exports and all ten live journeys: Not confirmed.
+  Do not activate this checkpoint or infer approval from local green tests.
+
+### 2026-09-14 — independent approved tracing documentation closeout
+
+Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/approved-review-release`, `/private/tmp/specimen-approved-review-release-20260914`, base `2b748ea21896c66320a1e4126095ef1246b8d3e9`, new PR Not confirmed. Frozen three tracing/runbook docs reviewed against exact direct role=user06af8483 approval, immutable V3cf0319a5, prior3303 budget/worker timing and current read-only account receipt1550139b. All18 table rows/arithmetic and exact targets agree; no widening, dropped bound or native readiness claim found. Personal plan/no-overage/30-day Logfire observation does not verify token/delivery or erase liabilities;31-day secret horizon is not expiry, disabled storage still bills, no destruction authorized. Timing/metadata-only/owned secret/protected release/full-ten acceptance gates preserved. Evidence `/private/tmp/specimen-approved-trace-contract-independent-20260914/REVIEW.md` SHA `a4f51c943d70f39b5e54aff4977e456e44f8438129df7a49857177e79dd60b19`, exact three-file hashes/copies and deterministic checks retained. Validation: complete docs and authority/source hash/role/cap comparisons only, no functional suite required. No author edits/native/credential/browser/GitHub/model calls. Executable worker-trace/v2 gate, final transport/privacy/IAM applicability/cost and live readiness remain separate reviews; this qualifies documentation only.
+
+
+
+## 2026-09-14 — runtime_timing V3 transport review preparation
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; preparing independent local-only timing/privacy review for Product's `codex/bounded-logfire-transport`, based on immutable integrated `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Product and integration files were not edited or reviewed while moving. This required closeout is appended only in the original4a25 checkout.
+- Verified exact V3 proposal SHA `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5` and direct approval receipt SHA `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, preserving all original scope/deadline/cost/native gates. The immutable base retains the earlier qualified local telemetry/observability/model source; worker/process changes belong to already integrated timing composition.
+- Matrix and reusable local-only fixtures at `/private/tmp/specimen-native-trace-independent-20260914`. MATRIX.md SHA `7bdc739b4e8cae2ed6dfe61194ba09a24165db4b3a63396d3c614a51e94cc0fb`; PREPARATION.json SHA `8e0771a87308a1bcda19968fda9587466249b106031f19f9ad24c254597aceee`. Four prior independent probe files copied byte-identically, original reports unchanged; Python syntax parsed only. No tests repeated/candidate imported or run; no credentials, socket/network, cloud/model or native effects.
+- Important future test seam: shared ledger uses original root work deadline; each shorter reader effect deadline must constrain that child without prematurely expiring every subsequent child. Matrix covers exact endpoint/identity, final byte/header bounds, all transport/flush phases, SQLite contention, one-use shared accounting, metadata privacy, prompt/SDK/proxy/redirect/retry/background escapes and parent-owned cleanup.
+- Await exact frozen candidate before adapting/running transport tests. Current implementation qualification, native identity/secret/cost/retention, integrated CI and final ten-specimen trace/app acceptance: Not confirmed by this preparation task. Parent retains execution and integration ownership.
+
+
+
+### 2026-09-14 - Additive trace approval documentation and blocked source gate
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch
+  `codex/approved-review-release`, worktree
+  `/private/tmp/specimen-approved-review-release-20260914`, baseline
+  `2b748ea21896c66320a1e4126095ef1246b8d3e9`. No new PR, push or merge.
+- Independently verified direct root-role=user tracing approval at original
+  line 37417, `2026-09-14T06:09:07.640Z`, raw SHA256
+  `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`,
+  exact V3 `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5`.
+  Added approved tracing contract and two runbook links; original 3303 budget
+  authority, human scope, costs/holds and clocks are preserved.
+- Independent documentation review: no actionable findings, all 18 table and
+  accounting checks match. Report
+  `/private/tmp/specimen-approved-trace-contract-independent-20260914/REVIEW.md`,
+  SHA256 `a4f51c943d70f39b5e54aff4977e456e44f8438129df7a49857177e79dd60b19`.
+  Changed-document hooks passed, including both secret scans. First offline
+  hook attempt could not access the installed uv cache; the same read-only
+  documentation check passed after explicit cache access review.
+- Seventeen new synthetic worker-trace/v2 tests recorded 2 expected failures
+  and 15 passes on unchanged 2b (new explicit approval shape unsupported).
+  Automatic approval review then rejected the persistent v2 binding edit
+  because delegated/tool approval evidence was not accepted as trusted direct
+  user instruction in this task. No runtime code changed; no retry or alternate
+  tool applied the rejected patch. Exact new tests were byte-verified and
+  retained outside collection as text before removing only our untracked file.
+- Inert binding packet:
+  `/private/tmp/specimen-trace-binding-proposal-20260914/PROPOSAL.json`,
+  SHA256 `48c2d5e499ae4ff14c1349d078b61bfbae93882e80ba7fb5138a15f2e8b644b5`.
+  Product likewise has only an inert denied-source packet, not a new runtime
+  candidate. Existing runtime_timing reviewer prepared frozen local-only
+  adversarial probes; no candidate/source/native qualification was claimed.
+- A duplicate async approval card was issued before the coordinator's crossed
+  ownership message. No answer or approval was inferred. The user was told it
+  can be disregarded and no further approval is needed here. Root, which has
+  the actual direct user instruction, owns implementation/context resolution;
+  this task remains review-only until root provides final applied source.
+- No token/native/API/browser/ledger/IAM/environment action, transport attempt,
+  paid call, full canonical rerun or deployment. Final tracing implementation,
+  exact-source review, five checks, PR/merge, protected workflows and live
+  original-ten acceptance: Not confirmed. Preserve both worktrees and prior
+  dirty closeout logs; do not prune the source checkpoint or proposal artifacts.
+
+### 2026-09-14 — static review of inert tracing binding proposal
+
+Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; integration branch `codex/approved-review-release`, immutable baseline `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Text-only proposal48c2d5e4/denied patchb9911660/test text e1c9a546 independently reviewed, no actionable static findings. New v2 tracing approval06af remains separate from3303 budget and native identity receipt; full secret regex plus exact fifth-parent prefix retains canonical numeric version/same project, v1 shape unchanged/no new approval env, API/SAM untouched. Reported2RED/15PASS only establishes baseline lacks v2; actual frozen executable must later pass positive/negative cases and retain v1 complete request equivalence. Evidence `/private/tmp/specimen-trace-binding-static-independent-20260914/REVIEW.md` SHA `c1e7adc7a5ac018819891dc087f1edb8749abfe710cff886ef460a24a7fd388a` with immutable input/baseline hashes. No rejected patch applied/executed, tests imported/executed, moving Product worktree inspected, alternate implementation or native/credential action. Automatic approval rejection not retried. Root with direct user instruction owns implementation; future executable/source/privacy/IAM/cost/live qualification remains separate.
+
+
+## 2026-09-14 — DATA independent Hosting attempt and applied trace binding review
+
+- Task: `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; DATA integration `/private/tmp/specimen-approved-review-release-20260914`, branch `codex/approved-review-release`, base `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Original 4a25 and all owner worktrees remain preserved. Native coordinator remains sole owner of credentials, cloud effects, cost/identity admission and live pilot.
+- Hosting source author worked separately in `/private/tmp/specimen-hosting-attempt-binding-20260914`. Parent independently checked five frozen source/test pins in candidate `c2b828bbfd0eea9e5c1edf01d8b9a93977b8bf56e7cd57389379f7e352d21097`. Its exact artifact and public marker now bind repository, SHA, run ID and attempt. Duplicate/malformed markers fail closed. Remaining workflow fields, pinned actions, five-job dependency, environment, permissions, concurrency and timeout compare equal to base. No real Firebase command or credentials were used by the synthetic tests.
+- The same frozen independent tests reproduced 17 failures/one pass on base, then passed all 18 on the candidate. Initial candidate run retained 17 passes and one existing synthetic harness 30-second wall timeout. An external plugin raised only that host subprocess allowance to 120 seconds; product 300-second/60-pass bounds and every frozen test byte stayed unchanged. Final elapsed 39.51 seconds. Review `/private/tmp/specimen-hosting-attempt-independent-20260914/REVIEW.json` SHA `b69e0f2c3f90b7e54a2d76b79d516c73efcdf9c8da63430d46dd9a50888a5352`; artifact manifest `45878e76ad1e886d18b2bb9eab7ebf736b77f13ad8cfcc72c01663f0414c8405`.
+- Hosting author independently reviewed the accompanying runbook change: strict four-argument release smoke, explicitly limited two-argument diagnosis, and full-rerun requirement for a current-attempt build artifact. No actionable finding; reviewed DEPLOYMENT SHA `c88d6c930eae90effe35e578b5aaef0d3756b16339f760c6d90e7ab2ed6cf38f`.
+- Root applied tracing commit `029d2cc4cac219f7a92ce12478978e3a6bd71bd3` is frozen. DATA independently ran the same 17 v2 binding regressions previously retained as inert tests; all passed against actual root source in 1.29 seconds. Review `/private/tmp/specimen-approved-trace-binding-applied-independent-20260914/REVIEW.json` SHA `6c1e2d5b4c5e15116e2f5d9370b9e7fb70b56eedc7c27f6974e3e9b4c5df4940`. This proves only template/binding behavior; independent transport/application review is still running. No private helper or native identity is qualified by these local tests.
+- Refreshed main is `96e8bc8efc802f0fc28f4b18bdfabf7d954213ec` (PR37 writing pass). CI/CD run `34815218118` passed all five checks and Deploy Firebase Hosting; read-only public repository/SHA/title smoke passed. This legacy smoke does not prove strict run/attempt matching. PR34–37 UI/theme/dependency/quality-gate changes must be retained in final integration.
+- Integration coordinator explicitly assigned this DATA task the final combined source/canonical/PR ownership. Final main merge and native acceptance require a stable source window coordinated with root. Full new integrated canonical, candidate PR, final merge, native data/runtime and original-ten application acceptance: Not confirmed.
+
 ### 2026-09-13 - Front-end design foundation (research, audit, design system)
 
 - Task: Claude Code session, front-end design and development track
@@ -2271,6 +2793,251 @@ Historical entries absent from this branch's log are preserved in the appendices
 - Outcome: Completed; pull request open against `main`, not merged
 - Commits/PRs: see the commit that carries this entry; PR link recorded in the pull request description
 - Validation: `flutter analyze --fatal-infos` clean; `flutter test` 300 passing and 7 skipped, up from 287 and 7 on `main`, with 13 new tests in `test/vocabulary_test.dart` and `test/widgets/caveat_text_test.dart` and no behavioural assertion weakened; `dart format` on every touched file; `python3 scripts/ci/check_ui_strings.py` exits 0 with zero violations and an empty baseline, both with and without `--baseline`, where before this change 18 entries were baselined; `scripts/ci/verify.sh` fails only on `scripts/ci/test_release_sql_catalog.py::test_native_index_catalog_matches_ddl_and_rejects_valid_wrong_same_name`, a local PostgreSQL `pg_ctl` start that times out in this environment and touches no Dart.
+- Durable learnings: `TextButton.icon` builds a private `TextButton` subclass, so `find.byType(TextButton)` and `find.widgetWithText(TextButton, ...)` never match it; tap the label text instead. `AnimatedSize` with a zero duration asserts "A RenderAnimatedSize was mutated in its own performLayout implementation", so a reduced-motion disclosure must drop the `AnimatedSize` entirely rather than pass it `Duration.zero`. A bare `Semantics(expanded:)` around a button does not merge into the button's node; wrap it in `MergeSemantics` so a screen reader reads one node. Intake used the visible status string as a state sentinel (`state.startsWith('Duplicate')` in three places), so renaming the chip needed a named constant, which is the pattern for any status string that logic also reads. Moving a caveat behind "Why" hides text that tests assert on; the honest test update is to assert the visible label and then tap "Why" and assert the body, which is a stronger assertion than the original. The string gate from `feat/ui-quality-gates` landed on `main` while this branch was in flight; rebasing before opening the pull request turned a hand-run grep into a real check and emptied the 18-entry ratchet in `scripts/ci/ui_strings_baseline.txt`. It caught the two bare `Yes` and `No` values in `reading_declarations.dart` that the hand grep did not, which became `_state(value, present, absent)` so each line names its own condition.
+- Failed approaches: A first pass tried to keep `labelOf` at every call site and rename only whole strings, which left `needs_human_review` and `unmeasured` on screen; the fix was `lib/src/vocabulary.dart` with a whole-value map plus a per-word map for values the table does not name. Section 5 of the guidelines prescribes four caveat labels longer than the 40-character budget in rule 13 and section 7; the section 5 text was kept verbatim and the tension is recorded in the pull request rather than silently shortened.
+- Remaining follow-ups: the baseline in `scripts/ci/ui_strings_baseline.txt` is now empty, so `--strict-baseline` can be turned on in CI. The confirmation-dialog surfaces that section 5 calls for are still inline text: `workspace.dart` conflict message stays a banner rather than a dialog, and the guideline's version number is not available on that error path. `capture_quality.dart` has no callback for a "Retake photograph" button. Checksums are shown in full rather than truncated to 12 characters with a copy action. The queue subtitle counts only loaded records. Those belong to steps 3 to 5 of the north star. Then step 3, shell and queue.
+
+## 2026-09-14 — Hosting exact run/attempt provenance author closeout
+
+- Task: parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; source author `/root/adversarial_pr27`. Branch `codex/hosting-attempt-binding`, worktree `/private/tmp/specimen-hosting-attempt-binding-20260914`, base `2b748ea21896c66320a1e4126095ef1246b8d3e9`. No pull request or production release in this bounded author session; parent owns integration and release.
+- Outcome: artifact upload/download names bind SHA, run ID and attempt; deploy rejects incomplete, duplicated, foreign or mismatched marker identity before invoking Firebase; workflow public verification supplies all four strict arguments. Canonical run IDs are checked before credential admission. Two-argument local smoke remains a read-only repository/SHA diagnostic. Trailing-newline identity fields are invalid. Failed-jobs-only reruns cannot adopt an earlier attempt artifact; rerun all jobs.
+- Preserved: all other workflow fields/action pins/protected push/environment/check dependencies; exact smoke clock, HTTP caps, retry, HTML checks, 300-second shared budget and 60-pass bound; existing marker writer; no workstation/native deployment, credentials, cloud/API calls, workflow trigger or source unrelated to Hosting.
+- TDD evidence: `/private/tmp/specimen-hosting-attempt-binding-evidence-20260914/RED.log` has 61 expected failures / 31 passes; `NEWLINE_RED.log` has 6 expected failures. Original local full runs retained honestly: `GREEN.log` has 1 synthetic shell 30-second harness timeout / 127 passes; `FINAL_GREEN.log` has 2 such timeouts in unchanged legacy deadline/frozen-clock fixtures / 132 passes. These are not product assertion failures or green canonical runs. `LOCAL_ALLOWANCE_GREEN.log` has 134 passes using an external fixture-only plugin allowing 120 seconds for synthetic shell process startup, while all production clocks/caps/deadline/pass-count assertions and frozen repository bytes remain unchanged. The new repeated-stale fixture charges ten synthetic seconds per read; it still proves immutable 300-second expiration and repeated reads. Existing fixed-60-pass test remains unchanged.
+- Source review: parent independently reviewed frozen candidate and reports 18/18 probes passing, retained at `/private/tmp/specimen-hosting-attempt-independent-20260914/REVIEW.json` SHA256 `b69e0f2c3f90b7e54a2d76b79d516c73efcdf9c8da63430d46dd9a50888a5352`. Author qualification is not self-labelled independent. Parent's Hosting runbook delta was separately read-only reviewed without findings; frozen document SHA256 `c88d6c930eae90effe35e578b5aaef0d3756b16339f760c6d90e7ab2ed6cf38f` accurately distinguishes strict four-argument release verification, legacy diagnosis and rerun-all behavior.
+- Durable package: `CANDIDATE.json` SHA256 `c2b828bbfd0eea9e5c1edf01d8b9a93977b8bf56e7cd57389379f7e352d21097`; `SOURCE.patch` SHA256 `481a979f57256db80d4762494a171479b7de4769c178bd9e9394ad16f7c2c9fd` and five read-only source/test snapshots in the author evidence directory above. Actionlint, shellcheck, bash syntax, diff whitespace and reverse-patch checks passed. Normalized workflow comparison proves only the three intended fields changed; smoke clock/fetch/HTML block remains byte-identical.
+- Failed approach/learning: the initial Git worktree metadata write met an OS sandbox restriction; the same local operation succeeded after approved escalation. No source-edit automatic approval rejection occurred. Many short fake Python executables can exceed a local test harness wall allowance under concurrent work; retain those failures and distinguish external test process allowance from immutable production budgets.
+- Follow-ups: parent requested commit after this closeout, then integration with latest main and full canonical verification before any push. Commit SHA will be recorded in the frozen author report and handoff. Canonical verification, GitHub checks/merge, deployed marker and authenticated live acceptance: Not confirmed by this author task. No native authority or readiness is inferred from these offline checks.
+
+## 2026-09-14 — runtime_timing actual bounded trace independent review (029d2cc4)
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; reviewer original4a25 checkout `codex/release-data-verification` at `eb5a506e1fd6adc123a13d5a0e3a4edd8ae3c4df`. Reviewed frozen clean `codex/bounded-logfire-transport` at `029d2cc4cac219f7a92ce12478978e3a6bd71bd3`, tree `a3e95c4a21722af7af762f4dbe8b7672193bc31a`, `/private/tmp/specimen-reader-trace-linkage-20260914`. PR: Not confirmed for this candidate. Product source not edited by reviewer; parent began successor edits after completed probes.
+- Outcome: changes requested. Actual configured classifier completes model/provenance but records zero spans and sticky incomplete tracing because its newly required child trace is never configured (RT1). Malformed chunk extensions are discarded before validation and return successful acknowledgement (RT2). Exact reusable RED probes/logs and reviewed pins: `/private/tmp/specimen-native-trace-independent-20260914/actual-029d2cc4`.
+- Validation actually run:26 packet hashes/17 source pins match commit and worktree;111 focused source tests passed;12 original independent accounting/prompt probes passed unchanged;10 new composition probes passed, classifier1RED and malformed extensions3RED. Distinct133PASS/4FAIL, plus one initial classifier repro. Synthetic socket/TLS/FunctionModel/localSQLite only; no cloud/native/helper/paid-model/operational-ledger or real credential effects.
+- Reusable learning: opting a child into mandatory tracing is insufficient without its configuration/span lifecycle; test the actual successful model path and separate known model output from tracing completion. Strict chunk parsing must validate extension syntax as well as payload CRLF and terminal trailers. Callback and connection-finalization cutoffs, shared versus child clocks, once-only holds and local-only prompt resolution remained closed.
+- Failed approach: initial classifier probe denied native traffic but lacked a fakeTLS success path; an additive reusable variant supplied local acknowledgements and reproduced the same failure. Original source/log remain retained. Follow-up: root-owned corrective source, focused regressions and independent re-review, preserving deferred classification authority; protected integration/native identity/grant/cost/retention/actual trace/app acceptance remain Not confirmed by this review.
+
+## 2026-09-14 — Independent v2 tracing documentation and merge-preservation review
+
+- Task: parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, reviewer `/root/adversarial_pr27`; integration worktree `/private/tmp/specimen-approved-review-release-20260914`, branch `codex/approved-review-release`, HEAD `38a73d75adb98d9cbb201615bfe14762f4f959bf`. Reviewed merges `7aa80d6d6b3fa38cea870048803744f40ed28660` (main `96e8bc8efc802f0fc28f4b18bdfabf7d954213ec`) and `38a73d75adb98d9cbb201615bfe14762f4f959bf` (Hosting `cc55928033adb8059957d70eb41db14d78dd68f8`). Hosting source authoring by this reviewer is excluded from independent source review; the parent qualified it separately.
+- Outcome: no actionable finding in the new worker-trace/v2 documentation against frozen root029d deploy/observability source. Exact six-field v2 contract, distinct original approval/writer identity bindings, fixed writer parent/numeric version, worker-only env and v1 nonactivation are accurately described. The SDK import environment-read caveat is honest; actual native identity/access/setup/cost/delivery remain coordinator gates.
+- Validation: source/AST checks passed without importing SDK/source; full merge-tree checks passed over 743/744 paths. All 109 non-log main changes retained byte/mode exact. Complete premerge release suffix (52,807 bytes), main suffix (15,045) and Hosting suffix (4,084) occur exactly once, with exact concatenation. The unmerged root029d suffix (13,627 bytes) is explicitly pending successor integration alongside the repaired root trace source. No product test suite or native/cloud/GitHub/credential/transport call occurred.
+- Durable evidence: `/private/tmp/specimen-v2-docs-merge-independent-20260914/REVIEW.md`, SHA256 `e43fc53fae50c0e0436c90e19409c4cbde1c6b99c09733b8ead5baf0b5c94c45`; machine-checkable `COMPOSITION.json`, `DOC_SOURCE_CHECKS.json`, frozen documentation and exact pinned source copies in the same directory. Document SHA256 `2126de8d3618992a510d5549b7de9b3fae4056e6edfa12e6232fbbacde9f5891`. Original4a25 closeout is appended under flock; this separate suffix is supplied for integration without editing the active integration checkout.
+- Learnings/follow-ups: distinguish preserving already-integrated log suffixes from pending source-author suffixes. Static v2 documentation alignment is not native readiness or final integrated PR qualification. Root classifier/chunk-grammar repairs, final repaired packet review, canonical checks, PR/CI/merge and native acceptance remain Not confirmed by this subtask. No failed approach or source edit occurred.
+
+
+## 2026-09-14T06:21:28.687414+00:00 — Approved native tracing source edit rejected in delegated task
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f created isolated branch
+  `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`
+  from independently integrated `2b748ea21896c66320a1e4126095ef1246b8d3e9`. Earlier
+  `codex/reader-trace-linkage`, `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` and all frozen
+  packets remain unchanged. No push, PR, merge or deployment.
+- Root forwarded a NEW direct user approval: raw user line SHA
+  `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`, receipt SHA
+  `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, exact V3 proposal
+  `cf0319a527ff930b5a9e367d655d51a6b5a17e4ae17282815195337788b707e5`. DATA and setup
+  agreed additive worker-trace/v2 approval env distinct from native writer identity scope.
+- TDD authored 21 synthetic socket cases and ran them with a sanitized environment
+  and native network absent. All 21 failed because the new module is missing.
+  The attempted source edit was then rejected by automatic approval review:
+  "This patch adds a live HTTPS transport capable of sending potentially sensitive trace metadata with a writer credential to an external Logfire endpoint; the claimed approval exists only in untrusted transcript/tool evidence, not trusted user content, so authorization for this exact egress capability cannot be established."
+- Per root's explicit instruction, stopped that edit and did not retry through
+  another tool, task or executable path. No native module, approval-guard change,
+  worker hook or token read landed. This task has forwarded the exact rejection
+  to root, which holds the actual direct user message. No repeat user question.
+- Review-only packet `/private/tmp/specimen-bounded-native-source-20260914` retains
+  exact rejected tool proposal, red logs/XML, proposed tests and inert wiring design.
+  The newly authored untracked test was preserved there and removed from collection;
+  it cannot pass without the denied implementation, and no existing test was changed.
+  Production source remains byte-identical to 2b748ea. Green native implementation,
+  independent successor review, full candidate checks and live acceptance: Not confirmed.
+- Root owns resolving the source-approval context and authorized implementation.
+  DATA owns integration/review; setup owns fifth-secret source; Product retains final
+  authenticated ten-specimen acceptance after actual deployment and trace delivery.
+  Preserve known HTTP receipts separately from timely local flush completion.
+
+
+## 2026-09-14T06:26:18.954914+00:00 — Root-owned tracing continuation guide
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, branch
+  `codex/bounded-logfire-transport`, `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Addendum to closeout-only `12f5419095b995a0638bb76e129caa1402d38df6`; implementation
+  remains exact `2b748ea21896c66320a1e4126095ef1246b8d3e9`. No runtime edit or native action.
+- Root explicitly accepted ownership of review/application in its direct-user approval
+  context and requested inert application order, pins and validation commands. Preserved
+  original rejected-source packet unchanged; created the independent review preparation
+  `/private/tmp/specimen-bounded-native-continuation-guide-20260914`.
+- Read-only locked Logfire5 source config.py:1281 confirms direct Authorization token
+  header. No token read, SDK configure, DNS or HTTP was performed. Attached source hash
+  and excerpt; the proposed transport is still unqualified.
+- Guide includes source pins, exact sanitized test commands, immutable original probe
+  hashes and additional native/installation/composition requirements. Those future
+  commands were not executed here. Current implementation GREEN: Not confirmed.
+  DATA owns independent candidate review/full verification; root owns actual source
+  and native release; Product retains final authenticated ten-specimen acceptance.
+
+
+## 2026-09-14 — Approved worker trace deadline and completion wiring
+
+- Task: `/root/approved_trace_worker_wiring`, coordinated by task `01a082b2-c2c3-70d2-be90-7bfb622c9102`; branch `codex/bounded-logfire-transport`, worktree `/private/tmp/specimen-reader-trace-linkage-20260914`, starting HEAD `12f5419095b995a0638bb76e129caa1402d38df6` (implementation source `2b748ea21896c66320a1e4126095ef1246b8d3e9`). No commit or PR created by this child.
+- Outcome: added the original isolated-effect deadline accessor, fail-closed shared-ledger tracking for later worker deadline reductions, synchronous child and final-worker completion reporting, and sticky local completion evidence independent of accepted HTTP counts. Known model bytes remain available when child telemetry fails; a killed child still has an unknown outcome. Parent memory retains incomplete child reports if a local receipt write fails. Supervisor publication failure also blocks subsequent work.
+- TDD evidence: initial 11 regressions failed; first wiring/telemetry suite passed 39. Broader checks reported 69 passed, one Linux-only skip and one existing startup-cutoff failure; that exact unchanged case passed on rerun. Retained process/telemetry checks passed 49 with three localhost HTTP-server cases deselected for the coordinator's network-enabled harness. A further supervisor-publication regression failed before its minimal fix; final deadline/worker suite passed 35 with one Linux-only skip and one dependency deprecation warning. No execution or cleanup clock was extended. `git diff --check` passed.
+- Durable handoff: `/private/tmp/specimen-approved-trace-worker-wiring-20260914/REVIEW.json` SHA256 `190df6e090f6fbdd538e563b83730d6dab2d7ecb74c88f3039e74e81b45599c9`; `ARTIFACTS.json` SHA256 `9365ccfa8c9286f7a24f6e9fab4606194ad5177bc7eb79641019678a71bc0341`; source patch SHA256 `a2ce2556a18441b1ccf58937292bc80dbaa809782a56baab97846b694265f0fb`. The packet preserves seven owned source/test files and actual retained RED/GREEN logs; the initial RED output remains in the task transcript and is not presented as a saved raw logfile.
+- Reusable learning: a known timely HTTP receipt does not prove timely local flush or process completion. A trace receipt failure must not turn a known model response into a provider retry. Deadline publication and ledger tightening must fail closed together. Keep the per-child effect clock distinct from the shared worker clock.
+- Remaining: root's observability installation and native transport composition, independent review, canonical verification, all protected release checks and authenticated ten-specimen live acceptance are Not confirmed by this child. No credentials, external HTTP, model execution, IAM, cloud mutation, deployment, or live-cost ledger action occurred here.
+
+
+## 2026-09-14T06:49:14.255357+00:00 — Root implementation of directly approved bounded tracing
+
+- Root task `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch `codex/bounded-logfire-transport`, worktree `/private/tmp/specimen-reader-trace-linkage-20260914`, source base `2b748ea21896c66320a1e4126095ef1246b8d3e9` and prior closeout commit `1283ed59b48c92ef5ddb6ae70bd28cf22fc7b18e`. No new PR or production deployment is claimed by this entry.
+- Actual direct user approval in this root task is retained in `/private/tmp/specimen-logfire-direct-approval-20260914/USER_AUTHORIZATION.json`, SHA256 `580a3a469863193980e277999a886194e4e0d9b18f4ab47f6177a3e420555c40`, raw user digest `06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48`. Delegated tasks stopped after approval-review rejections because forwarded evidence was not direct user authorization there. Root reviewed and implemented the approved capability in its own direct-user context; no repeated approval or rejected delegated retry was used.
+- Implemented worker-trace/v2 with separate trace approval and native identity digest, exact worker-only fifth-secret parent/numeric version, fixed US HTTPS POST with bounded plaintext request/response bytes, strict framing and OTLP acknowledgement handling, no retry/redirect/proxy/default SDK export, original process deadlines, synchronous flush and shared sticky completion. Generic HTTP/SAM helpers are excluded from mandatory model-child tracing; known model bytes survive a trace failure without provider retry.
+- TDD: root transport/binding baseline 23 failed / 15 passed; installation baseline 2 failed / 15 passed. Independent static findings about the final deadline callback, malformed chunk framing, ignored OTLP partial acknowledgements and byte-count measurement were repaired and tested. A transient custom-reader missing flush method was fixed; earlier failures remain in distinct logs. Final combined `/private/tmp/specimen-root-trace-composition2-20260914.log`: 142 passed, two dependency deprecation warnings. Includes actual SDK/custom processor/fake TLS in a real isolated model child, metadata linkage and prompt/label canary exclusion. No real credential, DNS, service request or model call was made by these tests. `git diff --check` passed.
+- SDK nuance: import-time configuration reads local environment and constructs NoOp providers; the application's approval/scope gate precedes explicit writer use and SDK exporter initialization. The custom processor supplies neutral SDK credential sentinels, an explicit local variable provider and no default log/metric/native exporters. Do not claim the SDK import itself never examines its environment.
+- Separately, root independently reran all 55 tests of the private identity preflight v2 after its finite-number parsing fix; `/private/tmp/specimen-root-identity-v2-independent2-20260914.log` passed. Preflight source and launcher native gates remain disabled; actual identity, timely supervisor receipt, numeric writer version, IAM setup, cumulative cost admission and protected deployment are Not confirmed.
+- Next: independent review of frozen applied source; combine the Hosting attempt-provenance repair and current main (latest observed `d8623e6f04d91b46282c852f09e625bd36e28527`) without losing closeouts; canonical verification, PR, all exact merged-source checks, qualified native setup and authenticated original-ten compare/correct/save/reopen acceptance. Existing costs and unknown holds are preserved under the approved cumulative and daily USD12 cap.
+
+
+## 2026-09-14 — Correction: trace completion applies only to required model children
+
+- Task `/root/approved_trace_worker_wiring`, coordinator `01a082b2-c2c3-70d2-be90-7bfb622c9102`, branch/worktree `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`. This corrects the earlier “Approved worker trace deadline and completion wiring” entry and preserves its V1 artifacts. No commit or PR created by this child.
+- Root review found P1: requiring a configured child exporter for every ordinary `run_isolated` also marked generic HTTP and SAM helpers incomplete. The new strict boolean `trace_required=False` is carried in private request IPC; only model-runtime and configured-classifier call sites opt in. Generic helpers never invoke child flushing or change the parent trace-completion state. Required model children still fail trace acceptance if configuration is missing, while retaining known model bytes and all original clocks.
+- A new negative regression also found that importing the telemetry module solely to write a missing-configuration receipt caused SDK environment inspection. The child now uses only an already-loaded telemetry module; otherwise the existing parent IPC completion remains incomplete. No model retry or default exporter is introduced.
+- TDD: 11 new regressions failed before the opt-in implementation. Initial composition passed 58 with one new import-discovery failure; after its minimal fix, final composition passed 66 with one dependency warning. Root composition log `/private/tmp/specimen-root-trace-composition2-20260914.log` independently reports 142 passed, two warnings in 28.20 seconds. `git diff --check` passed.
+- V2 packet `/private/tmp/specimen-approved-trace-worker-wiring-v2-20260914/REVIEW.json` SHA256 `50f59d0c450911113c9c7721652d8c045747f70f2f9236269f2ad95c8ae8c4a3`; manifest SHA256 `5c529281519ec8bc75e3cb027b65067db424e2ac80d48fb4650923227bbd15cf`; source patch SHA256 `f484bbdfaf113e58f81adea435de5136d23f415f7d7e127497cef1f1da8527e2`. All predecessor-manifest artifacts were rechecked unchanged. Nine owned source/test files, RED/failure/GREEN logs and synthetic import diagnostics are retained.
+- SDK behavior clarification: locked Logfire 5.0.0 locally reads the token environment during global configuration construction (`config.py:1820`, `949`, `757`, then `config_params.py:192`), before export initialization. A clean synthetic environment probe observed zero socket calls and no initialized exporter; two local OpenTelemetry resource-detector threads terminated during import. Its initial diagnostic compared the normalized token with a list instead of a single-token string; the false comparison does not mean the token was absent. The approved gate precedes explicit writer use and SDK export initialization, not every module-import environment read.
+- Remaining: protected release, native tracing delivery, classifier instrumentation for any future approved classification scope, and authenticated ten-specimen acceptance are Not confirmed here. Classification remains deferred for this pilot. No real credential, external HTTP, model, IAM, deployment, or cost-ledger action occurred in this correction.
+
+### 2026-09-14 — Root successor closes independent tracing regressions
+
+- Task: `01a082b2-c2c3-70d2-be90-7bfb622c9102`, coordinator `/root`; bounded classifier repair by `/root/approved_trace_worker_wiring`.
+- Branch/worktree: `codex/bounded-logfire-transport` at `/private/tmp/specimen-reader-trace-linkage-20260914`.
+- Outcome: Source repair complete; independent successor review and combined release qualification remain pending. Preserved predecessor `029d2cc4cac219f7a92ce12478978e3a6bd71bd3`; successor commit will contain this entry, PR Not confirmed.
+- Independent findings: DATA runtime review retained 133 distinct passing checks and four failures on the predecessor. Actual configured classification completed without a configured trace/span and poisoned trace completion; three malformed chunk extensions were incorrectly acknowledged. Evidence: `/private/tmp/specimen-native-trace-independent-20260914/actual-029d2cc4/REVIEW.md`, SHA256 `887edc5a625638268bebed1af566d923152b07461d6a768b4b85959f4ac07142`.
+- Changes: Classifier uses the existing isolated metadata span and carries specimen/run/route context. The operation allowlists include classify; configuration and sensitivity gates remain in place, and this does not enable deferred classification for the pilot. The bounded HTTP parser accepts only extension-free chunk-size framing. Original deadlines, one-attempt accounting, source-content exclusions and approval gates remain.
+- Validation: Transport regression 4 RED, then full transport 42 PASS (`/private/tmp/specimen-root-trace-chunk-extension-red-20260914.log`, `...-green-20260914.log`). Classifier regressions 4 RED/2 PASS before repair, then final composed suite 87 PASS/1 dependency warning, including the exact frozen independent actual classifier regression (`/private/tmp/specimen-classifier-trace-repair-20260914/FINAL_GREEN.log`). Actual FunctionModel/isolated child/fake TLS checks cover parent linkage, safe failure metadata, no private content, sensitivity denial, missing approval and unconfigured gates.
+- Failed approaches: The first composed classifier run had 85 PASS/1 failure because an existing synthetic DTO omitted domain specimen/run IDs; only that fixture identity was repaired. The prior transport silently discarded extension text; the successor rejects unsupported framing instead of treating it as a valid acknowledgment.
+- Remaining follow-ups: Freeze successor, independent review, integrate current main and Hosting attempt provenance, canonical checks, PR and exact-source release gates. Native Logfire identity, secret/IAM installation, cost admission, trace delivery and ten-specimen live acceptance are Not confirmed. No native credentials, requests, paid inference, scopes, ledger changes or IAM effects were performed by this source repair.
+
+
+## 2026-09-14 — DATA combines independently corrected tracing with current main
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`. Before this merge the integration head was `7d3fc7f`; it includes protected main `96e8bc8efc802f0fc28f4b18bdfabf7d954213ec`, Hosting fix `cc55928033adb8059957d70eb41db14d78dd68f8`, and independently reviewed tracing/runbook documentation.
+- Corrective root tracing source `7b32b90a3e9baf072b960f70cec9818d8a21d173` closes RT1 missing classifier trace lifecycle/context and RT2 malformed chunk extensions. Independent runtime reviewer reports 137 passing tests, two warnings, 41.69 seconds, including the unchanged failing classifier/composition probes. Additional actual classifier fakeTLS wire audit found three spans in one frame with exact lineage and allowed metadata, and no prompt/image/content/error canaries, events, links or status messages. Deferred classification authority remains unchanged. Final independent report is retained separately by runtime_timing.
+- Parent verified all 18 executable/test source pins against `/private/tmp/specimen-root-trace-source-v2-20260914/ARTIFACTS.json`; the nineteenth file is the append-only log, merged by exact common-prefix preservation plus the complete 16,437-byte root suffix. Earlier implementation/failure entries remain. Evidence `/private/tmp/specimen-approved-review-integration-20260914/TRACE_7b32_CLOSEOUT_UNION.json`; no source conflict or manual executable edit occurred.
+- Local pinned Flutter compilation separately confirmed both synthetic public settings appear as exact quoted literals in the existing web artifact. `/private/tmp/specimen-compiled-public-pair-local-build-20260914/BUILD_PROOF.json` SHA `0e2f9ae3f8dcc2e392ce43f768b0bbf53fa44d3c544b151ee5e3b384a0393d7a`; artifact manifest `39658a86117cb9c0823a0a1693984979a6928f52d244aeadf61d0f9a7de1bb0a`. Generated CI placeholder was removed. This is synthetic build representation evidence, not a native artifact or live configuration claim. The separate public-pair inspector is pure/offline and requires root-owned native authentication, bounded binary capture and independent receipts before operational use.
+- Native effects and paid requests: zero here. Full canonical check on the combined candidate, final PR checks, main merge, exact deployment proof and original-ten data/runtime/UI acceptance remain Not confirmed. Root retains native cost/identity/credential/workflow ownership and the final stable-source window.
+
+
+
+## 2026-09-14 — runtime_timing corrective trace review (7b32b90a)
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; reviewer original4a25 branch `codex/release-data-verification` at `eb5a506e1fd6adc123a13d5a0e3a4edd8ae3c4df`. Independently reviewed Product branch `codex/bounded-logfire-transport`, commit `7b32b90a3e9baf072b960f70cec9818d8a21d173`, tree `7bcc316f05d0b160160a48bb2fbc7a6f81d56fbf`, `/private/tmp/specimen-reader-trace-linkage-20260914`. PR/release: Not confirmed by this source review.
+- Outcome: PASS for corrective source. Both preceding029d findings close: the actual classifier now configures its bounded child metadata lifecycle and trusted context; the HTTP parser rejects unsupported chunk extensions instead of ignoring malformed text. Original reports/RED evidence remain unchanged.
+- Validation actually run:26 packet hashes/19 source pins match commit and worktree, with a clean final check;137PASS/2warnings in41.69s including unchanged independent classifier/composition probes. Additional independent read-only actual classifier protobuf audit passes:3 spans/1frame with exact specimen/run/parent/route/model/provider linkage and no private payload or exception content. Evidence, commands and immutable hashes: `/private/tmp/specimen-native-trace-independent-20260914/successor-7b32b90a`.
+- Reusable learning: confirm real successful child execution and exported record linkage, not only opt-in flags. Conservative extension rejection can close parser ambiguity while preserving extension-free and empty/zero-rejection OTLP acknowledgement cases. Original worker/effect clocks, one-use shared ledger, no retries/refunds and fail-closed completion remain.
+- No reviewer source/dependency/resource edits or native/cloud/paid-model/operational-ledger actions. No new failed approach this successor. Evidence adapter still has classifier=None, and pilot/worker/deadline/supervisor/runtime-template source is identical to029d; deferred classification authority is unchanged. Follow-up: coordinator exact-tree integration and full canonical gates, then separately authorized native identity/grant/cost/retention/delivery and exact-ten authenticated app acceptance, all Not confirmed here.
+
+
+
+
+### 2026-09-14 — Complete release candidate adversarial source review
+
+- Task: `/root/final_release_review`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; reviewer original worktree `/Users/anuragduddu/.codex/worktrees/4a25/specimen-digitization-app`, branch `codex/release-data-verification`. Reviewed canonical branch `codex/approved-review-release` at `/private/tmp/specimen-approved-review-release-20260914`.
+- Frozen candidate: `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`, tree `6bb13cc7aeb0b0933fd56b42a332b95ccaa4db2a`, against main `96e8bc8efc802f0fc28f4b18bdfabf7d954213ec`. PR: Not confirmed. Outcome: no blocking source findings after independent static/adversarial review of the complete budget/timing/tracing/secret-binding/Hosting composition.
+- Durable evidence: `/private/tmp/specimen-final-release-adversarial-20260914/REVIEW.md`, `SOURCE_PINS.json`, `SOURCE_CHECKS.json`, and reproducible `check_frozen_source.py`. The canonical worktree was not mutated.
+- Validation actually run: complete AGENTS.md and DEPLOYMENT.md reads; aggregate diff/source review; `git diff --check` passed; 65 independent offline byte/mode/protected-workflow/admission-AST assertions passed. Parent owns canonical testing; this reviewer did not claim its result or duplicate native effects.
+- Failed approach: the initial reviewer harness selected nonexistent `validate_packet`; corrected the harness to the observed `validate_admission` name. No release change was needed. Investigated outer startup imports and final trace deadline/completion paths; no demonstrated new regression. The pre-supervisor import structure is unchanged, while elapsed time is subtracted by the new supervisor. Pathological pre-supervisor stall enforcement remains a native/platform qualification limit.
+- Reusable learning: audit the complete caller/child/parent lifecycle in addition to individual transport tests. Trace-required model helpers must propagate sticky incomplete status; generic helpers must not require an exporter. Exact source checks do not establish native identity, cloud authority, runtime readiness or live UI acceptance.
+- Follow-ups: parent canonical verification, exact PR/main checks and protected deployment/run-attempt smoke, native source/helper/identity/cost qualification and original-ten authenticated product/save-reopen acceptance are Not confirmed by this source review. Retain every active source worktree and prior ledger/evidence.
+
+
+
+## 2026-09-14 — Pure compiled public-pair inspector source-author closeout
+
+- Task: parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; source author `/root/adversarial_pr27`. Additive non-Git helper directory `/private/tmp/specimen-compiled-public-pair-inspector-20260914`; no repository source commit/PR. Source context is the independently reviewed attempt-bound Hosting contract from `cc55928033adb8059957d70eb41db14d78dd68f8`; final native build source remains None.
+- Outcome: pure byte inspectors emit only unqualified archive/marker/JavaScript/public-asset structural observations joined by expected source/run/attempt/artifact/digest/pair. All native/final/review and compile/deploy/public-assets proof fields remain None. Safe ZIP metadata is bounded before entry allocation; only the two exact root payloads are streamed with actual read/CRC/deflate EOF enforcement; no extraction, native adapter, credentials, network or repository source changes. Literal checks are explicitly structural quoted bytes, not JavaScript execution/source authenticity.
+- TDD: initial67fail/1pass, then68pass; real-compiler fixture RED1fail corrected an unnecessary native-host restriction in the pure inspector; final extended80pass in0.82s. Synthetic ZIP64/descriptors, malformed metadata, forged-size/prefix-CRC, identity/types/duplicates/public mismatch, None-gate and actual local Flutter representation fixtures pass. The real bundle is3,087,010bytes, SHA2568645fd9d224958793425dd4e6c05e58f368a29b9e026fea23e0aecce2e014ad7. Source author's tests are not self-labelled independent.
+- Evidence: REPORT.md SHA256 `398282460c8afa03ac256ed8bbcd8f012bdca5898329d1f6149e917143636452`; CANDIDATE.json SHA256 `ca6dcd18b2f360188f0f588cf37243c2c700a27b869ecd2636ebde229460d549`; inspector.py SHA256 `744fb35c4f5aca935665d230e189d9127b54afc2ec385921feb148274c0707f6`; readonly tests/logs/README/synthetic archive and observations in that helper directory. No prior frozen evidence was overwritten; no source-edit automatic approval rejection occurred.
+- Learning/remaining gates: selected file readers must check real inflated output and full stream completion rather than trust declared ZIP size. Structural observations cannot manufacture native authentication, source closure or review receipts. The current controller2MiB JSON body cap cannot fetch the3.09MB JS; separate root-owned reviewed binary capture remains required, and parser caps provide no new native envelope. Parent independently reviews this source. Final source/build/artifact/public captures, genuine proof receipts, native release and full authenticated cohort acceptance remain Not confirmed. Shared closeout appended under flock; this separate suffix is supplied for integration.
+
+
+
+## 2026-09-14 — Additive correction: compiled public-pair inspector ZIP gaps
+
+- Corrects the earlier “Pure compiled public-pair inspector source-author closeout” without rewriting it. Parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; author `/root/adversarial_pr27`; additive non-Git successor `/private/tmp/specimen-compiled-public-pair-inspector-v2-20260914`. No repository commit/PR or native admission. The entire frozen predecessor package was rehashed unchanged.
+- Independent finding: shortened stored-member local+central sizes/CRC could leave an unreferenced tail despite correct whole-archive hash and selected member hash. Source repair conservatively requires contiguous local spans including checked descriptors from byte0 to directory_start, explicitly excluding gaps/padding/SFX/unreferenced local bytes. No schemas, bindings, limits, adapters or native/review gates changed; all gates remain None.
+- TDD: exact preserved independent RED1fail against original744fb35c; new stored-tail plus prefix/middle/tail padding RED4fail; successor111pass/1expected duplicate-fixture warning (84author tests plus27 preserved independent-authored probes run by author). Stored/deflate/ZIP64/descriptors and real synthetic Flutter bundle still pass; prior synthetic archive yields identical observation bytes. Author tests are not self-labelled independent approval.
+- Evidence: successor REPORT.md SHA256 `f55381286c32a16ae00f071f4144cc36b324b33be8652090a369668d7d5cc570`, CANDIDATE.json `c3af103eed6b9cc5773f6c3a9ac710cfe17c02048aa5f16f933e9ca637375fb7`, inspector.py `6f751409a9460a5de6fa64c38a2d480d7dd27fa90d66eff1e1f13656ef0972c9`, REPAIR.diff `bf39e79b04db178c17afc28083b4987b3ae73bf8668f526c551783022a2e03f1`, retained RED/GREEN logs and pinned independent test input. Closeout appended under flock to original4a25; separate suffix supplied for integration.
+- Learnings/follow-ups: selected CRC and exact whole-archive hashing do not themselves exclude unreferenced local gaps; declare and enforce the narrow accepted archive layout. Actual native GitHub ZIP admissibility is not claimed from synthetic fixtures. Root independent successor review, final-source closure, separately reviewed binary capture beyond the controller2MiB JSON cap, genuine source/build/artifact/public receipts and live acceptance remain Not confirmed. An initial process launch used the not-yet-created directory as cwd and performed no command; corrected creation from /private/tmp. No source-edit approval rejection or native effect occurred.
+
+
+
+
+## 2026-09-14 — DATA independent offline compiled public-pair proof inspector
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, original 4a25 `codex/release-data-verification` at `eb5a506e1fd6adc123a13d5a0e3a4edd8ae3c4df`; release integration candidate is `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`. No repository source or Hosting marker/workflow changes were needed for this separate pure inspector. Native coordinator remains sole capture/cost/identity/credential owner.
+- Existing pinned Flutter build can retain the exact compiled public URL/key literals. Pure inspector v2 `/private/tmp/specimen-compiled-public-pair-inspector-v2-20260914`, source SHA `6f751409a9460a5de6fa64c38a2d480d7dd27fa90d66eff1e1f13656ef0972c9`, candidate `c3af103eed6b9cc5773f6c3a9ac710cfe17c02048aa5f16f933e9ca637375fb7`. Parent checked every candidate file pin, read the implementation/contract and independently reran the unchanged 27 probes. All pass in 0.25 seconds with one deliberate duplicate-member fixture warning.
+- Original candidate passed 26 and accepted unreferenced local ZIP bytes after forged matching prefix sizes/CRC. Additive successor now requires contiguous local spans; supported stored/deflated/ZIP64/descriptor fixtures and actual synthetic Flutter output remain valid. Whole-archive accounting/authentication was not bypassed by the original ambiguity. All predecessor packets/tests/logs remain.
+- Independent report `/private/tmp/specimen-compiled-public-pair-independent-20260914/REVIEW.json` SHA `fc88effda19c97b65237ff1fb1e5ff61d28b4b9a05d08fdeea1600f4e763939e`; manifest `bc2c5cb51c1c0de16a2aa31ee0fbb155a1f70774335bf5438a0e3defa96c7db7`. Author suite has 84 tests; parent independently ran 27, not all 111.
+- Observations remain structural and unqualified: quoted bytes do not prove JavaScript runtime use, native source/build/artifact/public authenticity or input origin. Root must bind authentic final source/build steps/archive and public captures to independent native receipts. Non-target ZIP payloads receive metadata/layout checks only. Every native/final/review/controller-proof field remains None. Offline 64MiB ZIP/16MiB JS parser limits do not expand the separate 2MiB JSON controller envelope or authorize binary retrieval.
+- No cloud request, native identity, paid model, credential read, effect or native helper qualification occurred. Final source, bounded binary capture, native authentication/independent receipt and full release acceptance remain Not confirmed.
+
+
+
+## 2026-09-14 — runtime_timing process-fixture startup repair
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; test-only branch `codex/process-fixture-startup-stability`, `/private/tmp/specimen-process-fixture-startup-20260914`, based `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`. Candidate remains uncommitted for independent review; PR/CI/release Not confirmed. Product tracing7b32 and all production files unchanged.
+- Preserved original canonical6FAIL log and exact two test files. An outside-repo diagnostic reproduced the four relevant failures as deadline_exceeded/overall_deadline with complete cleanup at2.011–2.015s and no entry/late marker (4FAIL/10.83s); a separate import observer measured real classifier loader entry3.055s and actual worker materialization2.157s. Evidence establishes cold import/startup exhaustion rather than worker_failed; the first traceback alone was insufficient.
+- Repair only `tests/test_hf_collection_classifier.py` and `tests/test_worker_supervisor.py`: actual heavy stages keep one original-dispatch8s test clock, exact request/child/worker deadline comparison, mandatory stage entry, PID/group cleanup and no late effect through a scheduled post-cutoff opportunity. Two lightweight startup tests preserve the original2s/<5s ordinary/group cutoff, without warming imports, retries, skips or production changes.
+- Validation: decisive6PASS in38.87s; both affected modules61PASS/1existing Linux-only skip in50.20s; applicable changed-file hooks and diff check PASS. Exact originals, diagnostic wrappers/logs, staged-entry proofs, final pins/patch and commands: `/private/tmp/specimen-process-fixture-evidence-20260914`. No native/cloud/paid model/operational-ledger effects.
+- Reusable learning: inspect IsolatedResult before attributing a missing entry marker; separate host-dependent cold import headroom from deterministic short-deadline coverage while keeping both clocks anchored before startup. Failed approach: default worktree creation hit filesystem Git-metadata denial; the authorized isolated worktree succeeded via approved escalation, with no automatic-review rejection or workaround. Follow-up: parent independent diff/regression review and exact-tree full canonical verification; parent owns the other two Hosting fixture failures and all release/live acceptance gates.
+
+
+
+## 2026-09-14 — runtime_timing explicit process-group test expectation
+
+- Additive hardening of preceding process-fixture startup repair; task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, `codex/process-fixture-startup-stability`, `/private/tmp/specimen-process-fixture-startup-20260914`, base `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`. Uncommitted; PR/release Not confirmed.
+- Reviewer identified a proof gap: group cleanup assertions depended on an observed worker owner, allowing a future missing-owner regression to bypass them. Helper now asserts owner presence exactly matches explicit requested process_group mode, and verifies group deadline/absence according to that request. Materialization passesTrue, short-clock cases pass their flag, classifiers defaultFalse. All other test behavior/source/clocks remain unchanged.
+- Successor validation: six decisive cases6PASS39.16s, applicable changed-file hooks and diff check PASS. Predecessor61PASS/1Linux-only skip remains attributed predecessor evidence; no unnecessary full module repeat. Original RED/packet/source preserved; additive diff, final hashes, exact commands and logs at `/private/tmp/specimen-process-fixture-evidence-20260914/explicit-group-successor`. Supervisor test SHA `e6c0833b6f1a0d4a39a574dd3be8a2f59a9faa586db50f934c47d1dcfe8b1669`; classifier SHA unchanged `5945f29ab2bdf25cdb6f76668eb859cb664453c19087e08bdc48efcdbd7ffaf7`.
+- No new failed approach, production/dependency/budget/clock edits, native/cloud/paid-model/operational-ledger effects, commits, pushes or merges. Follow-up: final independent delta review and coordinator exact-tree integration/canonical release gates.
+
+
+
+
+### 2026-09-14 — Independent fixture stabilization successor review
+
+- Task `/root/final_release_review`, parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; original worktree `/Users/anuragduddu/.codex/worktrees/4a25/specimen-digitization-app`, branch `codex/release-data-verification`. Test fixture source is `/private/tmp/specimen-process-fixture-startup-20260914`, branch `codex/process-fixture-startup-stability`, base `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`; Hosting test source is parent canonical worktree, branch `codex/approved-review-release`. PR: Not confirmed.
+- Outcome: no blocking findings for classifier fixture `5945f29ab2bdf25cdb6f76668eb859cb664453c19087e08bdc48efcdbd7ffaf7`, explicit-group supervisor successor `e6c0833b6f1a0d4a39a574dd3be8a2f59a9faa586db50f934c47d1dcfe8b1669`, Hosting test `30dfaa590b18834a375880d085d20884c4aadb0e1bdfb8e76de2737df062c66f`. No source modifications by reviewer.
+- Durable evidence: `/private/tmp/specimen-fixture-delta-independent-20260914/REVIEW.md`, CHECKS.json, GROUP_ASSERTIONS.log, frozen three-source copies and independent verifier/probes. 64 offline source/evidence assertions and six synthetic assertion probes passed; 22 predecessor plus 12 successor author artifact pins verified. Parent/author actual-process logs are attributed; full canonical was not rerun or claimed here.
+- Diagnosis and reusable learning: measured cold imports exceeded the old2-second actual-stage fixture envelope. Eight-second heavy fixtures still include imports, actual stage entry and late-write opportunity under the original dispatch clock; two lightweight ordinary/group cases retain the original2-second cutoff. Increasing Hosting's outer synthetic harness timeout30 to120 does not change product300-second/60-pass assertions.
+- Review hardening: preliminary cleanup helper inferred group checks from observed owner presence. Current group evidence did run that check, but a future missing owner could skip it. Author successor now requires owner presence to match explicit requested mode and selects group verification by that mode. Independent negative probes reject missing/unexpected owner, live group with absent leader and reset worker deadline.
+- Failed/interrupted approach: initial verifier correctly stopped when the worker source pin changed during requested successor authoring. Original preliminary pins/copies remain retained; final qualification waited for the explicit successor freeze. No moving candidate or application changes were accepted to make tests pass.
+- Follow-ups: final integrated canonical, PR/main checks, protected deploy and live original-ten product acceptance remain Not confirmed. Earlier full canonical had six failures; source/test review is not a replacement for rerunning that gate. Preserve active worktrees and evidence.
+
+
+## 2026-09-14 — DATA stabilizes canonical fixtures and clarifies the original native clock
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, starting candidate `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`. No release PR, push, production or native action is claimed by this entry. The next commit contains these test/documentation changes.
+- Full canonical on d7 failed: six failed, 2428 passed, 81 skipped, seven warnings in 729.13 seconds; Flutter was not reached. Retained log `/private/tmp/specimen-approved-review-integration-20260914/CANONICAL_FINAL_TRACING_HOSTING.log`, SHA256 `57e5a5378c8a3548dc488cf7b4c4fa7eaaeb40ab7bec0b2ecf4c8f896e2aced7`. Four process fixtures exhausted their two-second clock before actual dependency entry; independent import observations established 3.055-second classifier entry and 2.157-second materialization entry. Two Hosting failures were the external synthetic process driver's 30-second timeout. Production deadline/retry assertions did not fail.
+- Repairs affect only three test files. Actual heavy process stages now retain one original-dispatch eight-second fixture clock, exact parent/child/worker deadline equality, actual entry, direct PID and requested process-group absence, and no late write through its scheduled opportunity. Two lightweight cases preserve the original two-second cutoff and under-five-second cleanup proof. Hosting changes only its synthetic subprocess driver allowance from 30 to 120 seconds; production 300-second and 60-pass bounds remain unchanged.
+- Validation actually run: original process repair six decisive tests passed; both modules 61 passed/one existing Linux-only skip; parent independent six passed in 39.16 seconds. Reviewer-requested explicit process-mode assertion hardening then passed all six again. Independent successor review passed 64 offline source/evidence checks and six cheap negative/positive helper assertions, including missing ownership and a live process group. Review `/private/tmp/specimen-fixture-delta-independent-20260914/REVIEW.json`, SHA256 `f8009643920ba15fb7c5d21c32d966f2f958de678481e0be6645ee3998cd078a`. Parent's complete normal Hosting module passed 70 tests in 199.00 seconds, log SHA256 `bfb5a8e41e69905fd0c3eabef57040615993977b7ecc520b5899e909bacc124a`. These overlap and are not added as distinct coverage. Applicable author hooks and diff checks passed; exact integrated canonical remains pending.
+- Root resolved the image-build/permission-window composition with a genuine early original authorization origin, not new workflow source or an extended clock. The timing document removes its contradictory images-before-issuance sentence and specifies required actual-origin, launch and effective-policy joins, separate later timestamps, no backdating, both image preparations consuming the same clock, and actual protected-job/finalization bounds. Source behavior is explicitly distinguished from required native qualification. The independent alternative retained three actual-consumer synthetic passes; private guard implementation and native feasibility remain root-owned. The documentation review requested this distinction; its final frozen report follows separately. No product timing, workflows, dependencies, permission scope or cost ledger changed here.
+- All eight pending independent/author review closeout suffixes were copied exactly once with the entire previous log prefix unchanged; receipt `REVIEW_CLOSEOUTS_UNION.json` in the integration evidence directory. Original 4a25 uncommitted log and every frozen failure/successor packet remain preserved.
+- Live main advanced to `0ca2e06a8683316723573ee3653f8bee047a3f71` through PR38 shared components. Root and integration coordinator require preserving that actual main before canonical and holding unrelated PR39 unmerged through the eventual stable-source/native window. Main38 rewrote one historical log line; the forthcoming merge will preserve our complete log and append the incoming changed entry as an explicit snapshot, retaining its new shared-component entry. Final canonical, PR checks, merge, exact run/attempt public deployment evidence and original-ten authenticated data/UI acceptance are Not confirmed. No worktree is pruned.
+
+
+## 2026-09-14 — Preserve the incoming PR38 historical entry snapshot
+
+The incoming main commit 0ca2e06a8683316723573ee3653f8bee047a3f71 rewrote one durable-learnings line in the earlier writing-pass entry. The complete integration log above is preserved unchanged. The following exact incoming snapshot retains that revised entry and the new shared-component entry without deleting the earlier version. This is a historical import, not a new claim that these already merged PRs remain open.
+
+### 2026-09-14 - Writing pass (step 2 of the front-end north star)
+
+- Task: Claude Code session, front-end design and development track, UX writing pass
+- Branch/worktree: `feat/writing-pass` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a92b13640c525964f`, branched from `feat/theme-foundation` and rebased onto `origin/main` after PR 35 and PR 36 merged and both branches were deleted
+- Outcome: Completed; pull request open against `main`, not merged
+- Commits/PRs: see the commit that carries this entry; PR link recorded in the pull request description
+- Validation: `flutter analyze --fatal-infos` clean; `flutter test` 300 passing and 7 skipped, up from 287 and 7 on `main`, with 13 new tests in `test/vocabulary_test.dart` and `test/widgets/caveat_text_test.dart` and no behavioural assertion weakened; `dart format` on every touched file; `python3 scripts/ci/check_ui_strings.py` exits 0 with zero violations and an empty baseline, both with and without `--baseline`, where before this change 18 entries were baselined; `scripts/ci/verify.sh` fails only on `scripts/ci/test_release_sql_catalog.py::test_native_index_catalog_matches_ddl_and_rejects_valid_wrong_same_name`, a local PostgreSQL `pg_ctl` start that times out in this environment and touches no Dart.
 - Durable learnings: A long lived feature branch can lose its base: `feat/theme-foundation` and `feat/writing-pass` both merged and were deleted during this task, so a prune, a merge of `origin/main` and a re-target to `main` was the recovery, and listing the remote heads is the cheap check before opening the pull request. The writing pass shipped its own `lib/src/widgets/caveat_text.dart` with a `why` parameter; the merge kept that file whole and this branch adapted its two call sites, which is cheaper than reconciling two spellings of one component. `riskComposite` changed its wording to "Not measured" and "62 of 100" in that same pass, so a test that pinned the old string failed on the merge, which is the reason to assert against the function rather than against a copied literal. `TextButton.icon` builds a private `TextButton` subclass, so `find.byType(TextButton)` and `find.widgetWithText(TextButton, ...)` never match it; tap the label text instead. `AnimatedSize` with a zero duration asserts "A RenderAnimatedSize was mutated in its own performLayout implementation", so a reduced-motion disclosure must drop the `AnimatedSize` entirely rather than pass it `Duration.zero`. A bare `Semantics(expanded:)` around a button does not merge into the button's node; wrap it in `MergeSemantics` so a screen reader reads one node. Intake used the visible status string as a state sentinel (`state.startsWith('Duplicate')` in three places), so renaming the chip needed a named constant, which is the pattern for any status string that logic also reads. Moving a caveat behind "Why" hides text that tests assert on; the honest test update is to assert the visible label and then tap "Why" and assert the body, which is a stronger assertion than the original. The string gate from `feat/ui-quality-gates` landed on `main` while this branch was in flight; rebasing before opening the pull request turned a hand-run grep into a real check and emptied the 18-entry ratchet in `scripts/ci/ui_strings_baseline.txt`. It caught the two bare `Yes` and `No` values in `reading_declarations.dart` that the hand grep did not, which became `_state(value, present, absent)` so each line names its own condition.
 - Failed approaches: A first pass tried to keep `labelOf` at every call site and rename only whole strings, which left `needs_human_review` and `unmeasured` on screen; the fix was `lib/src/vocabulary.dart` with a whole-value map plus a per-word map for values the table does not name. Section 5 of the guidelines prescribes four caveat labels longer than the 40-character budget in rule 13 and section 7; the section 5 text was kept verbatim and the tension is recorded in the pull request rather than silently shortened.
 - Remaining follow-ups: the baseline in `scripts/ci/ui_strings_baseline.txt` is now empty, so `--strict-baseline` can be turned on in CI. The confirmation-dialog surfaces that section 5 calls for are still inline text: `workspace.dart` conflict message stays a banner rather than a dialog, and the guideline's version number is not available on that error path. `capture_quality.dart` has no callback for a "Retake photograph" button. Checksums are shown in full rather than truncated to 12 characters with a copy action. The queue subtitle counts only loaded records. Those belong to steps 3 to 5 of the north star. Then step 3, shell and queue.
@@ -2285,6 +3052,90 @@ Historical entries absent from this branch's log are preserved in the appendices
 - Durable learnings: `TextButton.icon` builds a private `_TextButtonWithIcon` subclass, so `find.byType(TextButton)` finds nothing and `find.bySubtype<TextButton>()` is the durable form. `AnimatedSize` with a zero duration re-dirties itself inside its own `performLayout` and throws, so a reduced-motion path must drop the `AnimatedSize` entirely rather than pass it `Duration.zero`; the same will be true of any implicitly animated widget that measures its child. `Semantics(label:)` as a parent of an `InkWell` produces two nodes, not one, so a row that wants to read as a single phrase needs `MergeSemantics` around the pair plus `ExcludeSemantics` around the row's own text. Setting `excludeSemantics: true` on a `Semantics` that wraps an `InkWell` silently removes the tap action, which is the accessible failure mode to avoid. `matchesSemantics` is a whole-node matcher and is brittle for one flag; `containsSemantics` is the partial one. `@Preview` only accepts literals and public symbols, so a shared theme helper for previews has to be public. Every action row that carries a verb phrase needs `Wrap`, not `Row`: "Supersede the decision" plus "Cancel" overflows a 480 dialog at the default text scale.
 - Failed approaches: A first pass gave `StatusChip` a closure-valued field so one constructor could resolve either a status or a prepared presentation; that cannot be `const`, so it was replaced by two nullable fields and two const constructors. A `Colors.transparent` leading bar was used to hold the queue row's layout stable between selected and unselected; it is a literal the design system's own grep gate forbids, so the border is now conditional and the padding makes up the width instead. `RiskMeter` could not be made a `const` constructor because its assert calls a static method, so its tests construct it without `const`.
 - Remaining follow-ups: Adopt these components in the screens, which is where the eight remaining color literals in `workspace.dart` and `workbench.dart` disappear. Field states have no glyphs in `theme/icons.dart` yet, so `SpecimenStatus` names its own for the seven field values; fold them into `SpecimenIconography` when the theme file is next touched. `EvidenceDrawer` is an inline disclosure rather than the side sheet the design system describes for windows at 900 and above; the side sheet arrives with the responsive step. `ReasonSheet` does not yet render the diff of what will change, because it has no record to diff against until the screens adopt it.
+
+
+## 2026-09-14 — DATA integrates actual main PR38 before final canonical
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`. Source before merge: `3eec9ae0b100aa031306f0638e4357949d8e8df6`; incoming main: `0ca2e06a8683316723573ee3653f8bee047a3f71`, PR38. The next merge commit contains this entry; no release PR or native action occurred.
+- Outcome: all 38 non-log files added by PR38 retain exact incoming bytes and modes. No executable conflict or manual source resolution occurred. The single log conflict preserves every byte of the complete previous integration log and appends the complete 8,579-byte incoming entry snapshot starting at its heading, including the historical rewritten line and the shared-component closeout. Machine-checkable evidence: `MAIN_0ca2_MERGE_PREPARATION.json` and `MAIN_0ca2_CLOSEOUT_UNION.json` in `/private/tmp/specimen-approved-review-integration-20260914`.
+- Validation: source hashes/modes and append-only prefix/snapshot checks passed; no application suite has yet run on this combined tree. The first local resolution script had a non-ASCII Python bytes-literal syntax error and made no file changes; the normal commit hook caught the remaining conflict markers and rejected that commit. The corrected script encodes normal text and preserves the pinned input bytes. No check was bypassed.
+- Root excludes PR39 from this release and requires preserving its unmerged branch. Fresh canonical, final independent composition review, protected PR/main checks, exact Hosting run/attempt evidence and native original-ten acceptance remain Not confirmed. Preserve all worktrees and previous evidence.
+
+
+
+## 2026-09-14 — Independent early authorization-origin documentation review
+
+- Task: parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; reviewer `/root/adversarial_pr27`. Reviewed branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, base `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`; no PR/native action in this bounded subtask.
+- Outcome: no remaining actionable documentation findings in final timing doc SHA256 `32761f3b8dd2b3d01743bbf902d6026c38baf64babb8fbdb2fd71ce4ddac8077`. Author closed the source-vs-required-native wording ambiguity; private original-origin/effective-permission guard implementation/readiness is not claimed.
+- Evidence: `/private/tmp/specimen-early-origin-docs-independent-20260914/{REVIEW.md,SOURCE_CHECKS.json,TIMING.diff,ARTIFACTS.json}` and frozen final document/source/alternative files. Verified 12 source pins, seven alternative evidence artifacts, exact unchanged document suffix and diff whitespace check. Preserved prior 3-PASS actual-consumer synthetic log; no test rerun or broad suite by this reviewer.
+- Learning: retain the actual early authorization origin before effects, distinguish later materialization times, and require exact launch/effective-policy joins `T+3500 < G <= Ec <= Ea`; arithmetic slack is not proof of cloud finalization within the actual protected 55-minute job. Legacy/SAM/cohort/cost boundaries remain unchanged.
+- Failed approaches/limits: initial snapshot attempt raced the author's clarification, so only final bytes are claimed frozen; a wrong local launch-consumer lookup path was corrected before source verification. No product failure was hidden. Current native qualification and runtime completion: Not confirmed. Parent retains the guard, receipt-semantics and feasibility gates.
+
+
+
+
+### 2026-09-14 — Independent final ba0 composition reconciliation
+
+- Task `/root/final_release_review`, parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; original worktree `/Users/anuragduddu/.codex/worktrees/4a25/specimen-digitization-app`, branch `codex/release-data-verification`. Reviewed clean integration worktree `/private/tmp/specimen-approved-review-release-20260914`, branch `codex/approved-review-release`, candidate `ba0dc2bdedfa1eb8c53349943b8ad0a4b9d6e0a3`, tree `56ee5db4e00d5e390f3d11f32ec09db1e61b4f4c`; current main source supplied by parent `0ca2e06a8683316723573ee3653f8bee047a3f71`, PR38. Release PR/CI outcome: Not confirmed.
+- Outcome: no blocking composition findings. Runtime/budget/tracing/timing/deployment source, workflows, containers and dependencies equal the independently reviewed d7 source byte/mode. All38 incoming component files and the entire apps tree equal declared main; only the exact reviewed3test fixtures, timing document32761f3b8dd2b3d01743bbf902d6026c38baf64babb8fbdb2fd71ce4ddac8077 and append-only closeouts accompany them. Held PR39 is not introduced as additional source.
+- Validation actually run:120 independent offline ancestry/path/source-pin/blob/mode/log-union assertions and aggregate git diff --check passed. No broad suite or actual-process/native probe was rerun. Parent canonical is in progress and is not claimed green. Previous d7 and fixture review JSON files remain unchanged. Evidence: `/private/tmp/specimen-final-composition-ba0dc2b-review-20260914/{REVIEW.md,CHECKS.json,verify_composition.py,ARTIFACTS.json}`.
+- Log resolution independently checked from Git objects and retained binaries: exact pre-merge log prefix preserved; full8,579-byte incoming modified historical entry/new entry snapshot appears once starting at its heading; explicit historical label prevents stale PR status being presented as a new claim; final ba0 retains the entire merge log prefix. The parent's initial non-ASCII bytes-literal syntax error and normal conflict-hook rejection are recorded; reviewer made no resolution/source edits and found no final conflict or history loss.
+- Reusable learning: qualify a final composition by exact previously reviewed inputs and reconstruct conflict-resolution invariants independently, instead of treating a merge commit or a clean tree as sufficient evidence. A docs-only native timing guard requirement is not proof the private guard is implemented or the live sequence fits.
+- Follow-ups: parent canonical, exact protected PR/main/deploy checks, public run/attempt verification and native original-ten product/human save-reopen acceptance remain Not confirmed. Root owns private timing guards, actual receipts/effective-policy joins and human acceptance timing. Preserve all source worktrees and earlier evidence; this review grants no native authority.
+
+
+
+## 2026-09-14 — runtime_timing alarm diagnostic preparation during ba0dc2b canonical run
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; read-only candidate `codex/approved-review-release` at `ba0dc2bdedfa1eb8c53349943b8ad0a4b9d6e0a3`, `/private/tmp/specimen-approved-review-release-20260914`. Parent mapped an early progress F to the runtime-refresh-False real-alarm test; actual traceback and cause Not confirmed.
+- Verified current alarm test exactly matches prior qualified SHAa3ed767e, and actual registry_login/total_request bodies match local origin/main0ca2e06a. Three-second outer process/import observation is distinct from unchanged80ms hard/~72ms soft guards and post-entry<0.5s assertions. Evidence/conditional diagnostic plan: `/private/tmp/specimen-alarm-followup-preparation-20260914`.
+- No tests, source edits, native/cloud/helper/credential actions or overlapping heavy work. Previous alarm/process-fixture packets remain untouched. Reusable learning: missing post-subprocess output files under TimeoutExpired do not establish silence; inspect exception partial output and watchdog presence. A post-start<0.5s failure cannot be attributed to imports that preceded the started timestamp.
+- Follow-up: preserve actual completed canonical traceback/tmp_path, then parent-authorized bounded exact-case diagnosis according to the observed failure boundary. No timeout or assertion weakening proposed; no new failed approach.
+
+
+
+### 2026-09-14 — runtime_timing: exact hard-watchdog unwind recognition
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/process-fixture-startup-stability`, worktree `/private/tmp/specimen-process-fixture-startup-20260914`, base `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`; no new commit/PR/native effect. Parent integration remained ba0 during this test-only repair.
+- Preserved full ba0 canonical 1 FAIL / 2435 PASS / 81 SKIP log and actual child artifacts before editing. The C watchdog expired in `cancelled -> total_request -> contextlib.__exit__ -> registry_login -> alarm_case_probe`, with original arm/once/events/exit/elapsed checks already passing. Startup/outer-timeout hypothesis was ruled out by the actual traceback.
+- Changed only `scripts/ci/test_runtime_registry_login.py` for this follow-up: recognize exactly that contiguous guarded unwind or the original stalled stack; reject unrelated, reordered and cross-thread frames and preserve all original cutoff/scope/event/exit checks. Production guard/clocks and previously reviewed two process-fixture source pins are unchanged.
+- Durable evidence `/private/tmp/specimen-alarm-unwind-race-20260914`: retained replay RED 1 FAIL; unchanged replay plus 12 positive/negative controller cases GREEN 13 PASS; affected module once 51 PASS in 7.18 s; hooks and diff-check PASS. The actual module run exercised both a guarded-unwind hard exit and a native stalled-stack hard exit, with no late events.
+- Source SHA256 `762fb4ba9149cac3d9cb46a565b40a36a24d02d49269caa2d7deb710cd70fc15`; `ALARM_ONLY.patch` SHA256 `a0fd2ed398a8ee3a4ab7823c41f082535ac1c2cd90e4242d51918bff0599882c`. Exact source, original failures, child results, commands and hashes retained in the packet.
+- Learning: a C hard deadline may win during cancellation from the soft-timeout guard's finally block; a precise stack/event proof can classify that fail-closed result without lengthening clocks or accepting arbitrary exits. Original stalled-only assertion rejected this valid safety outcome. Independent review and full canonical successor remain parent-owned; Flutter/CI/CD/native release: Not confirmed here.
+
+
+
+### 2026-09-14 — runtime_timing: anchored watchdog header successor
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/process-fixture-startup-stability`, worktree `/private/tmp/specimen-process-fixture-startup-20260914`, base `d7ebbdaec359ba402f8dc27df70f0a065f18ad3c`; additive correction to the preceding exact hard-watchdog unwind entry. No commit/PR/native action.
+- Independent review found the predecessor regex could accept prefixed text before a thread header. Preserved the three independent RED cases and all 77 predecessor packet checksums; added a representative permanent controller negative and confirmed RED before fixing. The successor only anchors the header with `^`/`re.MULTILINE` and adds that regression. All original arm/events/exit/scope/time checks, production files and prior two fixture repair pins remain unchanged.
+- Evidence `/private/tmp/specimen-alarm-unwind-race-20260914/header-anchor-successor`: unchanged header probes3 + prior independent expectations46 (source-pin retarget only) + retained actual replay1 + affected module52 including five real child cases = 102 PASS in 2.83 s. Hooks and diff-check PASS.
+- Frozen alarm source SHA256 `5d44d82785acf37a61ffe663bd49b1c0a2962581e509ac8923ba7d69d051ed8c`; successor and full alarm patches, exact hashes and child evidence retained. Parent and independent reviewer received the frozen candidate. Lesson: contiguous stack matching also needs a real line-start header boundary; substring search alone was insufficient. Independent successor review and full canonical/Flutter/release remain parent-owned, Not confirmed here.
+
+
+
+
+## 2026-09-14 — /root/final_release_review: registry alarm unwind delta, independent closeout
+
+- Task `/root/final_release_review`; source author branch `codex/process-fixture-startup-stability` in `/private/tmp/specimen-process-fixture-startup-20260914`, base d7ebbdaec359ba402f8dc27df70f0a065f18ad3c. Integration branch `codex/approved-review-release` in `/private/tmp/specimen-approved-review-release-20260914`; this delta's exact failure base is ba0dc2bdedfa1eb8c53349943b8ad0a4b9d6e0a3. Shared closeout destination is original 4a25 branch `codex/release-data-verification`. Parent holds PR39; no PR, commit, push or merge was performed by this reviewer.
+- Outcome: no blocking finding remains in test-only `scripts/ci/test_runtime_registry_login.py` SHA256 `5d44d82785acf37a61ffe663bd49b1c0a2962581e509ac8923ba7d69d051ed8c`. The initial `762fb4ba9149cac3d9cb46a565b40a36a24d02d49269caa2d7deb710cd70fc15` helper accepted three malformed thread-header prefixes. All three independent full-caller negative cases reproduced RED. The minimal successor adds a multiline start anchor and one permanent negative; the same independent probes pass.
+- Durable evidence: `/private/tmp/specimen-alarm-unwind-independent-20260914/REVIEW.md` SHA256 `268f5e9e123091d97834a01c44b1bb82989da2f5bff1216f77efeb6e3557703d`; source copies, pre-candidate expectations, original 46 PASS/3 RED, successor 49 PASS in 0.11 seconds, exact successor patch, 24 source/AST checks and author-manifest verification are in that packet. Initial artifacts remain under `initial-762fb4`. A separate exact suffix is retained for the parent. The earlier d7, fixture and ba0 composition reports were preserved.
+- Validation and learning: define rejection expectations from the actual failing evidence before inspecting a proposed recognizer. Accept only contiguous top-of-thread filename/function frames, and anchor the header itself. All 14 old definitions/module AST remain equivalent after removing the two added functions/import and restoring the one replaced stack assertion. Original exit, event, arm, scope, 3-second harness and sub-0.5-second observation assertions remain intact. The three production files match ba0 bytes, the relevant registry/guard function bodies match main 0ca2e06a8683316723573ee3653f8bee047a3f71, and earlier process-fixture pins remain unchanged. Independent checks were offline AST extraction with synthetic outputs; no actual process, signal, SDK or cloud execution was performed by this reviewer. Author's 77 predecessor and 140 successor manifest entries were rehashed successfully; its overlapping 102 tests are author evidence, not another independent count.
+- Failed approaches: two initial assertions in the reviewer's own comparison harness incorrectly presumed entire test/production files matched main. Main has the older fixture and unrelated existing release differences; the corrected comparison pins full files to ba0 and relevant production function ASTs to main. No source fix resulted from those harness assumptions.
+- Follow-ups: parent ba0 canonical remains 1 failed, 2435 passed, 81 skipped; successor full canonical, required CI, merge, protected main deployment, public marker/smoke and authenticated live acceptance are Not confirmed by this task. Root owns private guards and human acceptance timing. No integration checkout or production/native source was edited, and no credentials, paid models or cloud actions were used. Closeout is appended with flock, flush and fsync only to original 4a25.
+
+
+## 2026-09-14 — DATA closes the canonical watchdog assertion race
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`, prior HEAD `ba0dc2bdedfa1eb8c53349943b8ad0a4b9d6e0a3`. The next commit contains this test-only fix and preserved closeouts; no PR/push/native action is claimed.
+- Full ba0 canonical completed with one failure, 2435 passes, 81 skips and seven warnings in 663.33 seconds. All six original d7 failures were resolved. Flutter was not reached. Log SHA256 `4cd3c06ce2fb71d6d8b06f33f5a268402973cec831e0b9e03ec5a3e530b61e28`, retained with machine-readable results in `/private/tmp/specimen-approved-review-integration-20260914`.
+- The remaining failure was not startup or an outer timeout. The real hard watchdog exited during cancellation after the soft timeout, inside the same guarded registry refresh. Existing assertions proved one started event, the original armed timer at or below 80 ms, exit 1, empty stderr, no late event and observation within 0.5 seconds; only the requirement that the stack still contain the stalled function failed. Actual dump SHA256 `83b9867cf791c5e5da29bc171ab1ec490c97456153f8070e1df4710dcbb91ef4` is preserved.
+- The correction is confined to `scripts/ci/test_runtime_registry_login.py`: recognize either the actual stalled stack or its exact contiguous single-thread cancellation unwind, with filename/function checks. Preserve all old event, phase, exit, timer, timeout and no-late assertions. Independent review found that the first header regex accepted prefixed non-header text; three retained RED probes led to a line-start anchor and permanent negative case. No production code, clock, scope, retry, dependency or native behavior changed. Final source SHA256 `5d44d82785acf37a61ffe663bd49b1c0a2962581e509ac8923ba7d69d051ed8c`.
+- Validation: author successor 102 passing checks includes the affected 52-case module, retained actual dump replay and independent probes; the reviewer separately reran 49 unchanged probes in 0.11 seconds and passed 24 source/pin/AST assertions. Counts overlap. The real module exercised both hard-exit stack shapes. Reviewer verified the 77 predecessor and 140 successor manifest entries; original failures and artifacts remain unchanged. Independent report `/private/tmp/specimen-alarm-unwind-independent-20260914/REVIEW.md`, SHA256 `268f5e9e123091d97834a01c44b1bb82989da2f5bff1216f77efeb6e3557703d`. Applicable hooks and diff checks passed; successor canonical remains pending.
+- Main advanced during local verification: PR39 merged as `85ebc1f01171fa3f524ef8aab4250f7bf7234b32`, PR40 as `42a4121c325539e4b90b5eb853a2a9046998bb93`, and PR41 as `3c09018d2f2d245152abadb7fe8da306392ea2ff`. The requested PR39 hold was never acknowledged by the separate UI controller; this entry corrects any implication that it was effective. Preserve the already merged UI. The net incoming change has 80 client/Android/dependency/test files and 31 log lines; backend source, workflows and deployment scripts are unchanged. Root coordinates actual-main selection, focused Product review and a genuine stable-source window; no native clock has started here. All original-ten human-review preparation remains prospective, not live acceptance.
+- Five new closeout suffixes were appended exactly once after the complete prior log prefix. Next: preserve actual main, finish focused UI/composition review, run canonical, use protected PR and all release checks, then exact Hosting/run-attempt and root-owned native/data/human acceptance. These remain Not confirmed; no worktree or evidence is pruned.
+
+
 
 ### 2026-09-14 - Workbench (step 4 of the front-end north star)
 
@@ -2456,6 +3307,14 @@ Historical entries absent from this branch's log are preserved in the appendices
 - Durable learnings: Parallel screen rebuilds work when file ownership is written into each brief and shared components land first. Stacked branches always conflict on `docs/SESSION_LEARNINGS.md` (resolve by keeping both sides) and on `pubspec.yaml` when two steps add dependencies (union, then `flutter pub get`). Branch protection requires branches current with main, so each merge costs one CI cycle; sequence the queue and merge one at a time. Golden PNGs generated on macOS differ 1 to 4 percent on Linux runners; the golden suite is gated to macOS while overflow, semantics and keyboard assertions run everywhere. `go_router` 17.5.0 is the last release that resolves on Flutter 3.38.5. GitHub marks a PR merged when all its commits land through another PR.
 - Failed approaches: Letting a screen agent branch before shared components existed produced duplicate widgets and follow-up requests; the components step fixed that for later work. An always-running indeterminate progress indicator makes `pumpAndSettle` hang in widget tests; build it only while busy.
 - Remaining follow-ups: 7 partial criteria in the verification report (7.3 bulk actions need an API; 10.3 administrator contact needs collection configuration to publish one; 1.2, 7.2, 7.6, 10.2, 10.4 as documented) and open defects V-7, V-8, V-9, V-15 with fixes spelled out. Device-level verification on physical iPhone, iPad and Android hardware, and the camera capture path on real devices, remain open. The iOS Simulator tool needs `xcode-select` pointed at Xcode; the web demo needs port 3000 because the synthetic API pins that origin.
+
+
+## 2026-09-14 — DATA preserves merged routing, intake and workbench UI
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, branch `codex/approved-review-release`, worktree `/private/tmp/specimen-approved-review-release-20260914`. Before merge `830e43cd147ad2c2d92934a5a2275d7e3db1af40`; incoming main `3c09018d2f2d245152abadb7fe8da306392ea2ff`, containing merged PR39, PR40 and PR41. This merge commit contains the entry; source PR/push and native release remain Not confirmed.
+- All 80 incoming non-log client/Android/dependency/test files retain exact main bytes and modes. There were no executable conflicts or manual executable resolutions. The only conflict was the append-only log: preserve the entire previous integration log, followed by the complete 15,999-byte incoming main suffix exactly once. Evidence: `MAIN_3c09018_MERGE_PREPARATION.json` and `MAIN_3c09018_CLOSEOUT_UNION.json` in `/private/tmp/specimen-approved-review-integration-20260914`. Backend source and release workflows/scripts remain unchanged from the reviewed premerge candidate.
+- Root asked to preserve actual merged UI and coordinate focused Product acceptance-contract review. DATA requested that read-only review of sign-in, API wiring, original-ten compare/correct/save/reopen and the existing UI sequence; no browser/native action or additional data mapping is inferred from source. All prior approved timing, tracing, Hosting and fixture source remains present. The separate UI controller never acknowledged the earlier merge hold; no stable native window has been declared.
+- Validation in this merge: exact incoming bytes/modes, sole-log-conflict scope and retained prefix/suffix checks passed. Canonical and focused Product/composition review of this new combined tree are pending. No deadline or approval scope is extended; original costs, holds and worktrees remain. The final source must be reconciled with live main before protected PR/main checks and any native work.
 
 ### 2026-09-09 22:22 UTC — DATA bounded clone-history 403 diagnosis; production remains stopped
 
@@ -3246,6 +4105,7 @@ Correction/addition to “Hosting exact run/attempt provenance author closeout�
 - Learning: acknowledgement tests must apply submitted values, not merely increment revision; every remaining batch item must be revalidated after an acknowledged readback, because the actual API adapter POST then GET can observe another review between them.
 - Failed approaches/limits: initial SDK-cache sandbox denial retained; approved local offline rerun produced the real findings. Auth/account lifecycle reviewed separately by root. No source edits, credentials, browser/cloud/GitHub/provider calls or native acceptance. Native readiness: Not confirmed. Remain available for unchanged-probe replay against Product's frozen successor.
 
+
 ### 2026-09-14 — Reviewed Product repair ready for release composition (task 01a082b4-a9bc-7413-a3c5-505b61c2f4db)
 
 - Branch/worktree: codex/approved-review-release in /private/tmp/specimen-approved-review-release-20260914 at f6847dbd3e49776bd073ad79e3f8cbfade7515e2. Incoming Product f0bf0e946c9973f089db4f429f324087b0cd15af, tree 4f06b03c92d28e4b1f217bc3a7d8e9b6163ce1a0, preserves eff48d00bc9a733dbb768147581af5ab58132d2a and exact main 3c09018d2f2d245152abadb7fe8da306392ea2ff. Latest GitHub main remains3c; no source push, new PR or native operation performed.
@@ -3255,6 +4115,27 @@ Correction/addition to “Hosting exact run/attempt provenance author closeout�
 - Reusable learning: fake save repositories must return actual corrected values, and an acknowledged POST followed by fresh GET may include concurrent edits. Remove only the acknowledged draft, then revalidate each remaining draft before dispatch; do not replay the original batch against newer versions after stale detection.
 - Follow-ups: compose exact reviewed source and run full canonical verification. Earlier ba0 canonical remains1FAIL/2435PASS/81SKIP until the reviewed watchdog successor is exercised in the complete candidate. All five required PR/main checks, merge, exact run/attempt Hosting smoke, native DATA/runtime, and authenticated original-ten acceptance are Not confirmed for this candidate. Root retains sole native credential/clock/cost/production backend ownership.
 
+
+## 2026-09-14T08:55:15.809046+00:00 — Product acknowledgement and session lifecycle repairs
+
+- Task: 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, Release: product journey and acceptance. Root assigned bounded review of incoming main 3c09018d2f2d245152abadb7fe8da306392ea2ff versus 0ca2e06a8683316723573ee3653f8bee047a3f71 (PR39, PR40, PR41), then minimal TDD repairs. Branch codex/product-review-acknowledgement, isolated worktree /private/tmp/specimen-product-review-acknowledgement-20260914, base exact main 3c09018. DATA owns separate integration f6847dbd3e49776bd073ad79e3f8cbfade7515e2.
+- Confirmed five failing behavior tests on the incoming source: field failure erased drafts, coverage failure lacked an unconfirmed-save outcome, sign-out retained cached collection/record access, same-signed-in account changes did not reload permissions, and successful verification did not start the gated workspace. All five failed on expected behavior assertions after using the standard ignored CI Firebase placeholder; no product fix preceded that RED run.
+- Minimal fixes: explicit mutation acknowledgement reaches the workbench; failed/unconfirmed saves retain pending edits and cannot announce success; field batches stop on the first failure and retain retry identity. Signed-out/changed accounts reset cached access, pending request generations, polling and mutation state. Verification waits for successful token refresh, with late-session completion fenced. Existing incoming UI, API adapters, backend and release workflows are preserved.
+- Validation: 34 focused acceptance/auth/recovery/workflow tests passed, plus 62 affected workbench/evidence/view tests. After preserving the existing pending-edit reapplication policy, final acceptance and workbench-layout rerun passed 27 tests. Flutter analyze --no-pub --fatal-infos passed, formatting and git diff --check passed. The ten new tests also cover delayed acknowledgement, partial batches and retry keys, unchanged responses, failed token refresh, and stale account-save responses. No full canonical suite, push, PR, native action, provider, credential use or live/browser acceptance in this task. DATA owns canonical verification of the combined release source.
+- Failed approaches: initial test startup needed the repository's ignored firebase_options.ci.dart copy; a stalled-save test initially waited for an intentionally running progress animation and was corrected to bounded pumping before acknowledgement. These were harness setup failures, separate from the five confirmed RED assertions. Local worktree creation and Flutter cache access required approved sandbox escalation; no approval-review rejection or deployment workaround occurred.
+- Durable private evidence: /private/tmp/specimen-incoming-main-product-review-20260914 (source snapshots, RED/GREEN logs, patch and source pins, UI_SEQUENCE.md, STAGED_ACCEPTANCE.md and final manifest). The existing /private/tmp/specimen-original-ten-review-prep-20260914 packet remains unchanged. The new guide supersedes only its UI control sequence for the incoming main.
+- Remaining gates: independent semantic review and DATA integration/canonical checks, admitted native/runtime/data readiness and unlocked browser, every real region and both real readers for each original specimen, all ten actual before/save/reopen receipts, shared live checks and final deployment evidence. Source permits per-record ready review; no all-ten human duration or concurrency credit is claimed. Human/institutional approvals remain false and disposition null.
+
+
+## 2026-09-14T09:05:33.540355+00:00 — Correction: acknowledgement readback and staged batch safety
+
+- Task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; branch codex/product-review-acknowledgement, worktree /private/tmp/specimen-product-review-acknowledgement-20260914. Successor to eff48d00bc9a733dbb768147581af5ab58132d2a, which remains in history. This corrects the preceding Product acknowledgement/session entry: its author tests passed, but independent review subsequently found two save-readback defects.
+- Independent reproduction: a real acknowledged changed literal became a false stale-edit warning; a first correction's fresh GET could show a concurrent change to a second staged field, yet the original batch still submitted that invalidated draft. The unchanged independent probe (SHA256 9a926ae7b96700fe7a8fec8792e69cddfb9fe0b44c54aa2f743209cf55551974) was replayed before the repair: 2 failed, 2 passed on expected assertions.
+- Repair: defer draft reapplication while acknowledgement/readback is in flight; remove only the acknowledged field before rechecking remaining drafts against the fresh record; check that each draft still belongs to the current pending set before sending it. A concurrent change to a later field stops the batch. The only production delta is workbench.dart; root-reviewed authentication bytes remain unchanged.
+- Regression evidence: unchanged independent probes plus prior acknowledgement/layout tests passed 31 checks. Final permanent real-readback tests, prior acknowledgement tests, workbench layout and existing widget tests passed 41 checks; fatal-info Flutter analysis and git diff --check passed. The simulated repository now applies returned field values, and the permanent tests also prove an unchanged later field still saves successfully. No blanket skipped tests, broad canonical rerun or source assertion substituted for these behavior checks.
+- Evidence: /private/tmp/specimen-product-ack-successor-20260914, with RED/GREEN/final logs, the exact unchanged independent probe, patch/source pins and a final manifest. Original packet /private/tmp/specimen-incoming-main-product-review-20260914 remains frozen. No failed repair approach beyond the independently identified predecessor defects. No native/provider/browser/credential action, push or PR.
+- Pending: unchanged independent replay on this exact successor, then DATA integration and combined canonical checks. Root auth review of eff48d passed five supplied and three independent cases; no auth source changed here. The original-ten actual live acceptance, current access deadlines and zero unmeasured time credit remain unchanged.
+
 ## 2026-09-14 — Independent acknowledgement successor closes R1 and R2
 
 - Task: parent `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; reviewer `/root/adversarial_pr27`. Author branch `codex/product-review-acknowledgement`, worktree `/private/tmp/specimen-product-review-acknowledgement-20260914`, clean successor `f0bf0e946c9973f089db4f429f324087b0cd15af` / tree `4f06b03c92d28e4b1f217bc3a7d8e9b6163ce1a0`, parent `eff48d00bc9a733dbb768147581af5ab58132d2a`.
@@ -3262,6 +4143,7 @@ Correction/addition to “Hosting exact run/attempt provenance author closeout�
 - Evidence: `/private/tmp/specimen-product-ack-independent-successor-20260914/{REVIEW.md,ARTIFACTS.json,SOURCE_PINS.json,INDEPENDENT_GREEN.log}`. Replayed unchanged four-probe SHA256 `9a926ae7b96700fe7a8fec8792e69cddfb9fe0b44c54aa2f743209cf55551974`; added two focused positive batch/delayed-ack probes. Total 6 PASS, exit 0; diff whitespace and all committed library pins verified. Original RED packet/manifest preserved unchanged.
 - Learning: remove only the acknowledged draft before reconciling remaining fields, and check each batch entry's continued eligibility against every readback. Successful unchanged batches must also prove sequential base revisions and absence of false stale warnings.
 - Failed approaches and follow-ups: no new failed tests or workaround in this successor review; earlier original2FAIL remain frozen. No broad suite, product/release edits, native/cloud/GitHub/browser/credentials/provider effects or paid work. Live authenticated save/reopen: Not confirmed. Parent owns composition, canonical checks and release.
+
 
 ### 2026-09-14 — Complete reviewed release canonical PASS (task 01a082b4-a9bc-7413-a3c5-505b61c2f4db)
 

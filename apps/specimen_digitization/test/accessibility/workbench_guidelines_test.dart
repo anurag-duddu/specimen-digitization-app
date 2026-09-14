@@ -108,7 +108,7 @@ Future<void> pumpWorkbench(WidgetTester tester, Size window) async {
       home: Scaffold(
         body: ReviewWorkbench(
           specimen: workbenchRecord(),
-          onChange: (_) async {},
+          onChange: (_) async => false,
           onRetry: (_) async {},
           onRefresh: () {},
           onNext: () {},
