@@ -201,7 +201,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('5 records selected'), findsOneWidget);
       expect(
-        find.text(SelectionBar.moreMatchLabel),
+        find.text(SelectionBar.recordsMoreMatch),
         findsOneWidget,
         reason: 'the server still has a page, so the reach has to be named',
       );
