@@ -451,8 +451,10 @@ generic runtime signup or collection-creation API; naming a storage prefix that
 a collection may ingest from is the same class of decision. Sources are supplied
 to the process at construction (`create_app(source_registry=...)`) beside
 identity, membership and origins. A reviewer selects *within* a registered
-source and never names a bucket. A runtime configured with no sources has none,
-and every route below answers 404.
+source and never names a bucket. `GET /sources` is a collection route shaped
+like `GET /collections`, so a runtime configured with no sources answers it with
+an empty list; every route that names a particular source answers 404, which is
+also what a source registered to a collection the caller is not in looks like.
 
 `media_types` is an explicit allowlist, validated at registration against the
 formats the from-source path can itself verify: `image/jpeg`, `image/png`,

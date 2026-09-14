@@ -862,7 +862,12 @@ def create_app(
 
     @app.get(prefix + "/sources")
     def sources(organization_id: str, user=Depends(identity)):
-        registry = configured_sources()
+        # A collection route, shaped like /collections: an unconfigured runtime
+        # has no sources, which is an empty list and not a missing resource.
+        try:
+            registry = configured_sources()
+        except Missing:
+            return {"items": [], "next_cursor": None}
         items = []
         for source in registry.for_collections(
             caller_collections(user, organization_id)

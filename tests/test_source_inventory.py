@@ -144,6 +144,22 @@ def test_sources_hides_a_source_registered_to_another_collection(tmp_path):
     assert client.get(PREFIX + "/sources", headers=HEADERS).json()["items"] == []
 
 
+def test_an_unconfigured_runtime_lists_no_sources(tmp_path):
+    """No configuration means no sources, which is an empty list, not an error."""
+    from fastapi.testclient import TestClient
+    from source_fixtures import TOKEN
+    from specimen_digitization.application.api import local_app
+
+    client = TestClient(local_app(tmp_path / "state", TOKEN))
+
+    listing = client.get(PREFIX + "/sources", headers=HEADERS)
+    named = client.get(PREFIX + f"/sources/{SOURCE_ID}", headers=HEADERS)
+
+    assert listing.status_code == 200, listing.text
+    assert listing.json() == {"items": [], "next_cursor": None}
+    assert named.status_code == 404, named.text
+
+
 def test_there_is_no_endpoint_that_creates_a_source(tmp_path):
     objects = tmp_path / "objects"
     slides(objects, 1)
