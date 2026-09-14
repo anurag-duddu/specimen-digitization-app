@@ -30,6 +30,13 @@ const Map<String, String> userFacingTerms = <String, String>{
   // Honest absence. Never rendered as 0, a dash, or an empty slot.
   'unmeasured': 'Not measured',
   'uncalibrated': 'Not calibrated',
+  // Validation finding severities. The wire words are `hard` and `warning`,
+  // and both were reaching the screen unchanged: a finding row read
+  // "A supported collector is required hard", which names an internal enum
+  // rather than what the reviewer has to do about it (pass criteria 2.2 and
+  // 9.1).
+  'hard': 'Blocks clearance',
+  'warning': 'Worth checking',
   // Evidence states shown in the correction dialog.
   'supported': 'Supported',
   'unknown': 'Unknown',

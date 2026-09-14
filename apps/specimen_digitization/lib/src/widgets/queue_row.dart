@@ -134,6 +134,12 @@ class QueueRow extends StatelessWidget {
     // identifier, the reason, the chip and the age as four separate stops.
     return MergeSemantics(
       child: Semantics(
+        // A row a reviewer opens is a button, and it says so: without the
+        // role a screen reader and a browser's accessibility tree announce a
+        // label with no way to act on it, which is what a reviewer on the web
+        // found when the queue would not open a record.
+        button: true,
+        enabled: onOpen != null,
         selected: selected,
         label: _semanticsLabel(),
         child: Material(

@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../administrator_contact.dart';
 import '../models.dart';
 import '../theme/icons.dart';
 import '../vocabulary.dart';
@@ -78,10 +79,14 @@ class AppShell extends StatelessWidget {
         children: <Widget>[
           EnvironmentBanner(environment: controller.environment),
           _BlockerNotice(blockers: controller.repository.blockers),
-          _ErrorBanner(error: controller.error),
+          _ErrorBanner(
+            error: controller.error,
+            onDismiss: controller.clearError,
+          ),
           _ProgressRow(
             busy:
                 controller.loading ||
+                controller.recordLoading ||
                 controller.mutating ||
                 controller.loadingMore,
           ),
@@ -98,7 +103,15 @@ class AppShell extends StatelessWidget {
                   NavigationRail(
                     selectedIndex: destination.index,
                     extended: extended,
-                    labelType: NavigationRailLabelType.none,
+                    // The words are drawn at medium, where the rail is
+                    // collapsed. A destination whose label is hidden produces
+                    // no semantics at all, so an icon-only rail is a pair of
+                    // unnamed buttons in the accessibility tree. Flutter
+                    // asserts that an extended rail carries no label type,
+                    // which is why this is a branch rather than a constant.
+                    labelType: extended
+                        ? NavigationRailLabelType.none
+                        : NavigationRailLabelType.all,
                     onDestinationSelected: (int index) =>
                         _select(context, WorkspaceDestination.values[index]),
                     destinations: const <NavigationRailDestination>[
@@ -112,7 +125,21 @@ class AppShell extends StatelessWidget {
                       ),
                     ],
                   ),
-                Expanded(child: child),
+                // The routed screen is a nested `Navigator`, and a route's
+                // modal barrier blocks the semantics of everything painted
+                // before it inside the same semantics boundary. The shell's
+                // own chrome, the environment band and this navigation, is
+                // painted first, so without a boundary of its own the screen
+                // erased all of it: a reviewer working through a browser's
+                // accessibility tree found a queue with no navigation and no
+                // way into a record.
+                Expanded(
+                  child: Semantics(
+                    container: true,
+                    explicitChildNodes: true,
+                    child: child,
+                  ),
+                ),
               ],
             ),
           ),
@@ -140,7 +167,15 @@ class AppShell extends StatelessWidget {
       actions: <Widget>[
         if (inlineSwitcher)
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: context.space.space2),
+            // The vertical space is what keeps the field's floating label
+            // inside the toolbar. An `AppBar` stretches an action to the full
+            // 56 dp height, and an outlined field that tall draws its label
+            // across its own top border, which then sits on the window's top
+            // edge and loses its upper half.
+            padding: EdgeInsets.symmetric(
+              horizontal: context.space.space2,
+              vertical: context.space.space1,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: switcherMaxWidth),
               child: _CollectionDropdown(controller: controller),
@@ -386,21 +421,26 @@ class _BlockerNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (blockers.isEmpty) return const SizedBox.shrink();
     final String named = blockers
         .map((dynamic blocker) => vocabularyLabel(blocker.toString()))
         .join(', ');
-    return Padding(
-      padding: EdgeInsets.all(context.space.space3),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text('Processing is blocked: $named.'),
-          Text(
-            'Ask your collection administrator to review it.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
+    // Height and opacity, so the screen below does not snap down the moment
+    // the repository answers (motion catalog, row 10).
+    return MotionReveal(
+      visible: blockers.isNotEmpty,
+      child: Padding(
+        padding: EdgeInsets.all(context.space.space3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('Processing is blocked: $named.'),
+            Text(
+              'A person has to review it.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const AdministratorContactLine(),
+          ],
+        ),
       ),
     );
   }
@@ -409,23 +449,39 @@ class _BlockerNotice extends StatelessWidget {
 /// The screen level error surface: one banner, one recovery action for the
 /// failure class it is reporting (screen blueprints, section 11).
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.error});
+  const _ErrorBanner({required this.error, required this.onDismiss});
 
   final WorkspaceError? error;
+
+  /// Drops the banner. The reviewer's, never a background process's: a poll
+  /// that answers successfully must not take away a message nobody has read
+  /// yet (pass criterion 9.5).
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
     final WorkspaceError? failure = error;
-    if (failure == null) return const SizedBox.shrink();
-    return MaterialBanner(
-      content: Semantics(liveRegion: true, child: Text(failure.message)),
-      leading: const Icon(Symbols.info),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => failure.action(),
-          child: Text(failure.actionLabel),
-        ),
-      ],
+    // The banner arrives and leaves with the shared reveal rather than
+    // snapping the layout, and it is never a snackbar: it carries a recovery
+    // action and must persist until it is resolved (motion catalog, row 10).
+    return MotionReveal(
+      visible: failure != null,
+      child: failure == null
+          ? const SizedBox(width: double.infinity)
+          : MaterialBanner(
+              content: Semantics(
+                liveRegion: true,
+                child: Text(failure.message),
+              ),
+              leading: const Icon(Symbols.info),
+              actions: <Widget>[
+                TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
+                TextButton(
+                  onPressed: () => failure.action(),
+                  child: Text(failure.actionLabel),
+                ),
+              ],
+            ),
     );
   }
 }

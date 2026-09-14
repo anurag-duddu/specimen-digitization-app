@@ -159,28 +159,8 @@ class WorkbenchReadings extends StatelessWidget {
     return anchors[regionId];
   }
 
-  Widget _card(BuildContext context, Json o, String? reference) {
-    final String regionName = _regionName(o['region_id']);
-
-    // The region name sits above the card rather than inside its title row:
-    // `ReadingCard` lays its model name and provider out in one unwrapped
-    // row, so a long pair overflows. The PR asks for the shared component to
-    // make its provider flexible.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          regionName,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        SizedBox(height: context.space.space1),
-        _reading(context, o, reference, regionName),
-      ],
-    );
-  }
+  Widget _card(BuildContext context, Json o, String? reference) =>
+      _reading(context, o, reference, _regionName(o['region_id']));
 
   Widget _reading(
     BuildContext context,
@@ -193,6 +173,7 @@ class WorkbenchReadings extends StatelessWidget {
       modelName: textOf(o['model_id'], 'Model'),
       provider: textOf(o['provider'], 'Not recorded'),
       literal: literal,
+      regionName: regionName,
       // The first reading of a region has nothing before it to differ from.
       reference: reference,
       selected: selectedRegionId != null && selectedRegionId == o['region_id'],
@@ -369,16 +350,29 @@ class WorkbenchReadings extends StatelessWidget {
             message:
                 transcriptionBlockedReason ??
                 'Record which reading the source supports',
-            child: Semantics(
-              hint: transcriptionBlockedReason ?? '',
-              child: FilledButton.tonalIcon(
-                onPressed:
-                    transcriptionBlockedReason != null ||
-                        specimen.observations.isEmpty
-                    ? null
-                    : () => _resolve(context),
-                icon: const Icon(Symbols.edit_note),
-                label: const Text('Resolve transcription'),
+            // `MergeSemantics` is what puts the reason on the button's own
+            // node. Without it the hint sits on a parent node and the
+            // disabled button is a separate child, so a screen reader hears
+            // the name and the dimmed state but never why (accessibility,
+            // section 3.2).
+            child: MergeSemantics(
+              child: Semantics(
+                hint: transcriptionBlockedReason ?? '',
+                // Repeated here because a merge boundary keeps its own flags:
+                // a node that does not say it is disabled is read as if it
+                // were live.
+                enabled:
+                    transcriptionBlockedReason == null &&
+                    specimen.observations.isNotEmpty,
+                child: FilledButton.tonalIcon(
+                  onPressed:
+                      transcriptionBlockedReason != null ||
+                          specimen.observations.isEmpty
+                      ? null
+                      : () => _resolve(context),
+                  icon: const Icon(Symbols.edit_note),
+                  label: const Text('Resolve transcription'),
+                ),
               ),
             ),
           ),

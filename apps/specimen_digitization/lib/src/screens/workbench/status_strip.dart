@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../../models.dart';
@@ -77,6 +78,51 @@ class WorkbenchStatusStrip extends StatefulWidget {
 class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
   bool _blockersOpen = false;
 
+  /// The disposition this strip last drew, so a change can be told from a
+  /// first paint. A record opened at Cleared was not cleared just now.
+  String? _lastDisposition;
+
+  /// True once the disposition changed while this record was open, which is
+  /// the only moment in the product where a human commits an attributable,
+  /// versioned decision about a museum record (motion catalog, row 50).
+  bool _settled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastDisposition = widget.specimen.disposition;
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkbenchStatusStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.specimen.id != widget.specimen.id) {
+      _lastDisposition = widget.specimen.disposition;
+      _settled = false;
+      return;
+    }
+    final String? next = widget.specimen.disposition;
+    if (next == _lastDisposition) return;
+    _lastDisposition = next;
+    if (next == null) return;
+    setState(() => _settled = true);
+    // Three channels, because motion is never the only one: the chip, this
+    // announcement, and one medium impact on the two platforms that have
+    // haptics. The reviewer is looking at the screen, so the haptic is
+    // redundancy rather than the message.
+    final String spoken =
+        'Saved. ${SpecimenStatus.fromWire(next).semanticsLabel}';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !MediaQuery.supportsAnnounceOf(context)) return;
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        spoken,
+        Directionality.of(context),
+      );
+    });
+    SpecimenHaptics.decisionLanded();
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -93,20 +139,37 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (widget.conflictVersion != null)
-          Padding(
-            padding: EdgeInsets.only(bottom: context.space.space2),
-            child: ConflictBanner(
-              version: widget.conflictVersion!,
-              onRefresh: widget.onRefresh,
-            ),
-          ),
+        // Height and opacity, deliberately no shake and deliberately no
+        // haptic: this is a paragraph the reviewer has to read and act on,
+        // and a buzz adds urgency without adding information
+        // (motion catalog, row 51).
+        MotionReveal(
+          visible: widget.conflictVersion != null,
+          child: widget.conflictVersion == null
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: EdgeInsets.only(bottom: context.space.space2),
+                  child: ConflictBanner(
+                    version: widget.conflictVersion!,
+                    onRefresh: widget.onRefresh,
+                  ),
+                ),
+        ),
         Wrap(
           spacing: context.space.space2,
           runSpacing: context.space.space2,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: <Widget>[
-            StatusChip(status),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // Flexible, because a `Row` hands a non-flex child unbounded
+                // main axis constraints and the chip's own label would then
+                // never truncate.
+                Flexible(child: StatusChip(status, decisive: true)),
+                _SavedCheck(shown: _settled),
+              ],
+            ),
             Text(
               'Version ${s.revision}',
               style: theme.textTheme.labelMedium?.copyWith(
@@ -134,23 +197,28 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
               ),
           ],
         ),
-        if (widget.staleChanges.isNotEmpty) ...<Widget>[
-          SizedBox(height: context.space.space2),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              widget.staleChanges.length == 1
-                  ? '1 correction was dropped because that field changed on the '
-                        'server. Make it again against the new version.'
-                  : '${widget.staleChanges.length} corrections were dropped '
-                        'because those fields changed on the server. Make them '
-                        'again against the new version.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: context.tokens.needsReviewContent,
-              ),
-            ),
-          ),
-        ],
+        MotionReveal(
+          visible: widget.staleChanges.isNotEmpty,
+          child: widget.staleChanges.isEmpty
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: EdgeInsets.only(top: context.space.space2),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      widget.staleChanges.length == 1
+                          ? '1 correction was dropped because that field changed on the '
+                                'server. Make it again against the new version.'
+                          : '${widget.staleChanges.length} corrections were dropped '
+                                'because those fields changed on the server. Make them '
+                                'again against the new version.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: context.tokens.needsReviewContent,
+                      ),
+                    ),
+                  ),
+                ),
+        ),
         SizedBox(height: context.space.space2),
         _blockers(context),
         ProcessingDisclosure(
@@ -415,3 +483,55 @@ Future<bool> showConflictDialog(
       ),
     ) ??
     false;
+
+/// The check that marks a decision this reviewer committed
+/// (motion catalog, row 50, delight moment 1).
+///
+/// It scales from 0.6 and fades from 0, which is the one place in the app a
+/// scale is sanctioned: it is drawn once per decision, and the decision is
+/// the point of the product. Under reduced motion it appears at full size.
+/// It is never the only signal; the chip beside it carries the word and the
+/// strip announces the new disposition.
+class _SavedCheck extends StatelessWidget {
+  const _SavedCheck({required this.shown});
+
+  final bool shown;
+
+  /// Where the scale starts. Named so the one scale in the app is one number.
+  static const double from = 0.6;
+
+  @override
+  Widget build(BuildContext context) {
+    final MotionTokens motion = context.motion;
+    if (!shown) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsetsDirectional.only(start: context.space.space1),
+      child: Semantics(
+        label: 'Saved',
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: motion.reduced ? 1 : from, end: 1),
+          duration: motion.emphasized,
+          curve: MotionTokens.emphasizedEnterCurve,
+          builder: (BuildContext context, double value, Widget? child) =>
+              Transform.scale(
+                scale: value,
+                child: Opacity(
+                  opacity: motion.reduced ? 1 : _fade(value),
+                  child: child,
+                ),
+              ),
+          child: Icon(
+            Symbols.check_circle,
+            size: context.sizes.iconInline,
+            color: context.tokens.clearedContent,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Maps the scale value onto the opacity, so one tween drives both and the
+  /// two can never desynchronise.
+  static double _fade(double scale) =>
+      ((scale - from) / (1 - from)).clamp(0, 1).toDouble();
+}

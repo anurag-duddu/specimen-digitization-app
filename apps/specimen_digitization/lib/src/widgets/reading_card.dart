@@ -19,6 +19,7 @@ class ReadingCard extends StatelessWidget {
     required this.modelName,
     required this.provider,
     required this.literal,
+    this.regionName,
     this.reference,
     this.executionDetails,
     this.footerActions,
@@ -33,6 +34,10 @@ class ReadingCard extends StatelessWidget {
 
   /// The transcription, verbatim.
   final String literal;
+
+  /// Which region of the photograph the reading was taken from, as the region
+  /// list names it. Null where the caller has already said so nearby.
+  final String? regionName;
 
   /// The first reading for this region, if this is not it.
   final String? reference;
@@ -51,6 +56,7 @@ class ReadingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final Color accent = context.tokens.evidenceModelContent;
+    final String? region = regionName;
 
     return Semantics(
       container: true,
@@ -73,26 +79,44 @@ class ReadingCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              if (region != null) ...<Widget>[
+                Text(
+                  region,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                SizedBox(height: context.space.space1),
+              ],
+              // The model and the provider are a pair of arbitrary length
+              // strings beside each other, so they wrap rather than compete
+              // for one line. A `Row` here overflowed at a realistic pane
+              // width, and the pane goes down to a 320dp window.
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Icon(
-                    Symbols.memory,
-                    size: context.sizes.iconInline,
-                    color: accent,
+                  Padding(
+                    padding: EdgeInsets.only(top: context.space.space1),
+                    child: Icon(
+                      Symbols.memory,
+                      size: context.sizes.iconInline,
+                      color: accent,
+                    ),
                   ),
                   SizedBox(width: context.space.space1),
                   Expanded(
-                    child: Text(
-                      modelName,
-                      style: theme.textTheme.titleSmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  SizedBox(width: context.space.space2),
-                  Text(
-                    provider,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    child: Wrap(
+                      spacing: context.space.space2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        Text(modelName, style: theme.textTheme.titleSmall),
+                        Text(
+                          provider,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],

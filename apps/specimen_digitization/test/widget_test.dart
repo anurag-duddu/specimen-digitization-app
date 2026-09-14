@@ -307,7 +307,10 @@ void main() {
       await tester.pumpAndSettle();
       // Tapping a layer turns it into an editor in place, with the
       // photograph still on screen (audit finding H6.2).
-      await scrollAndTap(tester, find.byTooltip('Edit as written').first);
+      await scrollAndTap(
+        tester,
+        find.byTooltip(RegExp(r'^Edit as written')).first,
+      );
       expect(find.text('Correct Country'), findsOneWidget);
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
@@ -375,7 +378,10 @@ void main() {
     await tester.pumpAndSettle();
     for (var i = 0; i < 5; i++) {
       // One row per field: the nth edit control belongs to the nth field.
-      await scrollAndTap(tester, find.byTooltip('Edit as written').at(i));
+      await scrollAndTap(
+        tester,
+        find.byTooltip(RegExp(r'^Edit as written')).at(i),
+      );
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
     }
@@ -456,7 +462,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byTooltip('Edit as written'), findsNothing);
+    expect(find.byTooltip(RegExp(r'^Edit as written')), findsNothing);
     // The state the server sent is still shown, never swallowed.
     expect(find.text('State unknown'), findsWidgets);
   });

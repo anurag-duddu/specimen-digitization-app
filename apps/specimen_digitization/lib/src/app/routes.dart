@@ -51,4 +51,13 @@ abstract final class AppRoutes {
   /// True when [location] is one of the screens shown before a collection.
   static bool isEntryLocation(String location) =>
       location == signIn || location == verify || location == setup;
+
+  /// True when [location] belongs to no collection and is reachable from
+  /// every screen.
+  ///
+  /// These are the routes that open over whatever the reviewer was doing.
+  /// They name no collection, so the redirect must not read one out of them
+  /// and must not send them home: doing that is what made "Help and
+  /// shortcuts" a control that closed itself for every signed-in reviewer.
+  static bool isGlobalLocation(String location) => location == help;
 }

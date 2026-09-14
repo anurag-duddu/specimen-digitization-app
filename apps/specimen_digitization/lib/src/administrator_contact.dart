@@ -1,0 +1,175 @@
+/// Who "your administrator" is (screen blueprints, section 10; pass
+/// criterion 10.3).
+///
+/// A message that tells a reviewer to ask their administrator and then names
+/// nobody is not an instruction, it is a shrug. The collection document the
+/// scope already carries is the only place the server publishes a contact, so
+/// that is where this reads one from, and where it finds none it says which
+/// collection the contact would be listed under rather than inventing a name.
+library;
+
+import 'package:flutter/material.dart';
+
+import 'models.dart';
+import 'theme/icons.dart';
+import 'workspace.dart';
+
+/// The keys a collection document may publish a contact under.
+///
+/// More than one, because the collection document is written by whoever set
+/// the collection up rather than by this client, and the spellings in the
+/// wild differ. Read in order; the first one that carries something wins.
+const List<String> administratorContactKeys = <String>[
+  'administrator_contact',
+  'administrator',
+  'support_contact',
+  'support',
+  'contact',
+];
+
+/// The keys a contact object may carry a reachable address under.
+const List<String> administratorAddressKeys = <String>[
+  'email',
+  'address',
+  'contact',
+  'mailto',
+];
+
+/// The keys a contact object may carry a person or a role under.
+const List<String> administratorNameKeys = <String>['name', 'role', 'team'];
+
+/// The administrator of one collection, as the collection document names them.
+@immutable
+class AdministratorContact {
+  const AdministratorContact({
+    required this.collectionName,
+    this.name,
+    this.address,
+  });
+
+  /// The collection this contact belongs to, for the sentence that has to
+  /// name it when there is no contact.
+  final String collectionName;
+
+  /// A person or a role: "Alex Mwangi", "the entomology data team".
+  final String? name;
+
+  /// A mail address the reviewer can write to.
+  final String? address;
+
+  /// True when the collection document named someone or something.
+  bool get isKnown =>
+      (name?.isNotEmpty ?? false) || (address?.isNotEmpty ?? false);
+
+  /// Reads the contact out of [scope]'s collection document.
+  static AdministratorContact of(CollectionScope? scope) {
+    final String collection = scope?.name ?? scope?.key ?? 'this collection';
+    final Json configuration =
+        scope?.configuration ?? const <String, dynamic>{};
+    for (final String key in administratorContactKeys) {
+      final Object? raw = configuration[key];
+      if (raw is String && raw.trim().isNotEmpty) {
+        final String value = raw.trim();
+        return value.contains('@')
+            ? AdministratorContact(collectionName: collection, address: value)
+            : AdministratorContact(collectionName: collection, name: value);
+      }
+      if (raw is Map) {
+        final String? address = _first(raw, administratorAddressKeys);
+        final String? name = _first(raw, administratorNameKeys);
+        if (address != null || name != null) {
+          return AdministratorContact(
+            collectionName: collection,
+            name: name,
+            address: address,
+          );
+        }
+      }
+    }
+    return AdministratorContact(collectionName: collection);
+  }
+
+  static String? _first(Map<Object?, Object?> source, List<String> keys) {
+    for (final String key in keys) {
+      final Object? value = source[key];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
+  /// The sentence that replaces "ask your administrator".
+  ///
+  /// Names a person or a role and a way to reach them where the collection
+  /// document has one, and where it has none says exactly where a contact
+  /// would be published rather than leaving the reviewer to guess.
+  String get sentence {
+    final String? who = name;
+    final String? where = address;
+    if (who != null && where != null) return 'Ask $who at $where.';
+    if (where != null) return 'Ask your collection administrator at $where.';
+    if (who != null) return 'Ask $who.';
+    return 'Your collection administrator is listed in the collection '
+        'configuration for $collectionName.';
+  }
+
+  /// A mail link carrying the collection and, where there is one, the record.
+  ///
+  /// Offered as text the reviewer can copy rather than a link this client
+  /// opens: nothing in this app may hand a URL to the platform without the
+  /// reviewer choosing it.
+  String subjectFor({String? specimenId}) => specimenId == null
+      ? 'Specimen digitization, collection $collectionName'
+      : 'Specimen digitization, collection $collectionName, record $specimenId';
+}
+
+/// One line naming the administrator, read from the open collection.
+///
+/// Reads the workspace itself rather than taking the contact as an argument,
+/// so a message buried six widgets deep can name a person without six widgets
+/// growing a parameter. Outside the collection shell there is no collection
+/// document, and the line says which collection the contact is listed under.
+class AdministratorContactLine extends StatelessWidget {
+  const AdministratorContactLine({
+    super.key,
+    this.specimenId,
+    this.dense = true,
+  });
+
+  /// The record the message is about, put in the mail subject.
+  final String? specimenId;
+
+  /// True for the small print beside another message, false for the help
+  /// sheet where this is a section of its own.
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final WorkspaceScope? scope = context
+        .getInheritedWidgetOfExactType<WorkspaceScope>();
+    final AdministratorContact contact = AdministratorContact.of(
+      scope?.notifier?.scope,
+    );
+    final TextStyle? style = dense
+        ? theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          )
+        : theme.textTheme.bodyMedium;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(contact.sentence, style: style),
+        if (contact.address != null) ...<Widget>[
+          SizedBox(height: context.space.space1),
+          SelectableText(
+            'Subject: ${contact.subjectFor(specimenId: specimenId)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}

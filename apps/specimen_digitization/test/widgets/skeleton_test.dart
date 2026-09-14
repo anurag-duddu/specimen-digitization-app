@@ -1,5 +1,6 @@
 // Placeholders: no shimmer, no semantics, one live "Loading" node.
 
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/skeleton.dart';
@@ -54,18 +55,49 @@ void main() {
   testWidgets('the loading announcement is a live region, spoken once', (
     WidgetTester tester,
   ) async {
+    // Finding V-4. Without text on screen to host it there is no node to
+    // make a live region: a zero-size node has an empty rect, and an empty
+    // rect is dropped from the semantics tree. The invisible form announces
+    // instead, once, and leaves nothing behind for a screen reader to land on
+    // that nobody can see.
     final SemanticsHandle handle = tester.ensureSemantics();
+    final List<String> announced = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<dynamic>(
+      SystemChannels.accessibility,
+      (dynamic message) async {
+        final Map<Object?, Object?> event = message! as Map<Object?, Object?>;
+        if (event['type'] != 'announce') return;
+        announced.add(
+          (event['data']! as Map<Object?, Object?>)['message'].toString(),
+        );
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger
+          .setMockDecodedMessageHandler<dynamic>(
+            SystemChannels.accessibility,
+            null,
+          ),
+    );
+
     await pumpComponent(
       tester,
-      const Column(
-        children: <Widget>[
-          SkeletonRow(),
-          SkeletonRow(),
-          LoadingAnnouncement(thing: 'queue'),
-        ],
+      Builder(
+        builder: (BuildContext context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
+          child: const Column(
+            children: <Widget>[
+              SkeletonRow(),
+              SkeletonRow(),
+              LoadingAnnouncement(thing: 'queue'),
+            ],
+          ),
+        ),
       ),
     );
-    expect(find.bySemanticsLabel('Loading queue'), findsOneWidget);
+    await tester.pump();
+    expect(announced, <String>['Loading queue']);
+    expect(find.bySemanticsLabel('Loading queue'), findsNothing);
     handle.dispose();
   });
 

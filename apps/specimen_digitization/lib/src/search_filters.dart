@@ -8,10 +8,13 @@
 /// with the same keys the repository has always accepted.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import 'models.dart';
+import 'saved_filters.dart';
 import 'theme/icons.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
@@ -58,6 +61,7 @@ class SearchFilters extends StatefulWidget {
     super.key,
     required this.initial,
     this.configuration = const <String, dynamic>{},
+    this.savedFilters,
   });
 
   /// The filters already applied.
@@ -65,6 +69,10 @@ class SearchFilters extends StatefulWidget {
 
   /// The collection document, which feeds the pickers where it names choices.
   final Json configuration;
+
+  /// Where named filter sets are kept, or null when the host offers none
+  /// (pass criterion 7.4).
+  final SavedFilterStore? savedFilters;
 
   @override
   State<SearchFilters> createState() => _SearchFiltersState();
@@ -80,6 +88,63 @@ class _SearchFiltersState extends State<SearchFilters> {
   late RangeValues _risk = _initialRisk();
   late bool _includeUnmeasured =
       !_values.containsKey('risk_min') && !_values.containsKey('risk_max');
+
+  List<SavedFilterSet> _saved = const <SavedFilterSet>[];
+  bool _savedLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadSaved());
+  }
+
+  Future<void> _loadSaved() async {
+    final SavedFilterStore? store = widget.savedFilters;
+    if (store == null) {
+      setState(() => _savedLoaded = true);
+      return;
+    }
+    final List<SavedFilterSet> sets = await store.load();
+    if (!mounted) return;
+    setState(() {
+      _saved = sets;
+      _savedLoaded = true;
+    });
+  }
+
+  /// The filter map the sheet would return right now.
+  Map<String, String> _resolved() {
+    _writeDates();
+    _writeRisk();
+    return Map<String, String>.from(_values)
+      ..removeWhere((String key, String value) => value.isEmpty);
+  }
+
+  Future<void> _saveCurrent() async {
+    final SavedFilterStore? store = widget.savedFilters;
+    if (store == null) return;
+    final Map<String, String> filters = _resolved();
+    final String? name = await _askForName(context);
+    if (name == null || !mounted) return;
+    final List<SavedFilterSet> sets = await store.save(
+      SavedFilterSet(name: name, filters: filters),
+    );
+    if (!mounted) return;
+    setState(() => _saved = sets);
+  }
+
+  Future<void> _deleteSaved(String name) async {
+    final SavedFilterStore? store = widget.savedFilters;
+    if (store == null) return;
+    final List<SavedFilterSet> sets = await store.remove(name);
+    if (!mounted) return;
+    setState(() => _saved = sets);
+  }
+
+  /// Applies a saved set and closes the sheet, which is the one action pass
+  /// criterion 7.4 asks for.
+  void _applySaved(SavedFilterSet set) =>
+      Navigator.pop(context, Map<String, String>.from(set.filters));
 
   DateTimeRange? _initialRange() {
     final DateTime? from = DateTime.tryParse(_values['created_from'] ?? '');
@@ -218,6 +283,12 @@ class _SearchFiltersState extends State<SearchFilters> {
             ),
             child: Text('Filter the queue', style: theme.textTheme.titleLarge),
           ),
+          // Loose, so the form still lays out where it is pumped into an
+          // unbounded height. What stops the scrolling body from being drawn
+          // over Apply is the dialog's own height bound in
+          // `showAdaptiveForm`: without one the remaining space is infinite,
+          // this child shrink-wraps its whole content, and the last control
+          // in it lands on top of the action row (finding V-6).
           Flexible(
             child: SingleChildScrollView(
               padding: EdgeInsets.all(context.space.space6),
@@ -225,6 +296,14 @@ class _SearchFiltersState extends State<SearchFilters> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
+                  if (widget.savedFilters != null)
+                    _SavedSets(
+                      sets: _saved,
+                      loaded: _savedLoaded,
+                      onApply: _applySaved,
+                      onDelete: _deleteSaved,
+                      onSaveCurrent: () => unawaited(_saveCurrent()),
+                    ),
                   const CaveatText(
                     label: 'All filters must match.',
                     why:
@@ -338,14 +417,7 @@ class _SearchFiltersState extends State<SearchFilters> {
                 FilledButton(
                   onPressed: () {
                     if (!_form.currentState!.validate()) return;
-                    _writeDates();
-                    _writeRisk();
-                    Navigator.pop(
-                      context,
-                      Map<String, String>.from(_values)..removeWhere(
-                        (String key, String value) => value.isEmpty,
-                      ),
-                    );
+                    Navigator.pop(context, _resolved());
                   },
                   child: const Text('Apply'),
                 ),
@@ -365,6 +437,10 @@ class _SearchFiltersState extends State<SearchFilters> {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: context.space.space2),
       child: TextFormField(
+        // The first text field takes focus on open, so a keyboard reviewer
+        // starts in the form rather than silently on Cancel (accessibility,
+        // section 4.2 step 5; finding V-10).
+        autofocus: key == searchFields.keys.first,
         initialValue: _values[key],
         decoration: InputDecoration(labelText: searchFieldLabel(key)),
         onChanged: (String value) => _values[key] = value.trim(),
@@ -404,6 +480,137 @@ class _SearchFiltersState extends State<SearchFilters> {
       ),
     );
   }
+}
+
+/// The saved filter sets, at the top of the form (pass criterion 7.4).
+///
+/// Each set applies in one tap and deletes from its own chip. The sets live
+/// on this device, which is said out loud rather than implied, because the
+/// collection API has nowhere to keep one.
+class _SavedSets extends StatelessWidget {
+  const _SavedSets({
+    required this.sets,
+    required this.loaded,
+    required this.onApply,
+    required this.onDelete,
+    required this.onSaveCurrent,
+  });
+
+  final List<SavedFilterSet> sets;
+  final bool loaded;
+  final ValueChanged<SavedFilterSet> onApply;
+  final ValueChanged<String> onDelete;
+  final VoidCallback onSaveCurrent;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text('Saved filter sets', style: theme.textTheme.titleSmall),
+        SizedBox(height: context.space.space1),
+        if (!loaded)
+          const LoadingAnnouncement(thing: 'saved filter sets', visible: true)
+        else if (sets.isEmpty)
+          Text(
+            'None saved on this device yet.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          Wrap(
+            spacing: context.space.space2,
+            runSpacing: context.space.space2,
+            children: <Widget>[
+              for (final SavedFilterSet set in sets)
+                InputChip(
+                  key: ValueKey<String>('saved-filter-${set.name}'),
+                  label: Text('${set.name} (${set.count})'),
+                  tooltip: 'Apply the ${set.name} filter set',
+                  onPressed: () => onApply(set),
+                  onDeleted: () => onDelete(set.name),
+                  deleteIcon: const Icon(Symbols.close),
+                  deleteButtonTooltipMessage:
+                      'Delete the ${set.name} filter set',
+                ),
+            ],
+          ),
+        SizedBox(height: context.space.space2),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: OutlinedButton.icon(
+            onPressed: onSaveCurrent,
+            icon: const Icon(Symbols.bookmark_add),
+            label: const Text('Save these filters'),
+          ),
+        ),
+        Text(
+          'Saved on this device only.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Asks what to call the current filters. Returns null when nothing was named.
+Future<String?> _askForName(BuildContext context) => showDialog<String>(
+  context: context,
+  builder: (BuildContext dialogContext) => const _NameFilterSet(),
+);
+
+/// The name prompt. A widget of its own, because the field's controller has to
+/// outlive the route's exit animation and be disposed after it, which a
+/// `whenComplete` on the future cannot do.
+class _NameFilterSet extends StatefulWidget {
+  const _NameFilterSet();
+
+  @override
+  State<_NameFilterSet> createState() => _NameFilterSetState();
+}
+
+class _NameFilterSetState extends State<_NameFilterSet> {
+  final TextEditingController _name = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _accept() {
+    final String value = _name.text.trim();
+    Navigator.pop(context, value.isEmpty ? null : value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Name these filters'),
+    content: TextField(
+      controller: _name,
+      autofocus: true,
+      decoration: const InputDecoration(
+        labelText: 'Filter set name',
+        helperText: 'Saved on this device. Reusing a name replaces that set.',
+      ),
+      onSubmitted: (String _) => _accept(),
+    ),
+    actions: <Widget>[
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _accept,
+        child: const Text('Save the filter set'),
+      ),
+    ],
+  );
 }
 
 /// A titled group of fields.

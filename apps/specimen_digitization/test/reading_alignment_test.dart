@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/reading_alignment.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 
 void main() {
   test(
@@ -19,7 +20,8 @@ void main() {
     'blocked long or truncated comparisons never display agreement or invented differences',
     (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: ReadingAlignmentView(
               alignment: {
@@ -75,7 +77,8 @@ void main() {
       };
       expect(exactUtf16Span(left, 26, 27), '٢');
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: ReadingAlignmentView(
               alignment: alignment,
@@ -89,7 +92,8 @@ void main() {
       expect(find.text('٣'), findsOneWidget);
       expect(find.textContaining('UTF-16 [26, 27)'), findsNWidgets(2));
       await tester.pumpWidget(
-        const MaterialApp(
+        MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: ReadingAlignmentView(
               alignment: alignment,

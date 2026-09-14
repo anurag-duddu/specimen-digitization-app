@@ -16,7 +16,6 @@ import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,7 +29,9 @@ import 'screens/intake/capture_card.dart';
 import 'screens/intake/manifest_entry.dart';
 import 'screens/intake/manifest_panel.dart';
 import 'theme/icons.dart';
+import 'theme/motion.dart';
 import 'vocabulary.dart';
+import 'widgets/motion_reveal.dart';
 import 'widgets/upload_item.dart';
 
 export 'screens/intake/manifest_entry.dart' show ManifestEntry;
@@ -104,8 +105,6 @@ class _IntakeScreenState extends State<IntakeScreen> {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
-
-  bool get _mobile => _cameraAvailable;
 
   @override
   void initState() {
@@ -475,8 +474,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
         setState(
           () => entry.preflightError = e is ApiFailure
               ? e.message
-              : 'The server check did not run. Retry, or ask your '
-                    'administrator to confirm your collection access.',
+              : 'The server check did not run. Retry, or have your '
+                    'collection access confirmed.',
         );
       }
     } finally {
@@ -611,8 +610,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
       });
     }
     // One haptic per batch, never one per file: a 200 image batch must not
-    // produce 200 buzzes (motion, rows 66 and 67).
-    if (wholeBatchSettled && _mobile) HapticFeedback.lightImpact();
+    // produce 200 buzzes (motion catalog, rows 66 and 67). The platform
+    // check lives inside the helper, so the rule is in one place.
+    if (wholeBatchSettled) SpecimenHaptics.batchComplete();
   }
 
   // ---------------------------------------------------------------- drawing
@@ -670,7 +670,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      if (_error != null) _errorCard(context),
+      // Height and opacity, no shake and no colour pulse: the button below
+      // is already the retry (motion catalog, row 69).
+      MotionReveal(
+        visible: _error != null,
+        child: _error == null
+            ? const SizedBox(width: double.infinity)
+            : _errorCard(context),
+      ),
       IntakeCaptureCard(
         sensitive: _newSensitive,
         onSensitivityChanged: _busy

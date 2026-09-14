@@ -136,10 +136,7 @@ void main() {
       // It does not scroll with the evidence: scrolling the evidence pane
       // leaves the photograph where it was.
       final before = tester.getTopLeft(find.byType(InteractiveViewer));
-      await tester.drag(
-        find.byType(SegmentedButton<WorkbenchSegment>),
-        const Offset(0, -200),
-      );
+      await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
       await tester.pumpAndSettle();
       expect(tester.getTopLeft(find.byType(InteractiveViewer)), before);
 

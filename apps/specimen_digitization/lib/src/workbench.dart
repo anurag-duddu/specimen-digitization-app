@@ -31,6 +31,14 @@ import 'theme/motion.dart';
 import 'operational_panel.dart';
 import 'widgets/widgets.dart';
 
+/// The evidence pane's own scroll view.
+///
+/// Named, because "the first `Scrollable` in the tree" is not the evidence
+/// pane: the source pane's region chip strip and the segment selector are
+/// both scroll views too, and a test that addresses the wrong one proves
+/// nothing about whether the pane a reviewer reads actually scrolls.
+const Key evidenceScrollKey = ValueKey<String>('workbench-evidence-scroll');
+
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
     super.key,
@@ -48,6 +56,9 @@ class ReviewWorkbench extends StatefulWidget {
     this.loadHistoricalRevision,
     this.onNext,
     this.onPrevious,
+    this.nextBlockedReason,
+    this.previousBlockedReason,
+    this.positionLabel,
   });
   final Specimen specimen;
   final Future<Json> Function(Specimen, ArtifactRequest)?
@@ -78,12 +89,34 @@ class ReviewWorkbench extends StatefulWidget {
   /// Opens the previous specimen in the queue.
   final VoidCallback? onPrevious;
 
+  /// Why there is no next specimen: the end of the loaded queue.
+  ///
+  /// When this is set the control is drawn and disabled with the reason on
+  /// it, and `J` says the reason aloud rather than doing nothing
+  /// (pass criterion 5.6).
+  final String? nextBlockedReason;
+
+  /// Why there is no previous specimen: the head of the queue.
+  final String? previousBlockedReason;
+
+  /// Where this record sits in the loaded queue, as "3 of 38"
+  /// (pass criterion 6.5).
+  final String? positionLabel;
+
   @override
   State<ReviewWorkbench> createState() => _ReviewWorkbenchState();
 }
 
 class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   WorkbenchSegment _segment = WorkbenchSegment.readings;
+
+  /// Which way the last segment change moved along the chip row.
+  ///
+  /// Forward, meaning left to right in the chip row on LTR, sends the
+  /// incoming panel in from the leading side and the outgoing one out the
+  /// other way. Read from the chip order, never hard-coded, and mirrored
+  /// under RTL by `Directionality` (motion catalog, row 41; choreography 5.3).
+  bool _segmentForward = true;
   String? _region;
   bool _sourceCollapsed = false;
   List<PendingFieldChange> _pending = <PendingFieldChange>[];
@@ -217,7 +250,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   void _selectRegion(String? id) {
     setState(() {
       _region = id;
-      if (id != null) _segment = WorkbenchSegment.readings;
+      if (id != null) _moveSegment(WorkbenchSegment.readings);
     });
     if (id == null) return;
     // The readings scroll to the region the photograph just moved to.
@@ -239,7 +272,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   void _goToBlocker(ClearanceBlocker blocker) {
-    setState(() => _segment = blocker.segment);
+    setState(() => _moveSegment(blocker.segment));
     final String? region = blocker.regionId;
     if (region != null) _region = region;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -512,24 +545,36 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     ),
   );
 
-  Widget _sourcePane(BuildContext context, {bool compact = false}) =>
-      WorkbenchSourcePane(
-        specimen: widget.specimen,
-        compact: compact,
-        controller: _view,
-        selectedRegionId: _region,
-        onSelectRegion: _selectRegion,
-        onEditRegions: !_regionsEditable || blockedReason('regions') != null
-            ? null
-            : _editRegions,
-        editRegionsBlockedReason: _regionEditBlockedReason,
-        onExpand: () => showSourceFullScreen(
-          context,
-          specimen: widget.specimen,
-          selectedRegionId: _region,
-          onSelectRegion: _selectRegion,
-        ),
-      );
+  Widget _sourcePane(
+    BuildContext context, {
+    bool compact = false,
+    double? imageHeight,
+  }) => WorkbenchSourcePane(
+    specimen: widget.specimen,
+    compact: compact,
+    imageHeight: imageHeight,
+    controller: _view,
+    selectedRegionId: _region,
+    onSelectRegion: _selectRegion,
+    onEditRegions: !_regionsEditable || blockedReason('regions') != null
+        ? null
+        : _editRegions,
+    editRegionsBlockedReason: _regionEditBlockedReason,
+    onExpand: () => showSourceFullScreen(
+      context,
+      specimen: widget.specimen,
+      selectedRegionId: _region,
+      onSelectRegion: _selectRegion,
+    ),
+  );
+
+  /// Moves to [next], remembering which way along the chip row it went.
+  ///
+  /// Call inside `setState`; it assigns, it does not schedule a rebuild.
+  void _moveSegment(WorkbenchSegment next) {
+    _segmentForward = next.index >= _segment.index;
+    _segment = next;
+  }
 
   Widget _segmentContent(BuildContext context) => switch (_segment) {
     WorkbenchSegment.readings => WorkbenchReadings(
@@ -614,9 +659,28 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     WorkbenchSegment.history => _history(const ValueKey<String>('history')),
   };
 
+  /// A control, plus the reason it cannot be used.
+  ///
+  /// `MergeSemantics` is what makes the reason audible. Without it the hint
+  /// lands on a node of its own and the disabled button becomes a separate
+  /// child node beneath it, so a screen reader focusing the control hears
+  /// "Approve record, dimmed" and never the sentence saying why
+  /// (accessibility, section 3.2 and the section 4.2 VoiceOver script,
+  /// step 4).
+  ///
+  /// The enabled state is repeated on the merged node rather than left to the
+  /// button underneath it, because a merge boundary keeps its own flags and a
+  /// node that does not say it is disabled is read, and checked, as if it
+  /// were live.
   Widget _reasoned(String? reason, Widget child) => Tooltip(
     message: reason ?? '',
-    child: Semantics(hint: reason ?? '', child: child),
+    child: MergeSemantics(
+      child: Semantics(
+        hint: reason ?? '',
+        enabled: reason == null,
+        child: child,
+      ),
+    ),
   );
 
   Widget _history(Key key) => AuditHistoryPanel(
@@ -627,158 +691,326 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     loadArtifact: widget.loadHistoricalArtifact,
   );
 
+  /// The evidence pane: the scrolling evidence, with the decision bar pinned
+  /// beneath it.
+  ///
+  /// The two are separate widgets rather than one column, because on a phone
+  /// the bar's height has to come out of the layout before the photograph and
+  /// the evidence split what is left. Taking it out of the evidence pane's
+  /// own share is what left the pane with no viewport, and a scroll view with
+  /// no viewport does not scroll.
   Widget _evidencePane(BuildContext context, WorkbenchRegime regime) {
+    // At a large text scale the decision bar wraps to three rows of large
+    // type and is taller than what is left of the pane, so pinning it lays
+    // the pane out past its box. The pane then scrolls as one, bar included,
+    // rather than clipping the last row (finding V-1, pass criterion 8.5).
+    if (paneScrollsAtThisTextScale(MediaQuery.textScalerOf(context))) {
+      return SingleChildScrollView(
+        key: evidenceScrollKey,
+        controller: _evidenceScroll,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _evidenceContent(context, regime, scrollable: false),
+            _decisionBar(context, regime),
+          ],
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Expanded(child: _evidenceContent(context, regime)),
+        _decisionBar(context, regime),
+      ],
+    );
+  }
+
+  /// The evidence pane's content.
+  ///
+  /// [scrollable] is false in the one case where the record is too short for
+  /// a pinned photograph and a scrolling pane beneath it: the whole record
+  /// then scrolls as one, so this returns the content without a scroll view
+  /// of its own rather than nesting one inside another (finding V-1).
+  Widget _evidenceContent(
+    BuildContext context,
+    WorkbenchRegime regime, {
+    bool scrollable = true,
+    Widget? leading,
+  }) {
     final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(regime);
     final WorkbenchSegment selected = segments.contains(_segment)
         ? _segment
         : WorkbenchSegment.readings;
     final MotionTokens motion = context.motion;
 
-    return Column(
+    final Widget content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Expanded(
+        // The record's own header scrolls with the evidence on a stacked
+        // layout, so the photograph is what stays. The title and the
+        // identifier are worth reading once; the pixels are what every
+        // correction is checked against (blueprint 6.1, pass criterion 6.1).
+        ?leading,
+        if (regime.isStacked) ...<Widget>[
+          SourceOrientationCaveat(
+            asset: widget.specimen.assets.isEmpty
+                ? const <String, dynamic>{}
+                : widget.specimen.assets.first,
+          ),
+          SourceRegionEditControl(
+            onEditRegions: !_regionsEditable || blockedReason('regions') != null
+                ? null
+                : _editRegions,
+            blockedReason: _regionEditBlockedReason,
+          ),
+          SourceDetails(
+            asset: widget.specimen.assets.isEmpty
+                ? const <String, dynamic>{}
+                : widget.specimen.assets.first,
+          ),
+          SizedBox(height: context.space.space2),
+        ],
+        WorkbenchStatusStrip(
+          specimen: widget.specimen,
+          blockers: blockersFor(widget.specimen),
+          pending: _pending,
+          staleChanges: _stale,
+          canOperate: widget.canOperate,
+          busy: widget.busy,
+          onAction: _send,
+          onGoToBlocker: _goToBlocker,
+          onReviewPending: _savePending,
+          conflictVersion: _conflictVersion,
+          onRefresh: _refresh,
+        ),
+        SizedBox(height: context.space.space3),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
           child: SingleChildScrollView(
-            controller: _evidenceScroll,
-            padding: EdgeInsets.symmetric(horizontal: context.space.space4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                if (regime.isStacked) ...<Widget>[
-                  SourceRegionEditControl(
-                    onEditRegions:
-                        !_regionsEditable || blockedReason('regions') != null
-                        ? null
-                        : _editRegions,
-                    blockedReason: _regionEditBlockedReason,
-                  ),
-                  SourceDetails(
-                    asset: widget.specimen.assets.isEmpty
-                        ? const <String, dynamic>{}
-                        : widget.specimen.assets.first,
-                  ),
-                  SizedBox(height: context.space.space2),
-                ],
-                WorkbenchStatusStrip(
-                  specimen: widget.specimen,
-                  blockers: blockersFor(widget.specimen),
-                  pending: _pending,
-                  staleChanges: _stale,
-                  canOperate: widget.canOperate,
-                  busy: widget.busy,
-                  onAction: _send,
-                  onGoToBlocker: _goToBlocker,
-                  onReviewPending: _savePending,
-                  conflictVersion: _conflictVersion,
-                  onRefresh: _refresh,
-                ),
-                SizedBox(height: context.space.space3),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SegmentedButton<WorkbenchSegment>(
-                      segments: <ButtonSegment<WorkbenchSegment>>[
-                        for (final WorkbenchSegment s in segments)
-                          ButtonSegment<WorkbenchSegment>(
-                            value: s,
-                            label: Text(s.label),
-                          ),
-                      ],
-                      selected: <WorkbenchSegment>{selected},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (Set<WorkbenchSegment> next) =>
-                          setState(() => _segment = next.first),
+            scrollDirection: Axis.horizontal,
+            // The roles are what VoiceOver and TalkBack read as "tab, 1 of 3,
+            // selected", and what a rotor jumps between. Without them
+            // Material's own `checked` and `inMutuallyExclusiveGroup` are read
+            // as a radio button, which is finding V-3 and accessibility
+            // section 4.2 step 6.
+            child: Semantics(
+              role: SemanticsRole.tabBar,
+              explicitChildNodes: true,
+              child: SegmentedButton<WorkbenchSegment>(
+                segments: <ButtonSegment<WorkbenchSegment>>[
+                  for (final WorkbenchSegment s in segments)
+                    ButtonSegment<WorkbenchSegment>(
+                      value: s,
+                      label: Semantics(
+                        role: SemanticsRole.tab,
+                        child: Text(s.label),
+                      ),
                     ),
-                  ),
-                ),
-                SizedBox(height: context.space.space4),
-                // A 30 px slide beside a stationary photograph, so the image
-                // does not read as having moved (motion catalog row 41).
-                AnimatedSwitcher(
-                  duration: motion.reduced ? motion.quick : motion.standard,
-                  switchInCurve: MotionTokens.standardCurve,
-                  layoutBuilder: (Widget? current, List<Widget> previous) =>
-                      Stack(
-                        alignment: AlignmentDirectional.topStart,
-                        children: <Widget>[...previous, ?current],
-                      ),
-                  transitionBuilder: (Widget child, Animation<double> value) =>
-                      FadeTransition(
-                        opacity: value,
-                        child: motion.reduced
-                            ? child
-                            : SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(_panelSlide, 0),
-                                  end: Offset.zero,
-                                ).animate(value),
-                                child: child,
-                              ),
-                      ),
-                  child: _segmentContent(context),
-                ),
-                SizedBox(height: context.space.space8),
-              ],
+                ],
+                selected: <WorkbenchSegment>{selected},
+                showSelectedIcon: false,
+                onSelectionChanged: (Set<WorkbenchSegment> next) =>
+                    setState(() {
+                      _moveSegment(next.first);
+                      SpecimenHaptics.selectionChanged();
+                    }),
+              ),
             ),
           ),
         ),
-        WorkbenchDecisionBar(
-          compact: regime.isStacked,
-          onConfirmCoverage: () => _decide(
-            'coverage',
-            'Confirm label coverage?',
-            WorkbenchDecisionBar.coverageLabel,
+        SizedBox(height: context.space.space4),
+        // A 30 px slide beside a stationary photograph, so the image
+        // does not read as having moved (motion catalog row 41).
+        AnimatedSwitcher(
+          duration: motion.reduced ? motion.quick : motion.standard,
+          switchInCurve: MotionTokens.standardCurve,
+          layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
+            alignment: AlignmentDirectional.topStart,
+            children: <Widget>[...previous, ?current],
           ),
-          onApprove: () => _decide(
-            'approve',
-            'Approve this record?',
-            WorkbenchDecisionBar.approveLabel,
-          ),
-          coverageBlockedReason: blockedReason('coverage'),
-          approveBlockedReason: blockedReason('approve'),
-          pendingCount: _pending.length,
-          onSavePending: _savePending,
-          onNext: widget.onNext,
-          onPrevious: widget.onPrevious,
+          transitionBuilder: (Widget child, Animation<double> value) =>
+              FadeTransition(
+                opacity: value,
+                child: motion.reduced
+                    ? child
+                    : SlideTransition(
+                        position: Tween<Offset>(
+                          begin: Offset(_panelOffset(context), 0),
+                          end: Offset.zero,
+                        ).animate(value),
+                        child: child,
+                      ),
+              ),
+          child: _segmentContent(context),
+        ),
+        // The decision bar is pinned below this pane and a phone puts
+        // a gesture bar below that. The content ends clear of both,
+        // so the last row is reachable rather than sitting under
+        // them.
+        SizedBox(
+          height:
+              context.space.space8 + MediaQuery.viewPaddingOf(context).bottom,
         ),
       ],
     );
+
+    if (!scrollable) {
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: context.space.space4),
+        child: content,
+      );
+    }
+    return SingleChildScrollView(
+      key: evidenceScrollKey,
+      controller: _evidenceScroll,
+      padding: EdgeInsets.symmetric(horizontal: context.space.space4),
+      child: content,
+    );
   }
 
-  /// The pinned source header of a stacked layout.
+  /// Records a measured piece of the stacked layout's fixed chrome.
   ///
-  /// The height is the blueprint's 40 percent of the viewport, offered
-  /// through a loose `Flexible` so that a window too short to give it that
-  /// much takes it from the photograph rather than pushing the decision bar
-  /// off the screen.
-  List<Widget> _stackedSource(BuildContext context) => <Widget>[
-    Row(
-      children: <Widget>[
-        Expanded(
-          child: Text(
-            'Source photograph',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+  /// Four parts: the record header, the source pane's title row, the source
+  /// pane's own chrome, and the decision bar. Every one of them is measured
+  /// rather than guessed, because each grows with the text scale and with the
+  /// window, and the photograph's band is what is left after all four.
+  void _measureChrome(String part, double height) {
+    final double clamped = height < 0 ? 0 : height;
+    final double? previous = _chromeParts[part];
+    if (previous != null && (previous - clamped).abs() < 0.5) return;
+    if (!mounted) return;
+    setState(() => _chromeParts[part] = clamped);
+  }
+
+  final Map<String, double> _chromeParts = <String, double>{};
+
+  /// How the stacked layout is arranged this frame.
+  ///
+  /// The record's own header is not counted: on a stacked layout it scrolls
+  /// with the evidence, so that the photograph is what stays on the screen.
+  ///
+  /// [band] is the height the photograph's own pixels get, zero when the
+  /// reviewer has collapsed the pane. [scrolls] is true when the record is
+  /// too short to pin the photograph above a scrolling evidence pane, in
+  /// which case the whole record scrolls as one and the photograph is still
+  /// on the screen rather than replaced by an overflow stripe. [pinBar] is
+  /// false in the last resort, where the decision bar alone is taller than
+  /// the height this pane was given, and pinning it would push everything
+  /// else past the window (finding V-1, pass criteria 6.1 and 8.5).
+  ({double band, bool scrolls, bool pinBar}) _stackedPlan(
+    BuildContext context,
+    double available,
+  ) {
+    final double? bar = _chromeParts['bar'];
+    final double? title = _chromeParts['sourceTitle'];
+    final double? pane = _chromeParts['sourcePane'];
+    if (bar == null || title == null || (pane == null && !_sourceCollapsed)) {
+      // Nothing has been measured yet. The scrolling form cannot lay out past
+      // the window whatever the measurements turn out to be, so the first
+      // frame takes it and the pinned form starts once the numbers are in.
+      return (
+        band: _sourceCollapsed ? 0 : sourceImageMinHeight,
+        scrolls: true,
+        pinBar: false,
+      );
+    }
+    // The bar is pinned only while there is still a pane left underneath it.
+    // At 200 percent text on a phone the shell can hand the record barely
+    // two hundred pixels, and a bar that wraps to three rows of large type is
+    // taller than that on its own.
+    final bool pinBar = available - bar >= evidencePaneHardMinHeight;
+    final double fixed =
+        bar + title + (_sourceCollapsed ? 0 : pane!) + context.space.space2;
+    final double free = available - fixed;
+    if (_sourceCollapsed) {
+      return (
+        band: 0,
+        scrolls: !pinBar || free < evidencePaneHardMinHeight,
+        pinBar: pinBar,
+      );
+    }
+    final double band = pinBar ? pinnedSourceHeight(available, free) : 0;
+    return band > 0
+        ? (band: band, scrolls: false, pinBar: true)
+        : (band: sourceImageMinHeight, scrolls: true, pinBar: pinBar);
+  }
+
+  Widget _decisionBar(BuildContext context, WorkbenchRegime regime) =>
+      WorkbenchDecisionBar(
+        compact: regime.isStacked,
+        busy: widget.busy,
+        onConfirmCoverage: () => _decide(
+          'coverage',
+          'Confirm label coverage?',
+          WorkbenchDecisionBar.coverageLabel,
         ),
-        IconButton(
-          tooltip: _sourceCollapsed
-              ? 'Show the photograph'
-              : 'Collapse the photograph',
-          onPressed: () => setState(() => _sourceCollapsed = !_sourceCollapsed),
-          icon: Icon(
-            _sourceCollapsed ? Symbols.expand_more : Symbols.expand_less,
-          ),
+        onApprove: () => _decide(
+          'approve',
+          'Approve this record?',
+          WorkbenchDecisionBar.approveLabel,
         ),
-      ],
+        coverageBlockedReason: blockedReason('coverage'),
+        approveBlockedReason: blockedReason('approve'),
+        pendingCount: _pending.length,
+        onSavePending: _savePending,
+        onNext: widget.onNext,
+        onPrevious: widget.onPrevious,
+        nextBlockedReason: widget.nextBlockedReason,
+        previousBlockedReason: widget.previousBlockedReason,
+        positionLabel: widget.positionLabel,
+      );
+
+  /// The pinned source header of a stacked layout (blueprint 6.1).
+  ///
+  /// The title row is always drawn and always measured, so the collapse and
+  /// expand control is reachable whether or not the photograph is on screen.
+  /// The pane below it is handed a band for its pixels rather than a height
+  /// for the whole pane, so its controls and its region chips are never
+  /// squeezed by a box that was sized without them.
+  List<Widget> _stackedSource(BuildContext context, double band) => <Widget>[
+    MeasuredHeight(
+      onHeight: (double h) => _measureChrome('sourceTitle', h),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              'Source photograph',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          if (band <= 0)
+            IconButton(
+              tooltip: 'Open the photograph full screen',
+              onPressed: () => showSourceFullScreen(
+                context,
+                specimen: widget.specimen,
+                selectedRegionId: _region,
+                onSelectRegion: _selectRegion,
+              ),
+              icon: const Icon(Symbols.open_in_full),
+            ),
+          IconButton(
+            tooltip: _sourceCollapsed
+                ? 'Show the photograph'
+                : 'Collapse the photograph',
+            onPressed: () =>
+                setState(() => _sourceCollapsed = !_sourceCollapsed),
+            icon: Icon(
+              _sourceCollapsed ? Symbols.expand_more : Symbols.expand_less,
+            ),
+          ),
+        ],
+      ),
     ),
-    if (!_sourceCollapsed)
-      Flexible(
-        fit: FlexFit.loose,
-        child: SizedBox(
-          height: pinnedSourceHeight(context),
-          child: _sourcePane(context, compact: true),
-        ),
+    if (band > 0)
+      // The pane reports its own chrome by subtracting the band it was given
+      // from the height it ended up at, which is the one measurement the
+      // photograph's share cannot be computed without.
+      MeasuredHeight(
+        onHeight: (double h) => _measureChrome('sourcePane', h - band),
+        child: _sourcePane(context, compact: true, imageHeight: band),
       ),
   ];
 
@@ -866,13 +1098,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       <Type, Action<Intent>>{
         NextSpecimenIntent: CallbackAction<NextSpecimenIntent>(
           onInvoke: (_) {
-            widget.onNext?.call();
+            _step(widget.onNext, widget.nextBlockedReason);
             return null;
           },
         ),
         PreviousSpecimenIntent: CallbackAction<PreviousSpecimenIntent>(
           onInvoke: (_) {
-            widget.onPrevious?.call();
+            _step(widget.onPrevious, widget.previousBlockedReason);
             return null;
           },
         ),
@@ -889,7 +1121,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           onInvoke: (ShowSegmentIntent intent) {
             final List<WorkbenchSegment> all = WorkbenchSegment.values;
             if (intent.index < all.length) {
-              setState(() => _segment = all[intent.index]);
+              setState(() => _moveSegment(all[intent.index]));
             }
             return null;
           },
@@ -950,20 +1182,86 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         ),
       };
 
+  /// Moves along the queue, or says why it cannot.
+  ///
+  /// A key bound to a callback that is null is exactly the silent no-op pass
+  /// criterion 5.6 forbids, and it is what finding V-2 found `J` and `K`
+  /// doing. At the ends of the queue the reason is announced instead.
+  void _step(VoidCallback? move, String? reason) {
+    if (move != null) {
+      move();
+      return;
+    }
+    if (reason != null) _announce(reason);
+  }
+
   Widget _workbench(BuildContext context, WorkbenchRegime regime) {
     if (regime.isStacked) {
       return Padding(
         padding: EdgeInsets.symmetric(
           horizontal: context.space.space4,
         ).copyWith(top: context.space.space4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            _header(context),
-            ..._stackedSource(context),
-            SizedBox(height: context.space.space2),
-            Expanded(child: _evidencePane(context, regime)),
-          ],
+        // The photograph's share is measured against the height this pane was
+        // actually given, not against the window. On a phone the two differ by
+        // the app bar, the navigation bar, the environment band and the system
+        // insets, and the difference is the whole evidence pane.
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints box) {
+            final double available = box.maxHeight.isFinite
+                ? box.maxHeight
+                : MediaQuery.sizeOf(context).height;
+            final ({double band, bool scrolls, bool pinBar}) plan =
+                _stackedPlan(context, available);
+            final Widget bar = MeasuredHeight(
+              onHeight: (double h) => _measureChrome('bar', h),
+              child: _decisionBar(context, regime),
+            );
+            final Widget header = _header(context);
+
+            if (plan.scrolls) {
+              // Too short to pin the photograph above a scrolling pane at this
+              // text scale. The record scrolls as one instead, so nothing is
+              // clipped and the photograph is still on the screen, and the
+              // decision bar stays pinned beneath it where it still fits
+              // (finding V-1).
+              final Widget scrolled = SingleChildScrollView(
+                key: evidenceScrollKey,
+                controller: _evidenceScroll,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    header,
+                    ..._stackedSource(context, plan.band),
+                    SizedBox(height: context.space.space2),
+                    _evidenceContent(context, regime, scrollable: false),
+                    if (!plan.pinBar) bar,
+                  ],
+                ),
+              );
+              return plan.pinBar
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Expanded(child: scrolled),
+                        bar,
+                      ],
+                    )
+                  : scrolled;
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                ..._stackedSource(context, plan.band),
+                SizedBox(height: context.space.space2),
+                Expanded(
+                  child: _evidenceContent(context, regime, leading: header),
+                ),
+                bar,
+              ],
+            );
+          },
         ),
       );
     }
@@ -1006,5 +1304,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   static const int _recentReasonLimit = 5;
+
   static const double _panelSlide = 0.06;
+
+  /// The incoming panel's starting offset, as a fraction of its own width.
+  ///
+  /// Capped at a fraction rather than a full width because the panel sits
+  /// beside a stationary photograph: a large horizontal slide next to a still
+  /// image produces induced motion, and the photograph appears to drift the
+  /// other way (choreography 5.4).
+  double _panelOffset(BuildContext context) {
+    final bool rtl = Directionality.of(context) == TextDirection.rtl;
+    final bool fromEnd = _segmentForward != rtl;
+    return fromEnd ? _panelSlide : -_panelSlide;
+  }
 }

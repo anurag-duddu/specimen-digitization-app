@@ -96,6 +96,8 @@ class UploadItem extends StatelessWidget {
     this.progress,
     this.reason,
     this.onRemove,
+    this.removeBlockedReason,
+    this.details,
   });
 
   /// The file name, as the operator's machine spells it.
@@ -122,8 +124,24 @@ class UploadItem extends StatelessWidget {
   /// One plain sentence saying why the state is what it is.
   final String? reason;
 
-  /// Takes the file out of the batch. Disabled once the transfer commits.
+  /// Takes the file out of the batch. Null with no [removeBlockedReason]
+  /// means the row has no remove control at all, so a row that can never be
+  /// removed does not spend a 48dp target saying so.
   final VoidCallback? onRemove;
+
+  /// Why the file cannot be taken out of the batch. Draws the control
+  /// disabled, with the reason as its tooltip and its semantic hint, rather
+  /// than as a bare disabled button.
+  final String? removeBlockedReason;
+
+  /// Supplementary content for this file: measurements, a server check
+  /// result, an evidence disclosure. Rendered inside the item, under the
+  /// state, so a manifest row is one component rather than a component in a
+  /// column of loose widgets.
+  final Widget? details;
+
+  /// The remove control's name, fixed so the tests and the copy cannot drift.
+  static const String removeLabel = 'Remove from this batch';
 
   /// Bytes per megabyte, decimal, matching how operating systems report a
   /// camera card.
@@ -144,6 +162,7 @@ class UploadItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final String? blocked = removeBlockedReason;
     final String line = measurements(
       sizeBytes: sizeBytes,
       width: pixelWidth,
@@ -191,19 +210,31 @@ class UploadItem extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (details != null) ...<Widget>[
+                    SizedBox(height: context.space.space3),
+                    details!,
+                  ],
                 ],
               ),
             ),
-            IconButton(
-              onPressed: onRemove,
-              icon: const Icon(Symbols.close),
-              iconSize: context.sizes.iconAction,
-              tooltip: 'Remove from this batch',
-              constraints: BoxConstraints(
-                minWidth: context.sizes.targetMin,
-                minHeight: context.sizes.targetMin,
+            if (onRemove != null || blocked != null)
+              Semantics(
+                hint: blocked ?? '',
+                child: IconButton(
+                  onPressed: onRemove,
+                  icon: const Icon(Symbols.close),
+                  iconSize: context.sizes.iconAction,
+                  // A disabled control names why, rather than leaving the
+                  // reviewer to guess at a greyed out button.
+                  tooltip: blocked == null
+                      ? removeLabel
+                      : '$removeLabel. $blocked',
+                  constraints: BoxConstraints(
+                    minWidth: context.sizes.targetMin,
+                    minHeight: context.sizes.targetMin,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),

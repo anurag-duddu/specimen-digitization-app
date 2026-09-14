@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import 'administrator_contact.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
@@ -54,9 +55,15 @@ class ProcessingDisclosure extends StatelessWidget {
     final String retry = run['next_retry_at'] == null
         ? ''
         : ' Next retry ${relativeInstant(run['next_retry_at'])}.';
+    // A record whose run has not reported a step renders "Step not recorded"
+    // rather than the word "Step" with nothing after it. An absence is a
+    // state with a name, never a sentence that stops halfway.
+    final String step = stage.isEmpty || stage == 'Not recorded'
+        ? 'Step not recorded'
+        : 'Step $stage';
     final String summary = blocker.isEmpty || blocker == 'Not recorded'
-        ? 'Step $stage'
-        : 'Step $stage. Blocked: ${vocabularyLabel(blocker)}.$retry';
+        ? step
+        : '$step. Blocked: ${vocabularyLabel(blocker)}.$retry';
 
     return ExpansionTile(
       title: const Text('Processing'),
@@ -171,6 +178,7 @@ class ProcessingDetail extends StatelessWidget {
                 'provider configuration.',
             why: 'Where a cost is not recorded, it is unknown, not zero.',
           ),
+          const AdministratorContactLine(),
         ],
         if (run['next_retry_at'] != null)
           _Measurement(

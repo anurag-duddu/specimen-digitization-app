@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/risk_assessment.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 
 void main() {
   final fixture =
@@ -21,6 +22,7 @@ void main() {
         final risk = run['review_risk'] as Json;
         await tester.pumpWidget(
           MaterialApp(
+            theme: AppTheme.light(),
             home: Scaffold(
               body: SingleChildScrollView(
                 child: ReviewRiskPanel(
@@ -96,6 +98,7 @@ void main() {
               as Json;
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: SingleChildScrollView(
               child: ObservationExecutionDetails(observation: observation),
@@ -124,6 +127,7 @@ void main() {
           fixture['profile_variants']['first']['observations'][0] as Json;
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: ObservationExecutionDetails(observation: absent),
           ),
@@ -140,6 +144,7 @@ void main() {
           fixture['profile_variants']['first']['run']['transcripts'][0] as Json;
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: TranscriptionComparisonSummary(transcription: comparison),
           ),
@@ -155,6 +160,7 @@ void main() {
       // make a policy-blocked status look like measured agreement.
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: TranscriptionComparisonSummary(
               transcription: {

@@ -11,6 +11,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../theme/icons.dart';
 import 'caveat_text.dart';
+import 'not_calibrated_chip.dart';
 
 /// A prioritization score, with the reason it can be trusted only that far.
 class RiskMeter extends StatelessWidget {
@@ -23,7 +24,8 @@ class RiskMeter extends StatelessWidget {
     this.measurementComplete = true,
     this.compact = false,
   }) : assert(
-         !isMeasured(
+         compact ||
+             !isMeasured(
                composite: composite,
                status: status,
                measurementComplete: measurementComplete,
@@ -37,7 +39,13 @@ class RiskMeter extends StatelessWidget {
   /// produce one.
   final num? composite;
 
-  /// The contributing signals, named. Never empty when a score is shown.
+  /// The contributing signals, named. Never empty when the expanded form
+  /// shows a score.
+  ///
+  /// The compact form never draws them, and the search endpoint answers a
+  /// bare composite with the contributing signals left on the record, so a
+  /// compact meter may honestly pass an empty list rather than invent a line
+  /// of prose to satisfy an assert.
   final List<String> components;
 
   /// False when the policy behind the score has not been calibrated.
@@ -132,7 +140,7 @@ class RiskMeter extends StatelessWidget {
               ? theme.textTheme.labelMedium
               : theme.textTheme.titleMedium,
         ),
-        if (!calibrated) const _NotCalibratedChip(),
+        if (!calibrated) const NotCalibratedChip(showGlyph: false),
       ],
     );
 
@@ -201,40 +209,4 @@ class RiskMeter extends StatelessWidget {
 
   /// Below this fraction the band reads as medium.
   static const double _mediumCeiling = 0.67;
-}
-
-/// The uncalibrated qualifier, outline only, no glyph (UX writing, 4.13).
-class _NotCalibratedChip extends StatelessWidget {
-  const _NotCalibratedChip();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: 'Not calibrated',
-      excludeSemantics: true,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(context.shape.radiusXs),
-          border: Border.all(
-            color: theme.colorScheme.outline,
-            width: context.shape.strokeBoundary,
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: context.space.space2,
-            vertical: context.space.space1,
-          ),
-          child: Text(
-            'Not calibrated',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

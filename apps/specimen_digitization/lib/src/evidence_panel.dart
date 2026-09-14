@@ -14,7 +14,6 @@ import 'review_context.dart';
 import 'risk_assessment.dart';
 import 'screens/workbench/moments.dart';
 import 'theme/icons.dart';
-import 'theme/motion.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -73,7 +72,6 @@ class _LazyEvidenceState extends State<LazyEvidence> {
 
   @override
   Widget build(BuildContext context) {
-    final MotionTokens motion = context.motion;
     final Widget content = _data == null
         ? const SizedBox(width: double.infinity)
         : widget.render(_data!);
@@ -88,17 +86,10 @@ class _LazyEvidenceState extends State<LazyEvidence> {
             // swaps for an inline indicator of the same height (motion 44).
             child: OutlinedButton.icon(
               onPressed: _busy ? null : _load,
-              icon: _busy
-                  ? SizedBox.square(
-                      dimension: context.sizes.iconInline,
-                      child: CircularProgressIndicator(
-                        strokeWidth: context.shape.strokeEmphasis,
-                      ),
-                    )
-                  : Icon(
-                      _error == null ? Symbols.visibility : Symbols.refresh,
-                      size: context.sizes.iconInline,
-                    ),
+              icon: InFlightGlyph(
+                busy: _busy,
+                resting: _error == null ? Symbols.visibility : Symbols.refresh,
+              ),
               label: Text(
                 _busy
                     ? 'Loading evidence'
@@ -108,25 +99,28 @@ class _LazyEvidenceState extends State<LazyEvidence> {
               ),
             ),
           ),
-        if (_error != null)
-          Semantics(
+        // The live region is the primary channel; the reveal only gets the
+        // sentence on screen without a jump. No shake, no red flash
+        // (motion catalog, row 46).
+        MotionReveal(
+          visible: _error != null,
+          child: Semantics(
             liveRegion: true,
             child: Text(
-              _error!,
+              _error ?? '',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.error,
               ),
             ),
           ),
-        if (motion.reduced)
-          content
-        else
-          AnimatedSize(
-            duration: motion.standard,
-            curve: MotionTokens.enterCurve,
-            alignment: Alignment.topLeft,
-            child: content,
-          ),
+        ),
+        // These payloads are unbounded JSON dumps, so the size animation is
+        // dropped above the cap and only the fade runs (catalog row 45).
+        MotionReveal(
+          visible: _data != null,
+          heightCap: MotionReveal.evidenceHeightCap,
+          child: content,
+        ),
       ],
     );
   }

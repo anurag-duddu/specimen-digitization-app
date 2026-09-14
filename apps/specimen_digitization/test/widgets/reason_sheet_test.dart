@@ -47,6 +47,39 @@ void main() {
     expect(find.text('Collector is unresolved'), findsOneWidget);
   });
 
+  testWidgets('every sheet states that the decision cannot be undone', (
+    WidgetTester tester,
+  ) async {
+    // Pass criterion 3.4 asks for one of two things: an Undo for ten seconds
+    // where the server exposes a reversal, or a sheet that says the decision
+    // is final. The review API exposes no reversal, so the statement is the
+    // path taken, and it is written once here rather than at each call site
+    // so no sheet can ship without it (finding V-11).
+    await _open(tester, (String? _) {});
+    expect(find.textContaining('This cannot be undone'), findsOneWidget);
+    expect(find.text(ReasonForm.finality), findsOneWidget);
+  });
+
+  testWidgets('a server that offers a reversal names it instead', (
+    WidgetTester tester,
+  ) async {
+    await pumpComponent(
+      tester,
+      const ReasonForm(
+        title: 'Defer this record?',
+        action: 'Defer the record',
+        consequence: 'The record leaves the queue until it is picked up again.',
+        reversal: 'Undo is available for ten seconds after it is saved.',
+      ),
+      size: const Size(1000, 800),
+    );
+    expect(find.textContaining('This cannot be undone'), findsNothing);
+    expect(
+      find.text('Undo is available for ten seconds after it is saved.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the primary button is disabled until a reason is typed', (
     WidgetTester tester,
   ) async {
@@ -76,6 +109,10 @@ void main() {
     String? result = 'not called';
     await _open(tester, (String? value) => result = value);
     await tester.enterText(find.byType(TextField), '  Wrong locality  ');
+    await tester.pumpAndSettle();
+    // The sheet scrolls, and it states the consequence, the finality, what is
+    // retained and what is outstanding above the action.
+    await tester.ensureVisible(find.text('Supersede the decision'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Supersede the decision'));
     await tester.pumpAndSettle();

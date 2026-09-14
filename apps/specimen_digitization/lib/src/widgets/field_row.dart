@@ -42,6 +42,7 @@ class FieldRow extends StatelessWidget {
     this.standardized,
     this.authority,
     this.onEdit,
+    this.editSemanticsLabel,
     this.findings,
   });
 
@@ -69,6 +70,14 @@ class FieldRow extends StatelessWidget {
   /// Called with the layer the reviewer asked to edit.
   final void Function(FieldLayer layer)? onEdit;
 
+  /// Names the edit control for assistive technology.
+  ///
+  /// The default names the layer only, which is correct inside a row that is
+  /// already announced by name but useless to a reader that lands on the
+  /// control directly. A screen that knows the field passes this to get
+  /// "Edit read as for Scientific name" instead of "Edit read as".
+  final String Function(FieldLayer layer)? editSemanticsLabel;
+
   /// Validation findings for this field, rendered under the layers.
   final Widget? findings;
 
@@ -84,6 +93,10 @@ class FieldRow extends StatelessWidget {
 
     return Semantics(
       container: true,
+      // The field's own name leads the label. Without it twenty rows announce
+      // as "Field: supported" and a screen reader user cannot tell which
+      // field they are standing on.
+      label: required ? '$name, required' : name,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: context.space.space2),
         child: Column(
@@ -111,6 +124,7 @@ class FieldRow extends StatelessWidget {
                 value: _valueOf(layer),
                 state: state,
                 onEdit: onEdit == null ? null : () => onEdit!(layer),
+                editLabel: editSemanticsLabel?.call(layer),
               ),
             if (authority != null) ...<Widget>[
               SizedBox(height: context.space.space1),
@@ -152,12 +166,14 @@ class _Layer extends StatelessWidget {
     required this.value,
     required this.state,
     this.onEdit,
+    this.editLabel,
   });
 
   final FieldLayer layer;
   final String? value;
   final SpecimenStatus state;
   final VoidCallback? onEdit;
+  final String? editLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -195,14 +211,17 @@ class _Layer extends StatelessWidget {
                   ),
           ),
           if (onEdit != null)
-            IconButton(
-              onPressed: onEdit,
-              icon: const Icon(Symbols.edit),
-              iconSize: context.sizes.iconInline,
-              tooltip: 'Edit ${layer.label.toLowerCase()}',
-              constraints: BoxConstraints(
-                minWidth: context.sizes.targetMin,
-                minHeight: context.sizes.targetMin,
+            Semantics(
+              label: editLabel,
+              child: IconButton(
+                onPressed: onEdit,
+                icon: const Icon(Symbols.edit),
+                iconSize: context.sizes.iconInline,
+                tooltip: editLabel ?? 'Edit ${layer.label.toLowerCase()}',
+                constraints: BoxConstraints(
+                  minWidth: context.sizes.targetMin,
+                  minHeight: context.sizes.targetMin,
+                ),
               ),
             ),
         ],
@@ -230,10 +249,16 @@ class _Abstention extends StatelessWidget {
           color: theme.colorScheme.onSurfaceVariant,
         ),
         SizedBox(width: context.space.space1),
-        Text(
-          word,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        // Flexible, because a `Row` hands a non-flex child unbounded width
+        // and the row itself is inside a bounded column: "Not recorded"
+        // beside its glyph is four pixels wider than a field row on a phone
+        // (finding V-1, pass criterion 8.5).
+        Flexible(
+          child: Text(
+            word,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
