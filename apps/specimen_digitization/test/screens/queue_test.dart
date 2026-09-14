@@ -177,36 +177,25 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // `testWidgets` takes only `bool? skip`, so the reason rides on a one test
-  // group, the way `test/accessibility/guidelines_test.dart` records its own
-  // backlog.
-  group(
-    '',
-    () => testWidgets('a queue row fits the 360 dp list pane', (tester) async {
-      final ScriptedRepository repository = ScriptedRepository()
-        ..results = <Specimen>[
-          const Specimen({
-            'specimen_id': 'SD-1',
-            'filename': 'First record',
-            'disposition': 'needs_human_review',
-          }),
-        ];
-      tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(1300, 1000);
-      addTearDown(tester.view.reset);
-      final TestSession session = TestSession();
-      addTearDown(session.controller.close);
-      await tester.pumpWidget(
-        SpecimenDigitizationApp(session: session, repository: repository),
-      );
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    }),
-    skip:
-        'QueueRow overflows below about 500 dp: its status chip and risk '
-        'meter are laid out at their natural width beside an Expanded title. '
-        'Requested as a shared component change in the pull request; this '
-        'test is the check that proves the fix.',
-  );
+  testWidgets('a queue row fits the 360 dp list pane', (tester) async {
+    final ScriptedRepository repository = ScriptedRepository()
+      ..results = <Specimen>[
+        const Specimen({
+          'specimen_id': 'SD-1',
+          'filename': 'First record',
+          'disposition': 'needs_human_review',
+        }),
+      ];
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1300, 1000);
+    addTearDown(tester.view.reset);
+    final TestSession session = TestSession();
+    addTearDown(session.controller.close);
+    await tester.pumpWidget(
+      SpecimenDigitizationApp(session: session, repository: repository),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

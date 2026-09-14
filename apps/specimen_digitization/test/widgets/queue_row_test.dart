@@ -18,8 +18,9 @@ Widget _row({
   VoidCallback? onOpen,
   num? risk = 62,
   List<String> components = const <String>['Reading disagreement'],
+  double width = 700,
 }) => SizedBox(
-  width: 700,
+  width: width,
   child: QueueRow(
     key: const ValueKey<String>('fixture-001'),
     id: 'fixture-001',
@@ -39,10 +40,10 @@ void main() {
   group('relativeAge', () {
     test('is coarse and never negative', () {
       final DateTime now = DateTime(2026, 9, 14, 12);
-      expect(relativeAge(now, now: now), 'just now');
+      expect(relativeAge(now, now: now), 'moments ago');
       expect(
         relativeAge(now.add(const Duration(hours: 1)), now: now),
-        'just now',
+        'moments ago',
       );
       expect(
         relativeAge(now.subtract(const Duration(minutes: 5)), now: now),
@@ -165,4 +166,17 @@ void main() {
       await expectAccessible(tester);
     }
   });
+
+  for (final double width in <double>[320, 360, 500]) {
+    testWidgets('fits at $width dp with no overflow', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(
+        tester,
+        _row(onOpen: () {}, width: width),
+        size: Size(width, 800),
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
