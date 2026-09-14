@@ -401,3 +401,52 @@ def test_dual_route_vocabulary_split_does_not_force_review(tmp_path):
             )
         assert declared == {"en", "English"}
         assert label["language_candidates"] == ["English", "en"]
+
+
+def test_reviewer_restating_a_declaration_is_not_a_second_candidate(tmp_path):
+    """Model and human vocabularies merge into one observation; both are retained."""
+    with TestClient(app_at(tmp_path, "vocabulary")) as http:
+        row = intake(http)
+        path = PREFIX + "/specimens/" + row["specimen_id"]
+        work = http.get(path + "/workspace", headers=HEADERS).json()
+
+        def metadata_for(observation_id):
+            return http.get(
+                path + "/observations/" + observation_id + "/metadata", headers=HEADERS
+            ).json()
+
+        # The route that declared the coded form; the reviewer restates it in words.
+        target = [
+            o["id"]
+            for o in work["observations"]
+            if any(d["value"] == "en" for d in metadata_for(o["id"])["declarations"])
+        ]
+        assert len(target) == 1
+        response = http.post(
+            path + "/decisions",
+            headers={**HEADERS, "Idempotency-Key": "reviewer-vocabulary"},
+            json={
+                "kind": "reading_metadata",
+                "target_id": target[0],
+                "after": {
+                    "language_candidates": ["English"],
+                    "script_candidates": ["Latn"],
+                },
+                "reason": "Reviewer restating the declared label",
+                "expected_revision": work["revision"],
+                "base_record_version_id": work["record_version_id"],
+            },
+        )
+        assert response.status_code == 200, response.text[:500]
+        metadata = metadata_for(target[0])
+        assert metadata["language_state"] == "declared"
+        assert metadata["script_state"] == "declared"
+        assert metadata["reasons"] == []
+        assert {(d["kind"], d["value"]) for d in metadata["declarations"]} == {
+            ("language", "en"),
+            ("language", "English"),
+            ("script", "Latin"),
+            ("script", "Latn"),
+        }
+        label = response.json()["run"]["label_language_handling"]["labels"][0]
+        assert not label["conflicting_candidates"] and not label["review_required"]

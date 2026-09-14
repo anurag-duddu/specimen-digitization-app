@@ -97,6 +97,60 @@ def test_multiple_languages_scripts_and_reported_confidence_remain_claims():
         declarations[0].value = "fr"
 
 
+# Two reader routes and a reviewer name one language or script in whatever
+# vocabulary each of them uses. `effective_declarations` merges the model and the
+# latest human declaration into one observation, so both forms arrive here.
+@pytest.mark.parametrize(
+    "model,recorded,state",
+    [
+        ("en", "English", "declared"),
+        ("eng", "English", "declared"),
+        ("en-US", "English", "declared"),
+        ("English", "english", "declared"),
+        ("en", "fr", "multiple_candidates"),
+        ("English", "French", "multiple_candidates"),
+        ("English", "Sundanese", "multiple_candidates"),
+    ],
+)
+def test_one_observation_naming_a_language_twice_declares_one_language(
+    model, recorded, state
+):
+    declarations = (
+        declaration(value=model),
+        declaration(value=recorded, method="human_recorded", producer="reviewer"),
+    )
+    metadata = summarize_reading(reading("Illinois 1900", declarations=declarations))
+    assert metadata.language_state == state
+    assert metadata.declarations == declarations
+    assert ("multiple_metadata_candidates_not_resolved" in metadata.reasons) == (
+        state == "multiple_candidates"
+    )
+
+
+@pytest.mark.parametrize(
+    "model,recorded,state",
+    [
+        ("Latn", "Latin", "declared"),
+        ("latin", "Latn", "declared"),
+        ("Arab", "Arabic", "declared"),
+        ("Latn", "Arab", "multiple_candidates"),
+        ("Latin", "Cyrillic", "multiple_candidates"),
+        ("Hans", "Hant", "multiple_candidates"),
+        ("Latn", "Latin script", "multiple_candidates"),
+    ],
+)
+def test_one_observation_naming_a_script_twice_declares_one_script(
+    model, recorded, state
+):
+    declarations = (
+        declaration("script", model),
+        declaration("script", recorded, method="human_recorded", producer="reviewer"),
+    )
+    metadata = summarize_reading(reading("Illinois 1900", declarations=declarations))
+    assert metadata.script_state == state
+    assert metadata.declarations == declarations
+
+
 @pytest.mark.parametrize(
     "a,b",
     [
@@ -239,6 +293,24 @@ def test_risk_missing_or_conflicting_metadata_and_blocked_alignment_are_unmeasur
     assert "reading_disagreement" in reading_risk_evidence(blocked, ()).unmeasured
     with pytest.raises(ValueError):
         reading_risk_evidence(alignment, (summarize_reading(reading("other")),))
+
+
+def test_risk_dimensions_measured_when_readers_use_different_vocabularies():
+    """Two routes named one language and one script; that is not missing metadata."""
+    a = reading("1900", declarations=(declaration(), declaration("script", "Latn")))
+    b = reading(
+        "1908",
+        "right",
+        declarations=(declaration(value="English"), declaration("script", "Latin")),
+    )
+    evidence = reading_risk_evidence(
+        align_readings(a, b), (summarize_reading(a), summarize_reading(b))
+    )
+    assert evidence.unmeasured == ()
+    assert {s.code for s in evidence.signals} == {
+        "unresolved_disagreement",
+        "numeral_disagreement",
+    }
 
 
 def test_typed_roundtrip_retains_source_digest_and_missing_metadata_is_not_complete():
