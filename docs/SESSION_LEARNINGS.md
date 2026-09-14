@@ -2711,3 +2711,23 @@ Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2
   DATA owns integration/review; setup owns fifth-secret source; Product retains final
   authenticated ten-specimen acceptance after actual deployment and trace delivery.
   Preserve known HTTP receipts separately from timely local flush completion.
+
+
+## 2026-09-14T06:26:18.954914+00:00 — Root-owned tracing continuation guide
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, branch
+  `codex/bounded-logfire-transport`, `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Addendum to closeout-only `12f5419095b995a0638bb76e129caa1402d38df6`; implementation
+  remains exact `2b748ea21896c66320a1e4126095ef1246b8d3e9`. No runtime edit or native action.
+- Root explicitly accepted ownership of review/application in its direct-user approval
+  context and requested inert application order, pins and validation commands. Preserved
+  original rejected-source packet unchanged; created the independent review preparation
+  `/private/tmp/specimen-bounded-native-continuation-guide-20260914`.
+- Read-only locked Logfire5 source config.py:1281 confirms direct Authorization token
+  header. No token read, SDK configure, DNS or HTTP was performed. Attached source hash
+  and excerpt; the proposed transport is still unqualified.
+- Guide includes source pins, exact sanitized test commands, immutable original probe
+  hashes and additional native/installation/composition requirements. Those future
+  commands were not executed here. Current implementation GREEN: Not confirmed.
+  DATA owns independent candidate review/full verification; root owns actual source
+  and native release; Product retains final authenticated ten-specimen acceptance.
