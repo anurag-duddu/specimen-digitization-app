@@ -1235,6 +1235,51 @@ class ApiSpecimenRepository
   }
 
   @override
+  Future<BulkDecisionReport> reviewMany(
+    CollectionScope scope,
+    List<Specimen> specimens,
+    BulkDecisionKind kind,
+    String reason,
+    String key,
+  ) async {
+    if (specimens.isEmpty) return const BulkDecisionReport([]);
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    final missing = specimens.where((s) => s.recordVersionId.isEmpty).toList();
+    if (missing.isNotEmpty) {
+      // Without the version the server last answered there is no optimistic
+      // concurrency check, and the decision would be taken against whatever
+      // the record happens to be now.
+      throw const ApiFailure(
+        'The queue is out of date. Refresh it and select again.',
+        code: 'missing_record_version',
+      );
+    }
+    final result = await request(
+      'POST',
+      '${_root(scope)}/decisions:batch',
+      key: key,
+      body: {
+        'reason': reason,
+        'decisions': [
+          for (final (index, specimen) in specimens.indexed)
+            <String, dynamic>{
+              'specimen_id': specimen.id,
+              'expected_revision': specimen.revision,
+              'base_record_version_id': specimen.recordVersionId,
+              'kind': kind.wire,
+              'idempotency_key': '$key-$index',
+              if (kind == BulkDecisionKind.confirmCoverage)
+                'after': {'confirmed': true},
+            },
+        ],
+      },
+    );
+    _checkAccess(epoch, userId);
+    return BulkDecisionReport.fromWire(result);
+  }
+
+  @override
   Future<Specimen> retry(
     CollectionScope scope,
     Specimen specimen,

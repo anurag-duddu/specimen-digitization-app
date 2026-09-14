@@ -121,6 +121,33 @@ class DecisionInput(RevisionInput):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class BatchDecisionInput(Record):
+    """One decision inside a batch, addressed at its own record."""
+
+    specimen_id: str = Field(min_length=1, max_length=100)
+    expected_revision: int = Field(ge=1)
+    base_record_version_id: str
+    kind: str
+    target_id: str = ""
+    before: dict = Field(default_factory=dict)
+    after: dict = Field(default_factory=dict)
+    evidence_ids: list[str] = Field(default_factory=list)
+    idempotency_key: str = Field(default="", max_length=200)
+
+
+class DecisionBatchInput(Record):
+    """Several decisions, one reviewer action, one round trip.
+
+    The reason is the batch's, not the decision's: one reviewer action carries
+    one reason, which is what the review surfaces already ask for. Decisions
+    addressed at the same record are applied in the order they are listed,
+    against the single revision named by the first of them.
+    """
+
+    reason: str = ""
+    decisions: list[BatchDecisionInput] = Field(min_length=1, max_length=100)
+
+
 class RegionsInput(RevisionInput):
     base_run_id: str
     regions: list[Region]
@@ -190,6 +217,73 @@ def verify_pilot_observation(specimen, observation, blobs):
         effective_declarations(specimen, observation, blobs)
     except Exception as exc:
         raise EvidenceIntegrityError("evidence_integrity_failure") from exc
+
+
+def classify_error(exc) -> tuple[int, str, str, str]:
+    """Map one exception onto the status, code, category and message it reports.
+
+    Lifted out of the application's exception handler so a batch entry that is
+    refused names the same code the same decision would have named on its own
+    endpoint. A second copy of this mapping would drift, and a reviewer reading
+    "one record refused" would be told a different thing depending on how the
+    decision was sent.
+    """
+    status, code, category, message = (
+        503,
+        "runtime_unavailable",
+        "operational",
+        "Runtime operation failed; inspect server configuration",
+    )
+    if isinstance(exc, PermissionError):
+        status, code, category, message = (
+            403,
+            "access_denied",
+            "authorization",
+            "Access denied",
+        )
+        from .runtime_auth import EmailVerificationRequired
+
+        if isinstance(exc, EmailVerificationRequired):
+            code = "email_verification_required"
+            message = "Verify your email and sign in again"
+    elif isinstance(exc, Missing):
+        status, code, category, message = (
+            404,
+            "not_found",
+            "input",
+            "Resource not found",
+        )
+    elif isinstance(exc, Conflict):
+        status, code, category, message = (
+            409,
+            "revision_or_idempotency_conflict",
+            "conflict",
+            str(exc),
+        )
+    elif isinstance(exc, (ValueError, UnidentifiedImageError)):
+        status, code, category, message = (
+            422,
+            "invalid_input",
+            "input",
+            str(exc)[:200],
+        )
+    elif isinstance(exc, (OperationalBlock, EvidenceIntegrityError)):
+        message = str(exc)
+    from .source_reader import SourceObjectChanged
+
+    if isinstance(exc, SourceObjectChanged):
+        status, code, category = 422, "source_object_changed", "conflict"
+    if isinstance(exc, SnapshotTooLarge):
+        status, code, category = 413, "snapshot_too_large", "policy"
+    if isinstance(exc, (GraphTooLarge, WorkspaceTooLarge)):
+        status, code, category = (
+            413,
+            "workspace_artifact_required"
+            if isinstance(exc, WorkspaceTooLarge)
+            else "active_graph_limit_exceeded",
+            "policy",
+        )
+    return status, code, category, message
 
 
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
@@ -428,61 +522,7 @@ def create_app(
 
     @app.exception_handler(Exception)
     async def errors(request, exc):
-        status, code, category, message = (
-            503,
-            "runtime_unavailable",
-            "operational",
-            "Runtime operation failed; inspect server configuration",
-        )
-        if isinstance(exc, PermissionError):
-            status, code, category, message = (
-                403,
-                "access_denied",
-                "authorization",
-                "Access denied",
-            )
-            from .runtime_auth import EmailVerificationRequired
-
-            if isinstance(exc, EmailVerificationRequired):
-                code = "email_verification_required"
-                message = "Verify your email and sign in again"
-        elif isinstance(exc, Missing):
-            status, code, category, message = (
-                404,
-                "not_found",
-                "input",
-                "Resource not found",
-            )
-        elif isinstance(exc, Conflict):
-            status, code, category, message = (
-                409,
-                "revision_or_idempotency_conflict",
-                "conflict",
-                str(exc),
-            )
-        elif isinstance(exc, (ValueError, UnidentifiedImageError)):
-            status, code, category, message = (
-                422,
-                "invalid_input",
-                "input",
-                str(exc)[:200],
-            )
-        elif isinstance(exc, (OperationalBlock, EvidenceIntegrityError)):
-            message = str(exc)
-        from .source_reader import SourceObjectChanged
-
-        if isinstance(exc, SourceObjectChanged):
-            status, code, category = 422, "source_object_changed", "conflict"
-        if isinstance(exc, SnapshotTooLarge):
-            status, code, category = 413, "snapshot_too_large", "policy"
-        if isinstance(exc, (GraphTooLarge, WorkspaceTooLarge)):
-            status, code, category = (
-                413,
-                "workspace_artifact_required"
-                if isinstance(exc, WorkspaceTooLarge)
-                else "active_graph_limit_exceeded",
-                "policy",
-            )
+        status, code, category, message = classify_error(exc)
         return JSONResponse(
             status_code=status,
             content={
@@ -1989,6 +2029,151 @@ def create_app(
         )
         schedule_local(p, s, background_tasks)
         return render_workspace(s, p, mutation_committed=True)
+
+    @app.post(prefix + "/decisions:batch")
+    def decisions_batch(
+        organization_id: str,
+        body: DecisionBatchInput,
+        background_tasks: BackgroundTasks,
+        user=Depends(identity),
+        idempotency_key: str = Header(default=""),
+    ):
+        """Several review decisions in one call, with one outcome per decision.
+
+        The single-decision endpoint above is unchanged and remains the way one
+        decision is taken. This exists because a reviewer acting on a selection
+        is one action, and sending it as one call per record makes the count on
+        the confirmation a promise the wire cannot keep: some calls land, some
+        do not, and nothing reports which.
+
+        It never answers a single opaque error. Every decision gets its own
+        row in `results`, with the same error code the same decision would have
+        received on its own endpoint. A decision refused for one record does
+        not stop the others; it stops only the later decisions addressed at
+        that same record, which are reported as `skipped` rather than
+        `refused`, because they were never attempted.
+
+        Nothing here is atomic across records, and the answer says so by
+        counting. What landed, landed: this product supersedes rather than
+        deletes, so a partly applied batch is a set of recorded decisions, not
+        a half-written one.
+        """
+        key(idempotency_key)
+        if not body.reason.strip():
+            raise ValueError("Review reason required")
+        # A key per decision, because the server reconciles a retry on the key.
+        # Two decisions sharing one would reconcile as a single decision and
+        # the second would be silently dropped.
+        entry_keys = [
+            item.idempotency_key or f"{idempotency_key}-{index}"
+            for index, item in enumerate(body.decisions)
+        ]
+        if len(set(entry_keys)) != len(entry_keys):
+            raise ValueError("Each decision in a batch needs its own key")
+        # The first decision for a record names the version the reviewer was
+        # looking at, and every later decision for that record must name the
+        # same one. The server threads the rest, so it decides whether a later
+        # correction still applies, rather than a client guessing between its
+        # own calls.
+        base: dict[str, tuple[int, str]] = {}
+        for item in body.decisions:
+            seen = base.setdefault(
+                item.specimen_id,
+                (item.expected_revision, item.base_record_version_id),
+            )
+            if seen != (item.expected_revision, item.base_record_version_id):
+                raise ValueError("Decisions on one record share one base version")
+
+        current = dict(base)
+        stopped: set[str] = set()
+        results: list[dict] = []
+        for index, item in enumerate(body.decisions):
+            entry = {
+                "index": index,
+                "specimen_id": item.specimen_id,
+                "kind": item.kind,
+                "idempotency_key": entry_keys[index],
+            }
+            if item.specimen_id in stopped:
+                results.append(dict(entry, outcome="skipped"))
+                continue
+            revision, version_id = current[item.specimen_id]
+            try:
+                saved = decision(
+                    organization_id,
+                    item.specimen_id,
+                    DecisionInput(
+                        expected_revision=revision,
+                        reason=body.reason,
+                        base_record_version_id=version_id,
+                        kind=item.kind,
+                        target_id=item.target_id,
+                        before=item.before,
+                        after=item.after,
+                        evidence_ids=item.evidence_ids,
+                    ),
+                    background_tasks,
+                    user=user,
+                    idempotency_key=entry_keys[index],
+                )
+            except WorkspaceTooLarge as oversized:
+                # The decision was committed and only the rendered record was
+                # too large to return. Reporting it as refused would tell the
+                # reviewer the opposite of what happened to the record.
+                current[item.specimen_id] = (
+                    oversized.details["revision"],
+                    oversized.details["record_version_id"],
+                )
+                results.append(
+                    dict(
+                        entry,
+                        outcome="applied",
+                        revision=oversized.details["revision"],
+                        record_version_id=oversized.details["record_version_id"],
+                        artifact_required=True,
+                    )
+                )
+                continue
+            except Exception as refusal:
+                status, code, category, message = classify_error(refusal)
+                stopped.add(item.specimen_id)
+                results.append(
+                    dict(
+                        entry,
+                        outcome="refused",
+                        error={
+                            "status": status,
+                            "code": code,
+                            "category": category,
+                            "message": message,
+                        },
+                    )
+                )
+                continue
+            current[item.specimen_id] = (
+                saved["revision"],
+                saved["record_version_id"],
+            )
+            results.append(
+                dict(
+                    entry,
+                    outcome="applied",
+                    revision=saved["revision"],
+                    record_version_id=saved["record_version_id"],
+                    disposition=saved["disposition"],
+                )
+            )
+
+        def counted(outcome: str) -> int:
+            return sum(1 for row in results if row["outcome"] == outcome)
+
+        return {
+            "requested": len(results),
+            "applied": counted("applied"),
+            "refused": counted("refused"),
+            "skipped": counted("skipped"),
+            "results": results,
+        }
 
     @app.post(prefix + "/specimens/{specimen_id}/regions")
     def regions(

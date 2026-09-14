@@ -72,6 +72,17 @@ class Specimen {
   String get title =>
       textOf(data['display_name'], textOf(data['filename'], id));
   int get revision => (data['revision'] as num?)?.toInt() ?? 0;
+
+  /// The run and revision the server last answered for this record.
+  ///
+  /// The list endpoint names it `record_version_id`; the workspace response is
+  /// renamed to `latest_record_version_id` on the way in, so a record built
+  /// from either answers here. Empty when neither was sent, which is the
+  /// signal that this record cannot carry an optimistic concurrency check.
+  String get recordVersionId => textOf(
+    data['record_version_id'] ?? data['latest_record_version_id'],
+    '',
+  );
   String get state =>
       textOf(data['operational_state'], textOf(data['status'], 'unknown'));
   String? get disposition =>
@@ -200,6 +211,136 @@ abstract class SpecimenRepository {
     String reason,
     String key,
   );
+
+  /// Takes one decision across many records in one call.
+  ///
+  /// Pass criterion 7.3. The wire used to take one decision per call, which
+  /// made the count on a bulk confirmation a promise it could not keep: some
+  /// calls land, some do not, and nothing says which. This answers a
+  /// [BulkDecisionReport] with one row per record instead.
+  ///
+  /// [key] is the batch's key. Each record's decision reconciles on its own
+  /// key derived from it, so a retry after an uncertain answer records each
+  /// decision once rather than twice.
+  Future<BulkDecisionReport> reviewMany(
+    CollectionScope scope,
+    List<Specimen> specimens,
+    BulkDecisionKind kind,
+    String reason,
+    String key,
+  );
+}
+
+/// The decisions this product takes on many records at once.
+///
+/// An enumeration rather than free-form decision bodies, because the decisions
+/// that carry a record-specific target cannot be meant across records: a field
+/// correction names a field on one record, and there is no sense in which five
+/// records share it. Adding a case here is a product decision.
+enum BulkDecisionKind {
+  /// Records the reviewer's approval on each record.
+  approve('approve'),
+
+  /// Records that every label on each record has been read.
+  confirmCoverage('coverage');
+
+  const BulkDecisionKind(this.wire);
+
+  /// The `kind` the decisions endpoint takes. The words a reviewer reads live
+  /// with the control that shows them, in `widgets/selection_bar.dart`.
+  final String wire;
+}
+
+/// What one record's decision did.
+enum BulkOutcome {
+  /// The server recorded it and answered a newer version.
+  applied,
+
+  /// The server refused it. [BulkDecisionResult.message] says why.
+  refused,
+
+  /// Never attempted, because an earlier decision on the same record was
+  /// refused. Different from refused, and a reviewer is owed the difference.
+  skipped,
+}
+
+/// One record's row in a [BulkDecisionReport].
+class BulkDecisionResult {
+  const BulkDecisionResult({
+    required this.specimenId,
+    required this.outcome,
+    this.revision,
+    this.code = '',
+    this.message = '',
+  });
+
+  /// Reads one row of the endpoint's answer.
+  factory BulkDecisionResult.fromWire(Json row) {
+    final Json error = row['error'] is Map
+        ? Json.from(row['error'] as Map)
+        : const <String, dynamic>{};
+    return BulkDecisionResult(
+      specimenId: textOf(row['specimen_id'], ''),
+      outcome: switch (row['outcome']) {
+        'applied' => BulkOutcome.applied,
+        'skipped' => BulkOutcome.skipped,
+        _ => BulkOutcome.refused,
+      },
+      revision: (row['revision'] as num?)?.toInt(),
+      code: textOf(error['code'], ''),
+      message: textOf(error['message'], ''),
+    );
+  }
+
+  final String specimenId;
+  final BulkOutcome outcome;
+
+  /// The version the decision produced, when it was applied.
+  final int? revision;
+
+  /// The server's error code, for a decision that was refused.
+  final String code;
+
+  /// The server's message, for a decision that was refused.
+  final String message;
+
+  bool get changed => outcome == BulkOutcome.applied;
+}
+
+/// What a bulk decision did, record by record.
+///
+/// Never a single opaque failure: a batch that half worked says exactly which
+/// records changed and which did not, because this product supersedes rather
+/// than deletes and a reviewer has to know which version they are now looking
+/// at.
+class BulkDecisionReport {
+  const BulkDecisionReport(this.results);
+
+  /// Reads the endpoint's answer.
+  factory BulkDecisionReport.fromWire(Json body) => BulkDecisionReport(
+    objects(body['results']).map(BulkDecisionResult.fromWire).toList(),
+  );
+
+  /// One row per decision sent, in the order they were sent.
+  final List<BulkDecisionResult> results;
+
+  int get requested => results.length;
+
+  int get applied => _counted(BulkOutcome.applied);
+
+  int get refused => _counted(BulkOutcome.refused);
+
+  int get skipped => _counted(BulkOutcome.skipped);
+
+  /// The records that did not change, refused and never attempted alike.
+  List<BulkDecisionResult> get unchanged =>
+      results.where((BulkDecisionResult row) => !row.changed).toList();
+
+  /// True when every decision landed.
+  bool get complete => results.isNotEmpty && unchanged.isEmpty;
+
+  int _counted(BulkOutcome outcome) =>
+      results.where((BulkDecisionResult row) => row.outcome == outcome).length;
 }
 
 /// One reviewer action that the wire can only take one decision at a time.

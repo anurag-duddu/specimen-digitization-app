@@ -23,6 +23,7 @@ export 'reading_card.dart';
 export 'reason_sheet.dart';
 export 'region_overlay.dart';
 export 'risk_meter.dart';
+export 'selection_bar.dart';
 export 'skeleton.dart';
 export 'specimen_status.dart';
 export 'status_chip.dart';

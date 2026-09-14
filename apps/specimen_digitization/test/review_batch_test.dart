@@ -1,12 +1,16 @@
 // Pass criterion 7.2: five corrections on one record, one reason, one
 // reviewer action.
 //
-// One round trip is the half this client cannot deliver, because the review
-// API takes one decision per call. What `reviewBatch` does deliver, and what
-// these tests hold, is the rest of it: the calls carry one reason, they share
-// one idempotency key prefix, each one carries the revision the one before it
-// produced, and the screen moves once, on the last result, rather than five
-// times.
+// `reviewBatch` is the fan out path the workbench still takes: one call per
+// correction, carrying one reason, one idempotency key prefix, and the
+// revision the call before it produced, with the screen moved once on the last
+// result rather than five times. These tests hold that behaviour.
+//
+// The API no longer requires it. `POST /decisions:batch` takes several
+// decisions in one call, including several addressed at one record, and
+// `tests/test_decisions_batch.py` covers that shape directly. Moving the
+// workbench onto it is a separate change in workbench-owned files; until then
+// this path is what ships there, so it stays tested as it is.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -347,14 +351,20 @@ void main() {
     );
   });
 
-  // Pass criterion 7.3. The server exposes no bulk action, so the queue
-  // offers none. The criterion's own second half, "the bulk actions the
-  // server permits", is what this holds: nothing in the queue implies a
-  // capability that does not exist, and nothing was added here that would.
-  // `reviewBatch` above is one record and several corrections, which is
-  // criterion 7.2 rather than this one.
-  group('the queue implies no bulk action the server does not have', () {
-    testWidgets('no selection model, no select all, no bulk control', (
+  // Pass criterion 7.3. The server now accepts a decision across records
+  // (`POST /decisions:batch`), so the queue offers one, and the half of the
+  // criterion that used to be held as an absence is now held as a capability:
+  // the affordance exists, it is bounded by what the server actually takes,
+  // and nothing in the queue implies more than that.
+  //
+  // What lives here is only the part that keeps this file honest: `reviewBatch`
+  // above is still one record and several corrections, which is criterion 7.2,
+  // and it is a different path from the queue's. The selection model, the bar,
+  // the confirmation and the per record outcomes are covered in
+  // `test/selection_model_test.dart`, `test/widgets/selection_bar_test.dart`
+  // and `test/screens/queue_bulk_test.dart`.
+  group('the queue offers the bulk actions the server permits', () {
+    testWidgets('a selection model exists, over the records on screen', (
       WidgetTester tester,
     ) async {
       await pumpGoldenApp(
@@ -364,23 +374,45 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      expect(find.byType(Checkbox), findsNothing);
-      expect(find.byType(CheckboxListTile), findsNothing);
-      for (final String word in <String>[
-        'Select all',
-        'Selected',
-        'selection',
-        'Bulk',
-        'in bulk',
-        'Approve all',
-        'Defer all',
+      expect(find.byType(Checkbox), findsNWidgets(6));
+      expect(
+        find.textContaining('Select all matching'),
+        findsNothing,
+        reason: 'the list API answers a page, never a total, so no control '
+            'may claim the whole filter',
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('and offers nothing the wire cannot take across records', (
+      WidgetTester tester,
+    ) async {
+      await pumpGoldenApp(
+        tester,
+        window: const Size(1180, 1400),
+        brightness: Brightness.light,
+        location: goldenQueueLocation,
+        repository: GoldenQueueRepository(goldenQueue(6)),
+      );
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+      expect(find.text('1 record selected'), findsOneWidget);
+      // The two record level decisions, and only those. A field correction or
+      // a transcription names a target inside one record, and there is no
+      // sense in which six records share it.
+      expect(find.text('Approve'), findsOneWidget);
+      expect(find.text('Confirm coverage'), findsOneWidget);
+      for (final String absent in <String>[
+        'Correct field',
+        'Adjudicate readings',
+        'Delete',
+        'Remove',
       ]) {
         expect(
-          find.textContaining(word),
+          find.textContaining(absent),
           findsNothing,
-          reason:
-              'the queue says "$word", which implies a bulk capability the '
-              'repository does not have',
+          reason: 'the queue offers "$absent" across records, which the '
+              'decisions endpoint does not take',
         );
       }
       await tester.pumpWidget(const SizedBox());
