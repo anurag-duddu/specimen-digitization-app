@@ -24,6 +24,7 @@ String textOf(dynamic value, [String fallback = 'Not recorded']) =>
 List<Json> objects(dynamic value) => value is List
     ? value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
     : [];
+
 /// The mechanical part of turning a server enum into words.
 ///
 /// User-facing text goes through `vocabularyLabel` instead, which renames

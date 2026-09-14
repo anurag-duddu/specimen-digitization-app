@@ -9,6 +9,8 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/reading_declarations.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
+import 'workbench_harness.dart';
+
 void main() {
   final fixture =
       jsonDecode(
@@ -119,13 +121,7 @@ void main() {
             fixture['cases'][name]['workspace']['run']['label_language_handling']
                 as Json;
         await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: SingleChildScrollView(
-                child: LabelLanguagePolicy(handling: handling),
-              ),
-            ),
-          ),
+          scrollingHost(LabelLanguagePolicy(handling: handling)),
         );
         expect(
           find.text(
@@ -159,13 +155,7 @@ void main() {
       final provenance =
           mixed['human_decisions'][1]['declaration_provenance'] as Json;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SingleChildScrollView(
-              child: ReadingDeclarationView(provenance: provenance),
-            ),
-          ),
-        ),
+        scrollingHost(ReadingDeclarationView(provenance: provenance)),
       );
       expect(find.text('Model languages: English, German'), findsOneWidget);
       expect(find.text('Superseded human declaration'), findsOneWidget);
@@ -189,18 +179,17 @@ void main() {
           'available_actions': allowed,
           'observations': [workspace['observations'][0]],
         });
+        useWindow(tester, largeWindow);
         await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: ReviewWorkbench(
-                specimen: record,
-                canReview: reviewer,
-                onChange: (_) async {},
-                onRetry: (_) async {},
-                onRefresh: () {},
-                loadArtifact: (_) async =>
-                    mixed['declaration_provenance'] as Json,
-              ),
+          workbenchHost(
+            ReviewWorkbench(
+              specimen: record,
+              canReview: reviewer,
+              onChange: (_) async {},
+              onRetry: (_) async {},
+              onRefresh: () {},
+              loadArtifact: (_) async =>
+                  mixed['declaration_provenance'] as Json,
             ),
           ),
         );
@@ -224,20 +213,18 @@ void main() {
     (tester) async {
       Json? saved;
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async {
-                  saved = await showDialog<Json>(
-                    context: context,
-                    builder: (_) => const ReadingDeclarationDialog(
-                      observationId: 'observation-test',
-                    ),
-                  );
-                },
-                child: const Text('Open declaration'),
-              ),
+        workbenchHost(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                saved = await showDialog<Json>(
+                  context: context,
+                  builder: (_) => const ReadingDeclarationDialog(
+                    observationId: 'observation-test',
+                  ),
+                );
+              },
+              child: const Text('Open declaration'),
             ),
           ),
         ),

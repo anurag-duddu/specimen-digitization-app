@@ -1,33 +1,49 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'models.dart';
+import 'theme/semantic_colors.dart';
 import 'vocabulary.dart';
-import 'widgets/caveat_text.dart';
+import 'widgets/widgets.dart';
 
 Json objectOf(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : {};
 
+/// A raw payload behind a closed disclosure with a descriptive title.
+///
+/// This is the pre-token disclosure, kept for the screens that have not
+/// adopted the product `ThemeExtension`s yet (intake and capture quality).
+/// The shared `EvidenceDrawer` reads `context.tokens` and throws on a bare
+/// Material theme, so every screen in this step calls `EvidenceDrawer`
+/// directly and this wrapper renders the same shape without the tokens. It
+/// should be deleted once the remaining screens are migrated; the PR asks for
+/// the shared component to tolerate a theme with no product extensions.
 class EvidenceDetails extends StatelessWidget {
   const EvidenceDetails({super.key, required this.title, required this.value});
   final String title;
   final Object? value;
   @override
-  Widget build(BuildContext context) => ExpansionTile(
-    title: Text(title),
-    children: [
-      Padding(
-        padding: const EdgeInsets.all(12),
-        child: SelectionArea(
-          child: Text(
-            const JsonEncoder.withIndent('  ').convert(value),
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+  Widget build(BuildContext context) {
+    // Migrated screens get the shared drawer; the rest get the same
+    // closed-by-default shape without a token lookup that would throw.
+    if (Theme.of(context).extension<SpecimenColors>() != null) {
+      return EvidenceDrawer(title: title, payload: value);
+    }
+    return ExpansionTile(
+      title: Text(title),
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SelectionArea(
+            child: Text(
+              EvidenceDrawer.pretty(value),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+            ),
           ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class ReviewContext extends StatelessWidget {

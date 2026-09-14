@@ -16,8 +16,6 @@ const Map<String, int> migrationBacklog = <String, int>{
   // Four disposition colors plus the synthetic environment band. Migration
   // step 4 and step 5 of the design system.
   'lib/src/workspace.dart': 6,
-  // The image matte and the diff highlight. Migration step 6.
-  'lib/src/workbench.dart': 2,
 };
 
 final RegExp _colorLiteral = RegExp(r'Color\(0x');
