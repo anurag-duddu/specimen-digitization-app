@@ -3430,7 +3430,7 @@ The incoming main commit 0ca2e06a8683316723573ee3653f8bee047a3f71 rewrote one du
 - Task: replace the index-by-index reading comparison in `DiffText` with a real alignment
 - Branch/worktree: `fix/diff-text-alignment` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/adoring-shtern-269a76`
 - Outcome: Completed
-- Commits/PRs: see the commit on `fix/diff-text-alignment`; pull request opened against `main`
+- Commits/PRs: `2270b0b`; pull request #51 against `main`
 - Validation: `flutter analyze --fatal-infos` no issues; `flutter test` 876 passed, 7 skipped, 0 failed; `python3 scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt` 100 files, 0 violations, 0 baselined; `scripts/ci/verify.sh` exit 0 with `LANG`/`LC_ALL` set to `en_US.UTF-8`. `flutter test test/golden --update-goldens` changed no byte, for the reason in the second learning below.
 - Durable learnings:
   - The measurement that started this is worth keeping. Two real readings of slide FMNHINS 4486783 (`subject_105526322.jpeg`), 142 and 160 runes, from `handwriting-qwen` and `handwriting-muse`: the index comparison reported 83 differing positions where a minimal edit script finds 8 places and 28 characters, similarity 0.894. Twenty-one of those 28 characters are one legitimate insertion, the barcode catalog number and sideways annotation that the first reading skipped, and `fmnh_ins_number` is mandatory and unresolved on that very record. The defect was not that the number was wrong. It was that the one disagreement a reviewer had to act on was indistinguishable from the 75 the widget invented, which is how a reviewer learns to stop reading the diff.
