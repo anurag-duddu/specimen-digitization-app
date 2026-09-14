@@ -1,0 +1,107 @@
+// The status vocabulary: the wire mapping, the words and the phrases.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/widgets/specimen_status.dart';
+
+import 'harness.dart';
+
+void main() {
+  group('fromWire', () {
+    test('maps every record level string the server emits', () {
+      expect(SpecimenStatus.fromWire('cleared'), SpecimenStatus.cleared);
+      expect(
+        SpecimenStatus.fromWire('needs_human_review'),
+        SpecimenStatus.needsReview,
+      );
+      expect(SpecimenStatus.fromWire('deferred'), SpecimenStatus.deferred);
+      expect(SpecimenStatus.fromWire('running'), SpecimenStatus.processing);
+      expect(
+        SpecimenStatus.fromWire('processing_blocked'),
+        SpecimenStatus.blocked,
+      );
+    });
+
+    test('maps every field state in knownFieldStates', () {
+      for (final String state in knownFieldStates) {
+        final SpecimenStatus mapped = SpecimenStatus.fromWire(state);
+        expect(
+          mapped,
+          isNot(SpecimenStatus.unknown),
+          reason: '$state has no treatment',
+        );
+        expect(mapped.isRecordStatus, isFalse, reason: '$state is a field');
+      }
+    });
+
+    test('an absent, empty or unrecognized value is state unknown', () {
+      expect(SpecimenStatus.fromWire(null), SpecimenStatus.unknown);
+      expect(SpecimenStatus.fromWire(''), SpecimenStatus.unknown);
+      expect(SpecimenStatus.fromWire('gone_fishing'), SpecimenStatus.unknown);
+    });
+
+    test('trims the value before mapping', () {
+      expect(SpecimenStatus.fromWire(' cleared '), SpecimenStatus.cleared);
+    });
+
+    test('the wire unknown is the field state, not the fallback', () {
+      expect(SpecimenStatus.fromWire('unknown'), SpecimenStatus.unknownValue);
+    });
+  });
+
+  group('words', () {
+    test('every label fits the chip budget of 2 to 20 characters', () {
+      for (final SpecimenStatus status in SpecimenStatus.values) {
+        expect(
+          status.label.length,
+          inInclusiveRange(2, 20),
+          reason: '${status.name} label "${status.label}"',
+        );
+      }
+    });
+
+    test('every label is sentence case with no terminal period', () {
+      for (final SpecimenStatus status in SpecimenStatus.values) {
+        expect(status.label, isNot(endsWith('.')));
+        expect(status.label, isNot(equals(status.label.toUpperCase())));
+      }
+    });
+
+    test('the semantics phrase names the vocabulary it came from', () {
+      expect(SpecimenStatus.cleared.semanticsLabel, 'Queue: cleared');
+      expect(SpecimenStatus.unknownValue.semanticsLabel, 'Field: unknown');
+      expect(SpecimenStatus.unknown.semanticsLabel, 'Queue: state unknown');
+    });
+
+    test('every semantics phrase is 100 characters or fewer', () {
+      for (final SpecimenStatus status in SpecimenStatus.values) {
+        expect(status.semanticsLabel.length, lessThanOrEqualTo(100));
+      }
+    });
+  });
+
+  testWidgets('every status resolves a full presentation in both themes', (
+    WidgetTester tester,
+  ) async {
+    for (final MapEntry<String, ThemeData> entry in productThemes.entries) {
+      for (final SpecimenStatus status in SpecimenStatus.values) {
+        late StatusPresentation seen;
+        await pumpComponent(
+          tester,
+          Builder(
+            builder: (BuildContext context) {
+              seen = status.presentation(context);
+              return const SizedBox.shrink();
+            },
+          ),
+          theme: entry.value,
+        );
+        expect(seen.label, status.label, reason: entry.key);
+        expect(seen.icon, status.icon, reason: entry.key);
+        expect(seen.semanticsLabel, status.semanticsLabel);
+        expect(seen.content, isNot(seen.fill), reason: 'no invisible chip');
+      }
+    }
+  });
+}
