@@ -381,7 +381,108 @@ photograph stays as captured in both modes; the letterbox behind it uses
 `surface-container-lowest` in light and `surface-container-highest` in dark so
 label paper reads as paper, not as a glowing rectangle.
 
-## 13. Order of work
+## 13. Sources
+
+**Purpose.** Let a reviewer see the photographs a collection already holds in
+storage, choose one, several or all of them, and add them to the queue.
+
+**Why it exists.** Intake was upload-only: `POST /batches` then
+`POST /batches/{id}/items` then a chunked `PUT`, with every byte travelling
+through the client. Nothing in the API enumerated storage, so the 1,000 objects
+under `microscopic-slides/` in the project bucket were invisible to the
+application. A reviewer could not see them, let alone choose between them.
+
+**Reached from Intake,** at `/c/:collection/intake/sources`, and one source at
+`/c/:collection/intake/sources/:source`. Not a third navigation destination:
+adding from a source creates a batch through the same batch and items surface an
+upload does, so it is the same errand by another route in. A build whose
+repository does not serve sources shows an absence and no control.
+
+**Blueprint.**
+
+- **Source list.** A short list, never a form. A source is configuration that an
+  administrator registers; no endpoint creates one, and a reviewer chooses
+  within a source rather than naming a bucket. Each row names the prefix and
+  what its snapshot holds, or "Not listed yet" when none has been captured.
+  A collection with none registered is told who registers one.
+- **Header.** The source name and one summary line: the snapshot's count and
+  when it was listed. The count is the server's, and a source never listed says
+  so rather than showing a zero.
+- **Controls.** A `SegmentedButton` over All, Not in queue and In queue, and a
+  select all whose label carries the count it reaches.
+- **Rows.** `SourceObjectRow` inside the shared `SelectableRow`: a placeholder
+  image, the file name in the monospace identifier role, one measurements line
+  (`JPEG · 0.3 MB`, or "Size not recorded"), and a `StatusChip` for the row
+  state. Available, In the queue and Unsupported format are carried by a word
+  and a glyph, never by colour. A row that is already a record opens it; a row
+  that is not has nothing behind it and announces no button.
+- **Selection.** The queue's `PagedSelection` and `SelectionBar`, unchanged,
+  with `countLabel` and `moreMatchLabel` set to the photograph wording. The
+  count is on screen from the first pick.
+- **Confirmation.** Before anything is sent: the count in the title, what
+  adding does, what it costs, and how many of the selection are already
+  records. The primary button repeats the verb and the count.
+
+**Thumbnails are placeholders, deliberately.** An un-imported object has no
+asset, so `GET /assets/{id}/content` does not address it, and the originals are
+about 300 KB each, so a grid of them is tens of megabytes for one screen. A
+source thumbnail endpoint is the upgrade, keyed by source, object name and
+generation so a cached render can never outlive the bytes it depicts. It is not
+in the A and B surface and this screen does not specify it. Rows that are
+already records carry `specimen_id` and not `asset_id`, so reaching the real
+image would be a request per row across a grid; that is not worth it either.
+
+**Select all means load, then select.** An import names
+`{object_name, generation}` per photograph, and the generation exists only on a
+listing row, so a photograph the client has not loaded is one it could not send.
+"Select all 1,000" therefore pages the rest of the snapshot first and selects
+what it loaded. The count on the control before that happens is the server's
+`matching_count`, which the server reports exactly or not at all: it is a scan
+of the snapshot under no filter or a media type filter, and it is `null` under
+the in-queue filters, where counting would cost a checksum lookup per object.
+Null is not zero. Where it is null the control is absent rather than vague, and
+select all reaches what is loaded, which is what the shared selection model
+already offers.
+
+**Adding is not running, and the confirmation says so.** The import path
+creates records at `ingested` and dispatches no processing in any mode. So the
+confirmation says "No model runs and no allowance is used." rather than naming
+a price. Running a selection needs an estimate, a reservation against an
+allowance and a bulk dispatch route; that is workstream C of
+`docs/execution/SOURCE_BROWSE_AND_RUN.md` and it is blocked on an ongoing budget
+the owner has not set. **There is no run control on this screen.** An affordance
+the server cannot serve is hidden rather than disabled, as in section 3, and a
+confirmation naming an estimate or a remaining allowance would be inventing
+both. When workstream C lands, the run action and its own confirmation are added
+here, carrying the count, the estimate and the remaining allowance from that
+endpoint.
+
+**A selection larger than fifty is several requests.** The server bounds one
+import at 50 because it reads every photograph whole. The screen pages the
+selection, shows the running count on the action, and reports one result. A
+photograph the source refuses is reported against that photograph and never
+fails the rest; only an integrity failure stops the run, and when it does the
+report names what already landed rather than concealing it.
+
+**A snapshot recaptured under the reviewer restarts the list.** A cursor is
+bound to the snapshot that issued it, so paging across a recapture is refused
+rather than silently straddling two lists. The screen reloads from the first
+page and says so once.
+
+**Layout.** Single pane at every width. The checkbox column is open from medium
+up and revealed by a long press below it. A row that cannot be selected holds
+the column open beside it, so the list stays aligned.
+
+**States.** Skeleton rows on first load; "No photographs here" when the source
+is empty and "No photographs match" when a filter is; a 403 names the sensitive
+image permission and who grants it, and offers no retry, because retrying
+cannot resolve it.
+
+**Done when** a reviewer can add the pilot ten and any other selection from this
+screen, the count is visible at every step, and nothing on it claims a cost the
+API does not report.
+
+## 14. Order of work
 
 Matches the sequencing in the north star: foundation and writing first, then the
 shell and queue, then the workbench, then intake and capture, then motion and

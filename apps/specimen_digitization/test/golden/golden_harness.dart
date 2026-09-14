@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/workspace.dart';
@@ -267,6 +268,14 @@ String get goldenQueueLocation =>
 String get goldenIntakeLocation =>
     AppRoutes.intakeOf(encodeCollectionKey(goldenCollection));
 
+/// The registered sources for the fixture collection.
+String get goldenSourcesLocation =>
+    AppRoutes.sourcesOf(encodeCollectionKey(goldenCollection));
+
+/// One registered source in the fixture collection.
+String get goldenSourceLocation =>
+    AppRoutes.sourceOf(encodeCollectionKey(goldenCollection), 'src-1');
+
 /// The record location for the fixture collection.
 String get goldenSpecimenLocation => goldenSpecimenLocationOf(goldenSpecimenId);
 
@@ -503,4 +512,89 @@ class GoldenQueueRepository extends GoldenRepository {
   Future<Specimen> specimen(CollectionScope scope, String id) async =>
       records.where((Specimen record) => record.id == id).firstOrNull ??
       records.first;
+}
+
+/// The repository the source goldens read.
+///
+/// One snapshot with a page of rows in each of the three states, so a golden
+/// shows the chip vocabulary rather than one row repeated.
+class GoldenSourceRepository extends GoldenRepository
+    implements SourceRepository {
+  GoldenSourceRepository();
+
+  /// The snapshot, in order.
+  static final List<SourceObject> rows = <SourceObject>[
+    _row('subject_105526321.jpg'),
+    _row('subject_105526322.jpg'),
+    _row(
+      'subject_105526323.jpg',
+      state: 'imported',
+      specimenId: goldenSpecimenId,
+    ),
+    _row('field_notes_1946.tiff', mediaType: 'image/tiff'),
+    _row('catalogue.pdf', state: 'unsupported_media_type', mediaType: 'application/pdf'),
+  ];
+
+  static SourceObject _row(
+    String name, {
+    String state = 'available',
+    String mediaType = 'image/jpeg',
+    String? specimenId,
+  }) => SourceObject(<String, dynamic>{
+    'bucket': 'specimen-digitization.firebasestorage.app',
+    'object_name': 'microscopic-slides/$name',
+    'generation': '1757000000000001',
+    'sha256': 'sha-$name',
+    'size_bytes': 312000,
+    'media_type': mediaType,
+    'state': state,
+    'specimen_id': specimenId,
+  });
+
+  @override
+  Future<List<RegisteredSource>> sources(CollectionScope scope) async =>
+      <RegisteredSource>[
+        RegisteredSource(<String, dynamic>{
+          'source_id': 'src-1',
+          'collection_id': scope.collectionId,
+          'bucket': 'specimen-digitization.firebasestorage.app',
+          'prefix': 'microscopic-slides/',
+          'media_types': <String>['image/jpeg', 'image/png', 'image/tiff'],
+          'registered_by': 'administrator',
+          'registered_at': '2026-09-14T10:22:00Z',
+          'inventory': <String, dynamic>{
+            'inventory_id': 'inv-1',
+            'object_count': 1000,
+            'captured_at': '2026-09-14T10:22:00Z',
+          },
+        }),
+      ];
+
+  @override
+  Future<SourceObjectPage> sourceObjectPage(
+    CollectionScope scope,
+    String sourceId, {
+    Map<String, String> filters = const <String, String>{},
+    String? cursor,
+  }) async => SourceObjectPage(
+    rows,
+    inventoryId: 'inv-1',
+    capturedAt: DateTime.utc(2026, 9, 14, 10, 22),
+    objectCount: 1000,
+    matchingCount: 1000,
+  );
+
+  @override
+  Future<SourceImportResult> importFromSource(
+    CollectionScope scope,
+    String sourceId,
+    List<SourceObject> selection,
+    String key, {
+    bool sensitive = true,
+  }) async => SourceImportResult(const <String, dynamic>{
+    'requested': 0,
+    'imported': 0,
+    'duplicates': 0,
+    'items': <Map<String, dynamic>>[],
+  });
 }

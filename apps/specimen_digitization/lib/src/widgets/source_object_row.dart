@@ -1,8 +1,14 @@
-/// One object in a source listing (screen blueprints, section 14).
+/// One photograph in a source listing (screen blueprints, section 13).
 ///
 /// The same anatomy as `UploadItem` and `QueueRow`: a leading image, an
 /// identifier, one line of measurements and a `StatusChip`. A reviewer who has
 /// learned the intake list has already learned this row.
+///
+/// Selection lives outside the row, in `SelectableRow`, exactly as it does in
+/// the queue. The body opens only where there is something to open, which is
+/// an object that has already become a specimen. An object that has not been
+/// imported has nothing behind it, so its body carries no tap and announces no
+/// button.
 ///
 /// The image is a placeholder, and that is a decision rather than an omission.
 /// An object that has not been imported has no asset, so `GET
@@ -37,7 +43,7 @@ extension SourceObjectStatePresentation on SourceObjectState {
   String get label => switch (this) {
     SourceObjectState.available => 'Available',
     SourceObjectState.imported => 'In the queue',
-    SourceObjectState.unsupportedMediaType => 'Unsupported type',
+    SourceObjectState.unsupportedMediaType => 'Unsupported format',
   };
 
   IconData get icon => switch (this) {
@@ -47,7 +53,7 @@ extension SourceObjectStatePresentation on SourceObjectState {
   };
 
   /// A complete phrase for assistive technology.
-  String get semanticsLabel => 'Object: ${label.toLowerCase()}';
+  String get semanticsLabel => 'Photograph: ${label.toLowerCase()}';
 
   /// True when adding this object to the queue can succeed.
   ///
@@ -56,20 +62,20 @@ extension SourceObjectStatePresentation on SourceObjectState {
   /// twice. A media type the source does not admit cannot, so the row is shown
   /// and not offered.
   bool get selectable => this != SourceObjectState.unsupportedMediaType;
-
-  StatusPresentation presentation(BuildContext context) {
-    final DispositionStyle style = context.dispositionStyle(tokenKey);
-    return StatusPresentation(
-      content: style.content,
-      fill: style.fill,
-      onFill: style.onFill,
-      icon: icon,
-      fill01: style.fill01,
-      label: label,
-      semanticsLabel: semanticsLabel,
-    );
-  }
 }
+
+/// "1 photograph" or "6 photographs".
+///
+/// A source listing counts photographs, not records. The distinction is the
+/// whole point of this screen: a photograph in storage becomes a record when
+/// it is added, and until then the queue has never heard of it.
+///
+/// "Photograph" rather than "object" because the reviewer is looking at
+/// pictures of specimens, and every media type a source admits is an image.
+/// "Object" is the storage model's word, and the vocabulary table has no row
+/// for it (UX writing, rule 7).
+String photographsLabel(int count) =>
+    count == 1 ? '1 photograph' : '$count photographs';
 
 /// The media type as a reviewer reads it: `image/jpeg` becomes `JPEG`.
 ///
@@ -102,48 +108,23 @@ String sourceMeasurements({required String mediaType, int? sizeBytes}) {
 
 /// One row in a source listing.
 class SourceObjectRow extends StatelessWidget {
-  const SourceObjectRow({
-    super.key,
-    required this.object,
-    this.selected = false,
-    this.selecting = false,
-    this.onToggle,
-    this.onExtend,
-  });
+  const SourceObjectRow({super.key, required this.object, this.onOpen});
 
   /// The inventory row this draws.
   final SourceObject object;
 
-  /// True when this object is in the selection.
-  final bool selected;
+  /// Opens the specimen this object became. Null for an object that is not in
+  /// the queue, because there is nothing behind it to open.
+  final VoidCallback? onOpen;
 
-  /// True once the reviewer has entered selection, which is when the checkbox
-  /// column appears on a window too narrow to keep it always.
-  final bool selecting;
-
-  /// Adds or removes this object. Null when the row cannot be selected.
-  final VoidCallback? onToggle;
-
-  /// Extends the selection from the anchor to this row, for a shift click or
-  /// a long press.
-  final VoidCallback? onExtend;
-
-  bool get _enabled => onToggle != null && object.state.selectable;
-
-  String _semanticsLabel() {
-    final StringBuffer buffer = StringBuffer()
-      ..write(object.displayName)
-      ..write(', ')
-      ..write(object.state.semanticsLabel)
-      ..write(', ')
-      ..write(
-        sourceMeasurements(
-          mediaType: object.mediaType,
-          sizeBytes: object.sizeBytes,
-        ),
-      );
-    return buffer.toString();
-  }
+  String _semanticsLabel() => <String>[
+    object.displayName,
+    object.state.semanticsLabel,
+    sourceMeasurements(
+      mediaType: object.mediaType,
+      sizeBytes: object.sizeBytes,
+    ),
+  ].join(', ');
 
   @override
   Widget build(BuildContext context) {
@@ -153,78 +134,30 @@ class SourceObjectRow extends StatelessWidget {
     // stop per object, not four.
     return MergeSemantics(
       child: Semantics(
-        // A checkbox role, because the gesture adds and removes rather than
-        // opening: there is nothing behind a source object to open.
-        checked: selected,
-        enabled: _enabled,
+        button: onOpen != null,
         label: _semanticsLabel(),
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            onTap: _enabled ? onToggle : null,
-            onLongPress: _enabled ? onExtend : null,
+            onTap: onOpen,
             borderRadius: BorderRadius.circular(context.shape.radiusSm),
             focusColor: theme.colorScheme.primary.withValues(
               alpha: _focusFillOpacity,
             ),
             child: ExcludeSemantics(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: selected ? theme.colorScheme.primaryContainer : null,
-                  borderRadius: BorderRadius.circular(context.shape.radiusSm),
-                ),
-                child: ConstrainedBox(
-                  // Every row is at least one target tall, so a checkbox in a
-                  // list of a thousand is never a 32dp gesture.
-                  constraints: BoxConstraints(
-                    minHeight: context.sizes.targetMin,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(context.space.space2),
-                    child: Row(
-                      children: <Widget>[
-                        if (selecting)
-                          Checkbox(
-                            value: selected,
-                            onChanged: _enabled
-                                ? (bool? _) => onToggle!.call()
-                                : null,
-                          ),
-                        SpecimenThumbnail(bytes: null),
-                        SizedBox(width: context.space.space3),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                object.displayName,
-                                style: context.mono.identifier,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: context.space.space1),
-                              Text(
-                                sourceMeasurements(
-                                  mediaType: object.mediaType,
-                                  sizeBytes: object.sizeBytes,
-                                ),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: context.space.space2),
-                        StatusChip.presented(
-                          object.state.presentation(context),
-                          dense: true,
-                        ),
-                      ],
-                    ),
+              child: ConstrainedBox(
+                // Every row is at least one target tall, so the checkbox
+                // beside it is never a cramped gesture in a list of a
+                // thousand.
+                constraints: BoxConstraints(minHeight: context.sizes.targetMin),
+                child: Padding(
+                  padding: EdgeInsets.all(context.space.space2),
+                  child: LayoutBuilder(
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) =>
+                            constraints.maxWidth < _compactBreakpoint
+                            ? _compactBody(context, theme)
+                            : _wideBody(context, theme),
                   ),
                 ),
               ),
@@ -232,6 +165,89 @@ class SourceObjectRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Below this content width the chip drops under the name, so it never
+  /// competes with the identifier for a narrow window.
+  static const double _compactBreakpoint = 420;
+
+  Widget _name(BuildContext context) => Text(
+    object.displayName,
+    style: context.mono.identifier,
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
+
+  Widget _measurements(BuildContext context, ThemeData theme) => Text(
+    sourceMeasurements(
+      mediaType: object.mediaType,
+      sizeBytes: object.sizeBytes,
+    ),
+    style: theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    ),
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
+
+  Widget _chip(BuildContext context) =>
+      StatusChip.presented(object.state.presentation(context), dense: true);
+
+  Widget _wideBody(BuildContext context, ThemeData theme) => Row(
+    children: <Widget>[
+      const SpecimenThumbnail(),
+      SizedBox(width: context.space.space3),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _name(context),
+            SizedBox(height: context.space.space1),
+            _measurements(context, theme),
+          ],
+        ),
+      ),
+      SizedBox(width: context.space.space2),
+      _chip(context),
+    ],
+  );
+
+  Widget _compactBody(BuildContext context, ThemeData theme) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      const SpecimenThumbnail(),
+      SizedBox(width: context.space.space3),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _name(context),
+            SizedBox(height: context.space.space1),
+            _measurements(context, theme),
+            SizedBox(height: context.space.space1),
+            _chip(context),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+/// The presentation for one row state, resolved against the token layer.
+extension on SourceObjectState {
+  StatusPresentation presentation(BuildContext context) {
+    final DispositionStyle style = context.dispositionStyle(tokenKey);
+    return StatusPresentation(
+      content: style.content,
+      fill: style.fill,
+      onFill: style.onFill,
+      icon: icon,
+      fill01: style.fill01,
+      label: label,
+      semanticsLabel: semanticsLabel,
     );
   }
 }

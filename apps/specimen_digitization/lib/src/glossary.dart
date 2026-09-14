@@ -34,6 +34,13 @@ bool isGlossaryTerm(String term) => glossaryDefinition(term) != null;
 /// One sentence, because a definition a reviewer will not finish is a
 /// definition a reviewer will not read (UX writing, section 8.2).
 const Map<String, String> glossary = <String, String>{
+  // Intake and sources.
+  'source':
+      'Storage an administrator registered for this collection, holding '
+      'photographs it may add without uploading them again.',
+  'sources':
+      'Storage an administrator registered for this collection, holding '
+      'photographs it may add without uploading them again.',
   // Queue dispositions and operational states.
   'cleared':
       'A reviewer affirmed this record, and it is recorded against the '

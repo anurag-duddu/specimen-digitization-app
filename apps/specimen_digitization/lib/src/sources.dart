@@ -240,6 +240,70 @@ class SourceImportResult {
   int get refused => (requested - imported - duplicates).clamp(0, requested);
 }
 
+/// What an import has done so far, across the requests it takes.
+///
+/// A selection larger than [sourceImportBatchSize] is several requests, so
+/// there is a moment where part of it has landed. That is reported rather than
+/// hidden: the counts here are running totals, and [stoppedReason] is set when
+/// a request refused the whole remainder instead of one object.
+class SourceImportProgress {
+  const SourceImportProgress({
+    required this.requested,
+    this.imported = 0,
+    this.duplicates = 0,
+    this.items = const <SourceImportOutcome>[],
+    this.stoppedReason,
+  });
+
+  /// How many objects the reviewer picked.
+  final int requested;
+
+  /// How many have become new records so far.
+  final int imported;
+
+  /// How many were already records.
+  final int duplicates;
+
+  /// Every outcome reported so far, in selection order.
+  final List<SourceImportOutcome> items;
+
+  /// Why the run stopped before it reached the end, or null when it did not.
+  ///
+  /// An object the source refuses is reported against that object and never
+  /// fails the rest. Only an integrity failure stops a run, which is the
+  /// source changing under a snapshot the reviewer was choosing from.
+  final String? stoppedReason;
+
+  /// How many objects have been answered for, whatever the answer.
+  int get settled => items.length;
+
+  /// The objects that did not become new records, which is what a report
+  /// lists.
+  List<SourceImportOutcome> get unchanged => items
+      .where((SourceImportOutcome item) => item.state != 'imported')
+      .toList();
+
+  /// True when every object was answered for and none stopped the run.
+  bool get complete => stoppedReason == null && settled >= requested;
+
+  /// Folds one request's result in.
+  SourceImportProgress add(SourceImportResult result) => SourceImportProgress(
+    requested: requested,
+    imported: imported + result.imported,
+    duplicates: duplicates + result.duplicates,
+    items: <SourceImportOutcome>[...items, ...result.items],
+  );
+
+  /// Stops the run, keeping everything already reported.
+  SourceImportProgress stoppedBy(String reason) => SourceImportProgress(
+    requested: requested,
+    imported: imported,
+    duplicates: duplicates,
+    items: items,
+    stoppedReason: reason,
+  );
+}
+
 /// What a screen needs from the server to browse a source and import from it.
 ///
 /// Separate from `SpecimenRepository` on purpose. The sources screen needs
@@ -273,3 +337,12 @@ abstract interface class SourceRepository {
     bool sensitive,
   });
 }
+
+/// The source surface of [repository], or null when this build has none.
+///
+/// The client API is one object that implements several interfaces, and a
+/// screen should take the interface it uses rather than the whole of it. A
+/// build whose repository does not serve sources is a build without them, not
+/// a failure, so the caller shows an absence rather than an error.
+SourceRepository? sourcesIn(Object? repository) =>
+    repository is SourceRepository ? repository : null;
