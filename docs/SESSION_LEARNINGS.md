@@ -4274,3 +4274,131 @@ Correction/addition to “Hosting exact run/attempt provenance author closeout�
 - Remaining follow-ups:
   - No packet was minted and nothing was installed. The current `main` tip's `ci-cd.yml` run was still `in_progress`, and the available ledger is `release-cost-ledger/v2` with no reserved rows for any `runtime` run, so a real mint still needs (a) a green CI run on the release candidate, (b) an approved v3 ledger, (c) reservations for the intended release run, and (d) the deployment plan and candidate evidence digests, which depend on cloud state that is still unprovisioned.
   - `runtime-production`'s `RELEASE_INPUTS_B64` remains empty; this session installed no secret or variable and performed no cloud, IAM or paid operation.
+
+## 2026-09-14 — Declared language and script states stop counting label forms
+
+- Task: close the `summarize_reading` half of the reader-vocabulary gap, recorded as a follow-up in the entry above. Branch `fix/reading-state-vocabulary`, worktree `.claude/worktrees/sad-neumann-1d7fed`, base `993b251` — the head of `claude/interesting-mirzakhani-e0cadf` / pull request #49, which is where `language_key` and `language_keys` live. Fix commit `a133ced`. Stacked pull request #53 opened against `claude/interesting-mirzakhani-e0cadf`, not `main`: `language_keys` does not exist on `main`, so basing this on `main` would have meant either duplicating #49's table or re-reviewing #49's diff inside this one. #49 must merge first; GitHub retargets this to `main` when it does. Backend only; no Dart, workflow, release input or dependency changed.
+- Defect: `summarize_reading` derived `language_state` and `script_state` by counting distinct declaration `value` strings. Those declarations come from `effective_declarations`, which merges the model declaration and the latest human declaration for one observation, so two forms of one language are the ordinary case rather than an edge case. A route emitting `["en"]` plus a reviewer recording `["English"]` reported `multiple_candidates` for a single agreed language.
+- Second count in the same path, and the reason this change is not one line: `reading_risk_evidence` gates each risk dimension on `getattr(m, kind + "_state") != "declared"` **and** on its own `len(values) != 1` over raw declaration strings pooled across both observations (reading_evidence.py:452). That second count is not derived from `language_state`. Folding only `language_state` would still have left `"language"` in `unmeasured` for the exact dual-route read #49 repairs, so both counts take the fold. `test_risk_dimensions_measured_when_readers_use_different_vocabularies` pins it and fails on `('language', 'script') == ()` without the second change.
+- Script decision, made deliberately rather than deferred: `script_state` gets an explicit ISO 15924 table, not an exemption. The failure mode is identical ("Latn" against "Latin"), and the 2026-09-14 dual read agreed on `["Latin"]` only because both routes happened to draw from the same script vocabulary while splitting on the language — a property of those two vocabularies, not a guarantee. The deciding argument is asymmetric risk: the fold already fails conservatively, since an unrecognized label folds to its own case-folded form, stays distinct and reaches a human. A missing table entry therefore costs a needless review, while a wrong entry silently merges two scripts. So the table carries only unambiguous code/name pairs. `Hans` and `Hant` are different declarations and stay distinct, as do the composite `Hrkt`, `Jpan` and `Kore`. The Unicode-name prefixes behind `ScriptHint` are a separate diagnostic vocabulary and are deliberately not aliases: `"CJK"` is a hint, not a declaration of `"Han"`.
+- `script_key` takes no subtag head, unlike `language_key`. A language tag has a defined subtag structure to strip; a script label does not, so `"Latin script"` and `"und-Latn"` stay distinct from `"Latn"` and route to review rather than being guessed at.
+- `label_handling` needed no script change and got none: it reports the union of `script_candidates` and has no script conflict gate, so there is nothing there for a script vocabulary split to mislead. Language remains its only inference.
+- Stored evidence is untouched, as required: `DeclarationCandidates` is unchanged, `ReadingMetadata.declarations` still returns each reader's verbatim label, and only the comparison keys are normalized. The opacity of `language_candidates` is provenance. `test_reviewer_restating_a_declaration_is_not_a_second_candidate` asserts both halves at once through the HTTP path: `language_state` and `script_state` are `declared` while the retained declarations are still exactly `{en, English, Latin, Latn}`.
+- Validation actually run: tests written first and observed failing on the unmodified source. `uv run pytest tests/test_reading_evidence.py -q -k "naming_a_language or naming_a_script or vocabularies"` before the fix: 8 failed, 7 passed — the 7 passing are the genuinely distinct pairs (`en`/`fr`, `Latn`/`Arab`, `Hans`/`Hant`, `Latn`/`Latin script`), which is what separates a real assertion from one that always fails. The HTTP test failed separately on `'multiple_candidates' == 'declared'`. After the fix, `tests/test_reading_evidence.py` and `tests/test_reading_declarations_runtime.py`: 76 passed. `tests/test_review_risk.py` and `tests/test_reading_runtime.py`: 13 passed. Every application module imports cleanly in isolation, checked because `reading_evidence` now imports `reading_declarations` at module scope while `reading_declarations` imports `reading_evidence` inside its functions; the cycle stays broken in that direction only. `scripts/ci/verify.sh` exited 0 on `a133ced` with `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`: 16 pre-commit hooks passed, Python 2490 passed / 81 skipped / 7 warnings in 479.77s, UI string scan 100 files with 0 violations, Flutter analysis clean (`No issues found`), Flutter client tests passed, release web build passed. The entry above recorded 2474 passing on the same base; 2474 + the 16 cases added here = 2490, which is the cross-check that every new case ran and no existing case was lost.
+- Reusable learnings: when a boolean gate reads a derived state, check whether it also recomputes the same thing from the raw inputs beside it. Here `reading_risk_evidence` did both, so the derived state was clean and the dimension was still reported unmeasured. Grep the raw field, not just the state name. Second, "there is no equivalence table for X" is an argument about effort, not about correctness; the question to answer is which way the comparison fails when the table is incomplete. A fold that leaves unknown forms distinct can be extended safely and incrementally, so a partial table beats none.
+- Failed approaches: none. The first patch was correct; the only thing the first test run changed was scope, by showing `reading_risk_evidence` counted values independently.
+- Follow-ups: the script table, like the language table, is deliberately partial — extend it when a route is observed emitting another script. `docs/execution/READING_EVIDENCE.md` describes `summarize_reading` returning "explicit language/script unknown/declared/multiple_candidates states" and still reads correctly, but it is a frozen execution report from `codex/reading-evidence-metadata` that pins its own worktree and base SHA, so it was deliberately not rewritten; this entry is the record of the behaviour change. Live provider re-reads, required checks, merge and any deployment evidence are `Not confirmed` here. This change cannot merge before #49.
+
+### 2026-09-14 — The reading diff was counting shifted indices, not differences
+
+- Task: replace the index-by-index reading comparison in `DiffText` with a real alignment
+- Branch/worktree: `fix/diff-text-alignment` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/adoring-shtern-269a76`
+- Outcome: Completed
+- Commits/PRs: `2270b0b`; pull request #51 against `main`
+- Validation: `flutter analyze --fatal-infos` no issues; `flutter test` 876 passed, 7 skipped, 0 failed; `python3 scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt` 100 files, 0 violations, 0 baselined; `scripts/ci/verify.sh` exit 0 with `LANG`/`LC_ALL` set to `en_US.UTF-8`. `flutter test test/golden --update-goldens` changed no byte, for the reason in the second learning below.
+- Durable learnings:
+  - The measurement that started this is worth keeping. Two real readings of slide FMNHINS 4486783 (`subject_105526322.jpeg`), 142 and 160 runes, from `handwriting-qwen` and `handwriting-muse`: the index comparison reported 83 differing positions where a minimal edit script finds 8 places and 28 characters, similarity 0.894. Twenty-one of those 28 characters are one legitimate insertion, the barcode catalog number and sideways annotation that the first reading skipped, and `fmnh_ins_number` is mandatory and unresolved on that very record. The defect was not that the number was wrong. It was that the one disagreement a reviewer had to act on was indistinguishable from the 75 the widget invented, which is how a reviewer learns to stop reading the diff.
+  - The `workbench-readings` goldens do not capture the diff at all, and passing goldens were not evidence that this change was visually safe. Proven twice rather than assumed: appending thirty characters to the summary string moved zero of the 97 goldens, and restyling a changed run to a green double underline on the added fill moved zero. The readings pane is captured scrolled to its top, where only the first reading card is in frame, and the first card is the region's reference so it has no comparison to draw. Measured positions of the summary after the golden's own scroll-to-top: off frame at compact, medium and large, and off frame at every window at 200 percent text. A golden suite that captures a screen at one scroll offset does not cover the components below that offset, and a component whose whole purpose is to be read cannot be verified by a screenshot of the pane above it.
+  - A removed run carries text from the other reading, so it must never reach the rendered string. `DiffText` is wrapped in a `SelectionArea`, so anything rendered is copyable, and splicing the reference's missing characters into a transcription would hand a reviewer text that this model never produced. The alignment therefore keeps removed runs in `DiffOutcome.runs` where they are counted and available, and `build` renders `literalRuns` only. This was not a judgement call in the end: `reading_region_comparison_test.dart` already asserted `rendered.textSpan!.toPlainText() == right`, so the invariant was written down before the enum needed it.
+  - Counting a replacement as `max(reference length, literal length)` is what let the enum change without renumbering the suite. All four pre-existing `differingPositions` expectations (1, 3, 3, 4) hold unchanged under the new algorithm, because they were cases where index comparison happened to be right. A rewrite that reproduces the old numbers wherever the old code was correct, and changes them only where alignment is the whole point, is a rewrite whose counting rule can be trusted.
+  - Hand-picked cases show that a script is *a* script, never that it is the shortest. The check that does is arithmetic: a minimal edit script leaves exactly the longest common subsequence unchanged, so the unchanged runes must equal `LCS(literal, reference)` computed by an independent table. Four hundred seeded random pairs over a five-symbol alphabet, asserting that plus both-side reconstruction, is a stronger proof of the backtracking than any number of transcription examples.
+  - `difflib.SequenceMatcher` is not a minimal-edit-script algorithm. It recursively takes the longest matching block and has an autojunk heuristic, so it can and does disagree with Myers. It agreed here, on all 8 regions and all 28 characters, but that was checked against a Myers reference written for the purpose rather than assumed. Do not derive a Dart test's expected numbers from Python's `difflib` without first confirming the two algorithms agree on that input.
+  - The search has to be bounded because `compare` runs inside `build`. Myers costs O(N x D) time and O(D squared) memory, so it is cheap exactly while the readings are close, which is the case this widget exists for, and expensive exactly when they are not. Stripping the common prefix and suffix first preserves minimality and removes 73 of the 142 runes on the real pair before the search starts. Measured on this toolchain: 175 microseconds for the real pair, 1.6 milliseconds for two wholly different literals of 4000 runes, which is the largest input the widget accepts. No memoisation was needed, and a cache was not added on suspicion.
+  - `scripts/ci/verify.sh` fails on its first run after a change that moves line numbers in scanned files, at the `detect-secrets` hook, with "files were modified by this hook". The hook rewrites `.secrets.baseline` in place and pre-commit treats a hook that wrote a file as a failure. The second run passes and leaves `.secrets.baseline` identical to `HEAD`. Budget two runs, and read the exit status rather than the last line of the log.
+- Failed approaches:
+  - Rendering removed text inline with a strikethrough, so a reviewer would see what the other reading had. It reads well and it is wrong for this product: see the `SelectionArea` learning above. The reference reading is already on screen in its own card, so the deletion is visible where it belongs, and the summary now counts it.
+  - Adding a `diff.removed` design token. The token table in `design/03-design-system.md` section 3.4 has `diff.added`, `diff.changed` and `diff.unchanged` and no fourth row, and a new token needs a contrast pair in both modes, a row in the contrast test and a design decision that is not this change's to make. A removed run is not rendered, so it does not need a colour.
+- Remaining follow-ups:
+  - The golden suite has no capture of a marked diff. Closing that needs either a component-level golden of `DiffText` (the suite is screen-level today, through `SpecimenDigitizationApp`) or a readings capture taken at a scroll offset that includes the second reading card. Behaviour is covered by widget tests in `test/widgets/diff_text_test.dart`, including both themes and the real pair; only the pixels are uncovered.
+  - `design/03-design-system.md` line 878 still says `DiffRun` "carries marker, style and its own `Semantics`". It does not, and did not before this change: `DiffText` flattens the whole block into one spoken label, which is what `design/06-accessibility.md` section 3.1 asks for. One of the two documents is wrong and neither was changed here.
+  - The design system has no announcement for a removed run. `diff.added` and `diff.changed` have one each in section 3.5; a place where this reading dropped what the other one read is currently counted in the summary and spoken nowhere.
+
+### 2026-09-14 — The reading diff had no golden; a component sheet now covers it
+
+- Task: golden coverage for `DiffText`
+- Branch/worktree: `test/diff-text-golden` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/silly-vaughan-0400bc`
+- Outcome: Completed
+- Commits/PRs: see the pull request opened against `main` from this branch
+- Validation: the gap was reproduced before it was closed and the coverage was
+  proved after. Three perturbations of `lib/src/widgets/diff_text.dart`, each
+  run against the whole `test/golden` directory and each reverted afterwards:
+  appending 30 characters to `summaryFor`, restyling a `changed` run to a green
+  double underline on `diffAddedFill`, and classifying characters past the end
+  of the reference as `changed` rather than `added`. Before this change all
+  three moved 0 of 97 goldens. After it the first two fail 8 of the 8 new
+  goldens (`+98 -8`) and the third fails 8 goldens and the coverage guard
+  (`+97 -9`). Reverted, `flutter test test/golden` is 106 passed.
+  `flutter analyze --fatal-infos` no issues; `flutter test` 872 passed, 7
+  skipped, 0 failed. `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 scripts/ci/verify.sh`
+  exited 0 on the first run: pre-commit gates passed, Python 2449 passed / 81
+  skipped in 483.68s, Flutter analysis clean, client 872 passed / 7 skipped,
+  `flutter build web --release` built `build/web`. Every new PNG was read back
+  and inspected rather than only regenerated. No file under `lib/` changed.
+- Durable learnings:
+  - A screen golden suite that normalises scroll position cannot, as a matter
+    of structure, cover anything below the fold. `size_classes_golden_test.dart`
+    returns every `Scrollable` to offset 0 before capturing, and it is right to:
+    a capture of a scrolled pane is not a capture of the screen. The cost is
+    that the readings pane only ever shows its first card, and the first
+    reading of a region is the reference, which `readings_panel.dart` gives a
+    null comparison. The component that draws the comparison was therefore off
+    frame in all eight window and text-scale combinations, measured at `top`
+    798 to 2908 against windows 820 to 1024 tall. When a component only ever
+    appears below a normalised fold, no amount of screen goldens will reach it;
+    it needs an entry point of its own.
+  - Framing is only half of a blind spot. The other half is the fixture's data
+    shape: `goldenSpecimen()` compares `Chicago 1912` with `Chicago 1917`, two
+    literals of equal length, which produce `changed` runs and nothing else.
+    `DiffRunKind.added`, a reference longer than the literal, the identical
+    summary and the dense field row role were unreachable at *any* scroll
+    offset. The third perturbation above is the proof: it is a real regression
+    in the classification the widget's own docstring says it fixed, and no
+    capture of that fixture could ever have caught it. Check what a fixture can
+    express before concluding that better framing would close a gap.
+  - A `RepaintBoundary` composites only its own subtree, so a component capture
+    does not include the `Scaffold` background painted behind it. For a diff
+    that is fatal rather than cosmetic: `backgroundColor` fills and
+    `decorationColor` underlines are the whole subject, and capturing them
+    against transparency makes the golden evidence of nothing. Paint the
+    product surface *inside* the boundary.
+  - Capturing a content-sized boundary rather than the window decouples the
+    golden from the canvas, which is what lets the canvas be made generously
+    tall for 200 percent text without every PNG gaining a field of empty
+    pixels. Verified rather than assumed: raising `goldenComponentCanvas` from
+    3200 to 4200 left every one of the eight PNGs byte-identical.
+  - A golden sheet is only worth its bytes while it still reaches every case,
+    and a case list is an easy thing to edit down. `diff_text_golden_test.dart`
+    therefore asserts over `diffCases` that every `DiffRunKind` is still drawn,
+    that both the identical and the absent summary are still drawn, and that
+    the dense role is still drawn. That assertion is a guard on the coverage
+    rather than on the component, and unlike the pixel comparison it runs on
+    the Linux CI where `goldensCompare` is false. The third perturbation was
+    caught by it as well as by the goldens.
+  - The suite was already less screen-only than it looks. `pumpGoldenDialog`
+    and `pumpGoldenRoute` pump a bare `MaterialApp`, and `expectGoldenFinder`
+    takes any `Finder`; the region editor goldens have been using both since
+    finding V-7. A component entry point extends that convention rather than
+    introducing one.
+- Failed approaches:
+  - Taking the readings capture at a scroll offset that includes the second
+    card, which was the other shape considered. Rejected on measurement, not on
+    taste: the comparing card sits at `top` 798, 1180, 1305, 1488, 1562, 1866,
+    2228 and 2908 across the eight window and scale combinations, so it needs
+    eight hand-tuned offsets, every one of which has to be re-derived whenever
+    the readings panel's layout changes. That couples the golden's framing to
+    the layout it exists to hold still, and it still only reaches `changed`
+    runs. The safer correction is the component sheet.
+  - Expecting `scripts/ci/verify.sh` to fail its first run on `detect-secrets`
+    rewriting `.secrets.baseline`, as earlier sessions recorded. It did not
+    here; the baseline was already current and this change adds only test files
+    and PNGs. Treat that first-run failure as a possibility to re-run through,
+    not as a step to plan around.
+- Remaining follow-ups: the `plainFallbackRunes` branch, the caveat shown when
+  a literal is too long to mark position by position, deliberately has no
+  golden. Covering it means rendering 4001 runes, which at these measures is
+  roughly two hundred lines of pixels that would dominate the sheet and bury
+  the six cases that matter. It stays covered structurally by
+  `test/widgets/diff_text_test.dart`, which asserts the branch renders plain
+  text rather than a run of spans. If that branch ever grows a visual treatment
+  beyond the caveat line, it needs a sheet of its own rather than a row on this
+  one.

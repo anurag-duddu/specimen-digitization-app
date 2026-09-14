@@ -214,6 +214,11 @@ def record_human(specimen, observation, candidates, actor, reason, blobs):
     )
 
 
+def _comparison_text(label):
+    """Case and separator normalization shared by the declaration folds."""
+    return " ".join(label.replace("_", "-").casefold().split())
+
+
 # English name -> the ISO 639-1 and 639-2 codes and alternate ISO names that
 # denote the same language. Reader routes pick from these vocabularies
 # independently, so the forms have to be reconciled before two readings can be
@@ -268,7 +273,7 @@ def language_key(label):
     still compares as a distinct language. Unrecognized vocabulary is routed to
     review, never quietly merged.
     """
-    text = " ".join(label.replace("_", "-").casefold().split())
+    text = _comparison_text(label)
     head = text.split("-", 1)[0]
     if head != text and head in LANGUAGE_ALIASES:
         text = head
@@ -278,6 +283,62 @@ def language_key(label):
 def language_keys(candidates):
     """Distinct languages a reader declared, independent of the forms it used."""
     return frozenset(language_key(value) for value in candidates)
+
+
+# ISO 15924 English name -> the codes and alternate ISO names that denote the
+# same script, for the scripts plausible on this collection's labels. Script
+# vocabulary splits the same way language vocabulary does: one route can answer
+# "Latin" and another "Latn". The observed 2026-09-14 dual read happened to
+# agree on "Latin" while splitting on the language, which is a property of the
+# two vocabularies those routes drew from, not a guarantee.
+#
+# The scripts covered are the ones this repository already names elsewhere: the
+# scripts written by the languages in `_LANGUAGE_CODES`, plus the Unicode-name
+# prefixes `summarize_reading` keeps as diagnostics. Extend it when a route is
+# observed declaring another script, on the same terms as the language table; a
+# script that is absent is never merged, only reported.
+#
+# Only unambiguous code/name pairs belong here. "Hans" and "Hant" are different
+# declarations and stay distinct, as do the composite "Hrkt", "Jpan" and "Kore".
+# The Unicode-name prefixes in `ScriptHint` set the coverage but are not
+# themselves aliases: "CJK" is a diagnostic, not a declaration of "Han".
+_SCRIPT_CODES = {
+    "arabic": ("arab",),
+    "cyrillic": ("cyrl",),
+    "devanagari": ("deva",),
+    "greek": ("grek",),
+    "han": ("hani",),
+    "hangul": ("hang",),
+    "hebrew": ("hebr",),
+    "hiragana": ("hira",),
+    "katakana": ("kana",),
+    "latin": ("latn",),
+    "thai": ("thai",),
+}
+
+SCRIPT_ALIASES = {
+    alias: name for name, aliases in _SCRIPT_CODES.items() for alias in (name, *aliases)
+}
+
+
+def script_key(label):
+    """Fold one opaque declared script label to a key used only for comparison.
+
+    The same reasoning as `language_key`: stored candidates are never rewritten,
+    and a label outside `SCRIPT_ALIASES` folds to its own case-folded form so it
+    still compares as a distinct script.
+
+    Unlike a language tag, a script label carries no subtag to strip, so no head
+    is taken here. "Latin script" and "und-Latn" therefore remain distinct from
+    "Latn" and reach a human rather than being guessed at.
+    """
+    text = _comparison_text(label)
+    return SCRIPT_ALIASES.get(text, text)
+
+
+def script_keys(candidates):
+    """Distinct scripts a reader declared, independent of the forms it used."""
+    return frozenset(script_key(value) for value in candidates)
 
 
 def label_handling(specimen, sources):

@@ -38,7 +38,7 @@ selected=false
   label="Reading B"
     tap label="Label 1, term, double tap for definition"
     tap label="Not recorded, term, double tap for definition"
-    label="Differs at 1 position. Full text: Chicago 1917"
+    label="Differs in 1 place. Full text: Chicago 1917"
     button enabled=true tap label="Show Label 1 on the photograph"
     button enabled=true tap label="Reading provenance and raw response"
 label="Differences and resolution"

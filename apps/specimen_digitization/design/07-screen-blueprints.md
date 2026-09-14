@@ -230,8 +230,10 @@ and the **decision bar**.
 
 - `ReadingCard` per model per region: model name, provider, a `DiffText` of the
   literal reading against the other reading with changed spans underlined and
-  marked, and a summary sentence above ("Differs at 3 positions"). Cards sit side
-  by side on medium and wider windows and stack on compact.
+  marked, and a summary sentence above ("Differs in 3 places"). The comparison is
+  a minimal edit script over runes, so the sentence counts the places the two
+  readings disagree rather than the positions at which their indices stop lining
+  up. Cards sit side by side on medium and wider windows and stack on compact.
 - Language and script declarations render as chips with a "Declare" action;
   the declaration history is a disclosure.
 - "Resolve transcription" opens the reason sheet with both readings visible
