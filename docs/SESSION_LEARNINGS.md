@@ -2375,3 +2375,307 @@ loaders rather than resolved from an ambient installed package.
   source qualification, protected release and live acceptance remain pending.
   The destination receipt is root-owned input; no local metadata receipt or
   synthetic value may substitute for native destination verification.
+
+
+## 2026-09-14 — runtime_timing corrective trace successor review
+
+- Read-only independent task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; exact `codex/reader-trace-linkage` candidate `9936d36a7726d1ea489d6deaeff2be01f7e6abf6` in `/private/tmp/specimen-reader-trace-linkage-20260914`, following cf9fa4f. All supplied pins matched. No source edits/commit/push/native actions by reviewer. Parent owns shared integration.
+- Both original failures now pass: explicit local variables prevents real prompt resolution selecting remote provider and preserves three code-owned fallbacks; late HTTP acknowledgement retains unknown and processor reports failure. Original independent probes plus permanent bounded telemetry module: 30 passed in10.06s. Five independent arbitrary claim-state/single-use cases pass.
+- One completion category remains open: a second SQLite writer delays finish UPDATE until after the retained deadline yet finish returns True; connection-scope finalization can likewise cross expiry after the return expression was evaluated. Exact deterministic/real-local-SQLite probes: 2 failed,5 passed. This concerns local completion; known timely HTTP receipt must be distinguished from finishing within the immutable deadline. No extra grace or post-expiry cleanup writes proposed. Root notified before author successor freeze.
+- Durable evidence `/private/tmp/specimen-bounded-trace-successor-independent-20260914/REVIEW.md` SHA `0af313c114186a61c7051e212c7b282abfd1e92172317a6ab8e17540c7dcd4cd`, RESULT.json SHA `fdc5f1090cb9e61291a957271cb776b8e1d79f360f597d7d988ba69289deac20`; exact reviewed source and original/additive failure logs retained. Corrective successor still requires changes. Worker hooks/caps/deadlines unchanged; bounded-v1 production remains fail closed; native transport absent. Native/CI/live acceptance: Not confirmed.
+
+
+## 2026-09-14T02:28:59.538288+00:00 — Reader trace deployment contract and isolated ownership
+
+- Product task01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; root01a082b2 sole native owner.
+  Root explicitly authorized separate branch `codex/reader-trace-linkage`,
+  worktree `/private/tmp/specimen-reader-trace-linkage-20260914`, base0f31baa.
+  Initial sandbox Git-ref write was denied; reviewed escalation created the
+  authorized worktree successfully. The unregistered residual ac0d directory
+  is not used as a Git checkout. DATA shared worktree remains untouched.
+- Root requested source verification of missing actual Logfire delivery.
+  Pinned committed deploy_runtime.py, current uncommitted DATA snapshot, and
+  named source-qualified PR27 completion_setup.py all contain no Logfire/OTEL
+  configuration. Setup exact slots launch/manifest/profile/hf; secret grants
+  are worker-only except shared manifest with SAM. Child configuration alone
+  cannot prove remote export. Native destination/access/token state Not confirmed.
+- Additive contract `/private/tmp/specimen-trace-deployment-contract-20260914`
+  captures exact bytes/hashes and worker-only immutable destination-secret,
+  setup/catalog/policy/template/receipt, metadata-only process, deadline and
+  actual-export acceptance requirements. Root's4versions/31days cost baseline
+  must be revisited for any extra version/access/policy/export cost before
+  freeze; no new price or zero-cost reuse assumption. Do not expand readers,
+  repurpose oldslots, or infer extra native authority from the combined3IAM
+  approval. No token values read; no native/model/credential calls or newtests.
+- Root owns privateSDK/cap/IAM and DATA/runtime own deployment integration.
+  This branch owns model_runtime.py/observability.py and focused tests for
+  local configuration/context linkage. No merge/push before DATA integration.
+  Subsequent TDD results are not yet available and will be appended separately.
+
+
+## 2026-09-14T02:48:58.876924+00:00 — Isolated reader trace linkage source handoff
+
+- Task: 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, product/acceptance. Branch
+  `codex/reader-trace-linkage`, worktree `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Source base `0f31baa2977e6362ef197878e5db50cd2fe9b963`; resulting local commit is
+  pinned in `/private/tmp/specimen-reader-trace-handoff-20260914/REVIEW.json`.
+  No PR, push, merge, or deployment by this task. DATA owns integration and the
+  canonical verification gates before its PR/push.
+- Outcome: model children configure metadata-only Logfire, attach only the W3C
+  parent (no baggage/tracestate), and correlate specimen/run/region/route plus
+  the existing persisted observation ID. Unknown errors preserve application
+  failure semantics while exporting only a fixed failed outcome. No domain or
+  SQL schema changes, prompt/result content logging, credential reads, provider
+  calls, native telemetry export, or cloud effects. Whole-effect deadlines and
+  provider retry controls remain unchanged; shutdown stays inside that clock.
+- TDD: initial subprocess test failed because child configuration was absent.
+  New buffered local-exporter tests pass for both independent readers, resolved
+  extraction, parent/agent/chat relationships, observation correlation, metadata
+  forcing under approved-content environment, private-content canaries, failure
+  sanitization/no replay, and excluding baggage/tracestate/invalid parent data.
+  Added stalls in telemetry configuration/shutdown to the existing real-process
+  deadline and no-replay tests.
+- Validation: final cleared-environment focused suite: 43 passed, 1 skipped
+  (SQL emulator explicitly not enabled), 1 existing Starlette deprecation warning,
+  121.00 seconds. Changed-file pre-commit checks passed, including secret scans;
+  `git diff --check` passed. Full canonical verify.sh and live acceptance Not
+  confirmed; integration owner must run those required gates. No claim of native
+  SQL, model, or Logfire execution follows from synthetic tests.
+- Failed approaches: first wider run had three localhost sandbox-bind failures
+  and one fixture startup timeout; targeted permission-reviewed localhost rerun
+  passed 13 tests. A consolidated run then exposed six startup-margin failures
+  under concurrent host load (37 passed, 1 skipped). The synthetic stall fixture
+  now allows 8 seconds for startup and stalls 30 seconds; the separate test of an
+  actual 3-second reader limit is unchanged and passes. Production timeouts were
+  not increased. Test-exporter assertions were corrected to its actual `parent`
+  context schema. Earlier failed consolidated output is retained in the packet.
+- Deployment interface sent to root/DATA: worker-only immutable writer-secret
+  reference -> LOGFIRE_TOKEN; reviewed LOGFIRE_SERVICE_NAME, APP_ENV=production,
+  metadata capture, explicit send-to-Logfire, sampling 1.0. Tokens never enter
+  IPC. Destination identity belongs to the reviewed plan/receipt; arbitrary
+  LOGFIRE_BASE_URL or additional credential readers are not authorized here.
+- Unresolved cost/export gate: SDK native mode has automatic trace/log/metric
+  exporters, token validation, and retries, with no shared cumulative record,
+  attempt, or byte cap. Three completed spans per reader in the local fixture is
+  not a whole-worker bound. A 10,000-record allowance is NOT source-qualified.
+  Normal SDK shutdown removes retry directories; forced process termination does
+  not prove that cleanup. Root must coordinate a bounded transport or verified
+  destination ceiling, costs, destination authentication, and actual export
+  verification before activation. DATA must integrate/review this isolated source;
+  product still owns the final authenticated ten-specimen acceptance journey.
+
+
+## 2026-09-14T03:27:38.391920+00:00 — Bounded trace local controls; native adapter blocked
+
+- Task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f, product/acceptance. Isolated branch
+  `codex/reader-trace-linkage` at `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Prior trace-linkage commit `10e72aa505060c1969e80e38e2316c25be9a5567`, source
+  base `0f31baa2977e6362ef197878e5db50cd2fe9b963`. The local-control commit is
+  pinned in `/private/tmp/specimen-bounded-trace-local-review-20260914/REVIEW.json`.
+  No push/PR/merge/deployment by this task. DATA owns three-way integration,
+  independent review, the canonical verifier and protected release gates.
+- Root explicitly assigned bounded export source work. DATA reserved the small
+  worker.py / worker_deadline.py / bounded_effect.py workspace/scope/report hooks
+  for this isolated branch; their separate timing edits remain untouched.
+  Read all 645 lines of this branch's docs/DEPLOYMENT.md before those changes.
+- Implemented local-only controls: a private SQLite ledger with FULL synchronous
+  pre-dispatch claims, single-use hash-bound dispatch transitions, no refunds or
+  claim replay, 10,000 records / 500 requests / 64 MiB charged aggregate bytes /
+  2 MiB per request source ceilings, and an 8 KiB header allowance per claim.
+  Deadlines only tighten. The whole-worker private workspace is propagated
+  without changing any clock; parent cleanup removes its ledger even after kill.
+  The worker returns a bounded aggregate trace-accounting summary when available.
+- Metadata encoder builds protobuf directly from safe fields, never serializing
+  raw attributes/events first. It retains lineage/timestamps, fixed names, IDs,
+  request-model/provider names and token counts; drops logs/metrics, prompts,
+  images/results, exception bodies/events, arbitrary names/attributes, baggage,
+  tracestate and object references. The synchronous processor has no default
+  dispatcher, network implementation, credential lookup, retry, thread or spool.
+- Supported SDK options disable default native trace/log/metric exporters,
+  remote variables, console output, baggage attributes and ambient OTEL exporters.
+  Noncredential sentinels are required: SDK token=[] and api_key='' fall back to
+  ambient credentials in 5.0.0. The explicit nonempty sentinels avoid that fallback.
+  Bounded production mode currently raises bounded_trace_transport_approval_required
+  before SDK configuration; no accidental default native exporter fallback.
+- TDD/validation: initial new-module test was RED (module absent); local accounting
+  tests passed 12, expanded lifecycle/processor tests passed 17, broader worker and
+  privacy suite passed 59. Final combined focused suite: 94 passed, 1 skipped
+  (SQL emulator not explicitly enabled), 1 existing Starlette warning, 124.32s.
+  This includes real subprocess shared-ledger and forced-stop cleanup tests,
+  concurrent claims, restart/no-reset, per-request/cumulative limits, corruption,
+  single-use dispatch, deadline tightening, and local SDK no-network assertions.
+  Changed-file hooks and diff checks are recorded in the packet. Two scanner
+  false positives on explicit noncredential/test canary strings received narrow
+  inline allowlist comments; the failed hook output is retained. Full canonical
+  verify.sh and native acceptance Not confirmed; DATA owns the integrated run.
+- Automatic review rejected source-only native HTTPS adapter patches twice. First:
+  sensitive metadata/writer-credential export lacked trusted exact authorization.
+  Root then supplied original user tracing authorization and saved destination
+  metadata; this task independently matched original session line9371, role=user,
+  raw SHA3303d129e5fde28d828729cd5b034a7981968c5cbbbad882a05367a5c361df2a,
+  and nonsecret destination receipt d5c0ed139973aa7c10e241f49c5fa5df67f853e267e79adbd8740c43f165c9b8.
+  Second rejection said that tool/file provenance was untrusted and required
+  current trusted user authorization for the exact payload/destination. Neither
+  rejected module was written. No alternative tool/agent executed that edit.
+- Durable inert TRANSPORT_PROPOSAL.json / TRANSPORT_DESIGN.md in the packet
+  describe the exact payload, existing US endpoint, worker-only writer reference,
+  caps, original-deadline behavior and pending single-attempt transport. They
+  contain no credential value, are unimported documentation, and are not an
+  execution path. Root is preparing the precise current-user transport/secret
+  decision; existing $12/3500-second/three-IAM approval is unchanged. Native
+  credential reads, Logfire exports, provider calls and cloud effects here: zero.
+- Remaining work: root's exact transport approval; approved adapter and final
+  flush/tightening/wiring implementation; independent DATA/runtime_timing review
+  and three-way integration; native identity/secret/cost admission and actual
+  trace acceptance. These local per-worker ceilings do not replace the cumulative
+  cohort ledger or justify refunding unknown whole-job holds. TLS/TCP/DNS overhead
+  still needs root's conservative cost allowance. Final authenticated ten-specimen
+  acceptance remains this product task's responsibility after native readiness.
+
+
+## 2026-09-14T03:41:39.269305+00:00 — Independent bounded trace findings repaired
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; isolated branch
+  `codex/reader-trace-linkage`, `/private/tmp/specimen-reader-trace-linkage-20260914`.
+  Additive successor to `cf9fa4f50c30953704244fbb350a18f861c91c72`; no earlier
+  commit, frozen packet, or another task's files were rewritten. Successor SHA
+  is pinned in `/private/tmp/specimen-bounded-trace-deadline-fix-20260914/REVIEW.json`.
+  No PR/push/merge/deploy; DATA owns independent re-review and integration.
+- runtime_timing found two local defects on cf9fa4f. Evidence remains at
+  `/private/tmp/specimen-bounded-trace-independent-20260914`: LOCAL_EDGES.log
+  (1 failed, 2 passed) and VARIABLE_PROVIDER.log (1 failed). These probes used
+  synthetic inputs and blocked native I/O before any remote provider startup.
+- Late acknowledgement repair: Ledger.finish now returns whether the exact
+  dispatched claim was accepted before its immutable deadline. The processor
+  uses that result instead of treating a bare 200 as success. At/after-deadline
+  acknowledgements retain unknown holds and report flush failure; shutdown does
+  not retry. Permanent before/at/after tests reproduced RED: 2 failed, 1 passed.
+  No deadline or retry behavior was expanded.
+- Correction to the previous cf9fa4f closeout's remote-variable claim: in locked
+  Logfire 5.0.0, variables=None permits lazy remote provider startup at prompt
+  resolution when the API-key sentinel is truthy. The helper now explicitly
+  installs LocalVariablesOptions with an empty VariablesConfig, resource/baggage
+  context disabled and variable instrumentation disabled. Real resolution of all
+  three application prompts keeps exact code-owned defaults and starts no remote
+  provider/network call. Those permanent tests reproduced RED: 3 failed. Native
+  activation was already guarded and remains guarded; no actual token/provider/
+  Logfire/cloud call was made during these fixes.
+- Final focused verification: 70 passed, 1 existing Starlette deprecation warning,
+  12.04 seconds; includes both independent probe files, bounded controls,
+  worker launch/parent deadlines, observability/privacy and prompt tests. Earlier
+  single-finding GREEN: 65 passed. RED/GREEN XML and text outputs are retained in
+  the additive packet. Changed-file hooks and diff checks recorded separately.
+  Full canonical verification remains with DATA after integration; independent
+  successor acceptance is pending their re-run, not implied by this task's run.
+- Scope clarification sent to DATA/root: SPECIMEN_TRACE_SCOPE_SHA256 is exactly
+  activation.worker_trace.identity_receipt_sha256 from the final reviewed plan,
+  never a minted/fixture/local-metadata substitute. Deployment must omit
+  SPECIMEN_TRACE_LEDGER_PATH; only worker_trace_scope creates it internally.
+- The native HTTPS transport remains absent after automatic-review rejection;
+  bounded production mode still fails closed pending the precise current-user
+  approval handled by root. This repair does not change that gate, approve
+  secret/IAM changes, or establish actual export or final live app acceptance.
+
+
+## 2026-09-14T03:57:30.270174+00:00 — Local trace completion timing correction
+
+- Product task 01a082b4-a9bc-7413-a3c5-5077dd5c3a9f; `codex/reader-trace-linkage`
+  at `/private/tmp/specimen-reader-trace-linkage-20260914`. Additive successor to
+  `9936d36a7726d1ea489d6deaeff2be01f7e6abf6`; resulting commit is pinned in
+  `/private/tmp/specimen-bounded-trace-completion-fix-20260914/REVIEW.json`.
+  Prior frozen commits, packets and source closeouts remain unchanged.
+- runtime_timing re-review closed the original late-HTTP and remote-variable
+  triggers, but reproduced two local completion races: UPDATE/autocommit can
+  wait on a real SQLite writer past cutoff, and a return expression evaluated
+  inside _connect can precede late connection finalization. Original evidence
+  `/private/tmp/specimen-bounded-trace-successor-independent-20260914` includes
+  FINISH_COMPLETION_EDGES.log (2 RED/5 PASS), REVIEW.md SHA
+  0af313c114186a61c7051e212c7b282abfd1e92172317a6ab8e17540c7dcd4cd and RESULT.json
+  fdc5f1090cb9e61291a957271cb776b8e1d79f360f597d7d988ba69289deac20.
+- DATA clarified the semantics: a stored accepted row can truthfully retain an
+  HTTP receipt known before cutoff; it does not establish timely local completion.
+  Ledger.finish now checks success only after UPDATE/autocommit and the connection
+  scope have completed. A late local completion returns False without a late
+  compensating write, grace period, refund or retry. No ledger schema, transaction
+  acquisition, worker hooks or original deadlines changed. The earlier staged-ack
+  design discussed in coordination was not implemented after this clarification.
+- Permanent real-writer-contention and connection-exit tests reproduced RED:
+  2 failed. Final focused run: 79 passed, 1 existing Starlette warning, 12.44s,
+  including the original independent probes unchanged. Known receipts remain
+  stored while late completion returns False and cannot replay; the earlier
+  late-response-as-unknown and local-prompt-provider regressions still pass.
+  Applicable changed-file hooks/diff checks are retained in the new packet.
+  Independent successor qualification and integrated canonical verification are
+  still DATA's next gates; this author test run does not substitute for them.
+- Root's direct current-user V3 Logfire decision remains pending. Native transport
+  is absent and bounded mode remains guarded. No native/token/model/cloud calls
+  occurred. Inert LATER_TRANSPORT_LIMITS.json records root's later-only response/
+  header ceilings and their relation to existing accounting; it is not executable
+  configuration or activation authority. In particular a16KiB request-header
+  allowance cannot be silently charged as8KiB: later implementation must enforce
+  the stricter8KiB sender cap or explicitly increase the charge, within unchanged
+  inclusive64MiB aggregate/2MiB request ceilings. Root owns identityGET, physical
+  transport cost assumption, credentials/IAM and final native admission.
+- Subsequent root clarification selects the stricter8192-byte request-header
+  ceiling, including transport-added headers, within the existing charge. Response
+  header/body ceilings remain16KiB/64KiB plus overflow detection. Root retains
+  its conservative16KiB-per-direction conditional cost hold; no reduction or
+  denied transport retry is authorized.
+
+
+## 2026-09-14 — runtime_timing local trace completion correction independently passes
+
+- Task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; read-only review of exact `codex/reader-trace-linkage` commit `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b`, parent9936d36a, at `/private/tmp/specimen-reader-trace-linkage-20260914`. Source pinned directly from immutable Git while author packet metadata finalized. No reviewer source edits/commit/push or native actions.
+- Narrow fix evaluates local completion only after UPDATE/implicit commit and connection finalization. A known timely HTTP receipt may stay recorded while local completion is false. No schema/BEGIN redesign, compensating late write, refund, retry, added time or grace. Both earlier source defects and both local finish edges are closed within this partial-source scope.
+- Independent validation: 39 passed in10.11s across all permanent bounded telemetry tests and all original independent probe files unchanged. Additional actual held-reader/blocked-COMMIT probe:1 passed; it proves delayed commit cannot report timely local completion, keeps the known receipt charged and cannot replay/change snapshot on second finish. All worker/model/observability overlap files remain byte-identical to cf9fa4f.
+- Evidence `/private/tmp/specimen-bounded-trace-completion-independent-20260914/REVIEW.md` SHA `9db6c5016b86b83135a24b130222ab3d3c8d6c9c6fb4c78bc5715f7f2b45c426`; RESULT.json SHA `0542c26663fdba26c791e2ad4f4c0c146fe181f49b93fbcf2726257ad264b0a5` includes exact source/probe/log pins. Local corrective source PASS. Author packet crosscheck pending receipt; native adapter absent and bounded-v1 guard remains fail closed. Final deadline/flush wiring, integrated canonical CI, deployment/credential/cost/native trace/app acceptance: Not confirmed; parent owns these remaining gates. Accepted HTTP counters alone must not be treated as successful local completion or live trace acceptance.
+
+### 2026-09-14 — independent local trace source composition closeout
+
+Reviewer `/root/adversarial_pr27`, parent task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`; shared integration branch `codex/approved-review-release`, `/private/tmp/specimen-approved-review-release-20260914`, HEAD `929b5fa1f946929c1d3c1553241bf1134645d6a3` plus product `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` delta from `0f31baa2977e6362ef197878e5db50cd2fe9b963`, new PR Not confirmed. All seven non-overlap files exactly product; worker.py and bounded_effect.py exactly clean independent three-way merge. worker_deadline.py exact product. Original budget/template/timing sources and cleanup ASTs preserved. Before this append, full HEAD closeout prefix remained and exact17,525-byte product suffix occurred once; reviewer additions preserved. Independent combined Python3.12 probes16 passed3warnings, covering original timing, trace-ledger supervisor cleanup, bounded SDK refusal and late receipt/write completion. No actionable composition finding; no native transport/authority added. Evidence `/private/tmp/specimen-trace-composition-independent-20260914/REVIEW.md` SHA256 `dfa71dfa0478376e08c7c3caf8256590154e96a4afc5f7b5cd05843d329a81c4`, full nine-file pins/merge inputs/artifacts retained. No author source edits/cloud/model/credential/GitHub calls. Native trace delivery, full canonical/CI and authenticated live acceptance Not confirmed by this review; parent owns those gates.
+
+
+## 2026-09-14 — runtime_timing final trace packet crosscheck
+
+- Narrow read-only follow-up for task `/root/runtime_timing`, thread `01a082b4-a9bc-7413-a3c5-505b61c2f4db`: final author packet `/private/tmp/specimen-bounded-trace-completion-fix-20260914` has all25 artifact checksums valid; manifest SHA `a004e5a643694d3a01523b27af18c868825fc4a200e564680cce6bc8539e9cd3`, REVIEW.json SHA `7414a5312713aea43721eb25f71de7b2c5986211c99ba4553d32df5157f01e8f`. Its exact commit `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b` and all7 source pins match the immutable Git source and existing independent40-check qualification.
+- Additive receipt `/private/tmp/specimen-bounded-trace-completion-independent-20260914/PACKET_CROSSCHECK.json` SHA `4b0b893b4673e65158bb110fcea897c6bdec40ac65806faac64fd1c16010f23c`. Original review/result retained byte-for-byte. No tests repeated, source edits or native actions; parent owns integrated template/source composition and full canonical CI. Native/live acceptance: Not confirmed.
+
+
+## 2026-09-14 — integrated local trace controls verified
+
+- Task `01a082b4-a9bc-7413-a3c5-505b61c2f4db`, worktree
+  `/private/tmp/specimen-approved-review-release-20260914`, branch
+  `codex/approved-review-release`, parent commit
+  `929b5fa1f946929c1d3c1553241bf1134645d6a3`. Product source is exactly
+  `2cf5e571e0a8ce03aebc3b54134e33e1f1de033b`, including the prior local-only
+  commits `10e72aa`, `cf9fa4f` and `9936d36a`. No PR, push or deployment.
+- Integrated the exact reviewed source patch. The two overlapping worker files
+  match independently constructed three-way merges, and the seven other product
+  files match their qualified source. Existing timing, cleanup, budget, template
+  and phase controls are preserved. All product-author closeouts were appended
+  verbatim once, retaining the integration and reviewer entries.
+- Canonical `UV_PROJECT_ENVIRONMENT=.venv-ci312 GITHUB_ACTIONS=true
+  scripts/ci/verify.sh` passed: 2238 Python tests passed, 81 skipped, 7 warnings;
+  211 Flutter tests passed, 7 skipped; static analysis, repository checks and
+  release web build passed. Separate changed-file hooks included all newly
+  created trace source/tests and passed. Canonical log SHA256 `d7a26b4b8f1508d2ca44880057312bc8767e39477403c7e24d9c9b3ea8e7d51d` at
+  `/private/tmp/specimen-approved-review-integration-20260914/CANONICAL_WITH_LOCAL_TRACE.log`.
+- Local trace findings all closed with 40 independent checks, including the
+  unchanged earlier regressions and a real blocked-COMMIT case. Final report
+  `/private/tmp/specimen-bounded-trace-completion-independent-20260914/REVIEW.md`,
+  SHA256 `9db6c5016b86b83135a24b130222ab3d3c8d6c9c6fb4c78bc5715f7f2b45c426`.
+  All 25 final packet artifacts and seven source pins were crosschecked.
+- Independent composition review plus 16 combined probes passed; report
+  `/private/tmp/specimen-trace-composition-independent-20260914/REVIEW.md`,
+  SHA256 `dfa71dfa0478376e08c7c3caf8256590154e96a4afc5f7b5cd05843d329a81c4`.
+- Durable lesson: a stored timely HTTP acknowledgement is distinct from timely
+  local flush completion. Future native wiring must propagate actual completion,
+  rather than infer it from accepted counters. SDK variables must select the
+  explicitly local provider; variables=None can start remote work lazily.
+- This remains a partial source checkpoint. The native HTTPS adapter and final
+  expiry/flush installation are absent; bounded production mode fails closed.
+  Root's direct user decision on the exact Logfire payload/destination/worker
+  secret proposal is pending, as are Google operator and existing Logfire sign-in.
+  Native authority and final-source qualification, PR/merged-main checks, DATA
+  and runtime deployment, actual exports and all ten live journeys: Not confirmed.
+  Do not activate this checkpoint or infer approval from local green tests.

@@ -414,7 +414,9 @@ def _worker(directory: str):
                             return
                     time.sleep(min(0.001, max(0, deadline - time.monotonic())))
 
-            with WorkerDeadline(request["deadline"], publish=publish).scope():
+            with WorkerDeadline(
+                request["deadline"], publish=publish, workspace=root
+            ).scope():
                 value = invoke()
         else:
             value = invoke()

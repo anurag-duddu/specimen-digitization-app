@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib.metadata import PackageNotFoundError, version
@@ -121,6 +124,10 @@ def configure_observability(
     Binary image bytes are never exported by this application integration.
     """
     global _configured_settings
+    if os.getenv("SPECIMEN_TRACE_EXPORT_MODE") is not None:
+        # Fail closed while the separately reviewed native transport is pending.
+        # Never fall through to the SDK's unbounded default native exporters.
+        raise ObservabilityConfigurationError("bounded_trace_transport_approval_required")
     settings = ObservabilitySettings.from_environment(capture_mode=capture_mode)
     if _configured_settings is not None:
         if settings != _configured_settings:
@@ -152,3 +159,66 @@ def configure_observability(
     )
     _configured_settings = settings
     return settings
+
+
+def _model_trace_carrier(context: Mapping[str, str]) -> dict[str, str]:
+    """Propagate only the W3C parent, excluding baggage and opaque tracestate."""
+    parent = context.get("traceparent", "")
+    if isinstance(parent, str) and re.fullmatch(
+        r"00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}", parent
+    ):
+        return {"traceparent": parent}
+    return {}
+
+
+def model_trace_context(specimen_id: str, run_id: str) -> dict[str, str]:
+    """Carry application-owned correlation IDs, never specimen content."""
+    return {
+        **_model_trace_carrier(logfire.get_context()),
+        "specimen_id": specimen_id,
+        "run_id": run_id,
+    }
+
+
+@contextmanager
+def isolated_model_span(
+    context: Mapping[str, str],
+    *,
+    operation: str,
+    region_id: str | None = None,
+    route_id: str | None = None,
+) -> Iterator[logfire.LogfireSpan]:
+    """Configure and drain a fresh model child's metadata-only telemetry.
+
+    Configuration, model work, and exporter shutdown all remain inside the
+    existing run_isolated deadline. The parent can terminate a stalled exporter;
+    this helper does not grant additional time or retry the model operation.
+    """
+    if operation not in {"transcribe", "extract"}:
+        raise ValueError("Unknown trusted model operation")
+    configure_observability(capture_mode=CaptureMode.METADATA)
+    attributes = {"specimen.model.operation": operation}
+    for key, value in (
+        ("specimen.id", context.get("specimen_id")),
+        ("specimen.run.id", context.get("run_id")),
+        ("specimen.region.id", region_id),
+        ("specimen.route.id", route_id),
+    ):
+        if value is not None:
+            attributes[key] = value
+    try:
+        with logfire.attach_context(_model_trace_carrier(context)):
+            span = logfire.span("Run isolated specimen model", **attributes)
+            span.__enter__()
+            try:
+                yield span
+            except BaseException:
+                span.set_attribute("specimen.model.outcome", "failed")
+                raise
+            finally:
+                # Unknown storage/validation exceptions can contain source data.
+                # Preserve failure semantics without handing their body or local
+                # variables to Logfire's automatic exception recording.
+                span.__exit__(None, None, None)
+    finally:
+        logfire.shutdown(timeout_millis=1_000)

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from ..observability import isolated_model_span, model_trace_context
 from .bounded_effect import run_isolated
 from .domain import (
     Asset,
@@ -31,6 +32,25 @@ def storage_descriptor(blobs):
 
 
 def model_child(payload):
+    with isolated_model_span(
+        payload.get("telemetry", {}),
+        operation=payload["operation"],
+        region_id=payload.get("region", {}).get("id"),
+        route_id=payload.get("route"),
+    ) as span:
+        result = _model_child(payload)
+        body = json.loads(result)
+        span.set_attribute("specimen.model.outcome", body["status"])
+        if body["status"] == "completed" and payload["operation"] == "transcribe":
+            # The existing persisted observation ID links the private evidence
+            # record to this span without logging prompts, responses, or blobs.
+            span.set_attribute(
+                "specimen.observation.id", body["value"]["observation"]["id"]
+            )
+        return result
+
+
+def _model_child(payload):
     # Imports, credential discovery, model construction, source decode and all
     # provenance writes occur after the hard parent's clock has started.
     from .production import GcsBlobs, ProductionAdapters
@@ -97,6 +117,7 @@ def invoke_model(adapter, specimen, operation, *, region=None, route=None):
     run = specimen.run
     payload = {
         "operation": operation,
+        "telemetry": model_trace_context(specimen.id, run.id),
         "storage": storage_descriptor(adapter.blobs),
         "asset": specimen.asset.model_dump(mode="json"),
         "profile": run.profile.model_dump(mode="json"),

@@ -19,10 +19,11 @@ _active = ContextVar("worker_operation_deadline", default=None)
 
 
 class WorkerDeadline:
-    def __init__(self, deadline, *, monotonic=time.monotonic, publish=None):
+    def __init__(self, deadline, *, monotonic=time.monotonic, publish=None, workspace=None):
         self.deadline = deadline
         self.monotonic = monotonic
         self.publish = publish
+        self.workspace = workspace
 
     def remaining(self):
         return self.deadline - self.monotonic()

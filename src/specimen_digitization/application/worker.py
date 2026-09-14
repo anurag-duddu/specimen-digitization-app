@@ -652,6 +652,8 @@ def _supervise(args):
         }))
         raise SystemExit(2)
     report = json.loads(result.value)
+    if "trace_export" in report:
+        print(json.dumps({"trace_export": report["trace_export"]}))
     print(report["output"], end="")
     if report["exit_code"]:
         raise SystemExit(report["exit_code"])
@@ -676,6 +678,8 @@ def _production_operation(payload):
     from contextlib import redirect_stdout
     from io import StringIO
 
+    from ..bounded_telemetry import worker_trace_scope
+
     args = argparse.Namespace(**payload)
     for key in ("state_dir", "launch_policy", "source_manifest", "evidence_profile"):
         value = getattr(args, key, None)
@@ -684,16 +688,20 @@ def _production_operation(payload):
     if current_deadline() is None:
         raise RuntimeError("worker_supervisor_required")
     output, exit_code = StringIO(), 0
-    with redirect_stdout(output):
-        try:
-            with materialized_worker_args(args) as staged:
-                deadline_call(_run, staged)
-        except OperationalBlock as exc:
-            print(json.dumps({"status": "blocked", "reason": str(exc)}))
-            exit_code = 2
-        except SystemExit as exc:
-            exit_code = 0 if exc.code is None else int(exc.code)
-    return json.dumps({"output": output.getvalue(), "exit_code": exit_code}).encode()
+    with worker_trace_scope() as trace_ledger:
+        with redirect_stdout(output):
+            try:
+                with materialized_worker_args(args) as staged:
+                    deadline_call(_run, staged)
+            except OperationalBlock as exc:
+                print(json.dumps({"status": "blocked", "reason": str(exc)}))
+                exit_code = 2
+            except SystemExit as exc:
+                exit_code = 0 if exc.code is None else int(exc.code)
+        report = {"output": output.getvalue(), "exit_code": exit_code}
+        if trace_ledger is not None:
+            report["trace_export"] = trace_ledger.snapshot()
+    return json.dumps(report).encode()
 
 
 def _run(args):
