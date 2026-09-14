@@ -10,9 +10,11 @@ class EmailVerificationGate extends StatefulWidget {
     super.key,
     required this.session,
     required this.child,
+    this.refreshVerification,
   });
   final SessionAccess session;
   final Widget child;
+  final Future<void> Function()? refreshVerification;
   @override
   State<EmailVerificationGate> createState() => _EmailVerificationGateState();
 }
@@ -87,7 +89,8 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
                 : () => _act(
                     () async {
                       _refreshRequired = true;
-                      await verification.refreshVerification();
+                      await (widget.refreshVerification ??
+                          verification.refreshVerification)();
                       _refreshRequired = false;
                     },
                     'Email is not yet verified. Open the verification link and check again.',
