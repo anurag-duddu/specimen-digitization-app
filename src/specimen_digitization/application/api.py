@@ -269,6 +269,8 @@ def classify_error(exc) -> tuple[int, str, str, str]:
         )
     elif isinstance(exc, (OperationalBlock, EvidenceIntegrityError)):
         message = str(exc)
+    # Imported here rather than at module scope, as the handler did: the source
+    # reader imports from this package, so a top-level import would be circular.
     from .source_reader import SourceObjectChanged
 
     if isinstance(exc, SourceObjectChanged):
