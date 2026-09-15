@@ -797,6 +797,65 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  /// Takes one decision across a selection of records, in one call.
+  ///
+  /// Pass criterion 7.3, and the other half of 7.2's "one round trip": the
+  /// decisions endpoint now takes a batch, so a reviewer acting on five
+  /// records is one call rather than five. Returns the server's answer, which
+  /// always has a row for every record including the ones it refused, or null
+  /// when the call itself did not complete.
+  ///
+  /// The list is not refreshed here. The caller decides when, because the
+  /// records that changed are the ones the reviewer is looking at and moving
+  /// them out from under the confirmation they just read would be the wrong
+  /// order.
+  Future<BulkDecisionReport?> reviewSelection(
+    List<Specimen> specimens,
+    BulkDecisionKind kind,
+    String reason,
+  ) async {
+    final CollectionScope? scope = _scope;
+    if (scope == null || specimens.isEmpty || _mutating) return null;
+    final int mutationEpoch = _mutationEpoch;
+    // Memoised on the selection at the versions it was taken against, exactly
+    // as a single decision is: a retry after an uncertain answer carries the
+    // key it carried the first time, so the server reconciles rather than
+    // recording every decision twice.
+    final String payload =
+        '${kind.wire}:$reason:'
+        '${specimens.map((Specimen s) => '${s.id}@${s.revision}').join(',')}';
+    final String key = _mutationKeys.putIfAbsent(
+      payload,
+      () => 'review-many-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    _mutating = true;
+    _error = null;
+    _notify();
+    try {
+      final BulkDecisionReport report = await repository.reviewMany(
+        scope,
+        specimens,
+        kind,
+        reason,
+        key,
+      );
+      if (_disposed) return report;
+      // The key is released only when nothing is outstanding. While a record
+      // is unaccounted for, a retry of the same selection has to reconcile.
+      if (report.complete) _mutationKeys.remove(payload);
+      return report;
+    } catch (error) {
+      if (_disposed) return null;
+      _recordFailure(error);
+      return null;
+    } finally {
+      if (!_disposed && mutationEpoch == _mutationEpoch) {
+        _mutating = false;
+        _notify();
+      }
+    }
+  }
+
   /// Ends the session.
   Future<void> signOut() async {
     try {

@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
+import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'golden_harness.dart';
 
@@ -150,6 +151,44 @@ void main() {
           location: goldenQueueLocation,
         );
         await expectGolden(tester, 'queue__${window}__$theme');
+      });
+    });
+  });
+
+  // The queue with a live selection: the checkbox column, the count, and the
+  // sentence that says how far a select all reached. The selection is the one
+  // state of this screen that the plain queue golden cannot show, and it is
+  // the state a bulk decision is taken from.
+  group('queue with a selection', () {
+    forEachWindowAndTheme((
+      String window,
+      Size size,
+      String theme,
+      Brightness brightness,
+    ) {
+      testWidgets('queue selection at $window in $theme', (
+        WidgetTester tester,
+      ) async {
+        await pumpGoldenApp(
+          tester,
+          window: size,
+          brightness: brightness,
+          location: goldenQueueLocation,
+          repository: GoldenQueueRepository(goldenQueue(4)),
+        );
+        // A compact window has no column until a long press opens one, which
+        // is the adaptation this golden exists to show alongside the wider
+        // ones.
+        if (find.byType(Checkbox).evaluate().isEmpty) {
+          await tester.longPress(find.text('Pinned beetle 1'));
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.byType(Checkbox).first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(SelectionBar.selectAllLabel));
+        await tester.pumpAndSettle();
+        expect(find.text('4 records selected'), findsOneWidget);
+        await expectGolden(tester, 'queue-selection__${window}__$theme');
       });
     });
   });

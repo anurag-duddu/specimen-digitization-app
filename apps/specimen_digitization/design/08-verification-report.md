@@ -27,6 +27,15 @@ this repository; for 10.4, two people. One new defect was found while
 measuring criterion 1.2 and fixed in the same pass, and two goldens were found
 checked in stale. Both are recorded below rather than quietly corrected.
 
+**Fourth pass, `claude/nostalgic-rubin-f4bc3a`.** Workstream E of
+[`docs/execution/SOURCE_BROWSE_AND_RUN.md`](../../../docs/execution/SOURCE_BROWSE_AND_RUN.md).
+The API named in row 7.2 as the thing that would retire it now exists and
+ships, and it is the same endpoint row 7.3 was waiting on. 7.3 is now Pass and
+defect V-13 is closed. 7.2 stays Partial and its reason has changed: it is no
+longer waiting on an API, it is waiting on one client path being moved onto the
+API that shipped. The change to the reason is stated in the row rather than the
+row quietly becoming Pass.
+
 ## Executive summary
 
 The rebuild now clears the bar in six of the eight dimensions, and the two it
@@ -323,8 +332,8 @@ criterion is not met.
 | # | Criterion | Verdict | Evidence |
 |---|---|---|---|
 | 7.1 | Approve, confirm coverage, next, previous, switch tab, focus search, zoom and back are all on the keyboard, and `?` lists them | Pass | All eight, proven key by key in `test/accessibility/keyboard_walkthrough_test.dart`, including `J` and `K` against the routed application; `?` opens the list and the list is complete |
-| 7.2 | Five fields corrected on one record save with one round trip and one reason | Partial | One reason and one reviewer action, yes. One round trip, no, and not from the client: the wire takes one decision per call. What is new is `SpecimenRepository.reviewBatch` (`lib/src/models.dart`), which takes the whole set and one reason, sends them in order under a single idempotency key prefix (`<prefix>-0`, `<prefix>-1`, …), threads the record forward so each call carries the revision the one before it produced, and returns only the last result, so `WorkspaceController.mutateBatch` replaces the open record once instead of five times. A batch that stops part way throws `ReviewBatchFailure`, which carries the record as the server now has it and how many landed, so the reviewer is told what is still theirs to make rather than that the save failed. Merged with pull request #42, the batch path carries that work's two rules as well: `reviewBatch` asks a `stillApplies` predicate before each call, against the record the call before it produced, so a correction whose field moved under the reviewer is never sent automatically against a newer revision, and it refuses a result that is not a newer version of the same record. Each call's key is memoised on the version it was sent against, so a retry after an uncertain answer reuses its original key while the prefix still names the batch. `test/review_batch_test.dart`, nine tests, including "the workbench moves the screen once, on the last result", "a correction that no longer applies stops the batch" and "a result that is not a newer version is refused". **Stays Partial, and the API change that would close it:** `POST /collections/{id}/specimens/{specimen}/decisions:batch` taking `{expected_revision, reason, decisions: [{kind, target_id, after, evidence_ids}, …]}` and answering the record at the single revision all of them produced, with one `Idempotency-Key`. Nothing in the client blocks that; `reviewBatch` becomes a method on the interface and `ApiSpecimenRepository` overrides it with one call. It would also be strictly safer than what ships: one `expected_revision` for the whole set means the server, not the client, decides whether a later correction still applies |
-| 7.3 | The queue supports multi-select and the non-destructive bulk actions the server permits | Partial | Not built, and deliberately not built: the repository exposes no bulk action over more than one record, so a selection model would select into nothing and a bulk control would be an affordance for a capability the server does not have. What the criterion can be held to today is the second half of its own wording, "the bulk actions the server permits", which is none, and that half is now a test rather than a claim: `test/review_batch_test.dart`, "no selection model, no select all, no bulk control", renders a six record queue and asserts there is no checkbox and no copy implying a bulk capability. Nothing was added here that would; `reviewBatch` is one record and several corrections, which is criterion 7.2. Stays Partial pending an API. The moment the server accepts a decision across records, this is a selection model over `QueueRow` and one confirmation stating the exact count, which criterion 5.2 already has a pattern for |
+| 7.2 | Five fields corrected on one record save with one round trip and one reason | Partial | One reason and one reviewer action, yes. One round trip, no, and not from the client: the wire takes one decision per call. What is new is `SpecimenRepository.reviewBatch` (`lib/src/models.dart`), which takes the whole set and one reason, sends them in order under a single idempotency key prefix (`<prefix>-0`, `<prefix>-1`, …), threads the record forward so each call carries the revision the one before it produced, and returns only the last result, so `WorkspaceController.mutateBatch` replaces the open record once instead of five times. A batch that stops part way throws `ReviewBatchFailure`, which carries the record as the server now has it and how many landed, so the reviewer is told what is still theirs to make rather than that the save failed. Merged with pull request #42, the batch path carries that work's two rules as well: `reviewBatch` asks a `stillApplies` predicate before each call, against the record the call before it produced, so a correction whose field moved under the reviewer is never sent automatically against a newer revision, and it refuses a result that is not a newer version of the same record. Each call's key is memoised on the version it was sent against, so a retry after an uncertain answer reuses its original key while the prefix still names the batch. `test/review_batch_test.dart`, nine tests, including "the workbench moves the screen once, on the last result", "a correction that no longer applies stops the batch" and "a result that is not a newer version is refused". **The API this row named now exists**, in the fourth pass: `POST /v1/organizations/{org}/decisions:batch` takes several decisions in one call, and an entry addresses its own record, so several entries naming one record are exactly this criterion. The server threads them against the single base version the client names once, which is the strictly-safer property this row predicted: the server, not the client, decides whether a later correction still applies. Proven end to end against the running application in `tests/test_decisions_batch.py`, "several corrections on one record are one round trip", which sends two decisions on one record in one call and reads back both effects at one revision. The shape is recorded in `docs/execution/CONTRACTS.md`. **Stays Partial, and the reason has changed.** It is no longer held by the server. What is left is one client swap: `reviewBatch` is an extension on `SpecimenRepository` that the workbench reaches through `WorkspaceController.mutateBatch`, and moving it onto `SpecimenRepository.reviewMany` (which the fourth pass added to the interface, implemented in `ApiSpecimenRepository` as one call) makes five corrections one round trip with no change to `workbench.dart`'s own call. That was deliberately not done in the fourth pass: `lib/src/workbench.dart` and `lib/src/screens/workbench/**` were owned by a concurrent session, and rewriting nine tests and the save path in files this pass could not verify would have been a change made blind. Until it is done, five corrections on one record are still five calls from the reviewer's seat, which is what this row measures |
+| 7.3 | The queue supports multi-select and the non-destructive bulk actions the server permits | Pass | Built in the fourth pass, once the server could take it. **Multi-select:** a checkbox column, open at medium and wider and revealed by a long press below that, which is the window deciding and not the platform. `SelectableRow` wraps `QueueRow` rather than changing it, so the row keeps its own tap, focus and semantics: the row body opens the record and only the checkbox selects, which is one gesture per meaning and a row that never announces itself as a button that does not open. The long press carries a named semantics action (`SelectableRow.longPressHint`), because the entry to a selection on a phone has to be an entry a screen reader can also take; a bare gesture there fails `labeledTapTargetGuideline`, which is how it was caught. **The selection model** is `lib/src/selection.dart`, `PagedSelection`, written over no particular list because the sources browse screen needs the same gesture. The selection is always a subset of what is loaded, so a record that leaves the filter leaves the count. **"Select all" means every record loaded and nothing else,** and that is structural rather than documented: the list API answers a page and a cursor and never a total, and the batch endpoint takes named records at named versions, so a control claiming the whole filter would be claiming authority over records the client has never seen and could not state the count on the confirmation. The control says "Select all loaded" and, once it has been taken, the bar says "More records match this filter. Load more to select them." whenever the server still has a page. **The actions are the two the wire takes across records,** approve and confirm coverage; a field correction or a transcription names a target inside one record and is not offered. **The confirmation names the exact count** before anything is written, in the title and in the primary button, through the same `ReasonSheet` every other decision uses, so it also carries `ReasonForm.finality`. **A live selection holds the poll,** so the count cannot move between being read and being confirmed. **A partial result is a report, not a snackbar:** it names every record that did not change and distinguishes refused from never attempted. `test/selection_model_test.dart` (15), `test/widgets/selection_bar_test.dart` (16), `test/screens/queue_bulk_test.dart` (19), `tests/test_decisions_batch.py` (11); `test/golden/images/queue-selection__*` in both themes at all four windows. **Said plainly:** `GET /specimens` blanks `available_actions` on every row on purpose, because metadata rows carry no pilot pins or lease state, so the queue cannot know in advance which records will accept a decision. It offers the two actions and reports the refusals per record rather than pretending to know; that is why per-record outcomes are the design and not a nicety |
 | 7.4 | Filter sets can be named, saved, reapplied in one action, and survive a restart | Pass | `lib/src/saved_filters.dart` keeps named sets per collection in `shared_preferences`; the filter form lists them at the top, applies one in a single tap, and deletes one from its own chip (`lib/src/search_filters.dart`, `_SavedSets`). `test/saved_filters_test.dart` covers all four, including the restart, which is read back through a second store object. Said out loud on the screen: the sets live on the device, because the collection API has nowhere to put one. `test/golden/images/filters__medium-768x1024__light.png` |
 | 7.5 | Every specimen has a URL that opens it directly on web and by deep link on mobile | Pass | `test/app/routing_test.dart`, "a link to a record opens that record"; every golden in the workbench group is produced by a deep link |
 | 7.6 | A reason can be chosen from configured codes or recent reasons without typing | Pass | Three groups of chips, each of which fills the field, and each named for where it came from (`lib/src/reason_codes.dart`, `ReasonForm`). **Recent reasons** now survive a restart and are kept per reviewer, not per device, so a shared imaging station does not offer one reviewer's reasons to the next: `RecentReasonStore`, `shared_preferences`, capped at ten. **The record's own reason codes**, the `reason_codes` the specimen payload publishes, are offered under their own heading in plain words, so "Human approval required" and "Mandatory unresolved: country" are one tap rather than a retype; a bare run identifier is dropped rather than offered as a reason nobody can read. **Configured codes** are read from the collection document and the profile snapshot under five key spellings, the collection winning over the profile. `test/reason_codes_test.dart`, seventeen tests, including "a chip fills the field, so no typing is needed" and "capped at ten". Said plainly: no collection document or profile this client has seen publishes a decision vocabulary, so the configured group is empty today and "no fixture in this repository publishes one" is a test that will fail the moment one does. The key this client asks the API to publish is `review_reasons` on the collection document, a list of strings or of `{code, label}` objects |
@@ -361,21 +370,24 @@ criterion is not met.
 | 10.4 | A new reviewer completes a first review using only in-app guidance, verified with two people who have not seen the app | Partial | Not verifiable from a repository, and that is the whole of what is left: the criterion asks for two people who have not seen the app, and a test suite is not two people. The material is now complete. The second pass's note that the walkthrough named in 10.1 was missing was stale by the time it was written, because that pass shipped it; what this pass changed is that every step now names its control in the exact words on the control, in single quotes, and `walkthroughControls` lists those words once so the walkthrough and the screens cannot drift. The glossary beside it is one sentence per term rather than a wire mapping, and every term is also a link where it appears (10.2). `test/screens/help_and_contact_test.dart`, "names controls that exist, in the words the product uses", asserts each quoted control against `WorkbenchSegment.label`, `WorkbenchDecisionBar.approveLabel` and `coverageLabel`, so a control renamed without the walkthrough being renamed fails the suite |
 | 10.5 | Every screen that hands work to an asynchronous process says what happens next and how to reach the result | Pass | Intake says what happens after an upload and links to the queue (`manifest_panel.dart:137-162`); the retry dialog says the outcome may be unknown (`workbench.dart:1063-1069`) |
 
-**Totals: 54 Pass, 4 Partial, 0 Fail, over 58 criteria.**
+**Totals: 55 Pass, 3 Partial, 0 Fail, over 58 criteria.**
 
-The four that remain Partial, and what would retire each:
+The three that remain Partial, and what would retire each:
 
-- **7.2**, five corrections are five calls, because the wire takes one decision
-  per call. Retired by the batch endpoint named in the row.
-- **7.3**, the server exposes no action across more than one record. Retired by
-  an API that does.
+- **7.2**, five corrections on one record are still five calls from the
+  workbench. No longer held by the server: `POST /decisions:batch` takes them in
+  one call and is tested doing it. Retired by moving
+  `WorkspaceController.mutateBatch` onto `SpecimenRepository.reviewMany`, which
+  is one client change in workbench-owned files.
 - **10.3**, the client reads two sources for a contact and neither carries a
   value in this repository. Retired by a collection document that publishes one,
   or by one `--dart-define` at build time.
 - **10.4**, two people who have not seen the app. Retired by two people.
 
-All four are held by the server, by a deployment, or by people, rather than by
-client code. That is the honest floor of what a repository can prove.
+7.3 was on this list and is not any more: the API it was waiting on shipped in
+the fourth pass and the queue was built on it. Of the three that are left, one
+is held by client code this pass did not own, and two by a deployment or by
+people. That is the honest floor of what a repository can prove.
 
 ## The bar, one row each
 
@@ -397,18 +409,20 @@ Severity 0 is "a reviewer cannot do the job", 4 is "a reviewer would not notice"
 Findings V-1 through V-6, V-10, V-11, V-12 and V-14 are closed and are
 recorded under "Fixed in the second pass" below. V-7, V-8, V-9 and V-15 are
 closed and are recorded under "Fixed in the third pass". **Nothing is open that
-a client change can reach.** What follows is the one feature still waiting on
-an API.
+a client change can reach.**
 
-### V-13, severity 4: no multi-select and no bulk actions
+### V-13, severity 4: no multi-select and no bulk actions (closed)
 
-Pass criterion 7.3. The repository exposes no action across more than one
-record, so this is a feature waiting on an API rather than a defect: building a
-selection model now would give a reviewer a way to select records and nothing
-to do with the selection, and building a disabled bulk control would advertise
-a capability that does not exist. Nothing in the queue implies one, and that is
-now a test rather than a claim (`test/review_batch_test.dart`, "no selection
-model, no select all, no bulk control").
+Pass criterion 7.3, closed in the fourth pass. It was a feature waiting on an
+API rather than a defect: building a selection model while the repository
+exposed no action across more than one record would have given a reviewer a way
+to select records and nothing to do with the selection. The API shipped
+(`POST /decisions:batch`), and the queue was built on it: a checkbox column, a
+pinned bar that always states the count, approve and confirm coverage, a
+confirmation naming the exact count, and a per record report of what changed.
+The assertion that used to hold the absence is now an assertion that holds the
+capability and its bounds (`test/review_batch_test.dart`, "the queue offers the
+bulk actions the server permits"). See the 7.3 row for the whole of it.
 
 ### Nothing else is open
 
@@ -478,12 +492,26 @@ Eight trivial defects, each one a hint, a label or a padding.
 | V-15 | The band is one line that truncates, the whole sentence on a tooltip and on its semantics node, and a disclosure that opens it to two lines. `EnvironmentBanner.maxLines` is the cap | `test/widgets/environment_banner_test.dart`, "finding V-15, the band at 200 percent text on a phone", four tests; `test/golden/images/workbench-readings__compact-390x844__light__text2.0.png` |
 | V-16 | Pull request #42's `_send`, which holds the local-save flag across `endOfFrame` and reads the repository's own acknowledgement, kept whole in the merge. The batch path holds the flag across the same frame | `test/screens/status_timing_test.dart` |
 | 1.2 | Both timings measured on load more, save and approve | `test/screens/status_timing_test.dart` |
-| 7.2 | `SpecimenRepository.reviewBatch` and `WorkspaceController.mutateBatch`: one reason, one key prefix naming the batch, a key per decision memoised on the version it was sent against, the record moved once, and pull request #42's still-applies and newer-version rules applied inside the batch. The row stays Partial and names the endpoint that would close it | `test/review_batch_test.dart` |
+| 7.2 | `SpecimenRepository.reviewBatch` and `WorkspaceController.mutateBatch`: one reason, one key prefix naming the batch, a key per decision memoised on the version it was sent against, the record moved once, and pull request #42's still-applies and newer-version rules applied inside the batch. The row stays Partial; in the fourth pass its reason changed from "no API" to "one client path not yet moved onto the API that shipped" | `test/review_batch_test.dart` |
 | 7.6 | `lib/src/reason_codes.dart`: configured codes, the record's own reason codes, and recent reasons kept across sessions per reviewer | `test/reason_codes_test.dart` |
 | 10.2 | `lib/src/glossary.dart` and `TermText`, applied in five components | `test/widgets/term_text_test.dart` |
 | 10.3 | The `SPECIMEN_ADMIN_CONTACT` build stamp, read wherever no collection document carries a contact, including on sign-in, setup and verification, with the whole `mailto:` link carrying the record. The row stays Partial because nothing sets it here | `test/screens/help_and_contact_test.dart` |
 | 10.4 | Every walkthrough step names its control in the words on the control, and `walkthroughControls` keeps the two from drifting | `test/screens/help_and_contact_test.dart` |
 | Two stale goldens | `workbench-readings__medium-768x1024__{light,dark}__text2.0.png` were checked in showing an empty source pane and failed on `main`. Regenerated | The suite, which is green on this host for the first time since |
+
+## Fixed in the fourth pass
+
+Workstream E of `docs/execution/SOURCE_BROWSE_AND_RUN.md`, on
+`claude/nostalgic-rubin-f4bc3a`. One criterion moved to Pass, one defect closed,
+and one criterion kept its verdict but changed its reason.
+
+| Finding | Fix | Evidence |
+|---|---|---|
+| 7.3, V-13 | `POST /v1/organizations/{org}/decisions:batch`, then the queue built on it: `PagedSelection`, `SelectableRow`, `SelectionBar`, a confirmation naming the exact count, and a per record report | `tests/test_decisions_batch.py` (11), `test/selection_model_test.dart` (15), `test/widgets/selection_bar_test.dart` (16), `test/screens/queue_bulk_test.dart` (19) |
+| 7.2, the reason only | The endpoint the row named exists and takes several decisions on one record in one call. The row stays Partial because the workbench's client path still fans out; the swap is named in the row | `tests/test_decisions_batch.py`, "several corrections on one record are one round trip" |
+| A defect found while building it | The long press that opens a selection on a narrow window was a bare gesture with no name, so the row carried an action a screen reader could reach and not read. It now declares the action with the record's label and `SelectableRow.longPressHint` | `test/widget_test.dart`, "narrow layout and large text retain queue and accessible navigation", which failed on it |
+| A defect found while building it | The selection bar laid its controls out as a `Wrap` inside a `Row`, which takes the unwrapped intrinsic width and overflowed at every width under it. The breakpoint was deleted rather than raised: the count and the controls are one flow that wraps | The golden suite, which fails on an overflow anywhere |
+| 26 goldens moved, 8 added | The queue, the filters over it, and the workbench at `large` only, all of which draw the queue list and now its checkbox column. `queue-selection__*` is new, at four windows in both themes. The four compact queue goldens are unchanged, which is the evidence that a narrow window still has no column until a long press opens one | `git status` on the golden directory, 97 files to 105 |
 
 ## What a first-time reviewer should look at
 

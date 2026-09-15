@@ -59,8 +59,63 @@ where a later write uses optimistic concurrency.
 | POST `/specimens/{specimen_id}/classification` | expected_revision, collection_id, reason | new pinned run and superseded downstream references; reviewer or permitted operator |
 | POST `/specimens/{specimen_id}/regions` | expected_revision, base_run_id, region edits, reason | new region-set version plus invalidation summary; reviewer |
 | POST `/specimens/{specimen_id}/decisions` | expected_revision, base_record_version_id, kind, target_id, before, after, reason, evidence_ids | append-only decision, new revision and dependent revalidation state; reviewer |
+| POST `/decisions:batch` | reason, decisions[] of specimen_id, expected_revision, base_record_version_id, kind, target_id, before, after, evidence_ids, idempotency_key (1 to 100) | per-decision outcome rows, never a single error; reviewer, checked per record |
 | POST `/runs/{run_id}/actions` | expected_revision, action (`retry`, `resume`, `pause`, `cancel`, `reprocess`), reason | authorized transition and current status; operator/admin per action |
 | GET `/runs/{run_id}/events` | after_sequence, limit | ordered persisted timeline, next retry and actionable blocker; polling is sufficient for first implementation |
+
+### Bulk decisions
+
+`POST /decisions:batch` exists because a reviewer acting on a selection is one
+action, and sending it as one call per record makes the count on the
+confirmation a promise the wire cannot keep: some calls land, some do not, and
+nothing reports which. It does not replace the single-decision route, which is
+unchanged and remains how one decision is taken.
+
+Answer shape:
+
+    {
+      "requested": 5, "applied": 3, "refused": 1, "skipped": 1,
+      "results": [
+        {"index": 0, "specimen_id": "...", "kind": "approve",
+         "idempotency_key": "...", "outcome": "applied",
+         "revision": 13, "record_version_id": "run:13", "disposition": "cleared"},
+        {"index": 1, "specimen_id": "...", "kind": "approve",
+         "idempotency_key": "...", "outcome": "refused",
+         "error": {"status": 409, "code": "...", "category": "...", "message": "..."}}
+      ]
+    }
+
+Rules the shape carries:
+
+- **Status 200 with per-row outcomes.** A refusal is data, not a transport
+  failure. A 4xx would throw away the record-by-record detail, which is the only
+  thing this route exists to provide. The request itself still fails closed on
+  a missing `Idempotency-Key`, an empty reason, an empty or over-length batch,
+  duplicate per-decision keys, or two decisions on one record naming different
+  base versions.
+- **Three outcomes, not two.** `applied`, `refused`, and `skipped`, which means
+  never attempted because an earlier decision on that record was refused. A
+  reviewer deciding what to do next is owed the difference.
+- **A refusal names the same code the single route would.** Both paths read it
+  from `classify_error`, so one mapping cannot drift into two.
+- **One reason for the batch**, because one reviewer action carries one reason,
+  and it reaches every decision's audit trail.
+- **A key per decision.** The server reconciles a retry on the key, so two
+  decisions sharing one would reconcile as a single decision and the second
+  would be silently dropped. Absent keys are derived as `<header key>-<index>`.
+- **Decisions on one record are threaded server side.** The client names the
+  version it was looking at once, in the first entry for that record; every
+  later entry for it must name the same one. The server applies each against
+  what the one before it produced. That is strictly safer than a client
+  threading revisions between its own calls, because the server decides whether
+  a later correction still applies.
+- **Not atomic across records, and the counts say so.** What landed, landed.
+  This product supersedes rather than deletes, so a partly applied batch is a
+  set of recorded decisions rather than a half-written one.
+- **Authorization is per record**, through the same membership check the single
+  route applies, so a batch spanning collections is refused row by row.
+
+Evidence: `tests/test_decisions_batch.py`.
 
 The API must not accept a client-supplied final disposition as authoritative.
 A review decision can request re-evaluation; only the deterministic policy
