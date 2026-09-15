@@ -1,3 +1,9 @@
+# A source inventory is a snapshot of one administrator-registered storage
+# prefix. It is admitted here as a writable kind, but below the operator tier the
+# other kinds accept: capturing decides what a whole collection can see and offer
+# for import, so it takes the same role that may commit a review decision. It is
+# deliberately absent from ListDocumentsV2 and ListDocumentPageV2 — one inventory
+# per source is addressed by a derived id and is never enumerated.
 # Default-sensitive legacy records remain protected. False is explicit on new
 # metadata only; promotion requires privilege, and downgrade is never allowed.
 query GetDocumentV2($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!) @auth(level: NO_ACCESS) {
@@ -18,7 +24,7 @@ query GetDocumentReceiptV2($organizationId: UUID!, $collectionId: UUID!, $actorU
 mutation CreateDocumentV2($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!, $sensitive: Boolean!, $payload: Any!, $operation: String!, $idempotencyKey: String!, $requestSha256: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.kind in ['upload', 'batch', 'worker_cursor', 'pilot_launch'] && (('sensitive' in vars.payload) ? vars.payload.sensitive == vars.sensitive : vars.sensitive)") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.kind in ['upload', 'batch', 'worker_cursor', 'pilot_launch', 'source_inventory'] && (vars.kind != 'source_inventory' || this.role in ['reviewer', 'manager', 'admin']) && (('sensitive' in vars.payload) ? vars.payload.sensitive == vars.sensitive : vars.sensitive)") { active role canViewSensitive }
   }
   auxiliaryDocument_insert(data: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id, revision: 1, sensitive: $sensitive, payload: $payload, createdBy: $actorUid})
   auxiliaryVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, documentId: $id, revision: 1, payload: $payload})
@@ -27,7 +33,7 @@ mutation CreateDocumentV2($organizationId: UUID!, $collectionId: UUID!, $actorUi
 mutation SaveDocumentV2($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $kind: String!, $id: UUID!, $sensitive: Boolean!, $payload: Any!, $operation: String!, $idempotencyKey: String!, $requestSha256: String!, $expectedRevision: Int!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.kind in ['upload', 'batch', 'worker_cursor', 'pilot_launch'] && (('sensitive' in vars.payload) ? vars.payload.sensitive == vars.sensitive : vars.sensitive)") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.kind in ['upload', 'batch', 'worker_cursor', 'pilot_launch', 'source_inventory'] && (vars.kind != 'source_inventory' || this.role in ['reviewer', 'manager', 'admin']) && (('sensitive' in vars.payload) ? vars.payload.sensitive == vars.sensitive : vars.sensitive)") { active role canViewSensitive }
   }
   current: query @redact {
     auxiliaryDocument(key: {organizationId: $organizationId, collectionId: $collectionId, kind: $kind, id: $id}) @check(expr: "this.revision == vars.expectedRevision && (!this.sensitive || response.query.collectionMember.canViewSensitive) && (!this.sensitive || vars.sensitive) && (!(vars.kind in ['worker_cursor', 'pilot_launch']) || this.createdBy == vars.actorUid)") { revision sensitive createdBy }

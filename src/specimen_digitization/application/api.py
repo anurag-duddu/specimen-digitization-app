@@ -31,6 +31,7 @@ from .domain import (
     uid,
 )
 from .collection_runtime import application_registry
+from .source_import import FromSourceInput
 from .image_quality import ImageLimits, orientation_view
 from .classification import ManualSelection
 from .evidence_runtime import phase_artifact, refresh_review_evidence, apply_phase_gate
@@ -268,6 +269,12 @@ def classify_error(exc) -> tuple[int, str, str, str]:
         )
     elif isinstance(exc, (OperationalBlock, EvidenceIntegrityError)):
         message = str(exc)
+    # Imported here rather than at module scope, as the handler did: the source
+    # reader imports from this package, so a top-level import would be circular.
+    from .source_reader import SourceObjectChanged
+
+    if isinstance(exc, SourceObjectChanged):
+        status, code, category = 422, "source_object_changed", "conflict"
     if isinstance(exc, SnapshotTooLarge):
         status, code, category = 413, "snapshot_too_large", "policy"
     if isinstance(exc, (GraphTooLarge, WorkspaceTooLarge)):
@@ -421,6 +428,8 @@ def create_app(
     authority_tools=None,
     authority_cost_reservations=None,
     codec_policy=None,
+    source_registry=None,
+    source_reader=None,
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -854,6 +863,211 @@ def create_app(
             if duplicate:
                 payload.update(state="duplicate", duplicate_specimen_id=duplicate)
             return repository.put_document(p.scope, "upload", ident, payload, 0)
+
+    def configured_sources():
+        """A runtime given no source configuration simply has no sources."""
+        if not source_registry or source_reader is None:
+            raise Missing("source")
+        return source_registry
+
+    def caller_collections(user, organization_id):
+        return {
+            m["collection_id"]
+            for m in member_rows(user)
+            if m["organization_id"] == organization_id
+        }
+
+    def resolve_source(user, organization_id, source_id, write=False, review=False):
+        source = configured_sources().get(
+            source_id, caller_collections(user, organization_id)
+        )
+        p = principal(
+            user, organization_id, source.collection_id, write=write, review=review
+        )
+        return p, source
+
+    def scope_sensitive(user, p):
+        return any(
+            m["organization_id"] == p.scope.organization_id
+            and m["collection_id"] == p.scope.collection_id
+            and m.get("can_view_sensitive") is True
+            for m in member_rows(user)
+        )
+
+    def inventory_header(p, source, user):
+        from .source_inventory import header
+
+        try:
+            inventory = header(repository, p.scope, source)
+        except Missing:
+            return None
+        if inventory.sensitive and not scope_sensitive(user, p):
+            # The rows are object names under this collection's prefix, which is
+            # collection information. A listing omits them rather than refusing.
+            return None
+        return inventory.wire()
+
+    @app.get(prefix + "/sources")
+    def sources(organization_id: str, user=Depends(identity)):
+        # A collection route, shaped like /collections: an unconfigured runtime
+        # has no sources, which is an empty list and not a missing resource.
+        try:
+            registry = configured_sources()
+        except Missing:
+            return {"items": [], "next_cursor": None}
+        items = []
+        for source in registry.for_collections(
+            caller_collections(user, organization_id)
+        ):
+            p = principal(user, organization_id, source.collection_id)
+            items.append(
+                dict(
+                    source.model_dump(mode="json"),
+                    inventory=inventory_header(p, source, user),
+                )
+            )
+        return {"items": items, "next_cursor": None}
+
+    @app.get(prefix + "/sources/{source_id}")
+    def source_detail(organization_id: str, source_id: str, user=Depends(identity)):
+        p, source = resolve_source(user, organization_id, source_id)
+        return dict(
+            source.model_dump(mode="json"),
+            inventory=inventory_header(p, source, user),
+        )
+
+    @app.post(prefix + "/sources/{source_id}/inventory")
+    def capture_inventory(
+        organization_id: str,
+        source_id: str,
+        user=Depends(identity),
+        idempotency_key: str = Header(default=""),
+    ):
+        from . import source_inventory
+
+        p, source = resolve_source(user, organization_id, source_id, review=True)
+        # A snapshot is retained sensitive, so writing one needs that permission,
+        # exactly as the connector's own check requires of the stored document.
+        sensitivity_access(user, p, True)
+        key(idempotency_key)
+        ident = source_inventory.inventory_document_id(source_id)
+        try:
+            current = repository.document(p.scope, "source_inventory", ident)
+            retained = source_inventory.read_entries(
+                blobs, source_inventory.SourceInventory.model_validate(current)
+            )
+        except Missing:
+            current, retained = None, ()
+        # Unmoved objects keep the digest already taken at that same generation,
+        # so a refresh reads only what changed.
+        captured, _ = source_inventory.capture(
+            source_reader, source, user, blobs, retained
+        )
+        if current and current.get("entries_sha256") == captured.entries_sha256:
+            # The prefix is unchanged. Keep the snapshot the reviewer is using.
+            return source_inventory.SourceInventory.model_validate(current).wire()
+        stored = repository.put_document(
+            p.scope,
+            "source_inventory",
+            ident,
+            captured.model_dump(mode="json"),
+            current["revision"] if current else 0,
+        )
+        return source_inventory.SourceInventory.model_validate(stored).wire()
+
+    @app.get(prefix + "/sources/{source_id}/objects")
+    def source_objects(
+        organization_id: str,
+        source_id: str,
+        request: Request,
+        cursor: str | None = None,
+        limit: int = 50,
+        user=Depends(identity),
+    ):
+        from .source_inventory import (
+            InventoryFilters,
+            binding,
+            decode_cursor,
+            encode_cursor,
+            load,
+            matching_count,
+            page,
+        )
+
+        p, source = resolve_source(user, organization_id, source_id)
+        allowed = set(InventoryFilters.model_fields) | {"cursor", "limit"}
+        if set(request.query_params) - allowed or any(
+            len(request.query_params.getlist(k)) != 1 for k in request.query_params
+        ):
+            raise ValueError("Unknown or duplicated source filter")
+        filters = InventoryFilters.model_validate(
+            {
+                k: v
+                for k, v in request.query_params.items()
+                if k in InventoryFilters.model_fields
+            }
+        )
+        if not 1 <= limit <= 100:
+            raise ValueError("Source listing limit must be 1 to 100")
+        inventory, entries = load(repository, p.scope, source, blobs)
+        sensitivity_access(user, p, inventory.sensitive)
+        bound = binding(
+            p.scope, inventory.inventory_id, filters, user, scope_sensitive(user, p)
+        )
+        rows = page(
+            entries,
+            source,
+            filters,
+            decode_cursor(cursor, bound),
+            limit,
+            lambda checksum: duplicate_source(p, user, checksum),
+        )
+        return {
+            "items": rows,
+            "next_cursor": encode_cursor(bound, rows[-1]["object_name"])
+            if len(rows) == limit
+            else None,
+            "inventory_id": inventory.inventory_id,
+            "captured_at": inventory.captured_at,
+            "object_count": inventory.object_count,
+            "matching_count": matching_count(entries, filters),
+        }
+
+    @app.post(prefix + "/batches/{batch_id}/items:from-source")
+    def items_from_source(
+        organization_id: str,
+        batch_id: str,
+        body: FromSourceInput,
+        user=Depends(identity),
+        idempotency_key: str = Header(default=""),
+    ):
+        from .source_import import import_objects
+        from .source_inventory import load
+
+        registry = configured_sources()
+        p, batch = find_document(user, organization_id, "batch", batch_id)
+        principal(user, organization_id, p.scope.collection_id, write=True)
+        key(idempotency_key)
+        if body.sensitive != batch.get("sensitive", True):
+            raise ValueError("Item sensitivity must match its retained batch")
+        source = registry.get(body.source_id, {p.scope.collection_id})
+        inventory, entries = load(repository, p.scope, source, blobs)
+        sensitivity_access(user, p, inventory.sensitive)
+        # No dispatch: importing a selection and running one are separate decisions.
+        return import_objects(
+            principal=p,
+            user=user,
+            source=source,
+            entries=entries,
+            selections=body.objects,
+            reader=source_reader,
+            repository=repository,
+            blobs=blobs,
+            batch_id=batch_id,
+            sensitive=body.sensitive,
+            synthetic=mode == "synthetic",
+            duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
+        )
 
     @app.get(prefix + "/uploads/{upload_id}")
     def upload(organization_id: str, upload_id: str, user=Depends(identity)):
@@ -2185,7 +2399,14 @@ def create_app(
     return app
 
 
-def local_app(root: Path, token: str, persistence: str = "sqlite"):
+def local_app(
+    root: Path,
+    token: str,
+    persistence: str = "sqlite",
+    *,
+    source_registry=None,
+    source_reader=None,
+):
     if persistence not in {"sqlite", "sql-emulator"}:
         raise ValueError("Invalid local persistence")
     if persistence == "sql-emulator":
@@ -2204,4 +2425,6 @@ def local_app(root: Path, token: str, persistence: str = "sqlite"):
         adapters=SyntheticAdapters(blobs, SYNTHETIC_TEXT),
         token=token,
         origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        source_registry=source_registry,
+        source_reader=source_reader,
     )
