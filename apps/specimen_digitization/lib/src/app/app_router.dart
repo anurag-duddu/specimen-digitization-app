@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../auth.dart';
 import '../email_verification.dart';
@@ -17,6 +18,10 @@ import '../magic_link.dart';
 import '../models.dart';
 import '../screens/queue/queue_screen.dart';
 import '../screens/queue/workbench_screen.dart';
+import '../screens/sources/source_controller.dart';
+import '../screens/sources/source_screen.dart';
+import '../screens/sources/sources_screen.dart';
+import '../sources.dart';
 import '../theme/motion.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
@@ -226,10 +231,170 @@ GoRouter buildAppRouter({
                 ':${AppRoutes.collectionParameter}/intake',
             builder: (BuildContext context, GoRouterState state) =>
                 const _IntakeRoute(),
+            routes: <RouteBase>[
+              GoRoute(
+                path: 'sources',
+                builder: (BuildContext context, GoRouterState state) =>
+                    const _SourcesRoute(),
+                routes: <RouteBase>[
+                  GoRoute(
+                    path: ':${AppRoutes.sourceParameter}',
+                    builder: (BuildContext context, GoRouterState state) =>
+                        _SourceRoute(
+                          sourceId:
+                              state.pathParameters[AppRoutes
+                                  .sourceParameter] ??
+                              '',
+                        ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
     ],
+  );
+}
+
+/// The registered sources for the open collection.
+///
+/// A repository that does not serve sources is a build without them rather
+/// than a failure: the screen says so instead of offering a control that
+/// cannot answer.
+class _SourcesRoute extends StatelessWidget {
+  const _SourcesRoute();
+
+  @override
+  Widget build(BuildContext context) {
+    final WorkspaceController controller = WorkspaceScope.of(context);
+    final CollectionScope? scope = controller.scope;
+    if (scope == null) {
+      return const Center(
+        child: LoadingAnnouncement(thing: 'the collection', visible: true),
+      );
+    }
+    final SourceRepository? repository = sourcesIn(controller.repository);
+    if (repository == null) return const _NoSourceSupport();
+    return SourcesScreen(
+      key: ValueKey<String>(scope.key),
+      repository: repository,
+      scope: scope,
+      onOpen: (RegisteredSource source) => GoRouter.of(
+        context,
+      ).go(AppRoutes.sourceOf(Uri.encodeComponent(scope.key), source.id)),
+    );
+  }
+}
+
+/// Browsing one registered source.
+class _SourceRoute extends StatefulWidget {
+  const _SourceRoute({required this.sourceId});
+
+  final String sourceId;
+
+  @override
+  State<_SourceRoute> createState() => _SourceRouteState();
+}
+
+class _SourceRouteState extends State<_SourceRoute> {
+  SourceBrowseController? _controller;
+  RegisteredSource? _source;
+  String? _key;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  /// Builds the controller once per source, so a rebuild does not restart the
+  /// listing under a reviewer who is part way through choosing.
+  SourceBrowseController _controllerFor(
+    SourceRepository repository,
+    CollectionScope scope,
+  ) {
+    final String key = '${scope.key}/${widget.sourceId}';
+    if (_key != key) {
+      _controller?.dispose();
+      _controller = SourceBrowseController(
+        repository: repository,
+        scope: scope,
+        sourceId: widget.sourceId,
+      );
+      _key = key;
+      _source = null;
+    }
+    return _controller!;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final WorkspaceController controller = WorkspaceScope.of(context);
+    final CollectionScope? scope = controller.scope;
+    if (scope == null) {
+      return const Center(
+        child: LoadingAnnouncement(thing: 'the collection', visible: true),
+      );
+    }
+    final SourceRepository? repository = sourcesIn(controller.repository);
+    if (repository == null) return const _NoSourceSupport();
+    final SourceBrowseController browse = _controllerFor(repository, scope);
+    final RegisteredSource? source = _source;
+    if (source != null) {
+      return SourceBrowsePane(
+        controller: browse,
+        source: source,
+        onOpenSpecimen: (String id) => GoRouter.of(
+          context,
+        ).go(AppRoutes.specimenOf(Uri.encodeComponent(scope.key), id)),
+      );
+    }
+    return FutureBuilder<List<RegisteredSource>>(
+      future: repository.sources(scope),
+      builder:
+          (
+            BuildContext context,
+            AsyncSnapshot<List<RegisteredSource>> snapshot,
+          ) {
+            final List<RegisteredSource>? sources = snapshot.data;
+            if (sources == null) {
+              return const Center(
+                child: LoadingAnnouncement(thing: 'the source', visible: true),
+              );
+            }
+            final RegisteredSource? found = sources
+                .where((RegisteredSource s) => s.id == widget.sourceId)
+                .firstOrNull;
+            if (found == null) {
+              return const EmptyState(
+                icon: Symbols.inventory_2,
+                title: 'Source not found',
+                body: 'This source is not registered to the open collection.',
+              );
+            }
+            _source = found;
+            return SourceBrowsePane(
+              controller: browse,
+              source: found,
+              onOpenSpecimen: (String id) => GoRouter.of(
+                context,
+              ).go(AppRoutes.specimenOf(Uri.encodeComponent(scope.key), id)),
+            );
+          },
+    );
+  }
+}
+
+/// What a build with no source support says.
+class _NoSourceSupport extends StatelessWidget {
+  const _NoSourceSupport();
+
+  @override
+  Widget build(BuildContext context) => const EmptyState(
+    icon: Symbols.inventory_2,
+    title: 'Sources not available',
+    body: 'This build reads uploads only. Add photographs from Intake.',
   );
 }
 
@@ -307,6 +472,12 @@ class _IntakeRoute extends StatelessWidget {
       scope: scope,
       userId: controller.session.userId,
       onComplete: () => controller.refresh(quiet: true),
+      // Hidden rather than disabled where the build serves no sources.
+      onBrowseSources: sourcesIn(controller.repository) == null
+          ? null
+          : () => GoRouter.of(
+              context,
+            ).go(AppRoutes.sourcesOf(Uri.encodeComponent(scope.key))),
     );
   }
 }

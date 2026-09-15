@@ -245,6 +245,29 @@ void main() {
     }
   });
 
+  group('sources', () {
+    forEachWindowAndTheme((
+      String window,
+      Size size,
+      String theme,
+      Brightness brightness,
+    ) {
+      testWidgets('source at $window in $theme', (WidgetTester tester) async {
+        await pumpGoldenApp(
+          tester,
+          window: size,
+          brightness: brightness,
+          location: goldenSourceLocation,
+          repository: GoldenSourceRepository(),
+        );
+        // The checkbox column is open from medium up and revealed by a long
+        // press below it, which is the adaptation this golden exists to show.
+        expect(find.text('microscopic-slides'), findsOneWidget);
+        await expectGolden(tester, 'source__${window}__$theme');
+      });
+    });
+  });
+
   group('workbench', () {
     for (final WorkbenchSegment segment in WorkbenchSegment.values) {
       for (final double scale in <double>[1.0, 2.0]) {

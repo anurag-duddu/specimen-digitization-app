@@ -40,6 +40,21 @@ abstract final class AppRoutes {
   static String intakeOf(String routeKey) =>
       '$collectionPrefix/$routeKey/intake';
 
+  /// The registered sources for one collection.
+  ///
+  /// Under intake rather than beside it: adding from a source creates a batch
+  /// through the same batch and items surface an upload does, so it is the
+  /// same errand by another route in.
+  static String sourcesOf(String routeKey) =>
+      '${intakeOf(routeKey)}/sources';
+
+  /// One registered source.
+  static String sourceOf(String routeKey, String sourceId) =>
+      '${sourcesOf(routeKey)}/${Uri.encodeComponent(sourceId)}';
+
+  /// The path parameter carrying the source.
+  static const String sourceParameter = 'source';
+
   /// The collection route key inside [location], or null when it names no
   /// collection.
   static String? collectionKeyIn(Uri location) {

@@ -52,6 +52,11 @@ const int intakeMaximumPixels = 40000000;
 /// The largest single dimension this client will try to decode locally.
 const int intakeMaximumSide = 20000;
 
+/// The way from intake to the photographs a collection already holds.
+///
+/// Verb first, three words, inside the 24 character button budget.
+const String intakeBrowseSourcesLabel = 'Add from storage';
+
 class IntakeScreen extends StatefulWidget {
   const IntakeScreen({
     super.key,
@@ -59,6 +64,7 @@ class IntakeScreen extends StatefulWidget {
     required this.scope,
     required this.userId,
     required this.onComplete,
+    this.onBrowseSources,
     this.pickImages,
     this.recoverCamera,
     this.openCapture,
@@ -68,6 +74,12 @@ class IntakeScreen extends StatefulWidget {
   final CollectionScope scope;
   final String userId;
   final VoidCallback onComplete;
+
+  /// Opens the registered sources for this collection.
+  ///
+  /// Null where this build has none, which hides the control rather than
+  /// offering one that cannot answer (blueprint 3).
+  final VoidCallback? onBrowseSources;
 
   /// Test seam for both sources. When set, it replaces the file picker and
   /// the camera entirely.
@@ -696,7 +708,22 @@ class _IntakeScreenState extends State<IntakeScreen> {
         uploading: _busy,
         pendingCount: _pendingCount,
       ),
+      if (widget.onBrowseSources != null) ...<Widget>[
+        SizedBox(height: context.space.space4),
+        _sourcesEntry(context),
+      ],
     ],
+  );
+
+  /// The way to the photographs the collection already holds.
+  ///
+  /// Under the capture card rather than beside it: uploading is still the
+  /// ordinary path, and this is the one for a collection whose photographs
+  /// are already in storage.
+  Widget _sourcesEntry(BuildContext context) => OutlinedButton.icon(
+    onPressed: _busy ? null : widget.onBrowseSources,
+    icon: const Icon(Symbols.inventory_2),
+    label: const Text(intakeBrowseSourcesLabel),
   );
 
   Widget _manifest(
