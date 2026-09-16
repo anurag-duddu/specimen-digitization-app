@@ -13,6 +13,19 @@ import '../foundation/glass.dart';
 import '../foundation/motion.dart';
 import '../foundation/theme.dart';
 import 'glass_surface.dart';
+import 'surface.dart';
+
+/// What a popover's pane is painted on.
+enum PopoverSurface {
+  /// Frosted glass at the popover's level. Menus, selects and date inputs.
+  glass,
+
+  /// A solid `paper` pane with a `boundary` edge.
+  ///
+  /// Tooltips are small and frequent, and a save layer each is a cost the
+  /// budget in 09 section 3.3 does not have room for (10 section 4.3).
+  paper,
+}
 
 /// Where a popover sits relative to its trigger.
 enum PopoverPlacement {
@@ -68,6 +81,8 @@ class Popover extends StatefulWidget {
     this.placement = PopoverPlacement.auto,
     this.gap,
     this.level = GlassLevel.floating,
+    this.surface = PopoverSurface.glass,
+    this.interactive = true,
     this.radius,
     this.semanticsLabel,
     this.barrierDismissible = true,
@@ -88,8 +103,21 @@ class Popover extends StatefulWidget {
   /// The distance between the trigger and the popover. Defaults to `s2`.
   final double? gap;
 
-  /// Which glass level the pane carries.
+  /// Which glass level the pane carries. Ignored on a [PopoverSurface.paper]
+  /// pane.
   final GlassLevel level;
+
+  /// What the pane is painted on.
+  final PopoverSurface surface;
+
+  /// True when the pane takes focus and receives pointer events.
+  ///
+  /// A menu or a select is interactive: the reviewer moves into it and picks
+  /// something. A tooltip is not. It describes the control under the pointer,
+  /// so taking focus would move the reviewer away from that control, and
+  /// receiving pointer events would swallow the click they were about to
+  /// make on it.
+  final bool interactive;
 
   /// The pane's corner radius. Defaults to `radius.tile`.
   final double? radius;
@@ -136,7 +164,9 @@ class _PopoverState extends State<Popover> {
   void _controllerChanged() {
     if (!mounted) return;
     if (widget.controller.isOpen) {
-      _triggerFocus = FocusManager.instance.primaryFocus;
+      if (widget.interactive) {
+        _triggerFocus = FocusManager.instance.primaryFocus;
+      }
       _portal.show();
     } else {
       _portal.hide();
@@ -181,7 +211,7 @@ class _PopoverState extends State<Popover> {
       overlayChildBuilder: (BuildContext overlayContext) => Positioned.fill(
         child: Stack(
           children: <Widget>[
-            if (widget.barrierDismissible)
+            if (widget.barrierDismissible && widget.interactive)
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
@@ -197,31 +227,36 @@ class _PopoverState extends State<Popover> {
               offset: _offset(ui),
               child: Align(
                 alignment: _followerAnchor,
-                child: TapRegion(
-                  onTapOutside: widget.barrierDismissible
-                      ? (PointerDownEvent _) => _close()
-                      : null,
-                  child: FocusScope(
-                    node: _scope,
-                    autofocus: true,
-                    child: Semantics(
-                      container: true,
-                      label: widget.semanticsLabel,
-                      explicitChildNodes: true,
-                      child: _PopoverPane(
-                        level: widget.level,
-                        radius: widget.radius,
-                        child: Builder(builder: widget.overlayBuilder),
-                      ),
-                    ),
-                  ),
-                ),
+                child: _pane(context),
               ),
             ),
           ],
         ),
       ),
       child: CompositedTransformTarget(link: _link, child: widget.child),
+    );
+  }
+
+  /// The pane, with the focus scope and the tap region an interactive
+  /// popover needs and a passive one must not have.
+  Widget _pane(BuildContext context) {
+    final Widget content = Semantics(
+      container: true,
+      label: widget.semanticsLabel,
+      explicitChildNodes: true,
+      child: _PopoverPane(
+        level: widget.level,
+        surface: widget.surface,
+        radius: widget.radius,
+        child: Builder(builder: widget.overlayBuilder),
+      ),
+    );
+    if (!widget.interactive) return IgnorePointer(child: content);
+    return TapRegion(
+      onTapOutside: widget.barrierDismissible
+          ? (PointerDownEvent _) => _close()
+          : null,
+      child: FocusScope(node: _scope, autofocus: true, child: content),
     );
   }
 
@@ -268,11 +303,13 @@ class _PopoverState extends State<Popover> {
 class _PopoverPane extends StatelessWidget {
   const _PopoverPane({
     required this.level,
+    required this.surface,
     required this.radius,
     required this.child,
   });
 
   final GlassLevel level;
+  final PopoverSurface surface;
   final double? radius;
   final Widget child;
 
@@ -285,7 +322,19 @@ class _PopoverPane extends StatelessWidget {
       curve: MotionTokens.enterCurve,
       builder: (BuildContext context, double t, Widget? pane) =>
           Opacity(opacity: t, child: pane),
-      child: GlassSurface(level: level, radius: radius, child: child),
+      child: switch (surface) {
+        PopoverSurface.glass => GlassSurface(
+          level: level,
+          radius: radius,
+          child: child,
+        ),
+        PopoverSurface.paper => Surface(
+          radius: radius ?? ui.shape.inner,
+          boundary: true,
+          clip: true,
+          child: child,
+        ),
+      },
     );
   }
 }
