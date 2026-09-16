@@ -5719,3 +5719,214 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     gallery's unmeasured tile is the shape that pattern takes.
   - The `no_material_components` backlog is untouched by this slot: it adds
     controls to the package and changes no application call site.
+
+## 2026-09-16: Front-end refactor wave 1, integration polish, `specimen_ui` 0.2.0
+
+- Task: the integration-polish slot run after all five control families
+  merged. Swap the six cross-family stand-ins for the real controls, fix the
+  package test harness, reconcile `design/10-component-library.md` section 4
+  with what shipped, and cut the package's 0.2.0.
+- Branch and worktree: `fe/polish` at `.claude/worktrees/fe-polish`, cut from
+  `front-end-refactor` at `d76c779`. Pushed to `origin/fe/polish` at
+  `5d44c35`. No pull request; the integrator merges the slot.
+- Outcome: complete. `grep -rn 'TODO(fe/' lib` returned six when the slot
+  opened and returns nothing now, with a gate to keep it that way. The
+  harness publishes its tokens above the navigator and a proof test pins it.
+  10 sections 1.2, 2, 4, 6, 8 and 9 and 09 section 3.4 are amended. The
+  package is at 0.2.0.
+- Commits (ten, oldest first):
+  - `24ba64d` `feat(inputs): the select's options become UiListRow`
+  - `d73eb23` `feat(navigation): the sidebar's destinations become UiListRow`
+  - `07b32c0` `feat(navigation, actions): the real tooltip on every wordless control`
+  - `c27894e` `feat(overlays): the tab strip becomes UiSegmented at lg`
+  - `09c8729` `feat(navigation): a scaffold installs a toast host by default`
+  - `03f8b31` `test(foundation): a gate against a stand-in outliving its wave`
+  - `6e5556c` `test(harness): publish the tokens above the navigator, not inside home`
+  - `81151d9` `docs(design): reconcile 10 with what the five families shipped`
+  - `7f325db` `release: specimen_ui 0.2.0`
+  - `5d44c35` `test(harness): name the route future the proof test leaves open`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | one lockfile line moved, the path dependency's version; no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 519 passed, up from 505 at the end of wave 1 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 191 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (40 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens: twelve moved, none added, none deleted. The four
+  `navigation-{light,dark}-{touch,pointer}.png` by 1.4 to 1.6 percent of
+  pixels, and the eight `overlays-*` by 1.0 to 1.9 percent. Both isolated
+  diffs were read before regenerating: the navigation diff is the three
+  sidebar destination rows and nothing else on the page, and the overlays
+  diff is the tab strip and the one line of pane text under it. The twenty
+  four foundation goldens, the four actions goldens, the four inputs goldens
+  and the four data goldens hold byte for byte. Zero application screen
+  goldens and zero semantics fixtures were touched, which is the wave policy.
+- Files changed outside the package, all three deliberate: `design/09` and
+  `design/10`, which this slot owns, and one line of
+  `apps/specimen_digitization/pubspec.lock`, the version the app records for
+  the path dependency, without which `--enforce-lockfile` fails on the
+  version bump the brief asked for. Nothing under the application's `lib/`.
+
+### The six swaps
+
+| Stand-in | Now | Goldens |
+|---|---|---|
+| `_OptionRow` in `inputs/select.dart` | `UiListRow` at `sm`, selection-free mode | none moved |
+| `_SidebarRow` in `navigation/sidebar.dart` | `UiListRow` in a new `tab` mode | four navigation |
+| `Semantics(tooltip:)` on `navigation/nav_disc.dart` | `UiTooltip` around it, both kept | none moved |
+| `Semantics(tooltip:)` on `actions/icon_button.dart` | `UiTooltip`, `UiTooltip.reason` when disabled | none moved |
+| `_CapsuleStrip` in `overlays/tabs.dart` | `UiSegmented` at `lg` | eight overlays |
+| `UiScaffold.overlays` marked for a toast host | installs a `UiToastHost` by default | none moved |
+
+- Durable learnings:
+  - **`MergeSemantics` goes above `UiTooltip`, never below it.** Wrapping the
+    control in `UiTooltip` and putting `MergeSemantics(Semantics(tooltip:))`
+    inside it makes forty two navigation tests fail at once with
+    `'node.parent?._dirty != true': is not true` from
+    `SemanticsOwner.sendSemanticsUpdate`. A merged node whose subtree sits
+    inside an `OverlayPortal` is what trips it. The other order costs nothing
+    and works.
+  - **`Shortcuts` publishes a semantics node by default.** It builds a
+    `Focus` with `includeSemantics` defaulting to true, so a control that
+    wraps its arrow keys in one publishes an empty `focusable` node between
+    itself and its children. Harmless until the parent is a
+    `SemanticsRole.tabBar`, whose every child node has to be a tab: the SDK
+    then fails the whole frame with "Children of TabBar must have the tab
+    role" rather than degrading. `FocusTraversalGroup` already passes
+    `includeSemantics: false`; `Shortcuts` has to be told.
+  - **A disabled `Pressable` reports no hover.** `FocusableActionDetector`
+    gates `onShowHoverHighlight` on `widget.enabled`, so
+    `Pressable.onDisabledReason` fires on a press and a long press and never
+    on a pointer resting on the control. The reason still reaches a reviewer
+    through the semantics hint and through either gesture, but a desktop
+    reviewer who only hovers a forbidden button sees nothing. Recorded as a
+    follow-up rather than fixed, because the brief pins the carrier as the
+    overlays slot built it.
+  - **A layer widget's `Stack` wants `StackFit.passthrough`, not the default
+    loose fit.** `UiToastHost` is "a page, with toasts over it", and a loose
+    stack hands a tight caller's child loose constraints and aligns it top
+    start, which silently shrinks a page that shrink wraps. `GlassSurface`
+    already had this right; the toast host did not, and nothing caught it
+    because its only caller until now passed a `SizedBox.expand`.
+  - **A harness defect reads as a token defect.** `uiHarness` published
+    `UiTheme` inside `home`, below the navigator, so every modal in a package
+    test fell back to `UiTheme._fallback(Theme.of(context).brightness)`, which
+    in a `WidgetsApp` is always light. The overlays slot saw a light pane in a
+    dark golden and correctly diagnosed the harness, but had to work around it
+    because three sibling slots were live. Moving it costs nothing once the
+    siblings have merged, and no golden moved: the hand-lifted theme and the
+    harness one resolve to the same tokens.
+  - **`MediaQuery` has to move with `Density` and `UiTheme`.** `Density.of`
+    and `MotionTokens.of` both read it, so lifting the theme above the app and
+    leaving the media query in `home` would give a route the right tokens at
+    the wrong density. `Directionality` is the opposite case and stays inside
+    `home`: `WidgetsApp` builds a `Localizations` that publishes its own from
+    the locale, so one lifted above the app is shadowed for everything the app
+    builds.
+  - **`dart format` on a file is a merge conflict waiting to happen in this
+    tree.** Running it on `list_row.dart` reflowed eighty lines of a method
+    this slot never touched. The C4 closeout records the same hazard from the
+    other side. Format only the lines you wrote, by hand.
+  - **`flutter analyze` has to be rerun after the last file is added.** Two
+    `unawaited_futures` infos in a test file written after the previous
+    analyze run survived to the gate stage, where `--fatal-infos` caught them.
+    Cheap to fix and cheaper to avoid: the gate order in section 7 of the
+    build plan exists for this.
+- Failed approaches:
+  - Wrapping the nav disc as `UiTooltip(child: MergeSemantics(...))`, per the
+    learning above.
+  - Asserting the icon button's disabled reason by hovering it. The reason is
+    reported on a press and a long press only.
+  - `explicitChildNodes: true` on the tab bar without silencing the segmented
+    control's `Shortcuts`. The intermediate node is what the SDK rejects, and
+    dropping `explicitChildNodes` would have hidden the tabs rather than fixed
+    the tree.
+- Specification amendments, and the closeout each came from:
+
+  | Document | Amendment | From |
+  |---|---|---|
+  | 10 status line, 1.2 | Built at 0.2.0; the layout lists `lib/testing.dart`, `lib/src/testing/`, the reduced motion probe, the three navigation files and the new tests | this slot |
+  | 10 section 2 preamble | The contract is scoped to interactive controls, and nine of thirty are not | C1 (`UiBadge`, `UiKeyCap`), C5 by inspection |
+  | 10 section 2 preamble | The harness publishes its tokens above the navigator | C3, this slot |
+  | 10 section 2 clause 3 | Arrow keys follow the control's own axis | C4 |
+  | 10 section 2 clause 3 | `ControlActivation`, and why a text editor is the mirror case | C2 |
+  | 10 section 2 clause 5 | Seven `SemanticsRole` values throw in this SDK; `tabBar` requires every child to be a tab | C3, C4, this slot |
+  | 10 section 4.1 `UiButton` | Loading refuses activation and keeps its enabled paint; "keeps width" is the leading slot's; the ring draws no track; `overlay` is a `Color`; `statesController` | C1, C5 |
+  | 10 section 4.1 `UiIconButton` | The tooltip is a real `UiTooltip` and a disabled button draws its reason | this slot |
+  | 10 section 4.1 `UiCapsuleToggle` | Single selection clears on a second tap | C1 |
+  | 10 section 4.1 `UiChip` | The optional status triple, and the stacked capsule for `input` | C1 |
+  | 10 section 4.1 `UiSegmented` | The track is `paper` with a `hairline` stroke; the thumb inset arithmetic; the range asserted in `build`; `includeSemantics: false` | C1, this slot |
+  | 10 section 4.1 `UiBadge`, `UiKeyCap` | Not interactive, so no contract run | C1 |
+  | 10 section 4.2 `UiField` | `UiInputStyle`; one style for four controls; `UiFieldFrame` and `UiFieldBox` public; the clear control's own box; six bools, two visual | C2 |
+  | 10 section 4.2 `UiSearchField` | `Escape` clears, a second `Escape` unfocuses | C2 |
+  | 10 section 4.2 `UiSelect` | Option rows are `UiListRow` at `sm`; the list height resolves from the floored row; the popover carries no label | C2, this slot |
+  | 10 section 4.2 `UiSwitch` | The thumb follows the track, and the filled part carries its own layer | C2 |
+  | 10 section 4.2 `UiCheckbox` | Indeterminate moves to checked and never back | C2 |
+  | 10 section 4.2 `UiRadio` | `UiRadioGroup`; `StateLayer` inside `RawRadio`; state only what the SDK does not | C2 |
+  | 10 section 4.3 `UiPopoverMenu` | Items are the menu's own row, not `UiListRow`; `semanticsLabel` optional | C3 |
+  | 10 section 4.3 `UiTooltip` | The property not the role; the pane carries it; `MergeSemantics` above, never below | C3, C4, this slot |
+  | 10 section 4.3 `UiToast` | An action toast never expires; the scaffold installs the host | C3, this slot |
+  | 10 section 4.3 `UiBanner` | Seven tones; the `info` hairline; two lines; the `space.s6` strip | C3 |
+  | 10 section 4.3 `UiTabs` | Shipped as a `UiSegmented` at `lg`: no glyph, 2 to 5 tabs, manual activation, the `strip` escape hatch; `UiTabView` at `medium` | C3, this slot |
+  | 10 section 4.3 `UiSheet`, `UiDialog` | `.show` rather than `showUiSheet`; `showAdaptive`; `UiModalActions`; the drag flick | C3 |
+  | 10 section 4.4 `UiPillNav` | 64 dp; the glyph cross fade; the label now a real tooltip | C4, this slot |
+  | 10 section 4.4 `UiRail` | No glass; it widens for a label; 72 as `targetMin + s6` | C4 |
+  | 10 section 4.4 `UiSidebar` | Destinations are `UiListRow` in `tab` mode, current marked four ways; the destinations scroll | C4, this slot |
+  | 10 section 4.4 `UiTopBar` | Full width above the side navigation; `title` a `String`; no fade; safe areas; the `center` slot | C4 |
+  | 10 section 4.4 `UiScaffold` | The default toast host; the inset includes the action bar; overlays under the chrome; `of` returns a value; three unlisted files | C4, this slot |
+  | 10 section 4.5 `UiListRow` | Floored at 48 in pointer; `radius.none`; the fixed leading slot; the third `tab` mode | C5, this slot |
+  | 10 section 4.5 `UiProgress` | The role throws; no track when indeterminate; monotonicity and the first value | C5 |
+  | 10 section 4.5 `UiSkeleton` | The block is the state layer, not `paper` at 0.6 | C5 |
+  | 10 section 4.5 `UiEmptyState` | The action slot is typed `UiButton?` | C5 |
+  | 10 section 4.5 `UiDataTile` | The value is a `String` and may wrap; it merges its child's node | C5 |
+  | 10 section 4.5 `UiArcIndicator` | It renders rather than asserting; the 1 dp `ink` casing; "Unmeasured" in `type.label`; the labels dropped | C5 |
+  | 10 section 6 | Family golden windows at the height each page needs, the two modal windows, the three page lists, `TickerMode` and the focus highlight | C1, C2, C3, C4, C5 |
+  | 10 section 8 | The `no_stand_ins` gate | this slot |
+  | 10 section 9 | Clause 3 scoped and given `ControlActivation`; new clause 10, no stand-in left behind | C1, C2, this slot |
+  | 09 section 3.4 | The accent takes a 1 dp `ink` casing where it is the only thing carrying a value | C5 |
+
+- Where the specification was judged right and the code was left alone:
+  - **`UiPopoverMenu`'s items are not `UiListRow`, and 10 section 4.3 says
+    they should be.** The shortcut column fits the row's trailing slot, but
+    the destructive tint does not: `UiListRow` has no tone, and giving it one
+    for a single caller is the configuration property 5 of section 0 trades
+    away. The specification is right about the direction and the code is right
+    about today, so section 4.3 records what shipped and names the condition
+    under which it changes. The select's option list did move onto the row, so
+    the two lists differ, which is the reason to close this rather than let it
+    settle.
+  - **`UiSelectStyle.optionLabel` and `optionFill` and the four row members of
+    `UiSidebarStyle` are deprecated rather than removed.** 10 section 10 asks
+    for a `@Deprecated` shim for one wave with the replacement named, and that
+    is what they carry, even though nothing outside the package has ever
+    constructed either style.
+- Follow-ups:
+  - **A disabled control reports no reason on hover.** See the learning above.
+    Making `Pressable` carry its own `MouseRegion` while disabled is a
+    primitive change, and the brief for this slot pins the carrier as built.
+    Worth doing before the desktop review in wave 4.
+  - **`UiPopoverMenu`'s items, per the note above.** A `tone` on `UiListRow`
+    would let the menu and the select share one row.
+  - **`no_literal_geometry` is still not introduced.** 10 section 8 says it
+    arrives "in the polish wave" with a shrink-only backlog. It targets
+    application widgets and screens, which this slot does not own and which
+    waves 2 and 3 are still rewriting, so it belongs to F5 in
+    `docs/execution/FRONT_END_REFACTOR.md` rather than here.
+  - **`apps/specimen_digitization/.gitignore` still has no
+    `test/gallery/failures/` entry.** The C1 and C5 closeouts both raised it.
+    This slot added the entry to the package's own `.gitignore`, which is the
+    file it owns and the directory's actual parent, so the follow-up is closed
+    for the package; the application's file is unchanged.
+  - **`apps/specimen_digitization/CLAUDE.md` still does not exist**, although
+    the agent brief template names it as required reading. Raised by wave 0
+    and still open.
+  - The screen slots of waves 2 and 3 are what spend the
+    `no_material_components`, `no_material_imports` and `icons_unique`
+    backlogs. This slot changes no application call site and leaves all three
+    where wave 1 left them.
