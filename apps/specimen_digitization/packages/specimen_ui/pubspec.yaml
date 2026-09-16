@@ -1,0 +1,34 @@
+name: specimen_ui
+description: "The Specimen Digitization design system: tokens, primitives and controls built on flutter/widgets."
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Phosphor replaces Material Symbols (09 section 7). Pinned exactly rather
+  # than with a caret: the registry in lib/src/foundation/icons.dart names
+  # glyphs by identifier, and a minor release that renames one would break the
+  # build rather than the icons_unique gate.
+  phosphor_flutter: 2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  # Declared here rather than in the app so that a consumer gets the families
+  # by depending on the package. Flutter prefixes a package font family with
+  # "packages/specimen_ui/", which is what UiType resolves them under.
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/GeistVF.ttf
+    - family: Geist Mono
+      fonts:
+        - asset: assets/fonts/GeistMonoVF.ttf
