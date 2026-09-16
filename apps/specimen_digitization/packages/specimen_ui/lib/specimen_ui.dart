@@ -22,6 +22,7 @@ export 'src/foundation/shape.dart';
 export 'src/foundation/space.dart';
 export 'src/foundation/theme.dart';
 export 'src/foundation/type.dart';
+export 'src/foundation/mark.dart';
 
 // Primitives (L2).
 export 'src/primitives/announcer.dart';
