@@ -4568,3 +4568,16 @@ Correction/addition to “Hosting exact run/attempt provenance author closeout�
 - Durable learnings: Public web build settings enter through `ci-cd.yml` env (main push only) into `scripts/ci/build_web.sh`, validated by `validate_public_settings.py`; add any new define in all three plus `docs/DEPLOYMENT.md`. The contact is public and optional; it retires verification criterion 10.3 once the repository variable `SPECIMEN_ADMIN_CONTACT` is set.
 - Failed approaches: None
 - Remaining follow-ups: Set the repository variable `SPECIMEN_ADMIN_CONTACT` (for example `Name <address>`) in GitHub settings; the build forwards it only when set.
+## 2026-09-15 — Correction to the 2026-09-14 release packet generator entry
+
+Appended correction to [the 2026-09-14 entry](#2026-09-14--release-packet-generator-mint_release_packetpy),
+which was written before its pull request existed and therefore named no PR and
+no deployment evidence. Nothing in that entry is withdrawn; this adds what
+`docs/DEPLOYMENT.md` requires to be recorded for a completed release.
+
+- Pull request: [#60](https://github.com/anurag-duddu/specimen-digitization-app/pull/60), merged 2026-09-15T00:03:16Z by `anurag-duddu` as merge commit `86847ba262f9dbd4bd17bda77d3d24d474f09b37`. The branch `claude/trusting-jang-c549c1` and its worktree were removed on 2026-09-15 after reconciling with live Git/GitHub state: clean tree, no commits outside `main` (`git cherry` empty, `merge-base --is-ancestor` true), no stashes of that session's own.
+- Hosting: CI/CD run [34911548864](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/34911548864) on `86847ba` completed with all six jobs green, including `Deploy Firebase Hosting`. Candidate structure CI (`runtime-ci.yml`) run 34911548915 also passed.
+- **The public marker was not observed at `86847ba` itself.** By the time it was checked, PRs #58/#61 had merged and `main` was at `f6f9c3c8a8837307b57dbfa7cd335a215624c86e`. What was verified is the marker and smoke for that later tip: `deployment.json` reported `f6f9c3c` / run 34919970574 / attempt 1, and `scripts/ci/smoke_hosting.sh` passed for that exact SHA, run and attempt. Recorded this way deliberately — the deploy job for `86847ba` succeeding is evidence; a marker reading a *later* commit is not evidence that `86847ba` was ever publicly served.
+- Both guarded planes failed closed on that same push, as they must while no release inputs are installed: `runtime-release.yml` run 34911548853 and `data-release.yml` run 34911548829 each ended `failure` at their admission job with every downstream job `skipped`. Adding a packet *generator* to the repository changed nothing about whether a packet is *accepted*.
+
+- Durable learning: a closeout entry written before its PR is opened will always be missing the PR number, the workflow run and the deployment evidence — the four facts `docs/DEPLOYMENT.md` asks for. Either append the entry after the PR exists, or plan on a correction like this one. The `merge=union` driver from PR #55 makes the second option cheap, since appending never conflicts.
