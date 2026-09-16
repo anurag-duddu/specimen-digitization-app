@@ -74,6 +74,13 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # The launcher icons and the splash are generated from assets/brand/ by
+  # these two, per 09 section 9. Both are pinned exactly rather than with a
+  # caret: they write platform files into android/, ios/ and web/, so a minor
+  # release that changes what it writes is a change to the shipped product
+  # and belongs in a commit that says so.
+  flutter_launcher_icons: 0.14.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
