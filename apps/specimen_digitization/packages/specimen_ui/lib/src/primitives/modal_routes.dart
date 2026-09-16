@@ -5,6 +5,7 @@
 /// trap focus, and both collapse their entrance under reduced motion.
 library;
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../foundation/glass.dart';
@@ -89,6 +90,11 @@ Future<T?> _show<T>({
 }) {
   final UiThemeData ui = context.ui;
   final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
+  // Focus returns to whatever opened the modal, which is clause 3 of the
+  // control contract. The route's own scope restoration returns to the page's
+  // focus scope rather than to the control inside it, so the node is captured
+  // here and asked for focus back when the route completes.
+  final FocusNode? trigger = FocusManager.instance.primaryFocus;
   return navigator.push<T>(
     RawDialogRoute<T>(
       barrierDismissible: false,
@@ -137,7 +143,9 @@ Future<T?> _show<T>({
             );
           },
     ),
-  );
+  ).whenComplete(() {
+    if (trigger?.context?.mounted ?? false) trigger!.requestFocus();
+  });
 }
 
 /// The chrome around a modal: the scrim, the focus trap and the pane.
@@ -160,6 +168,30 @@ class _ModalFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     void close() => Navigator.of(context).maybePop();
+
+    // Escape dismisses the modal, per clause 3 of the control contract. The
+    // route draws its own scrim rather than the barrier `RawDialogRoute`
+    // would, so nothing else in the tree is listening for the key.
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.escape): DismissIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          DismissIntent: CallbackAction<DismissIntent>(
+            onInvoke: (DismissIntent intent) {
+              if (dismissible) close();
+              return null;
+            },
+          ),
+        },
+        child: _frame(context, ui, close),
+      ),
+    );
+  }
+
+  /// The scrim, the focus trap and the pane.
+  Widget _frame(BuildContext context, UiThemeData ui, VoidCallback close) {
     final Widget pane = GlassSurface(
       level: GlassLevel.modal,
       radius: ui.shape.sheet,
@@ -170,7 +202,6 @@ class _ModalFrame extends StatelessWidget {
           : null,
       child: builder(context),
     );
-
     return PopScope(
       canPop: dismissible,
       child: Stack(
