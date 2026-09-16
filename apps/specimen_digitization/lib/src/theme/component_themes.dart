@@ -1,23 +1,31 @@
-/// Component defaults (design system, sections 5.3, 5.4, 5.9 and 8.3).
+/// Component defaults for the Material widgets still on screens.
 ///
-/// Component themes carry the defaults; call sites do not restyle. Elevation
-/// is surface tone plus a hairline outline, never a shadow and never a surface
-/// tint, so `surfaceTintColor` is switched off on every component that has it.
+/// 10 section 1.3 retires every one of these; until the screen waves replace
+/// them, they read the v2 tokens so a screen that has not been touched yet
+/// still renders in the new system. Corners are superellipses, the ripple is
+/// gone from the theme itself, and every edge comes from `boundary` or
+/// `hairline` rather than from a generated outline.
+///
+/// Elevation is surface tone plus a hairline, never a shadow and never a
+/// surface tint, so `surfaceTintColor` is off on every component that has it.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'semantic_colors.dart';
 import 'tokens.dart';
 
-/// Rounded rectangle at one of the six radius steps.
-RoundedRectangleBorder _shape(
+/// A superellipse at [radius], which is what every corner in this product is
+/// (09 section 5).
+OutlinedBorder _shape(
   double radius, [
   BorderSide side = BorderSide.none,
-]) => RoundedRectangleBorder(
-  borderRadius: BorderRadius.circular(radius),
-  side: side,
-);
+]) => Squircle.border(radius, side: side);
+
+/// The capsule every button, chip and search field now draws.
+OutlinedBorder _capsule([BorderSide side = BorderSide.none]) =>
+    StadiumBorder(side: side);
 
 /// The app bar: no shadow, no tint, no elevation change on scroll.
 AppBarTheme specimenAppBarTheme(ColorScheme scheme) => AppBarTheme(
@@ -39,7 +47,7 @@ CardThemeData specimenCardTheme(ColorScheme scheme) => CardThemeData(
   elevation: 0,
   clipBehavior: Clip.antiAlias,
   shape: _shape(
-    ShapeScale.radiusSm,
+    ShapeScale.radiusLg,
     BorderSide(color: scheme.outlineVariant, width: ShapeScale.strokeHairline),
   ),
 );
@@ -53,35 +61,35 @@ InputDecorationTheme specimenInputTheme(
   filled: true,
   fillColor: scheme.surfaceContainerLowest,
   border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderRadius: BorderRadius.circular(ShapeScale.radiusMd),
     borderSide: BorderSide(
       color: scheme.outline,
       width: ShapeScale.strokeBoundary,
     ),
   ),
   enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderRadius: BorderRadius.circular(ShapeScale.radiusMd),
     borderSide: BorderSide(
       color: scheme.outline,
       width: ShapeScale.strokeBoundary,
     ),
   ),
   focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderRadius: BorderRadius.circular(ShapeScale.radiusMd),
     borderSide: BorderSide(
-      color: scheme.primary,
+      color: scheme.onSurface,
       width: ShapeScale.strokeEmphasis,
     ),
   ),
   errorBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderRadius: BorderRadius.circular(ShapeScale.radiusMd),
     borderSide: BorderSide(
       color: scheme.error,
       width: ShapeScale.strokeBoundary,
     ),
   ),
   focusedErrorBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderRadius: BorderRadius.circular(ShapeScale.radiusMd),
     borderSide: BorderSide(
       color: scheme.error,
       width: ShapeScale.strokeEmphasis,
@@ -91,7 +99,7 @@ InputDecorationTheme specimenInputTheme(
   // label at 38 percent of `onSurface`, which measures 2.3:1. A field a
   // reviewer cannot use still has to be a field they can find.
   disabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(ShapeScale.radiusXs),
+    borderRadius: BorderRadius.circular(ShapeScale.radiusMd),
     borderSide: BorderSide(
       color: tokens.disabledOutline,
       width: ShapeScale.strokeBoundary,
@@ -108,7 +116,7 @@ FilledButtonThemeData specimenFilledButtonTheme(SpecimenColors tokens) =>
     FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
-        shape: _shape(ShapeScale.radiusSm),
+        shape: _capsule(),
         disabledForegroundColor: tokens.disabledContent,
         disabledBackgroundColor: tokens.disabledContainer,
         disabledIconColor: tokens.disabledContent,
@@ -122,7 +130,7 @@ OutlinedButtonThemeData specimenOutlinedButtonTheme(
   style:
       OutlinedButton.styleFrom(
         minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
-        shape: _shape(ShapeScale.radiusSm),
+        shape: _capsule(),
         side: BorderSide(
           color: scheme.outline,
           width: ShapeScale.strokeBoundary,
@@ -147,7 +155,7 @@ TextButtonThemeData specimenTextButtonTheme(SpecimenColors tokens) =>
     TextButtonThemeData(
       style: TextButton.styleFrom(
         minimumSize: const Size(SizeScale.targetMin, SizeScale.targetMin),
-        shape: _shape(ShapeScale.radiusSm),
+        shape: _capsule(),
         disabledForegroundColor: tokens.disabledContent,
         disabledIconColor: tokens.disabledContent,
       ),
@@ -162,7 +170,7 @@ IconButtonThemeData specimenIconButtonTheme(SpecimenColors tokens) =>
       ),
     );
 
-/// Chips: `radius.xs`, a 1dp boundary, no shadow.
+/// Chips are capsules now, with a 1 dp boundary and no shadow.
 ChipThemeData specimenChipTheme(ColorScheme scheme, SpecimenColors tokens) =>
     ChipThemeData(
       backgroundColor: scheme.surfaceContainerLow,
@@ -173,7 +181,7 @@ ChipThemeData specimenChipTheme(ColorScheme scheme, SpecimenColors tokens) =>
       pressElevation: 0,
       disabledColor: tokens.disabledContainer,
       side: BorderSide(color: scheme.outline, width: ShapeScale.strokeBoundary),
-      shape: _shape(ShapeScale.radiusXs),
+      shape: _capsule(),
     );
 
 /// Level 3: dialogs sit on `surfaceContainerHigh` in light and `surfaceBright`
@@ -184,7 +192,7 @@ DialogThemeData specimenDialogTheme(ColorScheme scheme) => DialogThemeData(
       : scheme.surfaceBright,
   surfaceTintColor: ThemePolicy.noSurfaceTint,
   elevation: 6,
-  shape: _shape(ShapeScale.radiusMd),
+  shape: _shape(ShapeScale.radiusXl),
 );
 
 /// Level 1: the bottom sheet, plus a scrim.
@@ -195,7 +203,7 @@ BottomSheetThemeData specimenBottomSheetTheme(ColorScheme scheme) =>
       elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(ShapeScale.radiusLg),
+          top: Radius.circular(ShapeScale.radiusXl),
         ),
       ),
     );
@@ -210,7 +218,7 @@ MenuThemeData specimenMenuTheme(ColorScheme scheme) => MenuThemeData(
     elevation: const WidgetStatePropertyAll<double>(3),
     shape: WidgetStatePropertyAll<OutlinedBorder>(
       _shape(
-        ShapeScale.radiusSm,
+        ShapeScale.radiusLg,
         BorderSide(
           color: scheme.outlineVariant,
           width: ShapeScale.strokeHairline,
@@ -227,9 +235,10 @@ DividerThemeData specimenDividerTheme(ColorScheme scheme) => DividerThemeData(
   thickness: ShapeScale.strokeHairline,
 );
 
-/// Material Symbols axes (design system, section 6.1). Dark mode sets grade
-/// -25, which is Google's guidance for reducing glare on light symbols against
-/// a dark ground.
+/// Material Symbols axes, for the screens still drawing them (03 section
+/// 6.1). Dark mode sets grade -25, Google's guidance for reducing glare on a
+/// light symbol against a dark ground. Removed with the last `Symbols.` call
+/// site.
 IconThemeData specimenIconTheme(ColorScheme scheme) => IconThemeData(
   color: scheme.onSurface,
   size: SizeScale.iconAction,
@@ -247,7 +256,7 @@ SnackBarThemeData specimenSnackBarTheme(ColorScheme scheme, TextTheme text) =>
       ),
       actionTextColor: scheme.inversePrimary,
       elevation: 6,
-      shape: _shape(ShapeScale.radiusSm),
+      shape: _shape(ShapeScale.radiusLg),
     );
 
 TooltipThemeData specimenTooltipTheme(ColorScheme scheme, TextTheme text) =>
@@ -271,5 +280,5 @@ NavigationRailThemeData specimenNavigationRailTheme(ColorScheme scheme) =>
       elevation: 0,
       indicatorColor: scheme.primaryContainer,
       minWidth: SizeScale.rail,
-      indicatorShape: _shape(ShapeScale.radiusSm),
+      indicatorShape: _capsule(),
     );

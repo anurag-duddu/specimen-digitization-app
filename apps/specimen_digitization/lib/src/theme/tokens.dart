@@ -1,328 +1,409 @@
-/// Raw design primitives for the Specimen Digitization client.
+/// The raw design primitives, as names over `package:specimen_ui`.
 ///
-/// Every value here is transcribed from `design/03-design-system.md`. This is
-/// the only file in the repository allowed to carry a `Color(0x...)` literal
-/// (design system, section 8.1). Nothing in this file imports Flutter beyond
-/// `Color`, so the primitives stay usable from pure Dart tests.
+/// Every value here now comes from the design system package. The file stays
+/// because screens and tests across the application reach for these names, and
+/// wave 0 changes the values without changing a single call site. A later wave
+/// deletes it as its consumers move to `context.ui`.
+///
+/// It no longer holds a `Color(0x...)` literal: the one file allowed to is
+/// `packages/specimen_ui/lib/src/foundation/palette.dart` (gate
+/// `no_color_literals`).
 library;
 
 import 'dart:ui' show Color;
 
-/// Values that express a policy of the system rather than a color in it.
+import 'package:specimen_ui/specimen_ui.dart';
+
+/// Values that express a policy of the system rather than a colour in it.
 abstract final class ThemePolicy {
   /// Fully transparent. M3 blends `surfaceTint` into an elevated surface,
-  /// which puts a green cast on any panel adjacent to a specimen photograph,
-  /// so the tint is switched off everywhere (design system, section 5.4).
-  static const Color noSurfaceTint = Color(0x00000000);
+  /// which puts a cast on any panel adjacent to a specimen photograph, so the
+  /// tint is switched off everywhere (09 section 3.1).
+  static const Color noSurfaceTint = GroundPalette.transparent;
 }
 
-/// Material 3 `ColorScheme` roles, light mode (design system, section 3.2).
+/// The seven hue primitives that carry every status token, plus the fixed
+/// colours that do not follow a primitive.
 ///
-/// The seed `#14513D` is run through `ColorScheme.fromSeed` to prove the
-/// luminance ladder is sane, then every role below is pinned with `copyWith`
-/// so a future `material_color_utilities` change cannot move a shipped color.
-abstract final class LightPalette {
-  /// Deep herbarium green. Seed for the generated tonal palettes.
-  static const Color seed = Color(0xFF14513D);
-
-  static const Color surface = Color(0xFFFBFCFA);
-  static const Color surfaceContainerLowest = Color(0xFFFFFFFF);
-  static const Color surfaceContainerLow = Color(0xFFF4F6F2);
-  static const Color surfaceContainer = Color(0xFFEEF1EB);
-  static const Color surfaceContainerHigh = Color(0xFFE7EBE4);
-  static const Color surfaceContainerHighest = Color(0xFFE1E5DD);
-  static const Color surfaceDim = Color(0xFFDADED6);
-
-  /// Equals [surface] in light mode. Dialog and menu ground.
-  static const Color surfaceBright = Color(0xFFFBFCFA);
-
-  static const Color onSurface = Color(0xFF161B17);
-  static const Color onSurfaceVariant = Color(0xFF414A42);
-  static const Color outline = Color(0xFF6C756C);
-  static const Color outlineVariant = Color(0xFFC0C8BF);
-
-  static const Color primary = Color(0xFF14513D);
-  static const Color onPrimary = Color(0xFFFFFFFF);
-  static const Color primaryContainer = Color(0xFFBCEDD7);
-  static const Color onPrimaryContainer = Color(0xFF00291D);
-
-  static const Color secondary = Color(0xFF2F5A78);
-  static const Color onSecondary = Color(0xFFFFFFFF);
-  static const Color secondaryContainer = Color(0xFFD3E4F1);
-  static const Color onSecondaryContainer = Color(0xFF0A2E48);
-
-  static const Color tertiary = Color(0xFF1D6A73);
-  static const Color onTertiary = Color(0xFFFFFFFF);
-  static const Color tertiaryContainer = Color(0xFFCFEAEE);
-  static const Color onTertiaryContainer = Color(0xFF043F46);
-
-  static const Color error = Color(0xFFA32617);
-  static const Color onError = Color(0xFFFFFFFF);
-  static const Color errorContainer = Color(0xFFFADAD3);
-  static const Color onErrorContainer = Color(0xFF5C1409);
-
-  static const Color inverseSurface = Color(0xFF2B312C);
-  static const Color inverseOnSurface = Color(0xFFEFF2EB);
-  static const Color inversePrimary = Color(0xFF8BD6B6);
-
-  static const Color scrim = Color(0xFF000000);
-  static const Color shadow = Color(0xFF000000);
-
-  /// Scrim opacity behind dialogs and sheets in light mode.
-  static const double scrimOpacity = 0.40;
-}
-
-/// Material 3 `ColorScheme` roles, dark mode (design system, section 3.3).
-///
-/// Dark is not an inverted light mode. The surface ramp takes larger tonal
-/// steps because tonal separation is harder to see at low luminance, and the
-/// accents are lifted in lightness and reduced in chroma so they do not bloom.
-abstract final class DarkPalette {
-  static const Color seed = LightPalette.seed;
-
-  static const Color surface = Color(0xFF101311);
-  static const Color surfaceContainerLowest = Color(0xFF0A0D0B);
-  static const Color surfaceContainerLow = Color(0xFF181C19);
-  static const Color surfaceContainer = Color(0xFF1C201D);
-  static const Color surfaceContainerHigh = Color(0xFF262B27);
-  static const Color surfaceContainerHighest = Color(0xFF313631);
-  static const Color surfaceBright = Color(0xFF373C37);
-
-  /// Equals [surface] in dark mode.
-  static const Color surfaceDim = Color(0xFF101311);
-
-  static const Color onSurface = Color(0xFFE2E6DF);
-  static const Color onSurfaceVariant = Color(0xFFBFC8BE);
-  static const Color outline = Color(0xFF8A938A);
-  static const Color outlineVariant = Color(0xFF424A42);
-
-  static const Color primary = Color(0xFF7FD6B0);
-  static const Color onPrimary = Color(0xFF00382A);
-  static const Color primaryContainer = Color(0xFF0F4535);
-  static const Color onPrimaryContainer = Color(0xFF9CE7C4);
-
-  static const Color secondary = Color(0xFF9CC3E4);
-  static const Color onSecondary = Color(0xFF0A2E48);
-  static const Color secondaryContainer = Color(0xFF123249);
-  static const Color onSecondaryContainer = Color(0xFFCBE0F3);
-
-  static const Color tertiary = Color(0xFF7ED3DD);
-  static const Color onTertiary = Color(0xFF00363C);
-  static const Color tertiaryContainer = Color(0xFF0C3D43);
-  static const Color onTertiaryContainer = Color(0xFFA9E4EA);
-
-  static const Color error = Color(0xFFF0A79A);
-  static const Color onError = Color(0xFF5A140A);
-  static const Color errorContainer = Color(0xFF5C1A10);
-  static const Color onErrorContainer = Color(0xFFFFD9D0);
-
-  static const Color inverseSurface = Color(0xFFE2E6DF);
-  static const Color inverseOnSurface = Color(0xFF2B312C);
-  static const Color inversePrimary = Color(0xFF14513D);
-
-  static const Color scrim = Color(0xFF000000);
-  static const Color shadow = Color(0xFF000000);
-
-  /// Scrim opacity behind dialogs and sheets in dark mode.
-  static const double scrimOpacity = 0.60;
-}
-
-/// The seven hue primitives that carry every product token, plus the handful
-/// of fixed colors that do not follow a primitive (design system, section 3.4).
-///
-/// Meaning comes from the icon and the word. The hue is an index into a
-/// meaning the label already states, never the statement itself.
+/// Carried over unchanged in value by 09 section 3.5.
 abstract final class ProductPalette {
-  // Green. A human affirmed it.
-  static const Color greenContentLight = Color(0xFF1A6D4F);
-  static const Color greenFillLight = Color(0xFFD3EFE1);
-  static const Color greenOnFillLight = Color(0xFF063D2A);
-  static const Color greenContentDark = Color(0xFF2CBB86);
-  static const Color greenFillDark = Color(0xFF0E3B2B);
-  static const Color greenOnFillDark = Color(0xFFA5E9CA);
+  /// Green content, light. A human affirmed it.
+  static const Color greenContentLight = StatusPalette.greenContentLight;
 
-  // Steel. A machine produced it.
-  static const Color steelContentLight = Color(0xFF2F6594);
-  static const Color steelFillLight = Color(0xFFD9E7F4);
-  static const Color steelOnFillLight = Color(0xFF0B3554);
-  static const Color steelContentDark = Color(0xFF78A9D4);
-  static const Color steelFillDark = Color(0xFF14344B);
-  static const Color steelOnFillDark = Color(0xFFB8D6F0);
+  /// Green fill, light.
+  static const Color greenFillLight = StatusPalette.greenFillLight;
 
-  // Teal. An external authority.
-  static const Color tealContentLight = Color(0xFF1D6A73);
-  static const Color tealFillLight = Color(0xFFCFEAEE);
-  static const Color tealOnFillLight = Color(0xFF043F46);
-  static const Color tealContentDark = Color(0xFF31B4C3);
-  static const Color tealFillDark = Color(0xFF0D383D);
-  static const Color tealOnFillDark = Color(0xFFA9E4EA);
+  /// Text on the green fill, light.
+  static const Color greenOnFillLight = StatusPalette.greenOnFillLight;
 
-  // Ochre. Attention, not failure.
-  static const Color ochreContentLight = Color(0xFF84580B);
-  static const Color ochreFillLight = Color(0xFFF7E3B4);
-  static const Color ochreOnFillLight = Color(0xFF4A3400);
-  static const Color ochreContentDark = Color(0xFFE19512);
-  static const Color ochreFillDark = Color(0xFF43310A);
-  static const Color ochreOnFillDark = Color(0xFFF2D79B);
+  /// Green content, dark.
+  static const Color greenContentDark = StatusPalette.greenContentDark;
 
-  // Oxide. A stop.
-  static const Color oxideContentLight = Color(0xFFA83D28);
-  static const Color oxideFillLight = Color(0xFFF8DDD6);
-  static const Color oxideOnFillLight = Color(0xFF5C1B0E);
-  static const Color oxideContentDark = Color(0xFFE1907F);
-  static const Color oxideFillDark = Color(0xFF4E241B);
-  static const Color oxideOnFillDark = Color(0xFFFFCFC3);
+  /// Green fill, dark.
+  static const Color greenFillDark = StatusPalette.greenFillDark;
 
-  // Slate. An observation, not a decision.
-  static const Color slateContentLight = Color(0xFF546275);
-  static const Color slateFillLight = Color(0xFFDFE4EB);
-  static const Color slateOnFillLight = Color(0xFF2E3846);
-  static const Color slateContentDark = Color(0xFF99A6B5);
-  static const Color slateFillDark = Color(0xFF29313A);
-  static const Color slateOnFillDark = Color(0xFFC8D3DF);
+  /// Text on the green fill, dark.
+  static const Color greenOnFillDark = StatusPalette.greenOnFillDark;
 
-  // Clay. Shelved, not judged.
-  static const Color clayContentLight = Color(0xFF6D5E52);
-  static const Color clayFillLight = Color(0xFFE7E1DA);
-  static const Color clayOnFillLight = Color(0xFF3E3630);
-  static const Color clayContentDark = Color(0xFFB0A397);
-  static const Color clayFillDark = Color(0xFF332D28);
-  static const Color clayOnFillDark = Color(0xFFDED3C8);
+  /// Steel content, light. A machine produced it.
+  static const Color steelContentLight = StatusPalette.steelContentLight;
 
-  // Diff highlight fills. Body text sits directly on these, so they are tuned
-  // against `onSurface` rather than against an on-fill color.
-  static const Color diffAddedFillLight = Color(0xFFD6F2E4);
-  static const Color diffAddedFillDark = Color(0xFF123B2C);
-  static const Color diffChangedFillLight = Color(0xFFFBEBC8);
-  static const Color diffChangedFillDark = Color(0xFF40300B);
+  /// Steel fill, light.
+  static const Color steelFillLight = StatusPalette.steelFillLight;
 
-  // Region overlay casings. A stroke drawn over an arbitrary photograph needs
-  // a casing so it survives whatever pixel is behind it.
-  static const Color regionCasingLight = Color(0xFFFFFFFF);
-  static const Color regionCasingDark = Color(0xFF101311);
+  /// Text on the steel fill, light.
+  static const Color steelOnFillLight = StatusPalette.steelOnFillLight;
 
-  /// Selection over the image is transient, so it is the one token that does
-  /// not follow the mode.
-  static const Color regionSelectedCore = Color(0xFFFFC02E);
-  static const Color regionSelectedCasing = Color(0xFF101311);
+  /// Steel content, dark.
+  static const Color steelContentDark = StatusPalette.steelContentDark;
 
-  // Synthetic environment band. Retuned from the pair already shipping in
-  // `workspace.dart`, which passed contrast but was not tokenized.
-  static const Color environmentFillLight = Color(0xFFF7E3B4);
-  static const Color environmentOnFillLight = Color(0xFF4A3400);
-  static const Color environmentFillDark = Color(0xFF4A3608);
-  static const Color environmentOnFillDark = Color(0xFFF2D79B);
+  /// Steel fill, dark.
+  static const Color steelFillDark = StatusPalette.steelFillDark;
 
-  /// Reserved for the focus ring. Never used for status.
-  static const Color focusRingLight = Color(0xFF0F5FA8);
-  static const Color focusRingDark = Color(0xFF7FC4F5);
+  /// Text on the steel fill, dark.
+  static const Color steelOnFillDark = StatusPalette.steelOnFillDark;
 
-  // Disabled state (design system, section 3.6; finding V-8). Material draws
-  // a disabled control at 38 percent of the content color, which measured
-  // 2.26:1 in light and 2.68:1 in dark and made a load-bearing sentence
-  // unreadable. The content clears 4.5:1 on every surface in both modes,
-  // because a disabled control here carries the reason the server forbids
-  // the decision and that is text. The outline stays a step quieter and
-  // clears the 3:1 non-text floor, so the control still reads as disabled.
-  static const Color disabledContentLight = Color(0xFF5A625A);
-  static const Color disabledContentDark = Color(0xFFA3ACA3);
-  static const Color disabledOutlineLight = Color(0xFF6F786F);
-  static const Color disabledOutlineDark = Color(0xFF848D84);
+  /// Teal content, light. An external authority.
+  static const Color tealContentLight = StatusPalette.tealContentLight;
 
-  /// Opacity of the disabled container fill over `onSurface`.
-  static const double disabledContainerOpacity = 0.12;
+  /// Teal fill, light.
+  static const Color tealFillLight = StatusPalette.tealFillLight;
+
+  /// Text on the teal fill, light.
+  static const Color tealOnFillLight = StatusPalette.tealOnFillLight;
+
+  /// Teal content, dark.
+  static const Color tealContentDark = StatusPalette.tealContentDark;
+
+  /// Teal fill, dark.
+  static const Color tealFillDark = StatusPalette.tealFillDark;
+
+  /// Text on the teal fill, dark.
+  static const Color tealOnFillDark = StatusPalette.tealOnFillDark;
+
+  /// Ochre content, light. Attention, not failure.
+  static const Color ochreContentLight = StatusPalette.ochreContentLight;
+
+  /// Ochre fill, light.
+  static const Color ochreFillLight = StatusPalette.ochreFillLight;
+
+  /// Text on the ochre fill, light.
+  static const Color ochreOnFillLight = StatusPalette.ochreOnFillLight;
+
+  /// Ochre content, dark.
+  static const Color ochreContentDark = StatusPalette.ochreContentDark;
+
+  /// Ochre fill, dark.
+  static const Color ochreFillDark = StatusPalette.ochreFillDark;
+
+  /// Text on the ochre fill, dark.
+  static const Color ochreOnFillDark = StatusPalette.ochreOnFillDark;
+
+  /// Oxide content, light. A stop.
+  static const Color oxideContentLight = StatusPalette.oxideContentLight;
+
+  /// Oxide fill, light.
+  static const Color oxideFillLight = StatusPalette.oxideFillLight;
+
+  /// Text on the oxide fill, light.
+  static const Color oxideOnFillLight = StatusPalette.oxideOnFillLight;
+
+  /// Oxide content, dark.
+  static const Color oxideContentDark = StatusPalette.oxideContentDark;
+
+  /// Oxide fill, dark.
+  static const Color oxideFillDark = StatusPalette.oxideFillDark;
+
+  /// Text on the oxide fill, dark.
+  static const Color oxideOnFillDark = StatusPalette.oxideOnFillDark;
+
+  /// Slate content, light. An observation, not a decision.
+  static const Color slateContentLight = StatusPalette.slateContentLight;
+
+  /// Slate fill, light.
+  static const Color slateFillLight = StatusPalette.slateFillLight;
+
+  /// Text on the slate fill, light.
+  static const Color slateOnFillLight = StatusPalette.slateOnFillLight;
+
+  /// Slate content, dark.
+  static const Color slateContentDark = StatusPalette.slateContentDark;
+
+  /// Slate fill, dark.
+  static const Color slateFillDark = StatusPalette.slateFillDark;
+
+  /// Text on the slate fill, dark.
+  static const Color slateOnFillDark = StatusPalette.slateOnFillDark;
+
+  /// Clay content, light. Shelved, not judged.
+  static const Color clayContentLight = StatusPalette.clayContentLight;
+
+  /// Clay fill, light.
+  static const Color clayFillLight = StatusPalette.clayFillLight;
+
+  /// Text on the clay fill, light.
+  static const Color clayOnFillLight = StatusPalette.clayOnFillLight;
+
+  /// Clay content, dark.
+  static const Color clayContentDark = StatusPalette.clayContentDark;
+
+  /// Clay fill, dark.
+  static const Color clayFillDark = StatusPalette.clayFillDark;
+
+  /// Text on the clay fill, dark.
+  static const Color clayOnFillDark = StatusPalette.clayOnFillDark;
+
+  /// The highlight behind an added diff span, light.
+  static const Color diffAddedFillLight = StatusPalette.diffAddedFillLight;
+
+  /// The highlight behind an added diff span, dark.
+  static const Color diffAddedFillDark = StatusPalette.diffAddedFillDark;
+
+  /// The highlight behind a changed diff span, light.
+  static const Color diffChangedFillLight = StatusPalette.diffChangedFillLight;
+
+  /// The highlight behind a changed diff span, dark.
+  static const Color diffChangedFillDark = StatusPalette.diffChangedFillDark;
+
+  /// The casing that keeps a region stroke visible, light.
+  static const Color regionCasingLight = StatusPalette.regionCasingLight;
+
+  /// The casing that keeps a region stroke visible, dark.
+  static const Color regionCasingDark = StatusPalette.regionCasingDark;
+
+  /// The selected region's core. The same in both modes.
+  static const Color regionSelectedCore = StatusPalette.regionSelectedCore;
+
+  /// The selected region's casing.
+  static const Color regionSelectedCasing = StatusPalette.regionSelectedCasing;
+
+  /// The synthetic environment band, light.
+  static const Color environmentFillLight = StatusPalette.environmentFillLight;
+
+  /// Text on the synthetic environment band, light.
+  static const Color environmentOnFillLight =
+      StatusPalette.environmentOnFillLight;
+
+  /// The synthetic environment band, dark.
+  static const Color environmentFillDark = StatusPalette.environmentFillDark;
+
+  /// Text on the synthetic environment band, dark.
+  static const Color environmentOnFillDark =
+      StatusPalette.environmentOnFillDark;
+
+  /// The focus ring, light. Monochrome since 09 section 3.6 retired the blue.
+  static const Color focusRingLight = GroundPalette.inkLight;
+
+  /// The focus ring, dark.
+  static const Color focusRingDark = GroundPalette.inkDark;
+
+  /// A disabled control's text, light.
+  static const Color disabledContentLight =
+      GroundPalette.disabledContentLight;
+
+  /// A disabled control's text, dark.
+  static const Color disabledContentDark = GroundPalette.disabledContentDark;
+
+  /// A disabled control's edge, light.
+  static const Color disabledOutlineLight =
+      GroundPalette.disabledOutlineLight;
+
+  /// A disabled control's edge, dark.
+  static const Color disabledOutlineDark = GroundPalette.disabledOutlineDark;
+
+  /// Opacity of the fill behind a disabled control.
+  static const double disabledContainerOpacity =
+      GroundPalette.disabledFillOpacityLight;
 }
 
-/// The 4px base grid (design system, section 5.1).
-///
-/// Vertical rhythm inside a pane uses [space2], [space4], [space6] and
-/// [space8] only. [space1], [space3] and [space5] are for internal component
-/// construction.
+/// The 4 px base grid (09 section 6).
 abstract final class SpaceScale {
-  static const double space0 = 0;
-  static const double space1 = 4;
-  static const double space2 = 8;
-  static const double space3 = 12;
-  static const double space4 = 16;
-  static const double space5 = 20;
-  static const double space6 = 24;
-  static const double space8 = 32;
-  static const double space10 = 40;
-  static const double space12 = 48;
+  /// Flush.
+  static final double space0 = UiSpace.standard.s0;
+
+  /// Glyph to label inside a chip; gap between stacked metadata lines.
+  static final double space1 = UiSpace.standard.s1;
+
+  /// Gap between related controls.
+  static final double space2 = UiSpace.standard.s2;
+
+  /// Internal padding of a chip or a dense list row.
+  static final double space3 = UiSpace.standard.s3;
+
+  /// Default padding inside a pane; compact-window screen gutter.
+  static final double space4 = UiSpace.standard.s4;
+
+  /// Optical corrections, and the touch-density gutter.
+  static final double space5 = UiSpace.standard.s5;
+
+  /// Gap between panes; medium and expanded screen gutter.
+  static final double space6 = UiSpace.standard.s6;
+
+  /// Gap between major sections in a pane.
+  static final double space8 = UiSpace.standard.s8;
+
+  /// Space above a screen title.
+  static final double space10 = UiSpace.standard.s10;
+
+  /// Empty-state vertical rhythm.
+  static final double space12 = UiSpace.standard.s12;
 
   /// Maximum. Above this, the layout is wrong.
-  static const double space16 = 64;
+  static final double space16 = UiSpace.standard.s16;
 }
 
-/// Fixed sizes (design system, section 5.2).
+/// Fixed sizes (09 section 6; 03 section 5.2).
 abstract final class SizeScale {
-  static const double iconInline = 20;
-  static const double iconAction = 24;
-  static const double iconDisplay = 40;
+  /// Glyph on a `body` baseline.
+  static final double iconInline = UiSpace.standard.iconInline;
+
+  /// Glyph in an action, a row or the navigation.
+  static final double iconAction = UiSpace.standard.iconAction;
+
+  /// Glyph in an empty state.
+  static final double iconDisplay = UiSpace.standard.iconDisplay;
 
   /// Hit box for every interactive element, on every platform, always.
-  static const double targetMin = 48;
+  static const double targetMin = UiDensity.hitBox;
 
-  /// Smallest a control may look. Below this, pad the hit box transparently.
-  static const double targetVisualMin = 40;
+  /// Smallest a control may look.
+  static final double targetVisualMin = UiSpace.standard.targetVisualMin;
 
-  static const double rowCompact = 72;
-  static const double rowMedium = 64;
-  static const double rowExpanded = 56;
-  static const double appBar = 56;
-  static const double rail = 80;
-  static const double paneDetailMin = 400;
+  /// Row height on a compact window.
+  static final double rowCompact = UiSpace.standard.rowCompact;
+
+  /// Row height on a medium window.
+  static final double rowMedium = UiSpace.standard.rowMedium;
+
+  /// Row height on an expanded window.
+  static final double rowExpanded = UiSpace.standard.rowExpanded;
+
+  /// The top bar.
+  static final double appBar = UiSpace.standard.topBar;
+
+  /// The navigation rail.
+  static final double rail = UiSpace.standard.rail;
+
+  /// Minimum width for the workbench content pane before it stacks.
+  static final double paneDetailMin = UiSpace.standard.paneDetailMin;
 
   /// Maximum measure for prose.
-  static const double readingMax = 640;
+  static final double readingMax = UiSpace.standard.readingMax;
 }
 
-/// The six corner radius steps we use out of M3's ten (section 5.3), and the
-/// four stroke widths (section 5.9).
+/// Corner radii and stroke widths (09 section 5).
+///
+/// The v1 six-step ramp is gone. These names map onto the v2 tokens so the
+/// screens that still hold a radius keep compiling; each one now draws the
+/// superellipse radius its role calls for.
 abstract final class ShapeScale {
-  static const double radiusNone = 0;
-  static const double radiusXs = 4;
-  static const double radiusSm = 8;
-  static const double radiusMd = 12;
-  static const double radiusLg = 16;
+  /// Diff spans, table cells, region overlays, the environment banner.
+  static final double radiusNone = UiShape.standard.none;
 
-  /// Effectively full. Avatars and the progress ring cap only. Prefer a
-  /// `StadiumBorder` where the API takes a shape rather than a radius.
+  /// Badges and swatches. Maps onto `radius.inner`.
+  static final double radiusXs = UiShape.standard.inner;
+
+  /// Nested elements. `radius.inner`.
+  static final double radiusSm = UiShape.standard.inner;
+
+  /// Fields and selects. `radius.field`.
+  static final double radiusMd = UiShape.standard.field;
+
+  /// Tiles, cards and popovers. `radius.tile`.
+  static final double radiusLg = UiShape.standard.tile;
+
+  /// Sheets and dialogs. `radius.sheet`.
+  static final double radiusXl = UiShape.standard.sheet;
+
+  /// Effectively full. Prefer a `StadiumBorder` where the API takes a shape.
   static const double radiusFull = 999;
 
-  static const double strokeHairline = 1;
-  static const double strokeBoundary = 1;
-  static const double strokeEmphasis = 2;
-  static const double strokeStrong = 3;
+  /// 1 dp. Decorative separation only.
+  static final double strokeHairline = UiShape.standard.stroke.hairline;
 
-  /// Focus ring geometry (section 5.8): a 2dp stroke, a 2dp gap in the parent
-  /// surface color, and a radius of the component radius plus 4.
-  static const double focusRingStroke = 2;
-  static const double focusRingGap = 2;
-  static const double focusRingRadiusOffset = 4;
+  /// 1 dp. Any container the user must be able to find.
+  static final double strokeBoundary = UiShape.standard.stroke.boundary;
+
+  /// 2 dp. Selected chip, selected region.
+  static final double strokeEmphasis = UiShape.standard.stroke.emphasis;
+
+  /// 3 dp. Selected row leading bar, diff addition bar.
+  static final double strokeStrong = UiShape.standard.stroke.bar;
+
+  /// The focus ring's stroke.
+  static final double focusRingStroke = UiShape.standard.stroke.focus;
+
+  /// The gap between a control and its focus ring.
+  static final double focusRingGap = UiShape.standard.stroke.focusGap;
+
+  /// The ring's radius is the component's plus this.
+  static final double focusRingRadiusOffset =
+      UiShape.standard.stroke.focusRadiusOffset;
 }
 
-/// The type scale (design system, section 4.2), in logical pixels.
+/// The type scale (09 section 4.2), in logical pixels.
+///
+/// These are the sizes the Material bridge in 09 section 4.3 puts in each
+/// `TextTheme` slot, so a test that reads `textTheme.bodyLarge?.fontSize`
+/// still has a name to compare against.
 abstract final class TypeScale {
-  static const double displayLargeSize = 40;
-  static const double displayMediumSize = 32;
+  /// `display.large`.
+  static const double displayLargeSize = 48;
+
+  /// `display.medium`.
+  static const double displayMediumSize = 36;
+
+  /// `headline`.
   static const double displaySmallSize = 28;
+
+  /// `headline`.
   static const double headlineLargeSize = 28;
-  static const double headlineMediumSize = 24;
-  static const double headlineSmallSize = 20;
-  static const double titleLargeSize = 18;
-  static const double titleMediumSize = 16;
-  static const double titleSmallSize = 14;
-  static const double bodyLargeSize = 16;
-  static const double bodyMediumSize = 14;
-  static const double bodySmallSize = 12;
-  static const double labelLargeSize = 14;
-  static const double labelMediumSize = 12;
+
+  /// `title.large`.
+  static const double headlineMediumSize = 22;
+
+  /// `title`.
+  static const double headlineSmallSize = 17;
+
+  /// `title.large`.
+  static const double titleLargeSize = 22;
+
+  /// `title`.
+  static const double titleMediumSize = 17;
+
+  /// `label`.
+  static const double titleSmallSize = 13;
+
+  /// `body.large`.
+  static const double bodyLargeSize = 17;
+
+  /// `body`.
+  static const double bodyMediumSize = 15;
+
+  /// `body.small`.
+  static const double bodySmallSize = 13;
+
+  /// `label`.
+  static const double labelLargeSize = 13;
+
+  /// `label`.
+  static const double labelMediumSize = 13;
+
+  /// `label.small`.
   static const double labelSmallSize = 11;
 
-  static const double monoLiteralSize = 16;
-  static const double monoLiteralDenseSize = 14;
+  /// `mono.literal`.
+  static const double monoLiteralSize = 15;
+
+  /// `mono.literalDense`.
+  static const double monoLiteralDenseSize = 13;
+
+  /// `mono.identifier`.
   static const double monoIdentifierSize = 13;
+
+  /// `mono.digest`.
   static const double monoDigestSize = 12;
+
+  /// `mono.code`.
   static const double monoCodeSize = 13;
 }

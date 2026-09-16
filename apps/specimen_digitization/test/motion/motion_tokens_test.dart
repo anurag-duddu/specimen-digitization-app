@@ -14,7 +14,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/theme/motion.dart';
-import 'package:specimen_digitization/src/theme/motion_preference.dart';
 
 /// Pumps a probe that captures the tokens the tree resolves.
 Future<MotionTokens> resolve(

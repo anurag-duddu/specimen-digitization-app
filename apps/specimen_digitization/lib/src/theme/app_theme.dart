@@ -1,14 +1,18 @@
-/// The two themes the application runs on (design system, section 8.1).
+/// The two themes the application runs on.
 ///
-/// Light and dark are both first class and both defined by hand in the design
-/// system. `themeMode` follows the platform.
+/// `UiThemeData.toThemeData()` builds everything derived from a token: the
+/// colour scheme, the text theme, the ground, and the removal of the ink
+/// splash. This file adds the component themes for the Material widgets that
+/// are still on screens, and the product `ThemeExtension`s the patterns of
+/// this wave read through `context.tokens` and its siblings.
+///
+/// Light and dark are both first class; `themeMode` follows the platform.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import 'color_schemes.dart';
 import 'component_themes.dart';
-import 'motion.dart';
 import 'semantic_colors.dart';
 import 'spacing.dart';
 import 'typography.dart';
@@ -19,31 +23,18 @@ abstract final class AppTheme {
   static ThemeData? _dark;
 
   /// The light theme.
-  static ThemeData light() => _light ??= _build(
-    scheme: lightColorScheme(),
-    colors: SpecimenColors.light,
-  );
+  static ThemeData light() =>
+      _light ??= _build(UiThemeData.light(), SpecimenColors.light);
 
   /// The dark theme.
   static ThemeData dark() =>
-      _dark ??= _build(scheme: darkColorScheme(), colors: SpecimenColors.dark);
+      _dark ??= _build(UiThemeData.dark(), SpecimenColors.dark);
 
-  static ThemeData _build({
-    required ColorScheme scheme,
-    required SpecimenColors colors,
-  }) {
-    final TextTheme text = specimenTextTheme();
-    return ThemeData(
-      useMaterial3: true,
-      brightness: scheme.brightness,
-      colorScheme: scheme,
-      textTheme: text,
-      scaffoldBackgroundColor: scheme.surface,
-      canvasColor: scheme.surface,
-      // Density follows the input modality, seeded from the platform. A touch
-      // probe overrides it per window in the adaptation step; hit boxes stay
-      // at 48 in every case (design system, section 5.6).
-      visualDensity: VisualDensity.adaptivePlatformDensity,
+  static ThemeData _build(UiThemeData ui, SpecimenColors colors) {
+    final ThemeData base = ui.toThemeData();
+    final ColorScheme scheme = base.colorScheme;
+    final TextTheme text = base.textTheme;
+    return base.copyWith(
       appBarTheme: specimenAppBarTheme(scheme),
       cardTheme: specimenCardTheme(scheme),
       inputDecorationTheme: specimenInputTheme(scheme, colors),
@@ -66,7 +57,6 @@ abstract final class AppTheme {
         const SpecimenSpacing(),
         const SpecimenSizing(),
         const SpecimenShape(),
-        const MotionTokens(),
       ],
     );
   }

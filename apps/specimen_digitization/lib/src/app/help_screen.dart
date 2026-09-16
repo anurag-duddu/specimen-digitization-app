@@ -13,7 +13,6 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../administrator_contact.dart';
 import '../theme/icons.dart';
 import '../theme/motion.dart';
-import '../theme/motion_preference.dart';
 import '../glossary.dart';
 import '../vocabulary.dart';
 import '../widgets/widgets.dart';
