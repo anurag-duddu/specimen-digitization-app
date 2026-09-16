@@ -16,8 +16,13 @@ library is specified in
 | --- | --- | --- |
 | Foundation | `lib/src/foundation/` | Colour, fields, glass, type, shape, space, density, motion, icons, the theme |
 | Primitives | `lib/src/primitives/` | Geometry and state with no styling opinions: `Pressable`, `Surface`, `GlassSurface`, `FieldLayer`, `FocusRing`, `Squircle`, `Popover`, `ModalRoutes`, `FieldCore`, `Announcer`, `Scrim` |
-| Controls | `lib/src/controls/<family>/` | The components a screen composes, one barrel per family |
+| Controls | `lib/src/controls/<family>/` | The thirty components a screen composes, one barrel per family: actions, inputs, overlays, navigation, data |
 | Gallery | `lib/src/gallery/` | Every token and component in every state, both modes, both densities |
+
+At 0.2.0 all five families are built. There is no Material component left to
+reach for: a page is a `UiScaffold` with a `UiTopBar`, a navigation and a
+body, and the frame hosts the toast layer itself, so `UiToasts.show(context,
+message: ...)` works from anywhere inside it.
 
 ## Consuming it
 
@@ -51,7 +56,10 @@ Surface(radius: ui.shape.tile, child: body);
 
 `Density` sits at the application root and resolves the density from the last
 pointer event, so `ui.density` follows the input modality rather than the
-platform.
+platform. `UiTheme` and `Density` go **above** the router, never inside a
+page: a route pushed over the page reads them from there, and a modal that
+finds no scope falls back to the light tokens. The package's own test harness
+is wired the same way, for the same reason.
 
 ## Seeing it
 
@@ -70,11 +78,16 @@ definition of done for a component. In short:
 3. `expectControlContract` passes, from `test/harness/control_contract.dart`.
 4. Behaviour tests cover every variant and every state transition it owns.
 5. It appears on its family's gallery page in every variant, size and state,
-   and the family golden is regenerated in all four combinations.
+   and the family golden is regenerated in all four combinations. The family
+   owns its own golden window, so taking a taller one moves no other family's
+   files.
 6. Reduced motion, 200 percent text and right-to-left are exercised in its
    tests.
 7. `flutter analyze --fatal-infos` is clean here and in the application.
 8. `CHANGELOG.md` has an entry naming the Material widget it retires.
+9. No `TODO(fe/` stand-in for another family's control is left behind. If a
+   sibling family has not merged yet, say so in the closeout; the
+   `no_stand_ins` gate fails on a marker that outlives its wave.
 
 A control goes in its family directory and is exported from that family's
 barrel. The top barrel, `lib/specimen_ui.dart`, lists the five family barrels

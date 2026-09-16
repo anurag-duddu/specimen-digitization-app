@@ -1,9 +1,42 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
-### actions
+2026-09-16. Wave 1 of the front-end refactor: the five control families of 10
+section 4, the foundation and primitive changes each of them needed, and the
+integration polish that swapped every cross-family stand-in for the real
+control, fixed the test harness and reconciled 10 section 4 with what shipped.
+Thirty controls, `flutter analyze --fatal-infos` clean, 519 package tests.
 
+### Foundation
+- `StateLayer` and `Pressable` take an optional state layer colour. The
+  contract's `ink` is right over every light fill and invisible over an `ink`
+  one, so a primary button had no visible hover or press at all. The opacity
+  is unchanged; only which way the surface moves is now the control's to say.
+  The actions slot and the inputs slot found it independently, and every
+  family has at least one filled control that needs it.
+- The light field geometry was measured at 390 by 844, 768 by 1024, 1180 by
+  820 and 1440 by 900 and did not read as the washes 09 section 1 describes.
+  The radius is now a fraction of the window's longer side rather than its
+  shorter one, and the alpha falls on a Gaussian rather than
+  `Curves.easeOutQuad`. Every centre colour, every centre alpha and
+  `UiFields.matteExclusion` are unchanged, so the composite contrast
+  measurements still hold. 09 section 3.2 carries the new rule and the
+  numbers, and all 24 foundation gallery goldens moved, because the gallery
+  shell paints `sky.home` behind every page.
+
+### Primitives
+- `Popover` gained `surface` (`glass` or `paper`) and `interactive`, so a
+  passive overlay neither takes focus nor swallows the click the reviewer was
+  about to make on the control it describes.
+- `Squircle` and `GlassSurface` gained `corners`, the one shape in the product
+  that is not uniform, and `ModalRoutes` uses it: a sheet is round on top and
+  square where it meets the window's edge (10 section 4.3).
+- `ModalRoutes` dismisses on `Escape` and returns focus to whatever opened the
+  modal, which clause 3 of the control contract requires and the route's own
+  scope restoration does not do.
+
+### Actions
 Wave 1 slot C1: the seven controls of 10 section 4.1.
 
 - `UiButton` completed. Four variants (`primary`, `secondary`, `ghost`,
@@ -35,9 +68,126 @@ Wave 1 slot C1: the seven controls of 10 section 4.1.
 - `UiKeyCap`, the monospace identifier role on `paper` at `radius.inner`.
 - The actions gallery page, registered in the shell's family page list, with
   goldens in light and dark at both densities.
+- The loading button's private `_LoadingArc` is now `UiProgress.ring` at
+  16 dp, which is the replacement slot C1 marked it for. The four actions
+  goldens do not move.
 
-### data
+### Inputs
+Wave 1 slot C2, the inputs family (10 section 4.2).
+- `UiField`: label above, a `radius.field` superellipse of `paper` whose
+  `boundary` edge becomes `ink` at `stroke.emphasis` on focus and
+  `status.blocked.content` on error, optional leading glyph, a trailing clear
+  control with its own 48 dp hit box, help or error text below with the error
+  glyph, and an optional counter. One semantics node reads the label, the
+  value and the hint; the error goes through `Announcer` once. Retires
+  `TextField`, `TextFormField`, `InputDecoration` and `OutlineInputBorder`.
+- `UiTextArea`: the same field with `minLines`, `maxLines` and auto growth.
+- `UiSearchField`: a capsule field with the search glyph leading, a clear
+  control once there is something to clear, `Escape` to clear and then
+  unfocus, and `Enter` to submit.
+- `UiSelect<T>`: a field shaped trigger with the selected option and a caret,
+  a `glass.floating` popover list at `radius.tile`, type to filter above eight
+  options, `Down` and `Up` to move, `Enter` to pick and `Escape` to close and
+  return focus. Semantics `button` with `expanded`, options `selected`.
+  Retires `DropdownMenu`, `DropdownButton` and `MenuAnchor` used as a select.
+- `UiSwitch`: a 44 by 26 capsule track with a 22 dp thumb that glides at
+  `short` and jumps under reduced motion, the whole row as the hit box and
+  `toggled` semantics. Retires `Switch` and `SwitchListTile`.
+- `UiCheckbox`: a 20 dp `radius.inner` box that fills `ink` with a `paper`
+  check, draws a bar when indeterminate and reads as mixed. Retires
+  `Checkbox` and `CheckboxListTile`.
+- `UiRadio<T>` and `UiRadioGroup<T>` on `RawRadio` and `RadioGroup`, so the
+  exclusive group, the arrow keys and the group role come from the SDK.
+  Retires `Radio` and `RadioListTile`.
+- `UiInputStyle`, `UiFieldFrame` and `UiFieldBox` are the shared anatomy: a
+  select and a field are one object with two behaviours. The style is named
+  for the family rather than `UiFieldStyle`, which `foundation/fields.dart`
+  already owns for the light fields of 09 section 3.2.
+- A checked box and an on switch track lift toward `paper` under the pointer,
+  because `ink` at 12 percent over an `ink` fill is the same colour. The row
+  around them keeps the shared `ink` layer, so both halves of the control
+  answer a hover.
+- The gallery gains an inputs page, registered in the shell's `familyPages`
+  list, and goldened in light and dark at both densities. The family golden is
+  captured at 1180 by 1180 rather than the shell's 1180 by 820: seven controls
+  in every state do not fit one window, and a golden that reviews the top of a
+  page is not reviewing the three controls below the fold.
+- `FieldCore` gains `excludeFromSemantics`, so a control that publishes one
+  node for the whole field does not get a second one from the editor.
 
+### Overlays
+Wave 1 slot C3: the family a screen puts over, above or inside its content
+without changing route. Retires `MenuAnchor`, `PopupMenuButton`, `showMenu`,
+`Tooltip`, `SnackBar`, `ScaffoldMessenger`, `ExpansionTile`, `TabBar`,
+`TabBarView`, `AlertDialog`, `showDialog`, `showModalBottomSheet` and
+`BottomSheet`.
+- `UiPopoverMenu` and `UiMenuTrigger`. A `glass.floating` pane at `radius.tile`
+  with a glyph, a label, an optional shortcut in `mono.identifier` and an
+  optional destructive tint. `Down` and `Up` move over the enabled items and
+  wrap, `Enter` chooses, `Escape` closes and returns focus to the trigger.
+  Semantics `menu` and `menuItem`. No submenus.
+- `UiTooltip`, on hover after 400 ms and on long press. `paper` rather than
+  glass, because tooltips are small and frequent and every frosted pane is a
+  save layer. `UiTooltip.reason` is the carrier for a disabled control's reason
+  through `Pressable.onDisabledReason`.
+- `UiToast`, `UiToastHost` and `UiToasts.show`. A `glass.floating` capsule,
+  queued one at a time, centred above the navigation on a compact window and in
+  the bottom start corner on a wider one. It clears itself after six seconds
+  unless it carries an action, and it announces itself once.
+- `UiBanner`, a full width strip at `radius.none` in seven tones: `info`, the
+  five statuses and `synthetic`. Optional second line behind a disclosure,
+  optional dismiss, the message in a live region. The v1 `EnvironmentBanner`
+  becomes one instance of it.
+- `UiDisclosure`, a titled row that reveals a body with `AnimatedSize` and a
+  caret that turns half a circle. Semantics `expanded`.
+- `UiTabs` and `UiTabView`, bound to a `ValueNotifier<int>` rather than a
+  `TabController`. Arrows move and select, mirrored under a right to left
+  window; panes cross fade and never slide.
+- `UiSheet`, `UiDialog` and the shared `UiModalActions` row. The chrome for
+  `ModalRoutes`: `glass.modal`, `radius.sheet`, a drag handle on the sheet, the
+  title in `title.large`, and at most one `primary` and one `secondary` or
+  `ghost` action. `UiSheet.show`, `UiDialog.show` and `UiDialog.showAdaptive`
+  are the wrappers that push the route and fill in the slots.
+
+### Navigation
+Wave 1 slot C4: the navigation family (10 section 4.4).
+- `UiPillNav`, the reference's floating capsule. Two to five discs on
+  `glass.floating`, the current one an `ink` disc with a `paper` glyph in
+  `fill` weight, gliding between destinations at `medium` on the emphasized
+  curve and appearing in place under reduced motion. It reports the height a
+  scaffold pads the body by. Retires `NavigationBar`.
+- `UiRail`, the same discs down a 72 dp column under a `leading` slot, with an
+  extended form that draws each destination's words under its glyph. It
+  measures the widest label at the live text scale and widens rather than
+  clipping a word it cannot break. Retires `NavigationRail`.
+- `UiSidebar`, a 280 dp `glass.flat` pane with `header` and `footer` slots and
+  destinations as rows, the current one marked by the 3 dp leading bar, the
+  `fill` glyph and `ink` rather than `ink.secondary`. The destinations scroll
+  between the two slots when the pane is too short for them. Retires `Drawer`
+  and the permanent drawer.
+- `UiTopBar`, transparent over the fields and filled with `glass.flat` once
+  the body has scrolled under it. It owns the top and side safe areas so its
+  pane reaches the window's edges. Retires `AppBar`.
+- `UiScaffold`, the page frame: `ground` and a sky preset through `FieldLayer`,
+  then the `topBar`, `banner`, `body`, `actionBar`, `nav` and `overlays`
+  slots, with safe areas and keyboard insets applied and the exact bottom
+  inset its floating chrome occupies published through `UiScaffold.of`.
+  Retires `Scaffold`.
+- `UiNavDestination`, the one destination model all three navigations take.
+- Semantics: a tab list per navigation, a tab per destination with `selected`,
+  and the label on every disc as a tooltip because no words are drawn. Arrow
+  keys move along the control's own axis and `Enter` selects.
+- The gallery gains a navigation page, registered in `familyPages` rather
+  than in `foundationPages` so the twenty four foundation goldens hold still
+  as the families land. Its four goldens are captured at 1180 by 940 rather
+  than the gallery's own 1180 by 820, because a family whose largest specimen
+  is a page frame does not fit in one window's height and a truncated golden
+  reviews only what fits.
+- `Pressable.stateLayerColour`, taken verbatim from `fe/actions`, carries the
+  current disc: `ink` at 12 percent over an `ink` disc is the same colour, so
+  without it the one disc a reviewer presses most would show no press.
+
+### Data
 Wave 1 slot C5: the eight controls of 10 section 4.5.
 
 - `UiListRow`. Height from the density, floored at the 48 dp hit box the
@@ -84,175 +234,59 @@ Wave 1 slot C5: the eight controls of 10 section 4.5.
   The taller window belongs to this golden alone, so no other family's files
   move for it.
 
-### Actions, for the data family
-
-- The loading button's private `_LoadingArc` is now `UiProgress.ring` at
-  16 dp, which is the replacement slot C1 marked it for. The four actions
-  goldens do not move.
-
-### Foundation, for the actions family
-
-- `StateLayer` and `Pressable` take an optional state layer colour. The
-  contract's `ink` is right over every light fill and invisible over an `ink`
-  one, so a primary button had no visible hover or press at all. The opacity
-  is unchanged; only which way the surface moves is now the control's to say.
-- The gallery shell has a `familyPages` list beside `foundationPages`, and
-  shows both. The foundation goldens draw the page list, so one shared list
-  would move all twenty four of them every time a family landed.
-
-### overlays
-Wave 1 slot C3: the family a screen puts over, above or inside its content
-without changing route. Retires `MenuAnchor`, `PopupMenuButton`, `showMenu`,
-`Tooltip`, `SnackBar`, `ScaffoldMessenger`, `ExpansionTile`, `TabBar`,
-`TabBarView`, `AlertDialog`, `showDialog`, `showModalBottomSheet` and
-`BottomSheet`.
-- `UiPopoverMenu` and `UiMenuTrigger`. A `glass.floating` pane at `radius.tile`
-  with a glyph, a label, an optional shortcut in `mono.identifier` and an
-  optional destructive tint. `Down` and `Up` move over the enabled items and
-  wrap, `Enter` chooses, `Escape` closes and returns focus to the trigger.
-  Semantics `menu` and `menuItem`. No submenus.
-- `UiTooltip`, on hover after 400 ms and on long press. `paper` rather than
-  glass, because tooltips are small and frequent and every frosted pane is a
-  save layer. `UiTooltip.reason` is the carrier for a disabled control's reason
-  through `Pressable.onDisabledReason`.
-- `UiToast`, `UiToastHost` and `UiToasts.show`. A `glass.floating` capsule,
-  queued one at a time, centred above the navigation on a compact window and in
-  the bottom start corner on a wider one. It clears itself after six seconds
-  unless it carries an action, and it announces itself once.
-- `UiBanner`, a full width strip at `radius.none` in seven tones: `info`, the
-  five statuses and `synthetic`. Optional second line behind a disclosure,
-  optional dismiss, the message in a live region. The v1 `EnvironmentBanner`
-  becomes one instance of it.
-- `UiDisclosure`, a titled row that reveals a body with `AnimatedSize` and a
-  caret that turns half a circle. Semantics `expanded`.
-- `UiTabs` and `UiTabView`, bound to a `ValueNotifier<int>` rather than a
-  `TabController`. Arrows move and select, mirrored under a right to left
-  window; panes cross fade and never slide.
-- `UiSheet`, `UiDialog` and the shared `UiModalActions` row. The chrome for
-  `ModalRoutes`: `glass.modal`, `radius.sheet`, a drag handle on the sheet, the
-  title in `title.large`, and at most one `primary` and one `secondary` or
-  `ghost` action. `UiSheet.show`, `UiDialog.show` and `UiDialog.showAdaptive`
-  are the wrappers that push the route and fill in the slots.
-
-### Primitives
-- `Popover` gained `surface` (`glass` or `paper`) and `interactive`, so a
-  passive overlay neither takes focus nor swallows the click the reviewer was
-  about to make on the control it describes.
-- `Squircle` and `GlassSurface` gained `corners`, the one shape in the product
-  that is not uniform, and `ModalRoutes` uses it: a sheet is round on top and
-  square where it meets the window's edge (10 section 4.3).
-- `ModalRoutes` dismisses on `Escape` and returns focus to whatever opened the
-  modal, which clause 3 of the control contract requires and the route's own
-  scope restoration does not do.
-- `StateLayer.colour` and `Pressable.stateLayerColour`, copied verbatim from
-  the actions slot so the two branches carry identical content. The current tab
-  of the strip fills with `ink`, and `ink` at 12 percent over an `ink` fill is
-  the same colour, so it lifts toward `paper` instead.
-
 ### Gallery
-- The overlays family page, registered as one line in `familyPages`. The shell
-  now carries `foundationPages`, `familyPages` and `galleryPages`, and defaults
-  to the third, so a family page reaches `/gallery` without moving the
-  foundation goldens: those render the page list too, and
-  `foundation_golden_test.dart` now pins `foundationPages` so they hold byte
-  for byte as each slot registers.
-- Eight goldens: the page in both modes at both densities, plus one window per
-  mode with the sheet open and one with the dialog open. The page is captured
-  at 1180 by 1000 rather than the usual 1180 by 820, because it is 922 logical
-  pixels of content at touch density and a golden that stops at 820 reviews the
-  banners and nothing else. The two modal goldens keep the standard window: a
-  sheet and a dialog are judged against the window they are drawn over.
+- The shell carries three page lists rather than one: `foundationPages`,
+  `familyPages` and `galleryPages`, which is both, and it defaults to the
+  third so a family page reaches `/gallery`. The foundation goldens draw the
+  page list in their own sidebar, so one shared list would move all twenty
+  four of them every time a family landed; `foundation_golden_test.dart` pins
+  `foundationPages` instead, and those goldens hold byte for byte however many
+  families register. The actions slot and the overlays slot reached the same
+  three names independently, which is the signal that the shape was wrong
+  rather than the use of it.
+- Five family pages, each registered as one line in `familyPages`, each with
+  four goldens in light and dark at both densities. A family golden is
+  captured at the height its page needs rather than at one shared window, and
+  10 section 6 carries the five heights.
+- Two goldens that are not pages: the overlays window with the sheet open and
+  with the dialog open, one per mode, at the standard 1180 by 820, because a
+  sheet and a dialog are judged against the window they are drawn over rather
+  than against the page behind them.
 
-### inputs
-Wave 1 slot C2, the inputs family (10 section 4.2).
-- `UiField`: label above, a `radius.field` superellipse of `paper` whose
-  `boundary` edge becomes `ink` at `stroke.emphasis` on focus and
-  `status.blocked.content` on error, optional leading glyph, a trailing clear
-  control with its own 48 dp hit box, help or error text below with the error
-  glyph, and an optional counter. One semantics node reads the label, the
-  value and the hint; the error goes through `Announcer` once. Retires
-  `TextField`, `TextFormField`, `InputDecoration` and `OutlineInputBorder`.
-- `UiTextArea`: the same field with `minLines`, `maxLines` and auto growth.
-- `UiSearchField`: a capsule field with the search glyph leading, a clear
-  control once there is something to clear, `Escape` to clear and then
-  unfocus, and `Enter` to submit.
-- `UiSelect<T>`: a field shaped trigger with the selected option and a caret,
-  a `glass.floating` popover list at `radius.tile`, type to filter above eight
-  options, `Down` and `Up` to move, `Enter` to pick and `Escape` to close and
-  return focus. Semantics `button` with `expanded`, options `selected`.
-  Retires `DropdownMenu`, `DropdownButton` and `MenuAnchor` used as a select.
-- `UiSwitch`: a 44 by 26 capsule track with a 22 dp thumb that glides at
-  `short` and jumps under reduced motion, the whole row as the hit box and
-  `toggled` semantics. Retires `Switch` and `SwitchListTile`.
-- `UiCheckbox`: a 20 dp `radius.inner` box that fills `ink` with a `paper`
-  check, draws a bar when indeterminate and reads as mixed. Retires
-  `Checkbox` and `CheckboxListTile`.
-- `UiRadio<T>` and `UiRadioGroup<T>` on `RawRadio` and `RadioGroup`, so the
-  exclusive group, the arrow keys and the group role come from the SDK.
-  Retires `Radio` and `RadioListTile`.
-- `UiInputStyle`, `UiFieldFrame` and `UiFieldBox` are the shared anatomy: a
-  select and a field are one object with two behaviours. The style is named
-  for the family rather than `UiFieldStyle`, which `foundation/fields.dart`
-  already owns for the light fields of 09 section 3.2.
-- A checked box and an on switch track lift toward `paper` under the pointer,
-  because `ink` at 12 percent over an `ink` fill is the same colour. The row
-  around them keeps the shared `ink` layer, so both halves of the control
-  answer a hover.
-- The gallery gains an inputs page, registered in the shell's `familyPages`
-  list, and goldened in light and dark at both densities. The family golden is
-  captured at 1180 by 1180 rather than the shell's 1180 by 820: seven controls
-  in every state do not fit one window, and a golden that reviews the top of a
-  page is not reviewing the three controls below the fold.
-- `FieldCore` gains `excludeFromSemantics`, so a control that publishes one
-  node for the whole field does not get a second one from the editor.
-
-### navigation
-Wave 1 slot C4: the navigation family (10 section 4.4).
-- `UiPillNav`, the reference's floating capsule. Two to five discs on
-  `glass.floating`, the current one an `ink` disc with a `paper` glyph in
-  `fill` weight, gliding between destinations at `medium` on the emphasized
-  curve and appearing in place under reduced motion. It reports the height a
-  scaffold pads the body by. Retires `NavigationBar`.
-- `UiRail`, the same discs down a 72 dp column under a `leading` slot, with an
-  extended form that draws each destination's words under its glyph. It
-  measures the widest label at the live text scale and widens rather than
-  clipping a word it cannot break. Retires `NavigationRail`.
-- `UiSidebar`, a 280 dp `glass.flat` pane with `header` and `footer` slots and
-  destinations as rows, the current one marked by the 3 dp leading bar, the
-  `fill` glyph and `ink` rather than `ink.secondary`. The destinations scroll
-  between the two slots when the pane is too short for them. Retires `Drawer`
-  and the permanent drawer.
-- `UiTopBar`, transparent over the fields and filled with `glass.flat` once
-  the body has scrolled under it. It owns the top and side safe areas so its
-  pane reaches the window's edges. Retires `AppBar`.
-- `UiScaffold`, the page frame: `ground` and a sky preset through `FieldLayer`,
-  then the `topBar`, `banner`, `body`, `actionBar`, `nav` and `overlays`
-  slots, with safe areas and keyboard insets applied and the exact bottom
-  inset its floating chrome occupies published through `UiScaffold.of`.
-  Retires `Scaffold`.
-- `UiNavDestination`, the one destination model all three navigations take.
-- Semantics: a tab list per navigation, a tab per destination with `selected`,
-  and the label on every disc as a tooltip because no words are drawn. Arrow
-  keys move along the control's own axis and `Enter` selects.
-- The gallery gains a navigation page, registered in `familyPages` rather
-  than in `foundationPages` so the twenty four foundation goldens hold still
-  as the families land. Its four goldens are captured at 1180 by 940 rather
-  than the gallery's own 1180 by 820, because a family whose largest specimen
-  is a page frame does not fit in one window's height and a truncated golden
-  reviews only what fits.
-- `Pressable.stateLayerColour`, taken verbatim from `fe/actions`, carries the
-  current disc: `ink` at 12 percent over an `ink` disc is the same colour, so
-  without it the one disc a reviewer presses most would show no press.
-Foundation, changed for this family and committed on its own:
-- The light field geometry was measured at 390 by 844, 768 by 1024, 1180 by
-  820 and 1440 by 900 and did not read as the washes 09 section 1 describes.
-  The radius is now a fraction of the window's longer side rather than its
-  shorter one, and the alpha falls on a Gaussian rather than
-  `Curves.easeOutQuad`. Every centre colour, every centre alpha and
-  `UiFields.matteExclusion` are unchanged, so the composite contrast
-  measurements still hold. 09 section 3.2 carries the new rule and the
-  numbers, and all 24 foundation gallery goldens moved, because the gallery
-  shell paints `sky.home` behind every page.
+### Integration polish
+- Every cross-family stand-in is now the real control, and the
+  `no_stand_ins` gate keeps the next parallel wave from leaving one behind.
+  `UiSelect`'s option rows and `UiSidebar`'s destinations are `UiListRow`;
+  every pill disc, rail disc and icon button is wrapped in `UiTooltip`, with
+  a disabled button drawing its reason through `UiTooltip.reason`; the
+  default tab strip is a `UiSegmented` at `lg`; and `UiScaffold` installs a
+  `UiToastHost` around its body, so `UiToasts.show` works from anywhere in
+  any page with nothing at the call site.
+- `UiListRow` gains a third mode, `tab`. A pane that publishes
+  `SemanticsRole.tabBar` needs every child node to carry the tab role, which
+  is what a sidebar's list of destinations is.
+- `UiSegmented`'s `Shortcuts` is built with `includeSemantics: false`, so the
+  control publishes no focusable node between itself and its segments.
+- `UiToastHost`'s stack takes `StackFit.passthrough`, so a page under it is
+  laid out against the constraints the host was handed.
+- `UiTabs` no longer takes a `UiTabsStyle` or a per-tab glyph, and
+  `UiTabsStyle` is gone with the private strip it styled. A segment is a
+  label, a strip carries 2 to 5 tabs, and arrows move focus while `Enter`
+  chooses. A caller that needs anything else passes it through the `strip`
+  slot.
+- `UiSelectStyle.optionLabel`, `UiSelectStyle.optionFill` and the four row
+  members of `UiSidebarStyle` are deprecated and no longer read: the rows
+  they painted are `UiListRow`, which resolves its own. They go in the next
+  minor version.
+- `uiHarness` publishes `MediaQuery`, `Density` and `UiTheme` above the
+  application's navigator rather than inside `home`, so a route pushed in a
+  package test renders in the mode, the density and the motion state the test
+  asked for instead of the light fallback. The harness API is unchanged and
+  no golden moved.
+- The package carries a `.gitignore` for `test/gallery/failures/`, which
+  `flutter test` writes on any golden mismatch.
+- 10 sections 1.2, 2, 4, 6, 8 and 9 are reconciled with what shipped, and 09
+  section 3.4 carries the accent's casing rule.
 
 ## 0.1.0
 
