@@ -344,6 +344,10 @@ class _Tab extends StatelessWidget {
       selected: selected,
       capsule: true,
       focusNode: focusNode,
+      // The current tab fills with `ink`, and `ink` at 12 percent over an
+      // `ink` fill is the same colour, so its state layer lifts toward
+      // `paper` instead. Every other tab keeps the shared default.
+      stateLayerColour: selected ? style.selectedColor : null,
       builder: (BuildContext context, Set<WidgetState> states) =>
           AnimatedContainer(
             duration: motion.capsuleFill,
