@@ -1,11 +1,11 @@
 /// The selection affordance, shared by every list a reviewer picks from
-/// (screen blueprints, section 3, "Multi-select"; design system, 7.3).
+/// (07 section 3, "Multi-select"; 10 section 5).
 ///
 /// Three pieces, none of which knows what it is selecting: a row that carries
 /// a checkbox, a bar that states the count and offers what can be done with
 /// it, and a report that says what a bulk action actually did, record by
-/// record. The queue uses all three. A browse screen over a data source will
-/// use the same three, which is why none of them mentions a specimen.
+/// record. The queue uses all three. A browse screen over a data source uses
+/// the same three, which is why none of them mentions a specimen.
 ///
 /// **The row body always opens; only the checkbox selects.** The convention on
 /// touch is that a live selection turns every row into a checkbox, but that
@@ -14,14 +14,12 @@
 /// beside the row costs one gesture and keeps both meanings true.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../models.dart';
-import '../theme/icons.dart';
-import 'adaptive_form.dart';
-import 'motion_reveal.dart';
+import 'product_modal.dart';
 
 /// The words for one bulk decision.
 ///
@@ -35,9 +33,11 @@ extension BulkDecisionCopy on BulkDecisionKind {
     BulkDecisionKind.confirmCoverage => 'Confirm coverage',
   };
 
+  /// The registry entry this action draws, as the glyph a [SelectionAction]
+  /// carries.
   IconData get icon => switch (this) {
-    BulkDecisionKind.approve => Symbols.check_circle,
-    BulkDecisionKind.confirmCoverage => Symbols.fact_check,
+    BulkDecisionKind.approve => UiIcons.cleared.defaultGlyph,
+    BulkDecisionKind.confirmCoverage => UiIcons.checklist.defaultGlyph,
   };
 
   /// The confirmation's title, which is where the exact count is stated.
@@ -85,6 +85,9 @@ extension BulkDecisionCopy on BulkDecisionKind {
 String recordsLabel(int count) => count == 1 ? '1 record' : '$count records';
 
 /// One thing the bar offers to do with a selection.
+///
+/// The glyph stays an `IconData` rather than an `IconSpec`, so a caller that
+/// already holds one keeps compiling; the bar wraps it for the button.
 typedef SelectionAction = ({
   String label,
   IconData icon,
@@ -171,39 +174,38 @@ class SelectableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final Widget row = Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         if (showCheckbox) ...<Widget>[
-          SizedBox(
-            width: context.sizes.targetMin,
-            height: context.sizes.targetMin,
-            child: Checkbox(
-              value: selected,
-              semanticLabel: label,
-              onChanged: enabled
-                  ? (bool? _) {
-                      final bool extending =
-                          onExtend != null &&
-                          HardwareKeyboard.instance.logicalKeysPressed.any(
-                            _shiftKeys.contains,
-                          );
-                      extending ? onExtend!() : onToggle();
-                    }
-                  : null,
-            ),
+          UiCheckbox(
+            label: label,
+            showLabel: false,
+            value: selected,
+            onChanged: enabled
+                ? (bool _) {
+                    final bool extending =
+                        onExtend != null &&
+                        HardwareKeyboard.instance.logicalKeysPressed.any(
+                          _shiftKeys.contains,
+                        );
+                    extending ? onExtend!() : onToggle();
+                  }
+                : null,
           ),
-          SizedBox(width: context.space.space1),
+          SizedBox(width: ui.space.s1),
         ],
         Expanded(child: child),
       ],
     );
     if (onLongPress == null || !enabled) return row;
     // A long press anywhere on the row starts a selection and picks that row.
-    // The gesture is on a bare detector rather than an ink well so the row's
-    // own tap, focus and ripple keep working exactly as they did, and its
-    // semantics are declared here instead, named, so the only way into a
-    // selection on a narrow window is a way a screen reader can also take.
+    // The gesture is on a bare detector rather than on the row's own press
+    // target so the row's tap, focus and state layer keep working exactly as
+    // they did, and its semantics are declared here instead, named, so the
+    // only way into a selection on a narrow window is a way a screen reader
+    // can also take.
     return Semantics(
       label: label,
       onLongPress: onLongPress,
@@ -226,8 +228,10 @@ class SelectableRow extends StatelessWidget {
 
 /// The bar that states how many records are selected and what can be done.
 ///
-/// Pinned by its caller rather than placed in the list, because the count has
-/// to stay visible while the reviewer scrolls the thing they are counting.
+/// A `glass.floating` capsule anchored the way the toast layer is: the count
+/// has to stay visible while the reviewer scrolls the thing they are counting,
+/// and a band welded across the window would take a row's worth of the list
+/// with it at every width.
 class SelectionBar extends StatelessWidget {
   const SelectionBar({
     super.key,
@@ -289,61 +293,79 @@ class SelectionBar extends StatelessWidget {
   static const String recordsMoreMatch =
       'More records match this filter. Load more to select them.';
 
+  /// What the select all box reads as.
+  ///
+  /// Checked once everything loaded is picked, mixed while some of it is, and
+  /// unchecked when the reviewer picked by hand and then cleared. Mixed is a
+  /// fact about the group rather than a state a reviewer asks for, which is
+  /// exactly what `UiCheckbox` means by it.
+  bool? get _selectAllValue {
+    if (loadedCount == 0) return false;
+    if (allLoadedSelected) return true;
+    return count == 0 ? false : null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
-      child: SafeArea(
-        top: false,
-        child: Container(
-          decoration: BoxDecoration(
-            border: BorderDirectional(
-              top: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-                width: context.shape.strokeHairline,
-              ),
+    final UiThemeData ui = context.ui;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsetsDirectional.fromSTEB(
+          ui.space.s4,
+          ui.space.s2,
+          ui.space.s4,
+          ui.space.s4,
+        ),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: GlassSurface(
+            level: GlassLevel.floating,
+            // `radius.tile` rather than the capsule 10 section 5 names. A
+            // stadium's radius is half its height, and this bar wraps to
+            // three lines in a 360 dp list pane, which puts the first and
+            // last control outside the curve. 09 section 5 picks the shape
+            // from the geometry rather than by hand, and a three line pane is
+            // not a capsule.
+            radius: ui.shape.tile,
+            padding: EdgeInsetsDirectional.symmetric(
+              horizontal: ui.space.s4,
+              vertical: ui.space.s2,
             ),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: context.space.space4,
-            vertical: context.space.space3,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              // The count and the controls are one flow rather than a row
-              // with a breakpoint in it: they sit on one line wherever they
-              // fit, and wrap wherever they do not, at any width and any text
-              // scale. A breakpoint here would be a number tuned to today's
-              // labels, and the first longer label would push a control off
-              // the edge.
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: context.space.space4,
-                runSpacing: context.space.space2,
-                children: <Widget>[
-                  _summary(context, theme),
-                  ..._controls(context),
-                ],
-              ),
-              // Only once a select all has been taken at face value is the
-              // reviewer told how far it reached. Said earlier it is noise;
-              // said later it is too late.
-              MotionReveal(
-                visible: allLoadedSelected && moreToLoad,
-                child: Padding(
-                  padding: EdgeInsets.only(top: context.space.space2),
-                  child: Text(
-                    moreMatchLabel,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // The count and the controls are one flow rather than a row
+                // with a breakpoint in it: they sit on one line wherever they
+                // fit, and wrap wherever they do not, at any width and any
+                // text scale. A breakpoint here would be a number tuned to
+                // today's labels, and the first longer label would push a
+                // control off the edge.
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: ui.space.s4,
+                  runSpacing: ui.space.s2,
+                  children: <Widget>[
+                    _summary(ui),
+                    ..._controls(ui),
+                  ],
+                ),
+                // Only once a select all has been taken at face value is the
+                // reviewer told how far it reached. Said earlier it is noise;
+                // said later it is too late.
+                if (allLoadedSelected && moreToLoad)
+                  Padding(
+                    padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+                    child: Text(
+                      moreMatchLabel,
+                      style: ui.type.bodySmall.copyWith(
+                        color: ui.color.inkSecondary,
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -351,31 +373,43 @@ class SelectionBar extends StatelessWidget {
   }
 
   /// The count, announced once when it changes.
-  Widget _summary(BuildContext context, ThemeData theme) => Semantics(
-    liveRegion: true,
+  Widget _summary(UiThemeData ui) => Announcer(
     child: Text(
       '${countLabel(count)} selected',
-      style: theme.textTheme.titleSmall,
+      style: ui.type.label.copyWith(color: ui.color.ink),
     ),
   );
 
-  List<Widget> _controls(BuildContext context) => <Widget>[
-    if (!allLoadedSelected && loadedCount > 0)
-      TextButton(
-        onPressed: busy ? null : onSelectAllLoaded,
-        child: const Text(SelectionBar.selectAllLabel),
-      ),
-    TextButton(
+  List<Widget> _controls(UiThemeData ui) => <Widget>[
+    UiCheckbox(
+      label: selectAllLabel,
+      value: _selectAllValue,
+      // Unchecking is the way out of a select all, and the ghost button
+      // beside it is the way out of any selection. Both reach `onClear`,
+      // because leaving every record picked and leaving the selection are
+      // the same thing.
+      onChanged: busy
+          ? null
+          : (bool next) => next ? onSelectAllLoaded() : onClear(),
+      disabledReason: busy ? _busyReason : null,
+    ),
+    UiButton(
+      label: 'Clear selection',
+      variant: UiButtonVariant.ghost,
       onPressed: busy ? null : onClear,
-      child: const Text('Clear selection'),
+      disabledReason: busy ? _busyReason : null,
     ),
     for (final SelectionAction action in actions)
-      FilledButton.icon(
+      UiButton(
+        label: action.label,
+        leading: IconSpec(action.icon),
         onPressed: busy ? null : action.onPressed,
-        icon: Icon(action.icon),
-        label: Text(action.label),
+        disabledReason: busy ? _busyReason : null,
       ),
   ];
+
+  /// Why every control is held while a bulk call is out.
+  static const String _busyReason = 'A decision on this selection is in flight.';
 }
 
 /// Tells the reviewer what a bulk action did, record by record.
@@ -390,11 +424,15 @@ Future<void> showBulkOutcome(
   BuildContext context, {
   required BulkDecisionReport report,
   required String Function(String id) nameOf,
-}) => showAdaptiveForm<void>(
-  context,
-  width: DialogWidths.standard,
-  builder: (BuildContext formContext) =>
+}) => showProductModal<void>(
+  context: context,
+  title: '${report.applied} of ${recordsLabel(report.requested)} changed',
+  body: (BuildContext dialogContext) =>
       BulkOutcomeReport(report: report, nameOf: nameOf),
+  primaryAction: (BuildContext dialogContext) => UiButton(
+    label: BulkOutcomeReport.dismissLabel,
+    onPressed: () => Navigator.of(dialogContext).pop(),
+  ),
 );
 
 /// The body of [showBulkOutcome], exposed so it can be tested on its own.
@@ -415,58 +453,53 @@ class BulkOutcomeReport extends StatelessWidget {
   static const String skippedReason =
       'Not sent. An earlier decision on this record was refused.';
 
+  /// The one way out of the report.
+  static const String dismissLabel = 'Back to the queue';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final List<BulkDecisionResult> unchanged = report.unchanged;
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.all(context.space.space6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              '${report.applied} of ${recordsLabel(report.requested)} changed',
-              style: theme.textTheme.titleLarge,
-            ),
-            SizedBox(height: context.space.space2),
-            Text(
-              'The rest are unchanged and still in the queue. Nothing was '
-              'removed.',
-              style: theme.textTheme.bodyMedium,
-            ),
-            SizedBox(height: context.space.space4),
-            Text('Not changed', style: theme.textTheme.titleSmall),
-            SizedBox(height: context.space.space1),
-            for (final BulkDecisionResult row in unchanged)
-              Padding(
-                padding: EdgeInsets.only(bottom: context.space.space2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(nameOf(row.specimenId), style: context.mono.identifier),
-                    Text(
-                      row.outcome == BulkOutcome.skipped
-                          ? BulkOutcomeReport.skippedReason
-                          : row.message,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            'The rest are unchanged and still in the queue. Nothing was '
+            'removed.',
+            style: ui.type.body.copyWith(color: ui.color.ink),
+          ),
+          SizedBox(height: ui.space.s4),
+          Text(
+            'Not changed',
+            style: ui.type.label.copyWith(color: ui.color.inkSecondary),
+          ),
+          SizedBox(height: ui.space.s1),
+          for (final BulkDecisionResult row in unchanged)
+            Padding(
+              padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    nameOf(row.specimenId),
+                    style: ui.type.mono.identifier.copyWith(
+                      color: ui.color.ink,
                     ),
-                  ],
-                ),
-              ),
-            SizedBox(height: context.space.space6),
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Back to the queue'),
+                  ),
+                  Text(
+                    row.outcome == BulkOutcome.skipped
+                        ? BulkOutcomeReport.skippedReason
+                        : row.message,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

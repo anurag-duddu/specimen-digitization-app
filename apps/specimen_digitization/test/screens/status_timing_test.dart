@@ -20,6 +20,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
 import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
@@ -105,7 +106,9 @@ Finder versionLine(int revision) => find.byWidgetPredicate(
 /// still be painting over the new one, and what the criterion is about is
 /// whether the control has been told to report.
 Finder get workingIndicator => find.byWidgetPredicate(
-  (Widget widget) => widget is InFlightGlyph && widget.busy,
+  (Widget widget) =>
+      (widget is InFlightGlyph && widget.busy) ||
+      (widget is UiButton && widget.loading),
 );
 
 void main() {

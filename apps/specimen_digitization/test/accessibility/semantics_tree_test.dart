@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
@@ -58,7 +59,13 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpApp(tester);
 
-    final Finder row = find.byType(QueueRow).first;
+    // `QueueRow` composes a `UiListRow`, which is where the row's one merged
+    // node lives; a finder on the pattern itself resolves to the node above
+    // it.
+    final Finder row = find.descendant(
+      of: find.byType(QueueRow).first,
+      matching: find.byType(UiListRow),
+    );
     final SemanticsNode node = tester.getSemantics(row);
     final SemanticsData data = node.getSemanticsData();
 

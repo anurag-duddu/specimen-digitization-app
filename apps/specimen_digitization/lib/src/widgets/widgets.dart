@@ -18,6 +18,7 @@ export 'in_flight_glyph.dart';
 export 'measured_height.dart';
 export 'motion_reveal.dart';
 export 'not_calibrated_chip.dart';
+export 'product_modal.dart';
 export 'queue_row.dart';
 export 'reading_card.dart';
 export 'reason_sheet.dart';

@@ -1,4 +1,5 @@
-/// The small leading image used by the queue and the intake list.
+/// The small leading image used by the queue and the intake list
+/// (10 section 5, `Thumbnail`).
 ///
 /// Bytes when there are bytes, and a placeholder glyph when there are not or
 /// when the bytes do not decode. A missing thumbnail is a fact about the
@@ -7,12 +8,10 @@ library;
 
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
-
-/// A square image with a placeholder fallback.
+/// A square image on the matte, at `radius.inner`.
 class SpecimenThumbnail extends StatelessWidget {
   const SpecimenThumbnail({super.key, this.bytes, this.label});
 
@@ -23,31 +22,38 @@ class SpecimenThumbnail extends StatelessWidget {
   /// which is right for a thumbnail beside a row that already names itself.
   final String? label;
 
+  /// The side of the square.
+  ///
+  /// The row's leading slot, so a thumbnail, a glyph and a checkbox all leave
+  /// the title's edge in one place (10 section 4.5).
+  static const double side = UiListRowStyle.leadingExtent;
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final double side = context.sizes.iconDisplay;
-    final Widget placeholder = Icon(
-      Symbols.image,
-      size: context.sizes.iconInline,
-      color: theme.colorScheme.onSurfaceVariant,
-    );
+    final UiThemeData ui = context.ui;
     final Uint8List? data = bytes;
+    final Widget placeholder = Center(
+      child: UiIcon(
+        UiIcons.image,
+        size: UiIconSize.inline,
+        color: ui.color.inkTertiary,
+      ),
+    );
 
     return ExcludeSemantics(
       excluding: label == null,
       child: Semantics(
         image: true,
         label: label,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(context.shape.radiusXs),
-          child: Container(
-            width: side,
-            height: side,
-            // The same matte the source pane uses, so a photograph sits on
-            // the same ground wherever it appears (blueprint 12).
-            color: context.sourceMatte,
-            alignment: Alignment.center,
+        child: SizedBox.square(
+          dimension: side,
+          child: Surface(
+            // The same matte the source pane letterboxes a photograph on, so
+            // a specimen sits on one ground wherever it appears
+            // (09 section 3.1).
+            role: SurfaceRole.matte,
+            radius: ui.shape.inner,
+            clip: true,
             child: data == null
                 ? placeholder
                 : Image.memory(

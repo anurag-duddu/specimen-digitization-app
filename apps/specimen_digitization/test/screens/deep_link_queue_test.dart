@@ -15,10 +15,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
-import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
@@ -84,7 +84,7 @@ void main() {
       reason: 'the pane claimed the collection was empty while it was loading',
     );
     expect(
-      find.byType(SkeletonRow),
+      find.byType(UiSkeleton),
       findsWidgets,
       reason: 'a list that has never been answered shows placeholders',
     );

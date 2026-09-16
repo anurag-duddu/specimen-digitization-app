@@ -7,13 +7,12 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../app/routes.dart';
 import '../../models.dart';
-import '../../theme/icons.dart';
 import '../../widgets/widgets.dart';
 import '../../workbench.dart';
 import '../../workspace.dart';
@@ -110,10 +109,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
           if (narrow)
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
+              child: UiButton(
+                label: 'Back to queue',
+                variant: UiButtonVariant.ghost,
+                leading: UiIcons.back,
                 onPressed: _backToQueue,
-                icon: const Icon(Symbols.arrow_back),
-                label: const Text('Back to queue'),
               ),
             ),
           Expanded(
@@ -215,15 +215,15 @@ class _Loading extends StatelessWidget {
   // than that lays out past the window (finding V-1, pass criterion 8.5).
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
-    padding: EdgeInsets.all(context.space.space6),
+    padding: EdgeInsets.all(context.ui.space.s6),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         LoadingAnnouncement(thing: 'record $id', visible: true),
-        SizedBox(height: context.space.space4),
+        SizedBox(height: context.ui.space.s4),
         const SkeletonBlock(),
-        SizedBox(height: context.space.space4),
+        SizedBox(height: context.ui.space.s4),
         const SkeletonRow(),
       ],
     ),

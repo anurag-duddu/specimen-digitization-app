@@ -14,8 +14,9 @@
 // `ScaffoldMessenger.of(context).showSnackBar(SnackBar(...))` site. Appendix B
 // counted each of those as one Material use; this gate counts the messenger
 // and the bar separately, because the brief for wave 0 names `ScaffoldMessenger`
-// as its own term in the regex. The five sites are in `queue_screen.dart`,
-// `source_screen.dart`, `evidence_drawer.dart` and `workbench.dart` (twice).
+// as its own term in the regex. The five sites were in `queue_screen.dart`,
+// `source_screen.dart`, `evidence_drawer.dart` and `workbench.dart` (twice);
+// the queue's is now a `UiToast`.
 
 import 'dart:io';
 
@@ -100,7 +101,6 @@ const Map<String, int> componentBacklog = <String, int>{
   'lib/src/risk_assessment.dart': 2,
   'lib/src/screens/intake/capture_card.dart': 2,
   'lib/src/screens/intake/manifest_panel.dart': 1,
-  'lib/src/screens/queue/queue_screen.dart': 6,
   'lib/src/screens/sources/source_screen.dart': 6,
   'lib/src/screens/sources/sources_screen.dart': 2,
   'lib/src/screens/workbench/decision_bar.dart': 5,
@@ -110,7 +110,6 @@ const Map<String, int> componentBacklog = <String, int>{
   'lib/src/screens/workbench/shortcuts.dart': 1,
   'lib/src/screens/workbench/source_pane.dart': 9,
   'lib/src/screens/workbench/status_strip.dart': 5,
-  'lib/src/search_filters.dart': 11,
   'lib/src/widgets/adaptive_form.dart': 1,
   'lib/src/widgets/authority_candidate_card.dart': 1,
   'lib/src/widgets/empty_state.dart': 1,
@@ -119,12 +118,10 @@ const Map<String, int> componentBacklog = <String, int>{
   'lib/src/widgets/field_row.dart': 1,
   'lib/src/widgets/in_flight_glyph.dart': 1,
   'lib/src/widgets/previews.dart': 1,
-  'lib/src/widgets/queue_row.dart': 2,
   'lib/src/widgets/reading_card.dart': 1,
   'lib/src/widgets/reason_sheet.dart': 7,
   'lib/src/widgets/region_overlay.dart': 2,
   'lib/src/widgets/risk_meter.dart': 1,
-  'lib/src/widgets/selection_bar.dart': 5,
   'lib/src/widgets/source_import_sheet.dart': 2,
   'lib/src/widgets/source_object_row.dart': 2,
   'lib/src/widgets/status_chip.dart': 1,

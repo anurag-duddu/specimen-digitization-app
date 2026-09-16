@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/widgets/queue_row.dart';
 import 'package:specimen_digitization/src/widgets/risk_meter.dart';
 import 'package:specimen_digitization/src/widgets/specimen_status.dart';
@@ -133,19 +134,43 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpComponent(tester, _row(onOpen: () {}, selected: true));
     expect(
-      tester.getSemantics(find.byType(QueueRow)),
+      tester.getSemantics(
+        find.descendant(
+          of: find.byType(QueueRow),
+          matching: find.byType(UiListRow),
+        ),
+      ),
       containsSemantics(isSelected: true),
     );
     handle.dispose();
   });
 
-  testWidgets('the row carries a hover and a focus treatment', (
+  testWidgets('the row is one press target that can show a focus ring', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, _row(onOpen: () {}));
-    final InkWell ink = tester.widget<InkWell>(find.byType(InkWell));
-    expect(ink.focusColor, isNotNull, reason: 'a visible focus state');
-    expect(ink.onTap, isNotNull, reason: 'hover and pressed come with it');
+    final Finder inRow = find.descendant(
+      of: find.byType(QueueRow),
+      matching: find.byType(Pressable),
+    );
+    expect(
+      inRow,
+      findsOneWidget,
+      reason: 'the whole row is one target, not four',
+    );
+    expect(
+      tester.widget<Pressable>(inRow).onPressed,
+      isNotNull,
+      reason: 'hover, press and keyboard activation come with it',
+    );
+    expect(
+      find.descendant(
+        of: find.byType(QueueRow),
+        matching: find.byType(FocusRing),
+      ),
+      findsOneWidget,
+      reason: 'a visible focus state',
+    );
   });
 
   testWidgets('a row with no risk score shows the abstention', (
