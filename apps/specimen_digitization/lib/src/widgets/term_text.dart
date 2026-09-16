@@ -3,7 +3,7 @@
 /// The glossary on the help sheet was complete and two taps away, which is
 /// not what the criterion asks for: it asks for a definition reachable from
 /// where the term appears. A term drawn through [TermText] keeps a hairline
-/// dotted underline in the `outline` token, opens its one sentence in a small
+/// dotted underline in the `boundary` role, opens its one sentence in a small
 /// sheet, and announces itself as "Country, term, double tap for definition".
 ///
 /// It is a link, not a button, and deliberately so. WCAG 2.2 SC 2.5.8 exempts
@@ -15,10 +15,10 @@
 /// target.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../glossary.dart';
-import '../theme/icons.dart';
 
 /// A term, underlined, that opens its definition.
 ///
@@ -67,6 +67,9 @@ class TermText extends StatelessWidget {
   final int? maxLines;
   final TextOverflow? overflow;
 
+  /// The word that closes a definition sheet.
+  static const String closeLabel = 'Close';
+
   /// The phrase every term announces, so one wording covers the product.
   static String semanticsFor(String spoken) =>
       '$spoken, term, double tap for definition';
@@ -75,40 +78,21 @@ class TermText extends StatelessWidget {
   static Future<void> show(BuildContext context, String term) {
     final String? definition = glossaryDefinition(term);
     if (definition == null) return Future<void>.value();
-    return showModalBottomSheet<void>(
+    return UiSheet.show<void>(
       context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (BuildContext sheetContext) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            sheetContext.space.space6,
-            sheetContext.space.space0,
-            sheetContext.space.space6,
-            sheetContext.space.space6,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(term, style: Theme.of(sheetContext).textTheme.titleMedium),
-              SizedBox(height: sheetContext.space.space2),
-              Text(
-                definition,
-                style: Theme.of(sheetContext).textTheme.bodyMedium,
-              ),
-              SizedBox(height: sheetContext.space.space4),
-              Align(
-                alignment: AlignmentDirectional.centerEnd,
-                child: TextButton(
-                  onPressed: () => Navigator.of(sheetContext).pop(),
-                  child: const Text('Close'),
-                ),
-              ),
-            ],
-          ),
+      title: term,
+      body: (BuildContext sheetContext) => Text(
+        definition,
+        style: sheetContext.ui.type.body.copyWith(
+          color: sheetContext.ui.color.ink,
         ),
       ),
+      secondaryAction: (BuildContext sheetContext) => UiButton(
+        label: closeLabel,
+        variant: UiButtonVariant.ghost,
+        onPressed: () => Navigator.of(sheetContext).pop(),
+      ),
+      dismissLabel: closeLabel,
     );
   }
 
@@ -126,7 +110,7 @@ class TermText extends StatelessWidget {
         overflow: overflow,
       );
     }
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final TextStyle base = style ?? DefaultTextStyle.of(context).style;
     void open() => TermText.show(context, term);
 
@@ -146,7 +130,7 @@ class TermText extends StatelessWidget {
                 style: base.copyWith(
                   decoration: TextDecoration.underline,
                   decorationStyle: TextDecorationStyle.dotted,
-                  decorationColor: theme.colorScheme.outline,
+                  decorationColor: ui.color.boundary,
                 ),
               ),
               if (tail.isNotEmpty) TextSpan(text: tail),

@@ -8,8 +8,8 @@
 /// the three cannot drift apart.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../theme/icons.dart';
 
@@ -29,6 +29,7 @@ class StatusPresentation {
     required this.label,
     required this.semanticsLabel,
     this.progress,
+    this.spec,
   });
 
   /// Text, glyph and border color on a plain surface.
@@ -55,6 +56,21 @@ class StatusPresentation {
   /// A determinate progress fraction to draw in place of [icon], if any.
   /// Progress is information, so it keeps its motion under reduced motion.
   final double? progress;
+
+  /// The registry entry [icon] was resolved from, where there is one.
+  ///
+  /// Carries the weight as well as the glyph, which is what draws a settled
+  /// disposition filled (09 section 7). A presentation built by a screen that
+  /// has not moved to `UiIcons` yet leaves this null and is drawn from [icon]
+  /// at `regular`, so both kinds of caller render.
+  final IconSpec? spec;
+
+  /// The registry entry a chip draws, falling back to [icon] alone.
+  IconSpec get glyph => spec ?? IconSpec(icon);
+
+  /// The three colours as the design system's own triple.
+  UiStatusTriple get triple =>
+      UiStatusTriple(content: content, fill: fill, onFill: onFill);
 }
 
 /// The dispositions, operational states and field states this client renders.
@@ -159,26 +175,32 @@ enum SpecimenStatus {
     SpecimenStatus.unresolved => 'Unresolved',
   };
 
-  /// The glyph.
+  /// The registry entry this status draws.
   ///
-  /// The record-level values reuse `SpecimenIconography`. The field states
-  /// are not in that set yet, so their glyphs are named here, next to the
-  /// words they belong to, rather than being chosen at a call site.
-  IconData get icon => switch (this) {
-    SpecimenStatus.cleared => SpecimenIconography.cleared,
-    SpecimenStatus.needsReview => SpecimenIconography.needsReview,
-    SpecimenStatus.deferred => SpecimenIconography.deferred,
-    SpecimenStatus.processing => SpecimenIconography.processing,
-    SpecimenStatus.blocked => SpecimenIconography.blocked,
-    SpecimenStatus.unknown => SpecimenIconography.unknownState,
-    SpecimenStatus.supported => SpecimenIconography.cleared,
-    SpecimenStatus.unknownValue => Symbols.help,
-    SpecimenStatus.unreadable => Symbols.visibility_off,
-    SpecimenStatus.notPresent => Symbols.horizontal_rule,
-    SpecimenStatus.notApplicable => Symbols.hide_source,
-    SpecimenStatus.ambiguous => Symbols.alt_route,
-    SpecimenStatus.unresolved => Symbols.pending,
+  /// One meaning, one glyph, chosen once in `UiIcons` rather than per call
+  /// site (09 section 7). `supported` shares the cleared entry and
+  /// `unknownValue` shares the unknown one, because each pair is the same
+  /// meaning read at a different scale: a field the evidence supports and a
+  /// record a reviewer affirmed both say yes, and a state neither the server
+  /// nor this client can name is one question mark.
+  IconSpec get iconSpec => switch (this) {
+    SpecimenStatus.cleared => UiIcons.cleared,
+    SpecimenStatus.needsReview => UiIcons.needsReview,
+    SpecimenStatus.deferred => UiIcons.deferred,
+    SpecimenStatus.processing => UiIcons.processing,
+    SpecimenStatus.blocked => UiIcons.blocked,
+    SpecimenStatus.unknown => UiIcons.unknown,
+    SpecimenStatus.supported => UiIcons.cleared,
+    SpecimenStatus.unknownValue => UiIcons.unknown,
+    SpecimenStatus.unreadable => UiIcons.unreadable,
+    SpecimenStatus.notPresent => UiIcons.notPresent,
+    SpecimenStatus.notApplicable => UiIcons.unmeasured,
+    SpecimenStatus.ambiguous => UiIcons.superseded,
+    SpecimenStatus.unresolved => UiIcons.pending,
   };
+
+  /// The glyph itself, for a caller that draws one rather than a chip.
+  IconData get icon => iconSpec.resolve();
 
   /// A complete phrase for assistive technology, 100 characters or fewer.
   ///
@@ -200,6 +222,7 @@ enum SpecimenStatus {
       fill01: style.fill01,
       label: label,
       semanticsLabel: semanticsLabel,
+      spec: iconSpec,
     );
   }
 }

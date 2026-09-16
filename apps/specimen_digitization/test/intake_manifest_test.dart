@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/capture_quality.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_entry.dart';
@@ -92,10 +93,9 @@ void main() {
     await pumpManifest(tester, <ManifestEntry>[
       entryIn(UploadState.uploading, progress: 0.42),
     ]);
-    final CircularProgressIndicator ring = tester
-        .widget<CircularProgressIndicator>(
-          find.byType(CircularProgressIndicator),
-        );
+    final UiProgress ring = tester.widget<UiProgress>(
+      find.byType(UiProgress),
+    );
     expect(ring.value, closeTo(0.42, 0.0001));
   });
 
@@ -107,7 +107,7 @@ void main() {
         entryIn(state, progress: 0.42),
       ]);
       expect(
-        find.byType(CircularProgressIndicator),
+        find.byType(UiProgress),
         findsNothing,
         reason: '${state.name} must not claim a measured fraction',
       );

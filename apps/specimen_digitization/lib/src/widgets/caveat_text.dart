@@ -1,4 +1,4 @@
-/// The caveat pattern (UX writing guidelines, section 4.15).
+/// The caveat pattern (02 section 4.15).
 ///
 /// A caveat is never a paragraph in the flow of the page. It is a short label
 /// that is true on its own, a "Why" affordance, and an expandable body that
@@ -6,10 +6,8 @@
 /// the long half is relocated.
 library;
 
-import 'package:flutter/material.dart';
-
-import '../theme/motion.dart';
-import '../theme/spacing.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// A short caveat label with an expandable "Why".
 ///
@@ -22,11 +20,17 @@ import '../theme/spacing.dart';
 class CaveatText extends StatefulWidget {
   const CaveatText({super.key, required this.label, required this.why});
 
-  /// The boundary, stated so it stands alone. Never in `colorScheme.error`.
+  /// The boundary, stated so it stands alone. Never in the blocked role.
   final String label;
 
   /// The expanded body. At most three sentences.
   final String why;
+
+  /// The affordance's word, in both states.
+  ///
+  /// One name open and closed, with `expanded` carrying which state it is in:
+  /// a control that renames itself when it is pressed reads as two controls.
+  static const String affordance = 'Why';
 
   @override
   State<CaveatText> createState() => _CaveatTextState();
@@ -39,57 +43,54 @@ class _CaveatTextState extends State<CaveatText> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final MotionTokens motion = MotionTokens.of(context);
-    final SpecimenSpacing spacing =
-        theme.extension<SpecimenSpacing>() ?? const SpecimenSpacing();
-    // A caveat is a statement of scope, not a failure: no error colour and no
-    // warning glyph (guideline 4.15).
-    final Color bodyColor = theme.colorScheme.onSurfaceVariant;
+    final UiThemeData ui = context.ui;
+    // A caveat is a statement of scope, not a failure: no status colour and
+    // no warning glyph (02 section 4.15).
     final Widget body = _expanded
         ? Padding(
-            padding: EdgeInsets.only(bottom: spacing.space2),
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
             child: Text(
               widget.why,
-              style: theme.textTheme.bodySmall?.copyWith(color: bodyColor),
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
           )
         : const SizedBox(width: double.infinity);
+
     return Semantics(
       container: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(widget.label, style: theme.textTheme.bodyMedium),
+          Text(
+            widget.label,
+            style: ui.type.body.copyWith(color: ui.color.ink),
+          ),
           Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             // One node, so a screen reader reads "Why, button, collapsed"
             // rather than two fragments.
             child: MergeSemantics(
               child: Semantics(
                 expanded: _expanded,
-                child: TextButton.icon(
+                child: UiButton(
+                  label: CaveatText.affordance,
+                  variant: UiButtonVariant.ghost,
+                  trailing: _expanded ? UiIcons.collapse : UiIcons.expand,
                   onPressed: _toggle,
-                  iconAlignment: IconAlignment.end,
-                  icon: Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    color: theme.colorScheme.primary,
-                  ),
-                  label: const Text('Why'),
                 ),
               ),
             ),
           ),
           // Reduced motion skips the transition outright: a zero-duration
           // AnimatedSize resolves inside its own layout.
-          if (motion.reduced)
+          if (ui.motion.reduced)
             body
           else
             AnimatedSize(
               duration: MotionTokens.standardRaw,
               curve: MotionTokens.standardCurve,
-              alignment: Alignment.topLeft,
+              alignment: AlignmentDirectional.topStart,
               child: body,
             ),
         ],

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:specimen_digitization/src/widgets/empty_state.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
 
@@ -25,12 +26,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.widgetWithText(FilledButton, 'Add photographs'),
+      find.widgetWithText(UiButton, 'Add photographs'),
       findsOneWidget,
     );
     expect(
       tester.getTopLeft(find.text('No specimens yet')).dy,
-      lessThan(tester.getTopLeft(find.byType(FilledButton)).dy),
+      lessThan(tester.getTopLeft(find.byType(UiButton)).dy),
     );
   });
 
@@ -43,7 +44,7 @@ void main() {
         body: 'Nothing needs review in this collection.',
       ),
     );
-    expect(find.byType(FilledButton), findsNothing);
+    expect(find.byType(UiButton), findsNothing);
     expect(find.text('Queue clear'), findsOneWidget);
   });
 
