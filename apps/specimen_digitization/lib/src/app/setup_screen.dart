@@ -7,11 +7,11 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../auth.dart';
-import '../theme/icons.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'auth_layout.dart';
@@ -106,7 +106,7 @@ class _SetupScreenState extends State<SetupScreen> {
       controller: controller,
       session: widget.session,
     );
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String title = switch (state) {
       SetupState.unconfigured => 'Collection connection required',
       SetupState.checking => 'Checking collection access',
@@ -123,56 +123,63 @@ class _SetupScreenState extends State<SetupScreen> {
         'Reconnect or sign in again, then check access again.',
     };
 
-    return Scaffold(
+    return UiScaffold(
       body: AuthLayout(
         title: title,
         children: <Widget>[
-          Text(body, style: theme.textTheme.bodyMedium),
+          Text(
+            body,
+            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+          ),
           // Every message on this screen ends in "ask your administrator",
           // and this is who that is (pass criterion 10.3).
           Padding(
-            padding: EdgeInsets.only(top: context.space.space2),
+            padding: EdgeInsetsDirectional.only(top: ui.space.s2),
             child: const AdministratorContactLine(),
           ),
           if (state == SetupState.checking) ...<Widget>[
-            SizedBox(height: context.space.space4),
+            SizedBox(height: ui.space.s4),
             const LoadingAnnouncement(
               thing: 'collection access',
               visible: true,
             ),
           ],
           if (controller?.error != null) ...<Widget>[
-            SizedBox(height: context.space.space4),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                controller!.error!.message,
-                style: theme.textTheme.bodySmall,
-              ),
+            SizedBox(height: ui.space.s4),
+            UiBanner(
+              message: controller!.error!.message,
+              tone: UiBannerTone.blocked,
             ),
           ],
           if (_message != null) ...<Widget>[
-            SizedBox(height: context.space.space4),
-            Semantics(liveRegion: true, child: Text(_message!)),
+            SizedBox(height: ui.space.s4),
+            UiBanner(message: _message!, tone: UiBannerTone.blocked),
           ],
           if (controller != null && state != SetupState.checking) ...<Widget>[
-            SizedBox(height: context.space.space6),
-            FilledButton(
+            SizedBox(height: ui.space.s6),
+            UiButton(
+              label: 'Check access again',
+              size: UiSize.lg,
+              loading: controller.loading,
               onPressed: controller.loading
                   ? null
                   : () => unawaited(controller.checkAccess()),
-              child: const Text('Check access again'),
             ),
           ],
           if (widget.session != null) ...<Widget>[
-            SizedBox(height: context.space.space4),
+            SizedBox(height: ui.space.s4),
             Text(
               'Account: ${widget.session!.displayName}',
-              style: theme.textTheme.bodySmall,
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
-            TextButton(
-              onPressed: _signingOut ? null : _signOut,
-              child: Text(_signingOut ? 'Signing out…' : 'Sign out'),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: UiButton(
+                label: _signingOut ? 'Signing out\u2026' : 'Sign out',
+                variant: UiButtonVariant.ghost,
+                loading: _signingOut,
+                onPressed: _signingOut ? null : _signOut,
+              ),
             ),
           ],
         ],

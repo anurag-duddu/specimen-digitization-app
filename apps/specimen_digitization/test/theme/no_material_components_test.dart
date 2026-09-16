@@ -81,19 +81,18 @@ final RegExp _constructors = RegExp(
 ///
 /// `lib/src/theme/` is out of scope: it is the adapter layer this wave
 /// rewrote, and it configures the Material widgets the screens still use.
+///
+/// Wave 2, slot E1: the shell, the entry screens and the D1 patterns are off
+/// the list. `app_router.dart` keeps one, the transparent `Scaffold` that
+/// stands in for the shell's own until the screens that raise a snackbar or
+/// build a Material component move in wave 3.
 const Map<String, int> componentBacklog = <String, int>{
-  'lib/src/app/app_router.dart': 2,
-  'lib/src/app/help_screen.dart': 4,
-  'lib/src/app/setup_screen.dart': 3,
-  'lib/src/app/shell.dart': 17,
+  'lib/src/app/app_router.dart': 1,
   'lib/src/audit_history.dart': 4,
-  'lib/src/auth.dart': 6,
   'lib/src/capture/capture_screen.dart': 6,
   'lib/src/capture_quality.dart': 1,
-  'lib/src/email_verification.dart': 7,
   'lib/src/intake.dart': 2,
   'lib/src/large_record.dart': 3,
-  'lib/src/magic_link_screen.dart': 6,
   'lib/src/operational_panel.dart': 4,
   'lib/src/reading_declarations.dart': 10,
   'lib/src/region_editor.dart': 13,
@@ -112,20 +111,14 @@ const Map<String, int> componentBacklog = <String, int>{
   'lib/src/screens/workbench/status_strip.dart': 5,
   'lib/src/widgets/adaptive_form.dart': 1,
   'lib/src/widgets/authority_candidate_card.dart': 1,
-  'lib/src/widgets/empty_state.dart': 1,
-  'lib/src/widgets/environment_banner.dart': 2,
   'lib/src/widgets/evidence_drawer.dart': 3,
   'lib/src/widgets/field_row.dart': 1,
-  'lib/src/widgets/in_flight_glyph.dart': 1,
-  'lib/src/widgets/previews.dart': 1,
   'lib/src/widgets/reading_card.dart': 1,
   'lib/src/widgets/reason_sheet.dart': 7,
   'lib/src/widgets/region_overlay.dart': 2,
   'lib/src/widgets/risk_meter.dart': 1,
   'lib/src/widgets/source_import_sheet.dart': 2,
   'lib/src/widgets/source_object_row.dart': 2,
-  'lib/src/widgets/status_chip.dart': 1,
-  'lib/src/widgets/term_text.dart': 1,
   'lib/src/widgets/upload_item.dart': 1,
   'lib/src/workbench.dart': 10,
 };

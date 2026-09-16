@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/widgets/status_chip.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 
@@ -70,17 +71,16 @@ void main() {
       tester,
       _item(state: UploadState.uploading, progress: 0.42),
     );
-    final CircularProgressIndicator ring = tester
-        .widget<CircularProgressIndicator>(
-          find.byType(CircularProgressIndicator),
-        );
+    final UiProgress ring = tester.widget<UiProgress>(
+      find.byType(UiProgress),
+    );
     expect(ring.value, 0.42);
 
     await pumpComponent(
       tester,
       _item(state: UploadState.checking, progress: 0.42),
     );
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(UiProgress), findsNothing);
   });
 
   testWidgets('a failed item keeps its reason and stays in the list', (

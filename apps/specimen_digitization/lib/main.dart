@@ -236,7 +236,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
                 reverseCurve: MotionTokens.standardCurve,
               ),
             ),
-            child: child ?? const SizedBox.shrink(),
+            child: _Text(child: child ?? const SizedBox.shrink()),
           ),
         ),
       ),
@@ -249,6 +249,34 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       child: workspace == null
           ? app
           : WorkspaceScope(controller: workspace, child: app),
+    );
+  }
+}
+
+/// The product's ambient text style.
+///
+/// `WidgetsApp` publishes a `DefaultTextStyle` of black with a double yellow
+/// underline, the "you forgot a `Material`" style, and `Material` is what used
+/// to replace it on every screen. The shell and the entry screens are
+/// `UiScaffold` now, so the application publishes its own: `type.body` in
+/// `ink`, with the decoration cleared. It sits under `UiTheme`, which is where
+/// the tokens are, and above the router, so every route and every modal reads
+/// it; a screen still drawn inside a `Material` keeps that widget's own style,
+/// which is how the screens of waves 3 and 4 stay exactly as they are.
+class _Text extends StatelessWidget {
+  const _Text({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return DefaultTextStyle(
+      style: ui.type.body.copyWith(
+        color: ui.color.ink,
+        decoration: TextDecoration.none,
+      ),
+      child: child,
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/specimen_status.dart';
 import 'package:specimen_digitization/src/widgets/status_chip.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
 
@@ -102,7 +103,10 @@ void main() {
         },
       ),
     );
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final UiProgress ring = tester.widget<UiProgress>(
+      find.byType(UiProgress),
+    );
+    expect(ring.value, 0.5);
     expect(find.byType(Icon), findsNothing);
   });
 

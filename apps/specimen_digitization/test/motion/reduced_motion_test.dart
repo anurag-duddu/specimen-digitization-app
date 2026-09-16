@@ -26,6 +26,7 @@ import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// Turns on the platform signal the iPad sends, for one test.
 void reduceMotion(WidgetTester tester) {
@@ -189,8 +190,8 @@ void main() {
     );
     expect(find.byIcon(Icons.save), findsNothing);
     // The indeterminate indicator itself keeps turning: it says the server has
-    // not answered, and that is information, not decoration (motion, 2.5).
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // not answered, and that is information, not decoration (04 section 2.5).
+    expect(find.byType(UiProgress), findsOneWidget);
   });
 
   testWidgets('StatusChip: a state change is instant', (
@@ -350,6 +351,6 @@ void main() {
     // The ring is the rendering of a number the byte stream gave us. Removing
     // its motion removes data, so it is the one exception in this file.
     expect(find.byType(TweenAnimationBuilder<double>), findsWidgets);
-    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(find.byType(UiProgress), findsWidgets);
   });
 }

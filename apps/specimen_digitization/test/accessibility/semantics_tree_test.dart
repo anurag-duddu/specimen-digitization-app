@@ -18,6 +18,7 @@ import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../app/routing_test.dart' show pumpApp;
+import '../ui_finders.dart';
 
 Future<void> pumpPanel(WidgetTester tester, Widget child) async {
   tester.view.devicePixelRatio = 1;
@@ -94,7 +95,7 @@ void main() {
       contains('Search by specimen ID'),
     );
 
-    // The destinations, the filters control and the help control. Read from
+    // The destinations, the filters control and the account menu. Read from
     // the tree itself rather than through a finder: a label merged into an
     // ancestor node belongs to no widget, and a merged label is still a label
     // a screen reader reads.
@@ -103,7 +104,7 @@ void main() {
       'Queue',
       'Intake',
       'Filters',
-      'Help and shortcuts',
+      'Account menu',
       'Search by specimen ID',
     ]) {
       expect(
@@ -112,6 +113,18 @@ void main() {
         reason: '$name is not in the semantics tree',
       );
     }
+
+    // Help is one entry inside that menu on every window narrower than large
+    // (07 section 10), so it is reachable rather than absent.
+    await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
+    await tester.pumpAndSettle();
+    expect(
+      allSemanticsNames(
+        tester,
+      ).any((String label) => label.contains('Help and shortcuts')),
+      isTrue,
+      reason: 'help is not reachable from the account menu',
+    );
 
     handle.dispose();
     await tester.pumpWidget(const SizedBox());

@@ -1,12 +1,11 @@
-/// The empty state (design system, 7.2; UX writing, section 4.6).
+/// The empty state (10 sections 4.5 and 5; 02 section 4.6).
 ///
 /// Three parts, in this order: a title naming the absence, one sentence
 /// saying what would fill it, and at most one button that does it.
 library;
 
-import 'package:flutter/material.dart';
-
-import '../theme/icons.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// An absence, named, with one way out of it.
 class EmptyState extends StatelessWidget {
@@ -22,7 +21,12 @@ class EmptyState extends StatelessWidget {
          'an empty state action needs both a label and a callback',
        );
 
-  /// A 40dp display glyph.
+  /// The 40 dp display glyph.
+  ///
+  /// Still an `IconData` rather than an `IconSpec`, because the screens that
+  /// raise an empty state are other slots' and move in wave 3. A glyph named
+  /// here is wrapped in a registry entry at `regular`, so both kinds of
+  /// caller draw through `UiIcon`.
   final IconData icon;
 
   /// The absence, named. Sentence case, no terminal period.
@@ -39,49 +43,30 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String? action = actionLabel;
 
     return Semantics(
       container: true,
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: context.sizes.readingMax),
+          constraints: BoxConstraints(maxWidth: ui.space.readingMax),
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: context.space.space6,
-              vertical: context.space.space12,
+            padding: EdgeInsetsDirectional.symmetric(
+              horizontal: ui.space.s6,
+              vertical: ui.space.s12,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                ExcludeSemantics(
-                  child: Icon(
-                    icon,
-                    size: context.sizes.iconDisplay,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                SizedBox(height: context.space.space4),
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium,
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: context.space.space2),
-                Text(
-                  body,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (action != null) ...<Widget>[
-                  SizedBox(height: context.space.space6),
-                  FilledButton(onPressed: onAction, child: Text(action)),
-                ],
-              ],
+            child: UiEmptyState(
+              icon: IconSpec(icon, weight: UiIconWeight.light),
+              title: title,
+              body: body,
+              action: action == null
+                  ? null
+                  : UiButton(
+                      label: action,
+                      variant: UiButtonVariant.primary,
+                      onPressed: onAction,
+                    ),
             ),
           ),
         ),

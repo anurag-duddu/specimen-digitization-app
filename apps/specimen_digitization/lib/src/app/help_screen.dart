@@ -6,13 +6,12 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
-import '../theme/icons.dart';
-import '../theme/motion.dart';
 import '../glossary.dart';
 import '../vocabulary.dart';
 import '../widgets/widgets.dart';
@@ -72,14 +71,14 @@ const Map<String, String> queueShortcuts = <String, String>{
   'F': 'Open filters',
 };
 
-/// The help sheet as a route page: a scrim, and a panel that is a sheet on a
+/// The help sheet as a route page: a scrim, and a pane that is a sheet on a
 /// compact window and a centered dialog everywhere else.
 Page<void> helpPage(BuildContext context) {
-  final MotionTokens motion = MotionTokens.of(context);
+  final MotionTokens motion = context.ui.motion;
   return CustomTransitionPage<void>(
     opaque: false,
     barrierDismissible: true,
-    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.4),
+    barrierColor: context.ui.color.scrim,
     transitionDuration: motion.standard,
     reverseTransitionDuration: motion.quick,
     child: const HelpScreen(),
@@ -103,46 +102,45 @@ Page<void> helpPage(BuildContext context) {
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
 
+  /// What the control that closes the panel is called.
+  static const String closeLabel = 'Close help';
+
+  /// The sheet never covers the whole window, so the route beneath it stays
+  /// visible and the sheet reads as temporary.
+  static const double maxHeightFactor = 0.85;
+
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final bool compact = WindowClass.of(context).isCompact;
-    final Widget panel = Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(
-        compact ? context.shape.radiusLg : context.shape.radiusMd,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: const _HelpBody(),
-    );
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: Align(
-          alignment: compact ? Alignment.bottomCenter : Alignment.center,
-          child: Padding(
-            // No side gutter on a phone: the sheet is the screen there, and a
-            // centred card with a scrim around it gives the glossary less
-            // measure than the window has (finding V-14).
-            padding: compact
-                ? EdgeInsets.only(top: context.space.space4)
-                : EdgeInsets.all(context.space.space4),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: compact ? double.infinity : DialogWidths.standard,
-                maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFactor,
-              ),
-              child: panel,
+    return SafeArea(
+      child: Align(
+        alignment: compact
+            ? AlignmentDirectional.bottomCenter
+            : AlignmentDirectional.center,
+        child: Padding(
+          // No side gutter on a phone: the sheet is the screen there, and a
+          // centred pane with a scrim around it gives the glossary less
+          // measure than the window has (finding V-14).
+          padding: compact
+              ? EdgeInsetsDirectional.only(top: ui.space.s4)
+              : EdgeInsetsDirectional.all(ui.space.s4),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: compact ? double.infinity : DialogWidths.standard,
+              maxHeight: MediaQuery.sizeOf(context).height * maxHeightFactor,
+            ),
+            child: GlassSurface(
+              level: GlassLevel.modal,
+              radius: compact ? ui.shape.sheet : ui.shape.tile,
+              child: const _HelpBody(),
             ),
           ),
         ),
       ),
     );
   }
-
-  /// The sheet never covers the whole window, so the route beneath it stays
-  /// visible and the sheet reads as temporary.
-  static const double _maxHeightFactor = 0.85;
 }
 
 class _HelpBody extends StatelessWidget {
@@ -150,26 +148,34 @@ class _HelpBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final WorkspaceController? controller = _controllerOf(context);
+    final TextStyle section = ui.type.title.copyWith(color: ui.color.ink);
+    final TextStyle body = ui.type.body.copyWith(color: ui.color.ink);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            context.space.space4,
-            context.space.space3,
-            context.space.space2,
-            context.space.space0,
+          padding: EdgeInsetsDirectional.fromSTEB(
+            ui.space.s4,
+            ui.space.s3,
+            ui.space.s2,
+            ui.space.s0,
           ),
           child: Row(
             children: <Widget>[
-              Expanded(child: Text('Help', style: theme.textTheme.titleLarge)),
-              IconButton(
+              Expanded(
+                child: Text(
+                  'Help',
+                  style: ui.type.titleLarge.copyWith(color: ui.color.ink),
+                ),
+              ),
+              UiIconButton(
+                icon: UiIcons.close,
+                semanticsLabel: HelpScreen.closeLabel,
+                tooltip: HelpScreen.closeLabel,
                 onPressed: () => Navigator.of(context).maybePop(),
-                tooltip: 'Close help',
-                icon: const Icon(Symbols.close),
               ),
             ],
           ),
@@ -177,37 +183,38 @@ class _HelpBody extends StatelessWidget {
         Flexible(
           child: ListView(
             shrinkWrap: true,
-            padding: EdgeInsets.all(context.space.space4),
+            padding: EdgeInsetsDirectional.all(ui.space.s4),
             children: <Widget>[
-              Text('Keyboard shortcuts', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
+              Text('Keyboard shortcuts', style: section),
+              SizedBox(height: ui.space.s2),
               for (final MapEntry<String, String> entry
                   in queueShortcuts.entries)
                 Padding(
-                  padding: EdgeInsets.only(bottom: context.space.space1),
-                  child: Text.rich(
-                    TextSpan(
-                      children: <InlineSpan>[
-                        TextSpan(
-                          text: entry.key,
-                          style: context.mono.identifier,
-                        ),
-                        TextSpan(text: ': ${entry.value}'),
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+                  child: MergeSemantics(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        UiKeyCap(label: entry.key),
+                        SizedBox(width: ui.space.s2),
+                        Expanded(child: Text(entry.value, style: body)),
                       ],
                     ),
                   ),
                 ),
-              SizedBox(height: context.space.space6),
-              Text('A first review', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
+              SizedBox(height: ui.space.s6),
+              Text('A first review', style: section),
+              SizedBox(height: ui.space.s2),
               for (final (int i, String step) in reviewWalkthrough.indexed)
                 Padding(
-                  padding: EdgeInsets.only(bottom: context.space.space2),
-                  child: MergeSemantics(child: Text('${i + 1}. $step')),
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+                  child: MergeSemantics(
+                    child: Text('${i + 1}. $step', style: body),
+                  ),
                 ),
-              SizedBox(height: context.space.space6),
-              Text('Glossary', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
+              SizedBox(height: ui.space.s6),
+              Text('Glossary', style: section),
+              SizedBox(height: ui.space.s2),
               // One sentence per word, from `glossary.dart`, which is the
               // same text the term itself opens where it appears
               // (pass criterion 10.2). The old list paired each word with
@@ -215,48 +222,53 @@ class _HelpBody extends StatelessWidget {
               // a definition.
               for (final MapEntry<String, String> entry in glossary.entries)
                 Padding(
-                  padding: EdgeInsets.only(bottom: context.space.space2),
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
                   child: MergeSemantics(
                     child: Text.rich(
                       TextSpan(
                         children: <InlineSpan>[
                           TextSpan(
                             text: _sentenceCase(entry.key),
-                            style: theme.textTheme.titleSmall,
+                            style: ui.type.label.copyWith(color: ui.color.ink),
                           ),
                           TextSpan(text: '. ${entry.value}'),
                         ],
                       ),
+                      style: body,
                     ),
                   ),
                 ),
-              SizedBox(height: context.space.space6),
-              Text('This build', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
+              SizedBox(height: ui.space.s6),
+              Text('This build', style: section),
+              SizedBox(height: ui.space.s2),
               Text(
                 'Environment: ${environmentLabel(controller?.environment ?? '')}',
+                style: body,
               ),
               Text(
                 'Account: ${controller?.session.displayName ?? 'Not signed in'}',
+                style: body,
               ),
-              Text('Build: $appBuild'),
-              SelectableText(
-                'Service: ${controller?.repository.mode ?? 'none'}',
+              Text('Build: $appBuild', style: body),
+              _CopyableLine(
+                label: 'Service',
+                value: controller?.repository.mode ?? 'none',
               ),
-              SizedBox(height: context.space.space6),
-              Text('Motion', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
+              SizedBox(height: ui.space.s6),
+              Text('Motion', style: section),
+              SizedBox(height: ui.space.s2),
               const ReduceMotionSetting(),
-              SizedBox(height: context.space.space6),
-              Text('Report a problem', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
-              const Text(
+              SizedBox(height: ui.space.s6),
+              Text('Report a problem', style: section),
+              SizedBox(height: ui.space.s2),
+              Text(
                 'Write to the contact below, with the build line above and '
                 'the record identifier.',
+                style: body,
               ),
-              SizedBox(height: context.space.space6),
-              Text('Administrator contact', style: theme.textTheme.titleMedium),
-              SizedBox(height: context.space.space2),
+              SizedBox(height: ui.space.s6),
+              Text('Administrator contact', style: section),
+              SizedBox(height: ui.space.s2),
               // Read from the collection document, which is the only place
               // the server publishes one (pass criterion 10.3).
               const AdministratorContactLine(dense: false),
@@ -279,7 +291,44 @@ class _HelpBody extends StatelessWidget {
   }
 }
 
-/// The in-app "Reduce motion" switch (motion and microinteractions, 6.2b).
+/// A build line an operator can put into a message to their administrator.
+///
+/// The v1 line was a `SelectableText`, which is a Material component. A copy
+/// control keeps the capability, names itself, and is a 48 dp target rather
+/// than a drag a touch reviewer has to discover.
+class _CopyableLine extends StatelessWidget {
+  const _CopyableLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final String line = '$label: $value';
+    return MergeSemantics(
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              line,
+              style: ui.type.body.copyWith(color: ui.color.ink),
+            ),
+          ),
+          UiIconButton(
+            icon: UiIcons.copy,
+            semanticsLabel: 'Copy the $label line',
+            tooltip: 'Copy the $label line',
+            onPressed: () =>
+                unawaited(Clipboard.setData(ClipboardData(text: line))),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The in-app "Reduce motion" switch (04 section 6.2b).
 ///
 /// The fourth reduced-motion source, and the only one a reviewer on a managed
 /// desktop can reach: an operating system accessibility setting may not be
@@ -301,14 +350,17 @@ class ReduceMotionSetting extends StatelessWidget {
       context,
     );
     // Outside the application scope, such as a component test that pumps this
-    // panel on a bare MaterialApp, there is no setting to offer.
+    // panel on its own, there is no setting to offer.
     if (controller == null) return const SizedBox.shrink();
-    return SwitchListTile(
-      value: controller.forceReducedMotion,
-      onChanged: (bool value) => unawaited(controller.set(value)),
-      title: const Text(label),
-      subtitle: const Text(helper),
-      contentPadding: EdgeInsets.zero,
+    return UiListRow(
+      title: label,
+      subtitle: helper,
+      trailing: UiSwitch(
+        label: label,
+        showLabel: false,
+        value: controller.forceReducedMotion,
+        onChanged: (bool value) => unawaited(controller.set(value)),
+      ),
     );
   }
 }

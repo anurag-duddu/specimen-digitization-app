@@ -1,5 +1,5 @@
 /// The one way a block of content arrives on a screen
-/// (motion and microinteractions, catalog rows 10, 45, 46, 51, 63, 69 and 80).
+/// (04 section 4, rows 10, 45, 46, 51, 63, 69 and 80).
 ///
 /// Seven rows of the catalog say the same thing in the same words: "height
 /// plus opacity", `standard` 200 on the `enter` curve going in, `quick` 100 on
@@ -11,11 +11,10 @@
 /// they became true. A slide would say they arrived from off screen.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
-import '../theme/motion.dart';
 import 'measured_height.dart';
 
 /// Reveals [child] when [visible] turns true, and collapses it when it turns
@@ -25,7 +24,7 @@ class MotionReveal extends StatefulWidget {
     super.key,
     required this.visible,
     required this.child,
-    this.alignment = Alignment.topLeft,
+    this.alignment = AlignmentDirectional.topStart,
     this.heightCap,
   });
 
@@ -40,7 +39,7 @@ class MotionReveal extends StatefulWidget {
   final AlignmentGeometry alignment;
 
   /// Above this measured height the size animation is dropped and only the
-  /// opacity runs (catalog row 45).
+  /// opacity runs (04 section 4, row 45).
   ///
   /// The lazy evidence payloads are unbounded JSON dumps. Animating a three
   /// thousand pixel expansion is a two second scroll lurch, which is the
@@ -95,7 +94,7 @@ class _MotionRevealState extends State<MotionReveal> {
 
   @override
   Widget build(BuildContext context) {
-    final MotionTokens motion = context.motion;
+    final MotionTokens motion = context.ui.motion;
     final bool visible = widget.visible;
 
     // Under reduced motion the block simply is or is not there. A zero

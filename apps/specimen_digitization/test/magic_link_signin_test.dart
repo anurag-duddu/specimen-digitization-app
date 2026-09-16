@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,7 +65,7 @@ void main() {
         ),
       );
       expect(find.text('Send sign-in link'), findsOneWidget);
-      expect(find.widgetWithText(TextFormField, 'Password'), findsNothing);
+      expect(find.widgetWithText(UiField, 'Password'), findsNothing);
       expect(find.text('Reset password'), findsNothing);
       expect(find.textContaining('fieldmuseum.org'), findsWidgets);
     },
@@ -81,7 +82,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byType(TextFormField).first,
+      find.byType(UiField).first,
       'staff@fieldmuseum.org.attacker.test',
     );
     await tester.tap(find.text('Send sign-in link'));

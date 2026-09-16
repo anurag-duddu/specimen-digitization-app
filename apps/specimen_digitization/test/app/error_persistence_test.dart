@@ -11,8 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
+import '../ui_finders.dart';
 
 /// A collection whose page fails once, then succeeds.
 class FlakyRepository extends TestRepository {
@@ -87,12 +89,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(MaterialBanner), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'Dismiss'), findsOneWidget);
+    // The environment band is a `UiBanner` too, so the failure's own band is
+    // named rather than counted.
+    final Finder band = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is UiBanner &&
+          widget.message.startsWith('The service could not be reached.'),
+      description: 'the failure band',
+    );
+    expect(band, findsOneWidget);
+    // The band carries its recovery action beside the message and a named
+    // dismiss control at its end (07 section 11).
+    expect(uiButton('Retry'), findsOneWidget);
+    expect(uiControl('Dismiss'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Dismiss'));
+    await tester.tap(uiControl('Dismiss'));
     await tester.pumpAndSettle();
-    expect(find.byType(MaterialBanner), findsNothing);
+    expect(band, findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 

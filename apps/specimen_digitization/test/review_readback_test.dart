@@ -141,7 +141,7 @@ void main() {
         ..returnUnchanged = true;
       await author.openReview(tester, session, repository);
       final c = WorkspaceScope.read(
-        tester.element(find.byType(Scaffold).first),
+        tester.element(find.byType(Navigator).first),
       );
       expect(
         await c.mutate({'kind': 'coverage', 'reason': 'reviewed'}, null),
@@ -162,7 +162,7 @@ void main() {
     final repository = author.ReviewRepository(session)
       ..save = Completer<Specimen>();
     await author.openReview(tester, session, repository);
-    final c = WorkspaceScope.read(tester.element(find.byType(Scaffold).first));
+    final c = WorkspaceScope.read(tester.element(find.byType(Navigator).first));
     final save = c.mutate({'kind': 'coverage', 'reason': 'reviewed'}, null);
     repository.save!.complete(
       Specimen({

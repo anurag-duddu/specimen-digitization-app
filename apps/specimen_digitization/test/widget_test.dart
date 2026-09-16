@@ -6,7 +6,9 @@ import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
+import 'ui_finders.dart';
 import 'workbench_harness.dart';
 
 class TestSession implements SessionAccess {
@@ -242,15 +244,15 @@ void main() {
       SpecimenDigitizationApp(session: session, repository: repo),
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Email address'),
+      find.widgetWithText(UiField, 'Email address'),
       'review@example.test',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Password'),
+      find.widgetWithText(UiField, 'Password'),
       'fixture-only-password',
     );
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.ensureVisible(uiButton('Sign in'));
+    await tester.tap(uiButton('Sign in'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Test environment.'), findsOneWidget);
     // The queue row sits below the fold, so scroll the queue list to it
@@ -275,7 +277,15 @@ void main() {
           .first,
     );
     expect(find.text('Chicago 1917', findRichText: true), findsOneWidget);
-    await tester.tap(find.byTooltip('Sign out'));
+    // Settle the scroll before pressing the chrome: an unsettled ballistic
+    // scroll swallows the next tap, and the account menu is a toggle, so a
+    // swallowed press reads as a menu that will not open.
+    await tester.pumpAndSettle();
+    // Signing out lives in the account menu, which is also the only place a
+    // reviewer can read which account they are using (05 section 2).
+    await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(find.text('Sign in to your collection'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -295,7 +305,7 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: TestRepository()),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(UiPillNav), findsOneWidget);
 
       final semantics = tester.ensureSemantics();
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));

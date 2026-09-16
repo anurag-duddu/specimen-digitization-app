@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInputAction, TextInputType;
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
+import 'package:specimen_ui/specimen_ui.dart';
 import 'api_repository.dart';
 import 'models.dart';
 import 'magic_link.dart';
 import 'magic_link_screen.dart';
 import 'administrator_contact.dart';
+import 'app/auth_layout.dart';
 import 'widgets/caveat_text.dart';
 
 abstract class SessionAccess {
@@ -133,13 +136,17 @@ class _FixtureSignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<_FixtureSignInScreen> {
-  final _form = GlobalKey<FormState>();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
+  final TextEditingController _email = TextEditingController();
+  final TextEditingController _password = TextEditingController();
+  String? _emailError;
+  String? _passwordError;
   String? _message;
   bool _busy = false;
   bool _obscure = true;
   bool _resetting = false;
+
+  bool get _fixture => widget.session is LocalFixtureSession;
+
   @override
   void dispose() {
     _email.dispose();
@@ -147,11 +154,28 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
     super.dispose();
   }
 
+  /// The inline errors for what is in the fields now.
+  ///
+  /// Fires on submit rather than on every keystroke, and states the rule
+  /// positively (02 section 4.10).
+  bool _validate({required bool reset}) {
+    final String? email = _email.text.contains('@')
+        ? null
+        : 'Enter an address like name@fieldmuseum.org.';
+    final String? password = reset || _password.text.isNotEmpty
+        ? null
+        : _fixture
+        ? 'Enter the fixture token.'
+        : 'Enter your password.';
+    setState(() {
+      _emailError = email;
+      _passwordError = password;
+    });
+    return email == null && password == null;
+  }
+
   Future<void> _submit({bool reset = false}) async {
-    if (reset ? !_email.text.contains('@') : !_form.currentState!.validate()) {
-      if (reset) setState(() => _message = 'Enter your email address first.');
-      return;
-    }
+    if (!_validate(reset: reset)) return;
     setState(() {
       _busy = true;
       _resetting = reset;
@@ -172,8 +196,7 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
     } catch (error) {
       if (mounted) {
         setState(
-          () => _message =
-              widget.session is LocalFixtureSession && error is ApiFailure
+          () => _message = _fixture && error is ApiFailure
               ? error.message
               : authErrorMessage(error, reset: reset),
         );
@@ -184,143 +207,101 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: AutofillGroup(
-            child: Form(
-              key: _form,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(Icons.biotech_outlined, size: 48),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Specimen Digitization',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Specimen record review',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    widget.session is LocalFixtureSession
-                        ? 'Test data access'
-                        : 'Sign in to your collection',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  if (widget.session is LocalFixtureSession)
-                    const CaveatText(
-                      label:
-                          'Test data only. This email is a test label, not a '
-                          'museum account.',
-                      why:
-                          'Access needs a fixture token the local server accepts. '
-                          'There is no live sign-in and no live model processing.',
-                    )
-                  else
-                    const Text(
-                      'Use the account provided by your museum. Collection access '
-                      'is checked by the server.',
-                    ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.username],
-                    decoration: const InputDecoration(
-                      labelText: 'Email address',
-                    ),
-                    validator: (s) => s != null && s.contains('@')
-                        ? null
-                        : 'Enter an address like name@fieldmuseum.org.',
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _password,
-                    obscureText: _obscure,
-                    autofillHints: widget.session is LocalFixtureSession
-                        ? null
-                        : const [AutofillHints.password],
-                    onFieldSubmitted: (_) {
-                      if (!_busy) _submit();
-                    },
-                    decoration: InputDecoration(
-                      labelText: widget.session is LocalFixtureSession
-                          ? 'Fixture token'
-                          : 'Password',
-                      suffixIcon: IconButton(
-                        tooltip: _obscure ? 'Show password' : 'Hide password',
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(
-                          _obscure ? Icons.visibility : Icons.visibility_off,
-                        ),
-                      ),
-                    ),
-                    validator: (s) => s == null || s.isEmpty
-                        ? widget.session is LocalFixtureSession
-                              ? 'Enter the fixture token'
-                              : 'Enter your password'
-                        : null,
-                  ),
-                  if (_message != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Semantics(
-                        liveRegion: true,
-                        child: Text(_message!),
-                      ),
-                    ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: _busy ? null : () => _submit(),
-                    child: Text(
-                      _busy
-                          ? (_resetting ? 'Requesting reset…' : 'Signing in…')
-                          : 'Sign in',
-                    ),
-                  ),
-                  if (widget.session is! LocalFixtureSession) ...<Widget>[
-                    const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: CaveatText(
-                        label:
-                            'No account or no collection access? Ask your '
-                            'collection administrator.',
-                        why:
-                            'This app cannot create accounts or assign roles. '
-                            'Both are managed by your collection administrator.',
-                      ),
-                    ),
-                    // Sign-in is raised before any collection exists, so the
-                    // collection document cannot be read here. The build
-                    // stamp is the only source there is, and this is where it
-                    // earns its keep (pass criterion 10.3).
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: AdministratorContactLine(),
-                    ),
-                  ],
-                  if (widget.session is! LocalFixtureSession)
-                    TextButton(
-                      onPressed: _busy ? null : () => _submit(reset: true),
-                      child: const Text('Reset password'),
-                    ),
-                ],
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return UiScaffold(
+      body: AutofillGroup(
+        child: AuthLayout(
+          title: _fixture ? 'Test data access' : 'Sign in to your collection',
+          children: <Widget>[
+            if (_fixture)
+              const CaveatText(
+                label:
+                    'Test data only. This email is a test label, not a '
+                    'museum account.',
+                why:
+                    'Access needs a fixture token the local server accepts. '
+                    'There is no live sign-in and no live model processing.',
+              )
+            else
+              Text(
+                'Use the account provided by your museum. Collection access '
+                'is checked by the server.',
+                style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+              ),
+            SizedBox(height: ui.space.s6),
+            UiField(
+              label: 'Email address',
+              controller: _email,
+              errorText: _emailError,
+              enabled: !_busy,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              textInputAction: TextInputAction.next,
+            ),
+            SizedBox(height: ui.space.s4),
+            UiField(
+              label: _fixture ? 'Fixture token' : 'Password',
+              controller: _password,
+              errorText: _passwordError,
+              enabled: !_busy,
+              obscureText: _obscure,
+              onSubmitted: (_) {
+                if (!_busy) unawaited(_submit());
+              },
+              trailing: UiIconButton(
+                icon: _obscure ? UiIcons.show : UiIcons.unreadable,
+                semanticsLabel: _obscure ? 'Show password' : 'Hide password',
+                tooltip: _obscure ? 'Show password' : 'Hide password',
+                onPressed: () => setState(() => _obscure = !_obscure),
               ),
             ),
-          ),
+            if (_message != null) ...<Widget>[
+              SizedBox(height: ui.space.s4),
+              UiBanner(message: _message!, tone: UiBannerTone.blocked),
+            ],
+            SizedBox(height: ui.space.s6),
+            UiButton(
+              label: _busy
+                  ? (_resetting ? 'Requesting reset\u2026' : 'Signing in\u2026')
+                  : 'Sign in',
+              size: UiSize.lg,
+              loading: _busy,
+              onPressed: _busy ? null : () => unawaited(_submit()),
+            ),
+            if (!_fixture) ...<Widget>[
+              SizedBox(height: ui.space.s4),
+              const CaveatText(
+                label:
+                    'No account or no collection access? Ask your '
+                    'collection administrator.',
+                why:
+                    'This app cannot create accounts or assign roles. '
+                    'Both are managed by your collection administrator.',
+              ),
+              // Sign-in is raised before any collection exists, so the
+              // collection document cannot be read here. The build stamp is
+              // the only source there is, and this is where it earns its keep
+              // (pass criterion 10.3).
+              SizedBox(height: ui.space.s2),
+              const AdministratorContactLine(),
+              SizedBox(height: ui.space.s2),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: UiButton(
+                  label: 'Reset password',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: _busy
+                      ? null
+                      : () => unawaited(_submit(reset: true)),
+                ),
+              ),
+            ],
+          ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Explicit local fixture access. Never used as a Firebase failure fallback.
