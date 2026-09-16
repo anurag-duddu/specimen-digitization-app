@@ -74,32 +74,22 @@ void main() {
   }
 }
 
-/// Pumps the gallery in a window whose tokens sit above the navigator.
+/// Pumps the gallery in the window the modal goldens are captured at.
 ///
-/// `uiHarness` publishes `UiTheme` inside `home`, which is below the navigator,
-/// so a route pushed over the page finds no scope and falls back to the light
-/// tokens: a dark mode modal golden taken through it shows a light pane. The
-/// application wraps `MaterialApp.router` in `UiTheme`, which is above every
-/// route, so this mirrors the application rather than the harness. `Density`
-/// is lifted for the same reason, so the chrome is drawn at the density the
-/// page is.
+/// `uiHarness` publishes `UiTheme` and `Density` above the navigator, so the
+/// pushed route reads the mode and the density this asks for. It did not
+/// always: these two goldens were taken through a hand-lifted theme until the
+/// polish slot moved it into the harness, and the workaround is gone rather
+/// than kept beside the thing it worked around.
 Future<void> _pumpModalWindow(WidgetTester tester, Brightness mode) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = galleryWindow;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
-    UiTheme(
-      data: mode == Brightness.dark
-          ? UiThemeData.dark()
-          : UiThemeData.light(),
-      child: Density(
-        initialMode: UiDensityMode.touch,
-        child: uiHarness(
-          brightness: mode,
-          size: galleryWindow,
-          child: const SizedBox.expand(child: UiGallery(pages: _pages)),
-        ),
-      ),
+    uiHarness(
+      brightness: mode,
+      size: galleryWindow,
+      child: const SizedBox.expand(child: UiGallery(pages: _pages)),
     ),
   );
   await tester.pumpAndSettle();
