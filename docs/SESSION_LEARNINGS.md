@@ -5930,3 +5930,251 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `no_material_components`, `no_material_imports` and `icons_unique`
     backlogs. This slot changes no application call site and leaves all three
     where wave 1 left them.
+
+## 2026-09-16: Front-end refactor wave 2, slot E2, the queue
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3E slot E2 and section
+  3D item D2. Migrate the queue, its filters, its saved filter sets and its
+  bulk selection onto `specimen_ui` 0.2.0, and re-base `QueueRow`,
+  `SelectionBar` and `Thumbnail` with their public APIs unchanged.
+- Branch and worktree: `fe/queue` at `.claude/worktrees/fe-queue`, cut from
+  `front-end-refactor` at `731bef5`. No pull request; the integrator merges
+  the slot.
+- Outcome: complete. Six owned files hold no Material component, no Material
+  import and no Material glyph; `no_material_components`,
+  `no_material_imports` and `icons_unique` each lose every one of this slot's
+  entries. Twelve test files migrated to role and label finders. Three
+  defects found and fixed on the way that were not in the brief: a keyboard
+  cursor that could no longer open a record, a row that overflowed the 360 dp
+  list pane at 200 percent text, and every modal in the application rendering
+  its text with the framework's fallback underline.
+- Commits (three, oldest first):
+  - `b8a2da3` `feat(queue): the D2 patterns on specimen_ui`
+  - `a69adef` `feat(queue): the queue, its filters and its saved sets on specimen_ui`
+  - `aa2c599` `test(queue): finders by role and label, and three backlogs at zero`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 519 passed, unchanged from the 0.2.0 release |
+  | `flutter test` (app) | 1 | 980 passed, 9 skipped, 82 failed. Every failure is a screen golden (80) or a semantics fixture (2), which is the wave policy in section 8 of the build plan. No other test fails. |
+  | `check_ui_strings.py` | 0 | 192 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (25 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+  The app's skip count moves from 7 to 9: the two new skips are the tap
+  target guidelines on `SearchFilters`, recorded below.
+
+- Backlogs, measured from the tree before and after:
+
+  | Gate | This slot's entries before | After |
+  |---|---|---|
+  | `no_material_components` | `queue_screen.dart` 6, `search_filters.dart` 11, `queue_row.dart` 2, `selection_bar.dart` 5 | all four removed |
+  | `no_material_imports` | all six owned files | all six removed |
+  | `icons_unique` | 14 glyphs over six files | all six removed |
+
+- Goldens and fixtures: regenerated locally to be read by eye, then reverted
+  with `git checkout --` before the first commit, per section 8. Nothing under
+  `test/golden/images/` or `test/accessibility/fixtures/` is in any commit.
+  80 of the 121 screen goldens move, and the set that moves is the set
+  expected:
+
+  | Family | Files | Why |
+  |---|---|---|
+  | `queue` | 8 | the screen this slot rebuilt |
+  | `queue-selection` | 8 | the selection bar and the checkbox column |
+  | `filters` | 8 | the filter sheet and dialog |
+  | `source` | 8 | the browse screen shares `SelectableRow` and `SelectionBar` |
+  | `workbench-fields`, `workbench-history`, `workbench-readings` | 16 each | two reasons at different widths: below large the workbench route shell draws the "Back to queue" control, which is now a `UiButton.ghost` with a Phosphor glyph; at large the queue list sits beside the record and every change above reaches it |
+
+  `intake`, `signin`, `help`, `region-editor` and `diff-text` hold byte for
+  byte, which is the other half of the check: nothing this slot touched
+  reaches them.
+
+- The semantics fixture diff, line by line. Two files change.
+
+  `queue.txt`:
+  - One node becomes three. The title, the summary and the age of the last
+    answer were one node carrying `liveRegion`, so a screen reader heard
+    "Queue ... Updated 3 s ago" every time the count moved, and heard it
+    again every second because the age is part of the label and the age ticks.
+    The live region is now the summary alone; the title is a header node and
+    the age is its own.
+  - The search field is two nodes where it was one, and its help text moves
+    from a child label to the field's `hint`. The second node is the editor's
+    own, which is the `UiField` defect recorded below; the hint is what
+    02 section 4.11 asks for.
+  - The six dispositions lose `button`, `checked` and
+    `inMutuallyExclusiveGroup` and gain `selected` plus `toggled`, which the
+    dump does not print. A `UiChip.filter` is a toggle; the Material
+    `SegmentedButton` it replaces published an exclusive group. This is a real
+    loss and is in the follow-ups.
+  - The row's node and the checkbox's node are siblings where the row was a
+    child of the checkbox, and the row no longer says `selected=false`.
+    `Pressable` reports `selected` only when it is true for a button, so a
+    plain row does not announce "not selected".
+
+  `filters.txt`:
+  - `label="Filter the queue"` and the `Clear all` and `Apply` buttons leave
+    the dump. They are the modal's chrome now rather than the form's own
+    widgets, and the fixture pumps the form alone. `role=form` is kept
+    deliberately, on the body, because the body is the only node that can
+    carry it once the title moved.
+  - Every field is two nodes for the same `UiField` reason.
+  - The date fields are typed days with a hint each, where they were one
+    button reading "Created: Any date". The risk range is two disabled
+    numeric fields carrying their values and the reason they are disabled,
+    where it was a slider reading `value="0%"` and `value="100%"`.
+  - "Include not measured" and its helper sentence are two nodes where
+    `SwitchListTile` merged them into one label.
+
+- Durable learnings:
+  - **A control inside a `UiListRow` slot has no semantics and no press of
+    its own.** The row is one `Pressable` with `excludeSemantics: true`, so a
+    menu in its trailing slot is invisible to a screen reader and opens the
+    row when pressed. The saved filter sets put the menu beside the row
+    instead, which is the same arrangement `SelectableRow` already uses for
+    its checkbox, and for the same reason.
+  - **`QueueRow`'s semantics node is the `UiListRow` it composes.** Three
+    tests read it off `find.byType(QueueRow)` and started resolving to the
+    page node, because the pattern's own root is a `LayoutBuilder` and a
+    finder walks up to the nearest node. A test that wants a pattern's node
+    has to descend to the control that publishes it.
+  - **A screen's keyboard map and a focused control's activation collide, and
+    the cursor has to own the focus.** `Enter` opened a record only while
+    nothing between the search field and the list was focusable. A wrapping
+    row of chips is focusable, `Pressable` consumes `Enter`, and the record
+    stopped opening. Moving focus onto the row the cursor lands on fixes it at
+    the root: the row's own activation is what `Enter` reaches, the focus ring
+    is where the cursor is, and the list hold the queue already takes on a
+    focused row starts working for `J` and `K` as well as for `Tab`.
+  - **The trailing slot of a `UiListRow` is laid out at its natural width.**
+    There is no `Flexible` around it, so a trailing column that is wider than
+    the row overflows rather than shrinking. A 220 dp cap that looked generous
+    overflowed a 360 dp list pane by exactly 51 dp once the checkbox column
+    was open, and a share of the row truncated a status chip at ordinary text
+    size. What works is the old two-layout split: the status, the risk and
+    the age sit beside the text when the row is at least 500 dp wide and on a
+    line of their own below it when it is not.
+  - **A modal route in this application has no `DefaultTextStyle`.**
+    `ModalRoutes` pushes on the root navigator, where the only ancestors are
+    `WidgetsApp`'s; a `Material` is what normally publishes the text style, and
+    a `RawDialogRoute` has none above it. Every `Text` in a `UiSheet` or a
+    `UiDialog` therefore inherited the framework's fallback decoration and
+    drew a yellow underline, including the title and the action row the
+    package draws. The package's own gallery goldens do not show it because
+    the gallery is not pushed as a route. Two screens' worth of goldens were
+    regenerated with the defect in them before it was spotted, which is the
+    argument for looking at a golden rather than counting it.
+  - **`UiSheet` does not bound its body.** The pane's outer column takes the
+    drag handle and the padded body as two inflexible children, so the inner
+    column's `Flexible` gets infinite space and a scrolling body shrink wraps
+    to its whole content. The filter sheet overflowed a phone by 1044 dp.
+    `UiDialog` is one column and is correct.
+  - **`SemanticsRole` is not exported by `widgets.dart`.** It needs
+    `import 'package:flutter/semantics.dart' show SemanticsRole;`, the same
+    way `SchedulerBinding` and `RenderProxyBox` did for slot C4.
+  - **`UiField.onClear` is not the only way a cleared search reports itself.**
+    `UiField._clear` calls `onChanged('')` as well, so a queue that debounces
+    its search on `onChanged` needs nothing extra when the reviewer presses
+    the clear control.
+- Failed approaches:
+  - Capping the row's trailing column at a share of the row's width. It
+    survives 200 percent text and truncates the status chip at ordinary text
+    size in a 360 dp pane, which 02 section 7 calls a defect rather than an
+    ellipsis case. The share is kept as a ceiling on the wide layout only.
+  - Putting the saved set's menu in the row's trailing slot, per the learning
+    above.
+  - Raising the queue's toast through the pane's own `BuildContext`.
+    `UiToasts.show` walks up from the context it is given and the pane's
+    context is above the layer it installs, so the toast reached no host and
+    was silently dropped. A `GlobalKey` on the body is the context to raise it
+    from.
+- Deviations from the brief and from 10, with why:
+  - **The disposition filter is `UiChip.filter` in a `Wrap`, not
+    `UiCapsuleToggle`.** Six options exceed a segmented track either way. A
+    single selection capsule toggle clears when its chosen option is chosen
+    again, and this filter already has a cleared state of its own called
+    "All", so the control and the product would have had two spellings for one
+    thing. Wrapping also keeps every option reachable, where the horizontal
+    scroll it replaces hid two of the six on a phone.
+  - **List detail still starts at large, not at medium.** The brief says
+    medium and cites 05 section 3.2, which says 1200 and says why: the
+    workbench needs 840 of its own beside a 360 dp list. 07 section 3 agrees,
+    the paging test is written to it, and the goldens are cut at it.
+  - **`SelectionBar` draws at `radius.tile`, not as a capsule.** A stadium's
+    radius is half its height and the bar wraps to three lines in a 360 dp
+    pane, which put the first and last control outside the curve. 09 section 5
+    picks the shape from the geometry; a three line pane is not a capsule.
+  - **`showProductModal` stands in for `UiDialog.showAdaptive`**, for the
+    `DefaultTextStyle` reason above. It builds the same two panes through the
+    same primitives and is marked `TODO(fe/polish-2)`.
+  - **The filter sheet's body caps its own height** on a compact window, for
+    the `UiSheet` reason above. Marked the same way.
+  - **Dates are two typed days and risk is two typed bounds.**
+    `showDateRangePicker` and `RangeSlider` are Material components this file
+    may not import and the design system has neither. The wire keys, the UTC
+    conversion and the "Include not measured" switch are unchanged, and
+    `created_before` is now literal rather than the picker's inclusive end
+    plus a day, which is what its label already said.
+  - **A saved set can be renamed.** The brief asks for a menu with rename and
+    delete. Rename is a save under the new name and a remove of the old one,
+    both existing store operations, so no wire or storage format changed.
+  - **`SelectionAction.icon` stays an `IconData`.** The source browse screen
+    constructs one with a glyph of its own and belongs to another slot.
+  - **The commits carry `Co-Authored-By: Claude Opus 5 (1M context)`**, which
+    is what this session's harness states, where every other commit on this
+    branch carries `Claude Fable 5.1`, which is what the brief states. The
+    integrator may normalise the trailers; nothing else depends on them.
+- Product defects noticed and not fixed:
+  - **The status chip says "Needs human review" where 02 section 4.13
+    specifies the chip label "Needs review".** The long form is 18 characters
+    against a 12 character target and is the single reason the queue's
+    trailing column needs as much width as it does. `status_chip.dart` and
+    `theme/icons.dart` belong to slot E1.
+  - **A single selection filter row reads as six independent toggles.**
+    `UiChip.filter` publishes `toggle` with no way to say the group is
+    exclusive, and `UiCapsuleToggle` publishes the same. Before this slot the
+    Material `SegmentedButton` published `inMutuallyExclusiveGroup`.
+  - **The queue's cursor does not scroll its row into view.** `J` past the
+    fold moves the ring off screen. True before this slot as well; the row now
+    holds focus, so `Scrollable.ensureVisible` is one line away whenever
+    someone wants it.
+- Package APIs this slot needed and did not have, in the order they cost the
+  most:
+  - **A `UiField` whose editor is the size of the control.** `FieldCore`
+    builds its `TextField` with `InputDecoration.collapsed`, which removes the
+    padded tap target Material's own decoration adds, and `UiFieldBox` puts
+    the 48 dp box outside the `TextField`. The editor publishes a node 22 dp
+    tall inside a control whose real hit area is 48, so every screen with a
+    field fails `androidTapTargetGuideline` and `iOSTapTargetGuideline`. Two
+    guideline tests on `SearchFilters` carry the finding in the skip list
+    `test/accessibility/guidelines_test.dart` already provides for exactly
+    this. Slots E1, E4 and E5 will each meet it.
+  - **A `DefaultTextStyle` published by `ModalRoutes`**, so a pane pushed on
+    the root navigator draws in the product's type rather than the
+    framework's fallback.
+  - **A `UiSheet` that bounds its body** the way `UiDialog` does.
+  - **A date control**, `UiDateField` or a range of two, and a
+    **`UiRangeSlider`**, so the filter sheet can pick rather than spell.
+  - **A `tone` or a role on `UiChip.filter`**, so a single selection row can
+    say it is exclusive.
+  - **A refresh control.** Pull to refresh on the two touch platforms is a
+    private `_PullToRefresh` in `queue_screen.dart`, marked
+    `TODO(fe/polish-2)`, because `RefreshIndicator` is Material and the system
+    has nothing that replaces it.
+- Files changed outside this slot's own list, all four forced and all four
+  minimal: `lib/src/workspace.dart` (the queue pane's divider is a
+  `UiHairline`, which the brief names and which lives in that file rather than
+  in the route shell); `test/golden/size_classes_golden_test.dart` and
+  `test/screens/source_screen_test.dart` and
+  `test/accessibility/semantics_tree_test.dart` and
+  `test/accessibility/semantics_fixtures_test.dart` (finders on this slot's
+  patterns); `test/accessibility/guidelines_test.dart` (the skip list above);
+  and one line added to `lib/src/widgets/widgets.dart` to export the new
+  `product_modal.dart`.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed.
