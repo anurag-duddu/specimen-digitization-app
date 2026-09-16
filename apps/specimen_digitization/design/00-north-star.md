@@ -123,6 +123,20 @@ independently shippable and keeps `flutter analyze` and `flutter test` green.
 Parallel branches are acceptable for steps 3, 4 and 5 once step 1 has merged,
 because they touch different files. Steps 1 and 2 are sequential and come first.
 
+### Refactor, 2026-09-16
+
+The rebuild above reached `main` and was judged to read as stock Material 3:
+the fonts were never bundled, the icons were Material Symbols, and every
+control kept Material anatomy. A second pass replaces the presentation layer
+with an owned component library on `flutter/widgets.dart`. The direction is
+[09-brand-direction.md](09-brand-direction.md), the library is
+[10-component-library.md](10-component-library.md), and the build plan with
+waves, ownership and gates is
+[docs/execution/FRONT_END_REFACTOR.md](../../../docs/execution/FRONT_END_REFACTOR.md).
+Work lands on the `front-end-refactor` branch. Everything in this document
+other than the sequencing list stands; the bar in "The bar" is re-measured in
+`11-verification-report-v2.md` when the refactor completes.
+
 ## Out of scope for this foundation
 
 Backend contracts, new endpoints, offline capture with later sync, multi-specimen
