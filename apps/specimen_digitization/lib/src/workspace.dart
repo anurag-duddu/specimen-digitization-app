@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'app/shell.dart';
 import 'auth.dart';
@@ -1069,7 +1070,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 const SizedBox(width: queueListPaneWidth, child: QueuePane()),
-                const VerticalDivider(width: 1),
+                // The pane divider is a hairline: decorative separation
+                // between two panes, never a boundary (09 section 3.1).
+                const UiHairline.vertical(),
                 Expanded(child: widget.child),
               ],
             )
