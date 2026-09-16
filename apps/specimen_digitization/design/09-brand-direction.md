@@ -117,9 +117,13 @@ gradient.
 
 Geometry rules:
 
-- Radius is 45 to 70 percent of the window's shorter side. Alpha falls off
-  with an ease-out curve (`Curves.easeOutQuad` sampled into gradient stops),
-  never linearly, so the field has no visible edge.
+- Radius is 45 to 70 percent of the window's **longer** side. Alpha falls off
+  on a Gaussian profile, `exp(-4 t squared)` normalised to one at the centre
+  and zero at the radius, sampled into 32 gradient stops. A Gaussian holds
+  near the centre, falls through the middle and thins out over a long tail,
+  and it has no inflection, so no stop count puts a ring in it. Half the
+  centre alpha is carried out to 41 percent of the radius, which is the number
+  a window reads as the field's size.
 - Fields are placed by **sky preset**, chosen per surface role, never per
   screen ad hoc:
 
@@ -136,6 +140,40 @@ Geometry rules:
 - In dark mode the same presets apply with the dark column. Dark is not an
   inversion: alphas drop by more than half so the fields read as light in a
   dark room rather than as coloured paint.
+
+Centres and radii in the preset table are fractions of the window: x of its
+width, y of its height, r of its longer side.
+
+**Amendment, wave 1 (2026-09-16).** The rule above first bound the radius to
+the window's **shorter** side and fell off on `Curves.easeOutQuad`. Rendered
+at four real windows for the first time, that reads as three spots on a ground
+rather than as light, which is the opposite of section 1. Measured on
+`sky.home`, `field.sun`, at the radius where the field still carries half its
+centre alpha:
+
+| Window | Shorter side, `easeOutQuad` | Longer side, Gaussian |
+|---|---|---|
+| 390 by 844 | 63 dp: 16 percent of the width, 7 percent of the height | 191 dp: 49 percent of the width, 23 percent of the height |
+| 768 by 1024 | 124 dp: 16 percent, 12 percent | 231 dp: 30 percent, 23 percent |
+| 1180 by 820 | 132 dp: 11 percent, 16 percent | 267 dp: 23 percent, 33 percent |
+| 1440 by 900 | 145 dp: 10 percent, 16 percent | 325 dp: 23 percent, 36 percent |
+
+The share of the window carrying any field at all, measured as a pixel
+differing from `ground` by more than one part in 85, moved from 47, 69, 67 and
+62 percent to 99, 89, 93 and 95 percent at those four windows. Two things
+were wrong and each fixed half of it. The shorter side is the wrong reference
+for a tall window: on a phone it put the whole of `sky.home` in the top
+quarter. And a quadratic falloff is a spot with a soft edge: it is down to a
+quarter of its centre alpha at 29 percent of the radius, where the Gaussian is
+still at 69 percent.
+
+Every centre colour and every centre alpha in the table above is unchanged, so
+the composite contrast measurements in 3.7 still hold: the gate composites
+against a field's centre, which is the one point the geometry does not move.
+The `matteExclusion` of 24 dp is unchanged. The stop count moved from 16 to 32
+because a Gaussian has more curvature than a quadratic: at 16 stops the drawn
+gradient sits up to 0.57 of one 8 bit level from the curve on the sun field,
+and 32 holds it at 0.13.
 
 ### 3.3 Glass
 

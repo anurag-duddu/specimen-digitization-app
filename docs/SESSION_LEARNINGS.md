@@ -4975,6 +4975,23 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   `c9b8cae` the behaviour tests and the contract runs; `34e3168` the gallery
   page and the family golden; `e5db05e` a repair to two of this session's own
   tests. No pull request; the integrator merges the slot.
+## 2026-09-16: Front-end refactor wave 1, slot C4, the navigation family
+
+- Task: build slot C4 of `docs/execution/FRONT_END_REFACTOR.md`, the navigation
+  family of `specimen_ui` per 10 section 4.4: `UiPillNav`, `UiRail`,
+  `UiSidebar`, `UiTopBar` and `UiScaffold`, their gallery page and goldens,
+  plus one measured tuning task on the light fields of 09 section 3.2.
+- Branch/worktree: `fe/navigation` at `.claude/worktrees/fe-navigation`, cut
+  from `front-end-refactor` at `715edea`.
+- Outcome: complete. Five controls and one destination model, 78 new tests
+  (67 for the family, including `expectControlContract` on every destination
+  of every navigation, 7 for the field geometry and 4 goldens), a gallery page,
+  and a field geometry that was measured at four real windows and changed.
+- Commits (5, oldest first): `6030404` the five controls and their tests;
+  `4899bc3` the field geometry measured at real windows; `0677d97` the state
+  layer colour taken verbatim from `fe/actions`; `9ee044a` the current disc's
+  press and the sidebar's scroll; `7eae534` the gallery page, the family
+  golden and the changelog. No pull request.
 - Validation, every gate run on its own with the tree untouched and `rc=$?`
   captured directly:
 
@@ -5344,3 +5361,168 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   - No cloud command, no deploy, no dependency added, no SDK change, and no
     file outside the slot's ownership other than the three additive foundation
     changes listed above.
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 189 passed, up from 111 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed |
+  | `check_ui_strings.py` | 0 | 158 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (54 files) | 0 | 11 hooks passed, 6 skipped for want of a matching file |
+
+- Goldens: 4 new under `test/gallery/goldens/navigation-<mode>-<density>.png`,
+  captured at 1180 by 940. All 24 foundation goldens moved exactly once, in
+  `4899bc3`, and hold byte for byte across every commit after it. Zero app
+  screen goldens and zero semantics fixtures moved, which is the check that
+  says the field change reached no screen: none paints a sky yet.
+- Durable learnings:
+  - **The light fields were measured for the first time and were wrong twice
+    over.** Bound to the window's shorter side, `sky.home` on a 390 by 844
+    phone put its half intensity point 7 percent of the way down the window.
+    And `Curves.easeOutQuad` is a spot with a soft edge: a quarter of the
+    centre alpha by 29 percent of the radius. Longer side plus a Gaussian
+    moves the sun field's half intensity radius from 63, 124, 132 and 145 dp
+    to 191, 231, 267 and 325 dp at 390 by 844, 768 by 1024, 1180 by 820 and
+    1440 by 900, and the share of the window carrying any field from 47, 69,
+    67 and 62 percent to 99, 89, 93 and 95 percent. The lesson is narrower
+    than the fix: a geometry rule written as a fraction of a window cannot be
+    reviewed on a 220 dp specimen tile, which is where the wave 0 golden
+    showed it.
+  - **A Gaussian needs more gradient stops than a quadratic.** The engine
+    draws a straight line between stops, so the stop count is a bound on how
+    far the drawn gradient sits from the curve. On the sun field, which has
+    the widest channel span in the table, 16 stops leave 0.57 of one 8 bit
+    level, 24 is the first count under half a level and 32 holds 0.13. The
+    number is computable from the curve and the span, so it does not need an
+    eye.
+  - **A `Semantics(tooltip:)` folds into a `Pressable`'s own node under
+    `MergeSemantics`,** role and all: `SemanticsConfiguration.absorb` takes a
+    child's role when the parent has none. That is what lets a control carry a
+    tooltip without publishing a second node beside the tab, and it is how
+    `UiPillNav` gives an undrawn label to a pointer reviewer before
+    `UiTooltip` exists.
+  - **`TextPainter` in a style resolver is how a vertical control obeys clause
+    7.** An extended rail cannot wrap "Sources", so a fixed 72 dp column
+    either clips it or overflows at 200 percent text. Measuring the widest
+    label at the live text scale and taking the column's width from it is the
+    vertical reading of "heights grow, widths wrap", and it keeps every item
+    the same height, which is what the gliding disc needs.
+  - **A frame that publishes an inset has to measure what it floats.** The
+    action bar's height belongs to the caller, so `UiScaffold` reports its own
+    height through a `RenderProxyBox` and a post frame callback rather than
+    guessing. It settles because the measured column does not depend on the
+    inset, and the one frame of lag is the one `Scaffold` documents for
+    `ScaffoldGeometry`.
+  - **zsh does not word split an unquoted parameter,** so
+    `pre-commit run --files $FILES` runs against nothing and reports "no files
+    to check" with exit 0. That is a gate passing because it checked nothing.
+    Read the file list into an array (`FILES=("${(@f)$(cat list)}")`) and pass
+    `"${FILES[@]}"`.
+  - **`widgets.dart` exports neither `semantics.dart` nor `scheduler.dart` nor
+    most of `rendering.dart`,** so `SemanticsRole`, `SchedulerBinding` and
+    `RenderProxyBox` each need their own import with a `show` clause. It
+    exports one name from `rendering.dart` and two from `foundation.dart`.
+- Failed approaches:
+  - Asserting that a sidebar row grows at 200 percent text. It does not:
+    `type.title` at 34 px fits inside the 56 dp touch row, so the row height
+    is a floor that has not been reached yet. The assertion that means
+    something is that the row is at least as tall as its own text, plus a
+    second at 300 percent where the floor is genuinely passed.
+  - Comparing a top bar's title against an absolute offset to prove it clears
+    a notch. The harness centres the control, so a bar that grows by 44 moves
+    up by 22 and its title moves down by 22. Measure the title against the
+    bar's own top instead.
+  - Scoping the foundation golden test with a hand written set of six page
+    ids. It works, but it is not what `fe/actions` had already done, and two
+    branches solving the same problem differently is a merge conflict rather
+    than a merge. Replaced with that branch's `familyPages` split, copied
+    exactly.
+- Remaining follow-ups, every deviation from 10 section 4.4 and why:
+  - **Arrow keys follow the control's own axis.** 10 section 4.4 says the rail
+    carries "the same semantics and keys" as the pill, which reads as `Left`
+    and `Right`. The pill has those; the rail and the sidebar move with `Up`
+    and `Down` and deliberately leave the cross axis keys alone. A vertical
+    group that swallowed `Right` would trap a keyboard reviewer inside the
+    rail instead of letting them move into the content, and the WAI-ARIA tabs
+    pattern makes the orientation's own pair the required one.
+  - **The rail carries no glass.** 10 gives the sidebar `glass.flat` and names
+    nothing for the rail, so it is a transparent column of discs over the sky.
+    That also leaves the window's four pane budget for the top bar, the action
+    bar and the body.
+  - **The rail widens past 72 dp when a label needs it,** in its extended form
+    only, for the reason in the learnings above. Its collapsed form is always
+    72.
+  - **72 dp is composed as `space.targetMin + space.s6`,** a 48 dp hit box with
+    12 dp of gutter, rather than read from `space.rail`, which is the v1 rail
+    at 80 and still belongs to the screens that have not moved.
+  - **The sidebar's current row carries no 6 percent `ink` fill.** 10 section
+    4.5 gives a selected `UiListRow` one, and there is no token for that value.
+    The row is marked three other ways instead: the 3 dp leading bar, the
+    `fill` glyph and `ink` rather than `ink.secondary`. A later wave that adds
+    the token should add the fill here too.
+  - **The sidebar's destinations scroll** between the header and the footer.
+    10 does not mention it; a 280 dp pane with five destinations at 200 percent
+    text is taller than the window it is meant for, and it overflowed.
+  - **The top bar's glass fill does not fade in.** 09 section 11 rejects glass
+    that animates its opacity, so the fill appears at the threshold.
+  - **The top bar owns the top and side safe areas** and the scaffold removes
+    that padding from everything below it, so the pane reaches the window's
+    edges while its content clears a notch.
+  - **The top bar's `center` slot is centred in the space the title and the
+    actions leave,** not in the window. Centring it in the window lets it sit
+    on top of a long title, and a collection name is not worth covering a page
+    title with.
+  - **The top bar spans the full width above the side navigation** rather than
+    beside it. 10 lists the slots in that order and the brief says the nav
+    sits beside the body; nothing settles which wins, and a title strip that
+    spans the window is the one that keeps the banner full width too.
+  - **`UiScaffold` publishes an inset that includes the action bar,** not only
+    the pill 10 section 4.4 names, because a body padded for the pill alone
+    hides its last row under the action bar.
+  - **Overlays paint over the body and under both the action bar and the
+    navigation,** which are one bottom column. 10 says "beneath the
+    navigation" and says nothing about the action bar. A toast host clears
+    both with the published inset.
+  - **The pill is 64 dp tall**, `space.s2` of padding around a 48 dp disc
+    slot. Four is the least that keeps the focus ring inside the capsule's own
+    clip, and eight leaves the ring a clear 4 dp.
+  - **The disc's glyph cross fades its `fill` form in over the glide.** 09
+    section 8 names only the disc's slide. Swapping the weight at the end
+    pops, and a glyph that turns `ink` the moment the disc leaves it is wrong
+    for the 250 ms the disc is still over it. Colour and opacity may run
+    alongside the one authored move (04 section 5.2).
+  - **`UiTopBar.title` is a `String`, not a `Widget?` slot.** 10 section 11
+    asks for slots as `Widget?`; a title is copy, and the bar sets `type.title`
+    on it the way `UiButton` sets `type.label` on its label.
+  - **Three files 10 section 1.2 does not list.** `nav_destination.dart` holds
+    the one destination model all three navigations take;
+    `nav_disc.dart` and `nav_group.dart` hold the disc the pill and the rail
+    share and the roving focus all three need. The last two are not exported
+    from the family barrel.
+  - **`UiScaffold.of` returns a value rather than throwing** when there is no
+    frame above, the way `UiTheme` falls back, because a component test that
+    pumps one control on its own is the normal case for it.
+  - **Two files were edited outside the slot's stated ownership.**
+    `test/gallery/foundation_golden_test.dart` now pins `pages:
+    foundationPages`, on the integrator's instruction and copied from
+    `fe/actions` cc00dc7, so the 24 foundation goldens hold still as families
+    land. `lib/src/primitives/pressable.dart` and
+    `lib/src/primitives/state_layer.dart` were taken verbatim from
+    `fe/actions` bdb0fbc for the same reason: `ink` at 12 percent over an
+    `ink` disc is invisible. A new test file,
+    `test/foundation/field_geometry_test.dart`, pins the field profile the
+    tuning task landed on.
+  - **All 24 foundation goldens moved, not only the fields page.** The
+    integrator's note expected the fields page alone. The gallery shell paints
+    `sky.home` behind every page, so a field geometry change reaches all of
+    them: the type page alone measured 19.20 percent of pixels differing. They
+    moved once, in `4899bc3`, and no other branch touches them.
+  - **Cross family stand-ins, none of them waited on.** Sidebar destinations
+    are a private `_SidebarRow` on `Pressable` marked `TODO(fe/data)` for
+    `UiListRow`; the pill discs carry their label as `Semantics(tooltip:)`
+    marked `TODO(fe/overlays)` for `UiTooltip`; `UiScaffold.overlays` is
+    marked `TODO(fe/overlays)` for `UiToastHost`; the collection switcher is a
+    `UiSidebar.header` or `UiTopBar.center` slot the shell fills with a
+    `UiSelect` when the inputs family lands.
+  - **The family page is registered in `familyPages`.** The brief asked for
+    the fourth family slot in an ordered list; `familyPages` holds one entry
+    on this branch and the integrator orders actions, inputs, overlays,
+    navigation, data as the four branches merge.
