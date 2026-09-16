@@ -6,14 +6,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'harness.dart';
 
 SelectionAction action(String label, {VoidCallback? onPressed}) =>
-    (label: label, icon: Symbols.check_circle, onPressed: onPressed ?? () {});
+    (label: label, icon: UiIcons.cleared.defaultGlyph, onPressed: onPressed ?? () {});
 
 Widget bar({
   int count = 3,
@@ -35,10 +35,19 @@ Widget bar({
   actions: actions ?? <SelectionAction>[action('Approve')],
 );
 
-/// `FilledButton.icon` builds a private subclass, so an exact type finder
-/// misses it. Every button in the bar is matched by role instead.
+/// The bulk actions, matched by role rather than by label.
+///
+/// The bar also carries a ghost button that clears the selection and a
+/// checkbox that takes all of it, so "an action" is the primary variant.
 final Finder actionButtons = find.byWidgetPredicate(
-  (Widget widget) => widget is FilledButton,
+  (Widget widget) =>
+      widget is UiButton && widget.variant == UiButtonVariant.primary,
+);
+
+/// The select all box, wherever the bar drew it.
+final Finder selectAllBox = find.byWidgetPredicate(
+  (Widget widget) =>
+      widget is UiCheckbox && widget.label == SelectionBar.selectAllLabel,
 );
 
 BulkDecisionResult applied(String id) =>
@@ -103,9 +112,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(SelectionBar.recordsMoreMatch), findsOneWidget);
       expect(
-        find.text(SelectionBar.selectAllLabel),
-        findsNothing,
-        reason: 'there is nothing loaded left to select',
+        tester.widget<UiCheckbox>(selectAllBox).value,
+        isTrue,
+        reason: 'there is nothing loaded left to select, and the box says so',
       );
     });
 
@@ -158,14 +167,18 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpComponent(tester, bar(busy: true));
-      final Iterable<ButtonStyleButton> buttons = tester
-          .widgetList<ButtonStyleButton>(
-            find.byWidgetPredicate((Widget w) => w is ButtonStyleButton),
-          );
+      final Iterable<UiButton> buttons = tester.widgetList<UiButton>(
+        find.byType(UiButton),
+      );
       expect(buttons, isNotEmpty);
-      for (final ButtonStyleButton button in buttons) {
+      for (final UiButton button in buttons) {
         expect(button.onPressed, isNull);
       }
+      expect(
+        tester.widget<UiCheckbox>(selectAllBox).onChanged,
+        isNull,
+        reason: 'the select all is held with the rest of the bar',
+      );
       expect(
         find.text('3 records selected'),
         findsOneWidget,
@@ -255,7 +268,7 @@ void main() {
     ) async {
       await pumpComponent(tester, row());
       expect(
-        tester.widget<Checkbox>(find.byType(Checkbox)).semanticLabel,
+        tester.widget<UiCheckbox>(find.byType(UiCheckbox)).label,
         'Pinned beetle 1',
       );
       await expectAccessible(tester);
@@ -264,7 +277,7 @@ void main() {
     testWidgets('the checkbox toggles', (WidgetTester tester) async {
       int toggles = 0;
       await pumpComponent(tester, row(onToggle: () => toggles++));
-      await tester.tap(find.byType(Checkbox));
+      await tester.tap(find.byType(UiCheckbox));
       expect(toggles, 1);
     });
 
@@ -276,7 +289,7 @@ void main() {
         tester,
         row(showCheckbox: false, onLongPress: () => started++),
       );
-      expect(find.byType(Checkbox), findsNothing);
+      expect(find.byType(UiCheckbox), findsNothing);
       await tester.longPress(find.text('Pinned beetle 1'));
       expect(started, 1);
     });
@@ -342,9 +355,9 @@ void main() {
       );
       // Drawn and unavailable, rather than absent. A reader told nothing
       // cannot tell a row it may not pick from a row it missed.
-      expect(find.byType(Checkbox), findsOneWidget);
+      expect(find.byType(UiCheckbox), findsOneWidget);
       expect(
-        tester.widget<Checkbox>(find.byType(Checkbox)).onChanged,
+        tester.widget<UiCheckbox>(find.byType(UiCheckbox)).onChanged,
         isNull,
       );
     });
@@ -373,7 +386,7 @@ void main() {
       await pumpComponent(tester, row(enabled: false));
       expect(
         tester
-            .getSemantics(find.byType(Checkbox))
+            .getSemantics(find.byType(UiCheckbox))
             .flagsCollection
             .isEnabled
             .toBoolOrNull(),
@@ -398,7 +411,6 @@ void main() {
           nameOf: (String id) => 'Pinned beetle $id',
         ),
       );
-      expect(find.text('1 of 3 records changed'), findsOneWidget);
       expect(find.text('Pinned beetle b'), findsOneWidget);
       expect(find.text('Wrong base record version'), findsOneWidget);
       expect(find.text('Pinned beetle c'), findsOneWidget);
@@ -413,6 +425,34 @@ void main() {
         reason: 'the records that changed are the queue\'s to show, not a '
             'list to read back',
       );
+    });
+
+    testWidgets('states the count in the title, before the list', (
+      WidgetTester tester,
+    ) async {
+      // The count is the last honest moment of a bulk decision, so it is the
+      // first thing the surface says rather than a line inside it.
+      await pumpComponent(
+        tester,
+        Builder(
+          builder: (BuildContext context) => UiButton(
+            label: 'Open',
+            onPressed: () => showBulkOutcome(
+              context,
+              report: BulkDecisionReport(<BulkDecisionResult>[
+                applied('a'),
+                refused('b', 'Wrong base record version'),
+                skipped('c'),
+              ]),
+              nameOf: (String id) => 'Pinned beetle $id',
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 of 3 records changed'), findsOneWidget);
+      expect(find.text(BulkOutcomeReport.dismissLabel), findsOneWidget);
     });
 
     testWidgets('never reads an identifier back as a name', (

@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
@@ -184,11 +185,15 @@ void main() {
         // (`queue_screen.dart`, `onLongPress`), so the selection already
         // exists there; tapping a checkbox afterwards would undo it and leave
         // the bar with nothing to show.
-        if (find.byType(Checkbox).evaluate().isEmpty) {
+        final Finder rowBoxes = find.descendant(
+          of: find.byType(SelectableRow),
+          matching: find.byType(UiCheckbox),
+        );
+        if (rowBoxes.evaluate().isEmpty) {
           await tester.longPress(find.text('Pinned beetle 1'));
           await tester.pumpAndSettle();
         } else {
-          await tester.tap(find.byType(Checkbox).first);
+          await tester.tap(rowBoxes.first);
           await tester.pumpAndSettle();
         }
         await tester.tap(find.text(SelectionBar.selectAllLabel));
@@ -217,7 +222,7 @@ void main() {
         // The filter surface is a bottom sheet on a compact window and a
         // constrained dialog above it, which is the adaptation this golden
         // exists to show.
-        await tester.tap(find.widgetWithText(OutlinedButton, 'Filters'));
+        await tester.tap(find.text('Filters'));
         await tester.pumpAndSettle();
         expect(find.text('Filter the queue'), findsOneWidget);
         expectGlassBudget(tester, window: window);

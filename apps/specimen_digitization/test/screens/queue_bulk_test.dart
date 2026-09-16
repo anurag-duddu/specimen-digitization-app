@@ -17,6 +17,7 @@ import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession, fixture;
 
@@ -127,13 +128,22 @@ Future<void> pumpQueue(
   await tester.pumpAndSettle();
 }
 
+/// The checkboxes in the list.
+///
+/// Scoped to the rows, because the bar carries a select all of its own once a
+/// selection is live and it is not one of the records.
+final Finder rowBoxes = find.descendant(
+  of: find.byType(SelectableRow),
+  matching: find.byType(UiCheckbox),
+);
+
 /// Picks the row whose record is named [title].
 Future<void> pick(WidgetTester tester, String title) async {
   final Finder row = find.ancestor(
     of: find.text(title),
     matching: find.byType(SelectableRow),
   );
-  await tester.tap(find.descendant(of: row, matching: find.byType(Checkbox)));
+  await tester.tap(find.descendant(of: row, matching: find.byType(UiCheckbox)));
   await tester.pumpAndSettle();
 }
 
@@ -157,7 +167,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpQueue(tester, BulkRepository(queue(4)));
-      expect(find.byType(Checkbox), findsNWidgets(4));
+      expect(rowBoxes, findsNWidgets(4));
       expect(
         find.textContaining('selected'),
         findsNothing,
@@ -173,10 +183,10 @@ void main() {
         BulkRepository(queue(3)),
         window: narrowQueue,
       );
-      expect(find.byType(Checkbox), findsNothing);
+      expect(rowBoxes, findsNothing);
       await tester.longPress(find.text('Pinned beetle 2'));
       await tester.pumpAndSettle();
-      expect(find.byType(Checkbox), findsNWidgets(3));
+      expect(rowBoxes, findsNWidgets(3));
       expect(find.text('1 record selected'), findsOneWidget);
     });
 

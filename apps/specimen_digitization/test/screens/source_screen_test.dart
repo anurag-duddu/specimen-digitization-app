@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/sources/source_controller.dart';
 import 'package:specimen_digitization/src/screens/sources/source_screen.dart';
@@ -45,7 +46,7 @@ Future<SourceBrowseController> pumpBrowse(
 /// The checkbox on the row naming [name].
 Finder checkboxFor(String name) => find.descendant(
   of: find.byKey(ValueKey<String>('source-row-microscopic-slides/$name')),
-  matching: find.byType(Checkbox),
+  matching: find.byType(UiCheckbox),
 );
 
 void main() {
@@ -134,11 +135,11 @@ void main() {
       // Drawn and disabled, not absent: a reader hearing nothing at all
       // could not tell an unavailable row from one they missed.
       expect(
-        tester.widget<Checkbox>(checkboxFor('a.jpg')).onChanged,
+        tester.widget<UiCheckbox>(checkboxFor('a.jpg')).onChanged,
         isNotNull,
       );
       expect(
-        tester.widget<Checkbox>(checkboxFor('b.pdf')).onChanged,
+        tester.widget<UiCheckbox>(checkboxFor('b.pdf')).onChanged,
         isNull,
       );
     });

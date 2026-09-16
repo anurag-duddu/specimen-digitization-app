@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
@@ -602,8 +603,14 @@ void main() {
         brightness: Brightness.light,
         location: goldenQueueLocation,
       );
+      // The row's one merged node is the `UiListRow` it composes.
       final SemanticsData row = tester
-          .getSemantics(find.byType(QueueRow).first)
+          .getSemantics(
+            find.descendant(
+              of: find.byType(QueueRow).first,
+              matching: find.byType(UiListRow),
+            ),
+          )
           .getSemanticsData();
       expect(row.flagsCollection.isButton, isTrue);
       expect(row.hasAction(SemanticsAction.tap), isTrue);

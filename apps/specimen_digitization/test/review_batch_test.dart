@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
@@ -374,7 +375,13 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      expect(find.byType(Checkbox), findsNWidgets(6));
+      expect(
+        find.descendant(
+          of: find.byType(SelectableRow),
+          matching: find.byType(UiCheckbox),
+        ),
+        findsNWidgets(6),
+      );
       expect(
         find.textContaining('Select all matching'),
         findsNothing,
@@ -394,7 +401,14 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      await tester.tap(find.byType(Checkbox).first);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(SelectableRow),
+              matching: find.byType(UiCheckbox),
+            )
+            .first,
+      );
       await tester.pumpAndSettle();
       expect(find.text('1 record selected'), findsOneWidget);
       // The two record level decisions, and only those. A field correction or

@@ -8,10 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
-import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
 
@@ -77,10 +77,7 @@ void main() {
   ) async {
     final ScriptedRepository repository = ScriptedRepository();
     await pumpQueue(tester, repository);
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search by specimen ID'),
-      'SD-does-not-exist',
-    );
+    await tester.enterText(find.byType(UiSearchField), 'SD-does-not-exist');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(find.text('No records match these filters'), findsOneWidget);
@@ -97,11 +94,15 @@ void main() {
     await pumpQueue(tester, repository, settle: false);
     await tester.pump();
     await tester.pump();
-    expect(find.byType(SkeletonRow), findsWidgets);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(UiSkeleton), findsWidgets);
+    expect(
+      find.byType(UiProgress),
+      findsNothing,
+      reason: 'a first load is placeholders in the shape of the rows',
+    );
     repository.gate!.complete();
     await tester.pumpAndSettle();
-    expect(find.byType(SkeletonRow), findsNothing);
+    expect(find.byType(UiSkeleton), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -110,20 +111,28 @@ void main() {
   ) async {
     final ScriptedRepository repository = ScriptedRepository();
     await pumpQueue(tester, repository);
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Filters'));
+    await tester.tap(find.text('Filters'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Upload batch'),
+      find.descendant(
+        of: find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is UiField && widget.label == 'Upload batch',
+        ),
+        matching: find.byType(EditableText),
+      ),
       'batch-7',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Apply'));
+    await tester.tap(find.text('Apply'));
     await tester.pumpAndSettle();
 
     expect(find.text('Upload batch: batch-7'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Filters (1)'), findsOneWidget);
+    // The count is on the badge beside the button, so the button keeps one
+    // name and a reader hears the count once.
+    expect(find.bySemanticsLabel('1 filter active'), findsOneWidget);
     expect(repository.requests.last['batch_id'], 'batch-7');
 
-    await tester.tap(find.byTooltip('Remove the Upload batch filter'));
+    await tester.tap(find.bySemanticsLabel('Remove the Upload batch filter'));
     await tester.pumpAndSettle();
     expect(find.text('Upload batch: batch-7'), findsNothing);
     expect(repository.requests.last.containsKey('batch_id'), isFalse);
