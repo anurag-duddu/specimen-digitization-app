@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import '../../specimen_ui.dart';
 import 'pages/actions_page.dart';
 import 'pages/colour_page.dart';
+import 'pages/data_page.dart';
 import 'pages/fields_page.dart';
 import 'pages/icons_page.dart';
 import 'pages/primitives_page.dart';
@@ -106,6 +107,7 @@ const List<GalleryPage> foundationPages = <GalleryPage>[
 /// in parallel is how two branches silently revert one another.
 const List<GalleryPage> familyPages = <GalleryPage>[
   actionsPage,
+  dataPage,
 ];
 
 /// Every page the gallery shows.
