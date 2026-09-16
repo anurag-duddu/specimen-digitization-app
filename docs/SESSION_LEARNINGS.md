@@ -4934,3 +4934,196 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   - The `no_material_components` backlog is untouched by this slot: it adds
     controls to the package and changes no application call site. The sweep
     that spends the backlog is waves 2 and 3.
+
+## 2026-09-16: Front-end refactor wave 1, slot C5, the data family
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3C slot C5. Build the
+  data family of `specimen_ui` per `design/10-component-library.md`
+  section 4.5: `UiListRow`, `UiProgress`, `UiSkeleton`, `UiEmptyState`,
+  `UiDataTile`, `UiArcIndicator`, `UiAvatar` and `UiHairline`, with their
+  style objects, behaviour tests, control contract runs, a gallery page and
+  four family goldens, plus the one permitted edit outside the family: the
+  `_LoadingArc` stand-in in `controls/actions/button.dart`.
+- Branch and worktree: `fe/data`, cut from `front-end-refactor` at `9642b8d`,
+  in `.claude/worktrees/fe-data`. Pushed to `origin/fe/data` at `30d836b`. No
+  pull request; the integrator merges the slot.
+- Outcome: complete. Eight controls, 78 new tests, one gallery page, four new
+  goldens, the actions stand-in replaced with the real control and the four
+  actions goldens holding byte for byte.
+- Commits (six, oldest first):
+  - `60aee81` `chore: keep the data family's tests out of the collection data ignore`
+  - `49c5afc` `feat(data): the eight controls of 10 section 4.5`
+  - `8439c92` `test(data): behaviour tests and the control contract for the family`
+  - `08f550b` `feat(data): the gallery page and its four goldens`
+  - `822d045` `actions: take UiProgress.ring for the loading state`
+  - `30d836b` `docs(data): the changelog entry for the family`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 271 passed, up from 189 at the end of slot C1 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 165 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (26 files) | 0 | 11 hooks passed, 6 had no files |
+
+- Goldens: four added, `data-{light,dark}-{touch,pointer}.png` at 1180 by
+  1900. Zero other goldens moved, including the four actions goldens the ring
+  swap could have moved and the twenty four foundation goldens. Zero app
+  screen goldens and zero semantics fixtures were regenerated, which is the
+  wave policy.
+- One change outside the family, listed first so the integrator can reconcile
+  it: **`.gitignore` gained a second negation** (`60aee81`). Wave 0 found that
+  the blanket `data/` rule for museum collection data swallowed
+  `lib/src/controls/data/` and added one negation for it. The same rule
+  swallows `test/controls/data/`, so no test file for this family could be
+  added at all. Both sides of the family are now named. No foundation or
+  primitive file changed.
+- Durable learnings:
+  - **`TweenAnimationBuilder` reads `tween.begin` on the first build only**,
+    and `tween.end` on every build after it. Passing `Tween(begin: value, end:
+    value)` every time is therefore exactly "draw the first value where it is,
+    and animate to every later one", which is what 04 section 5.5 asks of a
+    progress indicator opened on a half finished run. No controller of one's
+    own is needed for it, and none should be written.
+  - **A monotonic control needs a documented escape hatch, and its own tests
+    are the first caller to need it.** `UiProgress` holds a reported value
+    below the highest one seen, per 04 section 5.5. A loop in its test that
+    pumped 0.2 after 1.0 got 1.0, which is the rule working. The way out is
+    the one the class documents: a genuinely new attempt is a new indicator
+    with its own `Key`, exactly as a retry gets its own row.
+  - **`AnimatedSwitcher` calls `transitionBuilder` once per value, before
+    that value is known to be leaving.** Comparing the child's key with the
+    current value inside the builder therefore always reports "arriving".
+    The direction has to be read from `animation.status` inside the builder,
+    where a leaving value is running in reverse. That is what lets both
+    numerals of a tick travel the same way rather than passing each other.
+  - **`DecoratedBox` sizes to its child, so a track drawn that way is as wide
+    as its fill.** The progress bar's track was silently the width of the
+    filled part until a `Stack(fit: StackFit.expand)` made both the track and
+    the `FractionallySizedBox` span the bar. The symptom is invisible at 100
+    percent and at every width a test happens to measure from the fill.
+  - **A `FractionallySizedBox` reports its parent's width under tight
+    constraints**, because it sizes itself with `constraints.constrain(child
+    size)`. Measuring the factor means measuring the box's child, not the
+    box. Two tests measured the wrong thing and passed for the wrong reason
+    before this surfaced.
+  - **`find.semantics.byPredicate` replaces the deprecated
+    `tester.binding.pipelineOwner.semanticsOwner`** for counting or listing
+    semantics nodes, and `flutter analyze --fatal-infos` is what catches the
+    deprecation.
+  - **`Semantics(container: true)` around a column of `Text` merges them into
+    one node** whose label is the children joined with a newline. So
+    `find.bySemanticsLabel('No matches')` finds nothing for an empty state
+    whose body follows the title; the node's label is both strings. Worth
+    knowing before writing a finder for any composed block.
+  - **`CheckedState` is `none`, `isTrue`, `isFalse`, `mixed`**, and it lives
+    in `dart:ui`, not in `package:flutter/semantics.dart`. A test that reads a
+    checkbox's state imports it from there.
+  - **A slow tap is a tap.** `tester.longPress` on a row with no long press
+    handler fires `onPressed`, because `TapGestureRecognizer` has no upper
+    bound on how long a press may last. That is the right behaviour for a row
+    in a list with no selection, and it is worth asserting rather than
+    asserting the opposite.
+- Failed approaches:
+  - Reading the indeterminate ring's angle and opacity out of its painter's
+    `toString`. A private `CustomPainter` prints its type and nothing else.
+    The rule moved into `UiProgressPhase`, a small public value type with one
+    factory, and the test asserts the rule directly. The reduced-motion
+    substitution is now a named thing rather than a branch inside a builder,
+    which is the better shape anyway.
+  - Drawing the arc marker's triangle outside the arc, pointing inward. It
+    reaches past the box the gauge was given and overlaps whatever sits under
+    it in a column. The tip sits on the arc and the base falls away inside it
+    instead.
+- Every deviation from 10 section 4.5, with why:
+  - **`UiSkeleton` blocks are the state layer, not `paper` at 60 percent.**
+    10 section 4.5 says `paper` at 0.6. A loading list sits on a `paper` list
+    body (09 section 3.3), where `paper` on `paper` is nothing at all; over
+    `ground` in light it measures about 1.02 to 1. The first data golden drew
+    four placeholders nobody could see. The block is now
+    `ui.color.stateLayer(ui.color.hoverOpacity)`, which is the same "move the
+    surface toward its opposite" correction wave 0 made to the state layer
+    itself, for the same reason, and it is visible on `paper`, on `ground`
+    and under a field in both modes. 10 needs the amendment.
+  - **`UiArcIndicator`'s marker carries a 1 dp `ink` casing.** 09 section 3.4
+    gives the accent this job and the accent measures near 1 to 1 on `paper`.
+    A marker that is the only thing saying where the value is has to be
+    visible on the surfaces it is drawn over. 09 section 3.6 already casings
+    a region stroke over a photograph for the same reason; this is that rule
+    applied to the one other graphic that carries a value.
+  - **A null value renders rather than asserting.** 10 section 4.5 says the
+    gauge "asserts on a missing value and renders the unmeasured glyph
+    instead of a marker", which cannot both happen: an assertion in debug
+    stops the frame. It renders. Unmeasured is a first class state in this
+    product, not a programming error.
+  - **The word "Unmeasured" is set in `type.label`, not in `unit`.** 10 puts
+    the minimum and maximum labels in `unit`; the word is not a unit, and
+    `unit` is the one upper case role in the product (09 section 4.2).
+  - **The minimum and maximum labels are dropped when there is no value.** A
+    scale beside no value is a scale for nothing.
+  - **`UiListRow`'s height is `density.rowHeight` floored at the hit box.**
+    09 section 6 gives the pointer row 44, and 10 section 2 clause 2 sets a
+    48 dp hit box in both densities. A full width row has nowhere to put the
+    4 dp of transparent slop above and below without overlapping the rows it
+    tiles against, so the floor wins in `pointer` and the touch row is
+    unchanged at 56.
+  - **A row has no corners of its own.** 10 names no radius for it. It tiles
+    against its neighbours and the pane around it owns the shape, so
+    `radius.none` is the token, which is also what makes the 3 dp leading bar
+    a rectangle rather than a shape that has to follow a curve.
+  - **The leading edge invariant is about the slot's box, not about a null
+    slot.** "present, hidden or disabled" are three states of a leading
+    child; a row with no leading child has no slot and starts its text at the
+    padding. The slot is a fixed 40 dp square whenever there is one, so a
+    24 glyph, a 40 thumbnail, an invisible child and a disabled control all
+    leave the title's edge in one place. The gallery shows the invisible case
+    beside the other two, because a list that mixes a slot with no slot is
+    the ragged thing the invariant exists to prevent.
+  - **`UiProgress` enforces monotonicity and the "already complete is drawn
+    already complete" rule.** 04 section 5.5 states both as product rules and
+    names an application call site that broke the first. The control is the
+    one place they can be written once. The cost is the `Key` a new attempt
+    needs, which is documented on the class.
+  - **An indeterminate indicator draws no track.** 10 gives `UiProgress.ring`
+    a `hairline` track. A track is a scale, and an indeterminate indicator
+    has none to draw one against. This is also the reason slot C1 gave for
+    its stand-in drawing none, so the swap keeps that behaviour rather than
+    adding a track to a button.
+  - **`UiDataTile`'s value is a string and is allowed to wrap.** The tile does
+    not decide how a measurement is written, and "Not measured" at
+    `display.large` is wider than one tile line. Clipping it leaves a tile
+    reading "Not", which is worse than one that is two lines tall
+    (02 section 4.14).
+  - **`UiDataTile` publishes one node and merges its child's.** 10 asks for
+    one node reading label, value and unit as a sentence. A `child` that
+    carries a value of its own therefore states it in the tile's
+    `semanticsLabel`; the gallery's unmeasured tile does exactly that.
+  - **The data gallery golden is 1180 by 1900.** The shared window is 1180 by
+    820 and eight controls do not fit it. The C1 closeout recorded the cost
+    of pretending otherwise and named a taller window as the fix; this golden
+    takes it for itself, so no other family's files move.
+  - **`UiEmptyState.action` is typed `UiButton?`, not `Widget?`.** 10 section
+    11 asks for slots as `Widget?`; 10 section 4.5 says "at most one
+    `UiButton`". A type states the rule better than a comment does, and this
+    is the one slot in the family with a rule that narrow.
+- Follow-ups:
+  - 10 section 4.5 needs the `UiSkeleton` fill amendment, and 09 section 3.4
+    a sentence about the marker casing. Both are recorded above rather than
+    edited into the documents here, because a design decision is proposed in
+    the pull request that carries the golden diff (10 section 10) and this
+    slot has no pull request of its own.
+  - `test/gallery/failures/` is still not in `apps/specimen_digitization/.gitignore`.
+    The C1 closeout raised it as a one line change for the integrator to make
+    once for all five families; it is still outstanding. No failures directory
+    was produced or committed by this slot.
+  - `UiListRow` is what `QueueRow`, `SourceObjectRow`, `UploadItem` and the
+    `UiPopoverMenu` items re-base onto (10 sections 4.3 and 5). The menu case
+    is the reason the row has an `sm` size and nothing else uses it yet.
+  - `UiArcIndicator` and `UiDataTile` are what `RiskMeter` re-bases onto. The
+    gallery's unmeasured tile is the shape that pattern takes.
+  - The `no_material_components` backlog is untouched by this slot: it adds
+    controls to the package and changes no application call site.
