@@ -1,9 +1,15 @@
 /// The actions family (10 section 4.1): buttons, icon buttons, capsule
 /// toggles, chips, segmented controls, badges and key caps.
 ///
-/// Wave 1 slot C1 fills this barrel. Wave 0 put one control in it, a minimal
-/// `UiButton`, because a gallery page of primitives with nothing to press
-/// proves nothing about `Pressable`.
+/// Between them these retire `FilledButton`, `FilledButton.tonal`,
+/// `OutlinedButton`, `TextButton`, `IconButton`, `Chip`, `InputChip`,
+/// `ActionChip`, `FilterChip`, `ChoiceChip`, `SegmentedButton` and `Badge`.
 library;
 
+export 'badge.dart';
 export 'button.dart';
+export 'capsule_toggle.dart';
+export 'chip.dart';
+export 'icon_button.dart';
+export 'key_cap.dart';
+export 'segmented.dart';

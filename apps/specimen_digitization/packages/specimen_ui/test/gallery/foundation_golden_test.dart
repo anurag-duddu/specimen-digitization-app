@@ -25,6 +25,10 @@ void main() {
           await goldenGalleryPage(
             tester,
             UiGallery(
+              // The foundation set, not the whole gallery: these goldens draw
+              // the page list too, so pinning the pages is what keeps them
+              // from moving every time a family slot registers a page.
+              pages: foundationPages,
               initialPage: foundationPages.indexOf(page),
             ),
             mode: mode,

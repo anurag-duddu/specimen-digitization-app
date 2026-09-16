@@ -4753,3 +4753,184 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `primary`, `secondary` and `ghost` at size `md` only, marked experimental,
     because the primitives gallery needs something real to press. Slot C1
     completes it per 10 section 4.1.
+
+## 2026-09-16: Front-end refactor wave 1, slot C1, the actions family
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3C slot C1. Build the
+  actions family of `specimen_ui` per `design/10-component-library.md`
+  section 4.1: complete the experimental `UiButton` and add `UiIconButton`,
+  `UiCapsuleToggle`, `UiChip`, `UiSegmented`, `UiBadge` and `UiKeyCap`, with
+  their style objects, behaviour tests, control contract runs, a gallery page
+  and four family goldens.
+- Branch and worktree: `fe/actions`, cut from `front-end-refactor` at
+  `715edea`, in `.claude/worktrees/fe-actions`. Pushed to `origin/fe/actions`
+  at `33b7e56`. No pull request yet; the integrator merges the slot.
+- Outcome: complete. Seven controls, 78 new tests, one gallery page, four new
+  goldens, two additive foundation changes listed first below.
+- Commits (five, oldest first):
+  - `bdb0fbc` `foundation: a state layer colour for filled controls in actions`
+  - `afd8a66` `feat(actions): the seven controls of 10 section 4.1`
+  - `05570cd` `test(actions): behaviour tests and the control contract for the family`
+  - `cc00dc7` `feat(actions): the gallery page and its four goldens`
+  - `33b7e56` `docs(actions): the changelog entry for the family`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 189 passed, up from 111 at the end of wave 0 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 156 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (30 files) | 0 | 11 hooks passed, 6 had no files |
+
+- Goldens: four added, `actions-{light,dark}-{touch,pointer}.png` at 1180 by
+  820. Four moved that this slot does not own,
+  `foundation-primitives-{light,dark}-{touch,pointer}.png`, and the reason is
+  in the deviations below. Zero app screen goldens and zero semantics
+  fixtures were regenerated, which is the wave policy.
+- Two foundation changes, listed first so the integrator can reconcile them
+  with the sibling families:
+  - **`StateLayer` and `Pressable` take an optional state layer colour**
+    (`bdb0fbc`). 10 section 2 clause 6 names one overlay, and the wave 0
+    amendment made it `ink` in both modes. That is right over every light
+    fill and invisible over an `ink` one: `ink` at 12 percent over an `ink`
+    button is the same colour, so `UiButton.primary` had no visible hover and
+    no visible press. The default is unchanged and the two opacities still
+    live in one place; what a control can now state is which way its own
+    surface should move. `UiSegmented` uses it for the segment sitting on its
+    ink thumb, and `UiPillNav`'s current disc will want it.
+  - **The gallery shell gained `familyPages` and `galleryPages`** (`cc00dc7`).
+    The brief said to register the page in the shell's page list, and the only
+    list was `foundationPages`, which the twenty four foundation goldens draw
+    in their sidebar. Adding to it would have moved all twenty four, and then
+    moved them again for each of the four sibling families. The foundation
+    golden test now names `foundationPages` explicitly and all twenty four
+    hold byte for byte. A family registers one line in `familyPages`.
+- Cross-family stand-ins, both to be replaced by their owners:
+  - `_LoadingArc` in `button.dart`, a private `CustomPaint` ring, marked
+    `// TODO(fe/data): replace with UiProgress.ring when it merges`. It
+    rotates and pulses its opacity under reduced motion, which is what
+    10 section 4.5 specifies for `UiProgress.ring`, so the replacement is a
+    swap rather than a redesign.
+  - `UiIconButton` takes `tooltip`, defaults it to `semanticsLabel` and sets
+    `Semantics(tooltip:)`, marked
+    `// TODO(fe/overlays): wrap in UiTooltip when it merges`. There is no
+    visible tooltip until slot C3 lands; the semantics one is live now.
+- Durable learnings:
+  - **A `const` constructor whose assert reads `List.length` cannot be used
+    in a `const` expression.** `UiSegmented` asserted its two to five segment
+    range in its constructor, and every `const UiSegmented(...)` became a
+    compile error reading "the property 'length' can't be accessed in a
+    constant expression". The check moved into `build`, where it still fails
+    loudly in debug. Any later control that validates a collection argument
+    hits this.
+  - **`Center(widthFactor: 1)` without `heightFactor` takes the whole
+    height.** `UiBadge` and `UiKeyCap` were 600 dp tall inside the test
+    harness before both factors were set. The symptom is a control that is
+    correct in a bounded row and absurd anywhere loose, which is a widget test
+    away from being shipped.
+  - **An inset thumb and a full width segment do not share a centre.** The
+    `UiSegmented` thumb sits 4 dp inside its track, so at the ends its centre
+    is offset from the segment's by exactly the inset, and the label sat 2.7
+    dp off the thumb. Padding the segment row by the same inset makes the two
+    centres one point at every index. The arithmetic is `inset * (1 - (2k+1)/n)`
+    for segment `k` of `n`, which is zero only in the middle.
+  - **`Pressable` drops the semantics of its own content**, by design, so a
+    control with a second target inside it cannot nest one pressable in
+    another. `UiChip.input` makes the capsule a painted background in a stack
+    and puts the label and the remove glyph side by side in the row above it;
+    that is also what lets the remove glyph keep a 48 dp target inside a 32 dp
+    capsule.
+  - **A golden presses no key, so no focus ring is ever drawn in one.** The
+    ring is gated on `FocusHighlightMode.traditional` per 10 section 2 clause
+    4, and the test binding starts in `touch`. A golden that wants to show a
+    focused control has to state
+    `FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional`.
+    The foundation primitives golden has a focused specimen that has never
+    drawn its ring for this reason.
+  - **A repeating animation makes `pumpAndSettle` time out**, which matters
+    because every gallery golden calls it. The loading specimen is wrapped in
+    `TickerMode(enabled: false)`: a muted ticker stops scheduling frames, so
+    the page settles and the ring is captured at a fixed angle. Any family
+    with a spinner, a shimmer or a pulse on its page needs the same.
+  - **The package `test/gallery/failures/` directory is not gitignored.**
+    `apps/specimen_digitization/.gitignore` ignores `test/golden/failures/`
+    only, so a failed package golden leaves four PNGs per case as untracked
+    files that are easy to commit by accident. Removed by hand here; see the
+    follow-ups.
+- Failed approaches:
+  - Reserving the remove glyph's width in `UiChip.input` with a second,
+    invisible copy of the chip body laid out beside it. It worked and was
+    unreadable, and it put a duplicate of the label in the layout. The stack
+    with a painted background is both shorter and honest.
+  - Bottom aligning the gallery specimens with `WrapCrossAlignment.end` so
+    controls of different heights would share a baseline. A specimen with a
+    note under it is taller than one without, so the controls came out ragged
+    instead. Top alignment, which is what the foundation pages use, reads
+    correctly.
+- Every deviation from 10 section 4.1, with why:
+  - **`UiBadge` and `UiKeyCap` do not call `expectControlContract`.** Neither
+    is interactive: no role, nothing to focus, no hit box, and the contract's
+    first assertion is a 48 dp target. The contract's own preamble scopes it
+    to "every interactive component". They are tested for what does apply:
+    a label that stands alone, tabular figures, growth rather than clipping at
+    200 percent text, RTL, and no ticker in either motion mode.
+  - **A loading button refuses activation while keeping its enabled paint.**
+    10 says the ring takes the leading slot and the width holds; it does not
+    say whether the control is still pressable. It is not, because a reviewer
+    must not be able to send one decision twice, and 02 section 4.3 says a
+    loading state disables the button. The paint stays the enabled one,
+    because busy is not forbidden and draining the fill would read as the
+    server having withdrawn the action.
+  - **"Keeps the width" is the leading slot's width, not the button's.** The
+    slot is a fixed 20 dp box in both states, so a button with a leading glyph
+    is exactly as wide while loading. A button with no leading glyph gains the
+    slot, which is unavoidable, and its label is changing to the present
+    participle at the same moment anyway.
+  - **A single-selection `UiCapsuleToggle` clears when its chosen option is
+    chosen again.** 10 says "single or multiple selection" and stops. Filter
+    rows are the use, and a reviewer who can reach a filter must be able to
+    reach no filter without a second control.
+  - **`UiSegmented`'s track is `paper` with a `hairline` stroke.** 10 names
+    the thumb and the labels and not the track. `hairline` is the separating
+    role, which is what a track is, and it matches `UiChip.tag`.
+  - **`UiChip` takes an optional status triple.** Not in section 4.1, but
+    section 5 says `StatusChip` is "`UiChip.tag` with a status triple", so the
+    slot has to exist for the D1 pattern to re-base on it. A triple fills with
+    `status.fill` and writes in `status.onFill`.
+  - **`UiButtonStyle.overlay` is a `Color`, not a `WidgetStateProperty`.**
+    10 section 1.5 sketches it as a property. The part that varies by state is
+    the opacity, and that lives in `StateLayer` where the contract's two
+    numbers are written once; the colour is per variant.
+  - **`UiButton` gained `statesController`.** `Pressable` has taken one since
+    wave 0, and the gallery is the caller that needs it: hover and press
+    cannot be shown in a golden otherwise. `ButtonStyleButton` exposes the
+    same thing for the same reason.
+  - **The loading ring draws no track.** 10 section 4.5 gives
+    `UiProgress.ring` a `hairline` track. Inside a button the ring is drawn in
+    the button's own foreground, and `hairline` is a colour chosen against
+    `paper`, not against an `ink` fill. The arc alone reads as a spinner, and
+    slot C5 owns the real ring.
+  - **The actions gallery page is taller than the golden window**, so the
+    golden reviews its top. Seven controls in every variant, size and state
+    come to roughly three windows of content at 1180 by 820. Two columns and a
+    tighter section than `GallerySection` bring four of the seven controls and
+    every button state into the frame; `UiSegmented`, `UiBadge` and `UiKeyCap`
+    are below the fold. The foundation icons page is cut off at the same
+    window for the same reason. The whole page is reviewable at `/gallery`.
+- Follow-ups:
+  - Add `test/gallery/failures/` to `apps/specimen_digitization/.gitignore`.
+    Not this slot's file, and a one line change the integrator can make once
+    for all five families.
+  - The gallery golden window, or `GallerySection`'s spacing, is the real fix
+    for the fold above. A 1180 by 1600 window for family pages would put every
+    control of every family in its own golden; that is a change to the shared
+    harness and belongs to whoever owns it next.
+  - `UiProgress.ring` (slot C5) and `UiTooltip` (slot C3) replace the two
+    stand-ins named above.
+  - The `no_material_components` backlog is untouched by this slot: it adds
+    controls to the package and changes no application call site. The sweep
+    that spends the backlog is waves 2 and 3.
