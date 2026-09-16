@@ -10,6 +10,8 @@ import '../../foundation/theme.dart';
 import '../../primitives/field_core.dart';
 import '../../primitives/popover.dart';
 import '../../primitives/pressable.dart';
+import '../actions/button.dart' show UiSize;
+import '../data/list_row.dart';
 import 'field.dart';
 
 /// One option a [UiSelect] offers.
@@ -41,23 +43,36 @@ class UiSelectStyle {
   /// Binds every token a select draws with.
   const UiSelectStyle({
     required this.input,
-    required this.optionLabel,
-    required this.optionFill,
     required this.value,
     required this.placeholder,
     required this.rowHeight,
     required this.menuMaxHeight,
     required this.filterThreshold,
+    this.optionLabel,
+    this.optionFill,
   });
 
   /// The trigger's edge, fill, padding and height.
   final UiInputStyle input;
 
   /// One option's label, by state.
-  final WidgetStateProperty<TextStyle> optionLabel;
+  ///
+  /// Carried for one version and no longer read: the options are `UiListRow`
+  /// rows, which resolve the title role themselves.
+  @Deprecated(
+    'Replaced by UiListRowStyle, which the option rows resolve. Drop the '
+    'argument; this member goes in the next minor version.',
+  )
+  final WidgetStateProperty<TextStyle>? optionLabel;
 
   /// Behind the selected option.
-  final WidgetStateProperty<Color> optionFill;
+  ///
+  /// Carried for one version and no longer read: see [optionLabel].
+  @Deprecated(
+    'Replaced by UiListRowStyle, which fills a selected row. Drop the '
+    'argument; this member goes in the next minor version.',
+  )
+  final WidgetStateProperty<Color>? optionFill;
 
   /// The selected option's label, drawn in the trigger.
   final WidgetStateProperty<TextStyle> value;
@@ -65,7 +80,11 @@ class UiSelectStyle {
   /// The placeholder, drawn in the trigger while nothing is selected.
   final TextStyle placeholder;
 
-  /// One option row's height, from density.
+  /// One option row's height.
+  ///
+  /// `UiListRowStyle.heightOf`, which is the density's row floored at the
+  /// 48 dp hit box, so [menuMaxHeight] still counts the rows a reviewer
+  /// actually sees.
   final double rowHeight;
 
   /// How tall the list grows before it scrolls.
@@ -76,33 +95,22 @@ class UiSelectStyle {
 
   /// The style in [ui].
   static UiSelectStyle resolve(UiThemeData ui) {
-    TextStyle optionLabel(Set<WidgetState> states) => ui.type.body.copyWith(
-      color: states.contains(WidgetState.disabled)
-          ? ui.color.disabledContent
-          : ui.color.ink,
-    );
-
-    Color optionFill(Set<WidgetState> states) =>
-        states.contains(WidgetState.selected)
-        ? ui.color.stateLayer(ui.color.hoverOpacity)
-        : ui.color.paper.withValues(alpha: 0);
-
     TextStyle value(Set<WidgetState> states) => ui.type.body.copyWith(
       color: states.contains(WidgetState.disabled)
           ? ui.color.disabledContent
           : ui.color.ink,
     );
 
+    final double rowHeight = UiListRowStyle.heightOf(ui);
     return UiSelectStyle(
       input: UiInputStyle.resolve(ui, UiFieldShape.box),
-      optionLabel: WidgetStateProperty.resolveWith(optionLabel),
-      optionFill: WidgetStateProperty.resolveWith(optionFill),
       value: WidgetStateProperty.resolveWith(value),
       placeholder: ui.type.body.copyWith(color: ui.color.inkTertiary),
-      rowHeight: ui.density.rowHeight,
+      rowHeight: rowHeight,
       // Seven rows and part of an eighth, so a list that scrolls says so by
-      // showing a row cut off at the bottom rather than by ending flush.
-      menuMaxHeight: ui.density.rowHeight * 7.5,
+      // showing a row cut off at the bottom rather than by ending flush. The
+      // row is the one `UiListRow` draws, so the count is the count.
+      menuMaxHeight: rowHeight * 7.5,
       filterThreshold: 8,
     );
   }
@@ -397,19 +405,43 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
                       itemCount: visible.length,
                       itemBuilder: (BuildContext context, int index) {
                         final UiSelectOption<T> option = visible[index];
-                        return _OptionRow(
-                          label: option.label,
-                          leading: option.leading,
-                          selected: option.value == widget.value,
-                          style: style,
-                          onPressed: () => _pick(option),
-                        );
+                        return _option(ui, option);
                       },
                     ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  /// One option of the list.
+  ///
+  /// A `UiListRow` at `sm`, which is the row 10 sections 4.3 and 4.5 give a
+  /// menu: the glyph in the leading slot, the label as the title, and the
+  /// check at the end. The row stays in its selection-free mode, so a screen
+  /// reader hears a button that is selected rather than a checkbox: picking an
+  /// option closes the list and moves the trigger's value, which is not what
+  /// ticking a box does.
+  Widget _option(UiThemeData ui, UiSelectOption<T> option) {
+    final bool selected = option.value == widget.value;
+    final IconSpec? leading = option.leading;
+    return UiListRow(
+      title: option.label,
+      size: UiSize.sm,
+      selected: selected,
+      onPressed: () => _pick(option),
+      leading: leading == null
+          ? null
+          : UiIcon(
+              leading,
+              size: UiIconSize.action,
+              current: selected,
+              color: selected ? ui.color.ink : ui.color.inkSecondary,
+            ),
+      trailing: selected
+          ? UiIcon(UiIcons.check, size: UiIconSize.small, color: ui.color.ink)
+          : null,
     );
   }
 
@@ -446,74 +478,4 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
       ),
     ),
   );
-}
-
-/// One row of the option list.
-// TODO(fe/data): replace with UiListRow when it merges.
-class _OptionRow extends StatelessWidget {
-  const _OptionRow({
-    required this.label,
-    required this.leading,
-    required this.selected,
-    required this.style,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconSpec? leading;
-  final bool selected;
-  final UiSelectStyle style;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Pressable(
-      semanticsLabel: label,
-      selected: selected,
-      onPressed: onPressed,
-      radius: ui.shape.inner,
-      minHitBox: 0,
-      builder: (BuildContext context, Set<WidgetState> states) => DecoratedBox(
-        decoration: BoxDecoration(color: style.optionFill.resolve(states)),
-        child: ConstrainedBox(
-          // A minimum rather than a height: at 200 percent text the label is
-          // taller than the row and the row has to grow (10 section 2
-          // clause 7).
-          constraints: BoxConstraints(minHeight: style.rowHeight),
-          child: Padding(
-            padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s3),
-            child: Row(
-              children: <Widget>[
-                if (leading != null) ...<Widget>[
-                  UiIcon(
-                    leading!,
-                    size: UiIconSize.inline,
-                    color: ui.color.inkSecondary,
-                  ),
-                  SizedBox(width: ui.space.s2),
-                ],
-                Expanded(
-                  child: Text(
-                    label,
-                    style: style.optionLabel.resolve(states),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (selected) ...<Widget>[
-                  SizedBox(width: ui.space.s2),
-                  UiIcon(
-                    UiIcons.check,
-                    size: UiIconSize.small,
-                    color: ui.color.ink,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

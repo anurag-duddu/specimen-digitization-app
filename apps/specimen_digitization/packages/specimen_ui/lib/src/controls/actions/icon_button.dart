@@ -7,6 +7,7 @@ import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'button.dart';
 
 /// How much weight an icon button carries.
@@ -93,7 +94,8 @@ class UiIconButtonStyle {
 ///
 /// [semanticsLabel] is required because the control has no visible text
 /// (10 section 11), and it doubles as the tooltip, so the two never disagree
-/// (02 section 4.16).
+/// (02 section 4.16). The tooltip is drawn by `UiTooltip` on hover and on
+/// long press; a disabled button draws [disabledReason] there instead.
 class UiIconButton extends StatelessWidget {
   /// A disc drawing [icon] that does [onPressed], announced as
   /// [semanticsLabel].
@@ -124,6 +126,9 @@ class UiIconButton extends StatelessWidget {
   final UiIconButtonVariant variant;
 
   /// The hover and long-press tooltip. Defaults to [semanticsLabel].
+  ///
+  /// Overridden while the button is disabled with a [disabledReason], which
+  /// is the one thing the reviewer needs more than the button's name.
   final String? tooltip;
 
   /// True to draw the glyph's fill form, where the registry entry has one.
@@ -142,42 +147,61 @@ class UiIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final UiIconButtonStyle style = UiIconButtonStyle.resolve(ui, variant);
-    // Merged rather than nested: the tooltip and the control are one node to
-    // a screen reader, which is what 10 section 2 clause 5 asks for. The
-    // visible tooltip is slot C3's.
-    // TODO(fe/overlays): wrap in UiTooltip when it merges.
+    final String phrase = tooltip ?? semanticsLabel;
+    // A button the server forbids owes the reviewer the reason rather than
+    // its own label, so the reason form takes over: `Pressable` reports on
+    // hover and on long press, and the tooltip draws whatever it reports
+    // (03 section 3.6).
+    final bool forbidden = onPressed == null && disabledReason != null;
+    // `MergeSemantics` stays above the tooltip. Below it, the annotation and
+    // the control sit inside an `OverlayPortal`, and a merged node whose
+    // subtree is rebuilt that way trips
+    // `SemanticsOwner.sendSemanticsUpdate`'s own assertion.
     return MergeSemantics(
       child: Semantics(
-        tooltip: tooltip ?? semanticsLabel,
-        child: Pressable(
-          semanticsLabel: semanticsLabel,
-          onPressed: onPressed,
-          disabledReason: disabledReason,
-          capsule: true,
-          scaleOnPress: true,
-          focusNode: focusNode,
-          autofocus: autofocus,
-          builder: (BuildContext context, Set<WidgetState> states) {
-            final BorderSide? side = style.side.resolve(states);
-            return SizedBox.square(
-              dimension: style.diameter,
-              child: DecoratedBox(
-                decoration: ShapeDecoration(
-                  shape: CircleBorder(side: side ?? BorderSide.none),
-                  color: style.background.resolve(states),
-                ),
-                child: Center(
-                  child: UiIcon(
-                    icon,
-                    current: current,
-                    color: style.foreground.resolve(states),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
+        tooltip: phrase,
+        child: forbidden
+            ? UiTooltip.reason(
+                builder:
+                    (BuildContext context, ValueChanged<String> report) =>
+                        _disc(style, onDisabledReason: report),
+              )
+            : UiTooltip(message: phrase, child: _disc(style)),
       ),
     );
   }
+
+  /// The disc itself.
+  Widget _disc(
+    UiIconButtonStyle style, {
+    ValueChanged<String>? onDisabledReason,
+  }) => Pressable(
+    semanticsLabel: semanticsLabel,
+    onPressed: onPressed,
+    disabledReason: disabledReason,
+    onDisabledReason: onDisabledReason,
+    capsule: true,
+    scaleOnPress: true,
+    focusNode: focusNode,
+    autofocus: autofocus,
+    builder: (BuildContext context, Set<WidgetState> states) {
+      final BorderSide? side = style.side.resolve(states);
+      return SizedBox.square(
+        dimension: style.diameter,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            shape: CircleBorder(side: side ?? BorderSide.none),
+            color: style.background.resolve(states),
+          ),
+          child: Center(
+            child: UiIcon(
+              icon,
+              current: current,
+              color: style.foreground.resolve(states),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }

@@ -267,6 +267,12 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
       policy: WidgetOrderTraversalPolicy(),
       child: Shortcuts(
         shortcuts: _shortcuts,
+        // The track is not a thing to focus; its segments are. Left on, the
+        // default publishes a `focusable` node between the control and its
+        // segments, which is one stop a screen reader does not need and, for
+        // `UiTabs`, a child of `SemanticsRole.tabBar` that is not a tab: the
+        // SDK's own check fails rather than degrading.
+        includeSemantics: false,
         child: Actions(
           actions: <Type, Action<Intent>>{
             _MoveSegmentIntent: CallbackAction<_MoveSegmentIntent>(

@@ -15,6 +15,15 @@ enum UiListRowMode {
 
   /// The row is in a selection. Semantics `checkbox`, with `checked`.
   select,
+
+  /// The row is one destination of a navigation. Semantics `tab`, with
+  /// `selected`.
+  ///
+  /// What `UiSidebar` publishes: a list of destinations is a tab list whose
+  /// current member is selected, not a list of buttons one of which happens
+  /// to be highlighted, and `SemanticsRole.tabBar` requires every child node
+  /// to carry the tab role.
+  tab,
 }
 
 /// The resolved paint of one row.
@@ -111,8 +120,9 @@ class UiListRowStyle {
 /// The whole row is one `Pressable` and one merged semantics node, so a
 /// screen reader is not walked through the identifier, the reason, the chip
 /// and the age as four separate stops. [mode] decides what that node is
-/// called: a row that opens a record is a `button`, and a row in a selection
-/// is a `checkbox` carrying `checked`.
+/// called: a row that opens a record is a `button`, a row in a selection is a
+/// `checkbox` carrying `checked`, and a row that is one destination of a
+/// navigation is a `tab`.
 ///
 /// Never glass. A row is a repeated item, and 09 section 11 rejects glass on
 /// repeated items outright: the list's container may be a pane, its rows are
@@ -203,9 +213,11 @@ class UiListRow extends StatelessWidget {
       onLongPress: onLongPress,
       disabledReason: disabledReason,
       selected: selected,
-      role: mode == UiListRowMode.select
-          ? PressableRole.checkbox
-          : PressableRole.button,
+      role: switch (mode) {
+        UiListRowMode.navigate => PressableRole.button,
+        UiListRowMode.select => PressableRole.checkbox,
+        UiListRowMode.tab => PressableRole.tab,
+      },
       checked: mode == UiListRowMode.select ? selected : null,
       // A row has no corners of its own: it tiles against its neighbours and
       // the pane around it owns the shape. `radius.none` is the token for a

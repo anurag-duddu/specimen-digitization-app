@@ -283,6 +283,12 @@ class UiToastHostState extends State<UiToastHost> {
     final UiToastStyle style = UiToastStyle.resolve(ui);
     final UiToastData? data = _current;
     return Stack(
+      // Passthrough rather than the default loose fit: the host is a layer
+      // over a page, so the page has to be laid out against the constraints
+      // the host was given. A loose stack hands a tight caller's child loose
+      // constraints and aligns it top start, which shrinks a page that
+      // shrink wraps.
+      fit: StackFit.passthrough,
       children: <Widget>[
         widget.child,
         if (data != null)

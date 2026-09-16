@@ -213,6 +213,13 @@ fill, not a link colour, not a selected-row colour, not a status, not a focus
 ring. Anything that means "affirmed", "attention" or "stop" uses the status
 triples.
 
+Amended in wave 1: the accent takes a 1 dp `ink` casing wherever it is the
+only thing saying where a value is. The accent measures near 1 to 1 on
+`paper`, so the gauge marker `UiArcIndicator` draws was invisible on the
+surface it is drawn over most; section 3.6 already casings a region stroke
+over a photograph for the same reason, and this is that rule applied to the
+one other graphic that carries a value rather than a decoration.
+
 ### 3.5 Status and evidence hues
 
 The v1 triples (`content`, `fill`, `onFill` for cleared, needs review,

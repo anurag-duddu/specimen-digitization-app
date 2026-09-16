@@ -2,6 +2,7 @@
 
 import 'dart:ui' show Tristate;
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -225,6 +226,63 @@ void main() {
       );
     }
     handle.dispose();
+  });
+
+  testWidgets('a disc draws its label after the hover delay', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(child: const _PillHost(destinations: threeDestinations)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Intake'), findsNothing, reason: 'no words are drawn');
+
+    final TestGesture pointer = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    await pointer.addPointer(location: Offset.zero);
+    addTearDown(pointer.removePointer);
+    await tester.pump();
+    await pointer.moveTo(tester.getCenter(find.bySemanticsLabel('Intake')));
+    await tester.pump();
+    await tester.pump(UiTooltipStyle.hoverDelay);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Intake'),
+      findsOneWidget,
+      reason:
+          'the undrawn label reaches a pointer reviewer as a drawn UiTooltip, '
+          'not only as a semantics property (10 section 4.4)',
+    );
+
+    await pointer.moveTo(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Intake'), findsNothing);
+  });
+
+  testWidgets('the extended rail draws its words and no tooltip', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: SizedBox(
+          height: 600,
+          child: UiRail(
+            destinations: threeDestinations,
+            currentIndex: 0,
+            onSelect: (int _) {},
+            extended: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Intake'), findsOneWidget, reason: 'the words are drawn');
+    expect(
+      find.byType(UiTooltip),
+      findsNothing,
+      reason: 'a label a reviewer can already read needs no tooltip',
+    );
   });
 
   testWidgets('the pill publishes a tab list around the discs', (

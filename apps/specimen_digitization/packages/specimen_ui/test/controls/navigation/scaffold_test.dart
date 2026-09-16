@@ -49,6 +49,14 @@ Widget _pill() => UiPillNav(
   onSelect: (int _) {},
 );
 
+/// A body that takes whatever it is given, so a test can measure what that is.
+class _MeasuredBody extends StatelessWidget {
+  const _MeasuredBody();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand();
+}
+
 Widget _scrollingBody() => ListView.builder(
   itemCount: 40,
   itemBuilder: (BuildContext context, int index) =>
@@ -442,6 +450,102 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(UiScaffold), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a scaffold hosts toasts, so UiToasts.show needs no ceremony', (
+    WidgetTester tester,
+  ) async {
+    late BuildContext inside;
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          nav: _pill(),
+          body: Builder(
+            builder: (BuildContext context) {
+              inside = context;
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      UiToastHost.maybeOf(inside),
+      isNotNull,
+      reason: 'the frame installs the layer every page wants',
+    );
+
+    UiToasts.show(inside, message: 'Review recorded on version 4');
+    await tester.pumpAndSettle();
+    expect(find.text('Review recorded on version 4'), findsOneWidget);
+
+    // The toast clears the pill rather than sitting over it, because the host
+    // is given the same inset the body pads itself by.
+    expect(
+      tester.getRect(find.byType(UiToast)).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(UiPillNav)).top),
+    );
+  });
+
+  testWidgets('a caller that passes its own overlays gets no toast layer', (
+    WidgetTester tester,
+  ) async {
+    late BuildContext inside;
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          overlays: const SizedBox.shrink(),
+          body: Builder(
+            builder: (BuildContext context) {
+              inside = context;
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      UiToastHost.maybeOf(inside),
+      isNull,
+      reason: 'whatever the caller passes replaces the default',
+    );
+    UiToasts.show(inside, message: 'Review recorded on version 4');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Review recorded on version 4'),
+      findsNothing,
+      reason:
+          'a missing toast layer is not a reason to fail a review, so the '
+          'call is silently dropped rather than throwing',
+    );
+  });
+
+  testWidgets('the body is laid out against the frame, host or no host', (
+    WidgetTester tester,
+  ) async {
+    for (final Widget? overlays in <Widget?>[null, const SizedBox.shrink()]) {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            overlays: overlays,
+            body: const _MeasuredBody(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byType(_MeasuredBody)).width,
+        _window.width,
+        reason:
+            'the toast host passes the frame constraints through rather than '
+            'loosening them under the page',
+      );
+    }
   });
 
   for (final UiNavDestination destination in threeDestinations) {

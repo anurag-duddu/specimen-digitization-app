@@ -32,6 +32,20 @@ import 'package:specimen_ui/testing.dart';
 /// traversal, the activation shortcuts and the default actions are what a real
 /// application provides, and a harness that provides different ones tests a
 /// different control.
+///
+/// [MediaQuery], [Density] and [UiTheme] sit **above** the app, which is
+/// above its navigator, exactly as `main.dart` wraps `MaterialApp.router`. A
+/// route pushed over the page therefore reads the density, the motion state
+/// and the tokens the test asked for. Published inside `home` they are below
+/// the navigator, and every modal falls back to
+/// `UiTheme._fallback(Theme.of(context).brightness)`, which in a `WidgetsApp`
+/// is always light: the first dark sheet and dialog goldens came out with a
+/// light pane and an inverted primary button, which read as a token defect
+/// and was a harness one.
+///
+/// [Directionality] stays inside `home`. `WidgetsApp` builds a `Localizations`
+/// that publishes its own, taken from the locale, so one lifted above the app
+/// would be shadowed for everything the app builds.
 Widget uiHarness({
   required Widget child,
   Brightness brightness = Brightness.light,
@@ -44,39 +58,40 @@ Widget uiHarness({
   final UiThemeData ui = brightness == Brightness.dark
       ? UiThemeData.dark()
       : UiThemeData.light();
-  return WidgetsApp(
-    color: ui.color.ground,
-    debugShowCheckedModeBanner: false,
-    localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-      DefaultMaterialLocalizations.delegate,
-      DefaultWidgetsLocalizations.delegate,
-    ],
-    // A route, so the harness has what an application has: a navigator, an
-    // overlay for `OverlayPortal` to hang from, and a focus scope that takes
-    // focus on the first frame. Without a route nothing ever holds focus and
-    // Tab traverses from nowhere.
-    pageRouteBuilder: <T>(RouteSettings settings, WidgetBuilder builder) =>
-        PageRouteBuilder<T>(
-          settings: settings,
-          pageBuilder:
-              (
-                BuildContext context,
-                Animation<double> animation,
-                Animation<double> secondary,
-              ) => builder(context),
-        ),
-    home: MediaQuery(
-      data: MediaQueryData(
-        size: size,
-        textScaler: textScaler,
-        disableAnimations: disableAnimations,
-      ),
-      child: Directionality(
-        textDirection: textDirection,
-        child: Density(
-          initialMode: density,
-          child: UiTheme(
-            data: ui,
+  return MediaQuery(
+    data: MediaQueryData(
+      size: size,
+      textScaler: textScaler,
+      disableAnimations: disableAnimations,
+    ),
+    child: Density(
+      initialMode: density,
+      child: UiTheme(
+        data: ui,
+        child: WidgetsApp(
+          color: ui.color.ground,
+          debugShowCheckedModeBanner: false,
+          localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+            DefaultMaterialLocalizations.delegate,
+            DefaultWidgetsLocalizations.delegate,
+          ],
+          // A route, so the harness has what an application has: a navigator,
+          // an overlay for `OverlayPortal` to hang from, and a focus scope
+          // that takes focus on the first frame. Without a route nothing ever
+          // holds focus and Tab traverses from nowhere.
+          pageRouteBuilder:
+              <T>(RouteSettings settings, WidgetBuilder builder) =>
+                  PageRouteBuilder<T>(
+                    settings: settings,
+                    pageBuilder:
+                        (
+                          BuildContext context,
+                          Animation<double> animation,
+                          Animation<double> secondary,
+                        ) => builder(context),
+                  ),
+          home: Directionality(
+            textDirection: textDirection,
             child: DefaultTextStyle(
               style: ui.type.body.copyWith(color: ui.color.ink),
               child: ColoredBox(
