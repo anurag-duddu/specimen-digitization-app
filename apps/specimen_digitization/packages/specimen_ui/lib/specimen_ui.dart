@@ -20,7 +20,9 @@ export 'src/foundation/motion.dart';
 export 'src/foundation/palette.dart';
 export 'src/foundation/shape.dart';
 export 'src/foundation/space.dart';
+export 'src/foundation/theme.dart';
 export 'src/foundation/type.dart';
+
 
 // Controls (L3), one barrel per family.
 export 'src/controls/actions/actions.dart';
