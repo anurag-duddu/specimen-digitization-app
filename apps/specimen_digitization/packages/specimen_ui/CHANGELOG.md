@@ -109,6 +109,49 @@ without changing route. Retires `MenuAnchor`, `PopupMenuButton`, `showMenu`,
   banners and nothing else. The two modal goldens keep the standard window: a
   sheet and a dialog are judged against the window they are drawn over.
 
+### inputs
+Wave 1 slot C2, the inputs family (10 section 4.2).
+- `UiField`: label above, a `radius.field` superellipse of `paper` whose
+  `boundary` edge becomes `ink` at `stroke.emphasis` on focus and
+  `status.blocked.content` on error, optional leading glyph, a trailing clear
+  control with its own 48 dp hit box, help or error text below with the error
+  glyph, and an optional counter. One semantics node reads the label, the
+  value and the hint; the error goes through `Announcer` once. Retires
+  `TextField`, `TextFormField`, `InputDecoration` and `OutlineInputBorder`.
+- `UiTextArea`: the same field with `minLines`, `maxLines` and auto growth.
+- `UiSearchField`: a capsule field with the search glyph leading, a clear
+  control once there is something to clear, `Escape` to clear and then
+  unfocus, and `Enter` to submit.
+- `UiSelect<T>`: a field shaped trigger with the selected option and a caret,
+  a `glass.floating` popover list at `radius.tile`, type to filter above eight
+  options, `Down` and `Up` to move, `Enter` to pick and `Escape` to close and
+  return focus. Semantics `button` with `expanded`, options `selected`.
+  Retires `DropdownMenu`, `DropdownButton` and `MenuAnchor` used as a select.
+- `UiSwitch`: a 44 by 26 capsule track with a 22 dp thumb that glides at
+  `short` and jumps under reduced motion, the whole row as the hit box and
+  `toggled` semantics. Retires `Switch` and `SwitchListTile`.
+- `UiCheckbox`: a 20 dp `radius.inner` box that fills `ink` with a `paper`
+  check, draws a bar when indeterminate and reads as mixed. Retires
+  `Checkbox` and `CheckboxListTile`.
+- `UiRadio<T>` and `UiRadioGroup<T>` on `RawRadio` and `RadioGroup`, so the
+  exclusive group, the arrow keys and the group role come from the SDK.
+  Retires `Radio` and `RadioListTile`.
+- `UiInputStyle`, `UiFieldFrame` and `UiFieldBox` are the shared anatomy: a
+  select and a field are one object with two behaviours. The style is named
+  for the family rather than `UiFieldStyle`, which `foundation/fields.dart`
+  already owns for the light fields of 09 section 3.2.
+- A checked box and an on switch track lift toward `paper` under the pointer,
+  because `ink` at 12 percent over an `ink` fill is the same colour. The row
+  around them keeps the shared `ink` layer, so both halves of the control
+  answer a hover.
+- The gallery gains an inputs page, registered in the shell's `familyPages`
+  list, and goldened in light and dark at both densities. The family golden is
+  captured at 1180 by 1180 rather than the shell's 1180 by 820: seven controls
+  in every state do not fit one window, and a golden that reviews the top of a
+  page is not reviewing the three controls below the fold.
+- `FieldCore` gains `excludeFromSemantics`, so a control that publishes one
+  node for the whole field does not get a second one from the editor.
+
 ## 0.1.0
 
 Wave 0 of the front-end refactor: the foundation and the primitives.

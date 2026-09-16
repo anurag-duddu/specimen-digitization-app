@@ -17,6 +17,7 @@ import 'pages/colour_page.dart';
 import 'pages/fields_page.dart';
 import 'pages/icons_page.dart';
 import 'pages/overlays_page.dart';
+import 'pages/inputs_page.dart';
 import 'pages/primitives_page.dart';
 import 'pages/shape_page.dart';
 import 'pages/type_page.dart';
@@ -107,6 +108,7 @@ const List<GalleryPage> foundationPages = <GalleryPage>[
 /// in parallel is how two branches silently revert one another.
 const List<GalleryPage> familyPages = <GalleryPage>[
   actionsPage,
+  inputsPage,
   overlaysPage,
 ];
 

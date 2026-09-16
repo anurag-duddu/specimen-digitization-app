@@ -4956,6 +4956,25 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   the new `familyPages` list; `5d1f135` the tests and the eight goldens; and
   the changelog and this closeout. No pull request; the integrator merges
   `fe/overlays` into `front-end-refactor`.
+## 2026-09-16: Front-end refactor wave 1 slot C2, the `specimen_ui` inputs family
+
+- Task: build the inputs family of `specimen_ui` per
+  `apps/specimen_digitization/design/10-component-library.md` section 4.2 and
+  item C2 of `docs/execution/FRONT_END_REFACTOR.md` section 3C: `UiField`,
+  `UiTextArea`, `UiSearchField`, `UiSelect<T>`, `UiSwitch`, `UiCheckbox`,
+  `UiRadio<T>`, with their style objects, behaviour tests, control contract
+  runs, a gallery page and the family golden.
+- Branch/worktree: `fe/inputs` at `.claude/worktrees/fe-inputs`, cut from
+  `front-end-refactor` at `715edea`.
+- Outcome: complete. Seven controls, 69 new tests, four family goldens, one
+  gallery page registered in the shell, and three additive foundation changes
+  that the family could not be built correctly without.
+- Commits (7, oldest first): `b1f665f` `FieldCore.excludeFromSemantics`;
+  `a80f077` `ControlActivation` in the control contract; `46100ef` the
+  foundation golden pinned to its own page list; `64c819b` the seven controls;
+  `c9b8cae` the behaviour tests and the contract runs; `34e3168` the gallery
+  page and the family golden; `e5db05e` a repair to two of this session's own
+  tests. No pull request; the integrator merges the slot.
 - Validation, every gate run on its own with the tree untouched and `rc=$?`
   captured directly:
 
@@ -5156,3 +5175,172 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
 - Deviation closed: the entry above records `overlaysGalleryPage` and a
   `familyPages` list that the shell did not default to. Both are superseded by
   the names and the structure in this correction.
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 182 passed, up from 111 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 157 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` | 0 | 30 files, 11 hooks ran and passed, 6 had no file of that kind |
+
+- Goldens: four added, `test/gallery/goldens/inputs-{light,dark}-{touch,pointer}.png`
+  at 1180 by 1180, which is the gallery's width and a height that holds the
+  whole page. Zero foundation goldens moved, which is the point of `46100ef`
+  and of the integrator's instruction. Zero application screen goldens and
+  zero semantics fixtures touched. Nothing under `test/gallery/failures/` was
+  ever committed.
+- Backlogs: `no_material_components`, `no_material_imports` and `icons_unique`
+  are unchanged. The family adds no Material usage anywhere and no call site
+  moved onto it yet; slots D and E spend the backlog.
+- Durable learnings:
+  - **The control contract's clause 3 cannot pass for a text field, and must
+    not.** While an editor holds focus, `DefaultTextEditingShortcuts` maps
+    `Space` to `DoNothingAndStopPropagationTextIntent`, whose action is
+    `DoNothingAction(consumesKey: false)`; that returns
+    `KeyEventResult.skipRemainingHandlers`, so the key reaches the platform
+    and nothing above the editor ever sees it. `Actions.maybeFind<ActivateIntent>`
+    from a focused `FieldCore` returns null and both keys report unhandled.
+    Making them handled would mean a `Shortcuts` above the field swallowing
+    the space bar, which makes the field impossible to type in. The contract
+    now takes `ControlActivation.textEditing` and asserts the mirror: what
+    took focus is an `EditableText`, and neither key was consumed above it.
+    That is a stronger gate than the clause it replaces, because the defect it
+    catches is a real one an overlay or a screen slot can introduce.
+  - **Two `Semantics` configurations that set the same flag cannot merge.**
+    `SemanticsConfiguration.isCompatibleWith` refuses when the flag bits
+    overlap, when both carry a value, or when both carry the same action, and
+    an incompatible pair becomes two nodes instead of one. `UiRadio` wrapped
+    `RawRadio` in a labelled node and also set `enabled`, which `RawRadio`
+    already sets: the result was our node with the words and their node with
+    the exclusive group, and the control contract reported "no role flag".
+    Dropping our `enabled` merged them. The general rule for wrapping an SDK
+    control: state only what it does not.
+  - **A label drawn inside a control is read again after the node's label.**
+    Labels concatenate rather than conflict, so a `Pressable` with
+    `excludeFromSemantics: true` and a `Text` in its builder produces
+    "Coverage confirmed Coverage confirmed" and `find.bySemanticsLabel` finds
+    nothing. `Pressable` handles this for itself with `excludeSemantics: true`;
+    anything that publishes its own node has to exclude its own content.
+  - **A family page in the gallery's default list moves every foundation
+    golden.** The shell draws one row per page, so registering a page changes
+    the sidebar in all 24 foundation captures. The fix belongs to the golden,
+    not to the registration: `UiGallery(pages: foundationPages)` pins the
+    foundation golden to the slot that owns it. The other three family slots
+    would each have hit this; it is fixed once for all of them.
+  - **A 48 dp action cannot be laid out inside a 40 dp field.** In pointer
+    density the field is 40 tall and its hit box is 48. Putting the clear
+    control in the row overflows; putting it in a `Positioned.directional`
+    with `top: 0, bottom: 0` inside the hit area gives it a real 48 by 48 box
+    using exactly the slop the field already pads itself with. Tested in both
+    densities.
+  - **`UiFieldStyle` was already taken.** `foundation/fields.dart` owns that
+    name for the light fields of 09 section 3.2. The word "field" means two
+    unrelated things in this system, a gradient and a text input, and 10
+    section 11's naming rule collides on it. The family's style is
+    `UiInputStyle`.
+  - **No control in this package reports `hovered` in a test until the test
+    says the window has a pointer.** `FocusableActionDetector` gates the hover
+    highlight on `FocusManager.instance.highlightMode`, which a test binding
+    starts at `touch` because `defaultTargetPlatform` is Android, and a
+    synthesised mouse move did not flip it. A hover test has to set
+    `FocusHighlightStrategy.alwaysTraditional` and put it back, exactly as the
+    control contract already does for the focus ring. Without it a hover
+    assertion either passes vacuously or fails for the wrong reason.
+  - **`addPointer` twice in one test trips an assertion inside
+    `MouseTracker`** (`(event is PointerAddedEvent) == (lastEvent is
+    PointerRemovedEvent)`). Create one gesture for the test and move it.
+  - **`flutter_test` reuses widget state across `pumpWidget` calls in one
+    test.** Two `pumpWidget`s of structurally identical trees update the
+    element tree rather than rebuilding it, so a `UiSelect` left open by the
+    contract's clause 4 was still open at clause 8, and a test that opened a
+    short list and then pumped a long one toggled it shut instead of opening
+    it. Split such a test in two rather than trusting a fresh pump.
+- Integration, after the coordinator's update mid slot:
+  - **The `familyPages` split was reached independently by the actions slot**
+    (`cc00dc7` on `fe/actions`) and by this one, with the same reasoning and
+    the same three names. This branch now carries the actions wording for
+    `foundationPages`, `familyPages`, `galleryPages` and for the foundation
+    golden's pinned page list verbatim, so `gallery_shell.dart` differs from
+    `fe/actions` by exactly one import line and one list entry, and
+    `foundation_golden_test.dart` is byte identical. The merge is a one line
+    add.
+  - **`pressable.dart` and `state_layer.dart` are copied verbatim from
+    `bdb0fbc`** on `fe/actions`, in a commit of their own, so identical
+    content merges cleanly. The inputs family needs the optional state layer
+    colour for the same reason the actions family found it: a checked box and
+    an on switch track fill with `ink`, and `ink` at 12 percent over `ink` is
+    the same colour.
+  - The three foundation commits this slot made on its own (`b1f665f`,
+    `a80f077`, `46100ef`) stand. `46100ef` is now redundant with the actions
+    pin and resolves to identical content.
+
+- Failed approaches:
+  - **A single state layer colour for a control with a filled part and a
+    labelled part.** Passing `paper` to `Pressable.stateLayerColour` makes the
+    filled element answer a hover and the label beside it stop answering;
+    passing `ink` does the reverse. The row keeps the shared `ink` layer and
+    the filled element carries a second `paper` one of its own, which is the
+    only arrangement where both halves respond.
+  - Letting `FieldCore` publish the field's semantics node. Its node covers
+    the editor only, which is smaller than the 48 dp hit box the contract
+    measures, and it carries no value and no hint. The node has to be the
+    wrapper's.
+  - `ExcludeSemantics(child: Flexible(...))` inside a `Row`. `Flexible` has to
+    be the direct child of the `Flex`; the wrapper goes inside it.
+  - Asserting a disabled control by watching a local variable. Nothing in the
+    tree could write it, so the test passed against a control that toggled
+    itself. Repaired in `e5db05e` to read the drawn state and the node.
+- Remaining follow-ups, and every deviation from 10 section 4.2 with why:
+  - **`UiInputStyle`, not `UiFieldStyle`**, for the name collision above. A
+    later pass could rename the token type instead; that is a foundation
+    decision, not a family one.
+  - **One style object serves four controls.** 10 section 1.5 asks for a style
+    per control. `UiField`, `UiTextArea`, `UiSearchField` and the trigger of
+    `UiSelect` resolve one `UiInputStyle`, because 10 section 4.2 defines the
+    last three as the first one with a change, and two style objects would be
+    two places for the edge to drift. `UiSelectStyle` holds that style plus
+    the list's own tokens.
+  - **`UiFieldFrame` and `UiFieldBox` are public.** 10 section 11 asks for one
+    public class per file. The frame and the box are the anatomy 4.2
+    describes, and they are public because `UiSelect` lives in another file
+    and has to draw the same box. The alternative was 60 lines of duplicated
+    chrome and a select that drifts away from a field.
+  - **The switch's thumb is `ink.secondary` when off and `paper` when on.**
+    10 section 4.2 gives the track's colours and not the thumb's. A thumb that
+    is `ink` in both states reads as "on" while the switch is off, so it
+    follows the track: dark knob on the light track, light knob on the dark
+    one.
+  - **The select's popover carries no semantics label.** The trigger has just
+    announced the label, the selected option and `expanded`; a pane repeating
+    the label is a second thing to listen past on the way to the options. It
+    also made two nodes answer to the same label, which no finder can tell
+    apart.
+  - **`Escape` in a search field clears, and a second `Escape` unfocuses.**
+    10 section 4.2 says "clears then unfocuses" without saying whether that is
+    one keystroke or two. Two: a reviewer who has typed a query wants it gone
+    before they want the field gone, and losing both to one keystroke costs a
+    retype. The key is consumed either way.
+  - **An indeterminate checkbox moves to checked, and never back to mixed.**
+    Mixed is a fact about a group, not a state a reviewer can ask for.
+    `onChanged` is therefore `ValueChanged<bool>`, not `ValueChanged<bool?>`.
+  - **`StateLayer` is used outside `Pressable`, in `UiRadio`.** Its own
+    documentation says "used only inside `Pressable`", but `RawRadio` owns the
+    focus node and the gestures for a radio and a second `Pressable` around it
+    would put two stops in the Tab order. Clause 6 still wants the press
+    feedback, so the layer goes in `RawRadio`'s builder.
+  - **`UiSelect`'s option rows are a private `_OptionRow` on `Pressable`,**
+    marked `// TODO(fe/data): replace with UiListRow when it merges`. Height
+    from `density.rowHeight`, as 10 section 4.5 specifies for the row it
+    stands in for.
+  - **The family golden is captured at 1180 by 1180, not the shell's 820.**
+    Seven controls in every state do not fit one window, and a golden that
+    reviews the top of a page is not reviewing the three controls below the
+    fold. The width is the gallery's; only the height moves. Directed by the
+    integrator after the actions slot hit the same wall.
+  - **`UiField` carries six `bool` properties**, of which two are visual
+    (`showLabel`, `obscureText`); the rest are behaviour (`enabled`,
+    `readOnly`, `autofocus`, `autocorrect`) and keep the names the SDK uses.
+    10 section 11 caps the visual ones at two, which this meets.
+  - No cloud command, no deploy, no dependency added, no SDK change, and no
+    file outside the slot's ownership other than the three additive foundation
+    changes listed above.
