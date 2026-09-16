@@ -9,5 +9,8 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "push" && "
     args+=("--dart-define=SPECIMEN_API_BASE_URL=$SPECIMEN_API_BASE_URL")
     args+=("--dart-define=SPECIMEN_RECAPTCHA_SITE_KEY=$SPECIMEN_RECAPTCHA_SITE_KEY")
   fi
+  if [[ -n "${SPECIMEN_ADMIN_CONTACT:-}" ]]; then
+    args+=("--dart-define=SPECIMEN_ADMIN_CONTACT=$SPECIMEN_ADMIN_CONTACT")
+  fi
 fi
 flutter build web "${args[@]}"

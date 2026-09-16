@@ -4557,3 +4557,14 @@ Correction/addition to â€œHosting exact run/attempt provenance author closeoutâ€
   - What that exchange did change is the shared widgets: the header claimed none of the three pieces mentions a specimen, and three strings quietly did. `SelectionBar` now takes `countLabel` and `moreMatchLabel` and `SelectableRow` takes `longPressHint`, all defaulting to the record wording, so a list of storage objects that nothing has imported says "6 objects selected" rather than calling them records, which is the distinction that screen exists to draw. The lesson is not the three strings: a component that claims to be list-agnostic has to have that claim checked against a second list, because every hardcoded noun in it reads correct until there is one.
   - **Another session's merge of this branch hit a real conflict in the exception handler.** This session lifted the classification into `classify_error`; the source-registry branch added a stale-generation mapping inline. Git kept the function and folded in `SnapshotTooLarge` but silently dropped `SourceObjectChanged`, because its `from .source_reader import` had nothing to anchor to, and either side taken whole reports a stale-generation import as 503 `runtime_unavailable` instead of 422 `source_object_changed`. Resolved on their branch by keeping both. Anyone merging both branches should check that line rather than trust the automatic resolution.
   - No cloud provisioning, deployment, IAM change or paid inference was performed by this session.
+
+### 2026-09-16 - Administrator contact define in the CI web build
+
+- Task: Claude Code session, front-end track follow-up
+- Branch/worktree: `ci/admin-contact-define` at `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/frontend-design-dev-2580c8`
+- Outcome: Completed
+- Commits/PRs: see the pull request for this branch (base `main`)
+- Validation: `uv run pytest scripts/ci/test_public_settings.py` 29 passed (new cases for the three accepted contact forms, seven rejected shapes, and main-push-only forwarding); `validate_public_settings.py` accepts a well-formed contact and exits 1 on a malformed one; CI on the pull request.
+- Durable learnings: Public web build settings enter through `ci-cd.yml` env (main push only) into `scripts/ci/build_web.sh`, validated by `validate_public_settings.py`; add any new define in all three plus `docs/DEPLOYMENT.md`. The contact is public and optional; it retires verification criterion 10.3 once the repository variable `SPECIMEN_ADMIN_CONTACT` is set.
+- Failed approaches: None
+- Remaining follow-ups: Set the repository variable `SPECIMEN_ADMIN_CONTACT` (for example `Name <address>`) in GitHub settings; the build forwards it only when set.

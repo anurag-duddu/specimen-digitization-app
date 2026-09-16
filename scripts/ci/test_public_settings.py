@@ -29,6 +29,17 @@ def test_reject_partial_or_development_settings(env):
         MODULE.validate(env)
 
 
+@pytest.mark.parametrize("contact", ["Alex Mwangi <alex.mwangi@fieldmuseum.org>", "Entomology data team, insects-data@fieldmuseum.org", "insects-data@fieldmuseum.org", ""])
+def test_accept_administrator_contact_forms(contact):
+    MODULE.validate_contact({"SPECIMEN_ADMIN_CONTACT": contact})
+
+
+@pytest.mark.parametrize("contact", ["Alex Mwangi", "Alex <not-an-address>", "<alex@fieldmuseum.org", "Alex <alex@fieldmuseum.org>\n", "Alex \"Ops\" <alex@fieldmuseum.org>", "a" * 190 + " <alex@fieldmuseum.org>", "Alex <alex@fieldmuseum.org> <b@c.org>"])
+def test_reject_malformed_administrator_contact(contact):
+    with pytest.raises(ValueError):
+        MODULE.validate_contact({"SPECIMEN_ADMIN_CONTACT": contact})
+
+
 @pytest.mark.parametrize("event,ref,live", [
     ("push", "refs/heads/main", True),
     ("pull_request", "refs/pull/1/merge", False),
@@ -46,10 +57,12 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
     env = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}", GITHUB_ACTIONS="true",
                GITHUB_EVENT_NAME=event, GITHUB_REF=ref,
                SPECIMEN_API_BASE_URL="https://example.run.app",
-               SPECIMEN_RECAPTCHA_SITE_KEY="synthetic-site-key")
+               SPECIMEN_RECAPTCHA_SITE_KEY="synthetic-site-key",
+               SPECIMEN_ADMIN_CONTACT="Alex Mwangi <alex.mwangi@fieldmuseum.org>")
     env.pop("SPECIMEN_AUTH_EMULATOR_HOST", None)
     env.pop("SPECIMEN_LOCAL_SYNTHETIC", None)
     result = subprocess.run([str(root / "scripts/ci/build_web.sh")], cwd=root / "apps/specimen_digitization",
                             env=env, text=True, capture_output=True, check=True)
     assert ("--dart-define=SPECIMEN_API_BASE_URL=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_RECAPTCHA_SITE_KEY=" in result.stdout) is live
+    assert ("--dart-define=SPECIMEN_ADMIN_CONTACT=" in result.stdout) is live
