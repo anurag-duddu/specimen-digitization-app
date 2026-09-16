@@ -283,7 +283,11 @@ void main() {
     ) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       final TextEditingController controller = TextEditingController(
-        text: 'f81d4fae7dec',
+        // The first twelve characters of a checksum, which is what a read
+        // only field in this product holds. Repetitive on purpose: a random
+        // twelve hex characters reads as a high entropy string to the secret
+        // scanner, and a fixture is not worth an allowlist entry.
+        text: 'abababab1212',
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(
@@ -309,7 +313,7 @@ void main() {
       // reviewer actually needs is that the value cannot change.
       await tester.enterText(find.byType(FieldCore), 'something else');
       await tester.pumpAndSettle();
-      expect(controller.text, 'f81d4fae7dec');
+      expect(controller.text, 'abababab1212');
       handle.dispose();
     });
   });
