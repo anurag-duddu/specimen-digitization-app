@@ -4780,16 +4780,18 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   |---|---|---|
   | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added |
   | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
-  | `flutter test` (package) | 0 | 180 passed, up from 111 |
+  | `flutter test` (package) | 0 | 182 passed, up from 111 |
   | `flutter analyze --fatal-infos` (app) | 0 | no issues |
   | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed, unchanged from wave 0 |
   | `check_ui_strings.py` | 0 | 157 files, 0 violations, 0 baselined, 0 warnings |
-  | `pre-commit run --files` | 0 | 28 files, 11 hooks ran and passed, 6 had no file of that kind |
+  | `pre-commit run --files` | 0 | 30 files, 11 hooks ran and passed, 6 had no file of that kind |
 
 - Goldens: four added, `test/gallery/goldens/inputs-{light,dark}-{touch,pointer}.png`
-  at 1180 by 820. Zero foundation goldens moved, which is the point of
-  `46100ef`. Zero application screen goldens and zero semantics fixtures
-  touched.
+  at 1180 by 1180, which is the gallery's width and a height that holds the
+  whole page. Zero foundation goldens moved, which is the point of `46100ef`
+  and of the integrator's instruction. Zero application screen goldens and
+  zero semantics fixtures touched. Nothing under `test/gallery/failures/` was
+  ever committed.
 - Backlogs: `no_material_components`, `no_material_imports` and `icons_unique`
   are unchanged. The family adds no Material usage anywhere and no call site
   moved onto it yet; slots D and E spend the backlog.
@@ -4839,13 +4841,49 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     unrelated things in this system, a gradient and a text input, and 10
     section 11's naming rule collides on it. The family's style is
     `UiInputStyle`.
+  - **No control in this package reports `hovered` in a test until the test
+    says the window has a pointer.** `FocusableActionDetector` gates the hover
+    highlight on `FocusManager.instance.highlightMode`, which a test binding
+    starts at `touch` because `defaultTargetPlatform` is Android, and a
+    synthesised mouse move did not flip it. A hover test has to set
+    `FocusHighlightStrategy.alwaysTraditional` and put it back, exactly as the
+    control contract already does for the focus ring. Without it a hover
+    assertion either passes vacuously or fails for the wrong reason.
+  - **`addPointer` twice in one test trips an assertion inside
+    `MouseTracker`** (`(event is PointerAddedEvent) == (lastEvent is
+    PointerRemovedEvent)`). Create one gesture for the test and move it.
   - **`flutter_test` reuses widget state across `pumpWidget` calls in one
     test.** Two `pumpWidget`s of structurally identical trees update the
     element tree rather than rebuilding it, so a `UiSelect` left open by the
     contract's clause 4 was still open at clause 8, and a test that opened a
     short list and then pumped a long one toggled it shut instead of opening
     it. Split such a test in two rather than trusting a fresh pump.
+- Integration, after the coordinator's update mid slot:
+  - **The `familyPages` split was reached independently by the actions slot**
+    (`cc00dc7` on `fe/actions`) and by this one, with the same reasoning and
+    the same three names. This branch now carries the actions wording for
+    `foundationPages`, `familyPages`, `galleryPages` and for the foundation
+    golden's pinned page list verbatim, so `gallery_shell.dart` differs from
+    `fe/actions` by exactly one import line and one list entry, and
+    `foundation_golden_test.dart` is byte identical. The merge is a one line
+    add.
+  - **`pressable.dart` and `state_layer.dart` are copied verbatim from
+    `bdb0fbc`** on `fe/actions`, in a commit of their own, so identical
+    content merges cleanly. The inputs family needs the optional state layer
+    colour for the same reason the actions family found it: a checked box and
+    an on switch track fill with `ink`, and `ink` at 12 percent over `ink` is
+    the same colour.
+  - The three foundation commits this slot made on its own (`b1f665f`,
+    `a80f077`, `46100ef`) stand. `46100ef` is now redundant with the actions
+    pin and resolves to identical content.
+
 - Failed approaches:
+  - **A single state layer colour for a control with a filled part and a
+    labelled part.** Passing `paper` to `Pressable.stateLayerColour` makes the
+    filled element answer a hover and the label beside it stop answering;
+    passing `ink` does the reverse. The row keeps the shared `ink` layer and
+    the filled element carries a second `paper` one of its own, which is the
+    only arrangement where both halves respond.
   - Letting `FieldCore` publish the field's semantics node. Its node covers
     the editor only, which is smaller than the 48 dp hit box the contract
     measures, and it carries no value and no hint. The node has to be the
@@ -4897,11 +4935,11 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     marked `// TODO(fe/data): replace with UiListRow when it merges`. Height
     from `density.rowHeight`, as 10 section 4.5 specifies for the row it
     stands in for.
-  - **The gallery golden shows the top of the page, not all of it.** The page
-    is taller than 820 dp, as the icons page already is. The field states and
-    the three toggles are above the fold deliberately; the select, search and
-    text area sections are below it and are covered by tests rather than by
-    the golden.
+  - **The family golden is captured at 1180 by 1180, not the shell's 820.**
+    Seven controls in every state do not fit one window, and a golden that
+    reviews the top of a page is not reviewing the three controls below the
+    fold. The width is the gallery's; only the height moves. Directed by the
+    integrator after the actions slot hit the same wall.
   - **`UiField` carries six `bool` properties**, of which two are visual
     (`showLabel`, `obscureText`); the rest are behaviour (`enabled`,
     `readOnly`, `autofocus`, `autocorrect`) and keep the names the SDK uses.

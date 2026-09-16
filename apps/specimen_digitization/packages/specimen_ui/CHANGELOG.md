@@ -35,8 +35,15 @@ Wave 1 slot C2, the inputs family (10 section 4.2).
   select and a field are one object with two behaviours. The style is named
   for the family rather than `UiFieldStyle`, which `foundation/fields.dart`
   already owns for the light fields of 09 section 3.2.
-- The gallery gains an inputs page, goldened in light and dark at both
-  densities, and the shell gains a family page list beside the foundation one.
+- A checked box and an on switch track lift toward `paper` under the pointer,
+  because `ink` at 12 percent over an `ink` fill is the same colour. The row
+  around them keeps the shared `ink` layer, so both halves of the control
+  answer a hover.
+- The gallery gains an inputs page, registered in the shell's `familyPages`
+  list, and goldened in light and dark at both densities. The family golden is
+  captured at 1180 by 1180 rather than the shell's 1180 by 820: seven controls
+  in every state do not fit one window, and a golden that reviews the top of a
+  page is not reviewing the three controls below the fold.
 - `FieldCore` gains `excludeFromSemantics`, so a control that publishes one
   node for the whole field does not get a second one from the editor.
 
