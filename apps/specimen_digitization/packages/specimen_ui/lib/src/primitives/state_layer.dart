@@ -21,6 +21,7 @@ class StateLayer extends StatelessWidget {
     super.key,
     required this.states,
     required this.shape,
+    this.colour,
     this.child,
   });
 
@@ -29,6 +30,17 @@ class StateLayer extends StatelessWidget {
 
   /// The control's outline, so the layer has the control's corners.
   final ShapeBorder shape;
+
+  /// What the layer lifts the surface toward. Defaults to the `ink` the
+  /// contract names, which is right over every light fill in both modes.
+  ///
+  /// A control whose own fill is already `ink`, such as a primary button or a
+  /// segmented thumb, passes `paper` instead: `ink` at 12 percent over an
+  /// `ink` fill is the same colour, so the shared default would leave hover
+  /// and press invisible on exactly the controls a reviewer presses most.
+  /// The opacity stays the contract's; only which way the surface moves
+  /// changes.
+  final Color? colour;
 
   /// What the layer sits over, if anything.
   final Widget? child;
@@ -55,7 +67,9 @@ class StateLayer extends StatelessWidget {
       curve: MotionTokens.standardCurve,
       decoration: ShapeDecoration(
         shape: shape,
-        color: ui.color.stateLayer(opacity),
+        color: colour == null
+            ? ui.color.stateLayer(opacity)
+            : colour!.withValues(alpha: opacity),
       ),
       child: child,
     );
