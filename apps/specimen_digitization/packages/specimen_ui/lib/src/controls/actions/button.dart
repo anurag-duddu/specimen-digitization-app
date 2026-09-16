@@ -1,15 +1,13 @@
 /// The capsule button (10 section 4.1, `UiButton`).
 library;
 
-import 'dart:math' as math;
-
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
-import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../data/progress.dart';
 
 /// How much weight a button carries.
 enum UiButtonVariant {
@@ -239,9 +237,19 @@ class UiButton extends StatelessWidget {
 
   /// True while the action is in flight.
   ///
-  /// The leading slot holds a 16 dp ring and the button refuses activation, so
-  /// a reviewer cannot send the same decision twice.
+  /// The leading slot holds a 16 dp `UiProgress.ring` and the button refuses
+  /// activation, so a reviewer cannot send the same decision twice.
   final bool loading;
+
+  /// What the ring would be called if anything read it.
+  ///
+  /// `UiProgress` requires a label because an indicator has no text of its
+  /// own, and `Pressable` drops the semantics of its content so that the
+  /// button publishes one node under its own label. The ring inside a button
+  /// is therefore never read aloud; the label exists because the indicator's
+  /// contract is not weakened for being nested, and it says what the ring
+  /// would say if the button ever stopped merging its content.
+  static const String _workingLabel = 'Working';
 
   /// Why the button is disabled, in the reviewer's words.
   final String? disabledReason;
@@ -304,9 +312,16 @@ class UiButton extends StatelessWidget {
                       // (10 section 4.1).
                       size: ui.space.iconInline,
                       child: loading
-                          ? _LoadingArc(
-                              colour: foreground,
-                              diameter: ui.space.iconSmall,
+                          ? UiProgress.ring(
+                              // The button's own foreground, because `ink` is
+                              // a colour chosen against `paper` and would
+                              // disappear on a filled variant. Indeterminate,
+                              // so the ring draws no track: a track is a
+                              // scale, and a button waiting on the server has
+                              // none.
+                              semanticsLabel: _workingLabel,
+                              size: UiProgressSize.small,
+                              color: foreground,
                             )
                           : UiIcon(
                               leading!,
@@ -352,132 +367,4 @@ class _LeadingSlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       SizedBox(width: size, height: size, child: Center(child: child));
-}
-
-/// The indeterminate ring inside a loading button.
-///
-/// Slot C5 owns `UiProgress`, and this arc is the stand-in that lets the
-/// loading state ship on its own schedule. It follows the same rule
-/// (10 section 4.5): it rotates, because an indeterminate indicator saying
-/// "the server has not answered" is information rather than decoration
-/// (04 section 2.5), and under reduced motion it pulses its opacity instead
-/// of turning.
-// TODO(fe/data): replace with UiProgress.ring when it merges.
-class _LoadingArc extends StatefulWidget {
-  const _LoadingArc({required this.colour, required this.diameter});
-
-  /// The button's foreground, so the ring is the colour of the label beside
-  /// it.
-  final Color colour;
-
-  /// The ring's overall size.
-  final double diameter;
-
-  @override
-  State<_LoadingArc> createState() => _LoadingArcState();
-}
-
-class _LoadingArcState extends State<_LoadingArc>
-    with SingleTickerProviderStateMixin {
-  /// One turn, and one full opacity pulse.
-  ///
-  /// 04 section 2.2 has no token for a repeating cycle, because nothing else
-  /// in the catalog repeats. Composing the longest token it does have keeps
-  /// the value inside the token system rather than writing a millisecond
-  /// literal into a widget.
-  static final Duration _cycle = MotionTokens.slowRaw * 2;
-
-  late final AnimationController _turn = AnimationController(
-    vsync: this,
-    // `preserve` rather than the default: a repeating controller is the one
-    // case Flutter does not compress under `disableAnimations`, and 04
-    // section 2.5 says so explicitly. The reduced-motion branch in [build] is
-    // what applies the policy, by hand, which is the point.
-    animationBehavior: AnimationBehavior.preserve,
-    duration: _cycle,
-  )..repeat();
-
-  @override
-  void dispose() {
-    _turn.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final bool reduced = ui.motion.reduced;
-    return SizedBox(
-      width: widget.diameter,
-      height: widget.diameter,
-      child: AnimatedBuilder(
-        animation: _turn,
-        builder: (BuildContext context, Widget? child) => CustomPaint(
-          painter: _LoadingArcPainter(
-            colour: widget.colour,
-            stroke: ui.shape.stroke.emphasis,
-            turns: reduced ? 0 : _turn.value,
-            opacity: reduced ? _pulse(_turn.value, ui) : 1,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// The opacity at [t] of one pulse: full, down to the hover floor, back.
-  ///
-  /// A triangle wave over the cycle, so the pulse fades out and back rather
-  /// than snapping at the loop point.
-  double _pulse(double t, UiThemeData ui) {
-    final double triangle = 1 - (2 * t - 1).abs();
-    final double floor = ui.color.hoverOpacity;
-    return floor + (1 - floor) * triangle;
-  }
-}
-
-class _LoadingArcPainter extends CustomPainter {
-  const _LoadingArcPainter({
-    required this.colour,
-    required this.stroke,
-    required this.turns,
-    required this.opacity,
-  });
-
-  final Color colour;
-  final double stroke;
-  final double turns;
-  final double opacity;
-
-  /// Three quarters of the circle. An arc that closed would read as a
-  /// determinate ring at 100 percent, which is the one thing an indeterminate
-  /// indicator must not say.
-  static const double _sweep = math.pi * 1.5;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Rect bounds = Rect.fromLTWH(
-      0,
-      0,
-      size.width,
-      size.height,
-    ).deflate(stroke / 2);
-    canvas.drawArc(
-      bounds,
-      turns * math.pi * 2,
-      _sweep,
-      false,
-      Paint()
-        ..color = colour.withValues(alpha: colour.a * opacity)
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = stroke,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_LoadingArcPainter oldDelegate) =>
-      oldDelegate.colour != colour ||
-      oldDelegate.stroke != stroke ||
-      oldDelegate.turns != turns ||
-      oldDelegate.opacity != opacity;
 }
