@@ -29,9 +29,33 @@ def validate(env):
         raise ValueError("invalid public App Check site key")
 
 
+ADDRESS = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
+CONTACT_FORMS = (
+    re.compile(rf"^(?P<name>[^<>@,]{{1,120}}?)\s*<(?P<address>{ADDRESS})>$"),
+    re.compile(rf"^(?P<name>[^<>@,]{{1,120}}?)\s*,\s*(?P<address>{ADDRESS})$"),
+    re.compile(rf"^(?P<address>{ADDRESS})$"),
+)
+
+
+def validate_contact(env):
+    """The optional administrator contact shown in the client's help and
+    "ask your administrator" messages. It is public and non-secret; the
+    client parses "Name <address>", "Name, address" or a bare address
+    (see lib/src/administrator_contact.dart), so the same three forms are
+    the only ones accepted here."""
+    contact = env.get("SPECIMEN_ADMIN_CONTACT", "")
+    if not contact:
+        return
+    if len(contact) > 200 or re.search(r"[\x00-\x1f\x7f\"']", contact):
+        raise ValueError("invalid administrator contact")
+    if not any(form.fullmatch(contact.strip()) for form in CONTACT_FORMS):
+        raise ValueError("invalid administrator contact")
+
+
 if __name__ == "__main__":
     try:
         validate(os.environ)
+        validate_contact(os.environ)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     print("Public build settings validated; values omitted.")
