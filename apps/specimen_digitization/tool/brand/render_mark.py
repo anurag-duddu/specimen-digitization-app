@@ -345,7 +345,7 @@ def check_colours() -> list[str]:
             hexed(GROUND_LIGHT),
             hexed(GROUND_DARK),
         ],
-        APP_ROOT / "web" / "index.html": [hexed(GROUND_LIGHT)],
+        APP_ROOT / "web" / "index.html": [hexed(GROUND_LIGHT), hexed(GROUND_DARK)],
     }
     drift: list[str] = []
     for path, colours in expected.items():
