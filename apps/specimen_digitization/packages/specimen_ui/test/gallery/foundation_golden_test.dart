@@ -24,12 +24,10 @@ void main() {
         testWidgets(name, (WidgetTester tester) async {
           await goldenGalleryPage(
             tester,
-            // Pinned to the foundation's own list. The shell shows the family
-            // pages beside these, and without the pin every family that
-            // registers one moves all 24 of these goldens by adding a row to
-            // the page list. A golden belongs to the slot that renders it
-            // (build plan section 8).
             UiGallery(
+              // The foundation set, not the whole gallery: these goldens draw
+              // the page list too, so pinning the pages is what keeps them
+              // from moving every time a family slot registers a page.
               pages: foundationPages,
               initialPage: foundationPages.indexOf(page),
             ),

@@ -96,17 +96,20 @@ const List<GalleryPage> foundationPages = <GalleryPage>[
   ),
 ];
 
-/// Every family page, in the order 10 section 4 lists the families.
+/// Every family page, in the order 10 section 4 lists the families: actions,
+/// inputs, overlays, navigation, data.
 ///
-/// A family slot registers its page by adding exactly one line here, in that
-/// order: actions, inputs, overlays, navigation, data. The list is separate
-/// from [foundationPages] because the foundation golden walks that one, and a
-/// family page in it would ask the foundation slot for a golden it does not
-/// own.
-const List<GalleryPage> familyPages = <GalleryPage>[inputsPage];
+/// One line per family, added by the slot that owns that page. Separate from
+/// [foundationPages] because the foundation goldens render the whole shell,
+/// page list included: sharing one list would move all twenty four of them
+/// every time a family landed, and five slots regenerating the same binaries
+/// in parallel is how two branches silently revert one another.
+const List<GalleryPage> familyPages = <GalleryPage>[
+  inputsPage,
+];
 
-/// Every page the gallery shows: the foundation, then one page per family.
-List<GalleryPage> get galleryPages => <GalleryPage>[
+/// Every page the gallery shows.
+const List<GalleryPage> galleryPages = <GalleryPage>[
   ...foundationPages,
   ...familyPages,
 ];
@@ -119,8 +122,8 @@ class UiGallery extends StatefulWidget {
   /// Which page to open on.
   final int initialPage;
 
-  /// The pages to show. Defaults to [galleryPages]; a family slot passes its
-  /// own list to golden one page on its own.
+  /// The pages to show. Defaults to [galleryPages]; a golden passes its own
+  /// list so that its page list holds still as other slots land.
   final List<GalleryPage>? pages;
 
   @override
