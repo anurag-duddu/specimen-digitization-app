@@ -16,6 +16,7 @@ import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'nav_destination.dart';
 
 /// One destination, drawn as a glyph in a square of [extent].
@@ -52,8 +53,9 @@ class NavDisc extends StatelessWidget {
   /// True to draw the destination's words under the glyph.
   ///
   /// The extended rail sets this. When it is false the words are still the
-  /// control's semantics label and are shown as a tooltip, which is what
-  /// makes an undrawn label reachable (10 section 4.4).
+  /// control's semantics label and are drawn as a `UiTooltip` on hover and on
+  /// long press, which is what makes an undrawn label reachable
+  /// (10 section 4.4).
   final bool showLabel;
 
   @override
@@ -130,13 +132,17 @@ class NavDisc extends StatelessWidget {
     );
 
     if (!showLabel) {
-      // TODO(fe/overlays): wrap in UiTooltip when it merges.
-      // Until then the label reaches a pointer reviewer through the platform
-      // tooltip semantics rather than a drawn one. MergeSemantics folds the
-      // tooltip into the control's own node, so a screen reader reads one
-      // destination rather than a tooltip and a tab.
+      // A disc draws no words, so the label reaches a reviewer two ways at
+      // once. `UiTooltip` draws it after a 400 ms hover and on a long press,
+      // which is the pointer and touch answer; `Semantics(tooltip:)` carries
+      // the same string to the platform, and `MergeSemantics` folds it into
+      // the control's own node, so a screen reader reads one destination
+      // rather than a tooltip and a tab.
       control = MergeSemantics(
-        child: Semantics(tooltip: destination.label, child: control),
+        child: Semantics(
+          tooltip: destination.label,
+          child: UiTooltip(message: destination.label, child: control),
+        ),
       );
     }
     return control;

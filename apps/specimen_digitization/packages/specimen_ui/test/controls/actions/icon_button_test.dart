@@ -2,12 +2,26 @@
 // its label and its tooltip are the whole of what a reviewer who cannot see
 // the glyph is given.
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../harness/control_contract.dart';
+
+/// Moves a mouse onto [finder] and leaves it there.
+Future<TestGesture> _hover(WidgetTester tester, Finder finder) async {
+  final TestGesture pointer = await tester.createGesture(
+    kind: PointerDeviceKind.mouse,
+  );
+  await pointer.addPointer(location: Offset.zero);
+  addTearDown(pointer.removePointer);
+  await tester.pump();
+  await pointer.moveTo(tester.getCenter(finder));
+  await tester.pump();
+  return pointer;
+}
 
 void main() {
   setUp(() {
@@ -237,6 +251,81 @@ void main() {
           )
           .height,
       UiDensity.touch.controlHeight,
+    );
+  });
+
+  testWidgets('hovering draws the tooltip, so the words are visible too', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: UiIconButton(
+          icon: UiIcons.reload,
+          semanticsLabel: 'Reload the queue',
+          onPressed: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Reload the queue'), findsNothing);
+
+    final TestGesture pointer = await _hover(tester, find.byType(UiIconButton));
+    await tester.pump(UiTooltipStyle.hoverDelay);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Reload the queue'),
+      findsOneWidget,
+      reason:
+          'the label doubles as the tooltip and the tooltip is drawn, not '
+          'only published to the platform (10 section 4.1)',
+    );
+
+    await pointer.moveTo(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Reload the queue'), findsNothing);
+  });
+
+  testWidgets('a disabled button draws the reason rather than its label', (
+    WidgetTester tester,
+  ) async {
+    const String reason = 'Label regions can be corrected once processing ends.';
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiIconButton(
+          icon: UiIcons.edit,
+          semanticsLabel: 'Correct the label regions',
+          disabledReason: reason,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(reason), findsNothing);
+
+    // Reaching for a control the server forbids is what asks for the reason.
+    // `FocusableActionDetector` does not report a hover while it is disabled,
+    // so the press and the long press are the two ways in, exactly as the
+    // overlays slot built the carrier.
+    await tester.tap(find.byType(UiIconButton));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(reason),
+      findsOneWidget,
+      reason:
+          'the reason flows through Pressable.onDisabledReason into '
+          'UiTooltip.reason, which is the carrier 10 section 4.3 names',
+    );
+    expect(
+      find.text('Correct the label regions'),
+      findsNothing,
+      reason: 'the reason is what the reviewer needs, not the button name',
+    );
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel('Correct the label regions'))
+          .getSemanticsData()
+          .hint,
+      reason,
+      reason: 'the hint carries it too, for a reviewer with no pointer',
     );
   });
 }
