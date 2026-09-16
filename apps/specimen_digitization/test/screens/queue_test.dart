@@ -55,7 +55,7 @@ Future<TestSession> pumpQueue(
 }
 
 String locationOf(WidgetTester tester) => GoRouter.of(
-  tester.element(find.byType(Scaffold).first),
+  tester.element(find.byType(Navigator).first),
 ).routerDelegate.currentConfiguration.uri.toString();
 
 void main() {

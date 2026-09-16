@@ -14,6 +14,7 @@ import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
+import '../ui_finders.dart';
 
 /// The collection the fixture repository publishes.
 const String fixtureCollection = 'org/insects';
@@ -22,7 +23,7 @@ const String fixtureCollection = 'org/insects';
 const Size routingWindow = Size(800, 1400);
 
 String locationOf(WidgetTester tester) => GoRouter.of(
-  tester.element(find.byType(Scaffold).first),
+  tester.element(find.byType(Navigator).first),
 ).routerDelegate.currentConfiguration.uri.toString();
 
 /// The system back gesture, as the platform sends it.
@@ -69,7 +70,11 @@ void main() {
     final String before = locationOf(tester);
     expect(find.text('Keyboard shortcuts'), findsNothing);
 
-    await tester.tap(find.byTooltip('Help and shortcuts'));
+    // Help lives in the account menu on every window narrower than large
+    // (07 section 10: a help control in the app bar's overflow).
+    await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Help and shortcuts'));
     await tester.pumpAndSettle();
     // The panel is on screen and stays there. Before the redirect learned
     // that a route without a collection is not a route with a missing one,
@@ -169,7 +174,7 @@ void main() {
 
   testWidgets('the intake destination is its own location', (tester) async {
     await pumpApp(tester);
-    await tester.tap(find.text('Intake'));
+    await tester.tap(uiDestination('Intake'));
     await tester.pumpAndSettle();
     expect(locationOf(tester), endsWith('/intake'));
     await tester.pumpWidget(const SizedBox());

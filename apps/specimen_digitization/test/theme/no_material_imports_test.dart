@@ -41,11 +41,10 @@ const Set<String> packageMaterialFiles = <String>{
 };
 
 /// Files that still import `material.dart`. Shrink only.
+///
+/// Wave 2, slot E1 removed the shell, the entry screens and the D1 patterns
+/// from it.
 const List<String> importBacklog = <String>[
-  'lib/src/app/auth_layout.dart',
-  'lib/src/app/help_screen.dart',
-  'lib/src/app/setup_screen.dart',
-  'lib/src/app/shell.dart',
   'lib/src/screens/intake/capture_card.dart',
   'lib/src/screens/intake/manifest_panel.dart',
   'lib/src/screens/queue/queue_screen.dart',
@@ -61,28 +60,17 @@ const List<String> importBacklog = <String>[
   'lib/src/screens/workbench/status_strip.dart',
   'lib/src/widgets/adaptive_form.dart',
   'lib/src/widgets/authority_candidate_card.dart',
-  'lib/src/widgets/caveat_text.dart',
   'lib/src/widgets/diff_text.dart',
-  'lib/src/widgets/empty_state.dart',
-  'lib/src/widgets/environment_banner.dart',
   'lib/src/widgets/evidence_drawer.dart',
   'lib/src/widgets/field_row.dart',
-  'lib/src/widgets/in_flight_glyph.dart',
-  'lib/src/widgets/motion_reveal.dart',
-  'lib/src/widgets/not_calibrated_chip.dart',
-  'lib/src/widgets/previews.dart',
   'lib/src/widgets/queue_row.dart',
   'lib/src/widgets/reading_card.dart',
   'lib/src/widgets/reason_sheet.dart',
   'lib/src/widgets/region_overlay.dart',
   'lib/src/widgets/risk_meter.dart',
   'lib/src/widgets/selection_bar.dart',
-  'lib/src/widgets/skeleton.dart',
   'lib/src/widgets/source_import_sheet.dart',
   'lib/src/widgets/source_object_row.dart',
-  'lib/src/widgets/specimen_status.dart',
-  'lib/src/widgets/status_chip.dart',
-  'lib/src/widgets/term_text.dart',
   'lib/src/widgets/thumbnail.dart',
   'lib/src/widgets/upload_item.dart',
 ];

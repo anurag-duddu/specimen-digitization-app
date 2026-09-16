@@ -106,7 +106,10 @@ void bothThemes(String screen, Widget Function() build, {Size? size}) {
       final SemanticsHandle handle = tester.ensureSemantics();
       await _pump(tester, theme, build(), size: size ?? const Size(1024, 2400));
       // The screen has to be on screen for the guideline to mean anything.
-      expect(find.byType(Scaffold), findsWidgets);
+      // Text rather than a frame type: the entry screens are `UiScaffold`
+      // now and the panels are pumped bare, and what a contrast guideline
+      // needs is words to measure.
+      expect(find.byType(Text), findsWidgets);
       await expectLater(tester, meetsGuideline(textContrastGuideline));
       handle.dispose();
     });
@@ -274,7 +277,14 @@ void main() {
     ),
   );
 
-  bothThemes('Help', () => const HelpScreen());
+  // The help panel is a modal drawn over a route, and its pane is
+  // `glass.modal`. Pumped on nothing it captures half transparent pixels and
+  // a contrast guideline measuring one measures nothing, so it is given the
+  // opaque surface a route would be.
+  bothThemes(
+    'Help',
+    () => const Scaffold(body: HelpScreen()),
+  );
 
   bothThemes(
     'Empty state',
@@ -289,15 +299,20 @@ void main() {
 
   bothThemes(
     'Skeleton placeholders',
+    // The pulse never settles, so the placeholders are pumped with their
+    // tickers stopped; what is under test here is their colour.
     () => const Scaffold(
       body: Padding(
         padding: EdgeInsets.all(16),
-        child: Column(
-          children: <Widget>[
-            LoadingAnnouncement(thing: 'queue', visible: true),
-            SkeletonRow(),
-            SkeletonRow(),
-          ],
+        child: TickerMode(
+          enabled: false,
+          child: Column(
+            children: <Widget>[
+              LoadingAnnouncement(thing: 'queue', visible: true),
+              SkeletonRow(),
+              SkeletonRow(),
+            ],
+          ),
         ),
       ),
     ),

@@ -8,10 +8,15 @@
 library;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+// The one Material import left in the application: `MaterialPage` is what
+// gives a pushed route the platform's own transition (05 section 5), and
+// `10` section 1.3 keeps the page transitions as infrastructure. The
+// `no_material_imports` gate names this file as its one exception.
+import 'package:flutter/material.dart' show MaterialPage, Scaffold;
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/gallery.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../auth.dart';
 import '../email_verification.dart';
@@ -24,7 +29,6 @@ import '../screens/sources/source_controller.dart';
 import '../screens/sources/source_screen.dart';
 import '../screens/sources/sources_screen.dart';
 import '../sources.dart';
-import '../theme/motion.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'help_screen.dart';
@@ -180,12 +184,30 @@ GoRouter buildAppRouter({
         builder: (BuildContext context, GoRouterState state, Widget child) {
           final String routeKey = AppRoutes.collectionKeyIn(state.uri) ?? '';
           final bool intake = state.uri.pathSegments.contains('intake');
-          return CollectionWorkspace(
-            routeKey: routeKey,
-            destination: intake
-                ? WorkspaceDestination.intake
-                : WorkspaceDestination.queue,
-            child: child,
+          // The queue, the workbench, intake and sources still build Material
+          // components. Every one of them asserts without a `Material`
+          // ancestor, and the three that raise a snackbar need a `Scaffold`
+          // registered with the messenger; the shell's own `Scaffold` was
+          // both until this wave replaced it with `UiScaffold`. The bridge
+          // wraps the whole collection subtree, because the list detail pane
+          // at large is built by `CollectionWorkspace` rather than routed
+          // into it, and it draws nothing a reviewer can see: `UiScaffold`
+          // paints the ground and the sky over it, and the keyboard inset is
+          // the frame's to handle rather than this one's. It lives here
+          // because this file is already the one exception the import gate
+          // names.
+          // TODO(fe/wave-3): remove once E3 to E5 land and the
+          // `no_material_components` backlog is empty.
+          return Scaffold(
+            backgroundColor: context.ui.color.ground,
+            resizeToAvoidBottomInset: false,
+            body: CollectionWorkspace(
+              routeKey: routeKey,
+              destination: intake
+                  ? WorkspaceDestination.intake
+                  : WorkspaceDestination.queue,
+              child: child,
+            ),
           );
         },
         routes: <RouteBase>[
@@ -213,7 +235,7 @@ GoRouter buildAppRouter({
                       child: screen,
                     );
                   }
-                  final MotionTokens motion = MotionTokens.of(context);
+                  final MotionTokens motion = context.ui.motion;
                   return CustomTransitionPage<void>(
                     key: state.pageKey,
                     transitionDuration: motion.standard,
@@ -379,8 +401,8 @@ class _SourceRouteState extends State<_SourceRoute> {
                 .where((RegisteredSource s) => s.id == widget.sourceId)
                 .firstOrNull;
             if (found == null) {
-              return const EmptyState(
-                icon: Symbols.inventory_2,
+              return EmptyState(
+                icon: UiIcons.queue.defaultGlyph,
                 title: 'Source not found',
                 body: 'This source is not registered to the open collection.',
               );
@@ -403,8 +425,8 @@ class _NoSourceSupport extends StatelessWidget {
   const _NoSourceSupport();
 
   @override
-  Widget build(BuildContext context) => const EmptyState(
-    icon: Symbols.inventory_2,
+  Widget build(BuildContext context) => EmptyState(
+    icon: UiIcons.queue.defaultGlyph,
     title: 'Sources not available',
     body: 'This build reads uploads only. Add photographs from Intake.',
   );
@@ -424,8 +446,8 @@ class _EnvironmentFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!EnvironmentBanner.showsFor(environment)) return child;
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
+    return ColoredBox(
+      color: context.ui.color.ground,
       child: Column(
         children: <Widget>[
           SafeArea(
@@ -458,7 +480,7 @@ class _LeaveVerificationState extends State<_LeaveVerification> {
   }
 
   @override
-  Widget build(BuildContext context) => const Scaffold(
+  Widget build(BuildContext context) => const UiScaffold(
     body: Center(
       child: LoadingAnnouncement(thing: 'your collection', visible: true),
     ),

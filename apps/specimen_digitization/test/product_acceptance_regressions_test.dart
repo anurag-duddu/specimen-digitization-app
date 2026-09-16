@@ -193,7 +193,7 @@ void main() {
       final repository = ReviewRepository(session);
       await openReview(tester, session, repository);
       final controller = WorkspaceScope.read(
-        tester.element(find.byType(Scaffold).first),
+        tester.element(find.byType(Navigator).first),
       );
       expect(controller.scopes, isNotEmpty);
       expect(controller.selected, isNotNull);
@@ -263,7 +263,7 @@ void main() {
     await tester.tap(find.byTooltip('Refresh this record'));
     await tester.pumpAndSettle();
     final controller = WorkspaceScope.read(
-      tester.element(find.byType(Scaffold).first),
+      tester.element(find.byType(Navigator).first),
     );
     expect(controller.selected!.revision, 4);
     await tester.pumpWidget(const SizedBox());
@@ -361,7 +361,7 @@ void main() {
     final repository = ReviewRepository(session)..save = Completer<Specimen>();
     await openReview(tester, session, repository);
     final controller = WorkspaceScope.read(
-      tester.element(find.byType(Scaffold).first),
+      tester.element(find.byType(Navigator).first),
     );
     final pending = controller.mutate({
       'kind': 'coverage',

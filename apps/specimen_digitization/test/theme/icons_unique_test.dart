@@ -13,16 +13,14 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 /// Every `Symbols.` and `Icons.` use still under `lib/`. Shrink only.
 ///
+/// Wave 2, slot E1 took the shell, the entry screens and the D1 patterns off
+/// it: thirty seven glyphs, every one of them now a `UiIcons` entry.
+///
 /// `UiIcons.fromSymbolName` is what a screen agent replaces one with: it maps
 /// the Material name onto a registry key, so the choice of glyph is made once
 /// in the registry rather than per call site.
 const Map<String, int> glyphBacklog = <String, int>{
-  'lib/src/app/app_router.dart': 2,
-  'lib/src/app/auth_layout.dart': 1,
-  'lib/src/app/help_screen.dart': 1,
-  'lib/src/app/shell.dart': 17,
   'lib/src/audit_history.dart': 3,
-  'lib/src/auth.dart': 3,
   'lib/src/capture/capture_screen.dart': 6,
   'lib/src/evidence_panel.dart': 2,
   'lib/src/intake.dart': 3,
@@ -44,19 +42,14 @@ const Map<String, int> glyphBacklog = <String, int>{
   'lib/src/search_filters.dart': 3,
   'lib/src/theme/icons.dart': 17,
   'lib/src/widgets/authority_candidate_card.dart': 1,
-  'lib/src/widgets/caveat_text.dart': 2,
-  'lib/src/widgets/environment_banner.dart': 3,
   'lib/src/widgets/evidence_drawer.dart': 2,
   'lib/src/widgets/field_row.dart': 3,
-  'lib/src/widgets/not_calibrated_chip.dart': 1,
-  'lib/src/widgets/previews.dart': 1,
   'lib/src/widgets/queue_row.dart': 1,
   'lib/src/widgets/reading_card.dart': 1,
   'lib/src/widgets/risk_meter.dart': 1,
   'lib/src/widgets/selection_bar.dart': 2,
   'lib/src/widgets/source_import_sheet.dart': 1,
   'lib/src/widgets/source_object_row.dart': 3,
-  'lib/src/widgets/specimen_status.dart': 6,
   'lib/src/widgets/thumbnail.dart': 1,
   'lib/src/widgets/upload_item.dart': 9,
   'lib/src/workbench.dart': 8,

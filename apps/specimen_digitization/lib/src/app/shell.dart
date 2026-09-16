@@ -1,20 +1,19 @@
-/// The adaptive collection shell (responsive and platform adaptation, section
-/// 2; screen blueprints, sections 1.2, 1.3 and 11).
+/// The adaptive collection shell (05 section 2; 07 sections 1.2, 1.3 and 11).
 ///
-/// One navigation component per window class: a bottom bar below 600, a
-/// collapsed rail to 839, an extended rail to 1199, and a permanent drawer at
-/// 1200 and above. The collection switcher and the account menu move with it.
+/// One navigation control per window class: a floating pill below 600, a
+/// collapsed rail to 839, an extended rail to 1199, and a sidebar at 1200 and
+/// above. The collection switcher and the account menu move with it, and the
+/// mark leads the rail and the sidebar.
 library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../models.dart';
-import '../theme/icons.dart';
 import '../vocabulary.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
@@ -30,11 +29,33 @@ class AppShell extends StatelessWidget {
   /// The routed screen.
   final Widget child;
 
-  /// The widest the app bar's collection switcher may grow.
+  /// The widest the top bar's collection switcher may grow.
   static const double switcherMaxWidth = 280;
 
-  /// The permanent drawer's width, from the Material navigation drawer spec.
-  static const double drawerWidth = 360;
+  /// What the switcher is called, in the bar and to a screen reader.
+  static const String switcherLabel = 'Authorized collection';
+
+  /// What the account control is called.
+  static const String accountLabel = 'Account menu';
+
+  /// What the help control is called, wherever it is drawn.
+  static const String helpLabel = 'Help and shortcuts';
+
+  /// What the reload control is called.
+  static const String reloadLabel = 'Refresh collection';
+
+  /// The two destinations, in the order they are read.
+  ///
+  /// Sources is reached from Intake rather than from here (07 section 13), so
+  /// it is not a third destination even though the registry has a glyph for
+  /// it.
+  static const List<UiNavDestination> destinations = <UiNavDestination>[
+    UiNavDestination(label: 'Queue', icon: UiIcons.queue),
+    UiNavDestination(label: 'Intake', icon: UiIcons.intake),
+  ];
+
+  /// What the mark says where it leads the navigation.
+  static const String markLabel = 'Specimen Digitization';
 
   void _select(BuildContext context, WorkspaceDestination next) {
     if (next == destination) return;
@@ -52,125 +73,108 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final WorkspaceController controller = WorkspaceScope.of(context);
     final WindowClass window = WindowClass.of(context);
-    final bool drawer = window.isAtLeast(WindowClass.large);
-    final bool rail = !drawer && window.isAtLeast(WindowClass.medium);
+    final bool sidebar = window.isAtLeast(WindowClass.large);
+    final bool rail = !sidebar && window.isAtLeast(WindowClass.medium);
     final bool extended = rail && window.isAtLeast(WindowClass.expanded);
+    final bool busy =
+        controller.loading ||
+        controller.recordLoading ||
+        controller.mutating ||
+        controller.loadingMore;
 
-    return Scaffold(
-      appBar: _appBar(context, controller, window),
-      bottomNavigationBar: window.isCompact
-          ? NavigationBar(
-              selectedIndex: destination.index,
-              onDestinationSelected: (int index) =>
-                  _select(context, WorkspaceDestination.values[index]),
-              destinations: const <Widget>[
-                NavigationDestination(
-                  icon: Icon(Symbols.inventory_2),
-                  label: 'Queue',
-                ),
-                NavigationDestination(
-                  icon: Icon(Symbols.add_photo_alternate),
-                  label: 'Intake',
-                ),
-              ],
-            )
-          : null,
-      body: Column(
-        children: <Widget>[
-          EnvironmentBanner(environment: controller.environment),
-          _BlockerNotice(blockers: controller.repository.blockers),
-          _ErrorBanner(
-            error: controller.error,
-            onDismiss: controller.clearError,
-          ),
-          _ProgressRow(
-            busy:
-                controller.loading ||
-                controller.recordLoading ||
-                controller.mutating ||
-                controller.loadingMore,
-          ),
-          Expanded(
-            child: Row(
-              children: <Widget>[
-                if (drawer)
-                  _PermanentDrawer(
-                    destination: destination,
-                    onSelect: (WorkspaceDestination next) =>
-                        _select(context, next),
-                  )
-                else if (rail)
-                  NavigationRail(
-                    selectedIndex: destination.index,
-                    extended: extended,
-                    // The words are drawn at medium, where the rail is
-                    // collapsed. A destination whose label is hidden produces
-                    // no semantics at all, so an icon-only rail is a pair of
-                    // unnamed buttons in the accessibility tree. Flutter
-                    // asserts that an extended rail carries no label type,
-                    // which is why this is a branch rather than a constant.
-                    labelType: extended
-                        ? NavigationRailLabelType.none
-                        : NavigationRailLabelType.all,
-                    onDestinationSelected: (int index) =>
-                        _select(context, WorkspaceDestination.values[index]),
-                    destinations: const <NavigationRailDestination>[
-                      NavigationRailDestination(
-                        icon: Icon(Symbols.inventory_2),
-                        label: Text('Queue'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Symbols.add_photo_alternate),
-                        label: Text('Intake'),
-                      ),
-                    ],
-                  ),
-                // The routed screen is a nested `Navigator`, and a route's
-                // modal barrier blocks the semantics of everything painted
-                // before it inside the same semantics boundary. The shell's
-                // own chrome, the environment band and this navigation, is
-                // painted first, so without a boundary of its own the screen
-                // erased all of it: a reviewer working through a browser's
-                // accessibility tree found a queue with no navigation and no
-                // way into a record.
-                Expanded(
-                  child: Semantics(
-                    container: true,
-                    explicitChildNodes: true,
-                    child: child,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    final Widget navigation = sidebar
+        ? UiSidebar(
+            destinations: destinations,
+            currentIndex: destination.index,
+            onSelect: (int index) =>
+                _select(context, WorkspaceDestination.values[index]),
+            header: _SidebarHeader(controller: controller),
+            footer: _SidebarFooter(controller: controller),
+          )
+        : rail
+        ? UiRail(
+            destinations: destinations,
+            currentIndex: destination.index,
+            extended: extended,
+            onSelect: (int index) =>
+                _select(context, WorkspaceDestination.values[index]),
+            leading: const UiMark(label: markLabel),
+          )
+        : UiPillNav(
+            destinations: destinations,
+            currentIndex: destination.index,
+            onSelect: (int index) =>
+                _select(context, WorkspaceDestination.values[index]),
+          );
+
+    return UiScaffold(
+      // The queue, intake and sources routes are the home sky; the record
+      // route is the work sky, and the workbench slot passes the matte's
+      // exclusion rectangle through `UiScaffold.exclusion` when it lands.
+      sky: SkyPreset.home,
+      topBar: _TopBar(
+        controller: controller,
+        window: window,
+        sidebar: sidebar,
+      ),
+      banner: _Chrome(controller: controller, busy: busy),
+      nav: navigation,
+      // The routed screen is a nested `Navigator`, and a route's modal
+      // barrier blocks the semantics of everything painted before it inside
+      // the same semantics boundary. The shell's own chrome, the environment
+      // band and this navigation, is painted first, so without a boundary of
+      // its own the screen erased all of it: a reviewer working through a
+      // browser's accessibility tree found a queue with no navigation and no
+      // way into a record.
+      body: Semantics(
+        container: true,
+        explicitChildNodes: true,
+        child: child,
       ),
     );
   }
+}
 
-  PreferredSizeWidget _appBar(
-    BuildContext context,
-    WorkspaceController controller,
-    WindowClass window,
-  ) {
-    final bool drawer = window.isAtLeast(WindowClass.large);
-    final bool inlineSwitcher =
-        !drawer &&
-        window.isAtLeast(WindowClass.medium) &&
-        controller.scopes.isNotEmpty;
-    final bool named = window.isAtLeast(WindowClass.expanded) && !drawer;
+/// The bar across the top of every collection screen.
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.controller,
+    required this.window,
+    required this.sidebar,
+  });
 
-    return AppBar(
-      title: window.isCompact && controller.scopes.isNotEmpty
-          ? _CompactTitle(controller: controller)
-          : const Text('Specimen Digitization'),
+  final WorkspaceController controller;
+  final WindowClass window;
+  final bool sidebar;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool switchable = controller.scopes.isNotEmpty;
+    // The switcher is reachable at every window class (07 section 1.2): in
+    // the bar's centre from medium up, in the bar's own title row on compact,
+    // and in the sidebar's header at large.
+    final bool inBar = !sidebar && switchable;
+
+    return UiTopBar(
+      // The rail and the sidebar carry the mark, so the bar carries it only
+      // on a compact window, where there is neither.
+      leading: window.isCompact
+          ? const UiMark(label: AppShell.markLabel)
+          : null,
+      title: window.isCompact ? null : AppShell.markLabel,
+      center: inBar
+          ? ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: AppShell.switcherMaxWidth,
+              ),
+              child: _CollectionSwitcher(controller: controller),
+            )
+          : null,
       actions: <Widget>[
-        if (inlineSwitcher)
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: context.space.space2),
-            child: _CollectionSwitcher(controller: controller),
-          ),
-        IconButton(
+        UiIconButton(
+          icon: UiIcons.reload,
+          semanticsLabel: AppShell.reloadLabel,
+          tooltip: AppShell.reloadLabel,
           onPressed: controller.loading
               ? null
               : () => unawaited(
@@ -178,103 +182,53 @@ class AppShell extends StatelessWidget {
                       ? controller.checkAccess()
                       : controller.refresh(),
                 ),
-          tooltip: 'Refresh collection',
-          icon: const Icon(Symbols.refresh),
+          disabledReason: controller.loading
+              ? 'The collection is loading. This is available once it lands.'
+              : null,
         ),
-        if (named)
-          _AccountMenu(controller: controller)
-        else if (!drawer)
-          IconButton(
-            onPressed: () => unawaited(controller.signOut()),
-            tooltip: 'Sign out',
-            icon: const Icon(Symbols.logout),
-          ),
-        IconButton(
-          onPressed: () => context.push(AppRoutes.help),
-          tooltip: 'Help and shortcuts',
-          icon: const Icon(Symbols.help),
-        ),
+        // At large the sidebar's footer carries the account and signing out,
+        // so the bar carries help on its own; everywhere else the account
+        // menu is where help and signing out live.
+        if (sidebar)
+          UiIconButton(
+            icon: UiIcons.help,
+            semanticsLabel: AppShell.helpLabel,
+            tooltip: AppShell.helpLabel,
+            onPressed: () => context.push(AppRoutes.help),
+          )
+        else
+          _AccountMenu(controller: controller),
       ],
     );
   }
 }
 
-/// The compact app bar title: the collection name, tapped to switch.
-class _CompactTitle extends StatelessWidget {
-  const _CompactTitle({required this.controller});
+/// Everything that sits between the top bar and the screen: the environment
+/// band, the repository's blockers, the screen level error and the progress
+/// strip.
+class _Chrome extends StatelessWidget {
+  const _Chrome({required this.controller, required this.busy});
 
   final WorkspaceController controller;
-
-  Future<void> _open(BuildContext context) async {
-    final CollectionScope? chosen = await showModalBottomSheet<CollectionScope>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (BuildContext sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Padding(
-              padding: EdgeInsets.all(sheetContext.space.space4),
-              child: Text(
-                'Authorized collection',
-                style: Theme.of(sheetContext).textTheme.titleMedium,
-              ),
-            ),
-            for (final CollectionScope scope in controller.scopes)
-              ListTile(
-                title: Text(scope.name),
-                selected: scope.key == controller.scope?.key,
-                trailing: scope.key == controller.scope?.key
-                    ? const Icon(Symbols.check)
-                    : null,
-                onTap: () => Navigator.pop(sheetContext, scope),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (chosen != null && context.mounted) {
-      context.go(AppRoutes.queueOf(encodeCollectionKey(chosen.key)));
-    }
-  }
+  final bool busy;
 
   @override
-  Widget build(BuildContext context) {
-    final String name = controller.scope?.name ?? 'Specimen Digitization';
-    return Semantics(
-      button: true,
-      label: 'Collection $name. Switch collection',
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: () => _open(context),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: context.sizes.targetMin),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
-              SizedBox(width: context.space.space1),
-              const Icon(Symbols.arrow_drop_down),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: <Widget>[
+      EnvironmentBanner(environment: controller.environment),
+      _BlockerNotice(blockers: controller.repository.blockers),
+      _ErrorBanner(error: controller.error, onDismiss: controller.clearError),
+      _ProgressStrip(busy: busy),
+    ],
+  );
 }
 
-/// The collection switcher, as a dropdown.
-/// The app bar's collection switcher (finding V-9).
+/// The collection switcher.
 ///
-/// Deliberately not a form field. An `AppBar` stretches an action to the full
-/// 56 dp toolbar, and a 48 dp outlined field, which is the minimum target
-/// size, draws its floating label across its own top border: the label's box
-/// then started 1.5 px above y 0, which a status-bar inset hides on a phone
-/// and a browser toolbar starting at y 0 does not. A menu button has no
-/// floating label to clip, keeps the 48 dp target the theme gives every
-/// button, and fits inside the toolbar at every size class and text scale.
+/// A `UiSelect` at every window class: 07 section 1.2 asks for the switcher to
+/// be reachable everywhere, and one control reached the same way in the bar,
+/// in the bar's title and in the sidebar's header is one thing to learn.
 class _CollectionSwitcher extends StatelessWidget {
   const _CollectionSwitcher({required this.controller});
 
@@ -287,104 +241,32 @@ class _CollectionSwitcher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String name = controller.scope?.name ?? 'No collection chosen';
     final String? blocked = _blockedReason;
-
-    return MenuAnchor(
-      menuChildren: <Widget>[
+    final String name = controller.scope?.name ?? 'No collection chosen';
+    return UiSelect<String>(
+      label: AppShell.switcherLabel,
+      showLabel: false,
+      semanticsLabel: '${AppShell.switcherLabel}, $name. Switch collection',
+      placeholder: 'No collection chosen',
+      value: controller.scope?.key,
+      options: <UiSelectOption<String>>[
         for (final CollectionScope scope in controller.scopes)
-          MenuItemButton(
-            leadingIcon: Icon(
-              scope.key == controller.scope?.key
-                  ? Symbols.check
-                  : Symbols.inventory_2,
-            ),
-            onPressed: () =>
-                context.go(AppRoutes.queueOf(encodeCollectionKey(scope.key))),
-            child: Text(scope.name),
+          UiSelectOption<String>(
+            value: scope.key,
+            label: scope.name,
+            leading: UiIcons.collection,
           ),
       ],
-      builder: (BuildContext context, MenuController menu, Widget? child) {
-        void toggle() => menu.isOpen ? menu.close() : menu.open();
-        return Semantics(
-          button: true,
-          enabled: blocked == null,
-          label: 'Authorized collection, $name. Switch collection',
-          hint: blocked ?? '',
-          // The node carries the action itself. Excluding the button's own
-          // semantics would otherwise leave a labelled node a screen reader
-          // can read and cannot activate.
-          onTap: blocked == null ? toggle : null,
-          excludeSemantics: true,
-          child: ConstrainedBox(
-            // The cap is on the whole control, padding included, so a long
-            // collection name cannot push the toolbar's other actions out.
-            constraints: const BoxConstraints(
-              maxWidth: AppShell.switcherMaxWidth,
-            ),
-            child: Tooltip(
-              message: blocked ?? 'Switch the authorized collection',
-              child: TextButton(
-                onPressed: blocked != null ? null : toggle,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Flexible(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Icon(
-                      Symbols.arrow_drop_down,
-                      size: context.sizes.iconInline,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+      disabledReason: blocked,
+      onChanged: blocked != null
+          ? null
+          : (String key) =>
+                context.go(AppRoutes.queueOf(encodeCollectionKey(key))),
     );
   }
 }
 
-/// The permanent drawer's collection switcher.
-///
-/// A form field is right here and wrong in the app bar: the drawer gives it
-/// its own row with space above the floating label, which is what finding
-/// V-9 was about.
-class _CollectionDropdown extends StatelessWidget {
-  const _CollectionDropdown({required this.controller, this.dense = true});
-
-  final WorkspaceController controller;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
-    initialValue: controller.scope?.key,
-    isExpanded: true,
-    isDense: dense,
-    decoration: const InputDecoration(labelText: 'Authorized collection'),
-    items: <DropdownMenuItem<String>>[
-      for (final CollectionScope scope in controller.scopes)
-        DropdownMenuItem<String>(
-          value: scope.key,
-          child: Text(scope.name, overflow: TextOverflow.ellipsis),
-        ),
-    ],
-    onChanged: controller.mutating
-        ? null
-        : (String? key) {
-            if (key == null) return;
-            context.go(AppRoutes.queueOf(encodeCollectionKey(key)));
-          },
-  );
-}
-
-/// The account menu: the display name, and signing out.
+/// The account menu: the signed-in name, help, and signing out.
 class _AccountMenu extends StatelessWidget {
   const _AccountMenu({required this.controller});
 
@@ -393,101 +275,96 @@ class _AccountMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String name = controller.session.displayName;
-    return PopupMenuButton<String>(
-      tooltip: 'Account menu',
-      onSelected: (_) => controller.signOut(),
-      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(enabled: false, child: Text(name)),
-        const PopupMenuDivider(),
-        const PopupMenuItem<String>(value: 'sign-out', child: Text('Sign out')),
+    return UiMenuTrigger(
+      icon: UiIcons.account,
+      semanticsLabel: '${AppShell.accountLabel}, signed in as $name',
+      menuLabel: AppShell.accountLabel,
+      items: <UiMenuItem>[
+        // The signed-in address, at every window class. A reviewer on a
+        // phone used to have no way to see which account they were using
+        // (05 section 2).
+        UiMenuItem(label: name, onSelected: null),
+        UiMenuItem(
+          label: AppShell.helpLabel,
+          icon: UiIcons.help,
+          onSelected: () => context.push(AppRoutes.help),
+        ),
+        UiMenuItem(
+          label: 'Sign out',
+          icon: UiIcons.signOut,
+          onSelected: () => unawaited(controller.signOut()),
+        ),
       ],
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minHeight: context.sizes.targetMin,
-          minWidth: context.sizes.targetMin,
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: context.space.space2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Icon(Symbols.person),
-              SizedBox(width: context.space.space1),
-              Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
 
-/// The permanent navigation drawer at large and extra large.
-class _PermanentDrawer extends StatelessWidget {
-  const _PermanentDrawer({required this.destination, required this.onSelect});
+/// The sidebar's header: the mark, the product name and the switcher.
+class _SidebarHeader extends StatelessWidget {
+  const _SidebarHeader({required this.controller});
 
-  final WorkspaceDestination destination;
-  final ValueChanged<WorkspaceDestination> onSelect;
+  final WorkspaceController controller;
 
   @override
   Widget build(BuildContext context) {
-    final WorkspaceController controller = WorkspaceScope.of(context);
-    return SizedBox(
-      width: AppShell.drawerWidth,
-      child: NavigationDrawer(
-        selectedIndex: destination.index,
-        onDestinationSelected: (int index) =>
-            onSelect(WorkspaceDestination.values[index]),
-        children: <Widget>[
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              context.space.space4,
-              context.space.space4,
-              context.space.space4,
-              context.space.space2,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'Specimen Digitization',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                SizedBox(height: context.space.space2),
-                if (controller.scopes.isNotEmpty)
-                  _CollectionDropdown(controller: controller, dense: false),
-              ],
-            ),
-          ),
-          const NavigationDrawerDestination(
-            icon: Icon(Symbols.inventory_2),
-            label: Text('Queue'),
-          ),
-          const NavigationDrawerDestination(
-            icon: Icon(Symbols.add_photo_alternate),
-            label: Text('Intake'),
-          ),
-          const Divider(),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: context.space.space4),
-            child: Text(
-              controller.session.displayName,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(context.space.space2),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                onPressed: () => controller.signOut(),
-                icon: const Icon(Symbols.logout),
-                label: const Text('Sign out'),
+    final UiThemeData ui = context.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            const UiMark(label: AppShell.markLabel),
+            SizedBox(width: ui.space.s2),
+            Expanded(
+              child: Text(
+                AppShell.markLabel,
+                style: ui.type.title.copyWith(color: ui.color.ink),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-          ),
+          ],
+        ),
+        if (controller.scopes.isNotEmpty) ...<Widget>[
+          SizedBox(height: ui.space.s4),
+          _CollectionSwitcher(controller: controller),
         ],
-      ),
+      ],
+    );
+  }
+}
+
+/// The sidebar's footer: who is signed in, and the way out.
+class _SidebarFooter extends StatelessWidget {
+  const _SidebarFooter({required this.controller});
+
+  final WorkspaceController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          controller.session.displayName,
+          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        SizedBox(height: ui.space.s2),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: UiButton(
+            label: 'Sign out',
+            variant: UiButtonVariant.ghost,
+            leading: UiIcons.signOut,
+            onPressed: () => unawaited(controller.signOut()),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -500,89 +377,137 @@ class _BlockerNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final WorkspaceScope? scope = context
+        .getInheritedWidgetOfExactType<WorkspaceScope>();
+    final AdministratorContact contact = AdministratorContact.of(
+      scope?.notifier?.scope,
+    );
     final String named = blockers
         .map((dynamic blocker) => vocabularyLabel(blocker.toString()))
         .join(', ');
     // Height and opacity, so the screen below does not snap down the moment
-    // the repository answers (motion catalog, row 10).
+    // the repository answers (04 section 4, row 10).
     return MotionReveal(
       visible: blockers.isNotEmpty,
-      child: Padding(
-        padding: EdgeInsets.all(context.space.space3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('Processing is blocked: $named.'),
-            Text(
-              'A person has to review it.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const AdministratorContactLine(),
-          ],
-        ),
+      child: UiBanner(
+        message: 'Processing is blocked: $named.',
+        tone: UiBannerTone.blocked,
+        detail: 'A person has to review it. ${contact.sentence}',
+        detailLabel: 'Show who unblocks it',
       ),
     );
   }
 }
 
-/// The screen level error surface: one banner, one recovery action for the
-/// failure class it is reporting (screen blueprints, section 11).
+/// The screen level error surface: one band, one recovery action for the
+/// failure class it is reporting (07 section 11).
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.error, required this.onDismiss});
 
   final WorkspaceError? error;
 
-  /// Drops the banner. The reviewer's, never a background process's: a poll
+  /// Drops the band. The reviewer's, never a background process's: a poll
   /// that answers successfully must not take away a message nobody has read
   /// yet (pass criterion 9.5).
   final VoidCallback onDismiss;
 
+  /// The word on the control that drops the band.
+  static const String dismissLabel = 'Dismiss';
+
   @override
   Widget build(BuildContext context) {
     final WorkspaceError? failure = error;
-    // The banner arrives and leaves with the shared reveal rather than
-    // snapping the layout, and it is never a snackbar: it carries a recovery
-    // action and must persist until it is resolved (motion catalog, row 10).
+    // The band arrives and leaves with the shared reveal rather than snapping
+    // the layout, and it is never a toast: it carries a recovery action and
+    // must persist until it is resolved (04 section 4, row 10).
     return MotionReveal(
       visible: failure != null,
       child: failure == null
           ? const SizedBox(width: double.infinity)
-          : MaterialBanner(
-              content: Semantics(
-                liveRegion: true,
-                child: Text(failure.message),
-              ),
-              leading: const Icon(Symbols.info),
-              actions: <Widget>[
-                TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
-                TextButton(
-                  onPressed: () => failure.action(),
-                  child: Text(failure.actionLabel),
-                ),
-              ],
+          : _BandWithAction(
+              tone: UiBannerTone.blocked,
+              message: failure.message,
+              actionLabel: failure.actionLabel,
+              onAction: () => unawaited(failure.action()),
+              onDismiss: onDismiss,
             ),
     );
   }
 }
 
-/// A four pixel row that is always occupied, so showing progress never moves
-/// the screen (motion catalog, row 11).
+/// A band carrying a named recovery action beside its message.
 ///
-/// The row keeps its height whether or not it is busy. The indicator itself is
-/// built only while it is busy: an indeterminate indicator animates forever,
-/// and an animation that never ends is an animation a test can never settle.
-class _ProgressRow extends StatelessWidget {
-  const _ProgressRow({required this.busy});
+/// `UiBanner` has a dismiss control and a disclosure and no action slot, and
+/// 07 section 11 requires every failure class to name its own recovery. The
+/// band's own resolved style paints the strip the action sits on, so the two
+/// halves are one band rather than a band with a button under it.
+// TODO(fe/polish-2): UiBanner needs an action slot, a label and a callback,
+// so a recovery action does not have to be composed beside the strip.
+class _BandWithAction extends StatelessWidget {
+  const _BandWithAction({
+    required this.tone,
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+    required this.onDismiss,
+  });
+
+  final UiBannerTone tone;
+  final String message;
+  final String actionLabel;
+  final VoidCallback onAction;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final UiBannerStyle style = UiBannerStyle.resolve(ui, tone);
+    return ColoredBox(
+      color: style.fill,
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: UiBanner(
+              message: message,
+              tone: tone,
+              onDismiss: onDismiss,
+              dismissLabel: _ErrorBanner.dismissLabel,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsetsDirectional.only(end: ui.space.s2),
+            child: UiButton(
+              label: actionLabel,
+              variant: UiButtonVariant.ghost,
+              onPressed: onAction,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A four pixel strip that is always occupied, so showing progress never moves
+/// the screen (04 section 4, row 11).
+///
+/// The strip keeps its height whether or not it is busy. The indicator itself
+/// is built only while it is busy: an indeterminate indicator animates
+/// forever, and an animation that never ends is an animation a test can never
+/// settle.
+class _ProgressStrip extends StatelessWidget {
+  const _ProgressStrip({required this.busy});
 
   final bool busy;
 
+  /// What the strip announces, once, while it is up.
+  static const String label = 'Loading collection data';
+
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: context.space.space1,
+    height: context.ui.space.s1,
     child: busy
-        ? const LinearProgressIndicator(
-            semanticsLabel: 'Loading collection data',
-          )
+        ? const UiProgress.bar(semanticsLabel: label, announce: true)
         : null,
   );
 }

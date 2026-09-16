@@ -26,7 +26,7 @@ const Size keyboardWindow = Size(1180, 820);
 
 /// The current location, as the address bar would show it.
 String locationOf(WidgetTester tester) => GoRouter.of(
-  tester.element(find.byType(Scaffold).first),
+  tester.element(find.byType(Navigator).first),
 ).routerDelegate.currentConfiguration.uri.toString();
 
 /// The browser's back button, as the platform delivers it.
