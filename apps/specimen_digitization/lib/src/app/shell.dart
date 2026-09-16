@@ -98,7 +98,10 @@ class AppShell extends StatelessWidget {
             extended: extended,
             onSelect: (int index) =>
                 _select(context, WorkspaceDestination.values[index]),
-            leading: const UiMark(label: markLabel),
+            // The bar's title already says the product's name, so the mark
+            // beside it is decoration: a screen reader that reads both hears
+            // it twice on the way into the navigation.
+            leading: const ExcludeSemantics(child: UiMark(label: markLabel)),
           )
         : UiPillNav(
             destinations: destinations,
@@ -314,7 +317,7 @@ class _SidebarHeader extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            const UiMark(label: AppShell.markLabel),
+            const ExcludeSemantics(child: UiMark(label: AppShell.markLabel)),
             SizedBox(width: ui.space.s2),
             Expanded(
               child: Text(
