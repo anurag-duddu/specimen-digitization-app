@@ -1,7 +1,7 @@
 # Front-end refactor: building the `specimen_ui` design system
 
-Status: **plan, awaiting approval. Nothing here has been built and no agent
-has been launched.** Written 2026-09-16. Branch `front-end-refactor` (cut from
+Status: **approved 2026-09-16; in progress.** Wave 0 is merged; see section 13
+for the status log. Written 2026-09-16. Branch `front-end-refactor` (cut from
 `main` at `f05d496`) in worktree `.claude/worktrees/front-end-refactor`. The
 direction is [design/09-brand-direction.md](../../apps/specimen_digitization/design/09-brand-direction.md);
 the library is [design/10-component-library.md](../../apps/specimen_digitization/design/10-component-library.md).
@@ -273,7 +273,7 @@ and the full suites once at the end. `flutter build web --release` and
 
 Every brief contains, in this order:
 
-1. **Read first.** `AGENTS.md`, `apps/specimen_digitization/CLAUDE.md`,
+1. **Read first.** `AGENTS.md`, `CLAUDE.md` at the repository root,
    `design/00-north-star.md`, `design/02-ux-writing-guidelines.md`,
    `design/04-motion-and-microinteractions.md`, `design/06-accessibility.md`,
    `design/09-brand-direction.md`, `design/10-component-library.md`, this
@@ -304,6 +304,13 @@ and gallery. The screen migration touches roughly twelve thousand lines of
 existing Dart, mostly replacements at call sites, plus test finder changes.
 About sixteen agent runs across five waves; two to three days of wall clock
 with the concurrency cap, dominated by full test runs.
+
+## 13. Status log
+
+| Date | Event |
+|---|---|
+| 2026-09-16 | Plan approved in chat. |
+| 2026-09-16 | Wave 0 (`fe/foundation`, 15 commits, 60f8fb4) merged into `front-end-refactor` as e9228cf. Gates rerun by the integrator: app analyze, package analyze, package tests (111), app tests (1062 passed, 7 skipped), string lint, all exit 0. All 121 screen goldens moved once (they rendered in Ahem before, not the platform sans); zero semantics fixtures changed. Six colour tokens corrected against 09 section 3.7 and recorded in 09; `UiButton.primary` inverts with the mode; the state layer is `ink` in both modes (10 amended). Gate backlogs at the start of wave 1: `no_material_components` 208 uses over 50 files, `no_material_imports` 43 files, `icons_unique` 161 glyphs over 43 files. |
 
 ## Appendix A. Icon mapping, Material Symbols to Phosphor
 
@@ -476,3 +483,5 @@ Totals per slot (files with at least one Material component or glyph):
 | E4 workbench panels (+D3, D4) | 21 | 80 | 39 |
 | E5 intake, capture, sources (+D6) | 10 | 24 | 41 |
 | **All** | 57 | 203 | 144 |
+
+Wave 0 measured 208 uses over 50 files with the gate's regex against appendix B's 203; the five extra are `ScaffoldMessenger.of(context).showSnackBar(SnackBar(...))` sites, which the regex counts as two terms each. The gate's number is the one the backlog tracks.
