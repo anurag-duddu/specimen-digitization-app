@@ -12,9 +12,9 @@ import 'package:specimen_ui/testing.dart';
 import '../../harness/control_contract.dart';
 
 const List<UiTab> _tabs = <UiTab>[
-  UiTab(label: 'Readings', icon: UiIcons.modelReading),
-  UiTab(label: 'Fields', icon: UiIcons.record),
-  UiTab(label: 'History', icon: UiIcons.history),
+  UiTab(label: 'Readings'),
+  UiTab(label: 'Fields'),
+  UiTab(label: 'History'),
 ];
 
 const List<String> _panes = <String>[
@@ -71,27 +71,59 @@ void main() {
     expect(find.text(_panes[0]), findsNothing);
   });
 
-  testWidgets('arrows move along the strip and select as they go', (
+  testWidgets('the strip is a UiSegmented at lg, not a strip of its own', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(uiHarness(child: const _TabsHost()));
-    await tester.tap(find.text('Readings'));
     await tester.pumpAndSettle();
+    final UiSegmented<int> strip = tester.widget<UiSegmented<int>>(
+      find.byType(UiSegmented<int>),
+    );
+    expect(strip.size, UiSize.lg);
+    expect(strip.value, 0);
+    expect(
+      strip.segments.map((UiSegment<int> segment) => segment.label),
+      <String>['Readings', 'Fields', 'History'],
+    );
+  });
+
+  testWidgets('arrows move along the strip and Enter chooses', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(uiHarness(child: const _TabsHost()));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Readings');
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
+    expect(
+      find.text(_panes[0]),
+      findsOneWidget,
+      reason:
+          'manual activation: arrowing past a tab does not swap the pane '
+          'under the reviewer on the way through (10 section 4.1)',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
     expect(find.text(_panes[1]), findsOneWidget);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.text(_panes[0]), findsOneWidget);
+    expect(find.text(_panes[2]), findsOneWidget);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(
       find.text(_panes[2]),
       findsOneWidget,
-      reason: 'the strip wraps, so a reviewer never falls off the end',
+      reason:
+          'the track clamps at its ends: a reviewer holding an arrow down '
+          'lands on the last tab rather than back on the first',
     );
   });
 
@@ -101,10 +133,12 @@ void main() {
     await tester.pumpWidget(
       uiHarness(textDirection: TextDirection.rtl, child: const _TabsHost()),
     );
-    await tester.tap(find.text('Readings'));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pumpAndSettle();
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(
       find.text(_panes[1]),

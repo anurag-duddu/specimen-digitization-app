@@ -380,9 +380,9 @@ const List<(UiBannerTone, String)> _moreBannerSpecimens =
     ];
 
 const List<UiTab> _tabs = <UiTab>[
-  UiTab(label: 'Readings', icon: UiIcons.modelReading),
-  UiTab(label: 'Fields', icon: UiIcons.record),
-  UiTab(label: 'History', icon: UiIcons.history),
+  UiTab(label: 'Readings'),
+  UiTab(label: 'Fields'),
+  UiTab(label: 'History'),
 ];
 
 const List<String> _panes = <String>[
