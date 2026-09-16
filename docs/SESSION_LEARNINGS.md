@@ -4924,3 +4924,55 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     4.3 names the handle and not the gesture. Dragging is never the only way
     out, which is what SC 2.5.7 requires: the scrim and Escape both close a
     dismissible sheet, so the handle carries no semantics of its own.
+
+### 2026-09-16: Correction to the slot C3 overlays closeout above, after the integrator's update
+
+- Task: the integrator's mid-slot update for `fe/overlays`, which lands three
+  changes on top of the entry above. It does not supersede it; every gate
+  result there was rerun and held.
+- Branch/worktree: unchanged, `fe/overlays` at `.claude/worktrees/fe-overlays`.
+- What changed:
+  - **The gallery shell now carries three lists, not two.** `fe/actions` had
+    already solved the problem the entry above records as a follow-up, and
+    solved it better: `foundationPages`, `familyPages` and
+    `galleryPages = [...foundationPages, ...familyPages]`, with the shell
+    defaulting to `galleryPages` so a family page actually reaches `/gallery`,
+    and `test/gallery/foundation_golden_test.dart` passing `foundationPages`
+    explicitly so those twenty four goldens hold byte for byte however many
+    families register. Written by hand here rather than cherry picked, so the
+    merge sees identical text. The page constant is `overlaysPage`, matching
+    `actionsPage`, rather than the `overlaysGalleryPage` the entry above named.
+    Follow-up one in that entry is therefore closed, not outstanding.
+  - **`StateLayer.colour` and `Pressable.stateLayerColour` taken verbatim from
+    `fe/actions` `bdb0fbc`**, in their own commit, and used by the current tab
+    of the strip. That slot found the defect this one would have shipped: `ink`
+    at 12 percent over an `ink` fill is the same colour, so a filled control
+    has no visible hover or press at all. Worth carrying forward as a rule
+    rather than as a fix, because every family has at least one filled control.
+  - **The family page golden is captured at 1180 by 1000.** Measured rather
+    than guessed: the page is 922 logical pixels of content at touch density
+    and 909 at pointer, inside a 788 pixel viewport at the standard window, so
+    a golden at 1180 by 820 reviewed the banners and truncated everything
+    below them. The two modal goldens keep 1180 by 820, because a sheet and a
+    dialog are judged against the window they are drawn over rather than
+    against the page behind them.
+- Validation after the three changes, each gate run on its own with the tree
+  untouched: package `flutter analyze --fatal-infos` 0; package `flutter test`
+  0, 196 passed; `foundation_golden_test.dart` on its own 0, 24 passed with no
+  golden byte moved; app `flutter analyze --fatal-infos` 0; app `flutter test`
+  0, 1062 passed and 7 skipped; `check_ui_strings.py` 0, 158 files and 0
+  violations; `pre-commit run --files` 0.
+- Durable learnings:
+  - **A shell whose sidebar lists its own pages makes every page a golden
+    dependency of every other page.** Two slots reached the same finding
+    independently, which is the signal that the shape was wrong rather than
+    the use of it. Pinning the list at each golden's call site, rather than
+    keeping families out of the default, is what lets the gallery show
+    everything and the goldens still hold still.
+  - **`test/gallery/failures/` is not gitignored inside the package.**
+    `flutter test` writes it on any golden mismatch. Nothing under it was
+    committed here; a `.gitignore` entry would stop the next slot having to
+    remember.
+- Deviation closed: the entry above records `overlaysGalleryPage` and a
+  `familyPages` list that the shell did not default to. Both are superseded by
+  the names and the structure in this correction.

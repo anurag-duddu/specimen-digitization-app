@@ -49,13 +49,25 @@ without changing route. Retires `MenuAnchor`, `PopupMenuButton`, `showMenu`,
 - `ModalRoutes` dismisses on `Escape` and returns focus to whatever opened the
   modal, which clause 3 of the control contract requires and the route's own
   scope restoration does not do.
+- `StateLayer.colour` and `Pressable.stateLayerColour`, copied verbatim from
+  the actions slot so the two branches carry identical content. The current tab
+  of the strip fills with `ink`, and `ink` at 12 percent over an `ink` fill is
+  the same colour, so it lifts toward `paper` instead.
 
 ### Gallery
 
-- The overlays family page, and `familyPages` in the gallery shell for the
-  control families to register themselves in. Eight goldens: the page in both
-  modes at both densities, plus one window per mode with the sheet open and one
-  with the dialog open.
+- The overlays family page, registered as one line in `familyPages`. The shell
+  now carries `foundationPages`, `familyPages` and `galleryPages`, and defaults
+  to the third, so a family page reaches `/gallery` without moving the
+  foundation goldens: those render the page list too, and
+  `foundation_golden_test.dart` now pins `foundationPages` so they hold byte
+  for byte as each slot registers.
+- Eight goldens: the page in both modes at both densities, plus one window per
+  mode with the sheet open and one with the dialog open. The page is captured
+  at 1180 by 1000 rather than the usual 1180 by 820, because it is 922 logical
+  pixels of content at touch density and a golden that stops at 820 reviews the
+  banners and nothing else. The two modal goldens keep the standard window: a
+  sheet and a dialog are judged against the window they are drawn over.
 
 ## 0.1.0
 
