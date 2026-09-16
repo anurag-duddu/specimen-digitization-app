@@ -96,15 +96,22 @@ const List<GalleryPage> foundationPages = <GalleryPage>[
   ),
 ];
 
-/// Every control family page, in the order 10 section 1.2 lists the families:
-/// actions, inputs, overlays, navigation, data.
+/// Every family page, in the order 10 section 4 lists the families: actions,
+/// inputs, overlays, navigation, data.
 ///
-/// Separate from [foundationPages] because each family golden captures its own
-/// page on its own, and because adding a page to the foundation list would
-/// move all 24 foundation goldens, which no family slot owns. The integrator
-/// joins the two lists once the five slots have landed.
+/// One line per family, added by the slot that owns that page. Separate from
+/// [foundationPages] because the foundation goldens render the whole shell,
+/// page list included: sharing one list would move all twenty four of them
+/// every time a family landed, and five slots regenerating the same binaries
+/// in parallel is how two branches silently revert one another.
 const List<GalleryPage> familyPages = <GalleryPage>[
-  overlaysGalleryPage,
+  overlaysPage,
+];
+
+/// Every page the gallery shows.
+const List<GalleryPage> galleryPages = <GalleryPage>[
+  ...foundationPages,
+  ...familyPages,
 ];
 
 /// The gallery: a page list beside the page.
@@ -115,8 +122,8 @@ class UiGallery extends StatefulWidget {
   /// Which page to open on.
   final int initialPage;
 
-  /// The pages to show. Defaults to [foundationPages]; a family slot passes
-  /// its own list to golden one page on its own.
+  /// The pages to show. Defaults to [galleryPages]; a golden passes its own
+  /// list so that its page list holds still as other slots land.
   final List<GalleryPage>? pages;
 
   @override
@@ -126,7 +133,7 @@ class UiGallery extends StatefulWidget {
 class _UiGalleryState extends State<UiGallery> {
   late int _selected = widget.initialPage;
 
-  List<GalleryPage> get _pages => widget.pages ?? foundationPages;
+  List<GalleryPage> get _pages => widget.pages ?? galleryPages;
 
   @override
   Widget build(BuildContext context) {

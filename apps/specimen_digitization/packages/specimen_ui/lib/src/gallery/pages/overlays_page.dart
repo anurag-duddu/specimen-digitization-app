@@ -12,8 +12,11 @@ import 'package:flutter/widgets.dart';
 import '../../../specimen_ui.dart';
 import '../gallery_shell.dart';
 
+/// Builds the overlays page.
+Widget buildOverlaysPage(BuildContext context) => const _OverlaysPage();
+
 /// The overlays family page, as the gallery shell lists it.
-const GalleryPage overlaysGalleryPage = GalleryPage(
+const GalleryPage overlaysPage = GalleryPage(
   id: 'overlays',
   title: 'Overlays',
   summary:
@@ -21,9 +24,6 @@ const GalleryPage overlaysGalleryPage = GalleryPage(
       'dialogs.',
   builder: buildOverlaysPage,
 );
-
-/// Builds the overlays page.
-Widget buildOverlaysPage(BuildContext context) => const _OverlaysPage();
 
 class _OverlaysPage extends StatefulWidget {
   const _OverlaysPage();

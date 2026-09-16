@@ -15,7 +15,16 @@ import 'package:specimen_ui/src/gallery/pages/overlays_page.dart';
 import '../harness/control_contract.dart';
 
 /// The one page this golden renders.
-const List<GalleryPage> _pages = <GalleryPage>[overlaysGalleryPage];
+const List<GalleryPage> _pages = <GalleryPage>[overlaysPage];
+
+/// The window the family page is captured at.
+///
+/// Taller than the 1180 by 820 every other gallery golden uses, because the
+/// page is 922 logical pixels of content at touch density and a golden that
+/// stops at 820 reviews the banners and nothing else. The modal goldens below
+/// keep the standard window: a sheet and a dialog are judged against the
+/// window they are drawn over, not against the page behind them.
+const Size _pageWindow = Size(1180, 1000);
 
 /// `light` or `dark`, as the file names spell it.
 String _mode(Brightness mode) => mode == Brightness.dark ? 'dark' : 'light';
@@ -30,6 +39,7 @@ void main() {
           const UiGallery(pages: _pages),
           mode: mode,
           density: density,
+          window: _pageWindow,
         );
         expectGlassBudget(tester, window: name);
         await expectLater(
