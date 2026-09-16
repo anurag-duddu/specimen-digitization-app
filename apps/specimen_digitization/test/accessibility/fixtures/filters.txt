@@ -1,26 +1,36 @@
 role=form
-  label="Filter the queue"
   label="All filters must match."
     button enabled=true tap label="Why"
   label="Status"
-  textField enabled=true tap label="Processing step"
-  textField enabled=true tap label="Blocker"
-  textField enabled=true tap label="Issue"
+  textField enabled=true label="Processing step"
+    textField enabled=true tap
+  textField enabled=true label="Blocker"
+    textField enabled=true tap
+  textField enabled=true label="Issue"
+    textField enabled=true tap
   label="Provenance"
-  textField enabled=true tap label="Uploaded by"
-  textField enabled=true tap label="Upload batch"
-  textField enabled=true tap label="Profile"
-  textField enabled=true tap label="Profile version"
+  textField enabled=true label="Uploaded by"
+    textField enabled=true tap
+  textField enabled=true label="Upload batch"
+    textField enabled=true tap
+  textField enabled=true label="Profile"
+    textField enabled=true tap
+  textField enabled=true label="Profile version"
+    textField enabled=true tap
   label="Dates"
-  button enabled=true tap label="Created: Any date"
+  textField enabled=true label="Created on or after" hint="The first day the filter keeps."
+    textField enabled=true tap label="2026-09-13"
+  textField enabled=true label="Created before" hint="The first day the filter leaves out."
+    textField enabled=true tap label="2026-09-13"
   label="Risk"
-  selected=false enabled=true tap label="Include not measured Turn this off to narrow the queue to a risk range."
-  label="Risk range, 0 to 100"
-    enabled=false value="0%"
-    enabled=false value="100%"
-  label="Every record, measured or not."
+  selected=true enabled=true tap label="Include not measured"
+  label="Turn this off to narrow the queue to a risk range."
+  textField enabled=false label="Lowest risk" value="0" hint="Turn off Include not measured to use a risk range."
+    textField enabled=false value="0"
+  textField enabled=false label="Highest risk" value="100" hint="Turn off Include not measured to use a risk range."
+    textField enabled=false value="100"
   label="Identifiers"
-  textField enabled=true tap label="Image file"
-  textField enabled=true tap label="Processing run"
-  button enabled=true tap label="Clear all"
-  button enabled=true tap label="Apply"
+  textField enabled=true label="Image file"
+    textField enabled=true tap
+  textField enabled=true label="Processing run"
+    textField enabled=true tap
