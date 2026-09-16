@@ -36,6 +36,60 @@ Wave 1 slot C1: the seven controls of 10 section 4.1.
 - The actions gallery page, registered in the shell's family page list, with
   goldens in light and dark at both densities.
 
+### data
+
+Wave 1 slot C5: the eight controls of 10 section 4.5.
+
+- `UiListRow`. Height from the density, floored at the 48 dp hit box the
+  control contract sets in both densities. Slots for a 24 glyph, a 40
+  thumbnail or a checkbox the caller passes in, a title over a subtitle of up
+  to two lines, and a trailing slot for text, a chip or a caret. The whole row
+  is one `Pressable` and one merged semantics node whose role follows the
+  mode: a row that opens a record is a `button`, a row in a selection is a
+  `checkbox` carrying `checked`. Selected rows fill `ink` at 6 percent with
+  the 3 dp leading bar, and the bar's gutter is reserved on every row so
+  selecting one never shifts its content sideways. Never glass. Retires
+  `ListTile` and `CheckboxListTile`.
+- `UiProgress`. `ring` at 16, 24 and 40 and `bar` at 4 dp. Determinate draws
+  an arc in `ink` on a `hairline` track and keeps its 200 ms linear catch up
+  under reduced motion, because the motion is the number. Indeterminate turns,
+  draws no track, and under reduced motion holds still and pulses its opacity
+  instead. Two rules from 04 section 5.5 are enforced here rather than left to
+  each call site: a reported value below the highest one seen is held at the
+  highest, and the first value is painted where it is with no fill animation.
+  Retires `CircularProgressIndicator` and `LinearProgressIndicator`.
+- `UiSkeleton` in `row`, `tile` and `line`, each the shape and the height of
+  the content it stands for, with a slow opacity pulse that stops under
+  reduced motion and no shimmer at all. Outside the semantics tree.
+- `UiEmptyState`. A 40 dp glyph, a title, one sentence and at most one
+  `UiButton`, typed as a button so the rule is the signature. No glass.
+- `UiDataTile`. `glass.flat` at `radius.tile`, the label in `type.label`, the
+  numeral in `display.large` or `display.hero`, a unit on the numeral's
+  baseline, an optional footer and an optional child slot. The numeral
+  cross-fades and slides 6 dp upward on change, and cross-fades only under
+  reduced motion. The tint never varies with the value. One semantics node
+  reading label, value and unit as a sentence.
+- `UiArcIndicator`. A 180 or 270 degree `hairline` arc with an `accent`
+  triangular marker at the value and optional minimum and maximum labels. A
+  null value draws the `unmeasured` glyph and the word, never a marker at
+  zero.
+- `UiAvatar` at 32 and 40, initials or an image, with the person's name as
+  the whole of its semantics.
+- `UiHairline`, horizontal and vertical, inset aware and directional. Retires
+  `Divider` and `VerticalDivider`.
+- The data gallery page, registered as one line in `familyPages`, with
+  goldens in light and dark at both densities. They are captured at 1180 by
+  1900 rather than at the shared 1180 by 820: eight controls do not fit one
+  window, and the actions golden already reviews only the top of its page.
+  The taller window belongs to this golden alone, so no other family's files
+  move for it.
+
+### Actions, for the data family
+
+- The loading button's private `_LoadingArc` is now `UiProgress.ring` at
+  16 dp, which is the replacement slot C1 marked it for. The four actions
+  goldens do not move.
+
 ### Foundation, for the actions family
 
 - `StateLayer` and `Pressable` take an optional state layer colour. The
