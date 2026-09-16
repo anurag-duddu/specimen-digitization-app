@@ -157,3 +157,6 @@ logs/
 .DS_Store
 ._*
 Thumbs.db
+
+# Golden failure artifacts flutter_test writes beside the design system gallery goldens.
+apps/specimen_digitization/packages/specimen_ui/test/gallery/failures/

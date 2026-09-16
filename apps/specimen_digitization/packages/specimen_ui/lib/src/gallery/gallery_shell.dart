@@ -187,26 +187,31 @@ class _PageList extends StatelessWidget {
           level: GlassLevel.flat,
           radius: ui.shape.tile,
           padding: EdgeInsetsDirectional.all(ui.space.s2),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Padding(
-                padding: EdgeInsetsDirectional.fromSTEB(
-                  ui.space.s3,
-                  ui.space.s3,
-                  ui.space.s3,
-                  ui.space.s2,
+          // The pane is stretched to the window by the shell's row, so the
+          // list inside it can scroll when the window is shorter than the
+          // page count needs. Ten pages overflow a 600 px window otherwise.
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    ui.space.s3,
+                    ui.space.s3,
+                    ui.space.s3,
+                    ui.space.s2,
+                  ),
+                  child: Text('specimen_ui', style: ui.type.titleLarge),
                 ),
-                child: Text('specimen_ui', style: ui.type.titleLarge),
-              ),
-              for (int i = 0; i < pages.length; i++)
-                _PageListRow(
-                  page: pages[i],
-                  selected: i == selected,
-                  onSelect: () => onSelect(i),
-                ),
-            ],
+                for (int i = 0; i < pages.length; i++)
+                  _PageListRow(
+                    page: pages[i],
+                    selected: i == selected,
+                    onSelect: () => onSelect(i),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
