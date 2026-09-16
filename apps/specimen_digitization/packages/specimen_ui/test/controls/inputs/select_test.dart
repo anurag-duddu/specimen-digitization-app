@@ -366,4 +366,66 @@ void main() {
     );
     expect(boxes.first.style.minHeight, boxes.last.style.minHeight);
   });
+
+  testWidgets('the options are the real row at sm, not a stand-in', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(child: _select(value: 'deferred', onChanged: (String _) {})),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel(_label));
+    await tester.pumpAndSettle();
+    final List<UiListRow> rows = tester
+        .widgetList<UiListRow>(find.byType(UiListRow))
+        .toList();
+    expect(rows, hasLength(_few.length));
+    expect(
+      rows.every((UiListRow row) => row.size == UiSize.sm),
+      isTrue,
+      reason: 'a menu row is the dense row (10 sections 4.3 and 4.5)',
+    );
+    expect(
+      rows.every((UiListRow row) => row.mode == UiListRowMode.navigate),
+      isTrue,
+      reason:
+          'picking an option moves the trigger rather than ticking a box, so '
+          'the row stays a button that is selected',
+    );
+    expect(rows.where((UiListRow row) => row.selected).single.title, 'Deferred');
+  });
+
+  testWidgets('the list stops at seven rows and part of an eighth', (
+    WidgetTester tester,
+  ) async {
+    for (final UiDensityMode density in UiDensityMode.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          density: density,
+          child: _select(options: _many, onChanged: (String _) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel(_label));
+      await tester.pumpAndSettle();
+      final double row = tester
+          .getSize(find.byType(UiListRow).first)
+          .height;
+      expect(
+        row,
+        greaterThanOrEqualTo(UiDensity.hitBox),
+        reason: 'the row is floored at the hit box in both densities',
+      );
+      final BuildContext context = tester.element(find.byType(UiSelect<String>));
+      expect(
+        UiSelectStyle.resolve(context.ui).menuMaxHeight,
+        row * 7.5,
+        reason:
+            'the popover still shows seven rows and part of an eighth, so a '
+            'list that scrolls says so by cutting one off',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
 }
