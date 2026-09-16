@@ -46,6 +46,69 @@ Wave 1 slot C1: the seven controls of 10 section 4.1.
   shows both. The foundation goldens draw the page list, so one shared list
   would move all twenty four of them every time a family landed.
 
+### overlays
+Wave 1 slot C3: the family a screen puts over, above or inside its content
+without changing route. Retires `MenuAnchor`, `PopupMenuButton`, `showMenu`,
+`Tooltip`, `SnackBar`, `ScaffoldMessenger`, `ExpansionTile`, `TabBar`,
+`TabBarView`, `AlertDialog`, `showDialog`, `showModalBottomSheet` and
+`BottomSheet`.
+- `UiPopoverMenu` and `UiMenuTrigger`. A `glass.floating` pane at `radius.tile`
+  with a glyph, a label, an optional shortcut in `mono.identifier` and an
+  optional destructive tint. `Down` and `Up` move over the enabled items and
+  wrap, `Enter` chooses, `Escape` closes and returns focus to the trigger.
+  Semantics `menu` and `menuItem`. No submenus.
+- `UiTooltip`, on hover after 400 ms and on long press. `paper` rather than
+  glass, because tooltips are small and frequent and every frosted pane is a
+  save layer. `UiTooltip.reason` is the carrier for a disabled control's reason
+  through `Pressable.onDisabledReason`.
+- `UiToast`, `UiToastHost` and `UiToasts.show`. A `glass.floating` capsule,
+  queued one at a time, centred above the navigation on a compact window and in
+  the bottom start corner on a wider one. It clears itself after six seconds
+  unless it carries an action, and it announces itself once.
+- `UiBanner`, a full width strip at `radius.none` in seven tones: `info`, the
+  five statuses and `synthetic`. Optional second line behind a disclosure,
+  optional dismiss, the message in a live region. The v1 `EnvironmentBanner`
+  becomes one instance of it.
+- `UiDisclosure`, a titled row that reveals a body with `AnimatedSize` and a
+  caret that turns half a circle. Semantics `expanded`.
+- `UiTabs` and `UiTabView`, bound to a `ValueNotifier<int>` rather than a
+  `TabController`. Arrows move and select, mirrored under a right to left
+  window; panes cross fade and never slide.
+- `UiSheet`, `UiDialog` and the shared `UiModalActions` row. The chrome for
+  `ModalRoutes`: `glass.modal`, `radius.sheet`, a drag handle on the sheet, the
+  title in `title.large`, and at most one `primary` and one `secondary` or
+  `ghost` action. `UiSheet.show`, `UiDialog.show` and `UiDialog.showAdaptive`
+  are the wrappers that push the route and fill in the slots.
+
+### Primitives
+- `Popover` gained `surface` (`glass` or `paper`) and `interactive`, so a
+  passive overlay neither takes focus nor swallows the click the reviewer was
+  about to make on the control it describes.
+- `Squircle` and `GlassSurface` gained `corners`, the one shape in the product
+  that is not uniform, and `ModalRoutes` uses it: a sheet is round on top and
+  square where it meets the window's edge (10 section 4.3).
+- `ModalRoutes` dismisses on `Escape` and returns focus to whatever opened the
+  modal, which clause 3 of the control contract requires and the route's own
+  scope restoration does not do.
+- `StateLayer.colour` and `Pressable.stateLayerColour`, copied verbatim from
+  the actions slot so the two branches carry identical content. The current tab
+  of the strip fills with `ink`, and `ink` at 12 percent over an `ink` fill is
+  the same colour, so it lifts toward `paper` instead.
+
+### Gallery
+- The overlays family page, registered as one line in `familyPages`. The shell
+  now carries `foundationPages`, `familyPages` and `galleryPages`, and defaults
+  to the third, so a family page reaches `/gallery` without moving the
+  foundation goldens: those render the page list too, and
+  `foundation_golden_test.dart` now pins `foundationPages` so they hold byte
+  for byte as each slot registers.
+- Eight goldens: the page in both modes at both densities, plus one window per
+  mode with the sheet open and one with the dialog open. The page is captured
+  at 1180 by 1000 rather than the usual 1180 by 820, because it is 922 logical
+  pixels of content at touch density and a golden that stops at 820 reviews the
+  banners and nothing else. The two modal goldens keep the standard window: a
+  sheet and a dialog are judged against the window they are drawn over.
+
 ## 0.1.0
 
 Wave 0 of the front-end refactor: the foundation and the primitives.

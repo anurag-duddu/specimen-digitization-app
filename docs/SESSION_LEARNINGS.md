@@ -4934,3 +4934,225 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   - The `no_material_components` backlog is untouched by this slot: it adds
     controls to the package and changes no application call site. The sweep
     that spends the backlog is waves 2 and 3.
+## 2026-09-16: Front-end refactor wave 1 slot C3, the `specimen_ui` overlays family
+
+- Task: build slot C3 of `docs/execution/FRONT_END_REFACTOR.md` section 3C, the
+  overlays family of `specimen_ui`: `UiPopoverMenu`, `UiTooltip`, `UiToast`,
+  `UiBanner`, `UiDisclosure`, `UiTabs` with `UiTabView`, `UiSheet` and
+  `UiDialog`, per 10 section 4.3, with behaviour tests, control contract runs,
+  a gallery page and the family goldens.
+- Branch/worktree: `fe/overlays` at `.claude/worktrees/fe-overlays`, cut from
+  `front-end-refactor` at `715edea`.
+- Outcome: complete. Eight controls plus `UiMenuTrigger`, `UiModalActions`,
+  `UiToastHost` and `UiToasts` ship with style objects, density, the control
+  contract and the retired Material widget named in each class doc. Four
+  additive primitive changes were needed and are in their own commits. Nothing
+  under `apps/specimen_digitization/lib/` changed and no application golden or
+  semantics fixture moved.
+- Commits (7, oldest first): `7a08e6f` a paper, passive popover; `93587cc`
+  non uniform pane corners; `7d474be` Escape and focus return from a modal,
+  the three additive primitive changes this slot needed and the first thing to
+  read in review; `6f5e4b5` the eight controls; `199ddb6` the gallery page and
+  the new `familyPages` list; `5d1f135` the tests and the eight goldens; and
+  the changelog and this closeout. No pull request; the integrator merges
+  `fe/overlays` into `front-end-refactor`.
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 196 passed, up from 111 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed |
+  | `check_ui_strings.py` | 0 | 158 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (26 files) | 0 | every hook passed |
+
+- Tests added: 85, in eight files under `test/controls/overlays/` plus the
+  family golden test. Every interactive trigger calls `expectControlContract`:
+  `UiMenuTrigger`, the control a `UiTooltip` wraps, a `UiToast` action, a
+  `UiBanner` dismiss control, a `UiBanner` disclosure control, `UiDisclosure`,
+  a `UiTabs` tab, a `UiSheet` primary action and a `UiDialog` primary action.
+  Reduced motion, 200 percent text and right to left are exercised per control.
+- Goldens: eight new files under `test/gallery/goldens/`,
+  `overlays-{light,dark}-{touch,pointer}.png` at 1180 by 820 and
+  `overlays-{sheet,dialog}-{light,dark}.png` with the modal open. No existing
+  golden moved. Every window is inside the glass budget: the page draws two
+  panes, the page list and the open modal make four at the ceiling.
+- Durable learnings:
+  - **Seven `SemanticsRole` values throw on the first frame that publishes
+    them.** `tooltip`, `dragHandle`, `spinButton`, `comboBox`, `loadingSpinner`,
+    `progressBar` and `hotKey` map to `_unimplemented` in
+    `_DebugSemanticsRoleChecks` (Flutter 3.38.5, `semantics.dart`), so setting
+    one raises "Missing checks for role SemanticsRole.x" from the scheduler.
+    The roles that are safe today are `tab`, `tabBar`, `tabPanel`, `menu`,
+    `menuBar`, `menuItem`, `menuItemCheckbox`, `menuItemRadio`, `dialog`,
+    `alertDialog`, `alert`, `status`, `table`, `row`, `cell`, `columnHeader`,
+    `radioGroup`, `list`, `listItem`, `form`, `complementary`, `contentInfo`,
+    `main`, `navigation`, `region` and `none`. The data family will hit this at
+    `progressBar` and `loadingSpinner`; the `tooltip` property on
+    `SemanticsProperties` is the substitute that carries the same meaning.
+  - **`SemanticsRole.tabBar` requires every child node to carry
+    `SemanticsRole.tab`.** A strip that publishes a label node or a decorative
+    node between the bar and its tabs fails the check rather than degrading.
+  - **`AnimatedSize` cannot take `Duration.zero`.** Its controller notifies
+    synchronously inside `RenderAnimatedSize.performLayout`, and the framework
+    asserts "A RenderAnimatedSize was mutated in its own performLayout
+    implementation". A reduced-motion collapse has to leave the widget out of
+    the tree, not zero its duration. Every other implicitly animated widget in
+    this family takes zero without complaint.
+  - **`expectControlContract` taps the control it is given.** Clause 4 starts a
+    touch gesture on it and lifts, which is a tap, and `pumpWidget` reuses the
+    `State` between clauses because the widget type and key match. A control
+    whose semantics label changes with its own state therefore fails clause 8
+    with "found 0 widgets". Keeping one name and moving the `expanded` flag is
+    both the WAI-ARIA disclosure pattern and what makes the contract pass.
+  - **`uiHarness` publishes `UiTheme` inside `home`, which is below the
+    navigator.** A route pushed over the page finds no scope and falls back to
+    `UiTheme._fallback(Theme.of(context).brightness)`, which in a `WidgetsApp`
+    is always light. The first dark mode sheet and dialog goldens came out with
+    a light pane and an inverted primary button, which looked like a token
+    defect and was a harness one. The application is wired the other way,
+    `UiTheme` around `MaterialApp.router`, so the goldens here lift the theme
+    the same way rather than the harness being changed under three live slots.
+  - **`RawDialogRoute` with `barrierDismissible: false` listens for nothing.**
+    `ModalRoutes` passes false so it can draw its own `Scrim`, which also means
+    Escape reached no handler and clause 3 of the control contract was not true
+    of any modal in the product. The route now binds `DismissIntent` itself.
+  - **A modal route restores the focus scope, not the control.** After a sheet
+    closed, primary focus was the page's `FocusScopeNode` rather than the
+    button that opened it. `ModalRoutes` now captures the primary focus before
+    the push and asks for it back on completion, which is what `Popover`
+    already did.
+  - **`MaterialLocalizations.modalBarrierDismissLabel` is the localised
+    "dismiss"** that 10 section 1.3 keeps Material around for in
+    `controls/overlays/tooltip.dart`. Reached through
+    `Localizations.of<MaterialLocalizations>` rather than `MaterialLocalizations.of`,
+    so a harness with no delegate gets no tooltip hint instead of an exception.
+  - **`tester.binding.rootPipelineOwner.semanticsOwner` is null** and
+    `tester.binding.pipelineOwner` is deprecated, so a test that wants every
+    node of a role should read the role off the `Semantics` widgets instead of
+    walking the semantics tree from the binding.
+  - **An info banner on `paper` over a `paper` pane is invisible.** 09 has no
+    informational status triple, and the first golden showed a line of text
+    with no band. The tone now carries a `hairline` edge on the top and the
+    bottom, which is 09 section 3.1's own answer: structure comes from tone.
+- Failed approaches:
+  - `SemanticsRole.tooltip` on the tooltip pane, per the learning above.
+  - `Semantics(tooltip: message)` around the control a tooltip describes, which
+    is what Flutter's own `Tooltip` does. `Pressable` publishes a container
+    node, so the annotation above it has no boundary to merge with and its
+    string lands on the page node instead. The pane carries the property now.
+  - A show label and a hide label on the banner's disclosure control.
+  - `galleryGoldenName` for the family goldens: it spells
+    `<family>-<page>-<mode>-<density>` and the brief names the files
+    `overlays-<mode>-<density>`.
+  - Registering the page in `foundationPages`: the sidebar renders every page
+    in the list, so one more row moves all 24 foundation goldens, which this
+    slot does not own.
+- Remaining follow-ups:
+  - **The integrator joins the two page lists.** `familyPages` is new and
+    `UiGallery` still defaults to `foundationPages`, so `/gallery` in the
+    application shows the foundation pages only. Joining them is one line and
+    moves all 24 foundation goldens once, which is a wave-level regeneration
+    rather than a slot's.
+  - **`uiHarness` should publish `UiTheme` above the navigator.** Changing it
+    now would move every other slot's goldens, so it is left for the merge.
+  - **`UiTabs` defaults its strip to `UiSegmented` at `lg` when slot C1
+    merges.** Marked `TODO(fe/actions)` in `tabs.dart`.
+  - **Menu items may move to `UiListRow` when slot C5 merges** if the shortcut
+    column and the destructive tint fit that row's slots. They are a private
+    `_MenuItem` today because both are menu specific.
+- Deviations from 10 section 4.3, and why:
+  - **`UiSheet.show` and `UiDialog.show` rather than `showUiSheet` and
+    `showUiDialog` wrappers.** The primitives already own those two names and
+    the top barrel exports them, so a second pair would be a collision. The
+    primitives keep their names and their signatures.
+  - **`UiDialog.showAdaptive` exists.** 05 section 3.7 asks for one call that
+    picks a sheet on a compact window and a dialog above it, which the
+    primitive `showUiModal` does for a bare pane and nothing did for the
+    chrome.
+  - **`UiModalActions` is public and is not in section 4.3.** The action row is
+    identical in both modals and a private class cannot cross two files in
+    Dart, which the one-public-class-per-file rule in section 11 requires.
+  - **`UiPopoverMenu.semanticsLabel` is optional.** The pane's role announces it
+    as a menu and its items are visible text, so a label repeating the trigger's
+    is read twice. `UiMenuTrigger` leaves it null.
+  - **`UiBanner` has seven tones rather than three variants.** Section 4.3 asks
+    for `info`, a status and `synthetic`; one enum whose members name the five
+    statuses is what lets the fill, the text colour and the glyph be chosen
+    together in `resolve`.
+  - **`UiBanner` caps itself at two lines and truncates.** Carried from finding
+    V-15, where the environment band wrapped to eleven lines at 200 percent text
+    and took half the window. The full sentence stays on the semantics node.
+  - **`UiBanner`'s strip minimum is `space.s6` rather than the control
+    height,** so a plain band is 40 tall and a band with a control is 64. The
+    48 dp hit box is never shrunk; the band around it is.
+  - **The `info` tone carries a hairline edge,** per the learning above.
+  - **`UiTabs`' default strip is a private capsule strip on `Pressable`,** with
+    the `TODO(fe/actions)` the brief asks for. Menu items are a private
+    `_MenuItem` rather than a `UiListRow`, which is menu specific rather than a
+    stand-in.
+  - **`UiTabView` cross fades at `medium` rather than `standard`.** The brief
+    names `medium` with the standard curve; 04 section 2.4 puts a panel content
+    swap at `standard`. The brief won because it is the later document.
+  - **A toast with an action never expires.** Section 4.3 says auto-dismiss
+    after six seconds unless it has an action, which leaves an action toast on
+    screen until the reviewer acts. `UiToasts.dismiss` is the shell's way out.
+  - **`UiSheet`'s drag handle closes the sheet on a downward flick.** Section
+    4.3 names the handle and not the gesture. Dragging is never the only way
+    out, which is what SC 2.5.7 requires: the scrim and Escape both close a
+    dismissible sheet, so the handle carries no semantics of its own.
+
+### 2026-09-16: Correction to the slot C3 overlays closeout above, after the integrator's update
+
+- Task: the integrator's mid-slot update for `fe/overlays`, which lands three
+  changes on top of the entry above. It does not supersede it; every gate
+  result there was rerun and held.
+- Branch/worktree: unchanged, `fe/overlays` at `.claude/worktrees/fe-overlays`.
+- What changed:
+  - **The gallery shell now carries three lists, not two.** `fe/actions` had
+    already solved the problem the entry above records as a follow-up, and
+    solved it better: `foundationPages`, `familyPages` and
+    `galleryPages = [...foundationPages, ...familyPages]`, with the shell
+    defaulting to `galleryPages` so a family page actually reaches `/gallery`,
+    and `test/gallery/foundation_golden_test.dart` passing `foundationPages`
+    explicitly so those twenty four goldens hold byte for byte however many
+    families register. Written by hand here rather than cherry picked, so the
+    merge sees identical text. The page constant is `overlaysPage`, matching
+    `actionsPage`, rather than the `overlaysGalleryPage` the entry above named.
+    Follow-up one in that entry is therefore closed, not outstanding.
+  - **`StateLayer.colour` and `Pressable.stateLayerColour` taken verbatim from
+    `fe/actions` `bdb0fbc`**, in their own commit, and used by the current tab
+    of the strip. That slot found the defect this one would have shipped: `ink`
+    at 12 percent over an `ink` fill is the same colour, so a filled control
+    has no visible hover or press at all. Worth carrying forward as a rule
+    rather than as a fix, because every family has at least one filled control.
+  - **The family page golden is captured at 1180 by 1000.** Measured rather
+    than guessed: the page is 922 logical pixels of content at touch density
+    and 909 at pointer, inside a 788 pixel viewport at the standard window, so
+    a golden at 1180 by 820 reviewed the banners and truncated everything
+    below them. The two modal goldens keep 1180 by 820, because a sheet and a
+    dialog are judged against the window they are drawn over rather than
+    against the page behind them.
+- Validation after the three changes, each gate run on its own with the tree
+  untouched: package `flutter analyze --fatal-infos` 0; package `flutter test`
+  0, 196 passed; `foundation_golden_test.dart` on its own 0, 24 passed with no
+  golden byte moved; app `flutter analyze --fatal-infos` 0; app `flutter test`
+  0, 1062 passed and 7 skipped; `check_ui_strings.py` 0, 158 files and 0
+  violations; `pre-commit run --files` 0.
+- Durable learnings:
+  - **A shell whose sidebar lists its own pages makes every page a golden
+    dependency of every other page.** Two slots reached the same finding
+    independently, which is the signal that the shape was wrong rather than
+    the use of it. Pinning the list at each golden's call site, rather than
+    keeping families out of the default, is what lets the gallery show
+    everything and the goldens still hold still.
+  - **`test/gallery/failures/` is not gitignored inside the package.**
+    `flutter test` writes it on any golden mismatch. Nothing under it was
+    committed here; a `.gitignore` entry would stop the next slot having to
+    remember.
+- Deviation closed: the entry above records `overlaysGalleryPage` and a
+  `familyPages` list that the shell did not default to. Both are superseded by
+  the names and the structure in this correction.
