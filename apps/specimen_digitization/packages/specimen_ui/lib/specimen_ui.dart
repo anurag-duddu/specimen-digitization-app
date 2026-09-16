@@ -10,7 +10,11 @@
 library;
 
 // Foundation (L1).
+export 'src/foundation/color.dart';
+export 'src/foundation/fields.dart';
 export 'src/foundation/fonts.dart';
+export 'src/foundation/glass.dart';
+export 'src/foundation/palette.dart';
 export 'src/foundation/type.dart';
 
 // Controls (L3), one barrel per family.
