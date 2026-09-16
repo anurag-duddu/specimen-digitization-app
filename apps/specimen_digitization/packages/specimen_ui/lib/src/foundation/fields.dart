@@ -28,6 +28,11 @@ enum UiFieldName {
 }
 
 /// One field: a centre colour and the alpha it carries at its centre.
+///
+/// The alpha falls from [centreAlpha] to zero at the placement's radius on
+/// the Gaussian profile in `FieldPainter.profile`. The values here are the
+/// centre, which is what the composite contrast gate measures against
+/// (09 section 3.7).
 @immutable
 class UiFieldStyle {
   /// Binds a centre colour to its centre alpha.
@@ -69,8 +74,14 @@ class UiFieldPlacement {
   /// Vertical centre, as a fraction of the window's height.
   final double y;
 
-  /// Radius as a fraction of the window's shorter side. 09 holds this between
-  /// 45 and 70 percent so the field has no visible edge.
+  /// Radius as a fraction of the window's **longer** side.
+  ///
+  /// 09 section 3.2 holds this between 45 and 70 percent. It was a fraction
+  /// of the shorter side until the presets were measured at real windows: on
+  /// a 390 by 844 phone that put the sun field's half intensity point 7
+  /// percent of the way down the window, which reads as a spot in a corner
+  /// rather than as light. On the longer side the same fractions reach
+  /// between a quarter and a half of every window in the size class table.
   final double radius;
 
   /// A multiplier on the field's centre alpha, for a preset that wants the
