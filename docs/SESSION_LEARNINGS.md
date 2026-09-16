@@ -4588,3 +4588,168 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   - **`git rev-parse --short HEAD origin/main` with two revisions fails with "Needed a single revision"**; use `git log --oneline -1 <rev>` per revision.
 - Failed approaches: the Python `urllib` pub.dev lookup failed on macOS system Python with a certificate error; `curl` piped into Python worked.
 - Remaining follow-ups: approval of the plan; wave 0 (`fe/foundation`) as specified in `docs/execution/FRONT_END_REFACTOR.md` section 5.
+
+## 2026-09-16: Front-end refactor wave 0, the `specimen_ui` foundation and primitives
+
+- Task: build wave 0 of the front-end refactor, items A1 to A13 and B1 to B8 of
+  `docs/execution/FRONT_END_REFACTOR.md`: the `specimen_ui` package, its tokens,
+  its primitives, its gates, its gallery, and the application wiring that puts
+  every screen on them without changing a screen.
+- Branch/worktree: `fe/foundation` at `.claude/worktrees/fe-foundation`, cut
+  from `front-end-refactor` at `13876d3`.
+- Outcome: complete. The design system exists as an in-repo package, the
+  application runs on it, ten gates hold the line, and the gallery is mounted
+  at `/gallery`. No screen and no pattern changed beyond what the theme
+  adapters required, and the adapters keep every public API the screens use.
+- Commits (14, oldest first): `7a2342d` package skeleton and the path
+  dependency; `59dec94` Geist bundled and the type scale; `7c2b766` colour,
+  fields and glass; `c91ec73` shape, space, density and motion; `baa4b4a` the
+  icon registry on Phosphor; `ea6b794` `UiThemeData` and `context.ui`;
+  `c205833` the primitives; `fceed6f` the application wiring and the adapters;
+  `0212f31` the gates, the control contract and the primitive tests; `f4965cb`
+  the gallery and the `/gallery` route; `83cbd08` CI; `3886fb8` the amendments
+  to 09 and 10; `e81bf65` the golden regeneration; `f307413` a low entropy
+  fixture. No pull request yet.
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | `google_fonts` absent from `pubspec.lock` |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 111 passed |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed |
+  | `flutter build web --release` | 0 | built |
+  | `check_ui_strings.py` | 0 | 149 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (245 files) | 0 | 14 hooks passed |
+
+- Backlogs, computed from the tree rather than guessed. Every one is a
+  starting number for waves 1 to 3; none existed before this wave.
+
+  | Gate | Before | After | Note |
+  |---|---|---|---|
+  | `no_color_literals` | 0 in `lib/` | 0 | scope widened to the package; only `palette.dart` may hold one |
+  | `no_material_components` | not measured | 208 uses over 50 files | appendix B says 203; see below |
+  | `no_material_imports` | not measured | 43 files | screens, widgets and app, minus `app_router.dart` |
+  | `icons_unique` | not measured | 161 glyphs over 43 files | plus zero duplicate registry entries |
+  | `no_dashes` | not measured | 0 | Dart strings and `design/*.md` |
+  | `contrast_composite` | not measured | 0 failing pairs | after six token corrections |
+  | `layering` | not measured | 0 | three files may import `material.dart` |
+  | `fonts_bundled` | not measured | 0 | both faces bundled, `google_fonts` gone |
+  | `glass_budget` | not measured | 0 over budget | called at every window of the size-class goldens |
+
+- Goldens: all 121 screen goldens under `test/golden/images/` moved, which is
+  the whole set and exactly what was expected: the faces were never bundled
+  before, so every one rendered in Ahem, the test placeholder that draws each
+  glyph as a filled box. Zero semantics fixtures under
+  `test/accessibility/fixtures/` changed, which is the other half of the
+  check. 24 new gallery goldens under the package.
+- Durable learnings:
+  - **The v1 goldens were not "the platform sans", they were Ahem.** The plan
+    predicted a total diff after fonts land and was right, but for a stronger
+    reason: `flutter test` renders every glyph as a box when no font is
+    loaded, so 121 PNGs were evidence of layout only. They are now evidence of
+    type as well.
+  - **Creating the test binding installs an `HttpOverrides` that answers every
+    request with a mock 400** (`flutter_test/src/_binding_io.dart`). A
+    `flutter_test_config.dart` that calls `TestWidgetsFlutterBinding.ensureInitialized()`
+    to load a font therefore breaks every test that does real loopback HTTP:
+    36 of them here, all reporting "The request did not complete". The fix is
+    to restore whatever override was in place before the binding was created.
+    Any later wave that adds a global test configuration hits this.
+  - **A package font resolves under a prefixed family name, and so does a
+    dependency's.** `TextStyle(fontFamily: 'Geist', package: 'specimen_ui')`
+    is `packages/specimen_ui/Geist`, and `PhosphorIconData` sets `fontPackage`,
+    so its family is `packages/phosphor_flutter/PhosphorRegular`. A
+    `FontLoader` registered under the bare name loads a face nothing then asks
+    for, and every glyph renders as a box with no error.
+  - **`Durations` and `Easing` are declared in `material.dart`,** so a
+    foundation file that may not import it cannot reference them. The values
+    are written out in `foundation/motion.dart` and a test that does import
+    Material asserts each one still equals its Material constant. That pin is
+    stronger than the reference it replaces: it fails loudly if the token
+    database moves.
+  - **`TextField` needs two pieces of Material infrastructure**, not one: a
+    `Material` ancestor and `MaterialLocalizations`. 10 section 1.3 already
+    keeps both; what was not obvious is that a package test harness built on
+    `WidgetsApp` has to supply the localizations delegate itself.
+  - **`textContrastGuideline` samples the mode of the dark pixels in a `Text`
+    widget's inflated paint bounds.** A heading stretched across a pane
+    reports the whole row as its bounds, so the mode is an anti-aliased edge
+    shade rather than the ink the glyph is set in. A 17:1 heading measured
+    3.44:1 that way. Shrink wrapping the heading fixed it, and the same trap
+    waits for any later wave that stretches a short label.
+  - **09's own `boundary` value could not meet 09's own rule.** `#C6C8C3`
+    measures 1.40:1 and the rule is 3:1. No value that light can carry a 3:1
+    edge on white, which is worth knowing before anyone proposes a lighter
+    one again.
+  - **`.gitignore` blanket ignores `data/`** for museum collection data, which
+    silently swallowed `controls/data/`, the data control family named in 10
+    section 1.2. The file now carries one negation for that path.
+- Failed approaches:
+  - Counting keyboard activations by attaching to the semantics node. The
+    callback belongs to the caller, so the contract now asserts that the
+    focused control consumed the key, which is what breaks when a control
+    forgets its activation shortcuts.
+  - `addTearDown(semantics.dispose)` in the control contract. `flutter_test`
+    verifies that no `SemanticsHandle` is live when the test body returns,
+    which is before tear downs run.
+  - A harness built from `Shortcuts` and `Actions` by hand. Nothing ever held
+    focus, so Tab traversed from nowhere; a `WidgetsApp` with a route gives
+    the focus scope a real application has.
+- Remaining follow-ups, every deviation from 09 and 10 and why:
+  - **Six colour tokens differ from 09 section 3.1.** `ink.tertiary`,
+    `boundary` and `disabled.outline`, in both modes, failed the composite
+    rule 09 section 3.7 sets. Each moved along its own hue to the first value
+    clearing its floor with a two percent margin. 09 is amended with the table
+    of what each measured.
+  - **`UiButton.primary` inverts with the mode.** 10 section 4.1 reads as
+    though the disc stays dark in dark mode; `paper` on `ground` in dark
+    measures 1.08:1, which is an invisible control. 10 is amended.
+  - **The state layer is `ink` in both modes.** 10 section 2 clause 6 names
+    `paper` for dark, and `paper` in dark is darker than `ground`, so it would
+    hide a control rather than lift it. 10 is amended.
+  - **`mono.literal` is 15 and `mono.literalDense` is 13.** 09 section 4.2
+    says the monospace roles "keep their v1 sizes" and then prints different
+    numbers from v1's 16 and 14. The printed numbers won, because token values
+    in 09 are taken verbatim.
+  - **`MotionTokens` is no longer a `ThemeExtension`.** It cannot be one
+    without importing `material.dart` into the foundation. Every call site
+    keeps working because `MotionTokens.of(context)` never needed the theme:
+    it only ever folded in the live reduced-motion state.
+  - **The registry has 81 specs, not the 79 keys appendix A counts.** The
+    difference is `unknown`, `riskLow`, `riskMedium` and `riskHigh`, which 09
+    section 7 names and appendix A does not list, less `mark`, which is an
+    asset rather than a glyph and so has a key but no spec. No glyph in
+    appendix A or 09 section 7 is missing from `phosphor_flutter` 2.1.0, so
+    there are no substitutions.
+  - **`no_material_components` totals 208 where appendix B totals 203.** The
+    five are one per `ScaffoldMessenger.of(context).showSnackBar(SnackBar(...))`
+    site: appendix B counted each as one use, and the gate counts the
+    messenger and the bar separately because `ScaffoldMessenger` is its own
+    term in the regex. The sites are in `queue_screen.dart`,
+    `source_screen.dart`, `evidence_drawer.dart` and `workbench.dart` twice.
+  - **Two call sites changed outside the theme layer.** The filter sheet's
+    group headings moved from `titleSmall` to `titleMedium` and are aligned
+    rather than stretched, because the Material bridge now puts the
+    field-label role in `titleSmall` and because a stretched heading fails
+    `textContrastGuideline`. The compact queue-selection golden stopped
+    tapping a checkbox after the long press that already selected the row.
+    Both were forced by this wave, not chosen.
+  - **The fields gallery page states a pane budget of ten.** Three presets
+    times three levels is what that page exists to show. Every other page is
+    held to the four in 09 section 3.3.
+  - **`apps/specimen_digitization/CLAUDE.md` does not exist**, although the
+    agent brief and the plan's section 11 both name it as required reading.
+    The repository root `CLAUDE.md` is the one that governs. A later wave
+    should either write the app-level file or correct the brief template.
+  - **The application's screen goldens still draw `Symbols.` glyphs as
+    boxes.** Material Symbols is not loaded in tests and was not before this
+    wave either. The Phosphor faces are loaded now, so the first screen that
+    moves to `UiIcons` shows a glyph rather than a box, and the diff that
+    lands with the icon sweep is about the icon rather than about the harness.
+  - **Wave 1 owns the rest of the actions family.** `UiButton` ships with
+    `primary`, `secondary` and `ghost` at size `md` only, marked experimental,
+    because the primitives gallery needs something real to press. Slot C1
+    completes it per 10 section 4.1.
