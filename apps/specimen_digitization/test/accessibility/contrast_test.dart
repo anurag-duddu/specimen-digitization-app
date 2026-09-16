@@ -21,7 +21,7 @@ const aaText = 4.5;
 /// Disposition colors, design/06-accessibility.md section 2.3.
 const dispositionColors = <String, Color>{
   'Cleared': Color(0xff14513d),
-  'Needs human review': Color(0xff754300),
+  'Needs review': Color(0xff754300),
   'Deferred': Color(0xff594d7c),
   'Default or unknown': Color(0xff374b60),
 };

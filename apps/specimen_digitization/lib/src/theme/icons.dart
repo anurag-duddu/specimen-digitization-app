@@ -108,7 +108,7 @@ extension SpecimenTokensX on BuildContext {
         onFill: t.needsReviewOnFill,
         icon: SpecimenIconography.needsReview,
         fill01: 1,
-        label: 'Needs human review',
+        label: 'Needs review',
       ),
       'disposition.deferred' => (
         content: t.deferredContent,

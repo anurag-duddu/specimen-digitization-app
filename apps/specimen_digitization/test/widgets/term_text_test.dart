@@ -141,7 +141,7 @@ void main() {
       // The vocabulary prefix criterion 4.16 asks for survives.
       expect(
         find.bySemanticsLabel(
-          'Queue: needs human review, term, double tap for definition',
+          'Queue: needs review, term, double tap for definition',
         ),
         findsOneWidget,
       );

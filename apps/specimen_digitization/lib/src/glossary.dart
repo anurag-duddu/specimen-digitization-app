@@ -45,9 +45,6 @@ const Map<String, String> glossary = <String, String>{
   'cleared':
       'A reviewer affirmed this record, and it is recorded against the '
       'version they affirmed.',
-  'needs human review':
-      'The server will not clear this record without a person, and the '
-      'blockers list says what it is waiting for.',
   'needs review':
       'The server will not clear this record without a person, and the '
       'blockers list says what it is waiting for.',

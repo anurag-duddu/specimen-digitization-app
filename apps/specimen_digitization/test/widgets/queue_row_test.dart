@@ -117,7 +117,7 @@ void main() {
     expect(
       find.bySemanticsLabel(
         RegExp(
-          'FMNH-0001, Queue: needs human review, Two readings disagree on '
+          'FMNH-0001, Queue: needs review, Two readings disagree on '
           'the locality, updated 13 Sep 2026, 14:32',
         ),
       ),

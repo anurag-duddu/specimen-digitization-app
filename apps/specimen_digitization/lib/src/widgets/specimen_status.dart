@@ -161,7 +161,7 @@ enum SpecimenStatus {
   /// The visible chip word.
   String get label => switch (this) {
     SpecimenStatus.cleared => 'Cleared',
-    SpecimenStatus.needsReview => 'Needs human review',
+    SpecimenStatus.needsReview => 'Needs review',
     SpecimenStatus.deferred => 'Deferred',
     SpecimenStatus.processing => 'Processing',
     SpecimenStatus.blocked => 'Processing blocked',

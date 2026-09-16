@@ -42,12 +42,12 @@ void main() {
     // vocabulary prefix criterion 4.16 asks for is still the head of it.
     expect(
       find.bySemanticsLabel(
-        'Queue: needs human review, term, double tap for definition',
+        'Queue: needs review, term, double tap for definition',
       ),
       findsOneWidget,
     );
     // The visible word is not a second node.
-    expect(find.bySemanticsLabel('Needs human review'), findsNothing);
+    expect(find.bySemanticsLabel('Needs review'), findsNothing);
     handle.dispose();
   });
 
