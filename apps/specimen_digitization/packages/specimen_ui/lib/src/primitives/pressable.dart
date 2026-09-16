@@ -324,6 +324,18 @@ class _PressableState extends State<Pressable> {
 
     return Semantics(
       container: true,
+      // The label the caller gave is the node's label, and the content's own
+      // semantics are dropped. A control's label has to stand alone (10
+      // section 2 clause 5), and a label that differs from the visible text,
+      // which is the normal case for an icon-only control, would otherwise be
+      // read twice: once as the control and once as its content. When a
+      // disabled control has a text child the two even fuse into one node,
+      // which is the defect the control contract caught.
+      //
+      // A composite that does need its content to carry semantics of its own,
+      // such as a selectable row with a status chip in it, sets
+      // `excludeFromSemantics` and publishes its own tree instead.
+      excludeSemantics: true,
       label: widget.semanticsLabel,
       value: widget.semanticsValue,
       hint: enabled ? null : widget.disabledReason,

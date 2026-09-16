@@ -131,6 +131,7 @@ void main() {
           brightness: brightness,
           signedIn: false,
         );
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'signin__${window}__$theme');
       });
     });
@@ -150,6 +151,7 @@ void main() {
           brightness: brightness,
           location: goldenQueueLocation,
         );
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'queue__${window}__$theme');
       });
     });
@@ -188,6 +190,7 @@ void main() {
         await tester.tap(find.text(SelectionBar.selectAllLabel));
         await tester.pumpAndSettle();
         expect(find.text('4 records selected'), findsOneWidget);
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'queue-selection__${window}__$theme');
       });
     });
@@ -213,6 +216,7 @@ void main() {
         await tester.tap(find.widgetWithText(OutlinedButton, 'Filters'));
         await tester.pumpAndSettle();
         expect(find.text('Filter the queue'), findsOneWidget);
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'filters__${window}__$theme');
       });
     });
@@ -236,6 +240,7 @@ void main() {
             textScale: scale,
             location: goldenIntakeLocation,
           );
+          expectGlassBudget(tester, window: window);
           await expectGolden(
             tester,
             'intake__${window}__${theme}__${scaleTag(scale)}',
@@ -263,6 +268,7 @@ void main() {
         // The checkbox column is open from medium up and revealed by a long
         // press below it, which is the adaptation this golden exists to show.
         expect(find.text('microscopic-slides'), findsOneWidget);
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'source__${window}__$theme');
       });
     });
@@ -351,6 +357,7 @@ void main() {
                   'workbench-$name'
                   '__${window}__${theme}__${scaleTag(scale)}';
               expectKnownOverflow(tester, golden);
+              expectGlassBudget(tester, window: window);
               await expectGolden(tester, golden);
             },
           );
@@ -406,6 +413,7 @@ void main() {
           );
           expect(find.byType(RegionEditorBody), findsOneWidget);
         }
+        expectGlassBudget(tester, window: window);
         await expectGoldenFinder(
           tester,
           find.byType(MaterialApp),
@@ -425,6 +433,7 @@ void main() {
         brightness: Brightness.light,
         location: AppRoutes.help,
       );
+      expectGlassBudget(tester, window: 'compact-390x844');
       await expectGolden(tester, 'help__compact-390x844__light');
     });
   });

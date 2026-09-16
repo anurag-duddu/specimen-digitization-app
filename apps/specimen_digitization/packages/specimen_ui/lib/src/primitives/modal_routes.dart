@@ -185,7 +185,12 @@ class _ModalFrame extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.all(sheet ? 0 : ui.space.s4),
                   child: ConstrainedBox(
+                    // A sheet fills the window's width; a dialog shrink wraps
+                    // up to 560. `minWidth: infinity` is the idiom for "as
+                    // wide as the parent allows", because `ConstrainedBox`
+                    // enforces against the incoming constraints.
                     constraints: BoxConstraints(
+                      minWidth: sheet ? double.infinity : 0,
                       maxWidth: sheet ? double.infinity : ui.space.dialogMax,
                     ),
                     child: FocusScope(

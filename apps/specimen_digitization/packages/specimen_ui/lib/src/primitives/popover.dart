@@ -153,6 +153,29 @@ class _PopoverState extends State<Popover> {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
+    // The shortcut wraps the trigger as well as the pane. Escape pressed
+    // immediately after opening, while focus is still on the trigger, has to
+    // close the popover: a reviewer does not know which side of the boundary
+    // their focus is on.
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.escape): DismissIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          DismissIntent: CallbackAction<DismissIntent>(
+            onInvoke: (DismissIntent intent) {
+              if (widget.controller.isOpen) _close();
+              return null;
+            },
+          ),
+        },
+        child: _buildPortal(context, ui),
+      ),
+    );
+  }
+
+  Widget _buildPortal(BuildContext context, UiThemeData ui) {
     return OverlayPortal(
       controller: _portal,
       overlayChildBuilder: (BuildContext overlayContext) => Positioned.fill(
@@ -178,33 +201,17 @@ class _PopoverState extends State<Popover> {
                   onTapOutside: widget.barrierDismissible
                       ? (PointerDownEvent _) => _close()
                       : null,
-                  child: Shortcuts(
-                    shortcuts: const <ShortcutActivator, Intent>{
-                      SingleActivator(LogicalKeyboardKey.escape):
-                          DismissIntent(),
-                    },
-                    child: Actions(
-                      actions: <Type, Action<Intent>>{
-                        DismissIntent: CallbackAction<DismissIntent>(
-                          onInvoke: (DismissIntent intent) {
-                            _close();
-                            return null;
-                          },
-                        ),
-                      },
-                      child: FocusScope(
-                        node: _scope,
-                        autofocus: true,
-                        child: Semantics(
-                          container: true,
-                          label: widget.semanticsLabel,
-                          explicitChildNodes: true,
-                          child: _PopoverPane(
-                            level: widget.level,
-                            radius: widget.radius,
-                            child: Builder(builder: widget.overlayBuilder),
-                          ),
-                        ),
+                  child: FocusScope(
+                    node: _scope,
+                    autofocus: true,
+                    child: Semantics(
+                      container: true,
+                      label: widget.semanticsLabel,
+                      explicitChildNodes: true,
+                      child: _PopoverPane(
+                        level: widget.level,
+                        radius: widget.radius,
+                        child: Builder(builder: widget.overlayBuilder),
                       ),
                     ),
                   ),

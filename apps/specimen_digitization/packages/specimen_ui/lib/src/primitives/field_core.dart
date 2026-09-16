@@ -10,7 +10,8 @@
 library;
 
 // The one Material import in primitives, for TextField's editing behaviour.
-import 'package:flutter/material.dart' show InputDecoration, TextField;
+import 'package:flutter/material.dart'
+    show InputDecoration, Material, MaterialType, TextField;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -165,6 +166,10 @@ class _FieldCoreState extends State<FieldCore> {
     final TextStyle style = (widget.style ?? ui.type.body).copyWith(
       color: widget.enabled ? ui.color.ink : ui.color.disabledContent,
     );
+    // `TextField` asserts on a `Material` ancestor, for the selection
+    // handles and the magnifier it paints into. Transparent, so it draws
+    // nothing: the chrome is ours, and the widget 10 section 1.3 retires is
+    // `Material` at a call site, not the ancestor its own `TextField` needs.
     final Widget field = TextField(
       controller: widget.controller,
       focusNode: _node,
@@ -212,7 +217,7 @@ class _FieldCoreState extends State<FieldCore> {
       child: FocusRing(
         visible: widget.showFocusRing && _focused,
         radius: ui.shape.field,
-        child: field,
+        child: Material(type: MaterialType.transparency, child: field),
       ),
     );
   }
