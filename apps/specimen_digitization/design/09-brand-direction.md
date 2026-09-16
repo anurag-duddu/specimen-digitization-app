@@ -92,11 +92,11 @@ a role. Roles are named for what they do, never for a value.
 | `matte` | `#FFFFFF` | `#1E2024` | The letterbox behind a photograph. Lowest surface in light, highest in dark, so label paper reads as paper in both. |
 | `ink` | `#111214` | `#F2F2EF` | Primary text, glyphs, the filled navigation disc, primary buttons. |
 | `ink.secondary` | `#4B4F57` | `#B9BCC3` | Supporting text, labels above fields, timestamps. |
-| `ink.tertiary` | `#6B6F78` | `#878B93` | Units, hints, placeholder text. Clears 4.5:1 on `paper` and on light glass. |
+| `ink.tertiary` | `#646870` | `#9599A0` | Units, hints, placeholder text. Clears 4.5:1 on `paper` and on every glass level over every field. |
 | `hairline` | `#E4E5E1` | `#25272B` | Decorative separation. 1 dp. Never a boundary. |
-| `boundary` | `#C6C8C3` | `#3B3E44` | Any edge a user must be able to find: field edges, unfilled checkboxes. 3:1 against `paper`. |
+| `boundary` | `#82867B` | `#747A86` | Any edge a user must be able to find: field edges, unfilled checkboxes. 3:1 against `paper`. |
 | `disabled.content` | `#62666E` | `#A6AAB1` | Text and glyphs of a disabled control. 4.5:1 on every surface; a disabled control in this product states a server reason and must stay readable (03 section 3.6). |
-| `disabled.outline` | `#8E9299` | `#6A6E76` | Edge of a disabled control. 3:1 floor. |
+| `disabled.outline` | `#81858D` | `#757A82` | Edge of a disabled control. 3:1 floor. |
 | `disabled.fill` | `ink` at 6% | `ink` at 8% | Behind a disabled control. |
 | `scrim` | `#000000` at 32% | `#000000` at 56% | Behind modal glass. Lower than v1 because the pane itself already blurs. |
 
@@ -211,6 +211,29 @@ extend from the v1 token table to composited surfaces:
 The composite is computed with `Color.alphaBlend`, which is what the engine
 does for a flat fill; blur only averages neighbouring pixels and cannot push
 contrast outside the range of the two extremes tested.
+
+**Amendment, wave 0 (2026-09-16).** Running that test for the first time moved
+three roles, in both modes. The values in 3.1 above are the corrected ones;
+these were the values first written, and what they measured at their worst
+composite:
+
+| Role | First written | Measured | Floor | Now |
+|---|---|---|---|---|
+| `ink.tertiary` light | `#6B6F78` | 4.19:1 | 4.5:1 | `#646870` |
+| `ink.tertiary` dark | `#878B93` | 3.88:1 | 4.5:1 | `#9599A0` |
+| `boundary` light | `#C6C8C3` | 1.40:1 | 3:1 | `#82867B` |
+| `boundary` dark | `#3B3E44` | 1.24:1 | 3:1 | `#747A86` |
+| `disabled.outline` light | `#8E9299` | 2.60:1 | 3:1 | `#81858D` |
+| `disabled.outline` dark | `#6A6E76` | 2.59:1 | 3:1 | `#757A82` |
+
+Each moved along its own hue, holding hue and saturation and lowering or
+raising only lightness, to the first value clearing its floor with a two
+percent margin. `boundary` moved furthest, and the move is the point of the
+role: at `#C6C8C3` it was a hairline by another name, and no value that light
+can carry a 3:1 edge on white. `hairline` is unchanged and still measures
+under 3:1 everywhere, which is what keeps the two roles distinct. Every other
+pair in the table passed unchanged, including every status content colour on
+light glass over every field.
 
 ## 4. Typography: Geist
 

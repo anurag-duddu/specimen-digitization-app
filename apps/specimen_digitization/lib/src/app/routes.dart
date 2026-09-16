@@ -20,6 +20,14 @@ abstract final class AppRoutes {
   /// Shortcuts, glossary and administrator contact, over any route.
   static const String help = '/help';
 
+  /// The design system gallery (10 section 6).
+  ///
+  /// Mounted only outside release builds, and reachable with no session: it
+  /// is a review surface for the tokens and the components, and it shows no
+  /// collection data. `flutter run -d chrome` and a visit here is how the
+  /// direction is reviewed by eye.
+  static const String gallery = '/gallery';
+
   /// The path pattern for the collection branch.
   static const String collectionPrefix = '/c';
 
@@ -74,5 +82,6 @@ abstract final class AppRoutes {
   /// They name no collection, so the redirect must not read one out of them
   /// and must not send them home: doing that is what made "Help and
   /// shortcuts" a control that closed itself for every signed-in reviewer.
-  static bool isGlobalLocation(String location) => location == help;
+  static bool isGlobalLocation(String location) =>
+      location == help || location == gallery;
 }

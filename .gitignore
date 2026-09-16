@@ -129,6 +129,9 @@ data/
 scripts/data/*
 !scripts/data/*.sh
 !scripts/data/*.mjs
+# The design system's data control family is source, not collection data. The
+# directory name comes from 10 section 1.2 and slot C5 owns it.
+!apps/specimen_digitization/packages/specimen_ui/lib/src/controls/data/
 datasets/
 uploads/
 specimens/

@@ -1,8 +1,10 @@
-/// Spacing, sizing and shape as theme extensions
-/// (design system, sections 5.1, 5.2, 5.3 and 5.9).
+/// Spacing, sizing and shape as theme extensions, over `package:specimen_ui`.
 ///
-/// These values are identical in light and dark, so their `lerp` is a discrete
-/// switch: a half-way spacing is not a value this system has.
+/// The values come from `UiSpace` and `UiShape`; these are the names the
+/// screens and patterns of this wave already reach for through
+/// `context.space`, `context.sizes` and `context.shape`. Identical in light
+/// and dark, so their `lerp` is a discrete switch: a half-way spacing is not a
+/// value this system has.
 library;
 
 import 'package:flutter/material.dart';
@@ -104,17 +106,20 @@ class SpecimenShape extends ThemeExtension<SpecimenShape> {
   /// Table cells, diff spans, region overlays, dividers, the image matte.
   double get radiusNone => ShapeScale.radiusNone;
 
-  /// Chips, badges, input fields, tags, key caps.
+  /// Badges, key caps and swatches. Now `radius.inner`.
   double get radiusXs => ShapeScale.radiusXs;
 
-  /// Cards, queue rows, menus, tooltips, buttons.
+  /// Nested elements inside a pane. Now `radius.inner`.
   double get radiusSm => ShapeScale.radiusSm;
 
-  /// Sheets, dialogs, panels.
+  /// Text fields and selects. Now `radius.field`.
   double get radiusMd => ShapeScale.radiusMd;
 
-  /// Top corners of a bottom sheet.
+  /// Tiles, cards, menus and popovers. Now `radius.tile`.
   double get radiusLg => ShapeScale.radiusLg;
+
+  /// Sheets, dialogs and the photograph matte. `radius.sheet`.
+  double get radiusXl => ShapeScale.radiusXl;
 
   /// Avatars and the progress ring cap only.
   double get radiusFull => ShapeScale.radiusFull;

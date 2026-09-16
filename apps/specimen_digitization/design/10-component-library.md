@@ -188,8 +188,12 @@ one; a control whose test file does not call it does not merge.
    `selected` or `checked` or `toggled` where applicable, and for a disabled
    control the reason on `hint` and on a tooltip (03 section 3.6).
 6. **Press feedback.** The state layer, not a ripple: `ink` at 8 percent on
-   hover and 12 percent on press in light, `paper` at 10 and 14 percent in
+   hover and 12 percent on press in light, and `ink` at 10 and 14 percent in
    dark, 60 ms in and 120 ms out. Capsules may add a 0.98 scale on touch.
+   Amended in wave 0: the dark row first said `paper`, which in dark is
+   `#17181B`, darker than `ground`. Painting it over a dark surface hides the
+   control instead of lifting it. `ink` is the light member of the pair in
+   dark, so one token gives the effect the clause describes in both modes.
 7. **Text scaling.** Renders at 200 percent text scale with no overflow and
    no clipped glyph; heights grow, widths wrap. No fixed-height text box.
 8. **Reduced motion.** Every transition collapses as 04 section 2.5 specifies.
@@ -242,8 +246,12 @@ semantics; keyboard; motion; the Material widget it retires. Sizes are `sm`
 
 **`UiButton`.** Capsule. Anatomy: optional leading glyph 20, label in
 `type.label` (`type.title` at `lg`), optional trailing glyph. Variants:
-`primary` (fill `ink`, text `paper`; in dark fill `paper`, text `ink`; this is
-the reference's dark disc and the only high-contrast fill in the product),
+`primary` (fill `ink`, text `paper` in both modes, so the disc inverts with
+the mode: dark on a light ground, light on a dark one; this is the reference's
+disc and the only high-contrast fill in the product. Amended in wave 0: the
+first draft read "in dark fill `paper`, text `ink`", which keeps the disc dark
+in dark mode, and `paper` on `ground` in dark measures 1.08:1. That is an
+invisible control, which the 3:1 floor in 09 section 3.7 forbids),
 `secondary` (glass.flat fill on `paper`, `boundary` stroke, `ink` text),
 `ghost` (no fill, `ink` text, state layer only), `danger` (fill
 `status.blocked.content`, text `paper`). `loading` swaps the leading glyph for

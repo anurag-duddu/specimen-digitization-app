@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import 'firebase_options.dart';
 import 'src/api_repository.dart';
 import 'src/app/app_router.dart';
@@ -19,7 +21,6 @@ import 'src/magic_link.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
 import 'src/theme/app_theme.dart';
-import 'src/theme/motion.dart';
 import 'src/theme/motion_preference.dart';
 import 'src/workspace.dart';
 
@@ -212,20 +213,32 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       darkTheme: _darkTheme,
       themeMode: ThemeMode.system,
       routerConfig: _router,
-      builder: (BuildContext context, Widget? child) => ExpansionTileTheme(
-        // `ExpansionTile` animates at Material's own 200 ms on a linear
-        // curve. The duration is already the `standard` token; the curve is
-        // not, and the reduced-motion collapse is ours to apply because a
-        // theme built once at startup cannot read an accessibility feature
-        // (motion catalog, row 43).
-        data: ExpansionTileThemeData(
-          expansionAnimationStyle: AnimationStyle(
-            duration: MotionTokens.of(context).standard,
-            curve: MotionTokens.standardCurve,
-            reverseCurve: MotionTokens.standardCurve,
+      // `UiTheme` and the density probe sit here rather than above
+      // `MaterialApp`, because this is the highest point in the tree where
+      // the resolved brightness is known: `themeMode` follows the platform,
+      // and a scope above the app would have to guess. Everything a reviewer
+      // can see, including every overlay and route, is below this builder.
+      builder: (BuildContext context, Widget? child) => Density(
+        child: UiTheme(
+          data: Theme.of(context).brightness == Brightness.dark
+              ? _darkTokens
+              : _lightTokens,
+          child: ExpansionTileTheme(
+            // `ExpansionTile` animates at Material's own 200 ms on a linear
+            // curve. The duration is already the `standard` token; the curve
+            // is not, and the reduced-motion collapse is ours to apply
+            // because a theme built once at startup cannot read an
+            // accessibility feature (motion catalog, row 43).
+            data: ExpansionTileThemeData(
+              expansionAnimationStyle: AnimationStyle(
+                duration: MotionTokens.of(context).standard,
+                curve: MotionTokens.standardCurve,
+                reverseCurve: MotionTokens.standardCurve,
+              ),
+            ),
+            child: child ?? const SizedBox.shrink(),
           ),
         ),
-        child: child ?? const SizedBox.shrink(),
       ),
     );
     // One scope above the router, because an accessibility feature change and
@@ -255,6 +268,14 @@ const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
     TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
   },
 );
+
+/// The tokens, built once. `UiTheme.of` folds the live density and the live
+/// reduced-motion state into these on every read, so the stored value carries
+/// only what does not change while the window is open.
+final UiThemeData _lightTokens = UiThemeData.light();
+
+/// The dark tokens.
+final UiThemeData _darkTokens = UiThemeData.dark();
 
 final ThemeData _lightTheme = AppTheme.light().copyWith(
   pageTransitionsTheme: specimenPageTransitions,

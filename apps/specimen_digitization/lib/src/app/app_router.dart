@@ -7,8 +7,10 @@
 /// screen, keeping the location it was trying to reach.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:specimen_ui/gallery.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../auth.dart';
@@ -51,6 +53,10 @@ GoRouter buildAppRouter({
   String? redirect(BuildContext context, GoRouterState state) {
     final String location = state.uri.path;
     final bool entry = AppRoutes.isEntryLocation(location);
+
+    // The gallery is a review surface for the design system. It reads no
+    // collection data and needs no session, so it sits above every redirect.
+    if (!kReleaseMode && location == AppRoutes.gallery) return null;
 
     void remember() {
       if (!entry && location != '/') {
@@ -164,6 +170,12 @@ GoRouter buildAppRouter({
         pageBuilder: (BuildContext context, GoRouterState state) =>
             helpPage(context),
       ),
+      if (!kReleaseMode)
+        GoRoute(
+          path: AppRoutes.gallery,
+          builder: (BuildContext context, GoRouterState state) =>
+              const UiGallery(),
+        ),
       ShellRoute(
         builder: (BuildContext context, GoRouterState state, Widget child) {
           final String routeKey = AppRoutes.collectionKeyIn(state.uri) ?? '';

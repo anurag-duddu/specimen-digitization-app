@@ -1,0 +1,45 @@
+/// The Specimen Digitization design system.
+///
+/// Tokens, primitives and controls built on `package:flutter/widgets.dart`.
+/// The direction is `design/09-brand-direction.md`; the library is specified
+/// in `design/10-component-library.md`.
+///
+/// This barrel is written once, in the foundation wave, and lists the five
+/// family barrels rather than the controls inside them, so a family agent
+/// adding a control never edits this file.
+library;
+
+// Foundation (L1).
+export 'src/foundation/color.dart';
+export 'src/foundation/density.dart';
+export 'src/foundation/fields.dart';
+export 'src/foundation/fonts.dart';
+export 'src/foundation/glass.dart';
+export 'src/foundation/icons.dart';
+export 'src/foundation/motion.dart';
+export 'src/foundation/palette.dart';
+export 'src/foundation/shape.dart';
+export 'src/foundation/space.dart';
+export 'src/foundation/theme.dart';
+export 'src/foundation/type.dart';
+
+// Primitives (L2).
+export 'src/primitives/announcer.dart';
+export 'src/primitives/field_core.dart';
+export 'src/primitives/field_layer.dart';
+export 'src/primitives/focus_ring.dart';
+export 'src/primitives/glass_surface.dart';
+export 'src/primitives/modal_routes.dart';
+export 'src/primitives/popover.dart';
+export 'src/primitives/pressable.dart';
+export 'src/primitives/scrim.dart';
+export 'src/primitives/squircle.dart';
+export 'src/primitives/state_layer.dart';
+export 'src/primitives/surface.dart';
+
+// Controls (L3), one barrel per family.
+export 'src/controls/actions/actions.dart';
+export 'src/controls/data/data.dart';
+export 'src/controls/inputs/inputs.dart';
+export 'src/controls/navigation/navigation.dart';
+export 'src/controls/overlays/overlays.dart';

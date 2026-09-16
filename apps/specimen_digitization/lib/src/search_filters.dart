@@ -509,7 +509,7 @@ class _SavedSets extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text('Saved filter sets', style: theme.textTheme.titleSmall),
+        Text('Saved filter sets', style: theme.textTheme.titleMedium),
         SizedBox(height: context.space.space1),
         if (!loaded)
           const LoadingAnnouncement(thing: 'saved filter sets', visible: true)
@@ -627,7 +627,15 @@ class _Group extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        // Aligned rather than stretched. A heading is not a full-width
+        // object, and a `Text` stretched across the sheet reports its paint
+        // bounds as the whole row, which is what `textContrastGuideline`
+        // samples: the mode of the dark pixels in a mostly-empty row is an
+        // anti-aliased edge shade rather than the ink the glyph is set in.
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        ),
         ...children,
       ],
     ),

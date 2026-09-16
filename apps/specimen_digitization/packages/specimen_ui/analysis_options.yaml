@@ -1,0 +1,14 @@
+# Analysis for the design system package.
+#
+# Stricter than the app: a package that other code depends on documents its
+# public surface (10 section 9, item 2 of the definition of done) and never
+# hides a dropped future.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - always_declare_return_types
+    - prefer_const_constructors
+    - prefer_final_locals
+    - public_member_api_docs
+    - unawaited_futures

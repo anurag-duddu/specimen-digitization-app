@@ -1,5 +1,5 @@
-/// Product color tokens that do not exist in `ColorScheme` at all
-/// (design system, sections 3.4 and 8.2).
+/// Product colour tokens that do not exist in `ColorScheme` at all
+/// (09 sections 3.4 and 3.5), as names over `package:specimen_ui`.
 ///
 /// Each product token is a triple: `content` for text, icons and borders,
 /// `fill` for the container behind them, and `onFill` for text placed on that
@@ -8,6 +8,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'tokens.dart';
 
@@ -177,7 +178,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     diffAddedFill: ProductPalette.diffAddedFillLight,
     diffChangedContent: ProductPalette.ochreContentLight,
     diffChangedFill: ProductPalette.diffChangedFillLight,
-    diffUnchangedContent: LightPalette.onSurfaceVariant,
+    diffUnchangedContent: GroundPalette.inkSecondaryLight,
     regionOverlayStroke: ProductPalette.steelContentLight,
     regionOverlayCasing: ProductPalette.regionCasingLight,
     regionSelectedCore: ProductPalette.regionSelectedCore,
@@ -190,9 +191,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     focusRing: ProductPalette.focusRingLight,
     disabledContent: ProductPalette.disabledContentLight,
     disabledOutline: ProductPalette.disabledOutlineLight,
-    disabledContainer: LightPalette.onSurface.withValues(
-      alpha: ProductPalette.disabledContainerOpacity,
-    ),
+    disabledContainer: UiColor.light.disabledFill,
   );
 
   static final SpecimenColors dark = SpecimenColors(
@@ -224,7 +223,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     diffAddedFill: ProductPalette.diffAddedFillDark,
     diffChangedContent: ProductPalette.ochreContentDark,
     diffChangedFill: ProductPalette.diffChangedFillDark,
-    diffUnchangedContent: DarkPalette.onSurfaceVariant,
+    diffUnchangedContent: GroundPalette.inkSecondaryDark,
     regionOverlayStroke: ProductPalette.steelContentDark,
     regionOverlayCasing: ProductPalette.regionCasingDark,
     regionSelectedCore: ProductPalette.regionSelectedCore,
@@ -237,9 +236,7 @@ class SpecimenColors extends ThemeExtension<SpecimenColors> {
     focusRing: ProductPalette.focusRingDark,
     disabledContent: ProductPalette.disabledContentDark,
     disabledOutline: ProductPalette.disabledOutlineDark,
-    disabledContainer: DarkPalette.onSurface.withValues(
-      alpha: ProductPalette.disabledContainerOpacity,
-    ),
+    disabledContainer: UiColor.dark.disabledFill,
   );
 
   /// The state triples, by token name. A component reads a whole triple so it

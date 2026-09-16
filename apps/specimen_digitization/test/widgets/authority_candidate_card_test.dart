@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/widgets/authority_candidate_card.dart';
 import 'package:specimen_digitization/src/widgets/evidence_drawer.dart';
 
@@ -44,7 +45,7 @@ void main() {
     final Text identifier = tester.widget<Text>(
       find.text('urn:lsid:ipni.org:names:94382-1'),
     );
-    expect(identifier.style?.fontFamilyFallback, contains('monospace'));
+    expect(identifier.style?.fontFamily, UiFonts.monoFamily);
   });
 
   testWidgets('the action is labelled and fires', (WidgetTester tester) async {

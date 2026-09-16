@@ -26,6 +26,7 @@ import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/theme/icons.dart';
 import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+import 'package:specimen_ui/testing.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
 
@@ -677,4 +678,39 @@ class GoldenSourceRepository extends GoldenRepository
     'duplicates': 0,
     'items': <Map<String, dynamic>>[],
   });
+}
+
+/// The glass budget for one window (09 section 3.3; 10 section 8,
+/// `glass_budget`).
+///
+/// A frosted pane costs a save layer, so the budget is a design rule the
+/// size-class goldens hold: at most four panes per window and at most one
+/// modal. The counting lives in `package:specimen_ui/testing.dart`, which
+/// imports no `flutter_test`, so this assertion can be built here and in the
+/// package's own harness from the same numbers.
+void expectGlassBudget(
+  WidgetTester tester, {
+  int maxPanes = 4,
+  int maxModal = 1,
+  String? window,
+}) {
+  final int panes = glassPaneCount();
+  final int modals = modalGlassPaneCount();
+  final String where = window == null ? '' : ' at $window';
+  expect(
+    panes,
+    lessThanOrEqualTo(maxPanes),
+    reason:
+        'there are $panes frosted panes on screen$where and the budget is '
+        '$maxPanes. Every pane is a save layer; a list whose rows are glass '
+        'is the expensive way to fail this.',
+  );
+  expect(
+    modals,
+    lessThanOrEqualTo(maxModal),
+    reason:
+        'there are $modals modal panes on screen$where and the budget is '
+        '$maxModal. Two modals at once is a question the reviewer cannot '
+        'answer.',
+  );
 }
