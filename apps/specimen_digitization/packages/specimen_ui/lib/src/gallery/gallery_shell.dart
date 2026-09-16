@@ -15,6 +15,7 @@ import '../../specimen_ui.dart';
 import 'pages/colour_page.dart';
 import 'pages/fields_page.dart';
 import 'pages/icons_page.dart';
+import 'pages/overlays_page.dart';
 import 'pages/primitives_page.dart';
 import 'pages/shape_page.dart';
 import 'pages/type_page.dart';
@@ -93,6 +94,17 @@ const List<GalleryPage> foundationPages = <GalleryPage>[
     summary: 'Pressable in every state, the glass levels and the overlays.',
     builder: buildPrimitivesPage,
   ),
+];
+
+/// Every control family page, in the order 10 section 1.2 lists the families:
+/// actions, inputs, overlays, navigation, data.
+///
+/// Separate from [foundationPages] because each family golden captures its own
+/// page on its own, and because adding a page to the foundation list would
+/// move all 24 foundation goldens, which no family slot owns. The integrator
+/// joins the two lists once the five slots have landed.
+const List<GalleryPage> familyPages = <GalleryPage>[
+  overlaysGalleryPage,
 ];
 
 /// The gallery: a page list beside the page.
