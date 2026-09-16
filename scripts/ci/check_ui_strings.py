@@ -410,6 +410,17 @@ def write_baseline(path: Path, keys: list[str]) -> None:
     path.write_text("\n".join(header + sorted(keys)) + "\n", encoding="utf-8")
 
 
+def default_roots(repo_root: Path) -> tuple[Path, ...]:
+    """The directories scanned when no ``--root`` is given.
+
+    The client, and the ``specimen_ui`` design system package. The package
+    carries user-facing strings of its own now: a disabled control's reason, a
+    dismiss label, a sheet's title. 10 section 8 puts it inside this gate.
+    """
+    app = repo_root / "apps" / "specimen_digitization"
+    return (app / "lib", app / "packages" / "specimen_ui" / "lib")
+
+
 def main(argv: list[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(
@@ -418,8 +429,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--root",
         type=Path,
-        default=repo_root / "apps" / "specimen_digitization" / "lib",
-        help="Directory of .dart files to scan.",
+        action="append",
+        dest="roots",
+        default=None,
+        help=(
+            "Directory of .dart files to scan. Repeatable. Defaults to the "
+            "client and the design system package."
+        ),
     )
     parser.add_argument(
         "--baseline",
@@ -444,15 +460,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    root: Path = args.root
-    if not root.is_dir():
-        print(f"check_ui_strings: {root} is not a directory", file=sys.stderr)
-        return 2
+    roots: list[Path] = args.roots if args.roots else list(default_roots(repo_root))
+    for root in roots:
+        if not root.is_dir():
+            print(f"check_ui_strings: {root} is not a directory", file=sys.stderr)
+            return 2
 
     failures: list[Finding] = []
     baselined: list[Finding] = []
     warnings: list[Finding] = []
-    files = sorted(root.rglob("*.dart"))
+    # Sorted per root and then overall, so a finding's position in the output
+    # does not depend on which root it came from.
+    files = sorted({file for root in roots for file in root.rglob("*.dart")})
     baseline = read_baseline(args.baseline) if args.baseline else set()
 
     for file in files:
