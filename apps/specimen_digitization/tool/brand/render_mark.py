@@ -84,6 +84,13 @@ ICON_PIN_FRACTION = 0.44
 ADAPTIVE_FRAME_FRACTION = 0.66
 MASKABLE_FRAME_FRACTION = 0.80
 
+# Android 12 and later clip the splash icon to a circle and mask a third of
+# the foreground away, so the art has to sit inside the central two thirds.
+# The mark's own head reaches three quarters of the disc's radius, so the
+# full bleed disc would come back with a flattened head. The splash source
+# for that platform carries the same disc drawn two thirds of the size.
+ANDROID12_FRAME_FRACTION = 2.0 / 3.0
+
 
 class Plate:
     """One square raster, drawn at SUPERSAMPLE times its output side.
@@ -190,24 +197,28 @@ def mark(
     disc: tuple[int, int, int],
     pin: tuple[int, int, int],
     ground: tuple[int, int, int] | None,
+    frame: float = 1.0,
 ) -> Plate:
-    """The mark: the pin standing in a disc that fills the square.
+    """The mark: the pin standing in a disc of `frame` times the square.
 
-    With a `ground` the plate is opaque and the disc's corners carry it. With
-    `None` the corners are cut away and the colour under them stays the disc's
-    own, so the resolved edge never darkens toward a transparent black.
+    With a `ground` the plate is opaque and whatever the disc leaves carries
+    it. With `None` that area is cut away and the colour under it stays the
+    disc's own, so the resolved edge never darkens toward a transparent black.
     """
     cut_out = ground is None
     plate = Plate(size, disc if cut_out else ground, 0 if cut_out else 255)
+    diameter = plate.px * frame
+    inset = (plate.px - diameter) / 2
+    box = [inset, inset, inset + diameter - 1, inset + diameter - 1]
     if cut_out:
-        plate.cover.ellipse(full_bleed(plate), fill=255)
+        plate.cover.ellipse(box, fill=255)
     else:
-        plate.colour.ellipse(full_bleed(plate), fill=disc)
+        plate.colour.ellipse(box, fill=disc)
     draw_pin(
         plate.colour,
         plate.centre,
         plate.centre,
-        plate.px * PIN_HEIGHT / MARK_BOX,
+        diameter * PIN_HEIGHT / MARK_BOX,
         pin,
     )
     return plate
@@ -264,6 +275,17 @@ def render_sources() -> list[Path]:
         (
             "splash-mark-1024.png",
             mark(1024, disc=ACCENT, pin=ON_ACCENT, ground=None),
+            False,
+        ),
+        (
+            "splash-mark-android12-1024.png",
+            mark(
+                1024,
+                disc=ACCENT,
+                pin=ON_ACCENT,
+                ground=None,
+                frame=ANDROID12_FRAME_FRACTION,
+            ),
             False,
         ),
         (
