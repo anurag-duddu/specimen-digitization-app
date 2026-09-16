@@ -7,6 +7,8 @@
 // the density and the motion state the test asked for rather than falling
 // back to the light tokens.
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -47,11 +49,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    showUiDialog<void>(
-      context: page,
-      semanticsLabel: 'Record a reason',
-      builder: (BuildContext context) =>
-          const SizedBox(width: 320, height: 200),
+    // The route outlives the test body: the dialog is still open when the
+    // assertions run, so its future is deliberately not awaited.
+    unawaited(
+      showUiDialog<void>(
+        context: page,
+        semanticsLabel: 'Record a reason',
+        builder: (BuildContext context) =>
+            const SizedBox(width: 320, height: 200),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -100,11 +106,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    showUiDialog<void>(
-      context: page,
-      semanticsLabel: 'Record a reason',
-      builder: (BuildContext context) =>
-          const SizedBox(width: 320, height: 200),
+    // The route outlives the test body: the dialog is still open when the
+    // assertions run, so its future is deliberately not awaited.
+    unawaited(
+      showUiDialog<void>(
+        context: page,
+        semanticsLabel: 'Record a reason',
+        builder: (BuildContext context) =>
+            const SizedBox(width: 320, height: 200),
+      ),
     );
     await tester.pumpAndSettle();
 
