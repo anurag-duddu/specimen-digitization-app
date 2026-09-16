@@ -5745,6 +5745,25 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   - `81151d9` `docs(design): reconcile 10 with what the five families shipped`
   - `7f325db` `release: specimen_ui 0.2.0`
   - `5d44c35` `test(harness): name the route future the proof test leaves open`
+### 2026-09-16 - Front-end refactor slot E6 (assets): the mark, the launcher icons, the splash, the web shell and `UiMark`
+
+- Task and slot: E6 of `docs/execution/FRONT_END_REFACTOR.md` section 3E, the
+  asset half. The `Symbols.` to `UiIcons` sweep, the other half of E6, is
+  untouched and still owed.
+- Branch and worktree: `fe/brand-assets` in `.claude/worktrees/fe-brand-assets`,
+  cut from `front-end-refactor` at `d76c779`. Pushed to `origin/fe/brand-assets`
+  at `0291f4f`. No pull request; the integrator merges the slot.
+- Outcome: complete. Seven commits, 109 files, 8 new package tests and 2 new
+  goldens, two dev dependencies. Nothing under `apps/specimen_digitization/lib/`
+  changed, and the app suite is unchanged at 1062 passed and 7 skipped.
+- Commits (seven, oldest first):
+  - `004e597` `feat(brand): the pin as a vector source and one reproducible generator`
+  - `c86ecf6` `feat(brand): launcher icons on Android, iOS and web`
+  - `df1273c` `feat(brand): the splash on Android and iOS`
+  - `1049b81` `feat(brand): the web shell takes the mark and the ground`
+  - `5c57849` `feat(brand): UiMark, the mark as a widget`
+  - `69aa8d7` `docs(brand): the measured values and how to regenerate`
+  - `0291f4f` `chore(brand): the Podfile.lock the iOS build resolves to`
 - Validation, every gate run on its own with the tree untouched and `rc=$?`
   captured directly, never off a pipe:
 
@@ -5930,3 +5949,165 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `no_material_components`, `no_material_imports` and `icons_unique`
     backlogs. This slot changes no application call site and leaves all three
     where wave 1 left them.
+  | `flutter pub get --enforce-lockfile` (app) | 0 | the lockfile carries both new dev dependencies |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 513 passed, up from 505 at the end of wave 1. 505 plus the 8 added here is 513, which is the cross check that nothing was lost |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 1 |
+  | `flutter build web --release` | 0 | `build/web` carries the favicon, the five icons and the manifest |
+  | `scripts/ci/build_mobile.sh android` | 0 | `assembleDebug` in 51.4s with `JAVA_HOME` on the Android Studio JBR 17.0.11. The APK carries `res/mipmap-anydpi-v26/ic_launcher.xml`, five `ic_launcher_foreground.png`, five `ic_launcher.png`, and twenty splash drawables across both modes and both Android generations |
+  | `check_ui_strings.py` | 0 | 192 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (108 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+  | `scripts/ci/build_mobile.sh ios` (optional) | 0 | Xcode 26.6, `pod install` then an `ios-release` device build without codesigning, 73.3s. `assetutil` on the built `Assets.car` lists `AppIcon`, `LaunchImage` and `LaunchBackground` |
+
+- The mark's final geometry, stated once at 24 dp and scaled everywhere else.
+  The disc fills the box. The pin is 16 dp tall, a 2 dp stroke with a 5 dp
+  head, ending in a round cap. Optical centring is the **whole pin** nudged up
+  1 dp, so its box runs from y 3 to y 19 in the 24 dp square: 9 dp above the
+  geometric centre and 7 dp below it. The head's centre is at y 5.5 and the
+  shaft's end at y 18, the cap carrying it to 19. Three files draw this and
+  have to move together: `assets/brand/pin.svg`, `tool/brand/render_mark.py`
+  and `packages/specimen_ui/lib/src/foundation/mark.dart`.
+- Files generated, per platform:
+  - **Android, 44.** Five `mipmap-*/ic_launcher.png` (48 to 192 px),
+    `mipmap-anydpi-v26/ic_launcher.xml`, five `drawable-*/ic_launcher_foreground.png`
+    (108 to 432 px), `values/colors.xml` carrying the accent background; five
+    `splash.png` and five `android12splash.png` with their night counterparts,
+    four `background.png`, four `launch_background.xml`, and `values`,
+    `values-night`, `values-v31` and `values-night-v31` styles.
+  - **iOS, 34.** Twenty one `AppIcon.appiconset` PNGs with their `Contents.json`
+    (the package adds the legacy 50, 57 and 72 point entries), the six
+    `LaunchImage` and `LaunchImageDark` renders, the two `LaunchBackground`
+    colour swatches with their `Contents.json`, `LaunchScreen.storyboard` and
+    `Info.plist`.
+  - **Web, 8.** `favicon.png` at 64, `Icon-192`, `Icon-512`, both
+    `Icon-maskable-*`, `apple-touch-icon-180.png`, `index.html`, `manifest.json`.
+  - **Sources, 9 plus 1.** `assets/brand/` holds `pin.svg`, seven PNGs and a
+    README; `tool/brand/render_mark.py` renders all of them.
+  - **Package, 6.** `mark.dart`, one export line in `specimen_ui.dart`, two test
+    files, two goldens.
+- Dependencies and the lockfile: `flutter_launcher_icons: 0.14.4` and
+  `flutter_native_splash: 2.4.7` as dev dependencies, both pinned exactly
+  because they write platform files. `pubspec.lock` gains those two plus
+  `archive`, `checked_yaml`, `cli_util`, `image`, `json_annotation`, `path`,
+  `posix`, `universal_io` and `xml` as transitives.
+- Decisions made rather than asked, each forced by a measurement:
+  - **`flutter_native_splash` is 2.4.7, not the 2.4.8 that 09 section 9 names.**
+    2.4.8 depends on `meta` ^1.18.0 and every `flutter_test` from Flutter 3.38.5
+    depends on `meta` 1.17.0, so it does not resolve; pub names 2.4.7 as the
+    last one that does. 09 section 9 is amended.
+  - **"Optically centred" is the whole pin, not the head.** 09 reads "the head
+    sits 1 dp above geometric centre", which cannot be literal: a 5 dp head
+    whose centre is 1 dp above the middle cannot also carry a 16 dp pin below
+    it. The reading that satisfies every other number is the pin's box centred
+    1 dp high.
+  - **The pin is 44 percent of the icon a mask shows, not of the source
+    canvas.** An Android adaptive foreground's canvas shows its central 66
+    percent and a web maskable icon's its central 80 percent, so the pin is 44
+    percent of those frames, 29.0 and 35.2 percent of their canvases. Drawn
+    against the canvas instead, the same pin reads at 67 and 55 percent of the
+    masked icon and the three platforms disagree with each other.
+  - **A seventh raster, `splash-mark-android12-1024.png`.** The brief named six.
+    Android 12 and later clip the splash icon to a circle and mask a third of
+    the foreground away, which `flutter_native_splash`'s own README states as
+    art fitting inside a circle two thirds of the source's width. The mark's
+    head reaches three quarters of the disc's radius, so the full bleed source
+    comes back with a flattened head and a cut tip. Rendered and masked both
+    ways before choosing.
+  - **`adaptive_icon_foreground_inset: 0`.** The package's default is 16, which
+    would have inset an already safe zone sized foreground a second time and
+    landed the pin at 30 percent of the visible icon.
+  - **`orientation` in `web/manifest.json` moved from `portrait-primary` to
+    `any`.** Beyond the brief, but the file was being rewritten and a portrait
+    lock contradicts 00 and 05 and both native platforms, neither of which
+    locks orientation.
+  - **`web/index.html` paints ground dark under `prefers-color-scheme: dark`
+    and carries a second `theme-color` for it.** The brief named the light
+    value. The web splash is this page, and the native splash has a
+    `color_dark`; a dark mode reviewer should not get the light flash the
+    change exists to remove.
+- Durable learnings:
+  - **`flutter_launcher_icons` rewrites every line containing `ASSETCATALOG`
+    inside the `XCBuildConfiguration` section, not the one it means.** This
+    project already had `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` in all
+    three configurations, so the only lines the package touched were two
+    `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` booleans,
+    which it set to `AppIcon`. `project.pbxproj` is left at `HEAD`. Check that
+    file after every run of this package.
+  - **`flutter_launcher_icons` resizes one source into all four web files**, so
+    the maskable icons come out byte identical to the plain ones and the
+    favicon comes out 16 px square. Both are wrong for what they are: a
+    maskable icon must be full bleed in the brand colour, and the favicon must
+    be the disc rather than the icon. The renderer therefore runs a second time
+    after the package, which is why `assets/brand/README.md` documents a four
+    command regeneration order.
+  - **Both platform generators treat their source as the 4x asset**
+    (`width * pixelDensity ~/ 4` in `android.dart` and `ios.dart`), so a 1024 px
+    splash source draws at 256 dp on the legacy Android splash and 256 pt on
+    iOS. That happens to agree with Android 12's own 240 dp icon, which is the
+    check that the number is right rather than an accident.
+  - **An n = 5 superellipse inscribed in a 1024 square is Apple's icon mask to
+    within a pixel.** Measured at 45 degrees, the curve passes 446 px from the
+    centre and Apple's mask 445 px, so the `ground` filling the icon's corners
+    is removed by the platform mask instead of surviving as a sliver. That is
+    what lets one opaque file serve iOS and the unmasked legacy Android
+    launcher.
+  - **`RenderRepaintBoundary.toImage()` never completes when awaited under the
+    test's own clock.** The rasteriser runs on a real frame, so the capture has
+    to sit inside `tester.runAsync`, which is the route `matchesGoldenFile`
+    takes internally. Awaited directly, the test hangs silently rather than
+    failing: it sat at `+3` for three minutes before it was killed.
+  - **`SemanticsNode` is not exported by `widgets.dart`.** Read the data off
+    `tester.getSemantics(...).getSemanticsData()` rather than naming the type,
+    which is what the rest of this package already does.
+  - **A golden proves the picture did not move; it cannot state the rule.** The
+    mark's geometry cases sample the rendered pixels and assert 16 dp of pin, 9
+    dp above the centre and 7 below, a 5 dp head and a 2 dp shaft. Without the
+    optical rise the first of those reads 8 dp, which a golden would have shown
+    as a diff nobody could name.
+  - **The monochrome mark measures 1.08:1 against either ground.** `paper` on
+    `ground` is almost nothing in both modes, which is by design in 09's
+    surface ramp but means `UiMark.mono` needs a surface of its own. On
+    `ground` only its `ink` pin is visible. The accent variant measures 16.80:1
+    inside itself and 1.03:1 against `ground` light, so it too is a pin on a
+    field rather than a disc with an edge.
+  - **`flutter_native_splash` reaches the iOS release bundle even though
+    Flutter flags it `dev_dependency: true`.**
+    `flutter_native_splash.framework` is in `Runner.app/Frameworks` after an
+    `ios-release` build. Nothing in the application calls it. Getting it out
+    means Podfile surgery or a newer Flutter, neither of which belonged in this
+    slot.
+- Failed approaches:
+  - Reading 09's "the head sits 1 dp above geometric centre" literally. Placing
+    the head's centre there leaves the tip 12.5 dp below the centre on a disc of
+    radius 12, so the pin leaves its own disc. The sentence is about the pin.
+  - Giving the Android adaptive foreground a pin at 66 percent of the canvas,
+    which is the other reading of "the pin occupies the central 66 percent". A
+    launcher mask shows roughly that same 66 percent, so the pin would have
+    filled the visible icon edge to edge while iOS showed 44 percent.
+  - Using the full bleed splash source for `android_12`. Masked at two thirds
+    it returns a flattened head and a cut tip; the rendered comparison of both
+    sources under the mask is what settled it.
+- Follow-ups:
+  - The `Symbols.` to `UiIcons` sweep and the `material_symbols_icons` removal,
+    the rest of E6, are untouched. The `icons_unique` backlog is unchanged by
+    this slot.
+  - `apps/specimen_digitization/.gitignore` still does not carry
+    `test/gallery/failures/`, raised first by slot C1 and again by C5. The root
+    `.gitignore` gained `test/foundation/failures/` here, beside the existing
+    gallery line, because this slot adds the first goldens outside
+    `test/gallery/`.
+  - `flutter_native_splash.framework` in the iOS release bundle, above.
+  - `ios/Runner/Info.plist` is committed with one extra level of indentation
+    throughout, added by `flutter_native_splash` alongside `UIStatusBarHidden`.
+    The file is valid and reverting it would mean the committed file is not
+    what the generator produces. The same applies to a trailing space the
+    generator writes into `values-v31/styles.xml` and its night counterpart,
+    which the repository's own `trailing-whitespace` hook strips on every
+    commit.
+  - `UiMark` is exported but nothing mounts it yet. 09 section 9 names the
+    environment banner and the help screen as the monochrome variant's homes;
+    those are slots E1 and E5, already merged, so a later pass owes the call
+    sites.
+  - No cloud provisioning, deployment, IAM change or paid inference was
+    performed by this session.

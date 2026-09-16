@@ -18,19 +18,37 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Specimen Digitization">
+  <meta name="description" content="Review photographs of pinned insect specimens and the readings taken from their labels.">
+
+  <!-- The ground, 09 section 3.1. The browser chrome takes it in both
+       modes, the same pair of values flutter_native_splash.yaml gives
+       the native splash. -->
+  <meta name="theme-color" content="#F6F6F4">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0F11">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Specimen Digitization">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>Specimen Digitization</title>
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    /* The web splash is this page. Painting the ground here means the
+       first frame, before Flutter has booted, is the window background
+       rather than a white flash. flutter_native_splash.yaml therefore
+       sets web to false. */
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; padding: 0; background-color: #F6F6F4; }
+    @media (prefers-color-scheme: dark) {
+      html, body { background-color: #0E0F11; }
+    }
+  </style>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

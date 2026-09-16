@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-labelledby="mark-title">
+  <title id="mark-title">Specimen Digitization</title>
+  <!--
+    The mark, at the 24 dp size design/09-brand-direction.md section 9 states
+    it. This file is the vector source of truth; tool/brand/render_mark.py
+    draws the same geometry for the rasters, and UiMark draws it in Flutter.
+
+    Disc: accent, diameter 24, filling the box.
+    Pin: on.accent, total height 16, stroke 2, head diameter 5.
+    Optical centring: the pin is nudged up 1, so its box runs from y 3 to
+    y 19 and its centre sits at y 11 rather than at y 12.
+      head centre  y = 3 + 5 / 2       = 5.5
+      shaft end    y = 19 - 2 / 2      = 18, carried to 19 by the round cap
+  -->
+  <circle cx="12" cy="12" r="12" fill="#E8FF47"/>
+  <circle cx="12" cy="5.5" r="2.5" fill="#111214"/>
+  <line x1="12" y1="5.5" x2="12" y2="18" stroke="#111214" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -74,6 +74,18 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # The launcher icons and the splash are generated from assets/brand/ by
+  # these two, per 09 section 9. Both are pinned exactly rather than with a
+  # caret: they write platform files into android/, ios/ and web/, so a minor
+  # release that changes what it writes is a change to the shipped product
+  # and belongs in a commit that says so.
+  flutter_launcher_icons: 0.14.4
+  # 09 names 2.4.8. It depends on meta ^1.18.0 and every flutter_test from
+  # this SDK depends on meta 1.17.0, so 2.4.8 does not resolve on Flutter
+  # 3.38.5 and 2.4.7 is the last one that does. Same reason as go_router
+  # above. Revisit with the SDK, not on its own.
+  flutter_native_splash: 2.4.7
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

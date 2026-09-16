@@ -1,0 +1,39 @@
+# The splash: ground with the disc centred, and no wordmark (09 section 9).
+#
+# Regenerate with:
+#
+#   uv run --with pillow python tool/brand/render_mark.py --only sources
+#   dart run flutter_native_splash:create
+#
+# The source is the disc cut out of its square, so the same file serves both
+# modes: it composites on ground in light and on ground dark in dark, and the
+# accent and its pin are one value in both (09 section 3.4).
+
+flutter_native_splash:
+  color: "#F6F6F4"
+  color_dark: "#0E0F11"
+  image: assets/brand/splash-mark-1024.png
+  image_dark: assets/brand/splash-mark-1024.png
+
+  # Android 12 and later draw their own splash from the windowSplashScreen
+  # attributes rather than from a theme background, so the mark has to be
+  # declared a second time here.
+  #
+  # It clips the icon to a circle and masks a third of the foreground away
+  # (the package's own guidance: with an icon background, art fits inside a
+  # circle two thirds of the source's width). The mark's head reaches three
+  # quarters of the disc's radius, so the full bleed source would come back
+  # with a flattened head. splash-mark-android12-1024.png is the same disc
+  # drawn two thirds of the size, which survives the mask whole.
+  android_12:
+    image: assets/brand/splash-mark-android12-1024.png
+    image_dark: assets/brand/splash-mark-android12-1024.png
+    icon_background_color: "#F6F6F4"
+    icon_background_color_dark: "#0E0F11"
+
+  android: true
+  ios: true
+  # The web splash is the HTML page's own background. index.html paints the
+  # body ground so the first paint before Flutter boots is the ground rather
+  # than white, which is a smaller and steadier thing than a second mark.
+  web: false
