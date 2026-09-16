@@ -91,6 +91,27 @@ Widget uiHarness({
   );
 }
 
+/// How the focused element of a control answers the activation keys.
+///
+/// Added in wave 1 by the inputs family. Clause 3 of 10 section 2 reads
+/// "`Space` and `Enter` activate", which is true of every control the system
+/// has except a text editor, where `Space` types a space and `Enter` submits
+/// through the input action. The SDK enforces that: while an editor holds
+/// focus, `DefaultTextEditingShortcuts` maps `Space` to
+/// `DoNothingAndStopPropagationTextIntent`, so nothing above the editor ever
+/// sees the key. A field cannot both be typable and consume the space bar.
+enum ControlActivation {
+  /// `Space` and `Enter` activate the control. The default, and every control
+  /// that is not a text editor.
+  keys,
+
+  /// The focused element is a text editor, so the activation keys belong to
+  /// it. The clause becomes the opposite assertion, and a stronger one:
+  /// nothing above the editor may consume either key, because a shortcut that
+  /// swallows the space bar makes the field impossible to type in.
+  textEditing,
+}
+
 /// Asserts every clause of 10 section 2 that a test can check.
 ///
 /// [build] is called with a context inside the harness, so a control can read
@@ -104,6 +125,7 @@ Future<void> expectControlContract(
   Widget Function(BuildContext context) build, {
   required String semanticsLabel,
   bool disabledWithReason = false,
+  ControlActivation activation = ControlActivation.keys,
   bool Function(SemanticsFlags flags)? hasRole,
 }) async {
   // Disposed at the end of this function rather than in a tear down:
@@ -176,12 +198,13 @@ Future<void> expectControlContract(
     return;
   }
 
-  // Clause 3. Focusable, and both Space and Enter activate.
+  // Clause 3. Focusable, and both Space and Enter go where they belong.
   //
   // Checked by whether the focused control consumed the key rather than by
   // counting callbacks, because the callback belongs to the caller. A control
   // that forgot its activation shortcuts leaves the event unhandled, which is
-  // exactly the defect this clause exists to catch.
+  // exactly the defect this clause exists to catch. A text editor is the
+  // mirror image: see [ControlActivation].
   for (final LogicalKeyboardKey key in <LogicalKeyboardKey>[
     LogicalKeyboardKey.space,
     LogicalKeyboardKey.enter,
@@ -196,25 +219,42 @@ Future<void> expectControlContract(
       isNotNull,
       reason: '"$semanticsLabel" did not take keyboard focus',
     );
-    final Action<ActivateIntent>? action =
-        Actions.maybeFind<ActivateIntent>(focused!);
-    expect(
-      action,
-      isNotNull,
-      reason: '"$semanticsLabel" has no ActivateIntent action',
-    );
-    expect(
-      action!.isActionEnabled,
-      isTrue,
-      reason: '"$semanticsLabel" has a disabled ActivateIntent action',
-    );
+    switch (activation) {
+      case ControlActivation.keys:
+        final Action<ActivateIntent>? action =
+            Actions.maybeFind<ActivateIntent>(focused!);
+        expect(
+          action,
+          isNotNull,
+          reason: '"$semanticsLabel" has no ActivateIntent action',
+        );
+        expect(
+          action!.isActionEnabled,
+          isTrue,
+          reason: '"$semanticsLabel" has a disabled ActivateIntent action',
+        );
+      case ControlActivation.textEditing:
+        expect(
+          focused!.findAncestorStateOfType<EditableTextState>(),
+          isNotNull,
+          reason:
+              '"$semanticsLabel" declares textEditing activation, but what '
+              'took focus is not a text editor',
+        );
+    }
     final bool handled = await simulateKeyDownEvent(key);
     await simulateKeyUpEvent(key);
     await tester.pumpAndSettle();
     expect(
       handled,
-      isTrue,
-      reason: '${key.keyLabel} was not handled by "$semanticsLabel"',
+      activation == ControlActivation.keys,
+      reason: switch (activation) {
+        ControlActivation.keys =>
+          '${key.keyLabel} was not handled by "$semanticsLabel"',
+        ControlActivation.textEditing =>
+          '${key.keyLabel} was consumed above the editor in '
+              '"$semanticsLabel", so the reviewer cannot type it',
+      },
     );
   }
 
