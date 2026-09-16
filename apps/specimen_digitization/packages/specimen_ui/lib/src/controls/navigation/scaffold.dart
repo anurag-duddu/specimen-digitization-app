@@ -12,6 +12,7 @@ import '../../foundation/glass.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/field_layer.dart';
 import '../../primitives/glass_surface.dart';
+import '../overlays/toast.dart';
 import 'rail.dart';
 import 'sidebar.dart';
 
@@ -118,8 +119,9 @@ class UiScaffoldStyle {
 ///
 /// Paint order in the body area is body, [overlays], then the action bar and
 /// the navigation, so an overlay sits over the page and under the chrome
-/// (10 section 4.4). A toast host in [overlays] positions its toasts clear of
-/// the chrome with [UiScaffoldGeometry.bottomInset].
+/// (10 section 4.4). With no [overlays] of its own the frame wraps [body] in
+/// a `UiToastHost` given [UiScaffoldGeometry.bottomInset], so `UiToasts.show`
+/// reaches a host from anywhere in any page and its toasts clear the chrome.
 ///
 /// Retires `Scaffold`.
 class UiScaffold extends StatefulWidget {
@@ -154,11 +156,17 @@ class UiScaffold extends StatefulWidget {
   /// the caller from the window class (05 section 2).
   final Widget? nav;
 
-  // TODO(fe/overlays): document UiToastHost as the intended occupant.
-  /// A widget laid over the body and under the navigation.
+  /// The layer over the body and under the navigation.
   ///
-  /// The toast layer goes here once the overlays family lands. Until then a
-  /// caller may put anything page wide in it that is not part of the page.
+  /// Its intended occupant is a `UiToastHost`, and a scaffold installs one
+  /// itself when this is null, wrapping [body] so that `UiToasts.show` works
+  /// from anywhere inside any page with no ceremony at the call site. The
+  /// host is given [UiScaffoldGeometry.bottomInset], so a toast clears the
+  /// pill and the action bar rather than sitting over them.
+  ///
+  /// A caller that wants something else page wide, or no toast layer at all,
+  /// passes it here: whatever this holds replaces the default, and is laid
+  /// over the body and under the chrome.
   final Widget? overlays;
 
   /// Which sky preset paints behind the page (09 section 3.2).
@@ -251,9 +259,19 @@ class _UiScaffoldState extends State<UiScaffold> {
         ? bottomSafe
         : bottomSafe + style.gap + _floatingHeight;
 
+    // With no overlay layer of its own, the frame installs the one every page
+    // wants: a toast host around the body, so `UiToasts.show` finds an
+    // ancestor from anywhere inside the page. It has to wrap the body rather
+    // than sit beside it, because `UiToastHost.maybeOf` walks upward.
+    final Widget? body = widget.body == null
+        ? null
+        : widget.overlays != null
+        ? widget.body!
+        : UiToastHost(bottomInset: bottomInset, child: widget.body!);
+
     Widget bodyArea = Stack(
       children: <Widget>[
-        if (widget.body != null) Positioned.fill(child: widget.body!),
+        if (body != null) Positioned.fill(child: body),
         if (widget.overlays != null) Positioned.fill(child: widget.overlays!),
         if (floatingChrome.isNotEmpty)
           PositionedDirectional(
