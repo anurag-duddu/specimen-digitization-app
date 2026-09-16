@@ -9,6 +9,10 @@
 /// adding a control never edits this file.
 library;
 
+// Foundation (L1).
+export 'src/foundation/fonts.dart';
+export 'src/foundation/type.dart';
+
 // Controls (L3), one barrel per family.
 export 'src/controls/actions/actions.dart';
 export 'src/controls/data/data.dart';
