@@ -5930,3 +5930,187 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `no_material_components`, `no_material_imports` and `icons_unique`
     backlogs. This slot changes no application call site and leaves all three
     where wave 1 left them.
+
+## 2026-09-16: Front-end refactor wave 2, slot E1, the shell and the entry screens
+
+- Task: build plan slot E1 with its D1 patterns: put the application shell, the
+  entry screens and the twelve shared patterns of
+  `docs/execution/FRONT_END_REFACTOR.md` section 3 on `specimen_ui` 0.2.0.
+- Branch/worktree: `fe/shell` at `.claude/worktrees/fe-shell`, cut from
+  `front-end-refactor` at `731bef5`.
+- Outcome: complete. Every file this slot owns is free of Material components
+  and of Material imports, every glyph in them comes from `UiIcons`, and the
+  application suite is green apart from the screen goldens and the semantics
+  fixtures, which this slot regenerates to look at and does not commit.
+- Commits/PRs: `9747daa`, `3cfae72`, `46c2744`, `d5cd46f` on `fe/shell`,
+  pushed to origin. No pull request; the integrator merges the slot.
+- Validation, each gate run on its own with the tree untouched and its own exit
+  code read directly:
+  - `flutter pub get --enforce-lockfile`: 0.
+  - `flutter analyze --fatal-infos` in the application: 0, no issues.
+  - `flutter analyze --fatal-infos` in `packages/specimen_ui`: 0, no issues.
+  - `flutter test` in `packages/specimen_ui`: 0, 519 tests.
+  - `flutter test` in the application: 1, as the brief expects. 947 passed, 7
+    skipped, 118 failed, and every failure is one of the two sets this slot may
+    not commit: 111 in `test/golden/size_classes_golden_test.dart` and 7 in
+    `test/accessibility/semantics_fixtures_test.dart`. Nothing else fails.
+    The baseline at the cut point was 1062 passed and 7 skipped; the suite has
+    three more tests than it did, all in `test/app/shell_test.dart`.
+  - `scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt`:
+    0, 192 files scanned, 0 violations, 0 baselined.
+  - `pre-commit run --files <the 50 changed files>`: 0.
+- Gate backlogs, before and after:
+  - `no_material_components`: this slot's share was 52 uses over 13 files.
+    Twelve files leave the map and `lib/src/app/app_router.dart` goes from two
+    to one. The one that stays is deliberate and is explained below.
+  - `no_material_imports`: fifteen files leave the map, which is every file of
+    this slot that was in it.
+  - `icons_unique`: ten files leave the map, which is all 37 glyphs this slot
+    owned, the number build plan appendix B gives for E1.
+- Screen goldens: regenerated once to look at, inspected by eye, then reverted
+  with `git checkout --` before committing, per the wave 2 brief. **111 of the
+  121 screen goldens moved.** The ten that did not are the eight `diff-text`
+  component goldens and the two compact `region-editor` ones, which are the
+  only windows in the set that render no shell. Sign in, the queue at compact
+  in dark, the queue at large in light and the help sheet were read by eye: the
+  sky, the mark, the pill, the rail, the sidebar, the bands and the entry
+  column all render as 07 and 09 describe them. The Material Symbols glyphs of
+  the screens this slot does not own still render as empty boxes, exactly as
+  they did before this slot, because the application's golden harness loads
+  Geist and Phosphor and not the Material Symbols face; every glyph this slot
+  migrated now draws.
+- Semantics fixture diff, the same shape in all five fixtures, six lines out
+  and nine in. Line by line:
+  - Out, from the head: `label="Test environment. ..."`, the whole sentence on
+    one node. In: `liveRegion label="Test environment. Not approved museum
+    records."` and `button tap label="Show what a test environment means"`. The
+    v1 band put the full statement on one label and excluded everything under
+    it, which also excluded its own disclosure: the statement was readable and
+    the control that opens the rest was not reachable at all. The headline is
+    announced once, the control is a named target, and the second clause is a
+    node of its own once it is opened.
+  - Out: `selected=true tap label="Queue Tab 1 of 2"` and its Intake pair,
+    which is what Material's `NavigationRail` publishes. In: `role=tabBar` with
+    two `role=tab` children labelled `Queue` and `Intake`, which is what the
+    design system's navigation publishes and what `SemanticsRole.tabBar`
+    requires of its children.
+  - Out, from the tail: `label="Specimen Digitization"`, the old app bar title,
+    which was painted last. In: the same label at the head, because the frame
+    paints the bar first.
+  - Out: `button tap label="Authorized collection, Synthetic Insects. Switch
+    collection"`. In: the same label with `value="Synthetic Insects"` beside
+    it, because the switcher is a `UiSelect` and a select has a value.
+  - Out: `button enabled=true tap tooltip="Refresh collection"`, a node with a
+    tooltip and no label. In: the same node carrying both a label and a
+    tooltip, which is guideline 4.16's rule.
+  - Out: `tap label="Synthetic reviewer" tooltip="Account menu"`, which was not
+    announced as a button and put the account's name where the control's name
+    belongs. In: `button enabled=true tap label="Account menu, signed in as
+    Synthetic reviewer"`.
+  - Out: `button enabled=true tap tooltip="Help and shortcuts"`. Help is one
+    entry inside the account menu now, which is the app bar overflow 07 section
+    10 asks for, so it is reachable rather than absent; the semantics tree test
+    opens the menu and asserts it.
+- Durable learnings:
+  - **Removing the shell's `Scaffold` removes the `Material` every unmigrated
+    screen asserts on, and the `ScaffoldMessenger` host every snackbar needs.**
+    246 tests failed on the first full run for one of those two reasons. The
+    bridge is one transparent `Scaffold` in `app_router.dart`, which is already
+    the file the import gate names as its exception, marked `TODO(fe/wave-3)`.
+    It wraps `CollectionWorkspace` rather than the routed child, because the
+    list detail pane at large is built by `CollectionWorkspace` itself and a
+    bridge around the child alone leaves that pane without an ancestor.
+  - **`WidgetsApp` publishes a `DefaultTextStyle` with a double yellow
+    underline, and `Material` is what used to replace it.** The first render of
+    the sign-in screen had a yellow rule under the product name, the title, the
+    purpose line and the caveat: every `Text` that sets a style still inherits
+    the ambient decoration. The application publishes its own ambient style
+    from the tokens in `main.dart`, under `UiTheme` and above the router. Any
+    slot that takes a screen off `Scaffold` needs this to already be there.
+  - **`UiSkeleton` pulses, and a repeating animation makes `pumpAndSettle` time
+    out.** The placeholder tests pump inside a stopped `TickerMode`, which is
+    the device the package's own gallery goldens use. No other test in the
+    suite settles while placeholders are on screen, which is why only
+    `test/widgets/skeleton_test.dart` had to change; a later slot that adds one
+    will meet this.
+  - **An unsettled ballistic scroll swallows the next tap.** A toggle then
+    reads as a control that will not open: the account menu needed two presses
+    after a `scrollUntilVisible` and one after a `pumpAndSettle`.
+  - **`find.byTooltip` matches Material's `Tooltip` and nothing else, and
+    `find.bySemanticsLabel` throws without a semantics handle.** Every
+    icon-only control in the design system publishes its name on itself, so
+    `test/ui_finders.dart` matches the control: `uiIconButton`,
+    `uiMenuTrigger`, `uiControl`, `uiTooltipped`, `uiDestination`, `uiButton`.
+  - **`textContrastGuideline` samples the node's rect, and a control at
+    `pointer` density publishes a 48 dp hit box around a 40 dp visual.** On a
+    sky the 8 dp of transparent slop is sampled as the background and a primary
+    button reports 3.90:1 that a reader never sees. The entry screens' primary
+    action is `UiSize.lg` instead, which is 56 dp of visual in both densities
+    and is what 07 section 2 asks for on a low frequency, low density screen;
+    the guideline passes on its own terms rather than being skipped.
+  - **A modal pumped on nothing captures half transparent pixels**, and a
+    contrast guideline measuring one measures nothing. The help panel is given
+    the opaque surface a route would be.
+- Failed approaches:
+  - Wrapping only the routed child in a transparent `Material` fixed the
+    pushed screens and left the large window's queue pane asserting, because
+    that pane is not routed.
+  - A transparent `Material` fixed the assertions and not the snackbars:
+    `ScaffoldMessenger` counts `Scaffold`s, not `Material`s.
+  - Keeping the v1 environment band's one node with everything under it
+    excluded made its own disclosure unreachable, which the rewritten test
+    caught rather than the eye.
+- Product defects noticed and not fixed:
+  - `_BannerControl` in `packages/specimen_ui` publishes `button` and `onTap`
+    without `enabled`, so the environment band's disclosure reads as a button
+    with no enabled state. Visible in the fixture diff as
+    `button tap label="Show what a test environment means"`.
+  - The queue row at a 360 dp list pane still overlaps its own checkbox at
+    large windows. It is unchanged by this slot, is visible in the queue golden
+    before and after, and belongs to slot E2.
+- Package APIs this slot needed and worked around:
+  - **`UiBanner` needs an action slot**, a label and a callback. 07 section 11
+    requires every failure class to name its own recovery, and the control has
+    a dismiss and a disclosure and nothing else. The shell composes the action
+    beside the strip on the band's own resolved style, marked
+    `TODO(fe/polish-2)` in `lib/src/app/shell.dart`.
+  - **`UiChip` needs a leading widget slot**, so a determinate ring can stand
+    where its glyph does. `StatusChip` draws that one case itself from
+    `UiChipStyle.resolve`, marked `TODO(fe/polish-2)` in
+    `lib/src/widgets/status_chip.dart`.
+  - `UiListRow` has no tone, so `ReduceMotionSetting` puts its `UiSwitch` in
+    the row's trailing slot and the row itself is not a control. That is the
+    follow-up the polish slot already recorded.
+- Decisions taken where the documents left a choice, recorded rather than
+  asked:
+  - **Help is in the account menu below large and a top bar action at large.**
+    The brief asks for "help on windows where the menu is not used", and 10
+    section 4.4 gives the sidebar the account and help at its bottom. The
+    sidebar's footer carries the account and signing out, so the bar carries
+    help on its own there; everywhere else the account menu carries the
+    signed-in address, help and signing out, which is the app bar overflow of
+    07 section 10.
+  - **The switcher is a `UiSelect` at every window class**, in the bar's centre
+    from medium up, in the bar on compact, and in the sidebar's header at
+    large. 07 section 1.2 asks for it to be reachable everywhere and one
+    control reached the same way in three places is one thing to learn.
+  - **`StatusChip.dense` and `StatusChip.decisive` are carried and no longer
+    read.** A `UiChip` is one size in both densities and has no state
+    transition of its own; the parameters stay because a pattern keeps its API
+    through this refactor and its consumers are other slots' screens.
+  - **`SelectableText` is replaced by a named copy control** in
+    `administrator_contact.dart` and on the help screen. It is a Material
+    component with no `widgets.dart` equivalent, and a 48 dp control that names
+    itself is reachable where a drag is not.
+  - The commits are signed `Claude Opus 5 (1M context)` rather than the line
+    the brief names, because that is the model that wrote them.
+- Remaining follow-ups:
+  - The integrator regenerates the screen goldens and the semantics fixtures
+    once after the wave merges. The expected moved set is the 111 named above
+    plus whatever slot E2 moves; the fixture diff is the one explained above.
+  - `app_router.dart` keeps one `Scaffold` until E3 to E5 land. Removing it is
+    the last step of `no_material_components` and it is marked in the file.
+  - Two `TODO(fe/polish-2)` markers under `lib/`, both recorded above. The
+    `no_stand_ins` gate scans the package only, so neither trips it.
+  - `test/ui_finders.dart` is new and shared. Slot E2 will want the same
+    finders; if it wrote its own, the integrator should keep one file.
