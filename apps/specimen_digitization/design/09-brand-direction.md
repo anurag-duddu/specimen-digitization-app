@@ -501,6 +501,37 @@ Specification:
   the help screen.
 - The mark never rotates, never animates, never sits on a field.
 
+**Amendment, slot E6 (2026-09-16).** Built for the first time, three of the
+numbers above needed a measurement rather than a reading.
+
+`flutter_native_splash` is **2.4.7**, not 2.4.8. 2.4.8 depends on `meta`
+^1.18.0 and every `flutter_test` from Flutter 3.38.5 depends on `meta` 1.17.0,
+so it does not resolve on the pinned toolchain and pub says so. 2.4.7 is the
+last one that does. Revisit it with the SDK, not on its own.
+`flutter_launcher_icons` 0.14.4 resolves and is unchanged.
+
+The superellipse of the app icon is drawn at **exponent 5**, inscribed in the
+square. Measured at the 45 degree point on a 1024 icon, that curve passes
+446 px from the centre and Apple's own icon mask passes 445 px, so the
+`ground` that fills the icon's corners is removed by the platform mask instead
+of surviving as a sliver.
+
+The pin is 44 percent of **the icon a mask shows**, not of the source canvas.
+An Android adaptive foreground's canvas shows its central 66 percent and a web
+maskable icon's shows its central 80 percent, so the pin is 44 percent of
+those frames in each. Drawn against the canvas instead, the same pin reads at
+67 and 55 percent of the masked icon and the three platforms disagree.
+
+Two things the splash needs that this section did not say. Android 12 and
+later clip the splash icon to a circle and mask a third of the foreground
+away, and the mark's head reaches three quarters of the disc's radius, so the
+full bleed disc comes back with a flattened head and a cut tip. That platform
+takes the same disc drawn at two thirds of the size, which survives the mask
+whole. And "optically centred" is the whole pin nudged up one unit, not the
+head alone: a head sitting 1 dp above the centre cannot also carry a 16 dp pin
+below it. The pin's box therefore runs from 9 dp above the centre to 7 dp
+below it.
+
 ## 10. Dark mode
 
 Both modes ship from the same token table. In dark, `ground` is `#0E0F11`,
