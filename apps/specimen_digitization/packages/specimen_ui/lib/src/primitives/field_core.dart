@@ -46,6 +46,7 @@ class FieldCore extends StatefulWidget {
     this.autocorrect = true,
     this.textAlignVertical,
     this.showFocusRing = true,
+    this.excludeFromSemantics = false,
   });
 
   /// The label a screen reader reads. `UiField` passes its visible label
@@ -119,6 +120,14 @@ class FieldCore extends StatefulWidget {
   /// False where the wrapping control draws the focus state itself, such as a
   /// field whose edge thickens on focus.
   final bool showFocusRing;
+
+  /// True where an ancestor already publishes the semantics for this editor.
+  ///
+  /// `UiField` in the inputs family publishes one node for the whole control,
+  /// covering the label, the value, the hint and the 48 dp hit box the editor
+  /// alone does not fill. Without this the editor publishes a second node
+  /// carrying the same label, which a screen reader reads twice.
+  final bool excludeFromSemantics;
 
   @override
   State<FieldCore> createState() => _FieldCoreState();
@@ -208,17 +217,20 @@ class _FieldCoreState extends State<FieldCore> {
           }) => null,
     );
 
+    final Widget core = FocusRing(
+      visible: widget.showFocusRing && _focused,
+      radius: ui.shape.field,
+      child: Material(type: MaterialType.transparency, child: field),
+    );
+    if (widget.excludeFromSemantics) return core;
+
     return Semantics(
       label: widget.semanticsLabel,
       textField: true,
       enabled: widget.enabled,
       readOnly: widget.readOnly,
       obscured: widget.obscureText,
-      child: FocusRing(
-        visible: widget.showFocusRing && _focused,
-        radius: ui.shape.field,
-        child: Material(type: MaterialType.transparency, child: field),
-      ),
+      child: core,
     );
   }
 }
