@@ -130,8 +130,11 @@ scripts/data/*
 !scripts/data/*.sh
 !scripts/data/*.mjs
 # The design system's data control family is source, not collection data. The
-# directory name comes from 10 section 1.2 and slot C5 owns it.
+# directory name comes from 10 section 1.2 and slot C5 owns it. Its tests live
+# under the matching path and are swallowed by the same rule, so both sides of
+# the family are named here.
 !apps/specimen_digitization/packages/specimen_ui/lib/src/controls/data/
+!apps/specimen_digitization/packages/specimen_ui/test/controls/data/
 datasets/
 uploads/
 specimens/
