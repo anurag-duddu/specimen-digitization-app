@@ -72,6 +72,7 @@ class Pressable extends StatefulWidget {
     this.statesController,
     this.minHitBox,
     this.excludeFromSemantics = false,
+    this.stateLayerColour,
   });
 
   /// Paints the control from its current states.
@@ -145,6 +146,11 @@ class Pressable extends StatefulWidget {
   /// True where an ancestor already publishes the semantics for this control,
   /// such as a row that merges its own children.
   final bool excludeFromSemantics;
+
+  /// What the state layer lifts the control toward. See [StateLayer.colour];
+  /// a control whose own fill is `ink` passes `paper` so that hover and press
+  /// are visible on it at all.
+  final Color? stateLayerColour;
 
   /// True when the control responds to input.
   bool get enabled => onPressed != null || onLongPress != null;
@@ -250,7 +256,11 @@ class _PressableState extends State<Pressable> {
         visual,
         Positioned.fill(
           child: IgnorePointer(
-            child: StateLayer(states: states, shape: shape),
+            child: StateLayer(
+              states: states,
+              shape: shape,
+              colour: widget.stateLayerColour,
+            ),
           ),
         ),
       ],
