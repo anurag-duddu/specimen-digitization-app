@@ -165,20 +165,30 @@ void main() {
   });
 
   testWidgets('a disabled switch does not move', (WidgetTester tester) async {
-    bool value = false;
+    final SemanticsHandle semantics = tester.ensureSemantics();
     await tester.pumpWidget(
       uiHarness(
-        child: StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) => _switch(
-            value: value,
-            disabledReason: 'Turn on a screen reader to use this.',
-          ),
+        child: _switch(
+          value: false,
+          disabledReason: 'Turn on a screen reader to use this.',
         ),
       ),
     );
     await tester.pumpAndSettle();
+    expect(_thumb(tester), AlignmentDirectional.centerStart);
+
     await tester.tap(find.bySemanticsLabel(_label));
     await tester.pumpAndSettle();
-    expect(value, isFalse);
+    expect(
+      _thumb(tester),
+      AlignmentDirectional.centerStart,
+      reason: 'a switch with nothing to call has nothing to move it',
+    );
+    final SemanticsData data = tester
+        .getSemantics(find.bySemanticsLabel(_label))
+        .getSemanticsData();
+    expect(data.flagsCollection.isEnabled, Tristate.isFalse);
+    expect(data.hint, 'Turn on a screen reader to use this.');
+    semantics.dispose();
   });
 }

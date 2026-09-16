@@ -185,18 +185,30 @@ void main() {
   });
 
   testWidgets('a disabled box does not change', (WidgetTester tester) async {
-    bool? value = false;
+    final SemanticsHandle semantics = tester.ensureSemantics();
     await tester.pumpWidget(
       uiHarness(
-        child: StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) =>
-              _box(value: value, disabledReason: 'Open the region editor.'),
+        child: _box(
+          value: false,
+          disabledReason: 'Open the region editor to correct these.',
         ),
       ),
     );
     await tester.pumpAndSettle();
+    expect(_data(tester).flagsCollection.isChecked, CheckedState.isFalse);
+
     await tester.tap(find.bySemanticsLabel(_label));
     await tester.pumpAndSettle();
-    expect(value, isFalse);
+    expect(
+      _data(tester).flagsCollection.isChecked,
+      CheckedState.isFalse,
+      reason: 'a box with nothing to call has nothing to check it',
+    );
+    expect(
+      _data(tester).hint,
+      'Open the region editor to correct these.',
+      reason: 'the reason the server forbids it (03 section 3.6)',
+    );
+    semantics.dispose();
   });
 }
