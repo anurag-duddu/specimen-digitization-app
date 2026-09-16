@@ -247,6 +247,41 @@ void main() {
     );
   });
 
+  testWidgets('the destinations scroll when the pane is too short for them', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: SizedBox(
+          height: 200,
+          child: UiSidebar(
+            destinations: fiveDestinations,
+            currentIndex: 0,
+            onSelect: (int _) {},
+            header: const Text('Specimen Digitization'),
+            footer: const Text('Signed in as a reviewer'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Specimen Digitization'), findsOneWidget);
+    expect(find.text('Signed in as a reviewer'), findsOneWidget);
+
+    // The last destination is off the bottom of the list and reachable by
+    // scrolling rather than lost with the pane clipped over it.
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -400),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.bySemanticsLabel('Account')).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(UiSidebar)).bottom),
+    );
+  });
+
   for (final UiNavDestination destination in threeDestinations) {
     testWidgets('control contract: ${destination.label}', (
       WidgetTester tester,

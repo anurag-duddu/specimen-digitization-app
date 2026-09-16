@@ -100,6 +100,11 @@ class NavDisc extends StatelessWidget {
       selected: current,
       capsule: true,
       focusNode: focusNode,
+      // The current destination sits on an `ink` disc, and `ink` at 12
+      // percent over an `ink` fill is the same colour. Lifting toward `paper`
+      // is what keeps hover and press visible on the one disc a reviewer
+      // presses most. Every other disc sits on the sky and takes the default.
+      stateLayerColour: current ? ui.color.paper : null,
       onPressed: onPressed,
       builder: (BuildContext context, Set<WidgetState> states) => showLabel
           ? Column(

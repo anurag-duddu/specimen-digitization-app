@@ -246,6 +246,40 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('the current disc lifts toward paper so a press shows on it', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(child: const _PillHost(destinations: threeDestinations)),
+    );
+    await tester.pumpAndSettle();
+    final UiThemeData ui = tester.element(find.byType(UiPillNav)).ui;
+
+    Color? layerOf(String label) => tester
+        .widget<StateLayer>(
+          find
+              .descendant(
+                of: find.bySemanticsLabel(label),
+                matching: find.byType(StateLayer),
+              )
+              .first,
+        )
+        .colour;
+
+    expect(
+      layerOf('Queue'),
+      ui.color.paper,
+      reason:
+          'ink at 12 percent over an ink disc is the same colour, so the '
+          'current disc would show no press at all',
+    );
+    expect(
+      layerOf('Intake'),
+      isNull,
+      reason: 'a disc on the sky takes the contract default',
+    );
+  });
+
   testWidgets('the height it reports is the height it draws', (
     WidgetTester tester,
   ) async {

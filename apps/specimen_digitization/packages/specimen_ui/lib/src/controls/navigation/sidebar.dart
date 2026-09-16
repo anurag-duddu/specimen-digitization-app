@@ -78,7 +78,9 @@ class UiSidebarStyle {
 /// and this control does not invent one, so the three channels above carry
 /// the state instead.
 ///
-/// The pane needs a bounded height, which is what a scaffold gives it.
+/// The pane needs a bounded height, which is what a scaffold gives it. The
+/// header and the footer hold their places and the destinations scroll
+/// between them when there are more of them than the pane can show.
 ///
 /// Semantics: a tab list of tabs, one selected. `Up` and `Down` move between
 /// them; `Enter` and `Space` select.
@@ -135,31 +137,39 @@ class UiSidebar extends StatelessWidget {
           children: <Widget>[
             if (header != null)
               Padding(padding: style.slotPadding, child: header),
-            NavGroup(
-              length: destinations.length,
-              axis: NavAxis.vertical,
-              builder: (BuildContext context, List<FocusNode> nodes) =>
-                  Semantics(
-                    container: true,
-                    explicitChildNodes: true,
-                    role: SemanticsRole.tabBar,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        for (int i = 0; i < destinations.length; i++)
-                          _SidebarRow(
-                            destination: destinations[i],
-                            current: i == current,
-                            style: style,
-                            focusNode: nodes[i],
-                            onPressed: () => onSelect(i),
-                          ),
-                      ],
-                    ),
-                  ),
+            // The destinations take the space the header and the footer
+            // leave and scroll inside it. A pane 280 dp wide with five
+            // destinations at 200 percent text is taller than a window the
+            // sidebar is meant for, and a reviewer who cannot reach the last
+            // destination has lost the navigation (10 section 2 clause 7).
+            Expanded(
+              child: SingleChildScrollView(
+                child: NavGroup(
+                  length: destinations.length,
+                  axis: NavAxis.vertical,
+                  builder: (BuildContext context, List<FocusNode> nodes) =>
+                      Semantics(
+                        container: true,
+                        explicitChildNodes: true,
+                        role: SemanticsRole.tabBar,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            for (int i = 0; i < destinations.length; i++)
+                              _SidebarRow(
+                                destination: destinations[i],
+                                current: i == current,
+                                style: style,
+                                focusNode: nodes[i],
+                                onPressed: () => onSelect(i),
+                              ),
+                          ],
+                        ),
+                      ),
+                ),
+              ),
             ),
-            const Spacer(),
             if (footer != null)
               Padding(padding: style.slotPadding, child: footer),
           ],
