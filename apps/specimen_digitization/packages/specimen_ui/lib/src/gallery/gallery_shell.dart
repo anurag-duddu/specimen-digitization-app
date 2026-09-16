@@ -15,6 +15,7 @@ import '../../specimen_ui.dart';
 import 'pages/colour_page.dart';
 import 'pages/fields_page.dart';
 import 'pages/icons_page.dart';
+import 'pages/navigation_page.dart';
 import 'pages/primitives_page.dart';
 import 'pages/shape_page.dart';
 import 'pages/type_page.dart';
@@ -95,6 +96,22 @@ const List<GalleryPage> foundationPages = <GalleryPage>[
   ),
 ];
 
+/// Every family page, in the order 10 section 4 lists the families: actions,
+/// inputs, overlays, navigation, data.
+///
+/// One line per family, added by the slot that owns that page. Separate from
+/// [foundationPages] because the foundation goldens render the whole shell,
+/// page list included: sharing one list would move all twenty four of them
+/// every time a family landed, and five slots regenerating the same binaries
+/// in parallel is how two branches silently revert one another.
+const List<GalleryPage> familyPages = <GalleryPage>[navigationPage];
+
+/// Every page the gallery shows.
+const List<GalleryPage> galleryPages = <GalleryPage>[
+  ...foundationPages,
+  ...familyPages,
+];
+
 /// The gallery: a page list beside the page.
 class UiGallery extends StatefulWidget {
   /// Opens the gallery at [initialPage].
@@ -103,8 +120,8 @@ class UiGallery extends StatefulWidget {
   /// Which page to open on.
   final int initialPage;
 
-  /// The pages to show. Defaults to [foundationPages]; a family slot passes
-  /// its own list to golden one page on its own.
+  /// The pages to show. Defaults to [galleryPages]; a golden passes its own
+  /// list so that its page list holds still as other slots land.
   final List<GalleryPage>? pages;
 
   @override
@@ -114,7 +131,7 @@ class UiGallery extends StatefulWidget {
 class _UiGalleryState extends State<UiGallery> {
   late int _selected = widget.initialPage;
 
-  List<GalleryPage> get _pages => widget.pages ?? foundationPages;
+  List<GalleryPage> get _pages => widget.pages ?? galleryPages;
 
   @override
   Widget build(BuildContext context) {
