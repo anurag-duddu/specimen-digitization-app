@@ -48,18 +48,31 @@ class _SidebarHostState extends State<_SidebarHost> {
   );
 }
 
-/// The leading bar of the row labelled [label].
-BorderSide _bar(WidgetTester tester, String label) {
-  final DecoratedBox box = tester.widget<DecoratedBox>(
-    find
-        .descendant(
-          of: find.bySemanticsLabel(label),
-          matching: find.byType(DecoratedBox),
-        )
-        .first,
-  );
-  return ((box.decoration as BoxDecoration).border! as BorderDirectional).start;
-}
+/// The leading bar of the row labelled [label], drawn or not.
+///
+/// `UiListRow` paints the bar as a positioned `ColoredBox` in the row's own
+/// stack, and only on a selected row; the gutter it sits in is reserved on
+/// every row by padding, so nothing shifts when a row becomes current.
+Finder _bar(WidgetTester tester, String label) => find.descendant(
+  of: find.bySemanticsLabel(label),
+  matching: find.byWidgetPredicate(
+    (Widget widget) => widget is ColoredBox && widget.child == null,
+  ),
+);
+
+/// The fill behind the row labelled [label].
+Color _fill(WidgetTester tester, String label) => tester
+    .widget<ColoredBox>(
+      find
+          .descendant(
+            of: find.bySemanticsLabel(label),
+            matching: find.byWidgetPredicate(
+              (Widget widget) => widget is ColoredBox && widget.child != null,
+            ),
+          )
+          .first,
+    )
+    .color;
 
 /// The glyph of the row labelled [label].
 IconData _glyph(WidgetTester tester, String label) => tester
@@ -120,14 +133,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byType(UiSidebar)).width, 280);
-    expect(
-      UiSidebar.widthOf(tester.element(find.byType(UiSidebar))),
-      280,
-    );
+    expect(UiSidebar.widthOf(tester.element(find.byType(UiSidebar))), 280);
     expect(glassPaneCount(), 1);
   });
 
-  testWidgets('the current row carries the bar and the fill glyph', (
+  testWidgets('the current row carries the bar, the fill and the fill glyph', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -136,24 +146,38 @@ void main() {
     await tester.pumpAndSettle();
     final UiThemeData ui = tester.element(find.byType(UiSidebar)).ui;
 
-    expect(_bar(tester, 'Queue').color, ui.color.ink);
-    expect(_bar(tester, 'Queue').width, ui.shape.stroke.bar);
-    expect(_bar(tester, 'Queue').width, 3);
+    expect(_bar(tester, 'Queue'), findsOneWidget);
     expect(
-      _bar(tester, 'Intake').color.a,
-      0,
-      reason:
-          'every row carries the bar so the current one does not shift its '
-          'words when it becomes current',
+      tester.widget<ColoredBox>(_bar(tester, 'Queue').first).color,
+      ui.color.ink,
     );
+    expect(
+      tester.getSize(_bar(tester, 'Queue').first).width,
+      ui.shape.stroke.bar,
+    );
+    expect(tester.getSize(_bar(tester, 'Queue').first).width, 3);
+    expect(
+      _fill(tester, 'Queue'),
+      ui.color.stateLayer(UiListRowStyle.selectedFillOpacity),
+      reason: 'a selected row fills ink at 6 percent (10 section 4.5)',
+    );
+    expect(_bar(tester, 'Intake'), findsNothing);
+    expect(_fill(tester, 'Intake').a, 0);
     expect(_glyph(tester, 'Queue'), UiIcons.queue.filled);
     expect(_glyph(tester, 'Intake'), UiIcons.intake.glyph);
 
+    // The bar's gutter is reserved whether or not the bar is drawn, so a row
+    // becoming current never shifts its words sideways.
+    final double before = tester.getTopLeft(find.text('Intake')).dx;
     await tester.tap(find.bySemanticsLabel('Intake'));
     await tester.pumpAndSettle();
-    expect(_bar(tester, 'Intake').color, ui.color.ink);
+    expect(tester.getTopLeft(find.text('Intake')).dx, before);
+    expect(
+      tester.widget<ColoredBox>(_bar(tester, 'Intake').first).color,
+      ui.color.ink,
+    );
     expect(_glyph(tester, 'Intake'), UiIcons.intake.filled);
-    expect(_bar(tester, 'Queue').color.a, 0);
+    expect(_bar(tester, 'Queue'), findsNothing);
   });
 
   testWidgets('the header sits above the rows and the footer below', (

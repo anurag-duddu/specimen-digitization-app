@@ -1,8 +1,8 @@
 // `UiListRow` is the reference control of the data family: one pressable, one
-// merged semantics node, two modes, and a leading edge that has to hold still
+// merged semantics node, three modes, and a leading edge that has to hold still
 // whatever the leading slot is doing.
 
-import 'dart:ui' show CheckedState;
+import 'dart:ui' show CheckedState, Tristate;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
@@ -115,6 +115,32 @@ void main() {
         checked ? CheckedState.isTrue : CheckedState.isFalse,
         reason: 'a row in a selection carries its own checked state',
       );
+    }
+
+    for (final bool current in <bool>[false, true]) {
+      await tester.pumpWidget(
+        uiHarness(
+          child: UiListRow(
+            title: 'SPEC-2026-0041',
+            mode: UiListRowMode.tab,
+            selected: current,
+            onPressed: () {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      data = tester
+          .getSemantics(find.bySemanticsLabel('SPEC-2026-0041'))
+          .getSemanticsData();
+      expect(data.role, SemanticsRole.tab);
+      expect(
+        data.flagsCollection.isSelected,
+        current ? Tristate.isTrue : Tristate.isFalse,
+        reason:
+            'a destination row states whether it is the current one either '
+            'way, because SemanticsRole.tabBar reads every child as a tab',
+      );
+      expect(data.flagsCollection.isChecked, CheckedState.none);
     }
     handle.dispose();
   });
