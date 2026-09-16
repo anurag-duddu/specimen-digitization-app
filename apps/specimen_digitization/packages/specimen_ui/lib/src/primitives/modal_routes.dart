@@ -163,6 +163,11 @@ class _ModalFrame extends StatelessWidget {
     final Widget pane = GlassSurface(
       level: GlassLevel.modal,
       radius: ui.shape.sheet,
+      // A sheet meets the bottom of the window, so only its top corners turn
+      // (10 section 4.3). A dialog floats, so all four do.
+      corners: sheet
+          ? BorderRadius.vertical(top: Radius.circular(ui.shape.sheet))
+          : null,
       child: builder(context),
     );
 

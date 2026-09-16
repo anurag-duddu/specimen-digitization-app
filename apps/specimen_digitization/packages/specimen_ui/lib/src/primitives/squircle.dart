@@ -14,8 +14,20 @@ import 'package:flutter/widgets.dart';
 abstract final class Squircle {
   /// The border for [radius], or a capsule when [radius] is at least half of
   /// [height].
-  static OutlinedBorder border(double radius, {double? height, BorderSide? side}) {
+  ///
+  /// [corners] sets each corner separately and wins over [radius], for the one
+  /// shape in the product that is not uniform: a bottom sheet, which is round
+  /// on top and square where it meets the window's edge (09 section 5).
+  static OutlinedBorder border(
+    double radius, {
+    double? height,
+    BorderSide? side,
+    BorderRadiusGeometry? corners,
+  }) {
     final BorderSide edge = side ?? BorderSide.none;
+    if (corners != null) {
+      return RoundedSuperellipseBorder(borderRadius: corners, side: edge);
+    }
     if (radius <= 0) {
       return RoundedSuperellipseBorder(
         borderRadius: BorderRadius.zero,
@@ -31,13 +43,15 @@ abstract final class Squircle {
     );
   }
 
-  /// Clips [child] to a superellipse of [radius].
+  /// Clips [child] to a superellipse of [radius], or of [corners] where the
+  /// shape is not uniform.
   static Widget clip({
     required double radius,
     required Widget child,
     Clip clipBehavior = Clip.antiAlias,
+    BorderRadiusGeometry? corners,
   }) => ClipRSuperellipse(
-    borderRadius: BorderRadius.circular(radius),
+    borderRadius: corners ?? BorderRadius.circular(radius),
     clipBehavior: clipBehavior,
     child: child,
   );

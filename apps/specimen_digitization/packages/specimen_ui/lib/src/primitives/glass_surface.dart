@@ -26,6 +26,7 @@ class GlassSurface extends StatelessWidget {
     required this.child,
     this.level = GlassLevel.flat,
     this.radius,
+    this.corners,
     this.capsule = false,
     this.padding,
     this.allowInList = false,
@@ -39,6 +40,12 @@ class GlassSurface extends StatelessWidget {
 
   /// The corner radius. Defaults to `radius.tile`.
   final double? radius;
+
+  /// Each corner separately, for a pane that is not uniform.
+  ///
+  /// A bottom sheet is the one such pane: round on top, square where it meets
+  /// the window's edge (09 section 5; 10 section 4.3). Wins over [radius].
+  final BorderRadiusGeometry? corners;
 
   /// True to draw the pane as a capsule, which is what the navigation is.
   final bool capsule;
@@ -70,7 +77,7 @@ class GlassSurface extends StatelessWidget {
     );
     final ShapeBorder shape = capsule
         ? StadiumBorder(side: side)
-        : Squircle.border(corner, side: side);
+        : Squircle.border(corner, side: side, corners: corners);
 
     Widget content = child;
     if (padding != null) content = Padding(padding: padding!, child: content);
@@ -118,7 +125,7 @@ class GlassSurface extends StatelessWidget {
 
     pane = capsule
         ? ClipPath(clipper: ShapeBorderClipper(shape: shape), child: pane)
-        : Squircle.clip(radius: corner, child: pane);
+        : Squircle.clip(radius: corner, corners: corners, child: pane);
 
     return DecoratedBox(
       decoration: ShapeDecoration(
