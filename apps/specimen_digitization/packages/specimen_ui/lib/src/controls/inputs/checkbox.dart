@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/state_layer.dart';
 import '../../primitives/squircle.dart';
 
 /// The resolved paint of one checkbox.
@@ -196,7 +197,9 @@ class _Box extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final Color mark = style.mark.resolve(states);
+    final bool filled = states.contains(WidgetState.selected);
     return SizedBox.square(
       dimension: style.boxSize,
       child: DecoratedBox(
@@ -207,21 +210,44 @@ class _Box extends StatelessWidget {
           ),
           color: style.fill.resolve(states),
         ),
-        child: Center(
-          child: switch (value) {
-            true => UiIcon(UiIcons.check, size: UiIconSize.small, color: mark),
-            null => SizedBox(
-              width: style.barWidth,
-              height: style.barHeight,
-              child: DecoratedBox(
-                decoration: ShapeDecoration(
-                  shape: const StadiumBorder(),
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            Center(
+              child: switch (value) {
+                true => UiIcon(
+                  UiIcons.check,
+                  size: UiIconSize.small,
                   color: mark,
                 ),
-              ),
+                null => SizedBox(
+                  width: style.barWidth,
+                  height: style.barHeight,
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      shape: const StadiumBorder(),
+                      color: mark,
+                    ),
+                  ),
+                ),
+                false => const SizedBox.shrink(),
+              },
             ),
-            false => const SizedBox.shrink(),
-          },
+            // The row's own layer lifts toward `ink`, which is invisible on a
+            // box that is already `ink`. A filled box lifts the other way, so
+            // hover and press show on the half of the control the reviewer is
+            // actually aiming at.
+            if (filled)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: StateLayer(
+                    states: states,
+                    shape: Squircle.border(style.radius),
+                    colour: ui.color.paper,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

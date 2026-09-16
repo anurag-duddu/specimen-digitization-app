@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/state_layer.dart';
 
 /// The resolved paint of one switch.
 ///
@@ -179,33 +180,55 @@ class _Track extends StatelessWidget {
   final Set<WidgetState> states;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: style.trackWidth,
-    height: style.trackHeight,
-    child: DecoratedBox(
-      decoration: ShapeDecoration(
-        shape: StadiumBorder(side: style.side.resolve(states)),
-        color: style.track.resolve(states),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(style.thumbInset),
-        child: AnimatedAlign(
-          alignment: states.contains(WidgetState.selected)
-              ? AlignmentDirectional.centerEnd
-              : AlignmentDirectional.centerStart,
-          duration: style.glide,
-          curve: MotionTokens.standardCurve,
-          child: SizedBox.square(
-            dimension: style.thumbSize,
-            child: DecoratedBox(
-              decoration: ShapeDecoration(
-                shape: const CircleBorder(),
-                color: style.thumb.resolve(states),
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final bool on = states.contains(WidgetState.selected);
+    return SizedBox(
+      width: style.trackWidth,
+      height: style.trackHeight,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          shape: StadiumBorder(side: style.side.resolve(states)),
+          color: style.track.resolve(states),
+        ),
+        child: Stack(
+          children: <Widget>[
+            Padding(
+              padding: EdgeInsets.all(style.thumbInset),
+              child: AnimatedAlign(
+                alignment: on
+                    ? AlignmentDirectional.centerEnd
+                    : AlignmentDirectional.centerStart,
+                duration: style.glide,
+                curve: MotionTokens.standardCurve,
+                child: SizedBox.square(
+                  dimension: style.thumbSize,
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      shape: const CircleBorder(),
+                      color: style.thumb.resolve(states),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
+            // The row's own layer lifts toward `ink`, which is invisible on a
+            // track that is already `ink`. An on track lifts the other way,
+            // so hover and press show on the control itself and not only on
+            // the words beside it.
+            if (on)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: StateLayer(
+                    states: states,
+                    shape: const StadiumBorder(),
+                    colour: ui.color.paper,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }

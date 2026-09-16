@@ -2,6 +2,7 @@
 
 import 'dart:ui' show Tristate;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -190,5 +191,67 @@ void main() {
     expect(data.flagsCollection.isEnabled, Tristate.isFalse);
     expect(data.hint, 'Turn on a screen reader to use this.');
     semantics.dispose();
+  });
+
+  testWidgets('a filled track lifts the other way, so a press shows on it', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(child: _switch(value: false, onChanged: (bool _) {})),
+    );
+    await tester.pumpAndSettle();
+
+    // A pointer window, stated rather than inferred.
+    // `FocusableActionDetector` suppresses the hover highlight entirely under
+    // `FocusHighlightMode.touch`, which a test binding starts in, so without
+    // this no control in this package ever reports hovered.
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
+
+    // One pointer for the whole test: a second `addPointer` while the first
+    // is still down trips an assertion inside `MouseTracker`.
+    final TestGesture mouse = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(() => mouse.removePointer());
+
+    Iterable<StateLayer> lifts() => tester
+        .widgetList<StateLayer>(find.byType(StateLayer))
+        .where((StateLayer layer) => layer.colour != null);
+
+    await mouse.moveTo(tester.getCenter(find.bySemanticsLabel(_label)));
+    await tester.pumpAndSettle();
+    expect(
+      lifts(),
+      isEmpty,
+      reason:
+          'over a light fill the shared ink layer is right, and a second one '
+          'would only darken it twice',
+    );
+
+    await tester.pumpWidget(
+      uiHarness(child: _switch(value: true, onChanged: (bool _) {})),
+    );
+    await tester.pumpAndSettle();
+    await mouse.moveTo(tester.getCenter(find.bySemanticsLabel(_label)));
+    await tester.pumpAndSettle();
+
+    final UiThemeData ui = tester.element(find.byType(UiSwitch)).ui;
+    final StateLayer lift = lifts().single;
+    expect(
+      lift.colour,
+      ui.color.paper,
+      reason: 'ink at 12 percent over an ink fill is the same colour',
+    );
+    expect(
+      StateLayer.opacityFor(lift.states, ui),
+      greaterThan(0),
+      reason: 'and the layer is painting while the pointer is on it',
+    );
   });
 }
