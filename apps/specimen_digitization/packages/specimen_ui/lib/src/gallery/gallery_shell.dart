@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import '../../specimen_ui.dart';
 import 'pages/actions_page.dart';
 import 'pages/colour_page.dart';
+import 'pages/data_page.dart';
 import 'pages/fields_page.dart';
 import 'pages/icons_page.dart';
 import 'pages/overlays_page.dart';
@@ -112,6 +113,7 @@ const List<GalleryPage> familyPages = <GalleryPage>[
   inputsPage,
   overlaysPage,
   navigationPage,
+  dataPage,
 ];
 
 /// Every page the gallery shows.
