@@ -3,7 +3,6 @@
 // It is how the direction is reviewed by eye, so it has to open with no
 // session and no collection, and it must not exist in a release build.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';

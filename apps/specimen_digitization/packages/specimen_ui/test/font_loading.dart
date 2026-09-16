@@ -7,7 +7,9 @@
 library;
 
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/services.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// The bytes of [asset], a path relative to the package root.
 Future<ByteData> loadPackageFont(String asset) async {
@@ -19,4 +21,18 @@ Future<ByteData> loadPackageFont(String asset) async {
     );
   }
   return ByteData.sublistView(await file.readAsBytes());
+}
+
+/// Loads the Phosphor faces the icon registry draws with.
+///
+/// They ship inside `phosphor_flutter`, so they come out of the asset bundle
+/// rather than off disk: the package's own assets are in the test bundle, a
+/// dependency's are reached by their package path.
+Future<void> loadPhosphorFonts() async {
+  for (final MapEntry<String, String> face
+      in PhosphorFonts.families.entries) {
+    final FontLoader loader = FontLoader(PhosphorFonts.prefixed(face.key));
+    loader.addFont(rootBundle.load(PhosphorFonts.bundlePath(face.value)));
+    await loader.load();
+  }
 }

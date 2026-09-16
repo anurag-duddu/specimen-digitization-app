@@ -16,5 +16,6 @@ import 'font_loading.dart';
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
   await UiFonts.loadForTest(loadPackageFont);
+  await loadPhosphorFonts();
   await testMain();
 }

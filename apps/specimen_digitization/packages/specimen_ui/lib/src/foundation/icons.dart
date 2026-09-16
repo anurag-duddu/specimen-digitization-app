@@ -8,6 +8,34 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+/// The font family a Phosphor weight resolves to.
+///
+/// Public so a test can load the faces: a golden of the icon page that draws
+/// a box instead of a glyph reviews nothing, and "two glyphs for one meaning"
+/// is exactly what that page exists to make visible.
+abstract final class PhosphorFonts {
+  /// The package the faces ship in.
+  static const String package = 'phosphor_flutter';
+
+  /// The family and asset of each weight the product draws.
+  static const Map<String, String> families = <String, String>{
+    'PhosphorRegular': 'lib/fonts/Phosphor.ttf',
+    'PhosphorFill': 'lib/fonts/Phosphor-Fill.ttf',
+    'PhosphorLight': 'lib/fonts/Phosphor-Light.ttf',
+  };
+
+  /// The bundle path of [asset] inside the Phosphor package.
+  static String bundlePath(String asset) => 'packages/$package/$asset';
+
+  /// The family name Flutter resolves a Phosphor face under.
+  ///
+  /// `PhosphorIconData` sets `fontPackage`, so the family the engine looks
+  /// for carries the package prefix. A `FontLoader` registered under the bare
+  /// name loads a face nothing then asks for, and every glyph renders as a
+  /// box.
+  static String prefixed(String family) => 'packages/$package/$family';
+}
+
 /// The Phosphor weights this product uses.
 ///
 /// `thin`, `bold` and `duotone` are not used; `bold` appears only inside the

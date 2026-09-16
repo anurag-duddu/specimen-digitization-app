@@ -180,13 +180,17 @@ void main() {
         );
         // A compact window has no column until a long press opens one, which
         // is the adaptation this golden exists to show alongside the wider
-        // ones.
+        // ones. The long press also selects the row it was on
+        // (`queue_screen.dart`, `onLongPress`), so the selection already
+        // exists there; tapping a checkbox afterwards would undo it and leave
+        // the bar with nothing to show.
         if (find.byType(Checkbox).evaluate().isEmpty) {
           await tester.longPress(find.text('Pinned beetle 1'));
           await tester.pumpAndSettle();
+        } else {
+          await tester.tap(find.byType(Checkbox).first);
+          await tester.pumpAndSettle();
         }
-        await tester.tap(find.byType(Checkbox).first);
-        await tester.pumpAndSettle();
         await tester.tap(find.text(SelectionBar.selectAllLabel));
         await tester.pumpAndSettle();
         expect(find.text('4 records selected'), findsOneWidget);
