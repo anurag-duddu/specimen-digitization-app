@@ -23,6 +23,19 @@ export 'src/foundation/space.dart';
 export 'src/foundation/theme.dart';
 export 'src/foundation/type.dart';
 
+// Primitives (L2).
+export 'src/primitives/announcer.dart';
+export 'src/primitives/field_core.dart';
+export 'src/primitives/field_layer.dart';
+export 'src/primitives/focus_ring.dart';
+export 'src/primitives/glass_surface.dart';
+export 'src/primitives/modal_routes.dart';
+export 'src/primitives/popover.dart';
+export 'src/primitives/pressable.dart';
+export 'src/primitives/scrim.dart';
+export 'src/primitives/squircle.dart';
+export 'src/primitives/state_layer.dart';
+export 'src/primitives/surface.dart';
 
 // Controls (L3), one barrel per family.
 export 'src/controls/actions/actions.dart';
