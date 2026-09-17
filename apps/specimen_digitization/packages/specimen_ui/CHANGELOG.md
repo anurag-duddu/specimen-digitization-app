@@ -1,23 +1,27 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-09-17)
 
-Wave F slot F2 of the front-end refactor: sections 2, 3.1, 5 and 6 of
-`design/11-fit-and-scale.md`. One text style source, window classes in the
-foundation, geometry that derives from type, and the harness the fit clauses
-run in. No control is converted here; wave G does that.
+The fit and scale release. `design/11-fit-and-scale.md` read three defects seen
+in the gallery as one cause: every layer was correct on its own and nobody
+owned the seam between two of them. It closed all three with three ownership
+rules, one text style source, one width policy per control and one edge per
+control, and waves F and G carried those rules through the foundation, the
+field, all five control families and the gallery. Polish 2 closed the package
+defects the screen waves found while they were doing it.
 
-### Testing
-- The package's goldens are compared on macOS only: `PlatformGatedGoldenComparator` in `test/flutter_test_config.dart` renders every golden on other platforms (so layout, overflow and semantics assertions still run) and sets the pixel comparison aside, and refuses `--update-goldens` off macOS, the rule the application's screen goldens already follow. Linux CI had failed all 336 of them by one to eleven percent of pixels.
+What a caller gets: every control declares what it does with less width than
+it needs, every height that holds text derives from the type scale rather than
+from a constant, no route on the root navigator can inherit the framework's
+fallback text style, and the gallery pictures all of it at four window classes
+by three text scales by two modes.
 
-### Integration, wave G
-- `UiModalActions` is a forwarder to `UiButtonRow`: the overlays keep their name for a row of actions and the actions family owns the arrangement. A modal without a primary leads with its way out. Its `style` parameter is gone; nothing outside the package passed it.
-- `UiListRow` bounds a trailing it cannot measure (a chip, a switch, a time) to the room left once the title has its minimum, so no custom trailing can push the line over; a declared "trailing under the title" variant for compact windows is recorded for polish.
-- `GalleryColumns` stacks a page's specimen columns below 320 dp per column, so the matrix pictures each control's own fit policy at 360 dp rather than the page's squeeze. `fitColumns` is one shared constant.
-- The whole tree is formatted once with the pinned `dart format`, and the gate run checks formatting from here on.
+Moving from 0.2.0: `FocusRing.capsule` is now `shape: FocusRingShape.stadium`,
+`FieldCore.showFocusRing` is gone, and `UiModalActions` no longer takes a
+`style`. Every `resolve` that draws text takes a `TextScaler` that defaults to
+`TextScaler.noScaling`, so a call site that passes nothing behaves as it did.
 
 ### Foundation
-- Integration: `UiType.lineHeightAt` and `UiType.controlHeightAt` take an explicit `TextScaler`, and the context forms delegate to them, so `UiInputStyle.resolve`, which is handed a scaler, derives the field's height from the same source as every other control.
 - `foundation/window.dart` is new. `WindowClass` moves in from the application
   unchanged, same breakpoints and same members, and `Adaptive<T>` arrives with
   it: one optional value per class, resolving to the nearest smaller class
@@ -37,6 +41,13 @@ run in. No control is converted here; wave G does that.
   `controlHeightFor` takes a `UiDensity` rather than a `UiThemeData`, because
   the theme is composed of the type scale and a token file that imports the
   theme inverts that.
+- `UiType.insetAround(restingHeight, style)`, `UiType.heightAround(...)` and
+  `UiType.heightAroundAt(...)` in the foundation. Reason: wave F derived a
+  height from a `UiDensity`, and the `sm` and `lg` rows of the size table, a
+  badge and a key cap are heights that hold text without being the density
+  row. `insetFor` and `controlHeightAt` are now the density shaped call of
+  the same two functions, so there is one formula rather than five copies.
+- Integration: `UiType.lineHeightAt` and `UiType.controlHeightAt` take an explicit `TextScaler`, and the context forms delegate to them, so `UiInputStyle.resolve`, which is handed a scaler, derives the field's height from the same source as every other control.
 - `UiThemeData.defaultTextStyle` is the product's ambient text style,
   `type.body` in `ink` with `decoration: none`, and `UiTheme` publishes it as
   a `DefaultTextStyle` around its child. Every subtree under the tokens,
@@ -44,6 +55,17 @@ run in. No control is converted here; wave G does that.
   rather than the framework fallback that `MaterialApp` installs. `UiTheme`'s
   constructor is no longer `const`; its public surface is otherwise unchanged
   and it is still the inherited widget itself, so `context.ui` is one lookup.
+- `UiSpace.labelMin` is new: `targetMin * 2`, the least width a one line label
+  or title is worth drawing in before a control switches to its compact
+  variant. Reason: 11 section 3.3 rule 3 needs a threshold and the grid had
+  none. Below it an ellipsis leaves a word fragment rather than a word.
+- `UiColor.selection` and `UiColor.selectionOpacity`: the accent at 35
+  percent, behind the characters a reviewer has highlighted (11 section 4).
+  `ink` on the composite clears 4.5:1 over every opaque surface in both modes,
+  and the composite contrast gate gained the row.
+- `UiStroke.caretRadius`: 1 dp, the caret's corner. Deliberately absent from
+  `UiShape.strokes`, which is the map of widths the foundation gallery page
+  walks.
 
 ### Primitives
 - `primitives/label.dart` is new. `UiLabel` is the one line label of clause
@@ -54,99 +76,6 @@ run in. No control is converted here; wave G does that.
 - `primitives/fit.dart` is new. `measureLabel` reports what one unbroken line
   needs at the current text scale, and `FitBuilder` draws the first declared
   variant that fits, or the last with a last resort flag.
-- `ModalRoutes` and `Popover` publish the ambient text style around their
-  panes from `context.ui`, so an overlay is correct in a host that resets the
-  style below the tokens. `compactWindowMax` is `WindowClass.mediumMin` rather
-  than a second copy of 600, and `isCompactWindow` reads the class.
-
-### Overlays
-- The tooltip pane and the toast capsule publish the ambient text style the
-  same way. No other change to either control.
-
-### Testing
-- `expectControlContract` gains clauses 13, 14 and 15, each off by default so
-  the families that shipped before 11 stay green: `labelsNeverWrap` (pumped at
-  480, 360, 280 and 200 dp, with `wrappingContent` naming the strings that are
-  content rather than labels), `geometryFromType` (pumped at 1.0, 1.3 and 2.0)
-  and `fit`, a caller supplied `FitExpectation`. The harness also releases its
-  semantics handle in a `finally`, so a contract that fails a clause reports
-  that clause rather than a leaked handle.
-- The harness no longer publishes a text style of its own. It used to, which
-  is why nothing caught a route inheriting the framework fallback.
-- `no_fallback_text_style` is new: every gallery page and every overlay those
-  pages offer, pumped in a host that installs the fallback on purpose, with no
-  paragraph allowed to carry its debug label or its double underline.
-
-Wave G slot G2 of the front-end refactor: the overlays, navigation and data
-families put on the fit rules of `design/11-fit-and-scale.md` section 3.3, and
-contract clauses 13 to 15 turned on for all three. Eight rows of that
-section's table: top bar, tabs, tile, row, dialog, sheet, banner and toast.
-
-### Public API
-
-- `UiTopBarAction` is new: a command with a glyph, a label, an optional
-  shortcut and a callback, passed in `UiTopBar.actions`. Reason: the bar's
-  compact variant is an overflow menu, and a menu needs a label, a glyph and a
-  shortcut for every row it lists. A `Widget` carries none of those, so a bar
-  given plain widgets keeps them all drawn. `actions` keeps its `List<Widget>`
-  type, so no call site had to move; the application's own bar should adopt
-  the class to gain the overflow (see the closeout).
-- `UiTopBarStyle` gains `actionExtent`, `titleMin`, `heightIn`, `keptActions`
-  and `overflowLabel`, and `height` is now the floor rather than the height.
-  Reason: 11 section 2.2, a bar that holds one line of `type.title` derives
-  its height from that line box; at scale 1.0 it is 56 or 48 exactly, as
-  before.
-- `UiTopBar` draws its title with an `Expanded` rather than a `Flexible`
-  beside a `Spacer` when there is no `center`. Reason: a `Spacer` is a flex
-  child, so the title was capped at half the bar and ellipsised at 200 percent
-  text with the other half empty beside it. With a `center` the two still
-  divide what the leading and the actions leave, which is 10 section 4.4's
-  rule that the centre is centred in that space rather than in the window.
-- `UiRowTrailing` is new: the declared form of `UiListRow.trailing`, a glyph
-  with a word beside it. Reason: the row's one compact variant is "trailing
-  drops its label and keeps its glyph", which a row can only do to a trailing
-  it can read. Anything else in the slot is drawn as given and the title
-  wraps instead.
-- `UiListRowStyle` gains `trailingLabel`, `trailingColor` and `titleMin`, and
-  `UiListRow.contentMaxLines` is 2. Reason: 11 section 3.3 calls the row's
-  title content and gives it two lines; the title used to be capped at one.
-- `UiDataTileStyle.numeral` is now a getter over `numeralSteps`, the display
-  roles the numeral steps down through. Reason: 11 section 3.3 has the tile
-  step down one role at a time to `display.medium` and then scale. A caller
-  reading `numeral` still gets the widest role.
-- `UiBanner` takes `actionLabel` and `onAction`. Reason: 07 section 11 asks
-  every failure class to name its own recovery, and the band had a dismiss and
-  a disclosure and nothing else. Wave 2's shell composed the action beside the
-  strip and asked for this slot.
-- `UiBannerStyle` gains `messageMin`, and the band's sentence now wraps to
-  `UiBannerStyle.maxLines` when the detail is closed and to one line when it
-  is open. Reason: 11 section 3.3 calls a band's text content, and the cap
-  finding V-15 asks for is on the band rather than on the line. The band is
-  still one line or two at every text scale. One application test moved with
-  it, named in the closeout.
-- `UiToastStyle` gains `messageMin`. Reason: the capsule's action moves under
-  the message rather than either being squeezed, and the switch is measured
-  against the width the message is left.
-- `UiModalActions` takes `tertiary` and stacks with the primary on top when
-  the row does not fit one line or the window is compact. Reason: this is
-  `UiButtonRow` of 11 section 3.4 under the name the overlays family already
-  had for it; slot G1 owns `controls/actions/` and lands the real class. Grep
-  `fe/fit-actions` in `controls/overlays/sheet.dart` for the swap.
-- `UiModalStyle.resolve` takes an optional `BuildContext` and the style gains
-  `actionHeight`. Reason: 11 section 2.2, the action strip's height derives
-  from the label role its buttons are set in. Without a context it reports the
-  density height, which is that value at scale 1.0.
-- `UiSheet` takes `scrollBody`, default true. Reason: the sheet now bounds its
-  body and scrolls it; a caller whose body is already a scrollable passes
-  false, because two scrollables in one column give the inner one an unbounded
-  height again.
-- `UiDisclosureStyle.summaryMaxLines` is 2 and the summary wraps. Reason: a
-  disclosure's summary is the row's second line, the same object a list row's
-  subtitle is, and is content rather than a label.
-- `UiSpace.labelMin` is new: `targetMin * 2`, the least width a one line label
-  or title is worth drawing in before a control switches to its compact
-  variant. Reason: 11 section 3.3 rule 3 needs a threshold and the grid had
-  none. Below it an ellipsis leaves a word fragment rather than a word.
 - `primitives/edge_fade.dart` is new and exported. `EdgeFadedRow` is the
   compact variant 11 section 3.3 gives a tab strip and a navigation row: the
   row at its own intrinsic width inside a scroller, the edge faded on the side
@@ -155,81 +84,10 @@ section's table: top bar, tabs, tile, row, dialog, sheet, banner and toast.
   and two copies of one behaviour is what one vocabulary exists to prevent. It
   takes its fade extent as a token from the control, because a primitive makes
   no styling decision of its own.
-
-### Overlays
-
-- The sheet's padded block is `Flexible`, so the body is bounded by the window
-  minus the chrome and scrolls inside it. A `Column` hands an inflexible child
-  an unbounded main axis, which is why the inner `Flexible` had nothing to be
-  flexible against and a filter sheet overflowed a phone by 1044 dp. The bound
-  is the flex rather than arithmetic over the chrome, so it stays right
-  whatever the safe area takes.
-- `UiTabs` draws its track through `FitBuilder`: at its intrinsic width when
-  that fits, and otherwise in a horizontal scroller whose edges fade on the
-  side there is something to scroll to, with the chosen tab scrolled into
-  view. The track inside is the same `UiSegmented` at the same size, so there
-  is one thumb, one keyboard pattern and one set of tokens either way. The
-  `tabBar` role sits inside the scroller rather than around it, because every
-  child node of a tab bar has to carry `tab` and a `Scrollable`'s own node
-  between the two would fail that check.
-- Menu item labels and shortcuts, the menu trigger's label, the disclosure's
-  title and the modal titles are `UiLabel`. Banner text, toast text, dialog
-  and sheet bodies, the tooltip's sentence and the disclosure's summary stay
-  wrapping `Text`: they are content.
-- The overlays gallery page states seven frosted panes rather than four, and
-  the family golden window is 1180 by 1540. Both are the fit section: one
-  toast capsule per column, four columns.
-
-### Navigation
-
-- `UiPillNav` scrolls when its discs do not fit, through `EdgeFadedRow`, with
-  the current destination scrolled into view. Five discs need 240 dp and a
-  disc's hit box never shrinks (clause 2), so at 200 dp the capsule overflowed
-  by 56 dp; the gallery matrix counted that six times.
-- The bar has three arrangements: every action drawn, the first two drawn with
-  the rest in an overflow `UiPopoverMenu`, and every action in the menu for a
-  column too narrow for two discs and a trigger. The menu carries the same
-  labels, glyphs and shortcuts.
-- `UiNavDestination` labels on a rail disc are `UiLabel`.
-- The navigation gallery page's golden window is 1180 by 1220, measured
-  against the page with its fit section.
-
-### Data
-
-- The tile's numeral never wraps. It steps down one display role at a time to
-  `display.medium` and then scales the numeral and its unit together, because
-  a `FittedBox` reports its child's unscaled baseline and a unit aligned to a
-  scaled numeral's would float above the digits. The unit's role never
-  changes. This amends the wave 1 reading of 02 section 4.14, which had no
-  third option between clipping and a second line.
-- The row's title and subtitle take two lines each and the trailing drops its
-  word when the title would fall under `titleMin`.
-- The avatar's initials and the arc indicator's absence and scale labels are
-  `UiLabel`. The empty state's title and sentence stay content.
-- The data gallery page states eight frosted panes rather than four, and the
-  family golden window is 1180 by 2280. The fit section spans the page rather
-  than sitting in the measures column: a 480 dp specimen inside a 370 dp
-  column is a specimen of 370 dp.
-
-### Testing
-- Clauses 13, 14 and 15 are on in all fifteen contract tests of the three
-  families, with the content strings named in `wrappingContent`. Two of them
-  name a `UiButton` label there as well, because a button still wraps at 200
-  dp and 11 section 3.3 gives it an ellipsis and a tooltip that slot G1 owns.
-  Both entries carry the marker to delete.
-- New behaviour tests: the bar's overflow at three widths and with opaque
-  widgets; the strip scrolling, keeping every tab and revealing the chosen
-  one; the band and the capsule moving their action under the words; the
-  sheet's bounded scrolling body and a body that scrolls itself; the modal
-  actions as a row, as a stack, and on a compact window; the tile's step down,
-  its last resort and the hero chain.
-
-Wave F of the front-end refactor, slot F1: the field rebuilt inside out per
-`design/11-fit-and-scale.md` section 4, and the focus ring given the shape it
-rings per 09 section 3.6 as amended.
-
-### Public API
-
+- `ModalRoutes` and `Popover` publish the ambient text style around their
+  panes from `context.ui`, so an overlay is correct in a host that resets the
+  style below the tokens. `compactWindowMax` is `WindowClass.mediumMin` rather
+  than a second copy of 600, and `isCompactWindow` reads the class.
 - `FocusRing` takes a `FocusRingShape` (`superellipse`, `stadium`, `circle`)
   and the `capsule` flag is gone. Reason: a circular rounded rectangle around
   a superellipse meets the edge along a corner and parts from it at the ends,
@@ -245,59 +103,33 @@ rings per 09 section 3.6 as amended.
   `InputDecorationTheme` and paints its enabled and focused borders under
   ours. There is now no decorator for it to paint through, and a test pumps
   every field both ways to hold that.
-- `UiInputStyle.resolve` takes a `TextScaler`. Reason: 11 section 2.2, a
-  height that holds text is never a constant. Defaults to
-  `TextScaler.noScaling`, so an existing call site keeps today's behaviour.
-- `UiSelectStyle.resolve` takes the same `TextScaler`, for the same reason.
-- `UiFieldBox` takes `semantics`, a wrapper around the box and never around
-  the trailing action. Reason: a field merges its editor into one node whose
-  rect is the 48 dp box, and the clear control has to stay outside that merge
-  to keep its own words and its own target.
 - `Pressable` takes `focusRing`, default true. Reason: a field shaped trigger
   draws a 40 dp edge inside a 48 dp hit box in pointer density, and the ring
   this primitive paints hugs the hit box. `UiSelect` passes false and rings
   its own edge, on the condition clause 4 already gives it.
-- `UiColor.selection` and `UiColor.selectionOpacity`: the accent at 35
-  percent, behind the characters a reviewer has highlighted (11 section 4).
-  `ink` on the composite clears 4.5:1 over every opaque surface in both modes,
-  and the composite contrast gate gained the row.
-- `UiStroke.caretRadius`: 1 dp, the caret's corner. Deliberately absent from
-  `UiShape.strokes`, which is the map of widths the foundation gallery page
-  walks.
+- A disabled `Pressable` tells a pointer that arrives on it why it is
+  disabled. `FocusableActionDetector` reports a hover only while it is enabled,
+  which is right for the state layer and wrong for the reason, so the pointer
+  is watched separately: `WidgetState.hovered` still means "hovered and able to
+  respond", and `onDisabledReason` now fires on hover as well as on a tap and a
+  long press. `UiIconButton`'s reason tooltip, which 10 section 4.1 says
+  appears on hover, appeared only after the reviewer pressed a control that
+  does nothing.
+- A `Pressable` never hands its builder `hovered` and `disabled` at once. A
+  control turned off under the pointer kept its hover until the detector
+  cleared it a frame later, and a pair no style object has an answer for
+  resolved by whichever of the two the resolver happened to test first. Both
+  hover and press are cleared in the same pass that sets `disabled`.
+- `FieldLayer` cross fades one sky into the next rather than cutting to it.
+  `ui.motion.standard`, which is what the detail pane beside it cross fades at
+  (04 section 4, row 17) and which the tokens return as zero under reduced
+  motion, so the swap is instant there with no branch in the layer. The
+  switcher does not animate its first child, so a screen opens with its own
+  sky already painted. Reason: the application now paints `sky.work` on the
+  record route and `sky.home` everywhere else, and a hard cut of the light
+  behind the whole window reads as a flash.
 
-### Inputs
-
-- The field's edge is `boundary` at `stroke.boundary` and never moves. Focus
-  is the ring, drawn on the box's own shape, and a field shows it for any
-  focus, pointer or keyboard (09 section 3.6, fit amendment).
-- The box's height is `max(density.controlHeight, scaled line box + 2 * inset)`
-  where the inset reproduces the density height at scale 1.0, so a field is
-  unchanged at 1.0 and grows with the reviewer's text size above it.
-- `FieldCore` draws the placeholder itself, in the text's own style and strut
-  at `ink.tertiary`, on the line the value will take, excluded from semantics
-  and transparent to the pointer. The caret is `ink`, `stroke.emphasis` wide,
-  `caretRadius` at the ends and as tall as the scaled line box; the selection
-  is `selection`, published through `DefaultSelectionStyle` so it holds inside
-  a bare `WidgetsApp` as well as inside the application.
-- Every role the core draws carries `TextLeadingDistribution.even`, so the
-  text sits in the middle of its line box instead of floating above it. It is
-  set locally until the foundation slot puts it on the type scale.
-- `UiField` publishes one semantics node, whose rect is the 48 dp box and
-  which carries the editor's flags, value and text editing actions. The
-  labelled, Android and iOS tap target guidelines pass on a pumped field in
-  both densities; before this they failed on the 22 dp node the editor
-  published inside the control.
-- `UiRadio` rings its 20 dp disc with a circle rather than the row with a
-  rounded rectangle.
-- The inputs gallery page gains the box in every shape at rest, focused and
-  focused with a value, and the family golden is captured at 1180 by 1600.
-
-Wave G of the front-end refactor, slot G1: the actions family given the fit
-policy of `design/11-fit-and-scale.md` section 3.3, the row of section 3.4,
-and contract clauses 13 to 15 turned on for all seven controls.
-
-### Public API
-
+### Actions
 - `UiButtonRow` is new (`controls/actions/button_row.dart`, exported from the
   family barrel): a primary, an optional secondary and optional tertiary
   actions, ends aligned with the primary last, becoming a column with the
@@ -336,15 +168,6 @@ and contract clauses 13 to 15 turned on for all seven controls.
   `StatusChip`, whose measured form drew its own capsule around a determinate
   ring because no slot existed. The app's `_MeasuredChip` and its
   `TODO(fe/polish-2)` can be retired onto it.
-- `UiType.insetAround(restingHeight, style)`, `UiType.heightAround(...)` and
-  `UiType.heightAroundAt(...)` in the foundation. Reason: wave F derived a
-  height from a `UiDensity`, and the `sm` and `lg` rows of the size table, a
-  badge and a key cap are heights that hold text without being the density
-  row. `insetFor` and `controlHeightAt` are now the density shaped call of
-  the same two functions, so there is one formula rather than five copies.
-
-### Actions
-
 - Every label in the family is a `UiLabel`: one line, an ellipsis, and the
   whole word on a tooltip and on the semantics label only when it actually
   overflows. Where the control is pressed, the tooltip wraps the control from
@@ -369,110 +192,168 @@ and contract clauses 13 to 15 turned on for all seven controls.
   constant or from 32, so 200 percent text has room without a new number.
   `UiBadge` and `UiKeyCap` derive theirs the same way, from `label.small` and
   from `mono.identifier`.
-- The actions gallery page gains the Fit block of 11 section 3.5: the
-  segmented track named and glyphed, the same track unnamed, a button, an
-  entered value chip and a `UiButtonRow`, each in a 480, 360, 280 and 200 dp
-  column. The page's one focused specimen moved there, to the 200 dp button,
-  because a page has one primary focus and the narrowest column is where a
-  ring drawn outside a control would first meet something.
-- The segmented section moved into the wider column of the page. The five
-  segment track at `lg` needs 403 dp for its words and the narrow column is
-  345, so the specimen was drawing its own last resort.
-- The actions family golden is captured at 1180 by 2540, measured against a
-  page that ends at 2492. It was 820 while the page ended at 1616, which
-  10 section 6 already recorded as the one family taller than its window.
-- Clauses 13, 14 and 15 are on in every actions contract test.
-Wave G of the front-end refactor, slot G3: section 3.5 of
-`design/11-fit-and-scale.md`. The gallery shell gets a compact arrangement, a
-Fit page shows every control of the fit table at four column widths, and the
-golden matrix draws every page at four window classes by three text scales by
-two modes.
 
-### Gallery
-- `UiGallery` chooses its arrangement by window class, and is the first
-  consumer of `Adaptive`. Below `medium` the page list is a `UiSelect` above
-  the content and the content takes the whole window but its gutters; from
-  `medium` up the 220 dp sidebar stays, pixel for pixel as before. Reason: a
-  220 dp sidebar beside a 360 dp window leaves 130 dp for the page, which is
-  the column the wrapping labels of 11 section 0 were first seen in. Keyboard
-  navigation between pages works in both: the sidebar's rows are `Pressable`
-  and the select answers `Enter`, `Down`, `Up` and `Escape`.
-- The shell no longer publishes a `DefaultTextStyle` of its own. Reason:
-  `UiTheme` publishes the product's ambient style (11 section 5), and a second
-  publication of the same recipe is a second source for the one thing that
-  document gives one source. Nothing moves: the styles were the same but for
-  `decoration: none`, which the shell never set and never needed.
-- `galleryPages` gains the Fit page, so `/gallery` carries twelve pages. It is
-  listed beside `foundationPages` and `familyPages` rather than inside either,
-  because it belongs to no family: it draws every family's controls. The
-  foundation goldens still pin `foundationPages` and each family golden still
-  renders its own page alone, so no existing gallery golden moves.
-- The Fit page (`gallery/pages/fit_page.dart`) draws one section per row of the
-  fit table in 11 section 3.3, in that order, each at 200, 280, 360 and 480 dp.
-  Narrowest first: the four columns and their gutters come to 1380 dp, no
-  window leaves a page that much, and the end worth losing is the wide one
-  every family page already reviews. Each section states the compact variants
-  the table gives that control, and draws it at rest above and focused below.
-  A focused cell is the control under the `FocusRing` primitive on its own box,
-  because one control on a page can hold primary focus and forty cannot; where
-  the ring belongs to a member the control builds for itself, the section says
-  where it lives rather than drawing a ring the product never draws. The page
-  declares `maxGlassPanes: 13`, which is the top bar, the navigation row and
-  the toast once per column plus the shell's own page list.
+### Inputs
+- `UiInputStyle.resolve` takes a `TextScaler`. Reason: 11 section 2.2, a
+  height that holds text is never a constant. Defaults to
+  `TextScaler.noScaling`, so an existing call site keeps today's behaviour.
+- `UiSelectStyle.resolve` takes the same `TextScaler`, for the same reason.
+- `UiFieldBox` takes `semantics`, a wrapper around the box and never around
+  the trailing action. Reason: a field merges its editor into one node whose
+  rect is the 48 dp box, and the clear control has to stay outside that merge
+  to keep its own words and its own target.
+- The field's edge is `boundary` at `stroke.boundary` and never moves. Focus
+  is the ring, drawn on the box's own shape, and a field shows it for any
+  focus, pointer or keyboard (09 section 3.6, fit amendment).
+- The box's height is `max(density.controlHeight, scaled line box + 2 * inset)`
+  where the inset reproduces the density height at scale 1.0, so a field is
+  unchanged at 1.0 and grows with the reviewer's text size above it.
+- `FieldCore` draws the placeholder itself, in the text's own style and strut
+  at `ink.tertiary`, on the line the value will take, excluded from semantics
+  and transparent to the pointer. The caret is `ink`, `stroke.emphasis` wide,
+  `caretRadius` at the ends and as tall as the scaled line box; the selection
+  is `selection`, published through `DefaultSelectionStyle` so it holds inside
+  a bare `WidgetsApp` as well as inside the application.
+- Every role the core draws carries `TextLeadingDistribution.even`, so the
+  text sits in the middle of its line box instead of floating above it. It is
+  set locally until the foundation slot puts it on the type scale.
+- `UiField` publishes one semantics node, whose rect is the 48 dp box and
+  which carries the editor's flags, value and text editing actions. The
+  labelled, Android and iOS tap target guidelines pass on a pumped field in
+  both densities; before this they failed on the 22 dp node the editor
+  published inside the control.
+- `UiRadio` rings its 20 dp disc with a circle rather than the row with a
+  rounded rectangle.
 
-### Testing
-- `test/gallery/matrix_golden_test.dart` is new, with 288 goldens under
-  `test/gallery/goldens/matrix/`: every page of `galleryPages` at 360, 700,
-  1000 and 1400 dp, at text scales 1.0, 1.3 and 2.0, in both modes, in pointer
-  density with reduced motion on. Twenty four goldens per page, named
-  `<page>_<class>_<scale>_<mode>.png`. Every window is a fixed 900 dp tall with
-  the page scrolled to the top, because a height that held every specimen at
-  scale 2.0 would be a hundred megabytes of binary nobody reviews, and because
-  each page is already reviewed whole, at its own height, by its family golden.
-  Each page is one test that captures its own twenty four, so the harness is
-  paid for once: the whole matrix renders in about thirty seconds.
-- The matrix carries `overflowBacklog`, a shrink-only record of what still
-  overflows and where, by the file the report names. A control with no fit
-  policy overflows in a 200 dp column, which is the defect the Fit page exists
-  to picture, so the matrix records it rather than refusing to draw it. Five
-  controls and two foundation pages are on the list; anything else, and
-  anything that is not an overflow, fails.
-- `test/gallery/gallery_shell_test.dart` is new: the arrangement at each side
-  of the 600 dp boundary, the content taking the full width below it, the
-  sidebar's start edge above it, and a page opened from the keyboard in both
-  arrangements.
+### Overlays
+- `UiBanner` takes `actionLabel` and `onAction`. Reason: 07 section 11 asks
+  every failure class to name its own recovery, and the band had a dismiss and
+  a disclosure and nothing else. Wave 2's shell composed the action beside the
+  strip and asked for this slot.
+- `UiBannerStyle` gains `messageMin`, and the band's sentence now wraps to
+  `UiBannerStyle.maxLines` when the detail is closed and to one line when it
+  is open. Reason: 11 section 3.3 calls a band's text content, and the cap
+  finding V-15 asks for is on the band rather than on the line. The band is
+  still one line or two at every text scale. One application test moved with
+  it, named in the closeout.
+- `UiToastStyle` gains `messageMin`. Reason: the capsule's action moves under
+  the message rather than either being squeezed, and the switch is measured
+  against the width the message is left.
+- `UiModalActions` takes `tertiary` and stacks with the primary on top when
+  the row does not fit one line or the window is compact. Reason: this is
+  `UiButtonRow` of 11 section 3.4 under the name the overlays family already
+  had for it; slot G1 owns `controls/actions/` and lands the real class. Grep
+  `fe/fit-actions` in `controls/overlays/sheet.dart` for the swap.
+- `UiModalStyle.resolve` takes an optional `BuildContext` and the style gains
+  `actionHeight`. Reason: 11 section 2.2, the action strip's height derives
+  from the label role its buttons are set in. Without a context it reports the
+  density height, which is that value at scale 1.0.
+- `UiSheet` takes `scrollBody`, default true. Reason: the sheet now bounds its
+  body and scrolls it; a caller whose body is already a scrollable passes
+  false, because two scrollables in one column give the inner one an unbounded
+  height again.
+- `UiDisclosureStyle.summaryMaxLines` is 2 and the summary wraps. Reason: a
+  disclosure's summary is the row's second line, the same object a list row's
+  subtitle is, and is content rather than a label.
+- The tooltip pane and the toast capsule publish the ambient text style the
+  same way. No other change to either control.
+- The sheet's padded block is `Flexible`, so the body is bounded by the window
+  minus the chrome and scrolls inside it. A `Column` hands an inflexible child
+  an unbounded main axis, which is why the inner `Flexible` had nothing to be
+  flexible against and a filter sheet overflowed a phone by 1044 dp. The bound
+  is the flex rather than arithmetic over the chrome, so it stays right
+  whatever the safe area takes.
+- `UiTabs` draws its track through `FitBuilder`: at its intrinsic width when
+  that fits, and otherwise in a horizontal scroller whose edges fade on the
+  side there is something to scroll to, with the chosen tab scrolled into
+  view. The track inside is the same `UiSegmented` at the same size, so there
+  is one thumb, one keyboard pattern and one set of tokens either way. The
+  `tabBar` role sits inside the scroller rather than around it, because every
+  child node of a tab bar has to carry `tab` and a `Scrollable`'s own node
+  between the two would fail that check.
+- Menu item labels and shortcuts, the menu trigger's label, the disclosure's
+  title and the modal titles are `UiLabel`. Banner text, toast text, dialog
+  and sheet bodies, the tooltip's sentence and the disclosure's summary stay
+  wrapping `Text`: they are content.
+- `UiModalActions` is a forwarder to `UiButtonRow`: the overlays keep their name for a row of actions and the actions family owns the arrangement. A modal without a primary leads with its way out. Its `style` parameter is gone; nothing outside the package passed it.
+- `UiDisclosure`'s header keeps the 48 dp hit box of clause 2 in both
+  densities. Reason: a header whose title fits one line was
+  `density.rowHeight` tall, which is 44 in pointer, so every tap target
+  guideline on a screen with a disclosure on it failed. The visual row keeps
+  its density height and the difference is transparent slop inside the
+  control's own box, so a column of disclosures still tiles without gaps.
+- `UiDialog` takes `scrollBody`, defaulting to true, and `UiDialog.show` and
+  `UiDialog.showAdaptive` forward it. Reason: `UiSheet` already had it, so a
+  body written for `showAdaptive` had to know which of the two frames it landed
+  in; and a dialog is bounded by the window it floats in, so a body that two
+  sentences become three lines of at 200 percent text on a short window had
+  nowhere to go. The application's filter form was carrying the difference as a
+  height cap of its own.
 
-Polish 2 of the front-end refactor: the package defects waves 2, F, G and 3
-recorded, closed. `Pressable` and `UiListRow`, the row's declared
-trailing-under-title variant, the gallery's own copy, and the slot the filter
-sheet asked for.
-
-### Primitives
-- A disabled `Pressable` tells a pointer that arrives on it why it is
-  disabled. `FocusableActionDetector` reports a hover only while it is enabled,
-  which is right for the state layer and wrong for the reason, so the pointer
-  is watched separately: `WidgetState.hovered` still means "hovered and able to
-  respond", and `onDisabledReason` now fires on hover as well as on a tap and a
-  long press. `UiIconButton`'s reason tooltip, which 10 section 4.1 says
-  appears on hover, appeared only after the reviewer pressed a control that
-  does nothing.
-- A `Pressable` never hands its builder `hovered` and `disabled` at once. A
-  control turned off under the pointer kept its hover until the detector
-  cleared it a frame later, and a pair no style object has an answer for
-  resolved by whichever of the two the resolver happened to test first. Both
-  hover and press are cleared in the same pass that sets `disabled`.
-
-### Primitives, continued
-- `FieldLayer` cross fades one sky into the next rather than cutting to it.
-  `ui.motion.standard`, which is what the detail pane beside it cross fades at
-  (04 section 4, row 17) and which the tokens return as zero under reduced
-  motion, so the swap is instant there with no branch in the layer. The
-  switcher does not animate its first child, so a screen opens with its own
-  sky already painted. Reason: the application now paints `sky.work` on the
-  record route and `sky.home` everywhere else, and a hard cut of the light
-  behind the whole window reads as a flash.
+### Navigation
+- `UiTopBarAction` is new: a command with a glyph, a label, an optional
+  shortcut and a callback, passed in `UiTopBar.actions`. Reason: the bar's
+  compact variant is an overflow menu, and a menu needs a label, a glyph and a
+  shortcut for every row it lists. A `Widget` carries none of those, so a bar
+  given plain widgets keeps them all drawn. `actions` keeps its `List<Widget>`
+  type, so no call site had to move; the application's own bar should adopt
+  the class to gain the overflow (see the closeout).
+- `UiTopBarStyle` gains `actionExtent`, `titleMin`, `heightIn`, `keptActions`
+  and `overflowLabel`, and `height` is now the floor rather than the height.
+  Reason: 11 section 2.2, a bar that holds one line of `type.title` derives
+  its height from that line box; at scale 1.0 it is 56 or 48 exactly, as
+  before.
+- `UiTopBar` draws its title with an `Expanded` rather than a `Flexible`
+  beside a `Spacer` when there is no `center`. Reason: a `Spacer` is a flex
+  child, so the title was capped at half the bar and ellipsised at 200 percent
+  text with the other half empty beside it. With a `center` the two still
+  divide what the leading and the actions leave, which is 10 section 4.4's
+  rule that the centre is centred in that space rather than in the window.
+- `UiPillNav` scrolls when its discs do not fit, through `EdgeFadedRow`, with
+  the current destination scrolled into view. Five discs need 240 dp and a
+  disc's hit box never shrinks (clause 2), so at 200 dp the capsule overflowed
+  by 56 dp; the gallery matrix counted that six times.
+- The bar has three arrangements: every action drawn, the first two drawn with
+  the rest in an overflow `UiPopoverMenu`, and every action in the menu for a
+  column too narrow for two discs and a trigger. The menu carries the same
+  labels, glyphs and shortcuts.
+- `UiNavDestination` labels on a rail disc are `UiLabel`.
+- `UiScaffoldExclusion` is new: a screen inside a scaffold asks for a
+  rectangle to be kept clear with
+  `UiScaffoldExclusion.of(context)?.publish(rect)`, and the frame clips its
+  fields out of it. Reason: `UiScaffold.exclusion` is a constructor argument
+  and the frame is built by the application's shell, which does not know where
+  the photograph is, so the 24 dp clear band around a matte (09 section 2,
+  principle 1) was unreachable from the pane that draws it. What the page asks
+  for wins over what the caller passed, and `of` returns null outside a
+  scaffold so a publisher is one call with no branch. Publishing is safe from
+  a layout callback: a change reported while the frame is being built is
+  announced after it.
 
 ### Data
+- `UiRowTrailing` is new: the declared form of `UiListRow.trailing`, a glyph
+  with a word beside it. Reason: the row's one compact variant is "trailing
+  drops its label and keeps its glyph", which a row can only do to a trailing
+  it can read. Anything else in the slot is drawn as given and the title
+  wraps instead.
+- `UiListRowStyle` gains `trailingLabel`, `trailingColor` and `titleMin`, and
+  `UiListRow.contentMaxLines` is 2. Reason: 11 section 3.3 calls the row's
+  title content and gives it two lines; the title used to be capped at one.
+- `UiDataTileStyle.numeral` is now a getter over `numeralSteps`, the display
+  roles the numeral steps down through. Reason: 11 section 3.3 has the tile
+  step down one role at a time to `display.medium` and then scale. A caller
+  reading `numeral` still gets the widest role.
+- The tile's numeral never wraps. It steps down one display role at a time to
+  `display.medium` and then scales the numeral and its unit together, because
+  a `FittedBox` reports its child's unscaled baseline and a unit aligned to a
+  scaled numeral's would float above the digits. The unit's role never
+  changes. This amends the wave 1 reading of 02 section 4.14, which had no
+  third option between clipping and a second line.
+- The row's title and subtitle take two lines each and the trailing drops its
+  word when the title would fall under `titleMin`.
+- The avatar's initials and the arc indicator's absence and scale labels are
+  `UiLabel`. The empty state's title and sentence stay content.
+- `UiListRow` bounds a trailing it cannot measure (a chip, a switch, a time) to the room left once the title has its minimum, so no custom trailing can push the line over; a declared "trailing under the title" variant for compact windows is recorded for polish.
 - `UiListRow`'s tone follows its state, as every other control's does.
   `UiListRowStyle.titleColor`, `subtitleColor` and `trailingColor` are
   `WidgetStateProperty<Color>`, and `bar` is one too; each resolves
@@ -513,35 +394,61 @@ sheet asked for.
   chrome. A manifest's three counts are the product's own example and were a
   private `_CountTile` for want of this.
 
-### Overlays
-- `UiDisclosure`'s header keeps the 48 dp hit box of clause 2 in both
-  densities. Reason: a header whose title fits one line was
-  `density.rowHeight` tall, which is 44 in pointer, so every tap target
-  guideline on a screen with a disclosure on it failed. The visual row keeps
-  its density height and the difference is transparent slop inside the
-  control's own box, so a column of disclosures still tiles without gaps.
-- `UiDialog` takes `scrollBody`, defaulting to true, and `UiDialog.show` and
-  `UiDialog.showAdaptive` forward it. Reason: `UiSheet` already had it, so a
-  body written for `showAdaptive` had to know which of the two frames it landed
-  in; and a dialog is bounded by the window it floats in, so a body that two
-  sentences become three lines of at 200 percent text on a short window had
-  nowhere to go. The application's filter form was carrying the difference as a
-  height cap of its own.
-
-### Navigation
-- `UiScaffoldExclusion` is new: a screen inside a scaffold asks for a
-  rectangle to be kept clear with
-  `UiScaffoldExclusion.of(context)?.publish(rect)`, and the frame clips its
-  fields out of it. Reason: `UiScaffold.exclusion` is a constructor argument
-  and the frame is built by the application's shell, which does not know where
-  the photograph is, so the 24 dp clear band around a matte (09 section 2,
-  principle 1) was unreachable from the pane that draws it. What the page asks
-  for wins over what the caller passed, and `of` returns null outside a
-  scaffold so a publisher is one call with no branch. Publishing is safe from
-  a layout callback: a change reported while the frame is being built is
-  announced after it.
-
 ### Gallery
+- The inputs gallery page gains the box in every shape at rest, focused and
+  focused with a value, and the family golden is captured at 1180 by 1600.
+- The actions gallery page gains the Fit block of 11 section 3.5: the
+  segmented track named and glyphed, the same track unnamed, a button, an
+  entered value chip and a `UiButtonRow`, each in a 480, 360, 280 and 200 dp
+  column. The page's one focused specimen moved there, to the 200 dp button,
+  because a page has one primary focus and the narrowest column is where a
+  ring drawn outside a control would first meet something.
+- The segmented section moved into the wider column of the page. The five
+  segment track at `lg` needs 403 dp for its words and the narrow column is
+  345, so the specimen was drawing its own last resort.
+- The actions family golden is captured at 1180 by 2540, measured against a
+  page that ends at 2492. It was 820 while the page ended at 1616, which
+  10 section 6 already recorded as the one family taller than its window.
+- The overlays gallery page states seven frosted panes rather than four, and
+  the family golden window is 1180 by 1540. Both are the fit section: one
+  toast capsule per column, four columns.
+- The navigation gallery page's golden window is 1180 by 1220, measured
+  against the page with its fit section.
+- The data gallery page states eight frosted panes rather than four, and the
+  family golden window is 1180 by 2280. The fit section spans the page rather
+  than sitting in the measures column: a 480 dp specimen inside a 370 dp
+  column is a specimen of 370 dp.
+- `UiGallery` chooses its arrangement by window class, and is the first
+  consumer of `Adaptive`. Below `medium` the page list is a `UiSelect` above
+  the content and the content takes the whole window but its gutters; from
+  `medium` up the 220 dp sidebar stays, pixel for pixel as before. Reason: a
+  220 dp sidebar beside a 360 dp window leaves 130 dp for the page, which is
+  the column the wrapping labels of 11 section 0 were first seen in. Keyboard
+  navigation between pages works in both: the sidebar's rows are `Pressable`
+  and the select answers `Enter`, `Down`, `Up` and `Escape`.
+- The shell no longer publishes a `DefaultTextStyle` of its own. Reason:
+  `UiTheme` publishes the product's ambient style (11 section 5), and a second
+  publication of the same recipe is a second source for the one thing that
+  document gives one source. Nothing moves: the styles were the same but for
+  `decoration: none`, which the shell never set and never needed.
+- `galleryPages` gains the Fit page, so `/gallery` carries twelve pages. It is
+  listed beside `foundationPages` and `familyPages` rather than inside either,
+  because it belongs to no family: it draws every family's controls. The
+  foundation goldens still pin `foundationPages` and each family golden still
+  renders its own page alone, so no existing gallery golden moves.
+- The Fit page (`gallery/pages/fit_page.dart`) draws one section per row of the
+  fit table in 11 section 3.3, in that order, each at 200, 280, 360 and 480 dp.
+  Narrowest first: the four columns and their gutters come to 1380 dp, no
+  window leaves a page that much, and the end worth losing is the wide one
+  every family page already reviews. Each section states the compact variants
+  the table gives that control, and draws it at rest above and focused below.
+  A focused cell is the control under the `FocusRing` primitive on its own box,
+  because one control on a page can hold primary focus and forty cannot; where
+  the ring belongs to a member the control builds for itself, the section says
+  where it lives rather than drawing a ring the product never draws. The page
+  declares `maxGlassPanes: 13`, which is the top bar, the navigation row and
+  the toast once per column plus the shell's own page list.
+- `GalleryColumns` stacks a page's specimen columns below 320 dp per column, so the matrix pictures each control's own fit policy at 360 dp rather than the page's squeeze. `fitColumns` is one shared constant.
 - Every "Needs human review" in the gallery is "Needs review", which is the
   chip label 02 section 4.13 specifies; the long form is the queue state's own
   name and stays in the token documentation, where it names which state a role
@@ -552,6 +459,59 @@ sheet asked for.
   row and the new tile on it, and 2460 is the first height with nothing left
   to scroll. Measured, not guessed (10 section 6).
 - The Fit page's `UiListRow` section names all three variants.
+
+### Testing
+- `expectControlContract` gains clauses 13, 14 and 15, each off by default so
+  the families that shipped before 11 stay green: `labelsNeverWrap` (pumped at
+  480, 360, 280 and 200 dp, with `wrappingContent` naming the strings that are
+  content rather than labels), `geometryFromType` (pumped at 1.0, 1.3 and 2.0)
+  and `fit`, a caller supplied `FitExpectation`. The harness also releases its
+  semantics handle in a `finally`, so a contract that fails a clause reports
+  that clause rather than a leaked handle.
+- The harness no longer publishes a text style of its own. It used to, which
+  is why nothing caught a route inheriting the framework fallback.
+- `no_fallback_text_style` is new: every gallery page and every overlay those
+  pages offer, pumped in a host that installs the fallback on purpose, with no
+  paragraph allowed to carry its debug label or its double underline.
+- Clauses 13, 14 and 15 are on in all fifteen contract tests of the three
+  families, with the content strings named in `wrappingContent`. Two of them
+  name a `UiButton` label there as well, because a button still wraps at 200
+  dp and 11 section 3.3 gives it an ellipsis and a tooltip that slot G1 owns.
+  Both entries carry the marker to delete.
+- New behaviour tests: the bar's overflow at three widths and with opaque
+  widgets; the strip scrolling, keeping every tab and revealing the chosen
+  one; the band and the capsule moving their action under the words; the
+  sheet's bounded scrolling body and a body that scrolls itself; the modal
+  actions as a row, as a stack, and on a compact window; the tile's step down,
+  its last resort and the hero chain.
+- Clauses 13, 14 and 15 are on in every actions contract test.
+Wave G of the front-end refactor, slot G3: section 3.5 of
+`design/11-fit-and-scale.md`. The gallery shell gets a compact arrangement, a
+Fit page shows every control of the fit table at four column widths, and the
+golden matrix draws every page at four window classes by three text scales by
+two modes.
+- `test/gallery/matrix_golden_test.dart` is new, with 288 goldens under
+  `test/gallery/goldens/matrix/`: every page of `galleryPages` at 360, 700,
+  1000 and 1400 dp, at text scales 1.0, 1.3 and 2.0, in both modes, in pointer
+  density with reduced motion on. Twenty four goldens per page, named
+  `<page>_<class>_<scale>_<mode>.png`. Every window is a fixed 900 dp tall with
+  the page scrolled to the top, because a height that held every specimen at
+  scale 2.0 would be a hundred megabytes of binary nobody reviews, and because
+  each page is already reviewed whole, at its own height, by its family golden.
+  Each page is one test that captures its own twenty four, so the harness is
+  paid for once: the whole matrix renders in about thirty seconds.
+- The matrix carries `overflowBacklog`, a shrink-only record of what still
+  overflows and where, by the file the report names. A control with no fit
+  policy overflows in a 200 dp column, which is the defect the Fit page exists
+  to picture, so the matrix records it rather than refusing to draw it. Five
+  controls and two foundation pages are on the list; anything else, and
+  anything that is not an overflow, fails.
+- `test/gallery/gallery_shell_test.dart` is new: the arrangement at each side
+  of the 600 dp boundary, the content taking the full width below it, the
+  sidebar's start edge above it, and a page opened from the keyboard in both
+  arrangements.
+- The whole tree is formatted once with the pinned `dart format`, and the gate run checks formatting from here on.
+- The package's goldens are compared on macOS only: `PlatformGatedGoldenComparator` in `test/flutter_test_config.dart` renders every golden on other platforms (so layout, overflow and semantics assertions still run) and sets the pixel comparison aside, and refuses `--update-goldens` off macOS, the rule the application's screen goldens already follow. Linux CI had failed all 336 of them by one to eleven percent of pixels.
 
 ## 0.2.0
 
