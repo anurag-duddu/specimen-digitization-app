@@ -68,13 +68,22 @@ Widget buildShapePage(BuildContext context) {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: <Widget>[
-                    SizedBox(
-                      width: 160,
-                      height: stroke.value,
-                      child: ColoredBox(
-                        color: stroke.key == 'hairline'
-                            ? ui.color.hairline
-                            : ui.color.ink,
+                    // The swatch gives way before the label does: 160 dp when
+                    // the row has it, narrower in a phone wide window.
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: 160,
+                          minHeight: stroke.value,
+                          maxHeight: stroke.value,
+                        ),
+                        child: SizedBox.expand(
+                          child: ColoredBox(
+                            color: stroke.key == 'hairline'
+                                ? ui.color.hairline
+                                : ui.color.ink,
+                          ),
+                        ),
                       ),
                     ),
                     SizedBox(width: ui.space.s3),

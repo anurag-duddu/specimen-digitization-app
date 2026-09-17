@@ -61,18 +61,25 @@ Widget buildTypePage(BuildContext context) {
       ),
       GallerySection(
         title: 'A numeral and its unit',
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text('1284', style: ui.type.displayHero),
-            SizedBox(width: ui.space.s2),
-            Text(
-              'RECORDS',
-              style: ui.type.unit.copyWith(color: ui.color.inkTertiary),
-            ),
-          ],
+        // The pair keeps its baseline relationship and scales down as one
+        // when a phone wide window at a large text scale cannot hold it,
+        // which is the data tile's own last resort (11 section 3.3).
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text('1284', style: ui.type.displayHero),
+              SizedBox(width: ui.space.s2),
+              Text(
+                'RECORDS',
+                style: ui.type.unit.copyWith(color: ui.color.inkTertiary),
+              ),
+            ],
+          ),
         ),
       ),
     ],
