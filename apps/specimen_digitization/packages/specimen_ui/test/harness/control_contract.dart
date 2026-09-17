@@ -219,7 +219,10 @@ Future<void> expectControlContract(
     // changes the visual size and the padding; it never shrinks this.
     for (final UiDensityMode density in UiDensityMode.values) {
       await tester.pumpWidget(
-        uiHarness(density: density, child: Builder(builder: build)),
+        uiHarness(
+          density: density,
+          child: Builder(builder: build),
+        ),
       );
       await tester.pumpAndSettle();
       final Size size = tester.getSize(find.bySemanticsLabel(semanticsLabel));
@@ -352,8 +355,13 @@ Future<void> expectControlContract(
       );
     }
 
-    // Clause 4. The focus ring is drawn for keyboard focus and not for a
-    // pointer press.
+    // Clause 4, as 09 section 3.6 amends it for a field. Every control draws
+    // the ring under keyboard focus; what a pointer does then depends on what
+    // the control is. A command shows nothing, because the press itself is the
+    // feedback. A text editing field shows the ring for any focus, because a
+    // focused field is being edited and a caret alone does not say which of
+    // several fields that is, so [ControlActivation.textEditing] takes the
+    // mirror assertion here as it does for the activation keys.
     await tester.pumpWidget(uiHarness(child: Builder(builder: build)));
     await tester.pumpAndSettle();
     FocusManager.instance.highlightStrategy =
@@ -370,20 +378,42 @@ Future<void> expectControlContract(
         FocusHighlightStrategy.alwaysTouch;
     await tester.pumpWidget(uiHarness(child: Builder(builder: build)));
     await tester.pumpAndSettle();
-    final TestGesture press = await tester.startGesture(
-      tester.getCenter(control),
-      kind: PointerDeviceKind.touch,
-    );
-    await tester.pumpAndSettle();
-    expect(
-      _focusRings(tester),
-      0,
-      reason: 'a pointer press drew a focus ring (10 section 2 clause 4)',
-    );
-    await press.up();
-    await tester.pumpAndSettle();
-    FocusManager.instance.highlightStrategy =
-        FocusHighlightStrategy.automatic;
+    switch (activation) {
+      case ControlActivation.keys:
+        final TestGesture press = await tester.startGesture(
+          tester.getCenter(control),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pumpAndSettle();
+        expect(
+          _focusRings(tester),
+          0,
+          reason: 'a pointer press drew a focus ring (10 section 2 clause 4)',
+        );
+        await press.up();
+        await tester.pumpAndSettle();
+      case ControlActivation.textEditing:
+        // Started from no focus rather than from what the keyboard step left
+        // behind, so the two halves of this assertion are about the tap.
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        expect(
+          _focusRings(tester),
+          0,
+          reason: '"$semanticsLabel" draws a ring while nothing is focused',
+        );
+        await tester.tap(control);
+        await tester.pumpAndSettle();
+        expect(
+          _focusRings(tester),
+          greaterThan(0),
+          reason:
+              'a pointer tap focused "$semanticsLabel" and drew no ring. A '
+              'field being edited says so, whatever put the caret in it '
+              '(09 section 3.6, fit amendment).',
+        );
+    }
+    FocusManager.instance.highlightStrategy = FocusHighlightStrategy.automatic;
 
     // Clause 7. Two hundred percent text with no overflow and no clipped glyph.
     final List<FlutterErrorDetails> overflows = <FlutterErrorDetails>[];
@@ -575,7 +605,10 @@ Future<void> _pumpAtWidth(
   await tester.pumpWidget(
     uiHarness(
       size: Size(width, 800),
-      child: SizedBox(width: width, child: Builder(builder: build)),
+      child: SizedBox(
+        width: width,
+        child: Builder(builder: build),
+      ),
     ),
   );
   await tester.pumpAndSettle();

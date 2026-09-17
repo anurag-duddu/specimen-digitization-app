@@ -200,7 +200,18 @@ class _Option extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          _Disc(style: style, states: states),
+          FocusRing(
+            // `ToggleableStateMixin` sets `focused` from
+            // `onShowFocusHighlight`, which is true only under
+            // `FocusHighlightMode.traditional`. That is clause 4 of the
+            // control contract, already computed for us.
+            visible: states.contains(WidgetState.focused),
+            // A disc is ringed by a circle. The ring used to take the row's
+            // corner, which put a rounded rectangle around a circle and 20 dp
+            // of empty label beside it (09 section 3.6, fit amendment).
+            shape: FocusRingShape.circle,
+            child: _Disc(style: style, states: states),
+          ),
           if (showLabel) ...<Widget>[
             SizedBox(width: ui.space.s3),
             // The node above already reads these words.
@@ -213,26 +224,17 @@ class _Option extends StatelessWidget {
         ],
       ),
     );
-    return FocusRing(
-      // `ToggleableStateMixin` sets `focused` from `onShowFocusHighlight`,
-      // which is true only under `FocusHighlightMode.traditional`. That is
-      // clause 4 of the control contract, already computed for us.
-      visible: states.contains(WidgetState.focused),
-      radius: style.rowRadius,
-      child: Stack(
-        alignment: Alignment.center,
-        children: <Widget>[
-          row,
-          // The state layer lives outside `Pressable` here because `RawRadio`
-          // owns the focus node and the gestures for a radio, and a second
-          // `Pressable` around it would put two stops in the Tab order.
-          Positioned.fill(
-            child: IgnorePointer(
-              child: StateLayer(states: states, shape: shape),
-            ),
-          ),
-        ],
-      ),
+    return Stack(
+      alignment: Alignment.center,
+      children: <Widget>[
+        row,
+        // The state layer lives outside `Pressable` here because `RawRadio`
+        // owns the focus node and the gestures for a radio, and a second
+        // `Pressable` around it would put two stops in the Tab order.
+        Positioned.fill(
+          child: IgnorePointer(child: StateLayer(states: states, shape: shape)),
+        ),
+      ],
     );
   }
 }

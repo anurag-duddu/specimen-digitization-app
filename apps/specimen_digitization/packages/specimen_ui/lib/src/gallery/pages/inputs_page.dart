@@ -4,6 +4,11 @@
 /// disabled with a reason, in both modes and both densities. The golden of
 /// this page is the taste review for the family: a change to a field's edge
 /// or a switch's thumb shows as a diff here before it shows on a screen.
+///
+/// The last section draws the box itself rather than a control, in each
+/// shape, at rest, focused and focused with a value under the caret. One
+/// field on a page can hold focus and the rest cannot, so a page that only
+/// autofocused would review one of the four shapes it ships (11 section 4).
 library;
 
 import 'package:flutter/widgets.dart';
@@ -91,7 +96,7 @@ class _InputsPageState extends State<_InputsPage> {
               const _Cell(
                 width: _wide,
                 label: 'focused',
-                note: 'the edge thickens to ink at 2 dp',
+                note: 'the ring is the whole of it; the edge holds',
                 child: UiField(
                   label: 'Reason for this decision',
                   hintText: 'Say what you saw on the label',
@@ -297,6 +302,80 @@ class _InputsPageState extends State<_InputsPage> {
             ],
           ),
         ),
+        GallerySection(
+          title: 'The box, in every shape and every focus state',
+          child: _Grid(
+            spacing: ui.space.s4,
+            children: const <Widget>[
+              _Cell(
+                width: _wide,
+                label: 'box, at rest',
+                child: _BoxPaint(shape: UiFieldShape.box),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'box, focused',
+                note: 'a superellipse ring on a superellipse edge',
+                child: _BoxPaint(shape: UiFieldShape.box, focused: true),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'box, focused and typing',
+                child: _BoxPaint(
+                  shape: UiFieldShape.box,
+                  focused: true,
+                  value: 'The date on the label reads 1946',
+                ),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'capsule, at rest',
+                child: _BoxPaint(
+                  shape: UiFieldShape.capsule,
+                  leading: UiIcons.search,
+                ),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'capsule, focused',
+                note: 'a stadium ring on a stadium edge',
+                child: _BoxPaint(
+                  shape: UiFieldShape.capsule,
+                  leading: UiIcons.search,
+                  focused: true,
+                ),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'capsule, focused and typing',
+                child: _BoxPaint(
+                  shape: UiFieldShape.capsule,
+                  leading: UiIcons.search,
+                  focused: true,
+                  value: 'Chicago',
+                ),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'paragraph, focused and typing',
+                child: _BoxPaint(
+                  shape: UiFieldShape.box,
+                  focused: true,
+                  multiline: true,
+                  value:
+                      'The second reading matches the collector on the '
+                      'determination label.',
+                ),
+              ),
+              _Cell(
+                width: _wide,
+                label: 'box, in error',
+                note: 'the edge turns, and keeps its width',
+                child: _BoxPaint(shape: UiFieldShape.box, error: true),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -324,6 +403,67 @@ class _InputsPageState extends State<_InputsPage> {
           leading: UiIcons.blocked,
         ),
       ];
+}
+
+/// The box on its own, in one shape and one state.
+///
+/// A control drives its own focus and only one control on a page can hold it,
+/// so the states a reviewer most needs to compare are drawn here rather than
+/// acted out: the same [UiFieldBox] every field and every select is built
+/// from, in the paint it takes when it is focused.
+class _BoxPaint extends StatelessWidget {
+  const _BoxPaint({
+    required this.shape,
+    this.focused = false,
+    this.error = false,
+    this.multiline = false,
+    this.value,
+    this.leading,
+  });
+
+  final UiFieldShape shape;
+  final bool focused;
+  final bool error;
+  final bool multiline;
+  final String? value;
+  final IconSpec? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final UiInputStyle style = UiInputStyle.resolve(
+      ui,
+      shape,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    final Set<WidgetState> states = <WidgetState>{
+      if (error) WidgetState.error,
+    };
+    final String? text = value;
+    return Padding(
+      // Room for the ring, which is drawn outside the box and would otherwise
+      // run into the specimen beside it.
+      padding: EdgeInsetsDirectional.all(ui.space.s1),
+      child: UiFieldBox(
+        style: style,
+        states: states,
+        focusRing: focused,
+        multiline: multiline,
+        leading: leading,
+        child: Text(
+          text ?? 'Say what you saw on the label',
+          style: style.text.copyWith(
+            color: text == null ? ui.color.inkTertiary : ui.color.ink,
+          ),
+          maxLines: multiline ? null : 1,
+          softWrap: multiline,
+          // An ellipsis with no line limit is a single line: the paragraph
+          // engine takes the two together as "one line, cut short".
+          overflow: multiline ? TextOverflow.clip : TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
 }
 
 /// A row of specimens that wraps.

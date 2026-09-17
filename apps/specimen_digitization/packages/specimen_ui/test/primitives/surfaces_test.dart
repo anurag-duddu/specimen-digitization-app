@@ -302,6 +302,102 @@ void main() {
       }
     });
 
+    testWidgets('a superellipse is ringed by a superellipse', (
+      WidgetTester tester,
+    ) async {
+      const Size box = Size(160, 48);
+      await tester.pumpWidget(
+        uiHarness(
+          child: Builder(
+            builder: (BuildContext context) => FocusRing(
+              visible: true,
+              radius: context.ui.shape.field,
+              child: const SizedBox(width: 160, height: 48),
+            ),
+          ),
+        ),
+      );
+      final UiThemeData ui = tester.element(find.byType(FocusRing)).ui;
+      final UiStroke stroke = ui.shape.stroke;
+      expect(
+        find.byType(FocusRing),
+        paints
+          ..rsuperellipse(
+            rsuperellipse: RSuperellipse.fromRectAndRadius(
+              (Offset.zero & box).inflate(stroke.focusGap + stroke.focus / 2),
+              Radius.circular(ui.shape.field + stroke.focusRadiusOffset),
+            ),
+            color: ui.color.focusRing,
+            strokeWidth: stroke.focus,
+          ),
+        reason:
+            'a circular rounded rectangle around a superellipse meets the '
+            'edge along a corner and parts from it at the ends, which reads '
+            'as a second outline (11 section 0)',
+      );
+    });
+
+    testWidgets('a capsule is ringed by a stadium', (
+      WidgetTester tester,
+    ) async {
+      const Size box = Size(160, 48);
+      await tester.pumpWidget(
+        uiHarness(
+          child: const FocusRing(
+            visible: true,
+            shape: FocusRingShape.stadium,
+            child: SizedBox(width: 160, height: 48),
+          ),
+        ),
+      );
+      final UiThemeData ui = tester.element(find.byType(FocusRing)).ui;
+      final UiStroke stroke = ui.shape.stroke;
+      final Rect bounds = (Offset.zero & box).inflate(
+        stroke.focusGap + stroke.focus / 2,
+      );
+      expect(
+        find.byType(FocusRing),
+        paints
+          ..rrect(
+            rrect: RRect.fromRectAndRadius(
+              bounds,
+              Radius.circular(bounds.shortestSide / 2),
+            ),
+            color: ui.color.focusRing,
+            strokeWidth: stroke.focus,
+          ),
+        reason: 'what StadiumBorder draws is what rings a capsule',
+      );
+    });
+
+    testWidgets('a disc is ringed by a circle', (WidgetTester tester) async {
+      const Size box = Size.square(20);
+      await tester.pumpWidget(
+        uiHarness(
+          child: const FocusRing(
+            visible: true,
+            shape: FocusRingShape.circle,
+            child: SizedBox(width: 20, height: 20),
+          ),
+        ),
+      );
+      final UiThemeData ui = tester.element(find.byType(FocusRing)).ui;
+      final UiStroke stroke = ui.shape.stroke;
+      final double radius =
+          box.shortestSide / 2 + stroke.focusGap + stroke.focus / 2;
+      expect(
+        find.byType(FocusRing),
+        paints
+          ..circle(
+            x: box.width / 2,
+            y: box.height / 2,
+            radius: radius,
+            color: ui.color.focusRing,
+            strokeWidth: stroke.focus,
+          ),
+      );
+    });
+
     test('the ring geometry is the one 09 section 3.6 specifies', () {
       final UiStroke stroke = UiShape.standard.stroke;
       expect(stroke.focus, 2);

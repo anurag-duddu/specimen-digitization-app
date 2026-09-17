@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../harness/control_contract.dart';
+import 'inputs_finders.dart';
 
 const String _label = 'Disposition';
 const String _placeholder = 'Pick a disposition';
@@ -365,6 +366,95 @@ void main() {
       reason: 'a select and a field are one object with two behaviours',
     );
     expect(boxes.first.style.minHeight, boxes.last.style.minHeight);
+  });
+
+  testWidgets('a pointer press on the trigger draws no ring', (
+    WidgetTester tester,
+  ) async {
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTouch;
+    for (final UiDensityMode density in UiDensityMode.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          density: density,
+          child: _select(value: 'cleared', onChanged: (String _) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(UiFieldBox));
+      await tester.pumpAndSettle();
+      expect(
+        visibleRings(tester),
+        0,
+        reason:
+            'a select is not being edited, so clause 4 stands unamended for '
+            'it: no ring for a pointer, in ${density.name}',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('keyboard focus rings the trigger on its own edge', (
+    WidgetTester tester,
+  ) async {
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
+    for (final UiDensityMode density in UiDensityMode.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          density: density,
+          child: _select(value: 'cleared', onChanged: (String _) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expect(
+        visibleRings(tester),
+        1,
+        reason: 'one ring in ${density.name}',
+      );
+      expect(
+        visibleRings(tester, find.byType(UiFieldBox)),
+        1,
+        reason:
+            'the ring is the box\'s own, so it runs concentric with the edge. '
+            'A ring around the hit box would miss the edge by the 4 dp of '
+            'slop in pointer density (11 section 4).',
+      );
+    }
+  });
+
+  testWidgets('the trigger grows with the text like a field does', (
+    WidgetTester tester,
+  ) async {
+    Future<double> height(double scale) async {
+      await tester.pumpWidget(
+        uiHarness(
+          textScaler: TextScaler.linear(scale),
+          child: _select(value: 'cleared', onChanged: (String _) {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.widget<UiFieldBox>(find.byType(UiFieldBox)).style.minHeight;
+    }
+
+    expect(
+      await height(2),
+      greaterThan(await height(1)),
+      reason:
+          'the trigger is a field, so its height derives from the type the '
+          'same way (11 section 2.2)',
+    );
   });
 
   testWidgets('the options are the real row at sm, not a stand-in', (

@@ -221,6 +221,16 @@ motion state the test asked for rather than in the light fallback.
    catches, an overlay or a screen swallowing the space bar, is a real one.
 4. **Focus ring.** Drawn per 09 section 3.6, only for keyboard focus
    (`FocusManager.highlightMode == traditional`), never on pointer press.
+   Amended in wave F by 09 section 3.6's fit amendment: a text editing field
+   is the exception and shows the ring for any focus, pointer or keyboard,
+   because a focused field is being edited and a caret alone does not say
+   which of several fields holds it. The harness takes that from the
+   `ControlActivation` a control already declares: `textEditing` asserts the
+   mirror image here as it does for the activation keys, that an unfocused
+   editor draws no ring and that a pointer tap draws one. The ring also takes
+   the shape of what it rings rather than a circular rounded rectangle, so
+   `FocusRing` carries a `FocusRingShape` of `superellipse`, `stadium` or
+   `circle`.
 5. **Semantics.** A role (`button`, `toggle`, `checkbox`, `radio`, `tab`,
    `textField`, `link`, `header`, `image`, `liveRegion` as applicable), a
    label that stands alone, a value where there is one, `enabled`,
@@ -283,11 +293,11 @@ motion state the test asked for rather than in the light fallback.
 | `Surface` | `DecoratedBox`, `ClipRSuperellipse` | A solid `paper` or `matte` pane with a shape token and optional hairline | The non-glass container. |
 | `GlassSurface` | `BackdropFilter`, `ClipRSuperellipse`, `DecoratedBox` | The 09 section 3.3 recipe at a level; honours `GlassQuality`; asserts in debug that it is not inside a scrolling list item | Counted by `glass_budget`. |
 | `FieldLayer` | `CustomPaint`, `RepaintBoundary` | Paints a sky preset once behind a screen; clips the matte exclusion zone passed by the source pane | The only gradient painter in the product. |
-| `FocusRing` | `CustomPaint` | The 2 dp ring, 2 dp gap, radius plus 4, outside bounds | Used by `Pressable` and `FieldCore`. |
+| `FocusRing` | `CustomPaint` | The 2 dp ring, 2 dp gap, radius plus 4, outside bounds, on the shape it rings | Amended in wave F: it takes a `FocusRingShape` (`superellipse`, `stadium`, `circle`) and paints an `RSuperellipse`, an `RRect` at half the shorter side, or a circle, so ring and edge run concentric at every corner. Used by `Pressable`, `UiFieldBox` and `UiRadio`; `FieldCore` no longer draws one, because the edge and the ring belong to the same layer. `Pressable.focusRing` turns its own ring off for a control that rings its own edge. |
 | `Squircle` | `RoundedSuperellipseBorder`, `ClipRSuperellipse`, `StadiumBorder` | `Squircle.border(radius)`, `Squircle.clip(radius, child)`; switches to capsule when radius is at least half the height | Every corner in the product passes through here. |
 | `Popover` | `OverlayPortal`, `TapRegion`, `FocusScope`, `Shortcuts` | Anchored overlay with placement (above, below, start, end, auto), outside-tap and `Escape` dismissal, focus return, `glass.floating` | Base of menus, selects, tooltips, date inputs. |
 | `ModalRoutes` | `RawDialogRoute`, `showGeneralDialog`, `PopScope` | `showUiSheet` (bottom, drag handle, `glass.modal`) and `showUiDialog` (centred, max 560 wide); `showUiModal` picks by window class (compact gets the sheet, wider gets the dialog, per 05 section 3.7) | Focus trap, scrim, reduced-motion entrance. |
-| `FieldCore` | `TextField(decoration: InputDecoration.collapsed)`, `FocusRing` | Text editing with no Material chrome; exposes controller, focus node, input formatters, `onSubmitted`, read-only, obscured | The one Material component import in the package. |
+| `FieldCore` | `TextField(decoration: null)` | Text only: the value, its own placeholder in the same style on the same baseline, the caret and the selection. Exposes controller, focus node, input formatters, `onSubmitted`, read-only, obscured | Amended in wave F: the decoration is absent rather than collapsed, so no `InputDecorator` exists for the bridge theme to paint through, and `showFocusRing` is gone. The one Material component import in the package. |
 | `Announcer` | `SemanticsService.announce`, `Semantics(liveRegion:)` | Announce a status change once (06 section 3) | Used by toast, banner, progress. |
 | `Scrim` | `AnimatedOpacity` | `scrim` token behind modal glass | |
 | `Density` | `InheritedWidget`, `Listener` on the app root | Resolves `UiDensity` from the last `PointerDeviceKind` seen, defaulting from window width | `Density.of(context)`. |
@@ -450,6 +460,23 @@ own placeholder, caret and selection), the box paints the one edge and never
 thickens it, the focus ring is the whole focus treatment and is shown for any
 focus, and the ring is painted on the box's own shape.
 
+Built in wave F, slot F1, four ways beyond what that paragraph states.
+`UiInputStyle.resolve` takes the current `TextScaler` and derives the box
+height from it, so a field is the density height at scale 1.0 and the scaled
+line box plus the same two insets above it (11 section 2.2); the trigger of
+`UiSelect` resolves the same style and grows with it. `UiFieldBox` takes a
+`semantics` wrapper that covers the box and never the trailing action: the
+field passes a `MergeSemantics` around one `textField` node whose rect is the
+48 dp box, which closes the defect wave 2 recorded, an editor publishing a
+22 dp node inside the control so that every tap target guideline failed on a
+field, while the clear control keeps the separate node and the separate 48 dp
+box a second control needs. The editor's value, and its text editing actions,
+come up into that node with the merge, so the field's own `Semantics` no
+longer states a value of its own and nothing is announced twice. And the
+selection colour is a token: `ink` on `accent` at 35 percent clears 4.5:1 on
+every opaque surface in both modes, which the composite contrast gate now
+holds as a row of its own.
+
 **`UiTextArea`.** `UiField` with `minLines`, `maxLines`, auto-grow.
 
 **`UiSearchField`.** Capsule `UiField` with the search glyph, clear on content,
@@ -465,6 +492,14 @@ caret; opens a `Popover` list with type-to-filter when more than eight
 options; single selection. Semantics `button` with `expanded`, list items
 `selected`. Arrows move, `Enter` picks, `Escape` closes. Retires
 `DropdownMenu`, `DropdownButton`.
+
+Amended in wave F: the trigger rings its own edge rather than the hit box.
+Its `Pressable` passes `focusRing: false` and hands `WidgetState.focused`
+through to the box, which draws the ring on the shape it painted. A ring
+around the hit box sits 4 dp off the edge at the sides and 8 dp off it at the
+top in pointer density, where the visual is 40 dp inside a 48 dp box. The
+condition is unchanged: keyboard focus only, because a select is not being
+edited.
 
 Amended in wave 1: the list items are `UiListRow` at `sm` in its
 selection-free mode, which is the row section 4.5 specifies and the same row a
@@ -501,6 +536,11 @@ can ask for, so `onChanged` is a `ValueChanged<bool>` rather than a
 
 **`UiRadio<T>`.** 20 dp disc on `RawRadio`; group semantics; arrows move
 within the group. Retires `Radio`, `RadioListTile`.
+
+Amended in wave F: the ring is a circle around the 20 dp disc, not a rounded
+rectangle around the whole row. A row ring put a corner radius around a circle
+and ran 20 dp of empty label into the bargain; the disc is what the option is,
+and 09 section 3.6's fit amendment says the ring follows the shape.
 
 Amended in wave 1: `UiRadioGroup<T>` ships with it, on the SDK's `RadioGroup`,
 so the exclusive group, the arrow keys and the group role come from the SDK
@@ -858,6 +898,11 @@ Amended in wave 1: a family golden is captured at the height its page needs,
 not at one shared window. The width is the gallery's 1180 everywhere; the
 height is 820 for actions, 1180 for inputs, 1000 for overlays, 940 for
 navigation and 1900 for data, measured against the page rather than guessed.
+Inputs moved to 1600 in wave F, measured the same way, when the page gained
+the box section 11 section 4 asks for: the box itself in each shape, at rest,
+focused, and focused with a value under the caret. One control on a page can
+hold focus and the rest cannot, so a page that only autofocused would review
+one of the shapes it ships and leave the others unseen.
 Eight controls in every variant, size and state do not fit 820, and a golden
 that reviews the top of a page is not reviewing the controls below the fold.
 Each family owns its own window, so taking a taller one moves no other

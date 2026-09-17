@@ -43,7 +43,7 @@ void main() {
     );
   });
 
-  testWidgets('the edge thickens to ink on focus and returns on blur', (
+  testWidgets('the edge holds and the ring is the whole focus treatment', (
     WidgetTester tester,
   ) async {
     final FocusNode node = FocusNode();
@@ -61,19 +61,113 @@ void main() {
 
     expect(fieldSide(tester).color, ui.color.boundary);
     expect(fieldSide(tester).width, ui.shape.stroke.boundary);
+    expect(visibleRings(tester), 0);
 
     node.requestFocus();
     await tester.pumpAndSettle();
-    expect(fieldSide(tester).color, ui.color.ink);
+    expect(
+      fieldSide(tester).color,
+      ui.color.boundary,
+      reason:
+          'the edge does not change colour on focus (09 section 3.6, fit '
+          'amendment)',
+    );
     expect(
       fieldSide(tester).width,
-      ui.shape.stroke.emphasis,
-      reason: 'the focused edge is 2 dp (10 section 4.2)',
+      ui.shape.stroke.boundary,
+      reason:
+          'the edge used to thicken to 2 dp and then take a ring as well, '
+          'which is two of the three edges a focused field drew',
+    );
+    expect(
+      visibleRings(tester),
+      1,
+      reason: 'the ring is the whole of it, and there is one',
     );
 
     node.unfocus();
     await tester.pumpAndSettle();
     expect(fieldSide(tester).color, ui.color.boundary);
+    expect(visibleRings(tester), 0);
+  });
+
+  testWidgets('a pointer tap rings the field, as the keyboard does', (
+    WidgetTester tester,
+  ) async {
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTouch;
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
+    await tester.pumpWidget(
+      uiHarness(
+        child: const SizedBox(width: 320, child: UiField(label: _label)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(visibleRings(tester), 0);
+
+    await tester.tap(find.byType(FieldCore));
+    await tester.pumpAndSettle();
+    expect(
+      visibleRings(tester),
+      1,
+      reason:
+          'a reviewer who clicked into a field is owed the same "you are '
+          'here" the keyboard gives: a caret does not say which of several '
+          'fields holds it (09 section 3.6, fit amendment)',
+    );
+  });
+
+  testWidgets('the box height derives from the text, not from a constant', (
+    WidgetTester tester,
+  ) async {
+    Future<double> boxHeight(double scale, UiDensityMode density) async {
+      await tester.pumpWidget(
+        uiHarness(
+          density: density,
+          textScaler: TextScaler.linear(scale),
+          child: const SizedBox(width: 320, child: UiField(label: _label)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.getSize(find.byType(UiFieldBox)).height;
+    }
+
+    for (final UiDensityMode density in UiDensityMode.values) {
+      final double plain = await boxHeight(1, density);
+      final double medium = await boxHeight(1.3, density);
+      final double large = await boxHeight(2, density);
+      final UiThemeData ui = uiOf(tester);
+      expect(
+        plain,
+        greaterThanOrEqualTo(UiDensity.hitBox),
+        reason: 'the hit box is 48 at every scale and in both densities',
+      );
+      expect(
+        medium,
+        greaterThanOrEqualTo(plain),
+        reason: 'a height that holds text is never a constant (11 section 2.2)',
+      );
+      expect(
+        large,
+        greaterThan(medium),
+        reason:
+            'at 200 percent the line box is taller than the density height, '
+            'so the box grows with it in ${density.name}',
+      );
+      // The inset that reproduces the density height at scale 1.0, kept on
+      // both sides as the text grows.
+      final TextStyle role = ui.type.body;
+      final double line = role.fontSize! * role.height!;
+      final double inset = (ui.density.controlHeight - line) / 2;
+      expect(
+        large,
+        greaterThanOrEqualTo(line * 2 + 2 * inset),
+        reason: 'the scaled line box plus its two insets is the floor',
+      );
+    }
   });
 
   testWidgets('the fill does not change on focus', (WidgetTester tester) async {

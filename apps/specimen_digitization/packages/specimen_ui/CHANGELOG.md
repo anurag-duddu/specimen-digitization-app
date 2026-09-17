@@ -67,6 +67,74 @@ run in. No control is converted here; wave G does that.
   pages offer, pumped in a host that installs the fallback on purpose, with no
   paragraph allowed to carry its debug label or its double underline.
 
+Wave F of the front-end refactor, slot F1: the field rebuilt inside out per
+`design/11-fit-and-scale.md` section 4, and the focus ring given the shape it
+rings per 09 section 3.6 as amended.
+
+### Public API
+
+- `FocusRing` takes a `FocusRingShape` (`superellipse`, `stadium`, `circle`)
+  and the `capsule` flag is gone. Reason: a circular rounded rectangle around
+  a superellipse meets the edge along a corner and parts from it at the ends,
+  which the eye reads as a second outline. `capsule: true` becomes
+  `shape: FocusRingShape.stadium`; the default is the superellipse every box
+  in the product is drawn in. Call sites inside the package are updated.
+- `FieldCore.showFocusRing` is gone, and the core draws no ring. Reason: the
+  edge and the ring are one layer's job, and the core's ring was the second of
+  the three edges a focused field drew.
+- `FieldCore` builds its `TextField` with `decoration: null` rather than
+  `InputDecoration.collapsed`. Reason: a collapsed decoration is still an
+  `InputDecorator`, which reads the bridge `ThemeData`'s
+  `InputDecorationTheme` and paints its enabled and focused borders under
+  ours. There is now no decorator for it to paint through, and a test pumps
+  every field both ways to hold that.
+- `UiInputStyle.resolve` takes a `TextScaler`. Reason: 11 section 2.2, a
+  height that holds text is never a constant. Defaults to
+  `TextScaler.noScaling`, so an existing call site keeps today's behaviour.
+- `UiSelectStyle.resolve` takes the same `TextScaler`, for the same reason.
+- `UiFieldBox` takes `semantics`, a wrapper around the box and never around
+  the trailing action. Reason: a field merges its editor into one node whose
+  rect is the 48 dp box, and the clear control has to stay outside that merge
+  to keep its own words and its own target.
+- `Pressable` takes `focusRing`, default true. Reason: a field shaped trigger
+  draws a 40 dp edge inside a 48 dp hit box in pointer density, and the ring
+  this primitive paints hugs the hit box. `UiSelect` passes false and rings
+  its own edge, on the condition clause 4 already gives it.
+- `UiColor.selection` and `UiColor.selectionOpacity`: the accent at 35
+  percent, behind the characters a reviewer has highlighted (11 section 4).
+  `ink` on the composite clears 4.5:1 over every opaque surface in both modes,
+  and the composite contrast gate gained the row.
+- `UiStroke.caretRadius`: 1 dp, the caret's corner. Deliberately absent from
+  `UiShape.strokes`, which is the map of widths the foundation gallery page
+  walks.
+
+### Inputs
+
+- The field's edge is `boundary` at `stroke.boundary` and never moves. Focus
+  is the ring, drawn on the box's own shape, and a field shows it for any
+  focus, pointer or keyboard (09 section 3.6, fit amendment).
+- The box's height is `max(density.controlHeight, scaled line box + 2 * inset)`
+  where the inset reproduces the density height at scale 1.0, so a field is
+  unchanged at 1.0 and grows with the reviewer's text size above it.
+- `FieldCore` draws the placeholder itself, in the text's own style and strut
+  at `ink.tertiary`, on the line the value will take, excluded from semantics
+  and transparent to the pointer. The caret is `ink`, `stroke.emphasis` wide,
+  `caretRadius` at the ends and as tall as the scaled line box; the selection
+  is `selection`, published through `DefaultSelectionStyle` so it holds inside
+  a bare `WidgetsApp` as well as inside the application.
+- Every role the core draws carries `TextLeadingDistribution.even`, so the
+  text sits in the middle of its line box instead of floating above it. It is
+  set locally until the foundation slot puts it on the type scale.
+- `UiField` publishes one semantics node, whose rect is the 48 dp box and
+  which carries the editor's flags, value and text editing actions. The
+  labelled, Android and iOS tap target guidelines pass on a pumped field in
+  both densities; before this they failed on the 22 dp node the editor
+  published inside the control.
+- `UiRadio` rings its 20 dp disc with a circle rather than the row with a
+  rounded rectangle.
+- The inputs gallery page gains the box in every shape at rest, focused and
+  focused with a value, and the family golden is captured at 1180 by 1600.
+
 ## 0.2.0
 
 2026-09-16. Wave 1 of the front-end refactor: the five control families of 10

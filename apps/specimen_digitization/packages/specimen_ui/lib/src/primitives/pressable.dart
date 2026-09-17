@@ -73,6 +73,7 @@ class Pressable extends StatefulWidget {
     this.minHitBox,
     this.excludeFromSemantics = false,
     this.stateLayerColour,
+    this.focusRing = true,
   });
 
   /// Paints the control from its current states.
@@ -151,6 +152,18 @@ class Pressable extends StatefulWidget {
   /// a control whose own fill is `ink` passes `paper` so that hover and press
   /// are visible on it at all.
   final Color? stateLayerColour;
+
+  /// False where the control paints the ring on its own shape.
+  ///
+  /// The ring this primitive draws hugs the 48 dp hit box, which is the right
+  /// box for a control whose visual fills it. A field shaped trigger draws a
+  /// 40 dp edge inside that box in pointer density, and a ring around the hit
+  /// box would sit 4 dp away from the edge at the sides and 8 at the top. The
+  /// control passes false and rings its own edge instead, which is the one
+  /// ring 11 section 4 allows it. `WidgetState.focused` still reaches the
+  /// builder, and still only under `FocusHighlightMode.traditional`, so the
+  /// control draws the same ring on the same condition.
+  final bool focusRing;
 
   /// True when the control responds to input.
   bool get enabled => onPressed != null || onLongPress != null;
@@ -288,9 +301,11 @@ class _PressableState extends State<Pressable> {
     );
 
     core = FocusRing(
-      visible: _showFocusRing,
+      visible: _showFocusRing && widget.focusRing,
       radius: widget.radius ?? ui.shape.inner,
-      capsule: widget.capsule,
+      shape: widget.capsule
+          ? FocusRingShape.stadium
+          : FocusRingShape.superellipse,
       child: core,
     );
 
