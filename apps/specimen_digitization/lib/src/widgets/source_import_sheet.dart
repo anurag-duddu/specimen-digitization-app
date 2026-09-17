@@ -1,5 +1,9 @@
 /// The confirmation before a selection is added, and the report of what it
-/// did (screen blueprints, section 13).
+/// did (07 section 13).
+///
+/// A `UiSheet` on a compact window and a `UiDialog` above it, with one
+/// `primary` action and one `ghost` way out, which is the modal every other
+/// decision in this client is taken in.
 ///
 /// **The confirmation is not a courtesy.** A gesture that picks a thousand
 /// objects and a gesture that picks one look identical on screen, so the count
@@ -19,12 +23,11 @@
 /// interface shows an honest absence rather than a placeholder.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../sources.dart';
-import '../theme/icons.dart';
-import 'adaptive_form.dart';
+import 'product_modal.dart';
 import 'source_object_row.dart';
 
 /// Asks whether to add [count] objects, of which [alreadyInQueue] are already
@@ -36,17 +39,31 @@ Future<bool> confirmSourceImport(
   required int count,
   required int alreadyInQueue,
 }) async =>
-    await showAdaptiveForm<bool>(
-      context,
-      width: DialogWidths.narrow,
-      builder: (BuildContext formContext) => SourceImportConfirmation(
+    await showProductModal<bool>(
+      context: context,
+      title: SourceImportConfirmation.titleFor(count),
+      body: (BuildContext modal) => SourceImportConfirmation(
         count: count,
         alreadyInQueue: alreadyInQueue,
+      ),
+      // The primary repeats the title's verb and the count
+      // (writing guidelines, rule 12).
+      primaryAction: (BuildContext modal) => UiButton(
+        label: SourceImportConfirmation.actionFor(count),
+        onPressed: () => Navigator.of(modal).pop(true),
+      ),
+      secondaryAction: (BuildContext modal) => UiButton(
+        label: SourceImportConfirmation.cancelLabel,
+        variant: UiButtonVariant.ghost,
+        onPressed: () => Navigator.of(modal).pop(false),
       ),
     ) ??
     false;
 
 /// The body of [confirmSourceImport], exposed so it can be tested on its own.
+///
+/// The title and the two actions belong to the modal's own chrome, which is
+/// what keeps every confirmation in this client the same shape.
 class SourceImportConfirmation extends StatelessWidget {
   const SourceImportConfirmation({
     super.key,
@@ -71,12 +88,22 @@ class SourceImportConfirmation extends StatelessWidget {
   /// a separate decision on a separate surface.
   static const String spend = 'No model runs and no allowance is used.';
 
+  /// The way out.
+  static const String cancelLabel = 'Cancel';
+
+  /// The modal's title, which is where the exact count is stated.
+  static String titleFor(int count) =>
+      'Add ${photographsLabel(count)} to the queue?';
+
+  /// The primary button, which repeats the title's verb and the count.
+  static String actionFor(int count) => 'Add ${photographsLabel(count)}';
+
   /// The title, which is where the exact count is stated.
-  String get title => 'Add ${photographsLabel(count)} to the queue?';
+  String get title => titleFor(count);
 
   /// The primary button, which repeats the title's verb and the count
   /// (writing guidelines, rule 12).
-  String get action => 'Add ${photographsLabel(count)}';
+  String get action => actionFor(count);
 
   /// What happens to the objects that are already records, or null when none
   /// of them are.
@@ -87,53 +114,27 @@ class SourceImportConfirmation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String? already = duplicates;
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.all(context.space.space6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(title, style: theme.textTheme.titleLarge),
-            SizedBox(height: context.space.space3),
-            Text(consequence, style: theme.textTheme.bodyMedium),
-            SizedBox(height: context.space.space2),
-            // Stated as its own line rather than folded into the consequence,
-            // because it is the line that answers "what does this cost me",
-            // and a reviewer skimming a confirmation should find it whole.
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(consequence, style: ui.type.body.copyWith(color: ui.color.ink)),
+          SizedBox(height: ui.space.s2),
+          // Stated as its own line rather than folded into the consequence,
+          // because it is the line that answers "what does this cost me",
+          // and a reviewer skimming a confirmation should find it whole.
+          Text(spend, style: ui.type.body.copyWith(color: ui.color.ink)),
+          if (already != null) ...<Widget>[
+            SizedBox(height: ui.space.s2),
             Text(
-              SourceImportConfirmation.spend,
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (already != null) ...<Widget>[
-              SizedBox(height: context.space.space2),
-              Text(
-                already,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            SizedBox(height: context.space.space6),
-            OverflowBar(
-              alignment: MainAxisAlignment.end,
-              spacing: context.space.space2,
-              overflowSpacing: context.space.space2,
-              children: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(action),
-                ),
-              ],
+              already,
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -142,17 +143,21 @@ class SourceImportConfirmation extends StatelessWidget {
 /// What an import actually did, object by object.
 ///
 /// Only opened when something did not become a record. An import that landed
-/// whole is a confirmation the reviewer already read, and repeating it in a
-/// dialog they have to dismiss is the interface asking to be thanked. This
-/// mirrors `showBulkOutcome` in `selection_bar.dart` on purpose: one report
-/// shape, learned once.
+/// whole is a toast the reviewer already read, and repeating it in a dialog
+/// they have to dismiss is the interface asking to be thanked. This mirrors
+/// `showBulkOutcome` in `selection_bar.dart` on purpose: one report shape,
+/// learned once.
 Future<void> showSourceImportOutcome(
   BuildContext context, {
   required SourceImportProgress progress,
-}) => showAdaptiveForm<void>(
-  context,
-  width: DialogWidths.standard,
-  builder: (BuildContext formContext) => SourceImportReport(progress: progress),
+}) => showProductModal<void>(
+  context: context,
+  title: SourceImportReport.titleFor(progress),
+  body: (BuildContext modal) => SourceImportReport(progress: progress),
+  primaryAction: (BuildContext modal) => UiButton(
+    label: SourceImportReport.dismissLabel,
+    onPressed: () => Navigator.of(modal).pop(),
+  ),
 );
 
 /// The body of [showSourceImportOutcome], exposed so it can be tested on its
@@ -161,6 +166,17 @@ class SourceImportReport extends StatelessWidget {
   const SourceImportReport({super.key, required this.progress});
 
   final SourceImportProgress progress;
+
+  /// The one way out of the report.
+  static const String dismissLabel = 'Back to the source';
+
+  /// What the report is called: how many of how many landed.
+  static String titleFor(SourceImportProgress progress) =>
+      '${progress.imported} of ${photographsLabel(progress.requested)} added';
+
+  /// What the rest of the selection did, when the run reached the end.
+  static const String restUnchanged =
+      'The rest are unchanged. Nothing was removed.';
 
   /// Why an object in the selection never became a record.
   static String reasonFor(String state) => switch (state) {
@@ -173,57 +189,47 @@ class SourceImportReport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final List<SourceImportOutcome> unchanged = progress.unchanged;
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.all(context.space.space6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            progress.stoppedReason ?? restUnchanged,
+            style: ui.type.body.copyWith(color: ui.color.ink),
+          ),
+          if (unchanged.isNotEmpty) ...<Widget>[
+            SizedBox(height: ui.space.s4),
             Text(
-              '${progress.imported} of ${photographsLabel(progress.requested)} added',
-              style: theme.textTheme.titleLarge,
+              'Not added',
+              style: ui.type.label.copyWith(color: ui.color.inkSecondary),
             ),
-            SizedBox(height: context.space.space2),
-            Text(
-              progress.stoppedReason ??
-                  'The rest are unchanged. Nothing was removed.',
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (unchanged.isNotEmpty) ...<Widget>[
-              SizedBox(height: context.space.space4),
-              Text('Not added', style: theme.textTheme.titleSmall),
-              SizedBox(height: context.space.space1),
-              for (final SourceImportOutcome row in unchanged)
-                Padding(
-                  padding: EdgeInsets.only(bottom: context.space.space2),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(row.objectName, style: context.mono.identifier),
-                      Text(
-                        SourceImportReport.reasonFor(row.state),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+            SizedBox(height: ui.space.s1),
+            for (final SourceImportOutcome row in unchanged)
+              Padding(
+                padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      row.objectName,
+                      style: ui.type.mono.identifier.copyWith(
+                        color: ui.color.ink,
                       ),
-                    ],
-                  ),
+                    ),
+                    Text(
+                      reasonFor(row.state),
+                      style: ui.type.bodySmall.copyWith(
+                        color: ui.color.inkSecondary,
+                      ),
+                    ),
+                  ],
                 ),
-            ],
-            SizedBox(height: context.space.space6),
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Symbols.inventory_2),
-                label: const Text('Back to the source'),
               ),
-            ),
           ],
-        ),
+        ],
       ),
     );
   }
