@@ -389,10 +389,10 @@ class _ActionsPageState extends State<_ActionsPage> {
                       GallerySpecimen(
                         label: 'tag, status triple',
                         child: UiChip(
-                          label: 'Needs human review',
+                          label: 'Needs review',
                           icon: UiIcons.needsReview,
                           status: ui.color.status.needsReview,
-                          semanticsLabel: 'Queue: needs human review',
+                          semanticsLabel: 'Queue: needs review',
                         ),
                       ),
                       GallerySpecimen(

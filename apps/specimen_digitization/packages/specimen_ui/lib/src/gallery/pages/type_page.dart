@@ -100,7 +100,7 @@ class _Role extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          sample ?? 'Needs human review, sorted by age',
+          sample ?? 'Needs review, sorted by age',
           style: style.copyWith(color: ui.color.ink),
         ),
         Text(

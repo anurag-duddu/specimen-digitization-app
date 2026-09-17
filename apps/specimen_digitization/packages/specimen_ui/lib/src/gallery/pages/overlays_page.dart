@@ -411,7 +411,7 @@ const List<(UiBannerTone, String)> _bannerSpecimens = <(UiBannerTone, String)>[
   (UiBannerTone.cleared, 'Twelve records cleared in this batch.'),
   (
     UiBannerTone.needsReview,
-    'Four records need human review before this batch closes.',
+    'Four records need review before this batch closes.',
   ),
   (
     UiBannerTone.deferred,
