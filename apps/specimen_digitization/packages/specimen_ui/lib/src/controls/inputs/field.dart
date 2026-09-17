@@ -1,14 +1,13 @@
 /// The text field (10 section 4.2, `UiField`).
 library;
 
-import 'dart:math' as math;
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
 import '../../primitives/announcer.dart';
 import '../../primitives/field_core.dart';
 import '../../primitives/focus_ring.dart';
@@ -166,17 +165,8 @@ class UiInputStyle {
   /// the one that reproduces the density height at scale 1.0. The box is
   /// therefore unchanged at 1.0 and grows with the text above it, instead of
   /// holding a constant height and clipping the glyphs inside.
-  static double _minHeight(UiThemeData ui, TextScaler textScaler) {
-    // fe/fit-foundation: replace the next three lines with
-    // UiTypeScale.lineHeightOf(ui.type.body, textScaler), which lands on
-    // foundation/type.dart in the sibling slot of this wave.
-    final TextStyle role = ui.type.body;
-    final double size = role.fontSize!;
-    final double multiplier = role.height ?? 1;
-    final double inset = (ui.density.controlHeight - size * multiplier) / 2;
-    final double scaled = textScaler.scale(size) * multiplier;
-    return math.max(ui.density.controlHeight, scaled + 2 * inset);
-  }
+  static double _minHeight(UiThemeData ui, TextScaler textScaler) =>
+      UiType.controlHeightAt(ui.density, ui.type.body, textScaler);
 }
 
 /// The label, the box and the footer that every field shaped control shares.

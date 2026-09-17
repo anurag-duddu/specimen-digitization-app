@@ -13,7 +13,7 @@ agent working on `specimen_ui` from wave F on reads it whole.
 |---|---|---|
 | A focused field drew three edges: a grey outline, a thick white ring, a thin white ring | `UiField` | The v1 Material `InputDecorationTheme` on the bridge `ThemeData` still painted its own enabled and focused borders beneath the "collapsed" decoration inside `FieldCore`; `FieldCore` painted its own focus ring; `UiFieldBox` thickened its outline on focus and painted a second ring around it; the ring was a circular rounded rectangle around a superellipse box, so the two never ran concentric at a corner |
 | A segmented control in a 300 dp column broke every label into letters; a button read "Open a popove r" | `UiSegmented`, `UiButton` | Control labels could wrap (one `maxLines` across the 25 control files that draw text); `Expanded` segments shrank below their label; the gallery shell kept its 220 dp sidebar at phone width, so the content column got 130 dp; no control declares what it does with less width than it needs; family goldens render at one comfortable width |
-| A dialog's text was underlined twice in yellow | `UiDialog` | `WidgetsApp` installs a fallback text style (red monospace, double yellow underline) that `Material` normally replaces; the package never published a `DefaultTextStyle` of its own, so a route pushed on the root navigator inherited the fallback; the shell slot then patched `main.dart` and the queue slot patched each product modal, two fixes at L5 and L4 for an L1 responsibility; the test harness pumps controls where the fallback never appears |
+| A dialog's text was underlined twice in yellow | `UiDialog` | `MaterialApp` installs a fallback text style through `WidgetsApp` (red monospace, double yellow underline) that `Material` normally replaces; the package never published a `DefaultTextStyle` of its own, so a route pushed on the root navigator inherited the fallback; the shell slot then patched `main.dart` and the queue slot patched each product modal, two fixes at L5 and L4 for an L1 responsibility; the test harness pumps controls where the fallback never appears |
 
 The common cause is not a token and not a widget. Each layer was correct on
 its own and nobody owned the seam between layers. Three ownership rules close
@@ -204,7 +204,7 @@ from `context.ui`, so the package is correct inside any host, including a bare
 `WidgetsApp` and the gallery. `main.dart`'s `_Text` and the wrapper in
 `product_modal.dart` are removed once the package publishes it.
 
-The `no_fallback_text_style` gate pumps every gallery page under `WidgetsApp`,
+The `no_fallback_text_style` gate pumps every gallery page under a `WidgetsApp` carrying the same fallback style `MaterialApp` installs,
 opens every overlay, walks every `RenderParagraph`, and fails on a style whose
 `debugLabel` names the framework fallback or whose decoration is a double
 underline.

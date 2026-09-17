@@ -184,13 +184,6 @@ class _FieldCoreState extends State<FieldCore> {
     final UiThemeData ui = context.ui;
     final TextStyle style = (widget.style ?? ui.type.body).copyWith(
       color: widget.enabled ? ui.color.ink : ui.color.disabledContent,
-      // fe/fit-foundation: drop this once UiType carries
-      // TextLeadingDistribution.even on every role. Flutter's default splits
-      // the leading in proportion to ascent and descent, and Geist's
-      // asymmetry then floats the text above the centre of its line box,
-      // which is the visible cause of "the text sits high" in a field
-      // (11 section 2.2).
-      leadingDistribution: TextLeadingDistribution.even,
     );
     // The line box is locked from the role, so the placeholder, the typed
     // text and the caret share one box whatever the value is.

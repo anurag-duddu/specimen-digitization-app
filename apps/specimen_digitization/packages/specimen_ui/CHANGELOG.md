@@ -8,6 +8,7 @@ foundation, geometry that derives from type, and the harness the fit clauses
 run in. No control is converted here; wave G does that.
 
 ### Foundation
+- Integration: `UiType.lineHeightAt` and `UiType.controlHeightAt` take an explicit `TextScaler`, and the context forms delegate to them, so `UiInputStyle.resolve`, which is handed a scaler, derives the field's height from the same source as every other control.
 - `foundation/window.dart` is new. `WindowClass` moves in from the application
   unchanged, same breakpoints and same members, and `Adaptive<T>` arrives with
   it: one optional value per class, resolving to the nearest smaller class

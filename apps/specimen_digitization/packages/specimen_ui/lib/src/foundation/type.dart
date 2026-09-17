@@ -272,7 +272,12 @@ class UiType {
   /// the engine lays one line out at. A height that contains text is never a
   /// constant: it derives from this (11 section 2.2).
   static double lineHeightOf(TextStyle style, BuildContext context) =>
-      _lineBox(style, MediaQuery.textScalerOf(context));
+      lineHeightAt(style, MediaQuery.textScalerOf(context));
+
+  /// The line box of [style] at an explicit [scaler], for a style resolver
+  /// that is handed the scaler rather than a context (`UiInputStyle.resolve`).
+  static double lineHeightAt(TextStyle style, TextScaler scaler) =>
+      _lineBox(style, scaler);
 
   /// The line box of [style] at scale 1.0.
   ///
@@ -315,9 +320,16 @@ class UiType {
     UiDensity density,
     TextStyle style,
     BuildContext context,
+  ) => controlHeightAt(density, style, MediaQuery.textScalerOf(context));
+
+  /// [controlHeightFor] at an explicit [scaler].
+  static double controlHeightAt(
+    UiDensity density,
+    TextStyle style,
+    TextScaler scaler,
   ) => math.max(
     density.controlHeight,
-    lineHeightOf(style, context) + 2 * insetFor(density, style),
+    lineHeightAt(style, scaler) + 2 * insetFor(density, style),
   );
 
   /// The specimen line that proves Geist Mono disambiguates its characters.
