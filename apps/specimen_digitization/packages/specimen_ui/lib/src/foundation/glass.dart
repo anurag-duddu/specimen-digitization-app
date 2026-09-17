@@ -12,7 +12,18 @@ import 'palette.dart';
 /// How much blur the device can afford.
 ///
 /// The default per platform is a measurement, recorded in the verification
-/// report, not a preference.
+/// report, not a preference. It was taken on 2026-09-17 and it is
+/// [full] on every platform. See "Glass: the measurement, and why the default
+/// does not move" in `design/12-verification-report-v2.md`: at the budget
+/// maximum of four panes over a ground that changes every frame, the web
+/// spent no measurable time on the blur (0 of 699 frames over 16.7 ms), the
+/// iPad simulator spent 2.31 ms of raster against 0.52 ms with the blur off,
+/// and the Android emulator's own rasterizer dominated its frame at every
+/// setting. [reduced] recovered nothing on either surface that could measure
+/// it, because the cost is the save layer and the blur pass rather than the
+/// radius, so a device that cannot afford [full] wants [off] rather than the
+/// setting in between. The numbers come from a browser, a simulator and an
+/// emulator; hardware would be better and is what would change the answer.
 enum GlassQuality {
   /// Every sigma as specified.
   full,
