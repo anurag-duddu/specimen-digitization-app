@@ -81,4 +81,12 @@ dart format --output=none --set-exit-if-changed \
 
 flutter build web --release
 
+# The artifact, before anything can deploy it. Every route the router declares
+# has to answer with the application shell under the rewrites firebase.json
+# declares, the design system gallery has to be absent from the release
+# bundle, and deployment.json, where a build has one, has to be the marker the
+# deploy guard accepts. Loopback only; it contacts no host and deploys nothing.
+cd "$repo_root"
+uv run python scripts/ci/smoke_web_routes.py
+
 printf 'All local CI gates passed. This script does not deploy.\n'
