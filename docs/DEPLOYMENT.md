@@ -629,6 +629,11 @@ validator is absent. This is additive coverage, not a runtime release workflow.
 Main web builds accept the approved public repository variables
 `SPECIMEN_API_BASE_URL` and `SPECIMEN_RECAPTCHA_SITE_KEY` together. Both unset
 preserve the setup screen; partial or unsafe configuration fails the build.
+The optional public repository variable `SPECIMEN_ADMIN_CONTACT` names the
+collection administrator the client shows in its help sheet and in every "ask
+your administrator" message when no collection document publishes a contact; it
+accepts `Name <address>`, `Name, address` or a bare address, is validated for
+that shape only, and is forwarded on main pushes independently of the API pair.
 `build_web.sh` never forwards these variables for PR/manual/native builds. This
 wiring alone grants no authority. Release decision packet v1 separately
 authorizes configuring the verified API URL and App Check registration/site key
