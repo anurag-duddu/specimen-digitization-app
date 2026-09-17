@@ -12,7 +12,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'vocabulary.dart';
-import 'widgets/disclosure_target.dart';
 import 'widgets/caveat_text.dart';
 import 'widgets/evidence_drawer.dart';
 import 'widgets/risk_meter.dart';
@@ -113,7 +112,6 @@ class ReviewRiskPanel extends StatelessWidget {
               ),
               for (final item in objects(risk[scopeKey]))
                 UiDisclosure(
-                  style: fullTargetDisclosure(ui),
                   key: ValueKey(
                     '${item['scope']}:${item['target_id']}:${item['input_sha256']}',
                   ),

@@ -10,7 +10,6 @@ export 'adaptive_form.dart';
 export 'authority_candidate_card.dart';
 export 'caveat_text.dart';
 export 'diff_text.dart';
-export 'disclosure_target.dart';
 export 'empty_state.dart';
 export 'environment_banner.dart';
 export 'evidence_drawer.dart';

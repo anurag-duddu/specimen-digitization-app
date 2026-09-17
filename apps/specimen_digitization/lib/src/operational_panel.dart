@@ -81,7 +81,6 @@ class ProcessingDisclosure extends StatelessWidget {
         : '$step. Blocked: ${vocabularyLabel(blocker)}.$retry';
 
     return UiDisclosure(
-      style: fullTargetDisclosure(context.ui),
       title: title,
       summary: summary,
       child: ProcessingDetail(

@@ -772,7 +772,6 @@ class SourceDetails extends StatelessWidget {
     final TextStyle line = ui.type.bodySmall;
     return UiDisclosure(
       title: 'Source details',
-      style: disclosureStyleWithFullTarget(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,

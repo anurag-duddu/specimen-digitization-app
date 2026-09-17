@@ -10,7 +10,6 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
-import 'disclosure_target.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
 import 'term_text.dart';
@@ -173,7 +172,6 @@ class FieldRow extends StatelessWidget {
             ),
           ),
         UiDisclosure(
-          style: fullTargetDisclosure(ui),
           title: layersTitle,
           summary:
               '${FieldLayer.asWritten.label}: '
