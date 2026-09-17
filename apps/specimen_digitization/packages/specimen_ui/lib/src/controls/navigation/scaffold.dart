@@ -166,21 +166,29 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   Object? _navOwner;
   Object? _bandOwner;
 
-  /// Puts [bar] across the top of the frame. Null gives the slot back.
+  /// Puts [bar] across the top of the frame. Null gives the slot back, where
+  /// [owner] holds it or names no one.
   ///
   /// [owner] is whoever is asking, as it is for every other slot here.
   void setTopBar(Widget? bar, {Object? owner}) {
+    if (bar == null && !_mayClear(_topBarOwner, owner)) return;
     _topBarOwner = bar == null ? null : owner;
     if (bar == _topBar) return;
     _topBar = bar;
     _announce();
   }
 
-  /// Puts [bar] in the frame's action bar. Null gives the slot back.
+  /// Puts [bar] in the frame's action bar. Null gives the slot back, where
+  /// [owner] holds it or names no one.
   ///
   /// [owner] is whoever is asking, normally the `State` that publishes it, so
-  /// that [release] can give back only what is still theirs.
+  /// that [release] can give back only what is still theirs, and so that a
+  /// screen giving back a bar it no longer needs cannot take another screen's
+  /// with it: the queue stays mounted under the record pushed over it, and its
+  /// null on the route change arrived one frame after the record's decision
+  /// bar did.
   void setActionBar(Widget? bar, {Object? owner}) {
+    if (bar == null && !_mayClear(_actionBarOwner, owner)) return;
     _actionBarOwner = bar == null ? null : owner;
     if (bar == _actionBar) return;
     _actionBar = bar;
@@ -188,21 +196,32 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   }
 
   /// Asks for the navigation to be drawn or hidden. Null gives the answer
-  /// back to the frame's caller.
+  /// back to the frame's caller, where [owner] holds it or names no one.
   void setNavVisible(bool? visible, {Object? owner}) {
+    if (visible == null && !_mayClear(_navOwner, owner)) return;
     _navOwner = visible == null ? null : owner;
     if (visible == _navVisible) return;
     _navVisible = visible;
     _announce();
   }
 
-  /// Asks for the one line environment band. Null gives the answer back.
+  /// Asks for the one line environment band. Null gives the answer back,
+  /// where [owner] holds it or names no one.
   void setBandCompact(bool? compact, {Object? owner}) {
+    if (compact == null && !_mayClear(_bandOwner, owner)) return;
     _bandOwner = compact == null ? null : owner;
     if (compact == _bandCompact) return;
     _bandCompact = compact;
     _announce();
   }
+
+  /// True where a null from [asking] may give back a slot [holder] holds.
+  ///
+  /// A caller that names itself gives back only what it holds. A caller that
+  /// names no one, which is [release] itself and a shell publishing on its
+  /// own frame, gives the slot back outright.
+  static bool _mayClear(Object? holder, Object? asking) =>
+      asking == null || holder == null || identical(holder, asking);
 
   /// Gives back every slot [owner] still holds.
   ///

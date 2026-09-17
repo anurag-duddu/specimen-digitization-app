@@ -906,6 +906,46 @@ void main() {
     });
   });
 
+  testWidgets('a screen giving a slot back leaves another screen\'s in place', (
+    WidgetTester tester,
+  ) async {
+    // The queue stays mounted under the record pushed over it, and on the
+    // route change it gives back the bulk bar it no longer needs with a null
+    // that names itself. The record's decision bar arrived one frame earlier
+    // and is somebody else's: a null from a caller that does not hold the
+    // slot is not a release.
+    final UiScaffoldSlots slots = UiScaffoldSlots();
+    final Object record = Object();
+    final Object queue = Object();
+    const Widget decision = Text('Clear record');
+    slots
+      ..setTopBar(const Text('FMNH-0001'), owner: record)
+      ..setActionBar(decision, owner: record)
+      ..setNavVisible(false, owner: record)
+      ..setBandCompact(true, owner: record);
+
+    slots
+      ..setTopBar(null, owner: queue)
+      ..setActionBar(null, owner: queue)
+      ..setNavVisible(null, owner: queue)
+      ..setBandCompact(null, owner: queue);
+    expect(slots.actionBar, same(decision));
+    expect(slots.topBar, isNotNull);
+    expect(slots.navVisible, isFalse);
+    expect(slots.bandCompact, isTrue);
+
+    // The holder gives back what it holds, and a caller naming no one, which
+    // is what release itself is, gives the slot back outright.
+    slots.setActionBar(null, owner: record);
+    expect(slots.actionBar, isNull);
+    slots.setTopBar(null);
+    expect(slots.topBar, isNull);
+    slots.release(record);
+    expect(slots.navVisible, isNull);
+    expect(slots.bandCompact, isNull);
+    slots.dispose();
+  });
+
   testWidgets('a screen leaving keeps the screen arriving in the action bar', (
     WidgetTester tester,
   ) async {
