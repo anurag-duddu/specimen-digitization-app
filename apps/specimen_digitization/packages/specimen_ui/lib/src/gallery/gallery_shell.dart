@@ -16,6 +16,7 @@ import 'pages/actions_page.dart';
 import 'pages/colour_page.dart';
 import 'pages/data_page.dart';
 import 'pages/fields_page.dart';
+import 'pages/fit_page.dart';
 import 'pages/icons_page.dart';
 import 'pages/overlays_page.dart';
 import 'pages/inputs_page.dart';
@@ -117,12 +118,32 @@ const List<GalleryPage> familyPages = <GalleryPage>[
 ];
 
 /// Every page the gallery shows.
+///
+/// The Fit page is neither foundation nor family: it is the evidence for 11
+/// section 3.3, one control to a section at four column widths, and it belongs
+/// to no family because it draws every family's controls. So it is listed here
+/// rather than pushed into [familyPages], where it would sit under a heading
+/// that is not true of it.
 const List<GalleryPage> galleryPages = <GalleryPage>[
   ...foundationPages,
   ...familyPages,
+  fitPage,
 ];
 
-/// The gallery: a page list beside the page.
+/// Which arrangement the shell draws, by window class (11 section 3.5).
+///
+/// Below `medium` the page list is a [UiSelect] above the content and the
+/// content takes the full width; from `medium` up the sidebar stays. Declared
+/// as an [Adaptive] rather than as a comparison on the width because that is
+/// what the foundation gives a scaffold for declaring an arrangement with, and
+/// this shell is its first consumer.
+const Adaptive<bool> _sidebarArrangement = Adaptive<bool>(
+  compact: false,
+  medium: true,
+);
+
+/// The gallery: a page list beside the page, or above it when the window is
+/// too narrow to hold both.
 class UiGallery extends StatefulWidget {
   /// Opens the gallery at [initialPage].
   const UiGallery({super.key, this.initialPage = 0, this.pages});
@@ -143,25 +164,93 @@ class _UiGalleryState extends State<UiGallery> {
 
   List<GalleryPage> get _pages => widget.pages ?? galleryPages;
 
+  void _select(int index) => setState(() => _selected = index);
+
+  @override
+  Widget build(BuildContext context) {
+    final int selected = _selected.clamp(0, _pages.length - 1);
+    final GalleryPage page = _pages[selected];
+    // Never null: `compact` is set, and every class resolves down to it.
+    final bool sidebar = _sidebarArrangement.of(context)!;
+    // No `DefaultTextStyle` here. `UiTheme` publishes the product's ambient
+    // style (11 section 5), so the shell publishing its own would be a second
+    // source for the one thing that document gives one source.
+    return FieldLayer(
+      preset: SkyPreset.home,
+      child: sidebar
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _PageList(
+                  pages: _pages,
+                  selected: selected,
+                  onSelect: _select,
+                ),
+                Expanded(child: _PageView(page: page)),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _PageSelect(
+                  pages: _pages,
+                  selected: selected,
+                  onSelect: _select,
+                ),
+                Expanded(child: _PageView(page: page, compact: true)),
+              ],
+            ),
+    );
+  }
+}
+
+/// The page list below `medium`: one select above the content.
+///
+/// A 220 dp sidebar beside a 360 dp window leaves 130 dp for the page, which
+/// is where the wrapping labels of 11 section 0 were first seen. The select
+/// carries the same page titles in the same order and answers the same keys,
+/// so nothing about reviewing the gallery changes with the arrangement.
+class _PageSelect extends StatelessWidget {
+  const _PageSelect({
+    required this.pages,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<GalleryPage> pages;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final GalleryPage page = _pages[_selected.clamp(0, _pages.length - 1)];
-    return DefaultTextStyle(
-      style: ui.type.body.copyWith(color: ui.color.ink),
-      child: FieldLayer(
-        preset: SkyPreset.home,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            _PageList(
-              pages: _pages,
-              selected: _selected,
-              onSelect: (int index) => setState(() => _selected = index),
-            ),
-            Expanded(child: _PageView(page: page)),
-          ],
-        ),
+    return Padding(
+      padding: EdgeInsetsDirectional.fromSTEB(
+        ui.space.s4,
+        ui.space.s4,
+        ui.space.s4,
+        ui.space.s3,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text('specimen_ui', style: ui.type.titleLarge),
+          SizedBox(height: ui.space.s2),
+          UiSelect<int>(
+            label: 'Gallery page',
+            // The heading above it already names the gallery, and the select
+            // holds the only list of pages on screen.
+            showLabel: false,
+            options: <UiSelectOption<int>>[
+              for (int i = 0; i < pages.length; i++)
+                UiSelectOption<int>(value: i, label: pages[i].title),
+            ],
+            value: selected,
+            placeholder: 'Choose a page',
+            onChanged: onSelect,
+          ),
+        ],
       ),
     );
   }
@@ -261,17 +350,23 @@ class _PageListRow extends StatelessWidget {
 }
 
 class _PageView extends StatelessWidget {
-  const _PageView({required this.page});
+  const _PageView({required this.page, this.compact = false});
 
   final GalleryPage page;
+
+  /// True when the page list is above the content rather than beside it.
+  ///
+  /// Only the start edge changes: beside a sidebar the list has already paid
+  /// for that gutter, and under a select nothing has.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(
-        0,
-        ui.space.s4,
+        compact ? ui.space.s4 : 0,
+        compact ? 0 : ui.space.s4,
         ui.space.s4,
         ui.space.s4,
       ),
