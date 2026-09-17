@@ -148,14 +148,14 @@ class UiStatusStripStyle {
 ///
 /// It scrolls with the evidence rather than pinning, so it costs the chrome
 /// budget nothing (13 sections 2.3 and 4.1). Everything on it is one line:
-/// the [disposition] slot, the [facts] set on one line as one paragraph, and
-/// the [blockers] summary, which opens a sheet listing each blocker with the
-/// control that clears it.
+/// the [disposition] slot, the [provenance] set on one line as one paragraph,
+/// and the [blockers] summary, which opens a sheet listing each blocker with
+/// the control that clears it.
 ///
 /// ```dart
 /// UiStatusStrip(
 ///   disposition: StatusChip(status: record.status),
-///   facts: <Widget>[TermText('Run', trailing: ' 42'), Text('Version 3')],
+///   provenance: <Widget>[TermText('Run', trailing: ' 42'), Text('Version 3')],
 ///   blockers: UiBlockers(
 ///     summary: '2 things block clearance',
 ///     items: <UiBlocker>[
@@ -173,7 +173,8 @@ class UiStatusStrip extends StatelessWidget {
   const UiStatusStrip({
     super.key,
     this.disposition,
-    this.facts = const <Widget>[],
+    this.provenance = const <Widget>[],
+    this.facts = const <String>[],
     this.blockers,
     this.onBlockers,
     this.closeLabel = defaultCloseLabel,
@@ -186,16 +187,25 @@ class UiStatusStrip extends StatelessWidget {
   /// draws no vocabulary of its own (10 section 1.1).
   final Widget? disposition;
 
-  /// What made the reading: the run and the version, in that order.
+  /// What made the reading: the run, the version, the step, in that order,
+  /// as slots (polish 3).
   ///
-  /// Slots rather than strings (polish 3), so a fact can be the product's
-  /// own glossary term, opening its definition on the line it is read on, or
-  /// carry a tooltip. Each fact is a label: one line, in the strip's fact
-  /// style unless it sets its own. The facts are set on one line as one
-  /// paragraph, separated by [UiStatusStripStyle.factSeparator], and the
-  /// paragraph ellipsises at its end, so a fact is never dropped ahead of the
-  /// ones before it.
-  final List<Widget> facts;
+  /// Slots rather than strings, so a fact can be the product's own glossary
+  /// term, opening its definition on the line it is read on, or carry a
+  /// tooltip. Each is a label: one line, in the strip's fact style unless it
+  /// sets its own. They are set on one line as one paragraph, separated by
+  /// [UiStatusStripStyle.factSeparator], and the paragraph ellipsises at its
+  /// end, so a fact is never dropped ahead of the ones before it. Each is its
+  /// own semantics node.
+  final List<Widget> provenance;
+
+  /// The same facts as plain strings, for a caller with no term to carry.
+  ///
+  /// The form the strip had before its facts became slots, kept for one
+  /// version for the record's call site and drawn exactly as [provenance]
+  /// draws a `Text` of each string. A strip passes one of the two, and this
+  /// one goes in the next minor version.
+  final List<String> facts;
 
   /// What is holding the decision up, or null where nothing is.
   final UiBlockers? blockers;
@@ -219,6 +229,11 @@ class UiStatusStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    assert(
+      provenance.isEmpty || facts.isEmpty,
+      'a strip states what made the reading once: as provenance slots, or as '
+      'plain facts',
+    );
     final UiThemeData ui = context.ui;
     final UiStatusStripStyle paint = style ?? UiStatusStripStyle.resolve(ui);
     final UiBlockers? blocking = blockers;
@@ -236,7 +251,7 @@ class UiStatusStrip extends StatelessWidget {
         measureLabel(context, blocking.summary, paint.summary).width;
     final double reserved =
         (disposition == null ? 0 : paint.partMin + paint.gap) +
-        (facts.isEmpty ? 0 : paint.partMin) +
+        (_slots.isEmpty ? 0 : paint.partMin) +
         paint.gap;
     return FitBuilder(
       variants: <FitVariant>[
@@ -305,7 +320,7 @@ class UiStatusStrip extends StatelessWidget {
                     constraints: BoxConstraints(maxWidth: group.maxWidth),
                     child: disposition,
                   ),
-                if (facts.isNotEmpty)
+                if (_slots.isNotEmpty)
                   Flexible(
                     child: Padding(
                       padding: EdgeInsetsDirectional.only(
@@ -339,7 +354,13 @@ class UiStatusStrip extends StatelessWidget {
 /// screen reader moves from one fact to the next as it does between any two
 /// nodes, and a node made of separator glyphs would say nothing.
 extension on UiStatusStrip {
+  /// The facts as slots, whichever form the caller gave them in.
+  List<Widget> get _slots => provenance.isNotEmpty
+      ? provenance
+      : <Widget>[for (final String fact in facts) Text(fact)];
+
   Widget _facts(UiStatusStripStyle paint) {
+    final List<Widget> facts = _slots;
     final TextStyle style = paint.fact.copyWith(color: paint.factColor);
     WidgetSpan inline(Widget child) => WidgetSpan(
       alignment: PlaceholderAlignment.baseline,

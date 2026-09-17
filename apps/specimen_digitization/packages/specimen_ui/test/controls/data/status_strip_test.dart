@@ -28,10 +28,10 @@ UiBlockers _blockers({VoidCallback? onAction}) => UiBlockers(
 
 Widget _strip({
   VoidCallback? onAction,
-  List<Widget> facts = const <Widget>[],
+  List<Widget> provenance = const <Widget>[],
 }) => UiStatusStrip(
   disposition: const UiChip(label: 'Cleared'),
-  facts: facts,
+  provenance: provenance,
   blockers: _blockers(onAction: onAction),
 );
 
@@ -47,7 +47,7 @@ void main() {
       tester,
       (BuildContext context) => UiStatusStrip(
         disposition: const UiChip(label: 'Cleared'),
-        facts: const <Widget>[Text('Run 42')],
+        facts: const <String>['Run 42'],
         blockers: _blockers(),
         onBlockers: () {},
       ),
@@ -73,7 +73,7 @@ void main() {
         child: SizedBox(
           width: 390,
           child: _strip(
-            facts: const <Widget>[Text('Run 42'), Text('Version 3')],
+            provenance: const <Widget>[Text('Run 42'), Text('Version 3')],
           ),
         ),
       ),
@@ -105,6 +105,22 @@ void main() {
     expect(line.didExceedMaxLines, isFalse);
   });
 
+  testWidgets('plain facts draw as the same line', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(390, 844),
+        child: const SizedBox(
+          width: 390,
+          child: UiStatusStrip(facts: <String>['Run 42', 'Version 3']),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Run 42'), findsOneWidget);
+    expect(find.text('Version 3'), findsOneWidget);
+    expect(find.text(UiStatusStripStyle.factSeparator), findsOneWidget);
+  });
+
   testWidgets('a fact is a slot: a glossary term opens where it is read', (
     WidgetTester tester,
   ) async {
@@ -116,7 +132,7 @@ void main() {
         child: SizedBox(
           width: 600,
           child: _strip(
-            facts: <Widget>[
+            provenance: <Widget>[
               Semantics(
                 link: true,
                 label: 'Version 3, term, double tap for definition',
@@ -158,7 +174,7 @@ void main() {
       uiHarness(
         child: const SizedBox(
           width: 390,
-          child: UiStatusStrip(facts: <Widget>[Text('Run 42')]),
+          child: UiStatusStrip(facts: <String>['Run 42']),
         ),
       ),
     );
