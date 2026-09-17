@@ -9,8 +9,11 @@
 /// sensible weight if the asset ever fails to load.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
+import 'density.dart';
 import 'fonts.dart';
 
 /// Tabular figures, so a changed digit is visible by position.
@@ -55,6 +58,12 @@ TextStyle _sans({
   fontWeight: _mirror(wght),
   fontVariations: <FontVariation>[FontVariation('wght', wght.toDouble())],
   height: line,
+  // Even leading puts the extra height a multiplier adds equally above and
+  // below the glyphs, so text sits at the centre of its line box. Flutter's
+  // default splits it in proportion to ascent and descent, and Geist's
+  // asymmetry then floats every label above centre inside its control
+  // (11 section 2.2).
+  leadingDistribution: TextLeadingDistribution.even,
   letterSpacing: tracking * size,
   fontFeatures: features,
 );
@@ -72,6 +81,7 @@ TextStyle _mono({
   fontWeight: _mirror(400),
   fontVariations: const <FontVariation>[FontVariation('wght', 400)],
   height: line,
+  leadingDistribution: TextLeadingDistribution.even,
   letterSpacing: tracking * size,
   fontFeatures: features,
 );
@@ -250,6 +260,65 @@ class UiType {
   /// in `foundation/` may import it except `theme.dart` (10 section 8, gate
   /// `layering`). `UiThemeData.toTextTheme()` maps every role below onto the
   /// Material slot 09 section 4.3 names for it.
+
+  /// The default font size the engine falls back to, for a style that names
+  /// none. Every role in this scale names one; this keeps the geometry
+  /// helpers total.
+  static const double fallbackFontSize = 14;
+
+  /// The line box of [style] at the text scale [context] is painted at.
+  ///
+  /// The scaled font size times the role's height multiplier, which is what
+  /// the engine lays one line out at. A height that contains text is never a
+  /// constant: it derives from this (11 section 2.2).
+  static double lineHeightOf(TextStyle style, BuildContext context) =>
+      _lineBox(style, MediaQuery.textScalerOf(context));
+
+  /// The line box of [style] at scale 1.0.
+  ///
+  /// The reference every derived inset is measured against, so a control
+  /// reproduces its density height exactly when the reviewer has not changed
+  /// the text size.
+  static double unscaledLineHeightOf(TextStyle style) =>
+      _lineBox(style, TextScaler.noScaling);
+
+  static double _lineBox(TextStyle style, TextScaler scaler) =>
+      scaler.scale(style.fontSize ?? fallbackFontSize) * (style.height ?? 1);
+
+  /// The strut that locks a line to the line box of [style].
+  ///
+  /// A line that mixes styles, a numeral beside its unit or a label beside a
+  /// glyph, otherwise takes its height from the tallest run in it, so the
+  /// baseline moves when a value changes (11 section 2.2).
+  static StrutStyle strutOf(TextStyle style) =>
+      StrutStyle.fromTextStyle(style, forceStrutHeight: true);
+
+  /// The vertical padding that reproduces [density]'s control height around
+  /// one line of [style] at scale 1.0.
+  ///
+  /// For `body` in a 40 dp pointer control this is (40 - 21.75) / 2, the
+  /// number 11 section 2.2 works through. Never negative: where a role is
+  /// taller than the density row the text sits flush and the control grows
+  /// instead of clipping.
+  static double insetFor(UiDensity density, TextStyle style) =>
+      math.max(0, (density.controlHeight - unscaledLineHeightOf(style)) / 2);
+
+  /// The height of a control that holds one line of [style]
+  /// (11 section 2.2).
+  ///
+  /// `max(density height, scaled line height + 2 * inset)`. At scale 1.0 it
+  /// is the density height exactly; below it the density height still wins,
+  /// so a control never shrinks under the row it promises; above it the
+  /// control grows with the text rather than clipping it. The hit box stays
+  /// 48 dp at every scale, which is the caller's floor, not this one.
+  static double controlHeightFor(
+    UiDensity density,
+    TextStyle style,
+    BuildContext context,
+  ) => math.max(
+    density.controlHeight,
+    lineHeightOf(style, context) + 2 * insetFor(density, style),
+  );
 
   /// The specimen line that proves Geist Mono disambiguates its characters.
   ///
