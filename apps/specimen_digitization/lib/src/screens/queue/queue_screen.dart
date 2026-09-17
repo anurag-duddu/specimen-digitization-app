@@ -460,7 +460,7 @@ class _QueuePaneState extends State<QueuePane> {
           child: KeyedSubtree(
             key: ValueKey<String>(_bodyKey(controller, first, items)),
             child: first
-                ? _skeleton(ui)
+                ? _skeleton(ui, controller)
                 : items.isEmpty
                 ? _empty(context, controller)
                 : _rows(context, controller, items),
@@ -545,10 +545,19 @@ class _QueuePaneState extends State<QueuePane> {
     return 'rows-${controller.listGeneration}';
   }
 
-  Widget _skeleton(UiThemeData ui) => Column(
+  Widget _skeleton(UiThemeData ui, WorkspaceController controller) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: <Widget>[
-      const LoadingAnnouncement(thing: 'queue'),
+      // Keyed on the collection, so switching collections while the first
+      // load is still out builds a new announcer and says "Loading queue"
+      // again. The body's own key is the same string in both loads, so
+      // without this the element was reused and the second collection loaded
+      // in silence: the placeholders are hidden from the semantics tree and
+      // there is nothing else on the screen to hear.
+      LoadingAnnouncement(
+        key: ValueKey<String>('queue-loading-${controller.scope?.key}'),
+        thing: 'queue',
+      ),
       for (int index = 0; index < queueSkeletonRows; index++)
         Padding(
           padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
@@ -931,8 +940,10 @@ class _LoadMoreButton extends StatelessWidget {
 /// screen may not import. The gesture, the threshold and the ring are the
 /// parts that carry the behaviour; everything else is deliberately absent.
 //
-// TODO(fe/polish-2): specimen_ui should grow a UiRefreshControl so the two
-// lists that pull to refresh share one gesture and one indicator.
+// TODO(specimen_ui): a UiRefreshControl, so the two lists that pull to refresh
+// share one gesture and one indicator. Not a slot's to build until it has an
+// entry in 10 section 4, which 10 section 10 asks for before a new component
+// exists.
 class _PullToRefresh extends StatefulWidget {
   const _PullToRefresh({required this.onRefresh, required this.child});
 
