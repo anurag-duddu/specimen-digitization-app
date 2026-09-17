@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/edge_fade.dart';
 import '../../primitives/fit.dart';
 import '../actions/button.dart' show UiSize;
 import '../actions/segmented.dart';
@@ -112,8 +113,16 @@ class UiTabs extends StatelessWidget {
         FitVariant(
           intrinsicWidth: 0,
           builder: (BuildContext context, bool _) =>
-              _ScrollingTabs(selected: selected, count: tabs.length,
-                  child: _track()),
+              ValueListenableBuilder<int>(
+                valueListenable: selected,
+                builder: (BuildContext context, int index, Widget? _) =>
+                    EdgeFadedRow(
+                      index: index,
+                      length: tabs.length,
+                      fadeExtent: context.ui.space.s6,
+                      child: _track(),
+                    ),
+              ),
         ),
       ],
     );
@@ -150,137 +159,6 @@ class UiTabs extends StatelessWidget {
           ),
     ),
   );
-}
-
-/// A tab strip too wide for its column, scrolled with fading edges.
-///
-/// The fade is drawn only on a side there is something to scroll to, so an
-/// edge that is the end of the row stays crisp and a faded edge always means
-/// "there is more this way". It is a mask over the strip rather than a
-/// gradient painted on top of it, because the strip is drawn over the sky and
-/// a solid gradient would have to know which surface it is covering.
-class _ScrollingTabs extends StatefulWidget {
-  const _ScrollingTabs({
-    required this.selected,
-    required this.count,
-    required this.child,
-  });
-
-  final ValueNotifier<int> selected;
-  final int count;
-  final Widget child;
-
-  @override
-  State<_ScrollingTabs> createState() => _ScrollingTabsState();
-}
-
-class _ScrollingTabsState extends State<_ScrollingTabs> {
-  final ScrollController _controller = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    widget.selected.addListener(_reveal);
-    _controller.addListener(_edgesChanged);
-  }
-
-  @override
-  void didUpdateWidget(_ScrollingTabs old) {
-    super.didUpdateWidget(old);
-    if (old.selected != widget.selected) {
-      old.selected.removeListener(_reveal);
-      widget.selected.addListener(_reveal);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.selected.removeListener(_reveal);
-    _controller
-      ..removeListener(_edgesChanged)
-      ..dispose();
-    super.dispose();
-  }
-
-  void _edgesChanged() {
-    if (mounted) setState(() {});
-  }
-
-  /// Brings the chosen tab into view.
-  ///
-  /// The offset is the reviewer's position along the row rather than the
-  /// tab's own box: the boxes belong to `UiSegmented`, and a strip that
-  /// reached inside it to measure one would be a second copy of that layout.
-  /// With the 2 to 5 tabs a strip carries, the first tab lands at the start,
-  /// the last at the end, and the ones between are in the middle, which is
-  /// what "scrolled into view" asks for.
-  void _reveal() {
-    // After the frame the new selection produces, not during the
-    // notification: the track's extent is read from a laid out viewport, and
-    // a listener runs before the rebuild it caused.
-    WidgetsBinding.instance.addPostFrameCallback((Duration _) => _scroll());
-  }
-
-  void _scroll() {
-    if (!mounted || !_controller.hasClients || widget.count < 2) return;
-    final ScrollPosition position = _controller.position;
-    final double target =
-        position.maxScrollExtent *
-        (widget.selected.value.clamp(0, widget.count - 1) /
-            (widget.count - 1));
-    final MotionTokens motion = context.ui.motion;
-    if (motion.reduced) {
-      _controller.jumpTo(target);
-      return;
-    }
-    _controller.animateTo(
-      target,
-      duration: motion.medium,
-      curve: MotionTokens.standardCurve,
-    );
-  }
-
-  bool get _fadeStart =>
-      _controller.hasClients && _controller.position.extentBefore > 0;
-
-  bool get _fadeEnd =>
-      _controller.hasClients && _controller.position.extentAfter > 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final TextDirection direction = Directionality.of(context);
-    final Widget scroller = SingleChildScrollView(
-      controller: _controller,
-      scrollDirection: Axis.horizontal,
-      child: widget.child,
-    );
-    // The mask is always in the tree, opaque at both ends when there is
-    // nothing to fade. Adding and removing it instead would change the
-    // scroller's position in the tree, which re-inflates the `Scrollable`,
-    // which throws away its `ScrollPosition` and with it the animation that
-    // was bringing the chosen tab into view.
-    return ShaderMask(
-      blendMode: BlendMode.dstIn,
-      shaderCallback: (Rect bounds) {
-        final double fade = bounds.width == 0
-            ? 0
-            : (ui.space.s6 / bounds.width).clamp(0, 0.5);
-        return LinearGradient(
-          begin: AlignmentDirectional.centerStart,
-          end: AlignmentDirectional.centerEnd,
-          stops: <double>[0, fade, 1 - fade, 1],
-          colors: <Color>[
-            Color.fromRGBO(0, 0, 0, _fadeStart ? 0 : 1),
-            const Color.fromRGBO(0, 0, 0, 1),
-            const Color.fromRGBO(0, 0, 0, 1),
-            Color.fromRGBO(0, 0, 0, _fadeEnd ? 0 : 1),
-          ],
-        ).createShader(bounds, textDirection: direction);
-      },
-      child: scroller,
-    );
-  }
 }
 
 /// The pane under a [UiTabs].

@@ -8,6 +8,8 @@ import '../../foundation/density.dart';
 import '../../foundation/glass.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/edge_fade.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/glass_surface.dart';
 import 'nav_destination.dart';
 import 'nav_disc.dart';
@@ -152,59 +154,84 @@ class UiPillNav extends StatelessWidget {
       level: GlassLevel.floating,
       capsule: true,
       padding: EdgeInsetsDirectional.all(style.padding),
-      child: NavGroup(
-        length: destinations.length,
-        axis: NavAxis.horizontal,
-        builder: (BuildContext context, List<FocusNode> nodes) => Semantics(
-          container: true,
-          explicitChildNodes: true,
-          role: SemanticsRole.tabBar,
-          child: SizedBox(
-            height: style.discExtent,
-            width: style.discExtent * destinations.length,
-            child: Stack(
-              children: <Widget>[
-                // Signature motion 1 (09 section 8): the disc slides from the
-                // previous destination to the current one behind the glyphs,
-                // at `medium` on the emphasized curve. Under reduced motion
-                // the duration token is zero and the disc appears in place.
-                AnimatedPositionedDirectional(
-                  start: style.discExtent * current,
-                  top: 0,
-                  width: style.discExtent,
-                  height: style.discExtent,
-                  duration: style.glide,
-                  curve: style.curve,
-                  child: Center(
-                    child: SizedBox.square(
-                      dimension: style.discVisual,
-                      child: DecoratedBox(
-                        decoration: ShapeDecoration(
-                          shape: const StadiumBorder(),
-                          color: style.currentFill,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    for (int i = 0; i < destinations.length; i++)
-                      NavDisc(
-                        destination: destinations[i],
-                        current: i == current,
-                        extent: style.discExtent,
-                        focusNode: nodes[i],
-                        onPressed: () => onSelect(i),
-                      ),
-                  ],
-                ),
-              ],
+      child: FitBuilder(
+        variants: <FitVariant>[
+          FitVariant(
+            intrinsicWidth: style.discExtent * destinations.length,
+            builder: (BuildContext context, bool _) =>
+                _discs(ui, style, current),
+          ),
+          // 11 section 3.3's compact variant for a navigation row. Five 48 dp
+          // discs need 240 dp and a phone in a narrow pane does not always
+          // have it; a disc's hit box is 48 at every density and every text
+          // scale (clause 2), so what gives is the capsule, which scrolls.
+          FitVariant(
+            intrinsicWidth: 0,
+            builder: (BuildContext context, bool _) => EdgeFadedRow(
+              index: current,
+              length: destinations.length,
+              fadeExtent: ui.space.s6,
+              child: _discs(ui, style, current),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
+
+  /// The discs, the glide behind them, and the node a screen reader reads
+  /// them as.
+  Widget _discs(UiThemeData ui, UiPillNavStyle style, int current) => NavGroup(
+    length: destinations.length,
+    axis: NavAxis.horizontal,
+    builder: (BuildContext context, List<FocusNode> nodes) => Semantics(
+      container: true,
+      explicitChildNodes: true,
+      role: SemanticsRole.tabBar,
+      child: SizedBox(
+        height: style.discExtent,
+        width: style.discExtent * destinations.length,
+        child: Stack(
+          children: <Widget>[
+            // Signature motion 1 (09 section 8): the disc slides from the
+            // previous destination to the current one behind the glyphs,
+            // at `medium` on the emphasized curve. Under reduced motion
+            // the duration token is zero and the disc appears in place.
+            AnimatedPositionedDirectional(
+              start: style.discExtent * current,
+              top: 0,
+              width: style.discExtent,
+              height: style.discExtent,
+              duration: style.glide,
+              curve: style.curve,
+              child: Center(
+                child: SizedBox.square(
+                  dimension: style.discVisual,
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      shape: const StadiumBorder(),
+                      color: style.currentFill,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (int i = 0; i < destinations.length; i++)
+                  NavDisc(
+                    destination: destinations[i],
+                    current: i == current,
+                    extent: style.discExtent,
+                    focusNode: nodes[i],
+                    onPressed: () => onSelect(i),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

@@ -27,6 +27,7 @@ export 'src/foundation/mark.dart';
 
 // Primitives (L2).
 export 'src/primitives/announcer.dart';
+export 'src/primitives/edge_fade.dart';
 export 'src/primitives/field_core.dart';
 export 'src/primitives/field_layer.dart';
 export 'src/primitives/fit.dart';
