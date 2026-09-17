@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/fields.dart';
 import '../../foundation/glass.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/window.dart';
 import '../../primitives/composition_markers.dart';
 import '../../primitives/field_layer.dart';
 import '../../primitives/glass_surface.dart';
@@ -458,6 +459,23 @@ class _UiScaffoldState extends State<UiScaffold> {
     if (mounted) setState(() {});
   }
 
+  UiThemeData? _flatFrom;
+  UiThemeData? _flatCache;
+
+  /// [base] with the blur turned off, so every frosted pane under it draws as
+  /// the solid surface `GlassQuality.off` specifies.
+  ///
+  /// Cached on the identity of what it was built from, because [UiThemeData]
+  /// has no value equality and a fresh one per build would tell every widget
+  /// in the page that its tokens had changed.
+  UiThemeData _flat(UiThemeData base) {
+    if (!identical(base, _flatFrom)) {
+      _flatFrom = base;
+      _flatCache = base.copyWith(quality: GlassQuality.off);
+    }
+    return _flatCache!;
+  }
+
   /// True once a vertical scroll view in the body has anything above its
   /// viewport.
   ///
@@ -487,6 +505,29 @@ class _UiScaffoldState extends State<UiScaffold> {
     // The keyboard covers the home indicator, so the two do not add up.
     final double bottomSafe = math.max(safe.bottom, keyboard);
 
+    // The compact window's one frosted pane (13 section 2.2; 09 section 3.3).
+    //
+    // Every pinned region used to draw its own: the top bar's fill once
+    // content scrolled under it, the action bar, the pill, and a collapsed
+    // collapsing header's chrome. That is four panes on a phone where the
+    // budget is one, and two of them stacked is the "glass decision bar over
+    // a glass pill" 13 section 0 reads as a defect. The frame spends the one
+    // pane where the reviewer's thumb is, on its own floating chrome, and
+    // turns the blur off everywhere else inside itself, so a pane that is no
+    // longer frosted is still the surface it was, drawn solid. A window with
+    // no action bar spends it on the navigation instead, because a pill is
+    // the only thing floating over the page on a list screen.
+    //
+    // A sheet or a dialog is pushed over the frame rather than inside it and
+    // keeps its own pane, which is the surface 13 section 2.2 exempts.
+    final bool compact = WindowClass.of(context).isCompact;
+    final UiThemeData? published = context
+        .dependOnInheritedWidgetOfExactType<UiTheme>()
+        ?.data;
+    final UiThemeData flat = _flat(published ?? ui);
+    Widget solid(Widget child) =>
+        compact ? UiTheme(data: flat, child: child) : child;
+
     final UiNavPlacement placement =
         widget.navPlacement ?? UiScaffold.placementOf(widget.nav);
     final bool beside =
@@ -499,6 +540,9 @@ class _UiScaffoldState extends State<UiScaffold> {
     final bool navShown = _slots.navVisible ?? widget.navVisible;
     final Widget? actionBar = _slots.actionBar ?? widget.actionBar;
 
+    // Where the one pane goes at compact: the action bar has it wherever
+    // there is one, and the navigation keeps its own otherwise.
+    final bool navKeepsPane = compact && actionBar == null;
     final List<Widget> floatingChrome = <Widget>[
       if (actionBar != null)
         PinnedChrome(
@@ -507,7 +551,7 @@ class _UiScaffoldState extends State<UiScaffold> {
             level: GlassLevel.floating,
             radius: style.actionBarRadius,
             padding: style.actionBarPadding,
-            child: actionBar,
+            child: solid(actionBar),
           ),
         ),
       if (actionBar != null && floats && navShown) SizedBox(height: style.gap),
@@ -518,7 +562,9 @@ class _UiScaffoldState extends State<UiScaffold> {
       if (floats)
         PinnedChrome(
           region: UiPinnedRegion.navigation,
-          child: Offstage(offstage: !navShown, child: widget.nav!),
+          child: navKeepsPane
+              ? Offstage(offstage: !navShown, child: widget.nav!)
+              : solid(Offstage(offstage: !navShown, child: widget.nav!)),
         ),
     ];
 
@@ -532,9 +578,11 @@ class _UiScaffoldState extends State<UiScaffold> {
     // than sit beside it, because `UiToastHost.maybeOf` walks upward.
     final Widget? body = widget.body == null
         ? null
-        : widget.overlays != null
-        ? widget.body!
-        : UiToastHost(bottomInset: bottomInset, child: widget.body!);
+        : solid(
+            widget.overlays != null
+                ? widget.body!
+                : UiToastHost(bottomInset: bottomInset, child: widget.body!),
+          );
 
     Widget bodyArea = Stack(
       children: <Widget>[
@@ -570,7 +618,7 @@ class _UiScaffoldState extends State<UiScaffold> {
     Widget belowBar = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (beside) Offstage(offstage: !navShown, child: widget.nav!),
+        if (beside) solid(Offstage(offstage: !navShown, child: widget.nav!)),
         Expanded(child: bodyArea),
       ],
     );
@@ -609,11 +657,14 @@ class _UiScaffoldState extends State<UiScaffold> {
           child: banner,
         );
       }
-      banner = PinnedChrome(region: UiPinnedRegion.band, child: banner);
+      banner = PinnedChrome(region: UiPinnedRegion.band, child: solid(banner));
     }
     final Widget? topBar = widget.topBar == null
         ? null
-        : PinnedChrome(region: UiPinnedRegion.topBar, child: widget.topBar!);
+        : PinnedChrome(
+            region: UiPinnedRegion.topBar,
+            child: solid(widget.topBar!),
+          );
 
     return _UiScaffoldScope(
       geometry: UiScaffoldGeometry(

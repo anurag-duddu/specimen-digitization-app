@@ -31,16 +31,13 @@ const GalleryPage compositionPage = GalleryPage(
       'The record screen at compact, and the patterns 13 section 3 builds it '
       'from.',
   builder: buildCompositionPage,
-  // Seven, counted rather than guessed: each of the two page frames draws a
-  // floating action bar and holds a navigation pill that is hidden but still
-  // built, the scrolled frame adds its top bar's fill and the flat pane
-  // behind its collapsed chrome, and the shell's page list is the seventh
-  // wherever the sidebar is drawn. A product window at compact spends one,
-  // which is what the screen's own gates measure; a specimen sheet that
-  // draws two windows at once says its own number out loud (10 section 6).
-  // A hidden pill's pane is a render object and not a save layer: it is
-  // counted here and it paints nothing.
-  maxGlassPanes: 7,
+  // Three, counted rather than guessed: each of the two page frames is a
+  // compact window and spends the one pane 13 section 2.2 gives it, on the
+  // action bar it floats, and the shell's page list is the third wherever
+  // the sidebar is drawn. Every other pinned region in a frame, the top bar,
+  // the collapsed header's chrome and the hidden pill, draws the solid form
+  // of the same surface.
+  maxGlassPanes: 3,
 );
 
 const String _identifier = 'CAS 118402';
@@ -102,7 +99,7 @@ class _CompositionPage extends StatelessWidget {
               ),
               GallerySpecimen(
                 label: 'scrolled',
-                note: 'pinned at 40 percent, chrome on one row, flat glass',
+                note: 'pinned at 40 percent, chrome shrunk to its last row',
                 child: _Frame(child: _Record(scrolled: true)),
               ),
             ],

@@ -356,10 +356,16 @@ void main() {
   testWidgets('the top bar fills once the body has scrolled under it', (
     WidgetTester tester,
   ) async {
+    // A medium window, because at compact the frame spends the window's one
+    // pane on its floating chrome and the bar's fill is the solid form of the
+    // same surface; what this test is about is the threshold, which is the
+    // same at every class.
+    const Size window = Size(700, 900);
     await tester.pumpWidget(
       uiHarness(
-        size: _window,
+        size: window,
         child: _page(
+          size: window,
           topBar: const UiTopBar(title: 'Queue'),
           body: _scrollingBody(),
         ),
@@ -508,10 +514,12 @@ void main() {
   testWidgets('a full page holds the glass budget', (
     WidgetTester tester,
   ) async {
+    const Size window = Size(1000, 900);
     await tester.pumpWidget(
       uiHarness(
-        size: _window,
+        size: window,
         child: _page(
+          size: window,
           topBar: const UiTopBar(title: 'Queue'),
           actionBar: const Text('Approve record'),
           nav: _pill(),
@@ -525,7 +533,9 @@ void main() {
     expect(
       glassPaneCount(),
       3,
-      reason: 'a top bar, an action bar and a pill are three panes',
+      reason:
+          'a top bar, an action bar and a pill are three panes at a class '
+          'whose budget is three',
     );
     expectGlassBudget(tester, window: 'a scrolled page with every slot');
   });
@@ -932,5 +942,171 @@ void main() {
 
     expect(find.text('From the second screen'), findsOneWidget);
     expect(find.text('From the first screen'), findsNothing);
+  });
+
+  testWidgets('nothing the frame reads off a route animates', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        disableAnimations: true,
+        child: _page(body: const SizedBox.expand(), nav: _pill()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        disableAnimations: true,
+        child: _page(
+          body: const _SlotPublisher(
+            actionBar: Text('Clear record'),
+            navVisible: false,
+            bandCompact: true,
+          ),
+          nav: _pill(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // A bar arriving, a pill leaving and a band changing form are all layout
+    // and none of them is a transition: a reviewer who has asked for no
+    // motion sees the new frame and not a frame on its way there
+    // (13 section 3.4; 04 section 2.5).
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(find.text('Clear record'), findsOneWidget);
+  });
+
+  group('the compact window spends one frosted pane (13 section 2.2)', () {
+    testWidgets('the action bar has it and everything else draws solid', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            banner: const UiBanner(message: 'Test environment'),
+            actionBar: const Text('Clear record'),
+            body: _scrollingBody(),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      // Scrolled under, which is when the top bar used to add a second pane
+      // that the budget never saw because it counted at rest.
+      expect(
+        UiScaffold.of(tester.element(find.byType(ListView))).scrolledUnder,
+        isTrue,
+      );
+      expect(
+        glassPaneCount(),
+        1,
+        reason:
+            'a phone draws the one pane the frame gives its floating '
+            'chrome and nothing else',
+      );
+    });
+
+    testWidgets('a window with no action bar spends it on the navigation', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'Queue'),
+            body: _scrollingBody(),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      // A pill is the only thing floating over the page on a list screen, so
+      // it keeps its capsule rather than losing it to a bar that is not there.
+      expect(glassPaneCount(), 1);
+    });
+
+    testWidgets('a collapsed header inside the frame draws solid at compact', (
+      WidgetTester tester,
+    ) async {
+      final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: _pill(),
+            body: CustomScrollView(
+              controller: controller,
+              slivers: <Widget>[
+                const UiCollapsingHeader(
+                  content: ColoredBox(color: Color(0xFF000000)),
+                  chrome: <Widget>[Text('Labels')],
+                ),
+                SliverList.builder(
+                  itemCount: 20,
+                  itemBuilder: (BuildContext context, int index) =>
+                      const SizedBox(height: 80),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      // The header still draws the pane 13 section 3.1 gives it; at compact
+      // the frame turns the blur off inside itself, so the band is the solid
+      // form of the same surface rather than a second save layer.
+      expect(find.byType(GlassSurface), findsWidgets);
+      expect(glassPaneCount(), 1);
+    });
+
+    testWidgets('a medium window keeps the panes it had', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(700, 900),
+          child: _page(
+            size: const Size(700, 900),
+            topBar: const UiTopBar(title: 'Queue'),
+            actionBar: const Text('Clear record'),
+            body: _scrollingBody(),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      expect(
+        glassPaneCount(),
+        greaterThan(1),
+        reason:
+            'the rule is the compact budget of 09 section 3.3, not a ban '
+            'on frosted glass',
+      );
+    });
   });
 }

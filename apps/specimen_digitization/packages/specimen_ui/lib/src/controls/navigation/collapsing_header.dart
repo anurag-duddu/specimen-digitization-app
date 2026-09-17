@@ -75,9 +75,17 @@ class UiCollapsingHeaderStyle {
 /// It is pinned and it never floats: a header that flew back in on an upward
 /// scroll would put the evidence somewhere different depending on which way
 /// the reviewer last moved. `glass.flat` paints behind the chrome only once
-/// the header is collapsed, so the one frosted pane a compact window may spend
-/// (09 section 3.3; 13 section 2.2) is this one, and it appears at the
-/// threshold rather than fading in (09 section 11).
+/// the header is collapsed, and it appears at the threshold rather than
+/// fading in (09 section 11).
+///
+/// **Amends 13 section 3.1.** That section gives this pane the compact
+/// window's one frosted surface. A record screen has an action bar as well,
+/// and 13 section 2.2 allows compact exactly one pane, so the two clauses
+/// cannot both hold: `UiScaffold` spends the pane on the chrome it floats and
+/// turns the blur off elsewhere inside itself, and this band is then the
+/// solid form of the same surface at compact and frosted from medium up. The
+/// band is drawn either way; what the class of window decides is whether it
+/// costs a save layer.
 ///
 /// Under reduced motion the collapse still tracks the scroll. It is a
 /// position and not a transition: the reviewer's finger is what moves it, and

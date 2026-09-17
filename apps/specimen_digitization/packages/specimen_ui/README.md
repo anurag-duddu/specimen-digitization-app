@@ -119,6 +119,12 @@ action bar, hides the navigation pill and asks for the one line band through
 on the way out, because a router builds the screen arriving before it disposes
 the screen leaving.
 
+One frosted pane at compact. Every pinned region used to draw its own, which
+is four on a phone where 13 section 2.2 allows one; the frame spends the pane
+on the chrome it floats and publishes `GlassQuality.off` to everything else
+inside itself, so a top bar, a collapsed header's chrome and a pill are the
+solid form of the same surfaces. Medium and above are unchanged.
+
 Two markers say what a widget tree cannot. `PinnedChrome(region:, extent:)`
 marks a region that holds viewport height, and `PrimaryRegion(minExtent:)`
 marks the one region the screen exists to show. `UiScaffold` marks its own top
