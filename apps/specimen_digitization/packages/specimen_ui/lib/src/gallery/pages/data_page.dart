@@ -17,6 +17,12 @@ import '../gallery_shell.dart';
 Widget buildDataPage(BuildContext context) => const _DataPage();
 
 /// The data page, as the gallery's page list carries it.
+///
+/// Eight frosted panes rather than the four a product window is held to
+/// (09 section 3.3): four numeral tiles in the measures column and four more
+/// in the fit section, which shows one tile per column. A specimen sheet
+/// states its own number out loud rather than the golden quietly skipping the
+/// check; a product window draws a row of tiles, not two.
 const GalleryPage dataPage = GalleryPage(
   id: 'data',
   title: 'Data',
@@ -24,6 +30,7 @@ const GalleryPage dataPage = GalleryPage(
       'Rows, progress, placeholders, empty states, numeral tiles, gauges, '
       'avatars and rules, in every variant, size and state.',
   builder: buildDataPage,
+  maxGlassPanes: 8,
 );
 
 class _DataPage extends StatefulWidget {
@@ -46,15 +53,74 @@ class _DataPageState extends State<_DataPage> {
     // Two columns rather than one long scroll, as the actions page does. The
     // rows want the wider column because they carry two lines of text and a
     // trailing slot; everything else is narrow by nature.
-    return Row(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Expanded(flex: 3, child: _rowsColumn(ui)),
-        SizedBox(width: ui.space.s6),
-        Expanded(flex: 2, child: _measuresColumn(ui)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(flex: 3, child: _rowsColumn(ui)),
+            SizedBox(width: ui.space.s6),
+            Expanded(flex: 2, child: _measuresColumn(ui)),
+          ],
+        ),
+        // The fit section spans the page rather than sitting in a column: a
+        // 480 dp specimen inside a 370 dp column is a specimen of 370 dp.
+        _fitSection(ui),
       ],
     );
   }
+
+  Widget _fitSection(UiThemeData ui) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      _Section(
+        title: 'Fit: a row and a tile in narrow columns',
+        child: _Wrap(
+          children: <Widget>[
+            for (final double width in fitColumns)
+              GallerySpecimen(
+                label: '${width.toInt()} dp',
+                note: width >= 360 ? 'the word and the glyph' : 'the glyph',
+                child: SizedBox(
+                  width: width,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _Rows(
+                        ui: ui,
+                        children: <Widget>[
+                          const UiListRow(
+                            title: 'SPEC-2026-0041',
+                            subtitle:
+                                'Two readings disagree on the collector',
+                            leading: UiIcon(
+                              UiIcons.record,
+                              size: UiIconSize.action,
+                            ),
+                            trailing: UiRowTrailing(
+                              label: 'Needs review',
+                              icon: UiIcons.needsReview,
+                            ),
+                            onPressed: _noop,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: ui.space.s2),
+                      const UiDataTile(
+                        label: 'Cleared today',
+                        value: 'Not measured',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
 
   Widget _rowsColumn(UiThemeData ui) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,6 +528,12 @@ class _DataPageState extends State<_DataPage> {
   /// disabled, which is a different specimen.
   static void _noop() {}
 }
+
+/// The columns 11 section 3.3 measures a control's fit in.
+///
+/// Repeated on each family page rather than shared, because the file that
+/// would hold it is the gallery shell, which slot G3 owns this wave.
+const List<double> fitColumns = <double>[480, 360, 280, 200];
 
 /// A stack of rows, separated the way a list body separates them.
 class _Rows extends StatelessWidget {
