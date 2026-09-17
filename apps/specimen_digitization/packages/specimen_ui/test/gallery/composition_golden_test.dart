@@ -24,12 +24,13 @@ import '../harness/control_contract.dart';
 
 /// The three windows, each at the height the page measures in it.
 ///
-/// Heights are the first value with nothing left to scroll: 2768, 2566 and
-/// 1558 measured, rounded up to the grid.
+/// Heights are the first value with nothing left to scroll: 3240, 3004 and
+/// 1978 measured after polish 3 added the bar with its menu open, rounded up
+/// to the grid.
 const Map<String, Size> compositionWindows = <String, Size>{
-  '390': Size(390, 2780),
-  '768': Size(768, 2580),
-  '1180': Size(1180, 1560),
+  '390': Size(390, 3240),
+  '768': Size(768, 3004),
+  '1180': Size(1180, 1980),
 };
 
 void main() {
@@ -50,9 +51,9 @@ void main() {
           window: window.value,
         );
         // The page states its own number and the golden checks it rather
-        // than skipping the budget: two page frames, each with an action bar
-        // and a hidden pill, the scrolled one with its top bar's fill and the
-        // pane behind its collapsed chrome, and the shell's page list.
+        // than skipping the budget: two record frames, each spending its one
+        // pane on the action bar it floats, the bar frame's open menu, and
+        // the shell's page list where the sidebar is drawn.
         expectGlassBudget(tester, maxPanes: page.maxGlassPanes, window: name);
         await expectLater(
           find.byType(UiGallery),

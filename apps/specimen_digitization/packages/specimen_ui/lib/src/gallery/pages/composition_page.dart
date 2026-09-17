@@ -31,13 +31,13 @@ const GalleryPage compositionPage = GalleryPage(
       'The record screen at compact, and the patterns 13 section 3 builds it '
       'from.',
   builder: buildCompositionPage,
-  // Three, counted rather than guessed: each of the two page frames is a
+  // Four, counted rather than guessed: each of the two record frames is a
   // compact window and spends the one pane 13 section 2.2 gives it, on the
-  // action bar it floats, and the shell's page list is the third wherever
-  // the sidebar is drawn. Every other pinned region in a frame, the top bar,
-  // the collapsed header's chrome and the hidden pill, draws the solid form
-  // of the same surface.
-  maxGlassPanes: 3,
+  // action bar it floats; the bar frame's open menu is a floating pane; and
+  // the shell's page list is the fourth wherever the sidebar is drawn. Every
+  // other pinned region in a frame, the top bar, the collapsed header's
+  // chrome and the hidden pill, draws the solid form of the same surface.
+  maxGlassPanes: 4,
 );
 
 const String _identifier = 'CAS 118402';
@@ -48,6 +48,13 @@ const String _bandDetail =
 const String _summary = '2 things block clearance';
 const String _clear = 'Clear record';
 const String _defer = 'Defer record';
+
+const String _menuLabel = 'More record commands';
+const List<String> _commands = <String>[
+  'Correct label regions',
+  'Correct classification',
+  'Retry processing',
+];
 
 const List<String> _readings = <String>[
   'Aristolochia gigantea Mart.',
@@ -164,6 +171,22 @@ class _CompositionPage extends StatelessWidget {
           ),
         ),
         GallerySection(
+          title: 'A bar with its trailing menu open (10 section 3, fit)',
+          child: Wrap(
+            spacing: ui.space.s4,
+            runSpacing: ui.space.s4,
+            children: const <Widget>[
+              GallerySpecimen(
+                label: 'the anchor mirrors',
+                note:
+                    'the last command on a record\'s bar keeps its menu inside '
+                    'the window; it used to open 250 dp past the edge',
+                child: _MenuFrame(),
+              ),
+            ],
+          ),
+        ),
+        GallerySection(
           title: 'UiBanner.strip (13 section 3.5)',
           child: Wrap(
             spacing: ui.space.s4,
@@ -257,6 +280,119 @@ class _Frame extends StatelessWidget {
       );
     },
   );
+}
+
+/// A phone shaped window with a record's bar in it and its menu open.
+///
+/// The frame carries an `Overlay` of its own, so the menu's pane is drawn
+/// inside the frame, where the golden captures it and where the popover
+/// measures what it has to fit: a pane fits the overlay it opens in, and here
+/// that is the phone rather than the gallery window around it.
+class _MenuFrame extends StatefulWidget {
+  const _MenuFrame();
+
+  /// The phone, at the height a bar and a few rows need.
+  static const Size size = Size(390, 320);
+
+  @override
+  State<_MenuFrame> createState() => _MenuFrameState();
+}
+
+class _MenuFrameState extends State<_MenuFrame> {
+  final PopoverController _menu = PopoverController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Opened once the bar is laid out, so the picture shows the menu where a
+    // reviewer's press would have put it.
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (mounted) _menu.open();
+    });
+  }
+
+  @override
+  void dispose() {
+    _menu.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) {
+      final double width = math.min(
+        _MenuFrame.size.width,
+        constraints.maxWidth,
+      );
+      final Size window = Size(width, _MenuFrame.size.height);
+      return SizedBox.fromSize(
+        size: window,
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(size: window),
+          child: ClipRect(
+            child: Overlay.wrap(child: _MenuPage(menu: _menu)),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// A record's frame reduced to its bar and the first rows under it.
+class _MenuPage extends StatelessWidget {
+  const _MenuPage({required this.menu});
+
+  final PopoverController menu;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return UiScaffold(
+      sky: SkyPreset.work,
+      topBar: UiTopBar(
+        leading: UiIconButton(
+          icon: UiIcons.back,
+          semanticsLabel: 'Back to queue',
+          onPressed: () {},
+        ),
+        title: _identifier,
+        actions: <Widget>[
+          UiIconButton(
+            icon: UiIcons.reload,
+            semanticsLabel: 'Refresh this record',
+            onPressed: () {},
+          ),
+          // The bar's own overflow trigger owns its controller, so the page
+          // draws the same menu on the same primitive with one it can open.
+          UiPopoverMenu(
+            controller: menu,
+            items: <UiMenuItem>[
+              for (final String command in _commands)
+                UiMenuItem(label: command, onSelected: () {}),
+            ],
+            child: UiIconButton(
+              icon: UiIcons.more,
+              semanticsLabel: _menuLabel,
+              onPressed: menu.toggle,
+            ),
+          ),
+        ],
+      ),
+      // The frame's one scroll (13 section 2.1): three rows outgrow a short
+      // frame at 200 percent text, and a page scrolls rather than overflowing.
+      body: ListView(
+        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
+        children: <Widget>[
+          for (final String reading in _readings.take(3))
+            UiListRow(
+              title: reading,
+              subtitle: 'Model reading, not reviewed',
+              onPressed: () {},
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// The whole composition, as one screen.

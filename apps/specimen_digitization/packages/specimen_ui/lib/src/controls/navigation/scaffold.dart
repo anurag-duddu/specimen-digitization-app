@@ -702,7 +702,11 @@ class _UiScaffoldState extends State<UiScaffold> {
                 : null,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              // A floating tile keeps the width of what it holds, as it always
+              // did; an anchored bar spans the body.
+              crossAxisAlignment: anchored
+                  ? CrossAxisAlignment.stretch
+                  : CrossAxisAlignment.center,
               children: <Widget>[
                 // The marker measures the bar and its padding, the 64 dp of
                 // 13 section 4.1, and not the system inset the pane extends
