@@ -110,6 +110,31 @@ sentence for an unstamped build says where a contact would be published rather
 than naming one; that belongs in the help sheet (07 section 10), not on a band
 that is two lines at every text scale (finding V-15).
 
+**The contact forms, and why the client and the deployment gate differ.**
+`scripts/ci/validate_public_settings.py` runs inside
+`scripts/ci/build_web.sh` on a push to `main` and nowhere else, and it is the
+only way `SPECIMEN_ADMIN_CONTACT` reaches a released build. It admits exactly
+three forms, all of which carry an address: `Name <address>`, `Name, address`
+and a bare address. Its own `scripts/ci/test_public_settings.py` rejects a
+bare name by name.
+
+`lib/src/administrator_contact.dart` parses a fourth, a bare name such as
+"The entomology data team", and documents it as an accepted spelling.
+
+**They should differ, and the difference is which source is being read.** The
+parser serves two: the build stamp, which the gate settles, and the collection
+document, which it has no jurisdiction over. A collection that publishes "The
+entomology data team" has named its administrator even though it has given no
+address, and a client that refused that would lose the authoritative source to
+satisfy a build setting. Through the stamp the fourth form cannot arrive at
+all, so nothing in a released build depends on it.
+
+Pinned in `test/live_environment_test.dart`: each of the gate's three accepted
+strings parses into the two halves the gate assumes, each reaches the band as
+a sentence beginning "Ask", and a bare name parses into a name with no address
+and therefore offers no mail link. Two documentation lines still say the wrong
+thing and are in section 6.
+
 Entry screens: every Firebase Auth code `emailLinkError` and
 `authErrorMessage` name is asserted to reach a sentence that says what to do
 next, never the raw code and never the exception type. A code from a later SDK
@@ -176,7 +201,19 @@ added is not yet in `verify.sh`, that slot lands it.
 
 ## 3. What a merge to main deploys
 
-One thing: the web client, to Firebase Hosting.
+**This has now happened once.** Pull request #64 was merged to `main` at
+15:37 UTC on 2026-09-17 as the squash `4f9f518`, and the `main` CI/CD run
+`35241427956` deployed the client to Firebase Hosting with the deployment
+marker verified. The public site serves the rebuilt client against whatever
+backend environment the public settings name. That last clause is deliberate:
+this worktree cannot reach the cloud, so what the settings name is established
+by a browser check and by nothing written here. The merge is reported by the
+wave's CI slot and by the coordinator, not observed from here.
+
+Nothing below changes because of it. It is the runbook for the next merge, and
+item 8 of section 5 is still open: a deployed client is not a connected one.
+
+One thing is deployed: the web client, to Firebase Hosting.
 
 `deploy-hosting` runs only on a push to `main`, only after all four test jobs
 pass, in the `production` GitHub environment, over keyless Workload Identity
@@ -193,9 +230,16 @@ The client the deploy job ships reads three build stamps, supplied from
 GitHub repository variables and only on `main`:
 `SPECIMEN_API_BASE_URL`, `SPECIMEN_RECAPTCHA_SITE_KEY` and
 `SPECIMEN_ADMIN_CONTACT` (`ci-cd.yml` lines 113 to 115,
-`scripts/ci/build_web.sh`). **All three are unset today.** That is why the
-live site shows "Collection connection required": the deployed client has no
-API to connect to. It is the same fact as item 8 in section 5.
+`scripts/ci/build_web.sh`), and `build_web.sh` validates them through
+`validate_public_settings.py` before the build, on `main` and nowhere else.
+
+Whether they are set is not visible from this repository. The last recorded
+observation is `docs/execution/PRODUCTION_RELEASE_PLAN.md` gate G8, "Not
+accepted: fresh public browser shows Collection connection required and API
+not configured", which is what an unset `SPECIMEN_API_BASE_URL` looks like
+from a browser. Only a browser check settles it now, and settling it is item 8
+of section 5 either way: a deployed client with no API to reach is still a
+client with nothing to show.
 
 ---
 
@@ -288,6 +332,7 @@ edited, per this wave's ownership rules.
 | **The record screen's segments are below the fold on a phone.** At 390 by 844 the Readings, Fields and History strip lays out at y equal to about 1010, so the readings, which are the work, are off screen. This is 13 section 0 measured rather than argued | `lib/src/workbench.dart` and `lib/src/screens/workbench/` | A2 |
 | **The environment band's pilot state is not wired.** `EnvironmentBanner` reads `SPECIMEN_PILOT_SCOPE` and defaults to empty, so nothing changes until a deployment stamps it. Two lines are needed: pass it through `build_web.sh` beside `SPECIMEN_ADMIN_CONTACT`, and add the repository variable to `ci-cd.yml` beside lines 113 to 115 | `scripts/ci/build_web.sh:12`, `.github/workflows/ci-cd.yml:115` | B1 |
 | **The band does not name the collection's own administrator inside the shell.** `EnvironmentBanner` takes `contactSentence` and falls back to the build stamp. Inside the collection shell the collection document is open and knows better | `lib/src/app/shell.dart:239`, pass `AdministratorContact.of(controller.scope).sentence` | A3 |
+| **Two documentation lines disagree about the contact forms.** `lib/src/administrator_contact.dart` lists a bare name among the spellings of the build stamp, and the deployment gate refuses one; the validator's own docstring says the client parses three forms when it parses four. The behaviour is right on both sides (section 1.3) and only the prose is wrong | `lib/src/administrator_contact.dart:57` and `scripts/ci/validate_public_settings.py:43` | unowned, and B1 |
 | **A stale unverified address gets the generic denial sentence.** The production API answers 403 `email_verification_required` (`docs/execution/LIVE_API.md`); the client normally never reaches it because `lib/src/auth.dart:53` gates on the local flag first. When the local flag is stale the service's own sentence does reach the banner, and the recovery, an access recheck, does resolve it. The banner does not say "verify your address" in those words | `lib/src/app/shell.dart`, the entry screens | A3 |
 
 ---

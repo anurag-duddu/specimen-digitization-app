@@ -197,6 +197,83 @@ void main() {
     });
   });
 
+  group('the build stamp agrees with what the deployment gate admits', () {
+    // `scripts/ci/validate_public_settings.py` runs inside
+    // `scripts/ci/build_web.sh`, on a push to `main` and nowhere else, and it
+    // is the only way `SPECIMEN_ADMIN_CONTACT` reaches a released build. It
+    // admits exactly three forms, all of which carry an address; its own
+    // `scripts/ci/test_public_settings.py` rejects a bare name by name. These
+    // are its accepted strings, and the client has to read each one the way
+    // the gate assumes it does.
+    const Map<String, (String?, String?)> admitted =
+        <String, (String?, String?)>{
+          'Alex Mwangi <alex.mwangi@fieldmuseum.org>': (
+            'Alex Mwangi',
+            'alex.mwangi@fieldmuseum.org',
+          ),
+          'Entomology data team, insects-data@fieldmuseum.org': (
+            'Entomology data team',
+            'insects-data@fieldmuseum.org',
+          ),
+          'insects-data@fieldmuseum.org': (
+            null,
+            'insects-data@fieldmuseum.org',
+          ),
+        };
+
+    test('every form the gate admits parses into the right two halves', () {
+      admitted.forEach((String define, (String?, String?) parts) {
+        final AdministratorContact contact = AdministratorContact.fromBuild(
+          define: define,
+        );
+        expect(contact.name, parts.$1, reason: define);
+        expect(contact.address, parts.$2, reason: define);
+        expect(contact.isKnown, isTrue, reason: define);
+        expect(contact.mailtoFor(), startsWith('mailto:'), reason: define);
+      });
+    });
+
+    test('every form the gate admits reaches the band as a sentence', () {
+      for (final String define in admitted.keys) {
+        final String? sentence = EnvironmentBanner.contactFor(
+          AdministratorContact.fromBuild(define: define).sentence,
+        );
+        expect(sentence, isNotNull, reason: define);
+        expect(sentence, startsWith('Ask '), reason: define);
+      }
+    });
+
+    test('a bare name parses, and cannot arrive through the deploy path', () {
+      // The parser keeps it, and should: `AdministratorContact.of` reads the
+      // collection document as well as the build stamp, and a collection that
+      // publishes "The entomology data team" has named its administrator even
+      // though it has given no address. The gate has no jurisdiction there.
+      // What the gate settles is the stamp, and through the stamp this form
+      // cannot arrive at all.
+      const String bare = 'The entomology data team';
+      final AdministratorContact contact = AdministratorContact.fromBuild(
+        define: bare,
+      );
+      expect(contact.name, bare);
+      expect(contact.address, isNull);
+      expect(contact.isKnown, isTrue);
+      expect(
+        contact.mailtoFor(),
+        isNull,
+        reason: 'a contact with no address must offer no mail link',
+      );
+      expect(contact.sentence, 'Ask $bare.');
+      // And the rule that tells the two apart, in one line: the gate admits a
+      // stamp only when it carries an address.
+      for (final String define in admitted.keys) {
+        expect(
+          AdministratorContact.fromBuild(define: define).address,
+          isNotNull,
+        );
+      }
+    });
+  });
+
   group('the sentence stays one sentence at every scale', () {
     test('the band never exceeds two lines, whichever kind it is', () {
       expect(EnvironmentBanner.maxLines, 2);
