@@ -8,6 +8,9 @@ button enabled=true tap label="Copy the specimen identifier" tooltip="Copy the s
 button enabled=true tap label="Source details" tooltip="Source details"
 button enabled=true tap label="Keyboard shortcuts" tooltip="Keyboard shortcuts"
 button enabled=true tap label="Test environment. Not approved museum records."
+role=tabBar
+  role=tab selected=true enabled=true tap label="Queue"
+  role=tab selected=false enabled=true tap label="Intake"
 label="This photograph has no verified orientation, so label regions are not drawn."
   button enabled=true tap label="Why"
 label="Immutable original specimen image"
