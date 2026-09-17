@@ -156,6 +156,40 @@ mostly fields and rows of actions.
 | G2 | `fe/fit-surfaces`: top bar, tabs, tile, row, dialog, sheet, banner, toast fit variants; their galleries | F1, F2 | L |
 | G3 | `fe/fit-gallery`: compact gallery shell; Fit page; golden matrix (four classes by three scales by two modes) | F1, F2 | M |
 
+### H. Composition (wave A, added 2026-09-17 after the emulator review)
+
+The record screen on an Android phone showed the controls right and the
+screen wrong: a scroll inside a scroll, chrome taking about three quarters of
+the height, surfaces inside surfaces, nothing prioritised.
+`design/13-screen-composition.md` names the causes, states the composition
+contract and turns it into tests.
+
+| ID | Scope | Depends on | Size |
+|---|---|---|---|
+| A1 | `fe/compose-package`: `UiCollapsingHeader`, `UiStatusStrip`, `UiDecisionBar`, `UiBanner.strip`, `UiScaffold` by route, the `PinnedChrome` and `PrimaryRegion` markers, the action bar hook, a Composition gallery page | H1 | L |
+| A2 | `fe/compose-record`: the record screen and region editor rebuilt as one scroll with a collapsing source header, status strip, sticky segments and a one row decision bar (13 sections 4.1, 4.3) | A1 | L |
+| A3 | `fe/compose-shell`: the shell's band strip, pill by route and top bar by route; queue, intake, sources, sign in, help and setup as one scroll each (13 sections 4.2, 4.4 to 4.6) | A1 | L |
+| A4 | `fe/compose-gates`: `test/composition/*` (no nested scrollables, surface depth, chrome budget, above the fold, one job) with per screen expectations, and the emulator and simulator capture script | H1 | M |
+
+### I. Release readiness for a live data pilot (wave B, added 2026-09-17)
+
+Anurag asked for the client to be ready to test on live data: CI/CD fully
+green, the deployment path fully checked, documentation and lessons in order.
+The deployment rules in `docs/DEPLOYMENT.md` bind: a merge to `main` is the
+only production trigger, pull requests cannot deploy, and no deploy command
+runs from a workstation or agent shell. The live data pilot itself is gated by
+`docs/execution/CURRENT_RELEASE_CHECKLIST.md`, whose open items (protected
+DATA initialisation, runtime authorisation, App Check, credential lifecycle,
+the pending USD12 ceiling decision) are the user's and protected CI's, not a
+front end slot's; wave B prepares everything on the client's side and writes
+the runbook for the rest.
+
+| ID | Scope | Depends on | Size |
+|---|---|---|---|
+| B1 | `fe/release-ci`: every gate this refactor added runs in `scripts/ci/verify.sh` and `.github/workflows/ci-cd.yml` (package tests, formatting, literal geometry, composition once A4 lands); a web smoke over the release build's routes in CI; the deployment marker and public settings path checked against the new client; a release candidate report | H1 | M |
+| B2 | `fe/release-docs`: README (root and app), `docs/DEPLOYMENT.md` client section, `design/README.md`, the plan's definition of done table, the package CHANGELOG as 0.3.0 release notes, and `docs/LESSONS_FRONT_END_REFACTOR.md` distilled from every closeout | none | M |
+| B3 | `fe/release-client`: the client against live data shapes: wire contract tests against the runtime API schema, real data shaped fixtures (long labels, many regions, missing measurements, large photographs), the environment band states of 07 section 1.3 for the pilot, error and connectivity screens of 07 section 11, image memory on real photographs; `docs/execution/CLIENT_LIVE_DATA_READINESS.md`, the runbook of what is verified and what remains for the user | none | L |
+
 ## 4. Dependency graph
 
 ```mermaid
@@ -343,6 +377,7 @@ with the concurrency cap, dominated by full test runs.
 | 2026-09-17 | H1 `fe/cleanup` (304e612, 5 commits, 38 files, 8 deleted) merged as 369f0b9: the last 17 Material glyphs and the `SpecimenIconography` adapter gone with `lib/src/theme/icons.dart`; `material_symbols_icons` and `cupertino_icons` out of the pubspec; the six v1 theme adapters deleted and `AppTheme` reduced to `UiThemeData.toThemeData()` plus text selection and page transitions; the last `Scaffold` out of `app_router.dart`; the three `fe/polish-2` markers retired onto `UiDataTile(surface: paper)` and the 48 dp `UiDisclosure`; both Material gates widened to all of `lib/`. Backlogs: `icons_unique` 0, `no_material_components` 0, `no_material_imports` 0 (four named infrastructure importers with reasons), `no_literal_geometry` 10 numbers over 3 files, all elapsed times. Zero screen goldens or fixtures moved. `flutter build web --release` 25 s, `main.dart.js` 3,272,384 bytes; `build_mobile.sh android` 69 s, debug APK 163,930,510 bytes. Gates green at 369f0b9: package 684 tests, app 1097 passed and 7 skipped, formatting, strings and literal geometry green; pushed. **Definition of done items 1 to 6 and 8 met; 7 and 9 with H3.** Open: `SourceMatte`'s painted band onto `UiScaffoldExclusion`, `AppShell.skyOf` into `routes.dart`, a package `UiPageRoute` to retire the last `material.dart` import in a screen file. |
 | 2026-09-17 | H3 `fe/verification` (6acdcab, 4 commits) merged as 8fcb41e: `design/12-verification-report-v2.md`, 43 device captures under `design/screenshots/refactor/` (Android phone emulator, iPad Pro 13 simulator standing in for the tablet class, desktop browser; no landscape and no `large` device capture, recorded), the fit matrix (132 cells: 123 intended, 9 squeezed, 0 overflow), reduced motion (10 of 14 collapse), dark mode over 40 cells with the accent at exactly one mark per screen, glass measured on three surfaces (`GlassQuality.full` stays the default), web smoke clean. Two bar dimensions moved down to Partial (visual system, motion); usability recorded as not re-measured. Six defects, none fixed by the slot; three fixed in 4973420 on the integration branch: V2-1 the field painter now clips to its bounds (the sky bled over the environment band, 3.31:1 on sign in), with a test that rasterises past the bounds; V2-3 the queue list adds the scaffold's navigation clearance so the last row scrolls clear on a phone; V2-6 every page transition collapses under reduced motion. Open: V2-2 `ink.tertiary` at 3.29:1 over the sun field (every contrast table is taken over the three opaque surfaces and the sky composites on all of them; a token decision), V2-4 the sources screen has no page heading, V2-5 `enum FieldLayer` in `field_row.dart` collides with the package widget's name; plus the cleanup slot's three follow-ups. `origin/main` merged into the branch (d4830ce, CI scripts and docs only). The three fixes moved 26 gallery goldens (navigation specimens whose sky had spilled past their boxes, re-rendered in d116dbb) and the entry screen goldens (09e9808); the instruments that pinned the defects pin the healthy values now (a4cd400). **Gates green at a4cd400: package 685 tests, app 1301 passed and 7 skipped, formatting, strings and literal geometry green; pushed. Pull request #64 to `main` marked ready.** |
 | 2026-09-17 | Pull request #64's first CI run failed one job, "Flutter checks and web build": all 336 package goldens differ on the Linux runner by one to eleven percent of pixels, the same font rasterisation gap the application's screen goldens already skip off macOS. `PlatformGatedGoldenComparator` in the package's `flutter_test_config.dart` compares on macOS only, renders elsewhere, and refuses to write goldens off macOS; both paths proven locally (`SPECIMEN_UI_GOLDENS=skip` forces the off macOS path). Package suite 685 green; pushed for CI to rerun. |
+| 2026-09-17 | Morning review on the Android emulator: the record screen at phone width has a scroll inside a scroll, chrome at about three quarters of the height, surfaces inside surfaces and no priority; Anurag asked for the screens fixed end to end and the client made ready to test on live data with CI/CD green, deployments checked and documentation and lessons in order. `design/13-screen-composition.md` written (composition contract, patterns, per screen tables, gates); sections 3H and 3I added; wave A (A1, A4 first, then A2, A3) and wave B (B1 to B3) cut from this commit. |
 
 ## Appendix A. Icon mapping, Material Symbols to Phosphor
 

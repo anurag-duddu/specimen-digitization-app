@@ -1,0 +1,227 @@
+# 13. Screen composition
+
+How a screen is put together from the controls, so that a phone shows the
+work and not the chrome. Written on 2026-09-17 from the record screen on an
+Android phone after wave 3: the controls were right and the screen was wrong.
+It does for screens what 11 did for controls: names the causes, states the
+rules, and turns each rule into a test. 05 section 3 and 07 already describe
+the arrangements this document enforces; where they differ, this document
+wins and says so.
+
+## 0. The record screen on a phone, read as one defect
+
+The capture at 390 by 844 dp showed, from the top: the collection switcher
+bar, a two line environment band, a "Back to queue" row, a "Source photograph"
+heading with its own collapse control, the photograph inside a matte inside a
+pane with a floating tool capsule over its lower edge, a row of region
+toggles, the specimen title with three commands, a "Correct label regions"
+command, a "Source details" disclosure, a decision bar holding previous, a
+count, next, and two stacked buttons, and the floating navigation pill. The
+readings, which are the work, were below the fold.
+
+| Seen | Cause | Rule that prevents it |
+|---|---|---|
+| A scroll inside a scroll | The stacked regime puts the source pane, which scrolls itself, inside a page `ListView` (`workbench.dart`, `_stacked`); intake and the import sheet nest the same way | One scroll per screen per axis (section 2.1) |
+| Chrome takes about three quarters of the height | Top bar, band, back row, section heading, decision bar and pill are each laid out as if the window were tall; nobody adds them up | The chrome budget (section 2.3) |
+| Things inside things | Photograph in a matte in a pane in a padded page in a scaffold; a glass decision bar over a glass pill; a heading over a disclosure over a pane | Surface depth (section 2.2) |
+| No priority | The title repeats what the top bar should carry; "Back to queue" repeats what the bar's leading slot is for; the photograph's heading names what is self evident; the decision bar carries navigation it does not need on a phone | One job per region (section 2.4), and the per screen tables (section 4) |
+| Conflicts inside elements | The tool capsule floats over the photograph's lower edge and the region toggles sit right under it; two collapse controls (heading and disclosure) three rows apart | The pinned header pattern (section 3.1) and one job per region |
+
+07 section 6.1 already asked for a collapsible source header pinned at 40
+percent of the viewport with the evidence scrolling beneath it, a status strip,
+segments, and a decision bar above the navigation with previous and next as
+swipes on compact. None of that was built, because nothing failed when it was
+not. This document is what fails.
+
+## 1. Units and axes, restated for screens
+
+11 gave controls their units. A screen has two more:
+
+- **The viewport.** Everything a screen pins (top bar, band, headers, bars,
+  navigation) is measured as a fraction of `MediaQuery.sizeOf(context).height`
+  at the window class in question. Content is what is left.
+- **The scroll.** A screen has one vertical scroll position. Regions either
+  scroll with it, pin above it, or collapse into it. Nothing scrolls on its own
+  inside it.
+
+## 2. The composition contract
+
+Every routed screen satisfies these at every window class, in both modes, at
+text scales 1.0, 1.3 and 2.0. Each clause is a test in
+`test/composition/` (section 5).
+
+### 2.1 One scroll per screen per axis
+A screen is a `CustomScrollView` with slivers, or a single `ListView`. No
+vertical scrollable sits inside another vertical scrollable. `shrinkWrap:
+true` and `NeverScrollableScrollPhysics` do not appear under `lib/`, because
+each exists only to nest a list. A horizontal strip (chips, region toggles, a
+segmented track that scrolls) inside the vertical scroll is allowed and is the
+only exception. A sheet or a dialog owns its own scroll, because it is its own
+surface; the screen under the scrim does not count.
+
+### 2.2 Surface depth
+At compact, no surface sits inside another surface: a photograph sits on its
+matte, and the matte sits on the page; a row sits on the page, not on a card
+on the page. Glass at compact is the one pane the scaffold gives the pinned
+region, and nothing else. At medium and above depth is at most two, and glass
+panes at most the budget 09 sets per class (compact 1, medium 2, expanded 3,
+large 4), counted on the whole screen including the navigation.
+
+### 2.3 The chrome budget
+Pinned chrome at compact is at most 28 percent of the viewport height: top
+bar, environment band, any pinned header at its collapsed height, the decision
+bar, and the navigation pill, added together. At medium at most 24 percent,
+at expanded and above at most 20 percent. Where a screen's pinned regions
+exceed the budget, the screen has to give one of them up, not shrink them
+below their density height. The rules that make the budget reachable:
+
+- The environment band at compact is one line of `label` text on its tint,
+  32 dp tall, with the detail behind a tap (a sheet), never a two line
+  paragraph with a chevron.
+- The navigation pill hides on a screen that is inside a record (the record
+  screen, the region editor), where the way out is the top bar's back. The
+  scaffold owns this by route.
+- The decision bar at compact is one row, `density.controlHeight` plus its
+  padding: the primary action, the secondary action as a text button beside
+  it or in the bar's overflow when both do not fit (11 section 3.3), and the
+  specimen count as a label. Previous and next are swipes on compact and edge
+  buttons from medium up (07 section 6.1).
+- The top bar carries the screen's title and the back action; no screen draws
+  a second title row or a "Back to ..." row under the bar.
+
+### 2.4 One job per region
+Each pinned or scrolling region has one job and says it once. The top bar
+names the screen and offers the way out. A collapsing header shows the thing
+under review. A status strip states the disposition and what blocks it. The
+segments choose the evidence. The decision bar decides. Anything that repeats
+another region's words (a heading over a photograph, a title under a top bar
+that already carries it) is removed, not styled.
+
+### 2.5 Above the fold
+At compact, the screen's primary region (the photograph on the record screen,
+the list on the queue, the form on intake, the sources list on sources) is
+visible at its minimum height within the first viewport, with at least one
+row of the region beneath it (the status strip and the first reading on the
+record screen; the first two rows on the queue). The test measures it.
+
+### 2.6 Rhythm
+Gutters are `s4` at compact and `s6` from medium; the gap between regions is
+`s6`; a region's own padding replaces, never adds to, the page's. A surface
+carries its own padding and its content carries none. Nothing is padded
+twice, which the depth rule makes checkable.
+
+## 3. Patterns the package provides
+
+### 3.1 `UiCollapsingHeader`
+A `SliverPersistentHeader` for the thing under review. It takes a
+`maxFraction` and `minFraction` of the viewport height (the record screen uses
+0.55 and 0.40, from 07 section 6.1), the content, and a `chrome` slot for
+controls that ride its lower edge (the view control capsule) and shrink to a
+single row at the minimum. It is pinned; it never floats; it draws
+`glass.flat` behind its chrome only when collapsed, so the budget's one pane at
+compact is this one. Under reduced motion the collapse still tracks the
+scroll, because it is a scroll position and not a transition.
+
+### 3.2 `UiStatusStrip`
+One line at the top of the evidence: the disposition chip, run and version,
+and the blockers summary ("2 things block clearance") that opens a sheet
+listing each with its control. It scrolls with the evidence.
+
+### 3.3 `UiDecisionBar`
+The decision bar of 2.3 as a pattern: primary, secondary, count, optional
+previous and next from medium up, and the swipe handler for compact. It sits
+in `UiScaffold.actionBar`, which a routed screen can now fill
+(`UiScaffold.of(context).setActionBar` or the equivalent hook the package
+lands), so the shell owns the bottom of the screen and the budget.
+
+### 3.4 `UiScaffold` by route
+`UiScaffold` reads the route: which screens hide the navigation pill, which
+sky preset paints, whether the environment band is the one line form. The
+shell already switches the sky by route; the pill and the band follow.
+
+### 3.5 `UiBanner.strip`
+The one line environment band: tint, glyph, one `label` line, tap for the
+sheet with the full sentence and the administrator contact.
+
+## 4. The screens at compact
+
+Each table row is one region in scroll order; pinned regions say so. Where
+this differs from 05 or 07 the difference is noted.
+
+### 4.1 Record (workbench)
+| Region | Pinned | Content | Height at 390 by 844 |
+|---|---|---|---|
+| Top bar | yes | Back, specimen id (`mono.identifier`), refresh; the collection switcher is not shown inside a record | 56 |
+| Environment band | yes | One line strip when the environment is not production | 32 |
+| Source header | collapsing, 0.55 to 0.40 | Photograph on its matte edge to edge, region overlays, the view control capsule riding the lower edge, the region toggle strip as the header's last row | 464 to 338 |
+| Status strip | scrolls | Disposition, run and version, blockers summary | 40 |
+| Segments | scrolls, then sticks under the header | Readings, Fields, History | 48 |
+| Evidence | scrolls | The chosen segment's content; commands that belong to the record (correct label regions, correct classification, retry) live in the top bar's overflow menu, not as rows | rest |
+| Decision bar | yes | Primary, secondary or overflow, "1 of 4"; swipe for previous and next | 64 |
+| Navigation pill | hidden | | 0 |
+
+Pinned total 152 of 844, 18 percent. The photograph shows at 40 percent
+minimum with the status strip and the first reading beneath it. 07 asked for
+the segments in the evidence; they stick under the header here so the reader
+never loses which evidence is showing, which 07 did not say and 05's wireframe
+implies.
+
+### 4.2 Queue
+| Region | Pinned | Content |
+|---|---|---|
+| Top bar | yes | Collection switcher, refresh, account |
+| Environment band | yes | One line strip |
+| Header | scrolls | "Queue", the count as a numeral with its unit, the freshness line |
+| Search and filters | scrolls, sticks | The search field with the filter control beside it; filters open a sheet |
+| Rows | scrolls | The list |
+| Navigation pill | yes | Queue, Intake, Sources |
+
+### 4.3 Region editor
+Full screen route (05 section 3.6): top bar (back, title, save), the
+photograph band as a collapsing header floored at 0.40, the coordinate form
+and provenance scrolling beneath, order controls as the top bar's overflow,
+no pill.
+
+### 4.4 Intake and capture
+One scroll: the batch header, the capture card, the pre-upload checks, the
+manifest, each a section with an `s6` gap; the upload action in the decision
+bar slot; the pill visible.
+
+### 4.5 Sources
+One scroll: a heading (V2-4), the import action, the rows; the pill visible.
+
+### 4.6 Sign in, help, setup
+One scroll each; the band strip; no pill on sign in.
+
+## 5. Gates
+
+All under `apps/specimen_digitization/test/composition/`, run against every
+routed screen at 390 by 844, 768 by 1024, 1180 by 820 and 1440 by 900 in both
+modes and at 1.0, 1.3 and 2.0 text scale, from the same harness the size class
+goldens use:
+
+| Gate | What it measures | Allowance |
+|---|---|---|
+| `no_nested_scrollables` | Walks the element tree: a vertical `Scrollable` with a vertical `Scrollable` ancestor fails; `shrinkWrap: true` and `NeverScrollableScrollPhysics` under `lib/` fail as text | Horizontal strips; a sheet or dialog's own scroll |
+| `surface_depth` | The deepest chain of `Surface` and `GlassSurface` ancestors on the screen, and the count of `GlassSurface` render objects | 1 at compact, 2 above; glass per class per 09 |
+| `chrome_budget` | The sum of the pinned regions' heights over the viewport height, read from render boxes the screens mark with a `PinnedChrome` marker widget the package provides | 28, 24, 20 percent |
+| `above_the_fold` | The primary region marked `PrimaryRegion` is laid out within the first viewport at its minimum height, with the next region's first row visible | per screen table |
+| `one_job` | No two `Text` nodes in pinned regions carry the same string; no screen has a row whose only content is a back action | none |
+
+The size class goldens pick up every change, and the fit matrix stays as it
+is. Screen goldens and fixtures are regenerated once per wave by the
+integrator, as before.
+
+## 6. Work breakdown
+
+Team A, composition. A1 first, then A2 to A4 in parallel from its merge.
+
+| Slot | Branch | Owns | Delivers |
+|---|---|---|---|
+| A1 patterns | `fe/compose-package` | the package: `UiCollapsingHeader`, `UiStatusStrip`, `UiDecisionBar`, `UiBanner.strip`, `UiScaffold` by route (pill and band), the `PinnedChrome` and `PrimaryRegion` markers, the scaffold action bar hook; a Composition gallery page; contract tests | Section 3 |
+| A2 record | `fe/compose-record` | `workbench.dart`, `screens/workbench/*`, `decision_bar.dart`, `source_pane.dart`, `region_editor.dart`, their tests | 4.1 and 4.3 |
+| A3 shell and lists | `fe/compose-shell` | `app/shell.dart`, `app/app_router.dart`, `screens/queue/*`, `intake.dart`, `screens/intake/*`, `screens/sources/*`, `sources.dart`, sign in, help, setup, `widgets/environment_banner.dart`, their tests | 4.2, 4.4, 4.5, 4.6 and 2.3's shell rules |
+| A4 gates | `fe/compose-gates` | `test/composition/*`, the per screen expectations table, a capture script that drives the Android emulator and the iPad simulator through every route at phone and tablet size for the checkpoint | Section 5 |
+
+Team B, release readiness, runs beside team A; its slots touch no screen.
+See `docs/execution/FRONT_END_REFACTOR.md` section 3I.
