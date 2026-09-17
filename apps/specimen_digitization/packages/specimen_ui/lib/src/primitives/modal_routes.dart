@@ -11,21 +11,21 @@ import 'package:flutter/widgets.dart';
 import '../foundation/glass.dart';
 import '../foundation/motion.dart';
 import '../foundation/theme.dart';
+import '../foundation/window.dart';
 import 'glass_surface.dart';
 import 'scrim.dart';
 
 /// The width below which a window gets a sheet rather than a dialog.
 ///
-/// The application's `WindowClass.mediumMin` is the same 600 (05 section 2).
-/// It is restated here rather than imported because the package cannot import
-/// the application: the path dependency points one way, and importing upward
-/// would invert the layering the `layering` gate holds. The two values are
-/// pinned together by a test in the application.
-const double compactWindowMax = 600;
+/// [WindowClass.mediumMin] itself, not a second copy of it. It was restated
+/// here while the classes lived in the application, because the path
+/// dependency points one way; they are in the foundation now (11 section
+/// 3.1), so the breakpoint is written down once.
+const double compactWindowMax = WindowClass.mediumMin;
 
 /// True when [context] is painted into a compact window.
 bool isCompactWindow(BuildContext context) =>
-    MediaQuery.sizeOf(context).width < compactWindowMax;
+    WindowClass.of(context).isCompact;
 
 /// Shows [builder] as a bottom sheet.
 ///
@@ -192,15 +192,23 @@ class _ModalFrame extends StatelessWidget {
 
   /// The scrim, the focus trap and the pane.
   Widget _frame(BuildContext context, UiThemeData ui, VoidCallback close) {
-    final Widget pane = GlassSurface(
-      level: GlassLevel.modal,
-      radius: ui.shape.sheet,
-      // A sheet meets the bottom of the window, so only its top corners turn
-      // (10 section 4.3). A dialog floats, so all four do.
-      corners: sheet
-          ? BorderRadius.vertical(top: Radius.circular(ui.shape.sheet))
-          : null,
-      child: builder(context),
+    // The pane is a route on the root navigator, so it is published wherever
+    // that navigator's overlay sits rather than under whatever wrapped the
+    // control that opened it. Publishing the style here makes the frame
+    // correct in any host, including a bare `WidgetsApp` and a host that
+    // resets the style below `UiTheme` (11 section 5).
+    final Widget pane = DefaultTextStyle(
+      style: ui.defaultTextStyle,
+      child: GlassSurface(
+        level: GlassLevel.modal,
+        radius: ui.shape.sheet,
+        // A sheet meets the bottom of the window, so only its top corners
+        // turn (10 section 4.3). A dialog floats, so all four do.
+        corners: sheet
+            ? BorderRadius.vertical(top: Radius.circular(ui.shape.sheet))
+            : null,
+        child: builder(context),
+      ),
     );
     return PopScope(
       canPop: dismissible,

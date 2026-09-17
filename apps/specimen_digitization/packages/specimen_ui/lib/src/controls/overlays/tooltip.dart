@@ -245,7 +245,15 @@ class _TooltipPane extends StatelessWidget {
   final VoidCallback onDismiss;
 
   @override
-  Widget build(BuildContext context) => Semantics(
+  Widget build(BuildContext context) => DefaultTextStyle(
+    // A tooltip is drawn in the overlay, where the host's own style is
+    // whatever the overlay sits in. The pane publishes the product's style so
+    // the message is never set in the framework fallback (11 section 5).
+    style: context.ui.defaultTextStyle,
+    child: _pane(),
+  );
+
+  Widget _pane() => Semantics(
     container: true,
     // The `tooltip` property rather than `SemanticsRole.tooltip`: the role
     // exists in this SDK but its debug checks do not, so setting it throws

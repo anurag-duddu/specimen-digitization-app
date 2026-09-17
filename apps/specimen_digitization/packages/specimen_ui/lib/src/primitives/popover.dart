@@ -240,15 +240,21 @@ class _PopoverState extends State<Popover> {
   /// The pane, with the focus scope and the tap region an interactive
   /// popover needs and a passive one must not have.
   Widget _pane(BuildContext context) {
-    final Widget content = Semantics(
-      container: true,
-      label: widget.semanticsLabel,
-      explicitChildNodes: true,
-      child: _PopoverPane(
-        level: widget.level,
-        surface: widget.surface,
-        radius: widget.radius,
-        child: Builder(builder: widget.overlayBuilder),
+    // An `OverlayPortal` builds its child under the overlay, not under the
+    // trigger, so the pane inherits whatever text style the overlay sits in.
+    // Publishing it here makes the pane correct in any host (11 section 5).
+    final Widget content = DefaultTextStyle(
+      style: context.ui.defaultTextStyle,
+      child: Semantics(
+        container: true,
+        label: widget.semanticsLabel,
+        explicitChildNodes: true,
+        child: _PopoverPane(
+          level: widget.level,
+          surface: widget.surface,
+          radius: widget.radius,
+          child: Builder(builder: widget.overlayBuilder),
+        ),
       ),
     );
     if (!widget.interactive) return IgnorePointer(child: content);

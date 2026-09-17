@@ -141,6 +141,16 @@ class UiToast extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final UiToastStyle paint = style ?? UiToastStyle.resolve(ui);
+    return DefaultTextStyle(
+      // The capsule is a layer over a page and can be raised from anywhere,
+      // so it publishes the product's style rather than inheriting the host's
+      // (11 section 5).
+      style: ui.defaultTextStyle,
+      child: _capsule(paint),
+    );
+  }
+
+  Widget _capsule(UiToastStyle paint) {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: paint.maxWidth),
       child: GlassSurface(
