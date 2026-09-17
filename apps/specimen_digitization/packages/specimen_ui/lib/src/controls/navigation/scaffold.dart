@@ -111,24 +111,30 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
 ///   The frame publishes the ask to its own banner slot, and `UiBanner`
 ///   resolves it, so the shell's call site does not change.
 ///
-/// A screen publishes what it wants when it is built and publishes null in
-/// `dispose`, exactly as it does for an exclusion:
+/// A screen publishes what it wants when it is built and gives it back when
+/// it leaves, exactly as it does for an exclusion. It names itself as the
+/// owner, and [release] then gives back only what it still owns:
 ///
 /// ```dart
 /// @override
 /// void didChangeDependencies() {
 ///   super.didChangeDependencies();
 ///   _slots = UiScaffoldSlots.of(context)
-///     ?..setNavVisible(false)
-///     ..setActionBar(_decisionBar());
+///     ?..setNavVisible(false, owner: this)
+///     ..setActionBar(_decisionBar(), owner: this);
 /// }
 ///
 /// @override
 /// void dispose() {
-///   _slots?..setActionBar(null)..setNavVisible(null);
+///   _slots?.release(this);
 ///   super.dispose();
 /// }
 /// ```
+///
+/// The owner is what makes a route change safe. A router that swaps one
+/// screen for another builds the new one before it disposes the old, so a
+/// screen that cleared the slots outright on the way out would take the next
+/// screen's decision bar with it.
 ///
 /// Null outside a scaffold, which is what a component test pumping one screen
 /// on its own has, so a publisher is one call with no branch.
@@ -147,8 +153,16 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   bool? get bandCompact => _bandCompact;
   bool? _bandCompact;
 
+  Object? _actionBarOwner;
+  Object? _navOwner;
+  Object? _bandOwner;
+
   /// Puts [bar] in the frame's action bar. Null gives the slot back.
-  void setActionBar(Widget? bar) {
+  ///
+  /// [owner] is whoever is asking, normally the `State` that publishes it, so
+  /// that [release] can give back only what is still theirs.
+  void setActionBar(Widget? bar, {Object? owner}) {
+    _actionBarOwner = bar == null ? null : owner;
     if (bar == _actionBar) return;
     _actionBar = bar;
     _announce();
@@ -156,17 +170,30 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
 
   /// Asks for the navigation to be drawn or hidden. Null gives the answer
   /// back to the frame's caller.
-  void setNavVisible(bool? visible) {
+  void setNavVisible(bool? visible, {Object? owner}) {
+    _navOwner = visible == null ? null : owner;
     if (visible == _navVisible) return;
     _navVisible = visible;
     _announce();
   }
 
   /// Asks for the one line environment band. Null gives the answer back.
-  void setBandCompact(bool? compact) {
+  void setBandCompact(bool? compact, {Object? owner}) {
+    _bandOwner = compact == null ? null : owner;
     if (compact == _bandCompact) return;
     _bandCompact = compact;
     _announce();
+  }
+
+  /// Gives back every slot [owner] still holds.
+  ///
+  /// A screen calls this in `dispose`. A slot someone else has published to
+  /// since is left alone, which is what makes a route change safe: the
+  /// screen arriving publishes before the screen leaving is disposed.
+  void release(Object owner) {
+    if (identical(_actionBarOwner, owner)) setActionBar(null);
+    if (identical(_navOwner, owner)) setNavVisible(null);
+    if (identical(_bandOwner, owner)) setBandCompact(null);
   }
 
   /// The nearest scaffold's slots, or null when there is no scaffold.

@@ -115,7 +115,9 @@ the scaffold's action bar, one row tall. `UiBanner.strip` is the one line
 environment band with the sentence behind a tap. A routed screen fills the
 action bar, hides the navigation pill and asks for the one line band through
 `UiScaffoldSlots.of(context)`, the same way it publishes a
-`UiScaffoldExclusion`.
+`UiScaffoldExclusion`; it names itself as the owner and calls `release(this)`
+on the way out, because a router builds the screen arriving before it disposes
+the screen leaving.
 
 Two markers say what a widget tree cannot. `PinnedChrome(region:, extent:)`
 marks a region that holds viewport height, and `PrimaryRegion(minExtent:)`

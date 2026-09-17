@@ -46,7 +46,12 @@ Widget _page({
 /// A page that publishes what it wants of the frame, the way a routed screen
 /// does (13 section 3.4).
 class _SlotPublisher extends StatefulWidget {
-  const _SlotPublisher({this.actionBar, this.navVisible, this.bandCompact});
+  const _SlotPublisher({
+    super.key,
+    this.actionBar,
+    this.navVisible,
+    this.bandCompact,
+  });
 
   final Widget? actionBar;
   final bool? navVisible;
@@ -63,17 +68,14 @@ class _SlotPublisherState extends State<_SlotPublisher> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _slots = UiScaffoldSlots.of(context)
-      ?..setActionBar(widget.actionBar)
-      ..setNavVisible(widget.navVisible)
-      ..setBandCompact(widget.bandCompact);
+      ?..setActionBar(widget.actionBar, owner: this)
+      ..setNavVisible(widget.navVisible, owner: this)
+      ..setBandCompact(widget.bandCompact, owner: this);
   }
 
   @override
   void dispose() {
-    _slots
-      ?..setActionBar(null)
-      ..setNavVisible(null)
-      ..setBandCompact(null);
+    _slots?.release(this);
     super.dispose();
   }
 
@@ -892,5 +894,43 @@ void main() {
       // own is the normal case rather than an error.
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('a screen leaving keeps the screen arriving in the action bar', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          body: const _SlotPublisher(
+            key: ValueKey<String>('first'),
+            actionBar: Text('From the first screen'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('From the first screen'), findsOneWidget);
+
+    // A router builds the screen arriving before it disposes the screen
+    // leaving. A screen that cleared the slots outright on the way out would
+    // take the next screen's decision bar with it, which is what the owner
+    // makes safe.
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          body: const _SlotPublisher(
+            key: ValueKey<String>('second'),
+            actionBar: Text('From the second screen'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('From the second screen'), findsOneWidget);
+    expect(find.text('From the first screen'), findsNothing);
   });
 }

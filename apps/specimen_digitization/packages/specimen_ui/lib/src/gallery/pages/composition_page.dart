@@ -353,17 +353,15 @@ class _RecordBodyState extends State<_RecordBody> {
           secondary: UiButton(label: _defer, onPressed: () {}),
           count: '1 of 4',
         ),
+        owner: this,
       )
-      ..setNavVisible(false)
-      ..setBandCompact(true);
+      ..setNavVisible(false, owner: this)
+      ..setBandCompact(true, owner: this);
   }
 
   @override
   void dispose() {
-    _slots
-      ?..setActionBar(null)
-      ..setNavVisible(null)
-      ..setBandCompact(null);
+    _slots?.release(this);
     _controller.dispose();
     super.dispose();
   }
