@@ -1,6 +1,8 @@
 /// One row of a list (10 section 4.5, `UiListRow`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
@@ -379,14 +381,29 @@ class UiListRow extends StatelessWidget {
         (end == null ? 0 : style.gap);
 
     if (end is! UiRowTrailing) {
-      return FitBuilder(
-        variants: <FitVariant>[
-          FitVariant(
-            intrinsicWidth: chrome + style.titleMin,
-            builder: (BuildContext context, bool _) =>
-                _line(context, style, end),
-          ),
-        ],
+      // A trailing the row does not know (a chip, a switch, a time) cannot
+      // be measured for a declared variant, so the row bounds it instead: it
+      // may take what is left once the title has its minimum, and never
+      // more. A chip in that room ellipsises through its own label, and the
+      // title keeps its two lines; nothing ever runs off the end of the row
+      // (11 section 3.3, rule 4).
+      return LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double room = math.max(
+            0,
+            constraints.maxWidth - chrome - style.titleMin,
+          );
+          return _line(
+            context,
+            style,
+            end == null
+                ? null
+                : ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: room),
+                    child: end,
+                  ),
+          );
+        },
       );
     }
 

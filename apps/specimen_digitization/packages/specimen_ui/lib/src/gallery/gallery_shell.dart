@@ -181,11 +181,7 @@ class _UiGalleryState extends State<UiGallery> {
           ? Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                _PageList(
-                  pages: _pages,
-                  selected: selected,
-                  onSelect: _select,
-                ),
+                _PageList(pages: _pages, selected: selected, onSelect: _select),
                 Expanded(child: _PageView(page: page)),
               ],
             )
@@ -393,6 +389,62 @@ class _PageView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Columns of specimens that sit side by side where the page is wide enough
+/// and stack where it is not. This is the gallery's own arrangement: a phone
+/// wide window shows every specimen at its intrinsic width instead of
+/// squeezing two columns into it (11 section 3.5), so what the matrix pictures
+/// at 360 dp is the control's fit policy and not the page's.
+class GalleryColumns extends StatelessWidget {
+  /// Lays [children] out as columns with [gap] between them.
+  const GalleryColumns({
+    super.key,
+    required this.children,
+    required this.gap,
+    this.flexes,
+    this.minColumnWidth = 320,
+  });
+
+  /// One widget per column, each usually a `Column` of specimens.
+  final List<Widget> children;
+
+  /// The share of the width each column takes side by side; equal when null.
+  final List<int>? flexes;
+
+  /// The space between columns, and between stacked children.
+  final double gap;
+
+  /// The narrowest a column may be before the columns stack.
+  final double minColumnWidth;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) {
+      final double needed =
+          children.length * minColumnWidth + gap * (children.length - 1);
+      if (constraints.maxWidth < needed) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            for (int i = 0; i < children.length; i++) ...<Widget>[
+              if (i > 0) SizedBox(height: gap),
+              children[i],
+            ],
+          ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          for (int i = 0; i < children.length; i++) ...<Widget>[
+            if (i > 0) SizedBox(width: gap),
+            Expanded(flex: flexes?[i] ?? 1, child: children[i]),
+          ],
+        ],
+      );
+    },
+  );
 }
 
 /// A titled block on a gallery page.

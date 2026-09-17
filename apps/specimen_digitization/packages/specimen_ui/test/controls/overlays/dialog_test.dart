@@ -176,11 +176,7 @@ void main() {
           (TextDirection.ltr, const TextScaler.linear(2)),
         ]) {
       await tester.pumpWidget(
-        uiHarness(
-          textDirection: direction,
-          textScaler: scaler,
-          child: _page(),
-        ),
+        uiHarness(textDirection: direction, textScaler: scaler, child: _page()),
       );
       await tester.tap(find.text('Open a dialog'));
       await tester.pumpAndSettle();
@@ -193,9 +189,7 @@ void main() {
   testWidgets('the entrance collapses under reduced motion', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(
-      uiHarness(disableAnimations: true, child: _page()),
-    );
+    await tester.pumpWidget(uiHarness(disableAnimations: true, child: _page()));
     await tester.tap(find.text('Open a dialog'));
     await tester.pumpAndSettle();
     expect(
@@ -222,14 +216,7 @@ void main() {
       ),
       semanticsLabel: 'Correct classification',
       labelsNeverWrap: true,
-      wrappingContent: <String>{
-        _body,
-        // The button's own label. `UiButton` still wraps at a width its
-        // padding does not leave room for; 11 section 3.3 gives it an
-        // ellipsis and a tooltip instead, and slot G1 owns that row of the
-        // table. Delete this entry when `fe/fit-actions` merges.
-        'Correct classification',
-      },
+      wrappingContent: <String>{_body},
       geometryFromType: true,
       fit: FitExpectation(
         check: (WidgetTester tester, double width) async {

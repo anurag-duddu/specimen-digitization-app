@@ -56,13 +56,10 @@ class _DataPageState extends State<_DataPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(flex: 3, child: _rowsColumn(ui)),
-            SizedBox(width: ui.space.s6),
-            Expanded(flex: 2, child: _measuresColumn(ui)),
-          ],
+        GalleryColumns(
+          gap: ui.space.s6,
+          flexes: const <int>[3, 2],
+          children: <Widget>[_rowsColumn(ui), _measuresColumn(ui)],
         ),
         // The fit section spans the page rather than sitting in a column: a
         // 480 dp specimen inside a 370 dp column is a specimen of 370 dp.
@@ -93,8 +90,7 @@ class _DataPageState extends State<_DataPage> {
                         children: <Widget>[
                           const UiListRow(
                             title: 'SPEC-2026-0041',
-                            subtitle:
-                                'Two readings disagree on the collector',
+                            subtitle: 'Two readings disagree on the collector',
                             leading: UiIcon(
                               UiIcons.record,
                               size: UiIconSize.action,
@@ -163,9 +159,7 @@ class _DataPageState extends State<_DataPage> {
               ),
               trailing: Text(
                 '3 d',
-                style: ui.type.bodySmall.copyWith(
-                  color: ui.color.inkSecondary,
-                ),
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
               ),
               onPressed: _noop,
             ),
@@ -367,9 +361,7 @@ class _DataPageState extends State<_DataPage> {
               ),
               GallerySpecimen(
                 label: 'medium',
-                child: UiProgress.ring(
-                  semanticsLabel: 'Waiting on the server',
-                ),
+                child: UiProgress.ring(semanticsLabel: 'Waiting on the server'),
               ),
               GallerySpecimen(
                 label: 'large',

@@ -7,6 +7,12 @@ Wave F slot F2 of the front-end refactor: sections 2, 3.1, 5 and 6 of
 foundation, geometry that derives from type, and the harness the fit clauses
 run in. No control is converted here; wave G does that.
 
+### Integration, wave G
+- `UiModalActions` is a forwarder to `UiButtonRow`: the overlays keep their name for a row of actions and the actions family owns the arrangement. A modal without a primary leads with its way out. Its `style` parameter is gone; nothing outside the package passed it.
+- `UiListRow` bounds a trailing it cannot measure (a chip, a switch, a time) to the room left once the title has its minimum, so no custom trailing can push the line over; a declared "trailing under the title" variant for compact windows is recorded for polish.
+- `GalleryColumns` stacks a page's specimen columns below 320 dp per column, so the matrix pictures each control's own fit policy at 360 dp rather than the page's squeeze. `fitColumns` is one shared constant.
+- The whole tree is formatted once with the pinned `dart format`, and the gate run checks formatting from here on.
+
 ### Foundation
 - Integration: `UiType.lineHeightAt` and `UiType.controlHeightAt` take an explicit `TextScaler`, and the context forms delegate to them, so `UiInputStyle.resolve`, which is handed a scaler, derives the field's height from the same source as every other control.
 - `foundation/window.dart` is new. `WindowClass` moves in from the application

@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../../specimen_ui.dart';
 import '../gallery_shell.dart';
+import '../fit_columns.dart';
 
 /// Builds the overlays page.
 Widget buildOverlaysPage(BuildContext context) => const _OverlaysPage();
@@ -62,108 +63,97 @@ class _OverlaysPageState extends State<_OverlaysPage> {
       children: <Widget>[
         GallerySection(
           title: 'UiBanner, every tone',
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: GalleryColumns(
+            gap: ui.space.s4,
             children: <Widget>[
-              const Expanded(
-                child: _BannerColumn(specimens: _bannerSpecimens),
-              ),
-              SizedBox(width: ui.space.s4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    const _BannerColumn(specimens: _moreBannerSpecimens),
-                    SizedBox(height: ui.space.s2),
-                    const UiBanner(
-                      message:
-                          'Test environment. Not approved museum records.',
-                      tone: UiBannerTone.synthetic,
-                      detail:
-                          'Each reading names the model and provider that '
-                          'produced it.',
-                    ),
-                    SizedBox(height: ui.space.s2),
-                    const UiBanner(
-                      message:
-                          'Readings refresh every twenty seconds while a '
-                          'record is open.',
-                      onDismiss: _noop,
-                      dismissLabel: 'Hide this banner',
-                    ),
-                  ],
-                ),
+              const _BannerColumn(specimens: _bannerSpecimens),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  const _BannerColumn(specimens: _moreBannerSpecimens),
+                  SizedBox(height: ui.space.s2),
+                  const UiBanner(
+                    message: 'Test environment. Not approved museum records.',
+                    tone: UiBannerTone.synthetic,
+                    detail:
+                        'Each reading names the model and provider that '
+                        'produced it.',
+                  ),
+                  SizedBox(height: ui.space.s2),
+                  const UiBanner(
+                    message:
+                        'Readings refresh every twenty seconds while a '
+                        'record is open.',
+                    onDismiss: _noop,
+                    dismissLabel: 'Hide this banner',
+                  ),
+                ],
               ),
             ],
           ),
         ),
         GallerySection(
           title: 'UiDisclosure and UiTabs',
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: GalleryColumns(
+            gap: ui.space.s4,
             children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Surface(
-                      radius: ui.shape.tile,
-                      hairline: true,
-                      child: UiDisclosure(
-                        title: 'Label coverage',
-                        summary: 'Three regions, one unmeasured',
-                        child: Text(
-                          'Region 3 has no measured area.',
-                          style: ui.type.body.copyWith(
-                            color: ui.color.inkSecondary,
-                          ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Surface(
+                    radius: ui.shape.tile,
+                    hairline: true,
+                    child: UiDisclosure(
+                      title: 'Label coverage',
+                      summary: 'Three regions, one unmeasured',
+                      child: Text(
+                        'Region 3 has no measured area.',
+                        style: ui.type.body.copyWith(
+                          color: ui.color.inkSecondary,
                         ),
                       ),
                     ),
-                    SizedBox(height: ui.space.s2),
-                    Surface(
-                      radius: ui.shape.tile,
-                      hairline: true,
-                      child: UiDisclosure(
-                        title: 'Why this is not calibrated',
-                        initiallyExpanded: true,
-                        child: Text(
-                          'The score has no reference set behind it, so it '
-                          'ranks records and does not measure them.',
-                          style: ui.type.body.copyWith(
-                            color: ui.color.inkSecondary,
-                          ),
+                  ),
+                  SizedBox(height: ui.space.s2),
+                  Surface(
+                    radius: ui.shape.tile,
+                    hairline: true,
+                    child: UiDisclosure(
+                      title: 'Why this is not calibrated',
+                      initiallyExpanded: true,
+                      child: Text(
+                        'The score has no reference set behind it, so it '
+                        'ranks records and does not measure them.',
+                        style: ui.type.body.copyWith(
+                          color: ui.color.inkSecondary,
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              SizedBox(width: ui.space.s4),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    UiTabs(
-                      tabs: _tabs,
-                      selected: _tab,
-                      semanticsLabel: 'Record panels',
-                    ),
-                    SizedBox(height: ui.space.s3),
-                    UiTabView(
-                      selected: _tab,
-                      children: <Widget>[
-                        for (final String pane in _panes)
-                          Text(
-                            pane,
-                            style: ui.type.body.copyWith(
-                              color: ui.color.inkSecondary,
-                            ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  UiTabs(
+                    tabs: _tabs,
+                    selected: _tab,
+                    semanticsLabel: 'Record panels',
+                  ),
+                  SizedBox(height: ui.space.s3),
+                  UiTabView(
+                    selected: _tab,
+                    children: <Widget>[
+                      for (final String pane in _panes)
+                        Text(
+                          pane,
+                          style: ui.type.body.copyWith(
+                            color: ui.color.inkSecondary,
                           ),
-                      ],
-                    ),
-                  ],
-                ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ],
           ),
@@ -292,9 +282,6 @@ class _OverlaysPageState extends State<_OverlaysPage> {
 
 /// The columns 11 section 3.3 measures a control's fit in.
 ///
-/// Repeated on each family page rather than shared, because the file that
-/// would hold it is the gallery shell, which slot G3 owns this wave.
-const List<double> fitColumns = <double>[480, 360, 280, 200];
 
 /// A stack of banners, so the tones read as one grid rather than as a column
 /// the length of the page.
@@ -415,23 +402,22 @@ class _DisabledReason extends StatelessWidget {
   }
 }
 
-const List<(UiBannerTone, String)> _bannerSpecimens =
-    <(UiBannerTone, String)>[
-      (
-        UiBannerTone.info,
-        'Readings refresh every twenty seconds while a record is open.',
-      ),
-      (UiBannerTone.synthetic, 'Test environment. Not approved museum records.'),
-      (UiBannerTone.cleared, 'Twelve records cleared in this batch.'),
-      (
-        UiBannerTone.needsReview,
-        'Four records need human review before this batch closes.',
-      ),
-      (
-        UiBannerTone.deferred,
-        'This batch is deferred until the copy stand is recalibrated.',
-      ),
-    ];
+const List<(UiBannerTone, String)> _bannerSpecimens = <(UiBannerTone, String)>[
+  (
+    UiBannerTone.info,
+    'Readings refresh every twenty seconds while a record is open.',
+  ),
+  (UiBannerTone.synthetic, 'Test environment. Not approved museum records.'),
+  (UiBannerTone.cleared, 'Twelve records cleared in this batch.'),
+  (
+    UiBannerTone.needsReview,
+    'Four records need human review before this batch closes.',
+  ),
+  (
+    UiBannerTone.deferred,
+    'This batch is deferred until the copy stand is recalibrated.',
+  ),
+];
 
 const List<(UiBannerTone, String)> _moreBannerSpecimens =
     <(UiBannerTone, String)>[

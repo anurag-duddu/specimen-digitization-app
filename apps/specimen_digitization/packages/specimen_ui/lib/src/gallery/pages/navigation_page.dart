@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../../specimen_ui.dart';
 import '../gallery_shell.dart';
+import '../fit_columns.dart';
 
 /// The two destinations the application ships with today.
 const List<UiNavDestination> _two = <UiNavDestination>[
@@ -209,9 +210,6 @@ Widget buildNavigationPage(BuildContext context) {
 
 /// The columns 11 section 3.3 measures a control's fit in.
 ///
-/// Repeated on each family page rather than shared, because the file that
-/// would hold it is the gallery shell, which slot G3 owns this wave.
-const List<double> fitColumns = <double>[480, 360, 280, 200];
 
 /// Four commands, so the bar has two to keep and two to collapse.
 const List<Widget> _commands = <Widget>[

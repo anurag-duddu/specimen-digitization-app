@@ -111,7 +111,8 @@ class UiDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final UiModalStyle paint = style ?? UiModalStyle.resolve(context.ui, context);
+    final UiModalStyle paint =
+        style ?? UiModalStyle.resolve(context.ui, context);
     return Padding(
       padding: paint.padding,
       child: Column(
@@ -129,11 +130,7 @@ class UiDialog extends StatelessWidget {
           Flexible(child: child),
           if (primaryAction != null || secondaryAction != null) ...<Widget>[
             SizedBox(height: paint.gap),
-            UiModalActions(
-              primary: primaryAction,
-              secondary: secondaryAction,
-              style: paint,
-            ),
+            UiModalActions(primary: primaryAction, secondary: secondaryAction),
           ],
         ],
       ),

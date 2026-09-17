@@ -91,424 +91,413 @@ class _ActionsPageState extends State<_ActionsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        GalleryColumns(
+          gap: ui.space.s6,
+          flexes: const <int>[3, 2],
           children: <Widget>[
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  _Section(
-                    title: 'UiButton, variants',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        for (final UiButtonVariant variant
-                            in UiButtonVariant.values)
-                          GallerySpecimen(
-                            label: variant.name,
-                            child: UiButton(
-                              label: _variantLabel(variant),
-                              variant: variant,
-                              onPressed: _noop,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  _Section(
-                    title: 'UiButton, sizes',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        for (final UiSize size in UiSize.values)
-                          GallerySpecimen(
-                            label: size.name,
-                            note: size == UiSize.md
-                                ? 'height follows the density'
-                                : null,
-                            child: UiButton(
-                              label: 'Approve record',
-                              size: size,
-                              onPressed: _noop,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  _Section(
-                    title: 'UiButton, states',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        const GallerySpecimen(
-                          label: 'rest',
-                          child: UiButton(
-                            label: 'Approve record',
-                            onPressed: _noop,
-                          ),
-                        ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _Section(
+                  title: 'UiButton, variants',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      for (final UiButtonVariant variant
+                          in UiButtonVariant.values)
                         GallerySpecimen(
-                          label: 'hovered',
+                          label: variant.name,
                           child: UiButton(
-                            label: 'Approve record',
+                            label: _variantLabel(variant),
+                            variant: variant,
                             onPressed: _noop,
-                            statesController: _forced[WidgetState.hovered],
                           ),
                         ),
-                        GallerySpecimen(
-                          label: 'pressed',
-                          child: UiButton(
-                            label: 'Approve record',
-                            onPressed: _noop,
-                            statesController: _forced[WidgetState.pressed],
-                          ),
-                        ),
-                        const GallerySpecimen(
-                          label: 'disabled',
-                          note: 'the reason is on the semantics hint',
-                          child: UiButton(
-                            label: 'Approve record',
-                            disabledReason:
-                                'Confirm label coverage before you approve this record.',
-                          ),
-                        ),
-                        const GallerySpecimen(
-                          label: 'loading',
-                          note: 'the ring is held still for the golden',
-                          child: TickerMode(
-                            enabled: false,
-                            child: UiButton(
-                              label: 'Saving',
-                              loading: true,
-                              onPressed: _noop,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
-                  _Section(
-                    title: 'UiButton, slots',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        const GallerySpecimen(
-                          label: 'leading',
+                ),
+                _Section(
+                  title: 'UiButton, sizes',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      for (final UiSize size in UiSize.values)
+                        GallerySpecimen(
+                          label: size.name,
+                          note: size == UiSize.md
+                              ? 'height follows the density'
+                              : null,
                           child: UiButton(
-                            label: 'Retry processing',
+                            label: 'Approve record',
+                            size: size,
+                            onPressed: _noop,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: 'UiButton, states',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      const GallerySpecimen(
+                        label: 'rest',
+                        child: UiButton(
+                          label: 'Approve record',
+                          onPressed: _noop,
+                        ),
+                      ),
+                      GallerySpecimen(
+                        label: 'hovered',
+                        child: UiButton(
+                          label: 'Approve record',
+                          onPressed: _noop,
+                          statesController: _forced[WidgetState.hovered],
+                        ),
+                      ),
+                      GallerySpecimen(
+                        label: 'pressed',
+                        child: UiButton(
+                          label: 'Approve record',
+                          onPressed: _noop,
+                          statesController: _forced[WidgetState.pressed],
+                        ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'disabled',
+                        note: 'the reason is on the semantics hint',
+                        child: UiButton(
+                          label: 'Approve record',
+                          disabledReason:
+                              'Confirm label coverage before you approve this record.',
+                        ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'loading',
+                        note: 'the ring is held still for the golden',
+                        child: TickerMode(
+                          enabled: false,
+                          child: UiButton(
+                            label: 'Saving',
+                            loading: true,
+                            onPressed: _noop,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _Section(
+                  title: 'UiButton, slots',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      const GallerySpecimen(
+                        label: 'leading',
+                        child: UiButton(
+                          label: 'Retry processing',
+                          leading: UiIcons.retry,
+                          variant: UiButtonVariant.secondary,
+                          onPressed: _noop,
+                        ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'trailing',
+                        child: UiButton(
+                          label: 'Open the next record',
+                          trailing: UiIcons.next,
+                          variant: UiButtonVariant.ghost,
+                          onPressed: _noop,
+                        ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'leading and trailing',
+                        child: UiButton(
+                          label: 'Start new run',
+                          leading: UiIcons.processing,
+                          trailing: UiIcons.next,
+                          variant: UiButtonVariant.secondary,
+                          onPressed: _noop,
+                        ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'loading, width held',
+                        child: TickerMode(
+                          enabled: false,
+                          child: UiButton(
+                            label: 'Retrying',
                             leading: UiIcons.retry,
                             variant: UiButtonVariant.secondary,
+                            loading: true,
                             onPressed: _noop,
                           ),
                         ),
-                        const GallerySpecimen(
-                          label: 'trailing',
-                          child: UiButton(
-                            label: 'Open the next record',
-                            trailing: UiIcons.next,
-                            variant: UiButtonVariant.ghost,
-                            onPressed: _noop,
-                          ),
-                        ),
-                        const GallerySpecimen(
-                          label: 'leading and trailing',
-                          child: UiButton(
-                            label: 'Start new run',
-                            leading: UiIcons.processing,
-                            trailing: UiIcons.next,
-                            variant: UiButtonVariant.secondary,
-                            onPressed: _noop,
-                          ),
-                        ),
-                        const GallerySpecimen(
-                          label: 'loading, width held',
-                          child: TickerMode(
-                            enabled: false,
-                            child: UiButton(
-                              label: 'Retrying',
-                              leading: UiIcons.retry,
-                              variant: UiButtonVariant.secondary,
-                              loading: true,
-                              onPressed: _noop,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  _Section(
-                    title: 'UiSegmented',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        GallerySpecimen(
-                          label: 'two segments',
-                          child: UiSegmented<_Pane>(
-                            segments: _paneSegments
-                                .take(2)
-                                .toList(growable: false),
-                            value: _pane == _Pane.readings
-                                ? _Pane.readings
-                                : _Pane.fields,
-                            onChanged: (_Pane next) =>
-                                setState(() => _pane = next),
-                          ),
+                ),
+                _Section(
+                  title: 'UiSegmented',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      GallerySpecimen(
+                        label: 'two segments',
+                        child: UiSegmented<_Pane>(
+                          segments: _paneSegments
+                              .take(2)
+                              .toList(growable: false),
+                          value: _pane == _Pane.readings
+                              ? _Pane.readings
+                              : _Pane.fields,
+                          onChanged: (_Pane next) =>
+                              setState(() => _pane = next),
                         ),
-                        SizedBox(height: ui.space.s4),
-                        GallerySpecimen(
-                          label: 'three segments',
-                          child: UiSegmented<_Pane>(
-                            segments: _paneSegments
-                                .take(3)
-                                .toList(growable: false),
-                            value: _threePane,
-                            onChanged: (_Pane next) =>
-                                setState(() => _threePane = next),
-                          ),
+                      ),
+                      SizedBox(height: ui.space.s4),
+                      GallerySpecimen(
+                        label: 'three segments',
+                        child: UiSegmented<_Pane>(
+                          segments: _paneSegments
+                              .take(3)
+                              .toList(growable: false),
+                          value: _threePane,
+                          onChanged: (_Pane next) =>
+                              setState(() => _threePane = next),
                         ),
-                        SizedBox(height: ui.space.s4),
-                        GallerySpecimen(
-                          label: 'five segments, at lg',
-                          child: UiSegmented<_Pane>(
-                            segments: _paneSegments,
-                            value: _fivePane,
-                            size: UiSize.lg,
-                            onChanged: (_Pane next) =>
-                                setState(() => _fivePane = next),
-                          ),
+                      ),
+                      SizedBox(height: ui.space.s4),
+                      GallerySpecimen(
+                        label: 'five segments, at lg',
+                        child: UiSegmented<_Pane>(
+                          segments: _paneSegments,
+                          value: _fivePane,
+                          size: UiSize.lg,
+                          onChanged: (_Pane next) =>
+                              setState(() => _fivePane = next),
                         ),
-                        SizedBox(height: ui.space.s4),
-                        GallerySpecimen(
-                          label: 'disabled',
-                          child: UiSegmented<_Pane>(
-                            segments: _paneSegments
-                                .take(3)
-                                .toList(growable: false),
-                            value: _Pane.readings,
-                            onChanged: null,
-                            disabledReason:
-                                'This run produced one pane of evidence.',
-                          ),
+                      ),
+                      SizedBox(height: ui.space.s4),
+                      GallerySpecimen(
+                        label: 'disabled',
+                        child: UiSegmented<_Pane>(
+                          segments: _paneSegments
+                              .take(3)
+                              .toList(growable: false),
+                          value: _Pane.readings,
+                          onChanged: null,
+                          disabledReason:
+                              'This run produced one pane of evidence.',
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            SizedBox(width: ui.space.s6),
-            Expanded(
-              flex: 2,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  _Section(
-                    title: 'UiIconButton',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        for (final UiIconButtonVariant variant
-                            in UiIconButtonVariant.values)
-                          GallerySpecimen(
-                            label: variant.name,
-                            child: UiIconButton(
-                              icon: UiIcons.rotateView,
-                              semanticsLabel: 'Rotate the view',
-                              variant: variant,
-                              onPressed: _noop,
-                            ),
-                          ),
-                        const GallerySpecimen(
-                          label: 'current glyph',
-                          note: 'fill form, for a destination in view',
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _Section(
+                  title: 'UiIconButton',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      for (final UiIconButtonVariant variant
+                          in UiIconButtonVariant.values)
+                        GallerySpecimen(
+                          label: variant.name,
                           child: UiIconButton(
-                            icon: UiIcons.queue,
-                            semanticsLabel: 'Open the queue',
-                            current: true,
+                            icon: UiIcons.rotateView,
+                            semanticsLabel: 'Rotate the view',
+                            variant: variant,
                             onPressed: _noop,
                           ),
                         ),
-                        const GallerySpecimen(
-                          label: 'disabled',
-                          child: UiIconButton(
-                            icon: UiIcons.correctRegions,
-                            semanticsLabel: 'Correct label regions',
-                            variant: UiIconButtonVariant.secondary,
-                            disabledReason:
-                                'Label regions can be corrected once processing ends.',
-                          ),
+                      const GallerySpecimen(
+                        label: 'current glyph',
+                        note: 'fill form, for a destination in view',
+                        child: UiIconButton(
+                          icon: UiIcons.queue,
+                          semanticsLabel: 'Open the queue',
+                          current: true,
+                          onPressed: _noop,
                         ),
-                      ],
-                    ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'disabled',
+                        child: UiIconButton(
+                          icon: UiIcons.correctRegions,
+                          semanticsLabel: 'Correct label regions',
+                          variant: UiIconButtonVariant.secondary,
+                          disabledReason:
+                              'Label regions can be corrected once processing ends.',
+                        ),
+                      ),
+                    ],
                   ),
-                  _Section(
-                    title: 'UiCapsuleToggle',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        GallerySpecimen(
-                          label: 'multiple',
-                          child: UiCapsuleToggle<_Reading>(
-                            options: _readingOptions,
-                            selected: _sources,
-                            onChanged: (Set<_Reading> next) =>
-                                setState(() => _sources = next),
-                          ),
+                ),
+                _Section(
+                  title: 'UiCapsuleToggle',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      GallerySpecimen(
+                        label: 'multiple',
+                        child: UiCapsuleToggle<_Reading>(
+                          options: _readingOptions,
+                          selected: _sources,
+                          onChanged: (Set<_Reading> next) =>
+                              setState(() => _sources = next),
                         ),
-                        SizedBox(height: ui.space.s4),
-                        GallerySpecimen(
-                          label: 'single',
-                          child: UiCapsuleToggle<_Reading>(
-                            options: _readingOptions,
-                            selected: _oneSource,
-                            selection: UiToggleSelection.single,
-                            onChanged: (Set<_Reading> next) =>
-                                setState(() => _oneSource = next),
-                          ),
+                      ),
+                      SizedBox(height: ui.space.s4),
+                      GallerySpecimen(
+                        label: 'single',
+                        child: UiCapsuleToggle<_Reading>(
+                          options: _readingOptions,
+                          selected: _oneSource,
+                          selection: UiToggleSelection.single,
+                          onChanged: (Set<_Reading> next) =>
+                              setState(() => _oneSource = next),
                         ),
-                        SizedBox(height: ui.space.s4),
-                        const GallerySpecimen(
-                          label: 'disabled',
-                          child: UiCapsuleToggle<_Reading>(
-                            options: _readingOptions,
-                            selected: <_Reading>{_Reading.authority},
-                            onChanged: null,
-                            disabledReason:
-                                'This run has one reading to compare.',
-                          ),
+                      ),
+                      SizedBox(height: ui.space.s4),
+                      const GallerySpecimen(
+                        label: 'disabled',
+                        child: UiCapsuleToggle<_Reading>(
+                          options: _readingOptions,
+                          selected: <_Reading>{_Reading.authority},
+                          onChanged: null,
+                          disabledReason:
+                              'This run has one reading to compare.',
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  _Section(
-                    title: 'UiChip',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        const GallerySpecimen(
-                          label: 'tag',
-                          child: UiChip(label: 'Coleoptera'),
+                ),
+                _Section(
+                  title: 'UiChip',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      const GallerySpecimen(
+                        label: 'tag',
+                        child: UiChip(label: 'Coleoptera'),
+                      ),
+                      GallerySpecimen(
+                        label: 'tag, status triple',
+                        child: UiChip(
+                          label: 'Needs human review',
+                          icon: UiIcons.needsReview,
+                          status: ui.color.status.needsReview,
+                          semanticsLabel: 'Queue: needs human review',
                         ),
+                      ),
+                      GallerySpecimen(
+                        label: 'filter, off',
+                        child: UiChip(
+                          label: 'Oldest first',
+                          variant: UiChipVariant.filter,
+                          icon: UiIcons.filter,
+                          onPressed: () =>
+                              setState(() => _filterOn = !_filterOn),
+                        ),
+                      ),
+                      GallerySpecimen(
+                        label: 'filter, on',
+                        child: UiChip(
+                          label: 'Blocked runs',
+                          variant: UiChipVariant.filter,
+                          selected: _filterOn,
+                          onPressed: () =>
+                              setState(() => _filterOn = !_filterOn),
+                        ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'filter, disabled',
+                        child: UiChip(
+                          label: 'Saved filters',
+                          variant: UiChipVariant.filter,
+                          disabledReason: 'Save a filter to reuse it here.',
+                        ),
+                      ),
+                      for (final String entered in _entered)
                         GallerySpecimen(
-                          label: 'tag, status triple',
+                          label: 'input',
                           child: UiChip(
-                            label: 'Needs human review',
-                            icon: UiIcons.needsReview,
-                            status: ui.color.status.needsReview,
-                            semanticsLabel: 'Queue: needs human review',
+                            label: entered,
+                            variant: UiChipVariant.input,
+                            onRemove: () =>
+                                setState(() => _entered.remove(entered)),
                           ),
                         ),
-                        GallerySpecimen(
-                          label: 'filter, off',
-                          child: UiChip(
-                            label: 'Oldest first',
-                            variant: UiChipVariant.filter,
-                            icon: UiIcons.filter,
-                            onPressed: () =>
-                                setState(() => _filterOn = !_filterOn),
-                          ),
-                        ),
-                        GallerySpecimen(
-                          label: 'filter, on',
-                          child: UiChip(
-                            label: 'Blocked runs',
-                            variant: UiChipVariant.filter,
-                            selected: _filterOn,
-                            onPressed: () =>
-                                setState(() => _filterOn = !_filterOn),
-                          ),
-                        ),
-                        const GallerySpecimen(
-                          label: 'filter, disabled',
-                          child: UiChip(
-                            label: 'Saved filters',
-                            variant: UiChipVariant.filter,
-                            disabledReason: 'Save a filter to reuse it here.',
-                          ),
-                        ),
-                        for (final String entered in _entered)
-                          GallerySpecimen(
-                            label: 'input',
-                            child: UiChip(
-                              label: entered,
-                              variant: UiChipVariant.input,
-                              onRemove: () =>
-                                  setState(() => _entered.remove(entered)),
-                            ),
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
-                  _Section(
-                    title: 'UiBadge',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        const GallerySpecimen(
-                          label: 'count',
-                          child: UiBadge(
-                            4,
-                            semanticsLabel: '4 records waiting',
-                          ),
+                ),
+                _Section(
+                  title: 'UiBadge',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      const GallerySpecimen(
+                        label: 'count',
+                        child: UiBadge(4, semanticsLabel: '4 records waiting'),
+                      ),
+                      const GallerySpecimen(
+                        label: 'count, three digits',
+                        child: UiBadge(
+                          128,
+                          semanticsLabel: '128 records waiting',
                         ),
-                        const GallerySpecimen(
-                          label: 'count, three digits',
-                          child: UiBadge(
-                            128,
-                            semanticsLabel: '128 records waiting',
-                          ),
+                      ),
+                      GallerySpecimen(
+                        label: 'count, status',
+                        child: UiBadge(
+                          12,
+                          status: ui.color.status.blocked,
+                          semanticsLabel: '12 blocked runs',
                         ),
-                        GallerySpecimen(
-                          label: 'count, status',
-                          child: UiBadge(
-                            12,
-                            status: ui.color.status.blocked,
-                            semanticsLabel: '12 blocked runs',
-                          ),
+                      ),
+                      const GallerySpecimen(
+                        label: 'dot',
+                        child: UiBadge.dot(semanticsLabel: 'Unread decisions'),
+                      ),
+                      GallerySpecimen(
+                        label: 'dot, status',
+                        child: UiBadge.dot(
+                          status: ui.color.status.cleared,
+                          semanticsLabel: 'Cleared since you last looked',
                         ),
-                        const GallerySpecimen(
-                          label: 'dot',
-                          child: UiBadge.dot(
-                            semanticsLabel: 'Unread decisions',
-                          ),
-                        ),
-                        GallerySpecimen(
-                          label: 'dot, status',
-                          child: UiBadge.dot(
-                            status: ui.color.status.cleared,
-                            semanticsLabel: 'Cleared since you last looked',
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  _Section(
-                    title: 'UiKeyCap',
-                    child: _Row(
-                      ui: ui,
-                      children: <Widget>[
-                        for (final String key in <String>[
-                          'J',
-                          'K',
-                          'Esc',
-                          'Shift',
-                        ])
-                          GallerySpecimen(
-                            label: key,
-                            child: UiKeyCap(label: key),
-                          ),
-                        const GallerySpecimen(
-                          label: 'spoken',
-                          note: 'a printed form that does not say itself aloud',
-                          child: UiKeyCap(label: '/', semanticsLabel: 'Slash'),
+                ),
+                _Section(
+                  title: 'UiKeyCap',
+                  child: _Row(
+                    ui: ui,
+                    children: <Widget>[
+                      for (final String key in <String>[
+                        'J',
+                        'K',
+                        'Esc',
+                        'Shift',
+                      ])
+                        GallerySpecimen(
+                          label: key,
+                          child: UiKeyCap(label: key),
                         ),
-                      ],
-                    ),
+                      const GallerySpecimen(
+                        label: 'spoken',
+                        note: 'a printed form that does not say itself aloud',
+                        child: UiKeyCap(label: '/', semanticsLabel: 'Slash'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ],
         ),

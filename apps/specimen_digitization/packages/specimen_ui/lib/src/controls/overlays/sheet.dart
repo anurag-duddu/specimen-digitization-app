@@ -4,8 +4,8 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/theme.dart';
+import '../actions/button_row.dart';
 import '../../foundation/type.dart';
-import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/modal_routes.dart';
 import '../actions/button.dart';
@@ -98,13 +98,6 @@ class UiModalStyle {
 /// Public because both modals draw it and because a screen that builds its
 /// own surface should not reinvent it.
 ///
-// fe/fit-actions: this is `UiButtonRow` of 11 section 3.4 under the name the
-// overlays family already had for it, built to that section's shape so the
-// swap is a rename and a move. Slot G1 owns `controls/actions/` and lands the
-// real class; when it does, this becomes a forwarder or goes, and its two
-// call sites below move with it. Spelled without a `TODO(` marker on purpose:
-// the `no_stand_ins` gate fails on that string anywhere under `lib/`, and
-// weakening a gate to carry a coordination note is the worse trade.
 class UiModalActions extends StatelessWidget {
   /// A row of [primary], [secondary] and [tertiary].
   const UiModalActions({
@@ -112,7 +105,6 @@ class UiModalActions extends StatelessWidget {
     this.primary,
     this.secondary,
     this.tertiary = const <UiButton>[],
-    this.style,
   });
 
   /// The one action that carries the modal's verb.
@@ -124,109 +116,23 @@ class UiModalActions extends StatelessWidget {
   /// Anything else the modal offers, read before the two above.
   final List<UiButton> tertiary;
 
-  /// Overrides the resolved style. A code review event (10 section 1.5).
-  final UiModalStyle? style;
-
-  /// The buttons in the order a row draws them: the primary last, at the end.
-  List<UiButton> get _inRow => <UiButton>[
-    ...tertiary,
-    ?secondary,
-    ?primary,
-  ];
-
-  /// The buttons in the order a column draws them: the primary on top.
-  ///
-  /// The order reverses with the axis because "last" and "first" are the same
-  /// position read two ways: the end of a line and the top of a stack are
-  /// both where the eye finishes, and the primary belongs there.
-  List<UiButton> get _inColumn => <UiButton>[
-    ?primary,
-    ?secondary,
-    ...tertiary,
-  ];
-
+  /// The overlays' name for [UiButtonRow], kept so both modals and a screen
+  /// that builds its own surface read the same word. The row wants a lead
+  /// action; a modal without a primary leads with its way out, and one with
+  /// neither leads with the last of its tertiary actions, since the end of
+  /// the line and the top of the stack are where the eye finishes either way.
   @override
   Widget build(BuildContext context) {
-    assert(
-      primary == null || primary!.variant == UiButtonVariant.primary,
-      'the primary action of a modal is the primary variant (10 section 4.3)',
-    );
-    assert(
-      secondary == null || secondary!.variant != UiButtonVariant.primary,
-      'a modal carries at most one primary action (10 section 4.3)',
-    );
-    final UiThemeData ui = context.ui;
-    final UiModalStyle paint = style ?? UiModalStyle.resolve(ui, context);
-    final List<UiButton> row = _inRow;
-    if (row.isEmpty) return const SizedBox.shrink();
-    if (isCompactWindow(context)) return _column(paint);
-
-    double width = paint.actionGap * (row.length - 1);
-    for (final UiButton button in row) {
-      width += _buttonWidth(context, ui, button);
-    }
-    return FitBuilder(
-      variants: <FitVariant>[
-        FitVariant(
-          intrinsicWidth: width,
-          builder: (BuildContext context, bool _) => _row(paint, row),
-        ),
-        FitVariant(
-          intrinsicWidth: 0,
-          builder: (BuildContext context, bool _) => _column(paint),
-        ),
-      ],
+    final UiButton? lead = primary ?? secondary ?? tertiary.lastOrNull;
+    if (lead == null) return const SizedBox.shrink();
+    return UiButtonRow(
+      primary: lead,
+      secondary: primary == null ? null : secondary,
+      tertiary: primary == null && secondary == null
+          ? tertiary.sublist(0, tertiary.length - 1)
+          : tertiary,
     );
   }
-
-  Widget _row(UiModalStyle paint, List<UiButton> buttons) => ConstrainedBox(
-    constraints: BoxConstraints(minHeight: paint.actionHeight),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: <Widget>[
-        for (int i = 0; i < buttons.length; i++) ...<Widget>[
-          if (i != 0) SizedBox(width: paint.actionGap),
-          buttons[i],
-        ],
-      ],
-    ),
-  );
-
-  Widget _column(UiModalStyle paint) {
-    final List<UiButton> buttons = _inColumn;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      // Stretched, because a stacked action that is narrower than the one
-      // above it reads as the lesser of the two whichever way round they are.
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        for (int i = 0; i < buttons.length; i++) ...<Widget>[
-          if (i != 0) SizedBox(height: paint.actionGap),
-          buttons[i],
-        ],
-      ],
-    );
-  }
-}
-
-/// The width [button] needs to draw its label, its glyphs and its padding.
-///
-/// Measured through the button's own resolved style, so the arithmetic does
-/// not restate a token the actions family owns.
-double _buttonWidth(BuildContext context, UiThemeData ui, UiButton button) {
-  final UiButtonStyle style = UiButtonStyle.resolve(
-    ui,
-    button.variant,
-    button.size,
-  );
-  final double glyphs =
-      (button.loading || button.leading != null
-          ? ui.space.iconInline + style.gap
-          : 0) +
-      (button.trailing != null ? ui.space.iconInline + style.gap : 0);
-  return style.padding.resolve(Directionality.of(context)).horizontal +
-      glyphs +
-      measureLabel(context, button.label, style.label).width;
 }
 
 /// The chrome of a bottom sheet.
@@ -351,7 +257,6 @@ class UiSheet extends StatelessWidget {
                   UiModalActions(
                     primary: primaryAction,
                     secondary: secondaryAction,
-                    style: paint,
                   ),
                 ],
               ],

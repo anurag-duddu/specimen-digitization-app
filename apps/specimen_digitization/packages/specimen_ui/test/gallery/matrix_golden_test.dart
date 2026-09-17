@@ -105,15 +105,7 @@ String matrixGoldenName(
 ///   foundation pages lay their specimens out in a `Row` rather than a `Wrap`,
 ///   so the sheet itself overflows at 360 dp. Neither is a control and neither
 ///   is this slot's file; both are in the closeout as follow-ups.
-const Map<String, int> overflowBacklog = <String, int>{
-  'controls/data/data_tile.dart': 2,
-  'controls/data/list_row.dart': 108,
-  'controls/navigation/pill_nav.dart': 6,
-  'controls/overlays/sheet.dart': 72,
-  'controls/overlays/toast.dart': 32,
-  'gallery/pages/shape_page.dart': 24,
-  'gallery/pages/type_page.dart': 6,
-};
+const Map<String, int> overflowBacklog = <String, int>{};
 
 /// What the matrix actually saw, filled in as the pages are captured.
 final Map<String, int> observedOverflows = <String, int>{};
@@ -208,7 +200,8 @@ void main() {
       WidgetTester tester,
     ) async {
       addTearDown(tester.view.reset);
-      for (final MapEntry<String, double> windowClass in matrixClasses.entries) {
+      for (final MapEntry<String, double> windowClass
+          in matrixClasses.entries) {
         for (final MapEntry<String, double> scale in matrixScales.entries) {
           for (final Brightness mode in Brightness.values) {
             final String name = matrixGoldenName(
@@ -248,11 +241,10 @@ void main() {
   // run in the order they are declared.
   test('the overflow backlog only shrinks', () {
     final List<MapEntry<String, int>> sorted =
-        observedOverflows.entries.toList()
-          ..sort(
-            (MapEntry<String, int> a, MapEntry<String, int> b) =>
-                a.key.compareTo(b.key),
-          );
+        observedOverflows.entries.toList()..sort(
+          (MapEntry<String, int> a, MapEntry<String, int> b) =>
+              a.key.compareTo(b.key),
+        );
     final String seen = sorted.isEmpty
         ? 'nothing overflowed anywhere in the matrix'
         : sorted

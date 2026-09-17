@@ -436,9 +436,7 @@ class _BoxPaint extends StatelessWidget {
       shape,
       textScaler: MediaQuery.textScalerOf(context),
     );
-    final Set<WidgetState> states = <WidgetState>{
-      if (error) WidgetState.error,
-    };
+    final Set<WidgetState> states = <WidgetState>{if (error) WidgetState.error};
     final String? text = value;
     return Padding(
       // Room for the ring, which is drawn outside the box and would otherwise
