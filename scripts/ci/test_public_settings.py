@@ -58,7 +58,8 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
                GITHUB_EVENT_NAME=event, GITHUB_REF=ref,
                SPECIMEN_API_BASE_URL="https://example.run.app",
                SPECIMEN_RECAPTCHA_SITE_KEY="synthetic-site-key",
-               SPECIMEN_ADMIN_CONTACT="Alex Mwangi <alex.mwangi@fieldmuseum.org>")
+               SPECIMEN_ADMIN_CONTACT="Alex Mwangi <alex.mwangi@fieldmuseum.org>",
+               SPECIMEN_PILOT_SCOPE="Ten original specimens")
     env.pop("SPECIMEN_AUTH_EMULATOR_HOST", None)
     env.pop("SPECIMEN_LOCAL_SYNTHETIC", None)
     result = subprocess.run([str(root / "scripts/ci/build_web.sh")], cwd=root / "apps/specimen_digitization",
@@ -66,6 +67,7 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
     assert ("--dart-define=SPECIMEN_API_BASE_URL=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_RECAPTCHA_SITE_KEY=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_ADMIN_CONTACT=" in result.stdout) is live
+    assert ("--dart-define=SPECIMEN_PILOT_SCOPE=" in result.stdout) is live
 
 
 @pytest.mark.parametrize("sha", ["4f9f518", None])

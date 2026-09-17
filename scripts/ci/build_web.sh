@@ -18,5 +18,10 @@ if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "push" && "
   if [[ -n "${SPECIMEN_ADMIN_CONTACT:-}" ]]; then
     args+=("--dart-define=SPECIMEN_ADMIN_CONTACT=$SPECIMEN_ADMIN_CONTACT")
   fi
+  # A bounded pilot names its scope in the reviewer's words (environment
+  # band, 07 section 1.3); production is the empty default and shows no band.
+  if [[ -n "${SPECIMEN_PILOT_SCOPE:-}" ]]; then
+    args+=("--dart-define=SPECIMEN_PILOT_SCOPE=$SPECIMEN_PILOT_SCOPE")
+  fi
 fi
 flutter build web "${args[@]}"

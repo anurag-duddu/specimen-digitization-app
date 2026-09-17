@@ -121,6 +121,7 @@ jobs:
           SPECIMEN_API_BASE_URL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_API_BASE_URL || '' }}
           SPECIMEN_RECAPTCHA_SITE_KEY: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_RECAPTCHA_SITE_KEY || '' }}
           SPECIMEN_ADMIN_CONTACT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_ADMIN_CONTACT || '' }}
+          SPECIMEN_PILOT_SCOPE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_PILOT_SCOPE || '' }}
         run: ../../scripts/ci/build_web.sh
 
       - name: Stamp release with its source revision
