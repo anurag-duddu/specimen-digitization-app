@@ -59,11 +59,15 @@ class _SlotPublisher extends StatefulWidget {
     this.actionBar,
     this.navVisible,
     this.bandCompact,
+    this.title,
+    this.leading,
   });
 
   final Widget? actionBar;
   final bool? navVisible;
   final bool? bandCompact;
+  final String? title;
+  final Widget? leading;
 
   @override
   State<_SlotPublisher> createState() => _SlotPublisherState();
@@ -78,7 +82,9 @@ class _SlotPublisherState extends State<_SlotPublisher> {
     _slots = UiScaffoldSlots.of(context)
       ?..setActionBar(widget.actionBar, owner: this)
       ..setNavVisible(widget.navVisible, owner: this)
-      ..setBandCompact(widget.bandCompact, owner: this);
+      ..setBandCompact(widget.bandCompact, owner: this)
+      ..setTitle(widget.title, owner: this)
+      ..setLeading(widget.leading, owner: this);
   }
 
   @override
@@ -971,19 +977,26 @@ void main() {
     final Object record = Object();
     final Object queue = Object();
     const Widget decision = Text('Clear record');
+    const Widget back = Text('Back');
     slots
       ..setTopBar(const Text('FMNH-0001'), owner: record)
+      ..setTitle('Sources', owner: record)
+      ..setLeading(back, owner: record)
       ..setActionBar(decision, owner: record)
       ..setNavVisible(false, owner: record)
       ..setBandCompact(true, owner: record);
 
     slots
       ..setTopBar(null, owner: queue)
+      ..setTitle(null, owner: queue)
+      ..setLeading(null, owner: queue)
       ..setActionBar(null, owner: queue)
       ..setNavVisible(null, owner: queue)
       ..setBandCompact(null, owner: queue);
     expect(slots.actionBar, same(decision));
     expect(slots.topBar, isNotNull);
+    expect(slots.title, 'Sources');
+    expect(slots.leading, same(back));
     expect(slots.navVisible, isFalse);
     expect(slots.bandCompact, isTrue);
 
@@ -996,7 +1009,129 @@ void main() {
     slots.release(record);
     expect(slots.navVisible, isNull);
     expect(slots.bandCompact, isNull);
+    expect(slots.title, isNull);
+    expect(slots.leading, isNull);
     slots.dispose();
+  });
+
+  group('a screen names the bar through the frame (13 section 3.4)', () {
+    Widget shellBar() => const UiTopBar(
+      leading: SizedBox.square(key: ValueKey<String>('mark'), dimension: 24),
+      title: 'Queue',
+      center: SizedBox(key: ValueKey<String>('switcher'), width: 120),
+    );
+
+    testWidgets('a page\'s title replaces the bar\'s and nothing else moves', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: shellBar(),
+            body: const _SlotPublisher(title: 'Sources'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('Queue'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('switcher')),
+        findsOneWidget,
+        reason: 'the shell\'s switcher and commands stay beside the new name',
+      );
+      expect(find.byKey(const ValueKey<String>('mark')), findsOneWidget);
+    });
+
+    testWidgets('a page\'s leading replaces the bar\'s start slot', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: shellBar(),
+            body: const _SlotPublisher(
+              leading: SizedBox.square(
+                key: ValueKey<String>('back'),
+                dimension: 24,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey<String>('back')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('mark')), findsNothing);
+      expect(
+        tester.getCenter(find.byKey(const ValueKey<String>('back'))).dx,
+        lessThan(tester.getCenter(find.text('Queue')).dx),
+      );
+    });
+
+    testWidgets('the ask reaches a bar the shell has wrapped', (
+      WidgetTester tester,
+    ) async {
+      // The shell used to wrap its bar to draw the compact fill on ground,
+      // and a frame that rebuilt the bar it was given would have found a
+      // wrapper it cannot read. The ask rides down to the bar instead.
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: ColoredBox(
+              color: const Color(0xFF000000),
+              child: shellBar(),
+            ),
+            body: const _SlotPublisher(title: 'Sources'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('Queue'), findsNothing);
+    });
+
+    testWidgets('a page leaving gives the name back', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: shellBar(),
+            body: const _SlotPublisher(
+              key: ValueKey<String>('sources'),
+              title: 'Sources',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Sources'), findsOneWidget);
+
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(topBar: shellBar(), body: const SizedBox.expand()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Queue'), findsOneWidget);
+      expect(find.text('Sources'), findsNothing);
+    });
+
+    testWidgets('a bar outside a frame draws its own', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(uiHarness(child: shellBar()));
+      await tester.pumpAndSettle();
+      expect(find.text('Queue'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('a screen leaving keeps the screen arriving in the action bar', (

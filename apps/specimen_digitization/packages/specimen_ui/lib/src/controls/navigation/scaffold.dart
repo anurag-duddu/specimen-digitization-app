@@ -73,12 +73,17 @@ class UiScaffoldExclusion extends ChangeNotifier with FrameSafeNotifier {
 /// frame reads them, which is the same seam [UiScaffoldExclusion] already is,
 /// and for the same reason.
 ///
-/// Four asks, each null until a screen makes it, and each winning over what
+/// Six asks, each null until a screen makes it, and each winning over what
 /// the scaffold's caller passed:
 ///
 /// - [setTopBar] replaces the bar across the top. A record names itself and
 ///   offers the way out of itself, and neither fact reaches the shell that
 ///   built the frame (13 sections 2.4 and 4.1).
+/// - [setTitle] and [setLeading] name the bar and its start slot without
+///   replacing it (polish 3). A shell derives both by route; a screen that
+///   knows better publishes one of them, and the frame hands the two to the
+///   `UiTopBar` in the slot through [UiTopBarAsk], whichever of the two
+///   built it and whatever it is wrapped in.
 /// - [setActionBar] fills the sticky pane above the navigation. The decision
 ///   bar of 13 section 3.3 is what goes in it.
 /// - [setNavVisible] hides the navigation pill on a screen that is inside a
@@ -121,6 +126,14 @@ class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
   Widget? get topBar => _topBar;
   Widget? _topBar;
 
+  /// What the page named the bar, or null for the bar's own title.
+  String? get title => _title;
+  String? _title;
+
+  /// What the page put in the bar's start slot, or null for the bar's own.
+  Widget? get leading => _leading;
+  Widget? _leading;
+
   /// What the page put in the action bar, or null for the caller's own.
   Widget? get actionBar => _actionBar;
   Widget? _actionBar;
@@ -136,6 +149,8 @@ class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
   bool? _bandCompact;
 
   Object? _topBarOwner;
+  Object? _titleOwner;
+  Object? _leadingOwner;
   Object? _actionBarOwner;
   Object? _navOwner;
   Object? _bandOwner;
@@ -149,6 +164,30 @@ class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
     _topBarOwner = bar == null ? null : owner;
     if (bar == _topBar) return;
     _topBar = bar;
+    announce();
+  }
+
+  /// Names the bar across the top [title]. Null gives the slot back, where
+  /// [owner] holds it or names no one.
+  ///
+  /// The bar in the slot keeps everything else it was built with: a screen
+  /// that is one route of a shell names itself without rebuilding the
+  /// switcher and the commands the shell put beside the name.
+  void setTitle(String? title, {Object? owner}) {
+    if (title == null && !_mayClear(_titleOwner, owner)) return;
+    _titleOwner = title == null ? null : owner;
+    if (title == _title) return;
+    _title = title;
+    announce();
+  }
+
+  /// Puts [leading] in the bar's start slot. Null gives the slot back, where
+  /// [owner] holds it or names no one.
+  void setLeading(Widget? leading, {Object? owner}) {
+    if (leading == null && !_mayClear(_leadingOwner, owner)) return;
+    _leadingOwner = leading == null ? null : owner;
+    if (leading == _leading) return;
+    _leading = leading;
     announce();
   }
 
@@ -204,6 +243,8 @@ class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
   /// screen arriving publishes before the screen leaving is disposed.
   void release(Object owner) {
     if (identical(_topBarOwner, owner)) setTopBar(null);
+    if (identical(_titleOwner, owner)) setTitle(null);
+    if (identical(_leadingOwner, owner)) setLeading(null);
     if (identical(_actionBarOwner, owner)) setActionBar(null);
     if (identical(_navOwner, owner)) setNavVisible(null);
     if (identical(_bandOwner, owner)) setBandCompact(null);
@@ -215,6 +256,38 @@ class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
   /// publisher wants the object, not a rebuild every time it publishes to it.
   static UiScaffoldSlots? of(BuildContext context) =>
       context.getInheritedWidgetOfExactType<_UiScaffoldSlotsScope>()?.slots;
+}
+
+/// What the routed screen asked of the frame's top bar (13 section 3.4;
+/// polish 3).
+///
+/// Published by `UiScaffold` around its top bar slot and read by `UiTopBar`,
+/// so a screen's `UiScaffoldSlots.setTitle` or `setLeading` reaches the bar
+/// the shell built, whatever the shell wrapped it in, without the frame
+/// having to rebuild a widget it cannot read. A bar outside a frame finds
+/// none and draws its own.
+class UiTopBarAsk extends InheritedWidget {
+  /// Publishes [title] and [leading] to the bar in [child].
+  const UiTopBarAsk({
+    super.key,
+    this.title,
+    this.leading,
+    required super.child,
+  });
+
+  /// What the page named the bar, or null for the bar's own title.
+  final String? title;
+
+  /// What the page put in the bar's start slot, or null for the bar's own.
+  final Widget? leading;
+
+  /// The nearest ask above [context], or null outside a frame.
+  static UiTopBarAsk? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<UiTopBarAsk>();
+
+  @override
+  bool updateShouldNotify(UiTopBarAsk oldWidget) =>
+      oldWidget.title != title || oldWidget.leading != leading;
 }
 
 /// Publishes one scaffold's slots to its body.
@@ -766,10 +839,18 @@ class _UiScaffoldState extends State<UiScaffold> {
         child: unfloated(banner),
       );
     }
-    // Never a pane, at any class: see the policy above.
+    // Never a pane, at any class: see the policy above. The title and the
+    // leading a screen asked for ride down to the bar in the slot.
     final Widget? topBar = bar == null
         ? null
-        : PinnedChrome(region: UiPinnedRegion.topBar, child: solid(bar));
+        : PinnedChrome(
+            region: UiPinnedRegion.topBar,
+            child: UiTopBarAsk(
+              title: _slots.title,
+              leading: _slots.leading,
+              child: solid(bar),
+            ),
+          );
 
     return _UiScaffoldScope(
       geometry: UiScaffoldGeometry(

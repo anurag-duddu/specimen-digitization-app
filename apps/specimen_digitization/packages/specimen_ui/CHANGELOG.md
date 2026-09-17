@@ -343,6 +343,18 @@ Moving from 0.2.0: `FocusRing.capsule` is now `shape: FocusRingShape.stadium`,
   height cap of its own.
 
 ### Navigation
+- `UiScaffoldSlots.setTitle` and `setLeading` join the frame's asks, with
+  `title` and `leading` to read them and `release(owner)` giving them back
+  (13 section 3.4; polish 3). A shell derives the bar's name and its start
+  slot by route; a screen that knows better publishes one of them without
+  replacing the whole bar, so the switcher and the commands the shell put
+  beside the name stay. The frame wraps its top bar slot in `UiTopBarAsk`, an
+  inherited widget `UiTopBar` reads, so the ask reaches the bar whatever the
+  shell wrapped it in rather than the frame rebuilding a widget it cannot
+  read; a bar outside a frame finds none and draws its own. Reason: the
+  application wrote `ShellChrome` for these two asks while the package had
+  the other four, clause for clause, and one hook is what a routed screen
+  should name the frame through. `ShellChrome` and `ShellChromeScope` can go.
 - `UiTopBarAction` is new: a command with a glyph, a label, an optional
   shortcut and a callback, passed in `UiTopBar.actions`. Reason: the bar's
   compact variant is an overflow menu, and a menu needs a label, a glyph and a
