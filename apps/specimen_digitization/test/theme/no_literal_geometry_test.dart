@@ -54,16 +54,22 @@ const String modelsPrefix = 'lib/src/models';
 /// disclosure's. The cleanup slot cleared `previews.dart`, whose two were the
 /// gaps between specimens on the preview page and are `s4` and `s6` now.
 ///
-/// The ten that are left are not sizes at all. They are elapsed time: seven
-/// request timeouts in `api_repository.dart`, a poll interval and a search
+/// The four that are left are not sizes at all. They are elapsed time: one
+/// request timeout in `api_repository.dart`, a poll interval and a search
 /// debounce in `workspace.dart`, and a resend cooldown in `magic_link.dart`.
-/// Each is already a named constant in the file that owns the policy, which
-/// is the resolution the amendment to 10 section 8 gives them; this gate
-/// counts a `Duration(...)` wherever it is written, so they stay on the map
-/// and it stops shrinking here. A motion token would be the wrong home: none
-/// of the ten is a duration a reviewer sees.
+/// Each is a named constant in the file that owns the policy, which is the
+/// resolution the amendment to 10 section 8 gives them; this gate counts a
+/// `Duration(...)` wherever it is written, including at a declaration, so the
+/// four stay on the map and it stops shrinking here. A motion token would be
+/// the wrong home: none of the four is a duration a reviewer sees.
+///
+/// Slot B3 took `api_repository.dart` from seven to one on 2026-09-17. The
+/// seven were the same thirty seconds typed at seven call sites, which is not
+/// one policy written down but seven places to change it; they read
+/// `apiRequestTimeout` now, and `test/live_connectivity_test.dart` holds it
+/// there.
 const Map<String, int> geometryBacklog = <String, int>{
-  'lib/src/api_repository.dart': 7,
+  'lib/src/api_repository.dart': 1,
   'lib/src/magic_link.dart': 1,
   'lib/src/workspace.dart': 2,
 };
