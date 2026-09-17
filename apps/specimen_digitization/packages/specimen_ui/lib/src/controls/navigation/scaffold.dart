@@ -661,7 +661,13 @@ class _UiScaffoldState extends State<UiScaffold> {
     Widget belowBar = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (beside) solid(Offstage(offstage: !navShown, child: widget.nav!)),
+        // A screen's ask hides the navigation the frame floats, the pill,
+        // where the way out is the bar's back (13 section 2.3). A rail and a
+        // sidebar are columns beside the body rather than chrome over it, and
+        // a desktop with its navigation taken away inside a record has no
+        // navigation at all, so only the caller's own answer hides them.
+        if (beside)
+          solid(Offstage(offstage: !widget.navVisible, child: widget.nav!)),
         Expanded(child: bodyArea),
       ],
     );

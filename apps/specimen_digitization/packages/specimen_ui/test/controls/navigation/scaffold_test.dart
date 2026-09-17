@@ -809,6 +809,38 @@ void main() {
       );
     });
 
+    testWidgets('a record\'s ask hides the pill and not a sidebar', (
+      WidgetTester tester,
+    ) async {
+      // 13 section 2.3: the pill hides inside a record because the way out is
+      // the bar's back. A sidebar is a column beside the body and the only
+      // navigation a desktop has, so the same ask leaves it in place.
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(1440, 900),
+          child: _page(
+            body: const _SlotPublisher(navVisible: false),
+            nav: UiSidebar(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Offstage offstage = tester.widget<Offstage>(
+        find
+            .ancestor(
+              of: find.byType(UiSidebar),
+              matching: find.byType(Offstage),
+            )
+            .first,
+      );
+      expect(offstage.offstage, isFalse);
+    });
+
     testWidgets('a hidden pill leaves no gap under the action bar', (
       WidgetTester tester,
     ) async {
