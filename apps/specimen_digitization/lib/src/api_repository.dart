@@ -7,6 +7,18 @@ import 'models.dart';
 import 'sources.dart';
 import 'vocabulary.dart';
 
+/// How long the client waits for one exchange with the runtime API.
+///
+/// Elapsed time, not motion. No reviewer ever sees this duration, so it is a
+/// named constant in the file that owns the policy rather than a motion token
+/// (10 section 8, the fit amendment). One value covers the whole wire: the
+/// sign in token refresh, the App Check token, every JSON request, the
+/// evidence stream and the source photograph. A reviewer waiting on any of
+/// them is waiting on the same collection service, and a wire that timed out
+/// at seven different moments would report seven different waits for one
+/// failure.
+const Duration apiRequestTimeout = Duration(seconds: 30);
+
 class ApiSpecimenRepository
     implements SpecimenRepository, SourceRepository, AccessFailureSource {
   ApiSpecimenRepository({
@@ -101,7 +113,7 @@ class ApiSpecimenRepository
     _checkAccess(epoch, userId, verification: verification);
     String? bearer;
     try {
-      bearer = await token().timeout(const Duration(seconds: 30));
+      bearer = await token().timeout(apiRequestTimeout);
     } catch (_) {
       throw _deny(
         const ApiFailure(
@@ -127,9 +139,7 @@ class ApiSpecimenRepository
     String? check;
     if (appCheckToken != null || expectedMode == 'production') {
       try {
-        check = await appCheckToken?.call().timeout(
-          const Duration(seconds: 30),
-        );
+        check = await appCheckToken?.call().timeout(apiRequestTimeout);
       } catch (_) {
         throw _deny(
           const ApiFailure(
@@ -194,8 +204,8 @@ class ApiSpecimenRepository
     }
     try {
       final response = await http.Response.fromStream(
-        await _client.send(request).timeout(const Duration(seconds: 30)),
-      ).timeout(const Duration(seconds: 30));
+        await _client.send(request).timeout(apiRequestTimeout),
+      ).timeout(apiRequestTimeout);
       _checkAccess(epoch, userId, verification: verificationEpoch != null);
       Json result = {};
       try {
@@ -400,7 +410,7 @@ class ApiSpecimenRepository
           'sha256': digest,
           'size_bytes': data.length,
         };
-      })().timeout(const Duration(seconds: 30));
+      })().timeout(apiRequestTimeout);
     } on ApiFailure catch (failure) {
       throw _deny(failure, epoch, userId);
     } on TimeoutException {
@@ -857,8 +867,8 @@ class ApiSpecimenRepository
         final req = http.Request('GET', uri)..followRedirects = false;
         req.headers.addAll(await _credentials(epoch, userId));
         final response = await http.Response.fromStream(
-          await _client.send(req).timeout(const Duration(seconds: 30)),
-        ).timeout(const Duration(seconds: 30));
+          await _client.send(req).timeout(apiRequestTimeout),
+        ).timeout(apiRequestTimeout);
         _checkAccess(epoch, userId);
         if (response.statusCode == 401 || response.statusCode == 403) {
           throw _deny(
