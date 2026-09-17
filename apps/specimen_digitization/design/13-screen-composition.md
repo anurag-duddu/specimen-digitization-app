@@ -241,10 +241,20 @@ fit matrix of 12 also recorded.
 
 Three counting decisions the clauses do not settle on their own. A rail and a
 sidebar are not chrome: they are laid out beside the body, so they spend width,
-and the budget in section 2.3 is a share of the height. Glass is counted as
-`GlassSurface` rather than as `BackdropFilter`, which is what `glass_budget`
-counts, because section 2.2 is about depth rather than cost and a pane whose
-sigma the quality setting has turned off is still a pane a reader sees. And
+and the budget in section 2.3 is a share of the height. Depth is counted over
+every `Surface` and `GlassSurface`, blurred or solid, because a pane a reader
+sees inside another is nesting whatever it is filled with; the pane budget is
+counted over the panes that blur, which is what `glass_budget` counts too.
+**Amendment, wave A integration (2026-09-17).** The first form of this gate
+counted every `GlassSurface` toward the class budget, on the reasoning that a
+pane whose sigma the quality setting has turned off is still a pane a reader
+sees. The wave A amendment to section 2.2 then made the solid form deliberate:
+the scaffold publishes `GlassQuality.off` to every region it does not float, so
+the top bar that scrolls under, the band and a collapsed header's chrome draw
+solid by design, and counting them as panes left seven backlog lines no screen
+slot could close. The budget is the count of save layers (09 section 3.3), a
+solid fill is not one, and the gate reads `BackdropFilter` under a
+`GlassSurface`, as `glass_budget` always has. And
 every gate sweeps each screen's scroll views to their end before it reads the
 tree, because a `ListView` builds only the rows its viewport holds: intake's
 manifest is the third child of the page's list on a phone and is not in the
