@@ -402,6 +402,21 @@ void main() {
         (BuildContext context) =>
             const _PillHost(destinations: threeDestinations),
         semanticsLabel: destination.label,
+        // The pill draws no words at all: every disc carries its label in
+        // semantics and in a tooltip, so clause 13 has nothing to fail on and
+        // clause 14 is the one that matters, that three 48 dp discs and their
+        // capsule grow with the type rather than clipping.
+        labelsNeverWrap: true,
+        geometryFromType: true,
+        fit: FitExpectation(
+          check: (WidgetTester tester, double width) async {
+            expect(
+              find.bySemanticsLabel(destination.label),
+              findsOneWidget,
+              reason: 'every destination stays reachable at $width dp',
+            );
+          },
+        ),
       );
     });
   }

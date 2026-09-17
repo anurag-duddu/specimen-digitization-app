@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../overlays/tooltip.dart';
 import 'nav_destination.dart';
@@ -114,17 +115,17 @@ class NavDisc extends StatelessWidget {
               children: <Widget>[
                 glyph,
                 SizedBox(height: ui.space.s1),
-                Text(
+                // One line, and normally not truncated either: the rail
+                // measures the widest label at the live text scale and takes
+                // its own width from it, so the words fit. `UiLabel` is what
+                // makes that a promise of the system rather than of this one
+                // call site (11 section 3.3, rule 1).
+                UiLabel(
                   destination.label,
                   style: ui.type.labelSmall.copyWith(
                     color: current ? ui.color.ink : ui.color.inkSecondary,
                   ),
                   textAlign: TextAlign.center,
-                  // One line, never truncated: the rail measures the widest
-                  // label at the live text scale and takes its own width from
-                  // it, so the words always fit.
-                  maxLines: 1,
-                  softWrap: false,
                 ),
               ],
             )

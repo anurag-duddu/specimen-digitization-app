@@ -563,6 +563,17 @@ void main() {
           body: const SizedBox.expand(),
         ),
         semanticsLabel: destination.label,
+        labelsNeverWrap: true,
+        geometryFromType: true,
+        fit: FitExpectation(
+          check: (WidgetTester tester, double width) async {
+            expect(
+              find.bySemanticsLabel(destination.label),
+              findsOneWidget,
+              reason: 'the frame keeps its navigation reachable at $width dp',
+            );
+          },
+        ),
       );
     });
   }
