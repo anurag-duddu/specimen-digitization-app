@@ -94,6 +94,14 @@ jobs:
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter pub get
 
+      # The cheapest gate, so it runs before the analyzers. It covers the
+      # client and the design system and nothing else: the frozen Dart under
+      # docs/execution/qa-evidence is evidence, not source.
+      - name: Check Dart formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib test packages/specimen_ui/lib packages/specimen_ui/test
+
       - name: Analyze the design system
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter analyze --fatal-infos
@@ -117,6 +125,16 @@ jobs:
 
       - name: Stamp release with its source revision
         run: ../../scripts/ci/write_deployment_metadata.sh build/web
+
+      # The artifact is checked here, before it can be uploaded and therefore
+      # before anything can deploy it: every route the router declares answers
+      # with the application shell under the rewrites firebase.json declares,
+      # the design system gallery is absent from the release bundle, and
+      # deployment.json is the exact marker the deploy guard and the public
+      # smoke accept. It serves the build on loopback, contacts no host, holds
+      # no credential and deploys nothing.
+      - name: Check the built web release over its routes
+        run: python3 ../../scripts/ci/smoke_web_routes.py --require-marker
 
       - name: Upload web release
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
