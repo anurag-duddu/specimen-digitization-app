@@ -8,8 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/source_geometry.dart';
+import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
+import 'ui_finders.dart';
 import 'workbench_harness.dart';
 
 void main() {
@@ -32,8 +35,24 @@ void main() {
     );
   }
 
-  Finder overlayNamed(String label) => find.byWidgetPredicate(
-    (w) => w is Semantics && w.properties.label == label,
+  // The overlay and the region list speak the same name, so the overlay is
+  // found by where it is rather than by the name alone: both publish a node
+  // called "Label 1", which is the point of the pairing.
+  Finder overlayNamed(String label) => find.descendant(
+    of: find.byType(RegionOverlay),
+    matching: find.byWidgetPredicate(
+      (w) => w is Semantics && w.properties.label == label,
+    ),
+    matchRoot: true,
+  );
+
+  /// One option of the region list, which is a capsule toggle in single mode.
+  Finder regionOption(String label) => find.byWidgetPredicate(
+    (w) =>
+        w is Pressable &&
+        w.role == PressableRole.toggle &&
+        w.semanticsLabel == label,
+    description: 'region option "$label"',
   );
 
   Widget pane(Specimen specimen, {Key? key}) => workbenchHost(
@@ -113,7 +132,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Label 1'));
+        await tester.tap(regionOption('Label 1'));
         await tester.pumpAndSettle();
         final rotated = tester.widget<RotatedBox>(
           find.byType(RotatedBox).first,
@@ -153,7 +172,7 @@ void main() {
       find.byType(InteractiveViewer),
     );
     expect(viewer.transformationController!.value, Matrix4.identity());
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Label 1'));
+    await tester.tap(regionOption('Label 1'));
     await tester.pumpAndSettle();
     // One image, magnified: the whole photograph is still the widget on
     // screen, so the reviewer keeps their place on the specimen.
@@ -193,22 +212,12 @@ void main() {
     );
     await tester.pumpWidget(view('run1', 'region1'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Label 1'));
+    await tester.tap(regionOption('Label 1'));
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Label 1'))
-          .selected,
-      isTrue,
-    );
+    expect(tester.widget<Pressable>(regionOption('Label 1')).selected, isTrue);
     await tester.pumpWidget(view('run2', 'region2'));
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Label 1'))
-          .selected,
-      isFalse,
-    );
+    expect(tester.widget<Pressable>(regionOption('Label 1')).selected, isFalse);
     // The overlay speaks the same name the region list shows, never the raw
     // identifier (accessibility, 2.2 finding 2).
     expect(overlayNamed('Label 1'), findsOneWidget);
@@ -276,7 +285,7 @@ void main() {
             overlayBox.size.height,
             closeTo(math.max(imageBox.size.height * .5, target), .001),
           );
-          await tester.tap(find.byTooltip('Rotate the view 90 degrees'));
+          await tester.tap(uiIconButton('Rotate the view 90 degrees'));
           await tester.pumpAndSettle();
         }
         expect(tester.takeException(), isNull);
