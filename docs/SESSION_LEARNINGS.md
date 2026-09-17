@@ -10915,3 +10915,329 @@ top bar). The integrator regenerates all of them.
 - `SearchFilters.show(..., dispositions:, dispositionLabel:, disposition:,
   onDisposition:)`, which is how a screen that does not draw its own
   disposition control hands it to the sheet and gets it back.
+
+## 2026-09-17: Front-end refactor polish 3, slot P1, the patterns and the frame
+
+- **Task.** Slot P1 of polish 3 (`fe/polish3-package`): the five findings wave
+  A left at the pattern or the frame, the three API asks slot A2 wrote at its
+  call sites, and two frame defects the coordinator found in the device
+  captures at 4735cfa and in the regenerated queue golden at d8105d1. The
+  package only: `apps/specimen_digitization/packages/specimen_ui` at 0.3.0,
+  nothing under `<app>/lib` or `<app>/test`. Sibling slot P2
+  (`fe/polish3-screens`) owns the screens, the app tests and the documents and
+  consumes the APIs below at the merge.
+- **Branch and worktree.** `fe/polish3-package`, cut from
+  `front-end-composition` at 4735cfa, in `.claude/worktrees/fe-polish3-package`.
+- **Outcome.** Complete. Every task in the brief and both of the coordinator's
+  additions are built and tested in the package, the gallery goldens are
+  regenerated once with the moved set named in the commit, and the CHANGELOG
+  carries one line per change. Ten commits, 47 files, 2642 insertions and 362
+  deletions. Package tests 778, up from 742. The two `glassCountBacklog` lines
+  the brief names now measure inside their budgets on this branch and wait for
+  P2 to delete them.
+
+### Commits, oldest first
+
+| Commit | What |
+|---|---|
+| 86815a6 | fix: a popover fits the overlay it opens in |
+| a6646ca | feat: a primary collapsing header is content, not chrome |
+| 132d50a | fix: the frame's top bar is never a pane, so medium spends two |
+| 94df248 | feat: the frame draws solid under a modal shown from inside it |
+| fbb5dc5 | fix: the action bar anchors through the bottom inset when it is the lowest chrome |
+| 6186fdf | feat: tertiary decisions, the reason a move is absent, and facts as slots |
+| fb50d3f | feat: a screen names the bar's title and leading through the frame |
+| 1cc58e3 | fix: a sticky bar paints its ground only while it is stuck |
+| ca6ca1c | refactor: the strip's slots are provenance, and plain facts stay one version |
+| d66e7e4 | feat: the Composition page pictures a bar's menu fitting its window |
+
+### Validation
+
+Each gate run on its own, the tree untouched while it ran, `rc=$?` read on
+the next line, `LANG` and `LC_ALL` exported, output to a file and read after
+`tr '\r' '\n'`.
+
+| Gate | rc | Result |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app, placeholder copied) | 0 | lockfile unchanged |
+| `flutter analyze --fatal-infos` (package) | 0 | No issues found |
+| `flutter test` (package) | 0 | 778 passed, up from 742 at the cut |
+| `flutter analyze --fatal-infos` (app) | 0 | No issues found: the app compiles against every API here unchanged |
+| `flutter test` (app) | 1 | 1479 passed, 7 skipped, 77 failed: 74 screen goldens (the integrator regenerates), the 2 backlog cells below, and 1 ratchet entry in `test/verification/dark_mode_windows_test.dart` (below) |
+| `flutter test test/composition` (app) | 1 | 177 passed, 2 failed, both `glassCountBacklog` lines now inside budget: `record@medium-768x1024` measures 2 of 2 and `import-sheet@compact-390x844` measures 1 of 1; the gate says "Delete the line", which is P2's file |
+| `check_ui_strings.py --baseline` | 0 | 201 files, 0 violations, 0 baselined |
+| `pre-commit run --files` (47 files, zsh array) | 0 | every hook Passed or Skipped |
+| `dart format --output=none --set-exit-if-changed` (package, app lib and test) | 0 | 418 files, 0 changed |
+| dash scan of the 21 changed Dart and Markdown files | 0 | no em dash, no en dash |
+
+**Gallery goldens** (committed, regenerated once in d66e7e4): 26 moved, all
+the Composition page, its 6 page goldens and 20 of its 24 matrix cells. No
+other page moved. The navigation page had moved 10 files during the work
+because the floating action bar tile had started stretching to the body's
+width; that was a defect in the anchored form's column, fixed before the
+regeneration, and the page is byte identical to the cut.
+
+**Screen goldens and fixtures** (never committed by a slot): `flutter test
+test/golden test/accessibility --update-goldens` moved 74 screen goldens and 0
+fixtures, inspected by name and reverted with `git checkout -- test/golden/images
+test/accessibility/fixtures`. The 74: the workbench's readings, fields and
+history at four windows by two modes by two scales (48), the source with a
+selection (16), the queue selection at medium, expanded and large (6) and the
+filters at compact and large (4). Every one is a screen whose action bar is
+now anchored through the inset, whose provenance line is a paragraph, or whose
+scrolled top bar draws solid. The integrator regenerates them.
+
+### Public API P2 needs, with signatures
+
+- `Popover`: no signature change. A pane below or above its trigger mirrors
+  onto the trigger's trailing edge when the leading anchor would cross the
+  overlay's trailing edge, and clamps inside the overlay's padding (safe area
+  plus `space.s4`) otherwise, coming as close to an edge as its trigger does.
+  `PopoverPlacement.start` and `end` now follow the reading direction. The
+  record's account menu can go back on the bar below large.
+- `UiCollapsingHeader({required Widget content, List<Widget> chrome, double
+  maxFraction, double minFraction, bool primary, UiCollapsingHeaderStyle?
+  style})`: `primary: true` publishes `PrimaryRegion(minExtent: minExtent -
+  minChrome)` on the content's own box, inside the sliver where the fold gate
+  can read it, and no `PinnedChrome`. Without `primary` the header keeps
+  `PinnedChrome(region: header, extent: minExtent)`. P2 deletes the
+  `PinnedChrome(extent: 0)` wrappers and the app's own `PrimaryRegion` in
+  `source_pane.dart` and `region_editor.dart` and passes `primary: true`.
+- `UiScaffold`: the top bar slot is wrapped in `UiTheme(quality: off)` at every
+  window class; at medium the action bar and a collapsed header's chrome are
+  the two panes. `UiScaffoldGeometry.bottomInset` is the whole floated pane
+  including the inset an anchored bar carries. No signature change.
+- `UiModalScope` (`primitives/modal_routes.dart`): `bool get isOpen`, `static
+  UiModalScope? of(BuildContext)`, `static Widget publish({required
+  UiModalScope scope, required Widget child})`. `showUiSheet`, `showUiDialog`
+  and `showUiModal` hold the nearest scope above the context they are shown
+  from; `UiScaffold` owns and publishes one and draws every pane it owns solid
+  while it is held. A screen changes nothing: it already shows its sheets
+  from a context inside the frame.
+- `UiDecisionBar({required UiButton primary, UiButton? secondary,
+  List<UiButton> tertiary = const [], String? count, VoidCallback? onPrevious,
+  VoidCallback? onNext, String? previousDisabledReason, String?
+  nextDisabledReason, String previousLabel, String nextLabel, String
+  overflowLabel, UiDecisionBarStyle? style})`. Tertiary actions read before
+  the secondary and enter the overflow menu first; an edge control is drawn
+  where there is a move or a reason and not otherwise; the reason lands on the
+  control's hint and tooltip. A bar with only a primary ellipsises at the last
+  resort rather than overflowing, so intake's `UiButtonRow(primary:)` in the
+  action bar can be a `UiDecisionBar` again. `WorkbenchDecisionBar` can offer
+  the save, the approval and the coverage confirmation as primary, secondary
+  and tertiary, and hand `notInQueueMessage` to the two reasons instead of an
+  announcing callback.
+- `UiStatusStrip({Widget? disposition, List<Widget> provenance = const [],
+  List<String> facts = const [], UiBlockers? blockers, VoidCallback?
+  onBlockers, String closeLabel, UiStatusStripStyle? style})`. `provenance`
+  is the slot form: `TermText('Version', trailing: ' ${record.revision}')` and
+  the like, each on its own semantics node, set as one paragraph that
+  ellipsises at its end. `facts` keeps its strings for one version so the
+  record's call site compiles here; a strip passes one of the two (asserted in
+  `build`). `facts` goes in 0.4.0 once P2 has moved the record.
+- `UiScaffoldSlots.setTitle(String? title, {Object? owner})`,
+  `setLeading(Widget? leading, {Object? owner})`, `String? get title`,
+  `Widget? get leading`, both given back by `release(owner)` and both bound by
+  the owner rule the other four slots follow. `UiTopBarAsk({String? title,
+  Widget? leading, required Widget child})` with `static UiTopBarAsk?
+  maybeOf(BuildContext)` is what the frame wraps its top bar slot in and what
+  `UiTopBar` reads, so the ask reaches a bar the shell wrapped. P2 deletes
+  `ShellChrome`, `ShellChromeScope` and `_SolidBar` in `shell.dart`: nothing
+  in the application publishes through `ShellChrome` today, and the frame's
+  pane policy now covers the bar at every class.
+- `UiStickyBar`: no signature change. It paints nothing in the flow and its
+  `ground` once stuck, at the threshold.
+
+### The amendment texts for 13 and 10, for P2 to place, each dated 2026-09-17
+
+1. **13 section 2.2, after the wave A amendment.** "Amendment, polish 3
+   (2026-09-17). Glass at medium is two panes on the whole screen: the chrome
+   the frame floats and the pane over the photograph, a collapsed header's
+   chrome. The frame's top bar is never one of the window's panes at any class:
+   its fill once content scrolls under it is `glass.flat` drawn solid, as it is
+   at compact, because a wider class spends its room on the panes over the work
+   and not on a bar the reviewer scrolls past. The record at medium drew three
+   and now draws two. And while a sheet or a dialog shown from inside the frame
+   is over it, from the end of its entrance to the start of its exit, the frame
+   draws every pane it owns solid: the sheet's pane over the pill the frame
+   still frosted was two on a phone whose budget is one, this clause exempts a
+   sheet's scroll and not its pane, and a pane under a scrim is a save layer
+   nobody sees. The import sheet at compact measures 1 of 1."
+2. **13 section 2.3, the list of regions.** "Amendment, polish 3 (2026-09-17).
+   A pinned header counts here only where it is not the region under review. A
+   `UiCollapsingHeader` built with `primary: true` is the primary region of 2.5
+   and is content, not chrome: it publishes `PrimaryRegion` on the thing it
+   shows, at the extent it pins less the one chrome row that survives the
+   collapse, and no `PinnedChrome`. The arithmetic: 4.1 pins the record's header
+   at 40 percent of a 390 by 844 phone, 337.6 dp, and gives the whole of the
+   chrome 28 percent, 236.3 dp, so the two cannot both be read with the header
+   inside the budget, and 4.1's own total of 152 counts the top bar, the band
+   and the decision bar and not the header. Its chrome rows are not a half
+   measure the budget can hold either: at 200 percent text the frame's own top
+   bar is 69.75, the one line band 52 and the action bar 80, which is 201.75 of
+   the 236.3, and one row riding the header's edge is 80 on its own; the rows
+   ride the region under review and are inside the extent 2.5 measures already,
+   so a marker on them would count the same height twice. A header built
+   without `primary` is a pinned header of the kind this list names and keeps
+   its marker at the extent it pins."
+3. **13 section 3.1, after the wave A amendment.** "Amendment, polish 3
+   (2026-09-17). `primary: true` marks the header's content rather than the
+   sliver, because a `SliverPersistentHeader` has no box for the fold gate to
+   read; the minimum it declares is the extent it pins less the collapsed
+   chrome band, which is the height the photograph keeps. The header then spends
+   nothing of 2.3, per that section's amendment."
+4. **13 section 3.2.** "Amendment, polish 3 (2026-09-17). The run and the
+   version are slots, `UiStatusStrip.provenance`, so a fact is the product's
+   glossary term and opens its definition on the line it is read on. They are
+   set as one paragraph of inline widgets that ellipsises at its end, each on a
+   semantics node of its own, with the separators drawn and not spoken."
+5. **13 section 3.3.** "Amendment, polish 3 (2026-09-17). The bar takes
+   tertiary actions the way `UiButtonRow` does, drawn before the secondary and
+   the first into the overflow menu, so a record whose approval has a
+   prerequisite offers the save, the approval and the confirmation from one
+   bar. Previous and next take the reason a move is absent, drawn disabled with
+   the reason on the hint and the tooltip, so the queue's ends say why; a
+   control with neither a move nor a reason is not drawn. At the last resort the
+   primary ellipsises and takes three parts of the line to the count's one, and
+   a bar carrying only a primary reaches it the same way. And the action bar
+   the frame holds has two forms: above a pill it floats as a tile with the
+   pill's gap under it, and where nothing floats under it, inside a record or
+   beside a rail, it anchors to the window's bottom edge with the system inset
+   as padding inside the pane below the bar, so nothing scrolls under the bar
+   into the band between the pane and the edge. The budget counts the bar and
+   its padding, 64 dp, and never the device's inset."
+6. **13 section 3.4.** "Amendment, polish 3 (2026-09-17). `UiScaffoldSlots`
+   carries the bar's title and its leading beside the whole bar: a shell derives
+   both by route, a screen that knows better publishes one of them, and the
+   frame hands the two to the `UiTopBar` in the slot through `UiTopBarAsk`,
+   whatever the shell wrapped it in. The application's `ShellChrome` retires."
+7. **13 section 3.5.** "Amendment, polish 3 (2026-09-17). A sticky bar is
+   chrome only while it is stuck. In the flow it paints nothing and lets the
+   sky through; once pinned, scrolled past the top of the viewport or held under
+   a pinned header through the overlap, it takes its `ground` fill at the
+   threshold and without fading (09 section 11), the way a collapsing header
+   takes its chrome fill. The queue's search row, stuck at medium, drew a band
+   of ground across the home sky while it was still a row of the page."
+8. **13 section 4.1, the top bar row.** "Amendment, polish 3 (2026-09-17). The
+   account menu may sit on the record's bar at every class: `Popover` fits the
+   window it opens in."
+9. **10 section 3, the `Popover` row.** "Amendment, polish 3 (2026-09-17). The
+   pane fits the overlay it opens in horizontally as well as flipping
+   vertically: it hangs from the trigger's leading edge, mirrors onto the
+   trailing edge where the leading anchor would cross the overlay's trailing
+   edge, and is clamped inside the overlay's padding, the safe area plus
+   `space.s4`, where neither edge holds it, coming as close to an edge as its
+   trigger does. Slot A3 measured a trigger at 736 to 784 opening its menu at
+   788 to 1036 of an 800 dp window. `start` and `end` follow the reading
+   direction."
+10. **10 section 4.4, `UiScaffold`.** "Amendment, polish 3 (2026-09-17). The
+    action bar's two forms, as 13 section 3.3 now states them; the top bar is
+    never a pane; the frame draws solid under a modal shown from inside it
+    (`UiModalScope`); `UiScaffoldSlots` carries the bar's title and leading."
+
+### Durable learnings
+
+- **A pane fits the overlay it is drawn in, and a test's window is the view.**
+  `uiHarness(size:)` sets a media query and nothing else, so a "390 dp window"
+  is still an 800 dp overlay; the popover's fit read 800 and the assertions
+  read 390. The real window is `tester.view.physicalSize` with the pixel ratio
+  at 1, reset in a tear down. The same distinction is what makes a gallery
+  frame with an `Overlay` of its own measure against the frame.
+- **A render box's `size` is a debug tracked value.** Handing it to another
+  box as its own size (`getSize` in a layout delegate) throws "assigned a size
+  inappropriately"; copy the width and height into a fresh `Size`.
+- **A frame's wrappers keep their shape and change their tokens.** A `UiTheme`
+  that came and went around the body when a modal opened rebuilt the page from
+  nothing and lost the scroll position; the first sign was a collapsed header
+  that was open again after a dialog closed. Wrap always, vary `data`.
+- **A paragraph merges an inline widget's semantics into its own unless the
+  widget is a boundary.** The first glossary term's link merged into the
+  line's node and the second stayed separate, because two configs with actions
+  are incompatible and one is not. `Semantics(container: true)` around each
+  inline widget gives each its node, and a separator drawn as an
+  `ExcludeSemantics` text is not spoken at all.
+- **`InlineSpan.toPlainText()` includes semantics labels by default.** A finder
+  for drawn text passes `includeSemanticsLabels: false`, or finds the paragraph
+  through the child's ancestry instead.
+- **A pinned sliver with one extent learns it is stuck two ways.** `shrinkOffset
+  > 0` once it has scrolled past the viewport's top, and `overlapsContent` once
+  a pinned header above it paints over its position, which is the moment its
+  top meets that header's lower edge.
+- **A const constructor cannot read a widget list's length.** `.length` on a
+  `List<Widget>` is not a constant expression even in an assert; the assertion
+  moves into `build`.
+- **`pumpWidget` keeps a host's state, and an open popover with it.** The next
+  tap toggles it shut; send Escape between the two halves of a test.
+- **A route's presence over a frame is read from the caller's context.** A
+  sheet is pushed on the root navigator above every frame and nothing beneath a
+  route can read the route above it; the context it was shown from is the one
+  thing both sides hold. `push` returns the pop future, which completes when
+  the exit begins, and `route.animation` reports the entrance's end through a
+  status listener, except under reduced motion where it has completed inside
+  the push and `isCompleted` has to be read first.
+- **`Overlay.wrap` is how a golden pictures an open overlay.** A gallery golden
+  captures `find.byType(UiGallery)`, and the app's overlay is outside it; a
+  frame with an overlay of its own draws the pane inside the capture and
+  manages its entry's lifecycle, where a hand built `Overlay(initialEntries:)`
+  has no clean place to dispose the entry.
+- **A ratchet in a consumer's tests is a finding when the package fixes what
+  it records.** Two `glassCountBacklog` lines and one dark mode artefact entry
+  now pass on this branch and fail their own "delete the line" clause; the
+  package cannot delete them and the closeout names them with the numbers.
+- **A breaking type change on a parameter the consumer passes is not a
+  package-only change.** `facts: List<String>` to `List<Widget>` compiled here
+  and broke the app's analyze on the same branch, and an annotation would fail
+  it at info level; the slot form got its own name and the string form stays
+  one version.
+- **A paragraph of inline widgets ellipsises by dropping whole trailing
+  placeholders**, which is rule 3 of 11 section 3.3 for free: a fact leaves the
+  line whole rather than as a word cut to a letter.
+
+### Failed approaches
+
+- Measuring the popover's fit against `MediaQuery.sizeOf`. A specimen column
+  publishes its own width as the window and says nothing about its position,
+  and the overlay is the only rectangle a pane can be drawn in anyway.
+- Toggling the frame's `UiTheme` wrappers with the modal state. See above.
+- Facts as text spans with a spoken separator. The first term's link merged
+  into the paragraph's node.
+- `facts: List<Widget>` outright. The app stopped compiling on this branch.
+- A length assertion in the strip's const constructor.
+- Stretching the action bar's inner column in both forms. The navigation
+  page's floating tile grew to the body's width and moved 10 goldens.
+- A `Column` body in the menu frame. Three rows overflowed a 320 dp frame at
+  200 percent text in 10 matrix cells; a page scrolls.
+- A first `_geometry` that returned the theater's own `Size`. The debug size
+  guard caught it in every popover test.
+
+### Follow-ups, and who owns them
+
+- **P2.** Delete `glassCountBacklog['record@medium-768x1024']` (measures 2 of 2)
+  and `['import-sheet@compact-390x844']` (measures 1 of 1) in
+  `test/composition/surface_depth_test.dart`. Remove the artefact entry "record
+  fields at compact-390x844 in dark: the decision bar count node" in
+  `test/verification/dark_mode_windows_test.dart`, which now passes because the
+  bar sits on its anchored pane. Delete `ShellChrome`, `ShellChromeScope` and
+  `_SolidBar` in `shell.dart`. Replace the `PinnedChrome(extent: 0)` wrappers
+  and the app's own `PrimaryRegion` in `source_pane.dart` and
+  `region_editor.dart` with `primary: true`. Move the record's strip to
+  `provenance` with `TermText`. Give `WorkbenchDecisionBar` its third action
+  and the two reasons. Consider `UiDecisionBar` for intake's upload again. Put
+  the account menu back on the record's bar. Place the ten amendments above.
+- **Integrator.** Regenerate the 74 screen goldens; no fixture moves. The
+  composition harness's `WorkbenchDecisionBar` fallback stays redundant. On a
+  device the top bar's marker includes the status bar inset while the action
+  bar's excludes the home indicator's; both are zero in the gates and the
+  design's numbers (56 and 64) are what the markers report there, but the two
+  rules differ and 13 section 5 could state one.
+- **Package, 0.4.0.** Remove `UiStatusStrip.facts`. `PopoverPlacement.start`
+  and `end` are placed beside the trigger on purpose and are not fitted; the
+  vertical rule is not clamped. The last resort's three to one share between
+  the primary and the count is a judgement, recorded in the CHANGELOG.
+- **Not done, deliberately.** The pill still floats 16 dp above the safe area
+  with content visible under it, as 10 section 4.4 designs it; a capsule with
+  gutters cannot anchor without becoming a bar, and the coordinator's ask was
+  checked against it and left as designed.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden or fixture committed, nothing under `<app>/lib` or `<app>/test`
+  touched, and no design document edited.
