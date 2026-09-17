@@ -14,7 +14,8 @@ import 'package:specimen_ui/specimen_ui.dart';
 /// Every `Symbols.` and `Icons.` use still under `lib/`. Shrink only.
 ///
 /// Wave 2, slot E1 took the shell, the entry screens and the D1 patterns off
-/// it: thirty seven glyphs, every one of them now a `UiIcons` entry.
+/// it: thirty seven glyphs, every one of them now a `UiIcons` entry. Wave 3,
+/// slot E3 took the source pane's eight and the region editor's five.
 ///
 /// `UiIcons.fromSymbolName` is what a screen agent replaces one with: it maps
 /// the Material name onto a registry key, so the choice of glyph is made once
@@ -27,7 +28,6 @@ const Map<String, int> glyphBacklog = <String, int>{
   'lib/src/large_record.dart': 1,
   'lib/src/operational_panel.dart': 1,
   'lib/src/reading_declarations.dart': 2,
-  'lib/src/region_editor.dart': 5,
   'lib/src/screens/intake/capture_card.dart': 6,
   'lib/src/screens/intake/manifest_panel.dart': 4,
   'lib/src/screens/sources/source_screen.dart': 5,
@@ -35,7 +35,6 @@ const Map<String, int> glyphBacklog = <String, int>{
   'lib/src/screens/workbench/decision_bar.dart': 3,
   'lib/src/screens/workbench/fields_panel.dart': 2,
   'lib/src/screens/workbench/readings_panel.dart': 3,
-  'lib/src/screens/workbench/source_pane.dart': 8,
   'lib/src/screens/workbench/status_strip.dart': 6,
   'lib/src/theme/icons.dart': 17,
   'lib/src/widgets/authority_candidate_card.dart': 1,
