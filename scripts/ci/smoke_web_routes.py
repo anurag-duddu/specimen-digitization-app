@@ -596,7 +596,11 @@ def marker_problems(raw: str) -> list[str]:
         if extra:
             problems.append(f"the marker carries unknown fields {', '.join(extra)}")
 
-    if document.get("schemaVersion") != 1:
+    version = document.get("schemaVersion")
+    # `True == 1` in Python and `true == 1` is false in jq, so the bool has to
+    # be excluded by hand or this restatement would accept a marker the deploy
+    # guard refuses.
+    if isinstance(version, bool) or version != 1:
         problems.append("schemaVersion is not the number 1")
     if document.get("repository") != EXPECTED_REPOSITORY:
         problems.append("repository is not this repository")
