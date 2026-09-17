@@ -6,14 +6,13 @@
 /// (audit finding H8.1, severity 4).
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
 import 'review_context.dart';
 import 'risk_assessment.dart';
 import 'screens/workbench/moments.dart';
-import 'theme/icons.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -72,6 +71,7 @@ class _LazyEvidenceState extends State<LazyEvidence> {
 
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final Widget content = _data == null
         ? const SizedBox(width: double.infinity)
         : widget.render(_data!);
@@ -82,21 +82,19 @@ class _LazyEvidenceState extends State<LazyEvidence> {
         if (_data == null)
           Align(
             alignment: AlignmentDirectional.centerStart,
-            // The footprint does not move while the request is out: the label
-            // swaps for an inline indicator of the same height (motion 44).
-            child: OutlinedButton.icon(
-              onPressed: _busy ? null : _load,
-              icon: InFlightGlyph(
-                busy: _busy,
-                resting: _error == null ? Symbols.visibility : Symbols.refresh,
-              ),
-              label: Text(
-                _busy
-                    ? 'Loading evidence'
-                    : _error == null
-                    ? widget.label
-                    : 'Retry ${widget.label.toLowerCase()}',
-              ),
+            // The footprint does not move while the request is out: the
+            // button keeps its width and its glyph slot becomes the ring
+            // (motion 44, 10 section 4.1).
+            child: UiButton(
+              label: _busy
+                  ? 'Loading evidence'
+                  : _error == null
+                  ? widget.label
+                  : 'Retry ${widget.label.toLowerCase()}',
+              variant: UiButtonVariant.secondary,
+              leading: _error == null ? UiIcons.show : UiIcons.reload,
+              loading: _busy,
+              onPressed: _load,
             ),
           ),
         // The live region is the primary channel; the reveal only gets the
@@ -108,8 +106,8 @@ class _LazyEvidenceState extends State<LazyEvidence> {
             liveRegion: true,
             child: Text(
               _error ?? '',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
+              style: ui.type.bodySmall.copyWith(
+                color: ui.color.status.blocked.content,
               ),
             ),
           ),
@@ -167,7 +165,10 @@ class EvidencePanel extends StatelessWidget {
   }
 
   Widget _authority(BuildContext context, Json metadata, Json result) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
+    final TextStyle line = ui.type.bodySmall.copyWith(
+      color: ui.color.inkSecondary,
+    );
     final List<Json> candidates = objects(result['candidates']);
     final bool usable =
         canReview &&
@@ -180,28 +181,26 @@ class EvidencePanel extends StatelessWidget {
         Text(
           '${vocabularyLabel(textOf(result['status']))} · Source '
           '${textOf(result['source_id'])} · ${textOf(result['source_version'])}',
-          style: theme.textTheme.bodySmall,
+          style: line,
         ),
         Text(
           'Retrieved ${relativeInstant(result['retrieved_at'])} · Adapter '
           '${textOf(result['adapter_version'])}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: line,
         ),
-        Text('As written: ${textOf(result['literal'])}'),
+        Text('As written: ${textOf(result['literal'])}', style: ui.type.body),
         if (result['retry_after_seconds'] != null)
           Text(
             'Provider retry instruction: ${result['retry_after_seconds']} '
             'seconds',
-            style: theme.textTheme.bodySmall,
+            style: line,
           ),
         for (final Object? reason in result['reasons'] as List? ?? <Object?>[])
-          Text(vocabularyLabel(reason.toString())),
-        SizedBox(height: context.space.space2),
+          Text(vocabularyLabel(reason.toString()), style: line),
+        SizedBox(height: ui.space.s2),
         for (final Json candidate in candidates)
           Padding(
-            padding: EdgeInsets.only(bottom: context.space.space2),
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
             child: AuthorityCandidateCard(
               name: textOf(candidate['name']),
               identifier: textOf(candidate['identifier']),
@@ -218,7 +217,7 @@ class EvidencePanel extends StatelessWidget {
             ),
           ),
         if (candidates.isEmpty)
-          const Text('No saved match is available to use.'),
+          Text('No saved match is available to use.', style: ui.type.body),
         EvidenceDrawer(
           title: 'Authority query and captured evidence',
           payload: result,
@@ -246,7 +245,7 @@ class EvidencePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final Json run = objectOf(specimen.data['run']);
     final Json phases = objectOf(run['phase_results']);
     final Json authorities = objectOf(run['authority_results']);
@@ -262,9 +261,13 @@ class EvidencePanel extends StatelessWidget {
             policy: objectOf(run['risk_policy_snapshot']),
           ),
         if (phases.isNotEmpty) ...<Widget>[
-          SizedBox(height: context.space.space4),
-          Text('Evidence steps', style: theme.textTheme.titleMedium),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s4),
+          Semantics(
+            container: true,
+            header: true,
+            child: Text('Evidence steps', style: ui.type.title),
+          ),
+          SizedBox(height: ui.space.s2),
           for (final (int i, String name) in evidencePhases.indexed)
             if (phases[name] != null)
               _PhaseStep(
@@ -284,16 +287,23 @@ class EvidencePanel extends StatelessWidget {
               ),
         ],
         if (authorities.isNotEmpty) ...<Widget>[
-          SizedBox(height: context.space.space4),
-          Text('Authority evidence', style: theme.textTheme.titleMedium),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s4),
+          Semantics(
+            container: true,
+            header: true,
+            child: Text('Authority evidence', style: ui.type.title),
+          ),
+          SizedBox(height: ui.space.s2),
           for (final Object? value in authorities.values)
             Builder(
               builder: (BuildContext context) {
                 final Json metadata = objectOf(value);
-                return Card.outlined(
-                  child: Padding(
-                    padding: EdgeInsets.all(context.space.space4),
+                return Padding(
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+                  child: Surface(
+                    radius: ui.shape.tile,
+                    boundary: true,
+                    padding: EdgeInsetsDirectional.all(ui.space.s4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.min,
@@ -302,7 +312,7 @@ class EvidencePanel extends StatelessWidget {
                           '${vocabularyLabel(textOf(metadata['field_key']))} · '
                           '${metadata['tool_id']} · '
                           '${vocabularyLabel(textOf(metadata['status']))}',
-                          style: theme.textTheme.titleSmall,
+                          style: ui.type.label,
                         ),
                         LazyEvidence(
                           key: ValueKey<String>(
@@ -350,80 +360,91 @@ class _PhaseStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String applicability = textOf(metadata['applicability']);
     final bool blocked = applicability == 'blocked';
     final Color accent = blocked
-        ? context.tokens.blockedContent
-        : context.tokens.clearedContent;
+        ? ui.color.status.blocked.content
+        : ui.color.status.cleared.content;
+    final double disc = ui.space.iconAction;
 
     return Semantics(
       container: true,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Column(
-              children: <Widget>[
-                SizedBox.square(
-                  dimension: context.sizes.iconAction,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: accent,
-                        width: context.shape.strokeEmphasis,
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$position',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: accent,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (!last)
-                  Expanded(
-                    child: Container(
-                      width: context.shape.strokeEmphasis,
-                      color: theme.colorScheme.outlineVariant,
-                    ),
-                  ),
-              ],
+      // A `Stack` rather than an `IntrinsicHeight`: the connector has to run
+      // from under the disc to the foot of the step, and a control that
+      // carries a `UiLabel` measures itself with a `LayoutBuilder`, which has
+      // no intrinsic dimension to give (11 section 3.3). The line is
+      // positioned against the row instead, so the row is laid out once and
+      // the evidence control inside it is free to measure itself.
+      child: Stack(
+        children: <Widget>[
+          if (!last)
+            PositionedDirectional(
+              start: (disc - ui.shape.stroke.emphasis) / 2,
+              top: disc,
+              bottom: 0,
+              width: ui.shape.stroke.emphasis,
+              child: ColoredBox(color: ui.color.hairline),
             ),
-            SizedBox(width: context.space.space3),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: context.space.space4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      '${vocabularyLabel(name)} · '
-                      '${vocabularyLabel(applicability)}',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    Text(vocabularyLabel(textOf(metadata['reason']))),
-                    for (final Json finding in objects(metadata['findings']))
-                      Text(
-                        '${finding['severity']}: '
-                        '${vocabularyLabel(textOf(finding['code']))} '
-                        '${textOf(finding['field_key'], '')}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
-                        ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox.square(
+                dimension: disc,
+                child: DecoratedBox(
+                  decoration: ShapeDecoration(
+                    shape: CircleBorder(
+                      side: BorderSide(
+                        color: accent,
+                        width: ui.shape.stroke.emphasis,
                       ),
-                    evidence,
-                  ],
+                    ),
+                    color: ui.color.paper,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$position',
+                      style: ui.type.labelSmall.copyWith(color: accent),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+              SizedBox(width: ui.space.s3),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        '${vocabularyLabel(name)} · '
+                        '${vocabularyLabel(applicability)}',
+                        style: ui.type.label,
+                      ),
+                      Text(
+                        vocabularyLabel(textOf(metadata['reason'])),
+                        style: ui.type.bodySmall.copyWith(
+                          color: ui.color.inkSecondary,
+                        ),
+                      ),
+                      for (final Json finding in objects(metadata['findings']))
+                        Text(
+                          '${finding['severity']}: '
+                          '${vocabularyLabel(textOf(finding['code']))} '
+                          '${textOf(finding['field_key'], '')}',
+                          style: ui.type.bodySmall.copyWith(
+                            color: ui.color.status.blocked.content,
+                          ),
+                        ),
+                      evidence,
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -438,41 +459,39 @@ class _Proposals extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
+    final TextStyle line = ui.type.bodySmall.copyWith(
+      color: ui.color.inkSecondary,
+    );
     final List<Json> proposals = objects(result['proposals']);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (proposals.isEmpty)
-          Text(
-            'This step proposed nothing.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+        if (proposals.isEmpty) Text('This step proposed nothing.', style: line),
         for (final Json proposal in proposals)
           Padding(
-            padding: EdgeInsets.only(bottom: context.space.space2),
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
                   vocabularyLabel(textOf(proposal['field_key'])),
-                  style: theme.textTheme.titleSmall,
+                  style: ui.type.label,
                 ),
                 Text(
                   'As written: ${textOf(proposal['literal'])}',
-                  style: context.mono.literalDense,
+                  style: ui.type.mono.literalDense,
                 ),
-                Text('Suggested match: ${textOf(proposal['candidate'])}'),
+                Text(
+                  'Suggested match: ${textOf(proposal['candidate'])}',
+                  style: ui.type.body,
+                ),
                 Text(
                   '${vocabularyLabel(textOf(proposal['relation']))}: '
                   '${textOf(proposal['reason'])}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: line,
                 ),
               ],
             ),

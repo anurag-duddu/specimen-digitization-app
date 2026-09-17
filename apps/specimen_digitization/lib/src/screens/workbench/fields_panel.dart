@@ -7,12 +7,14 @@
 /// trip per field (audit findings H6.2 and H7.2, both severity 4).
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+// The product's own `FieldLayer` is the three named slots of a record
+// field; the package's is a primitive of the field control. The screen
+// means the first, and the second is never built here.
+import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
 import '../../models.dart';
 import '../../review_context.dart';
-import '../../theme/icons.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
@@ -102,21 +104,29 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final List<Json> fields = widget.specimen.fields;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text('Record fields', style: theme.textTheme.titleMedium),
-        Text(
-          'As written, read as and standardized are recorded separately.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        Semantics(
+          container: true,
+          header: true,
+          child: Text('Record fields', style: ui.type.title),
+        ),
+        // Its own node: a sentence that merges upward becomes the tab
+        // panel's label, and a panel named after its own help text is not a
+        // panel a reader can place.
+        Semantics(
+          container: true,
+          child: Text(
+            'As written, read as and standardized are recorded separately.',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ),
-        SizedBox(height: context.space.space2),
+        SizedBox(height: ui.space.s2),
         if (fields.isEmpty)
           const CaveatText(
             label: 'No fields recorded yet.',
@@ -154,7 +164,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     return KeyedSubtree(
       key: anchor,
       child: Padding(
-        padding: EdgeInsets.only(bottom: context.space.space2),
+        padding: EdgeInsetsDirectional.only(bottom: context.ui.space.s2),
         child: content,
       ),
     );
@@ -166,7 +176,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     PendingFieldChange? pending,
     String? blocked,
   ) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String key = field['field_key'].toString();
     final List<Json> findings = widget.specimen.findings
         .where((Json f) => f['field_key'] == key)
@@ -181,61 +191,52 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       children: <Widget>[
         if (pending != null)
           Padding(
-            padding: EdgeInsets.only(bottom: context.space.space1),
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
             child: Row(
               children: <Widget>[
-                Icon(
-                  Symbols.edit_note,
-                  size: context.sizes.iconInline,
-                  color: context.tokens.needsReviewContent,
+                UiIcon(
+                  UiIcons.editReason,
+                  size: UiIconSize.inline,
+                  color: ui.color.status.needsReview.content,
                 ),
-                SizedBox(width: context.space.space1),
+                SizedBox(width: ui.space.s1),
                 Expanded(
                   child: Text(
                     'Not saved yet: ${pending.summary}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: context.tokens.needsReviewContent,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.status.needsReview.content,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-        Tooltip(
-          message: blocked ?? 'Tap a value to correct it in place',
-          child: Semantics(
-            hint: blocked ?? '',
-            child: FieldRow(
-              name: textOf(field['display_name'], key),
-              state: state,
-              required: field['required'] == true,
-              asWritten: _layerValue(field, pending, FieldLayer.asWritten),
-              readAs: _layerValue(field, pending, FieldLayer.readAs),
-              standardized: _layerValue(
-                field,
-                pending,
-                FieldLayer.standardized,
-              ),
-              authority: _authorityLine(field, pending),
-              onEdit: blocked != null
-                  ? null
-                  : (FieldLayer layer) => _startEdit(field, layer),
-              // A reader that lands on the pencil directly hears the field as
-              // well as the layer, rather than the fortieth "Edit read as".
-              editSemanticsLabel: (FieldLayer layer) =>
-                  'Edit ${layer.label.toLowerCase()} for '
-                  '${textOf(field['display_name'], key)}',
-              findings: findings.isEmpty
-                  ? null
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        for (final Json f in findings) _Finding(finding: f),
-                      ],
-                    ),
-            ),
-          ),
+        FieldRow(
+          name: textOf(field['display_name'], key),
+          state: state,
+          required: field['required'] == true,
+          asWritten: _layerValue(field, pending, FieldLayer.asWritten),
+          readAs: _layerValue(field, pending, FieldLayer.readAs),
+          standardized: _layerValue(field, pending, FieldLayer.standardized),
+          authority: _authorityLine(field, pending),
+          onEdit: blocked != null
+              ? null
+              : (FieldLayer layer) => _startEdit(field, layer),
+          editBlockedReason: blocked,
+          // A reader that lands on the pencil directly hears the field as
+          // well as the layer, rather than the fortieth "Edit read as".
+          editSemanticsLabel: (FieldLayer layer) =>
+              'Edit ${layer.label.toLowerCase()} for '
+              '${textOf(field['display_name'], key)}',
+          findings: findings.isEmpty
+              ? null
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    for (final Json f in findings) _Finding(finding: f),
+                  ],
+                ),
         ),
         if (blocked != null && !knownFieldStates.contains(field['state']))
           const CaveatText(
@@ -288,7 +289,8 @@ class _Finding extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
+    final Color error = ui.color.status.blocked.content;
     final String message = textOf(
       finding['message'],
       vocabularyLabel(textOf(finding['reason_code'], 'Validation finding')),
@@ -300,25 +302,16 @@ class _Finding extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
-            padding: EdgeInsets.only(top: context.space.space1),
-            child: Icon(
-              Symbols.error,
-              size: context.sizes.iconInline,
-              color: theme.colorScheme.error,
-            ),
+            padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+            child: UiIcon(UiIcons.error, size: UiIconSize.inline, color: error),
           ),
-          SizedBox(width: context.space.space1),
+          SizedBox(width: ui.space.s1),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(
-                  message,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                ),
+                Text(message, style: ui.type.bodySmall.copyWith(color: error)),
                 Text(
                   <String>[
                         vocabularyLabel(textOf(finding['severity'], 'finding')),
@@ -326,8 +319,8 @@ class _Finding extends StatelessWidget {
                       ]
                       .where((String s) => s.isNotEmpty && s != 'Not recorded')
                       .join(' · '),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
                   ),
                 ),
               ],
@@ -421,130 +414,145 @@ class _FieldEditorState extends State<_FieldEditor> {
     ),
   );
 
+  /// The editor's own heading, and the one sentence under it.
+  static const String subtitle =
+      'The photograph stays on screen while you type.';
+
+  /// What the commit control is called, and why it is disabled.
+  static const String keepLabel = 'Keep this correction';
+  static const String keepHint = 'Enter a value and choose evidence';
+
+  /// The two ways out.
+  static const String cancelLabel = 'Cancel';
+  static const String discardLabel = 'Discard this correction';
+
+  /// The sentence under the actions.
+  static const String batchNote =
+      'Corrections are saved together, with one reason.';
+
+  /// The field that names the evidence state.
+  static const String stateLabel = 'Evidence state';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String name = textOf(
       widget.field['display_name'],
       widget.field['field_key'].toString(),
     );
+    final VoidCallback? discard = widget.onDiscard;
 
-    return Card.outlined(
-      child: Padding(
-        padding: EdgeInsets.all(context.space.space4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text('Correct $name', style: theme.textTheme.titleSmall),
-            Text(
-              'The photograph stays on screen while you type.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+    return Surface(
+      radius: ui.shape.tile,
+      boundary: true,
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Semantics(
+            container: true,
+            header: true,
+            child: Text('Correct $name', style: ui.type.label),
+          ),
+          Text(
+            subtitle,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+          SizedBox(height: ui.space.s3),
+          UiSelect<String>(
+            label: stateLabel,
+            placeholder: stateLabel,
+            value: knownFieldStates.contains(_state) ? _state : 'unknown',
+            options: <UiSelectOption<String>>[
+              for (final String option in knownFieldStates)
+                UiSelectOption<String>(
+                  value: option,
+                  label: vocabularyLabel(option),
+                ),
+            ],
+            onChanged: (String? next) {
+              if (next != null) setState(() => _state = next);
+            },
+          ),
+          SizedBox(height: ui.space.s3),
+          if (_state == 'supported') ...<Widget>[
+            UiField(
+              label: FieldLayer.asWritten.label,
+              helpText:
+                  'Keep the text exactly as written. Do not add missing '
+                  'evidence.',
+              controller: _literal,
+              autofocus: widget.layer == FieldLayer.asWritten,
+              minLines: 1,
+              maxLines: _literalMaxLines,
+              onChanged: (String _) => setState(() {}),
             ),
-            SizedBox(height: context.space.space3),
-            DropdownButtonFormField<String>(
-              initialValue: knownFieldStates.contains(_state)
-                  ? _state
-                  : 'unknown',
-              decoration: const InputDecoration(labelText: 'Evidence state'),
-              items: <DropdownMenuItem<String>>[
-                for (final String s in knownFieldStates)
-                  DropdownMenuItem<String>(
-                    value: s,
-                    child: Text(vocabularyLabel(s)),
-                  ),
-              ],
-              onChanged: (String? s) => setState(() => _state = s!),
+            SizedBox(height: ui.space.s3),
+            UiField(
+              label: FieldLayer.readAs.label,
+              controller: _parsed,
+              autofocus: widget.layer == FieldLayer.readAs,
             ),
-            SizedBox(height: context.space.space3),
-            if (_state == 'supported') ...<Widget>[
-              TextField(
-                controller: _literal,
-                autofocus: widget.layer == FieldLayer.asWritten,
-                minLines: 1,
-                maxLines: 4,
-                onChanged: (String _) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'As written',
-                  helperText:
-                      'Keep the text exactly as written. Do not add missing '
-                      'evidence.',
-                ),
-              ),
-              SizedBox(height: context.space.space3),
-              TextField(
-                controller: _parsed,
-                autofocus: widget.layer == FieldLayer.readAs,
-                decoration: const InputDecoration(labelText: 'Read as'),
-              ),
-              SizedBox(height: context.space.space3),
-              TextField(
-                controller: _normalized,
-                autofocus: widget.layer == FieldLayer.standardized,
-                decoration: const InputDecoration(
-                  labelText: 'Standardized',
-                  helperText: 'Needs an authority match and evidence.',
-                ),
-              ),
-              SizedBox(height: context.space.space3),
-              TextField(
-                controller: _authority,
-                decoration: const InputDecoration(
-                  labelText: 'Authority identifier',
-                  helperText: 'Use a match from the authority evidence below.',
-                ),
-              ),
-              SizedBox(height: context.space.space4),
-              EvidencePicker(
-                choices: widget.choices,
-                selected: _evidence,
-                required: true,
-                onChanged: (Set<String> next) =>
-                    setState(() => _evidence = next),
-              ),
-            ] else
-              const CaveatText(
-                label: 'Absence is recorded as a state, never as a value.',
-                why:
-                    'Nothing is written into the value slots for this state, '
-                    'and the record stays blocked from clearance until the '
-                    'checks that need it pass.',
-              ),
-            SizedBox(height: context.space.space4),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: context.space.space2,
-              runSpacing: context.space.space2,
-              children: <Widget>[
-                if (widget.onDiscard != null)
-                  TextButton(
-                    onPressed: widget.onDiscard,
-                    child: const Text('Discard this correction'),
-                  ),
-                TextButton(
-                  onPressed: widget.onCancel,
-                  child: const Text('Cancel'),
-                ),
-                Semantics(
-                  hint: _complete ? '' : 'Enter a value and choose evidence',
-                  child: FilledButton(
-                    onPressed: _complete ? _commit : null,
-                    child: const Text('Keep this correction'),
-                  ),
-                ),
-              ],
+            SizedBox(height: ui.space.s3),
+            UiField(
+              label: FieldLayer.standardized.label,
+              helpText: 'Needs an authority match and evidence.',
+              controller: _normalized,
+              autofocus: widget.layer == FieldLayer.standardized,
             ),
-            Text(
-              'Corrections are saved together, with one reason.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            SizedBox(height: ui.space.s3),
+            UiField(
+              label: 'Authority identifier',
+              helpText: 'Use a match from the authority evidence below.',
+              controller: _authority,
             ),
-          ],
-        ),
+            SizedBox(height: ui.space.s4),
+            EvidencePicker(
+              choices: widget.choices,
+              selected: _evidence,
+              required: true,
+              onChanged: (Set<String> next) => setState(() => _evidence = next),
+            ),
+          ] else
+            const CaveatText(
+              label: 'Absence is recorded as a state, never as a value.',
+              why:
+                  'Nothing is written into the value slots for this state, '
+                  'and the record stays blocked from clearance until the '
+                  'checks that need it pass.',
+            ),
+          SizedBox(height: ui.space.s4),
+          UiButtonRow(
+            primary: UiButton(
+              label: keepLabel,
+              disabledReason: keepHint,
+              onPressed: _complete ? _commit : null,
+            ),
+            secondary: UiButton(
+              label: cancelLabel,
+              variant: UiButtonVariant.ghost,
+              onPressed: widget.onCancel,
+            ),
+            tertiary: <UiButton>[
+              if (discard != null)
+                UiButton(
+                  label: discardLabel,
+                  variant: UiButtonVariant.ghost,
+                  onPressed: discard,
+                ),
+            ],
+          ),
+          SizedBox(height: ui.space.s2),
+          Text(
+            batchNote,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+        ],
       ),
     );
   }
+
+  /// How far the verbatim field grows before it scrolls.
+  static const int _literalMaxLines = 4;
 }

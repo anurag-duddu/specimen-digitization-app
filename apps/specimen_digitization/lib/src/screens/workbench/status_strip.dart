@@ -7,14 +7,13 @@
 /// (audit finding H8.2).
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
 import '../../operational_panel.dart';
 import '../../review_context.dart';
-import '../../theme/icons.dart';
 import '../../theme/motion.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
@@ -125,7 +124,7 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final Specimen s = widget.specimen;
     final Json run = objectOf(s.data['run']);
     final SpecimenStatus status = SpecimenStatus.fromWire(
@@ -148,7 +147,7 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
           child: widget.conflictVersion == null
               ? const SizedBox(width: double.infinity)
               : Padding(
-                  padding: EdgeInsets.only(bottom: context.space.space2),
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
                   child: ConflictBanner(
                     version: widget.conflictVersion!,
                     onRefresh: widget.onRefresh,
@@ -156,8 +155,8 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
                 ),
         ),
         Wrap(
-          spacing: context.space.space2,
-          runSpacing: context.space.space2,
+          spacing: ui.space.s2,
+          runSpacing: ui.space.s2,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: <Widget>[
             Row(
@@ -172,30 +171,14 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
             ),
             // Version, Run and Step are the three words the strip uses
             // that a first-time reviewer has no way to guess, so each
-            // carries its own definition (pass criterion 10.2).
-            TermText(
-              'Version',
-              trailing: ' ${s.revision}',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            // carries its own definition (pass criterion 10.2). The values
+            // beside them are identifiers, so they are set in
+            // `mono.identifier` and the word beside them is not.
+            _MetaPair(term: 'Version', value: '${s.revision}'),
             if (s.data['active_run_id'] != null)
-              TermText(
-                'Run',
-                trailing: ' ${textOf(s.data['active_run_id'])}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              _MetaPair(term: 'Run', value: textOf(s.data['active_run_id'])),
             if (stage.isNotEmpty && stage != 'Not recorded')
-              TermText(
-                'Step',
-                trailing: ' $stage',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              _MetaPair(term: 'Step', value: stage, identifier: false),
             if (widget.pending.isNotEmpty)
               _PendingChip(
                 count: widget.pending.length,
@@ -208,24 +191,26 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
           child: widget.staleChanges.isEmpty
               ? const SizedBox(width: double.infinity)
               : Padding(
-                  padding: EdgeInsets.only(top: context.space.space2),
+                  padding: EdgeInsetsDirectional.only(top: ui.space.s2),
                   child: Semantics(
                     liveRegion: true,
                     child: Text(
                       widget.staleChanges.length == 1
-                          ? '1 correction was dropped because that field changed on the '
-                                'server. Make it again against the new version.'
-                          : '${widget.staleChanges.length} corrections were dropped '
-                                'because those fields changed on the server. Make them '
-                                'again against the new version.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: context.tokens.needsReviewContent,
+                          ? '1 correction was dropped because that field '
+                                'changed on the server. Make it again against '
+                                'the new version.'
+                          : '${widget.staleChanges.length} corrections were '
+                                'dropped because those fields changed on the '
+                                'server. Make them again against the new '
+                                'version.',
+                      style: ui.type.bodySmall.copyWith(
+                        color: ui.color.status.needsReview.content,
                       ),
                     ),
                   ),
                 ),
         ),
-        SizedBox(height: context.space.space2),
+        SizedBox(height: ui.space.s2),
         _blockers(context),
         ProcessingDisclosure(
           specimen: s,
@@ -237,61 +222,104 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     );
   }
 
+  /// What blocks clearance: one line when nothing does, and a disclosure over
+  /// the list when something does.
+  ///
+  /// `UiDisclosure` has no leading slot, so the amber flag that used to sit
+  /// beside the summary now sits on every row inside it. The cleared form is
+  /// a statement rather than a control, because a disclosure over an empty
+  /// list is a control that does nothing (pass criterion 5.6).
   Widget _blockers(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final List<ClearanceBlocker> blockers = widget.blockers;
-    final bool clear = blockers.isEmpty;
-    final Widget list = _blockersOpen && !clear
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+    final String summary = blockersSummary(blockers.length);
+    if (blockers.isEmpty) {
+      return Padding(
+        padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
+        child: MergeSemantics(
+          child: Row(
             children: <Widget>[
-              for (final ClearanceBlocker blocker in blockers)
-                _BlockerRow(
-                  blocker: blocker,
-                  onGoTo: () => widget.onGoToBlocker(blocker),
-                ),
+              UiIcon(
+                UiIcons.cleared,
+                size: UiIconSize.inline,
+                color: ui.color.status.cleared.content,
+              ),
+              SizedBox(width: ui.space.s2),
+              Flexible(child: Text(summary, style: ui.type.label)),
             ],
-          )
-        : const SizedBox(width: double.infinity);
+          ),
+        ),
+      );
+    }
+    return UiDisclosure(
+      style: fullTargetDisclosure(ui),
+      title: summary,
+      onExpansionChanged: (bool open) => _blockersOpen = open,
+      initiallyExpanded: _blockersOpen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          for (final ClearanceBlocker blocker in blockers)
+            _BlockerRow(
+              blocker: blocker,
+              onGoTo: () => widget.onGoToBlocker(blocker),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        MergeSemantics(
-          child: Semantics(
-            expanded: clear ? null : _blockersOpen,
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                onPressed: clear
-                    ? null
-                    : () => setState(() => _blockersOpen = !_blockersOpen),
-                icon: Icon(
-                  clear ? Symbols.check_circle : Symbols.flag,
-                  color: clear
-                      ? context.tokens.clearedContent
-                      : context.tokens.needsReviewContent,
-                ),
-                label: Text(
-                  blockersSummary(blockers.length),
-                  style: theme.textTheme.titleSmall,
-                ),
+/// A word the product defines, and the value beside it.
+///
+/// The word carries its own definition; the value is an identifier and is set
+/// in `mono.identifier` so two run ids can be told apart at a glance
+/// (blueprint 6.1).
+class _MetaPair extends StatelessWidget {
+  const _MetaPair({
+    required this.term,
+    required this.value,
+    this.identifier = true,
+  });
+
+  final String term;
+  final String value;
+
+  /// False where the value is a word rather than an identifier, such as the
+  /// processing step.
+  final bool identifier;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final TextStyle label = ui.type.label.copyWith(
+      color: ui.color.inkSecondary,
+    );
+    return MergeSemantics(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          TermText(term, style: label, spokenTerm: '$term $value'),
+          SizedBox(width: ui.space.s1),
+          // The spoken term already carries the value, so the drawn one is
+          // not a second stop that says the number twice.
+          Flexible(
+            child: ExcludeSemantics(
+              child: Text(
+                value,
+                style: identifier
+                    ? ui.type.mono.identifier.copyWith(
+                        color: ui.color.inkSecondary,
+                      )
+                    : label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
-        ),
-        if (context.motion.reduced)
-          list
-        else
-          AnimatedSize(
-            duration: context.motion.standard,
-            curve: MotionTokens.standardCurve,
-            alignment: Alignment.topLeft,
-            child: list,
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -302,71 +330,78 @@ class _BlockerRow extends StatelessWidget {
   final ClearanceBlocker blocker;
   final VoidCallback onGoTo;
 
+  /// What the control that moves to the blocking field is called.
+  static const String goToLabel = 'Go to';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String? detail = blocker.detail;
     return Padding(
-      padding: EdgeInsets.only(bottom: context.space.space1),
+      padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
-            padding: EdgeInsets.only(top: context.space.space1),
-            child: Icon(
-              Symbols.flag,
-              size: context.sizes.iconInline,
-              color: context.tokens.needsReviewContent,
+            padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+            child: UiIcon(
+              UiIcons.needsReview,
+              size: UiIconSize.inline,
+              color: ui.color.status.needsReview.content,
             ),
           ),
-          SizedBox(width: context.space.space2),
+          SizedBox(width: ui.space.s2),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Text(blocker.message, style: theme.textTheme.bodyMedium),
+                Text(blocker.message, style: ui.type.body),
                 if (detail != null && detail.isNotEmpty)
                   Text(
                     detail,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
                     ),
                   ),
               ],
             ),
           ),
-          SizedBox(width: context.space.space2),
-          TextButton(onPressed: onGoTo, child: const Text('Go to')),
+          SizedBox(width: ui.space.s2),
+          UiButton(
+            label: goToLabel,
+            variant: UiButtonVariant.ghost,
+            semanticsLabel: '$goToLabel: ${blocker.message}',
+            onPressed: onGoTo,
+          ),
         ],
       ),
     );
   }
 }
 
+/// The amber count of corrections the reviewer has made but not sent.
+///
+/// A chip rather than a button, because it is a state of the record that
+/// happens to be pressable, and the amber is the state (blueprint 6.4). A
+/// filter chip is the only pressable chip the system has; it publishes a
+/// toggle, which is recorded in the slot closeout.
 class _PendingChip extends StatelessWidget {
   const _PendingChip({required this.count, required this.onPressed});
 
   final int count;
   final VoidCallback onPressed;
 
+  /// What pressing it does.
+  static const String action = 'Review and save these corrections';
+
   @override
-  Widget build(BuildContext context) => ActionChip(
-    avatar: Icon(
-      Symbols.edit_note,
-      size: context.sizes.iconInline,
-      color: context.tokens.needsReviewOnFill,
-    ),
-    backgroundColor: context.tokens.needsReviewFill,
-    side: BorderSide(
-      color: context.tokens.needsReviewContent,
-      width: context.shape.strokeBoundary,
-    ),
-    labelStyle: Theme.of(
-      context,
-    ).textTheme.labelMedium?.copyWith(color: context.tokens.needsReviewOnFill),
-    label: Text(pendingChangesLabel(count)),
-    tooltip: 'Review and save these corrections',
+  Widget build(BuildContext context) => UiChip(
+    label: pendingChangesLabel(count),
+    variant: UiChipVariant.filter,
+    icon: UiIcons.editReason,
+    status: context.ui.color.status.needsReview,
+    semanticsLabel: '${pendingChangesLabel(count)}. $action',
     onPressed: onPressed,
   );
 }
@@ -389,45 +424,17 @@ class ConflictBanner extends StatelessWidget {
   static const String action = 'Refresh and compare';
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Semantics(
-      liveRegion: true,
-      container: true,
-      child: Container(
-        padding: EdgeInsets.all(context.space.space3),
-        decoration: BoxDecoration(
-          color: context.tokens.needsReviewFill,
-          borderRadius: BorderRadius.circular(context.shape.radiusSm),
-          border: Border.all(
-            color: context.tokens.needsReviewContent,
-            width: context.shape.strokeBoundary,
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(
-              Symbols.sync_problem,
-              size: context.sizes.iconInline,
-              color: context.tokens.needsReviewOnFill,
-            ),
-            SizedBox(width: context.space.space2),
-            Expanded(
-              child: Text(
-                copyFor(version),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: context.tokens.needsReviewOnFill,
-                ),
-              ),
-            ),
-            if (onRefresh != null)
-              TextButton(onPressed: onRefresh, child: const Text(action)),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    container: true,
+    child: UiBanner(
+      message: copyFor(version),
+      tone: UiBannerTone.needsReview,
+      icon: UiIcons.syncProblem,
+      actionLabel: onRefresh == null ? null : action,
+      onAction: onRefresh,
+    ),
+  );
 }
 
 /// Asks the reviewer to refresh after a save that was not recorded
@@ -438,57 +445,69 @@ Future<bool> showConflictDialog(
   required bool anotherReviewer,
   required int pendingCount,
 }) async =>
-    await showAdaptiveForm<bool>(
+    await showAdaptiveModal<bool>(
       context,
-      width: DialogWidths.standard,
-      builder: (BuildContext formContext) => Padding(
-        padding: EdgeInsets.all(formContext.space.space6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              anotherReviewer
-                  ? 'This save was not recorded'
-                  : 'Save not confirmed',
-              style: Theme.of(formContext).textTheme.titleLarge,
-            ),
-            SizedBox(height: formContext.space.space2),
-            Text(
-              anotherReviewer
-                  ? ConflictBanner.copyFor(version)
-                  : 'The server has not confirmed this decision. The displayed '
-                        'record is version $version. Refresh and compare '
-                        'before you try again.',
-            ),
-            SizedBox(height: formContext.space.space2),
-            Text(
-              pendingCount == 0
-                  ? 'Nothing you typed was lost.'
-                  : '${pendingChangesLabel(pendingCount)} are kept and will be '
-                        're-applied where the field has not changed.',
-              style: Theme.of(formContext).textTheme.bodySmall,
-            ),
-            SizedBox(height: formContext.space.space6),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: formContext.space.space2,
-              children: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(formContext).pop(false),
-                  child: const Text('Keep working'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(formContext).pop(true),
-                  child: const Text(ConflictBanner.action),
-                ),
-              ],
-            ),
-          ],
-        ),
+      title: anotherReviewer
+          ? 'This save was not recorded'
+          : 'Save not confirmed',
+      body: (BuildContext formContext) => _ConflictBody(
+        version: version,
+        anotherReviewer: anotherReviewer,
+        pendingCount: pendingCount,
+      ),
+      primaryAction: (BuildContext formContext) => UiButton(
+        label: ConflictBanner.action,
+        onPressed: () => Navigator.of(formContext).pop(true),
+      ),
+      secondaryAction: (BuildContext formContext) => UiButton(
+        label: 'Keep working',
+        variant: UiButtonVariant.ghost,
+        onPressed: () => Navigator.of(formContext).pop(false),
       ),
     ) ??
     false;
+
+/// What the conflict dialog says, above its two actions.
+class _ConflictBody extends StatelessWidget {
+  const _ConflictBody({
+    required this.version,
+    required this.anotherReviewer,
+    required this.pendingCount,
+  });
+
+  final int version;
+  final bool anotherReviewer;
+  final int pendingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            anotherReviewer
+                ? ConflictBanner.copyFor(version)
+                : 'The server has not confirmed this decision. The displayed '
+                      'record is version $version. Refresh and compare '
+                      'before you try again.',
+            style: ui.type.body,
+          ),
+          SizedBox(height: ui.space.s2),
+          Text(
+            pendingCount == 0
+                ? 'Nothing you typed was lost.'
+                : '${pendingChangesLabel(pendingCount)} are kept and will be '
+                      're-applied where the field has not changed.',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// The check that marks a decision this reviewer committed
 /// (motion catalog, row 50, delight moment 1).
@@ -508,10 +527,11 @@ class _SavedCheck extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MotionTokens motion = context.motion;
+    final UiThemeData ui = context.ui;
+    final MotionTokens motion = ui.motion;
     if (!shown) return const SizedBox.shrink();
     return Padding(
-      padding: EdgeInsetsDirectional.only(start: context.space.space1),
+      padding: EdgeInsetsDirectional.only(start: ui.space.s1),
       child: Semantics(
         label: 'Saved',
         child: TweenAnimationBuilder<double>(
@@ -526,10 +546,10 @@ class _SavedCheck extends StatelessWidget {
                   child: child,
                 ),
               ),
-          child: Icon(
-            Symbols.check_circle,
-            size: context.sizes.iconInline,
-            color: context.tokens.clearedContent,
+          child: UiIcon(
+            UiIcons.cleared,
+            size: UiIconSize.inline,
+            color: ui.color.status.cleared.content,
           ),
         ),
       ),

@@ -7,14 +7,15 @@
 /// zero, and an action the server forbids is never rendered at all.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'dart:math' as math;
+
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'administrator_contact.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
-import 'theme/icons.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -25,6 +26,18 @@ const Map<String, String> runActionLabels = <String, String>{
   'cancel': 'Cancel processing',
   'reprocess': 'Start new run',
 };
+
+/// How consequential each run action is, which is what picks its variant
+/// (blueprint 8): pausing and resuming are reversible, cancelling ends work
+/// that is running, and a new run is the one thing an operator comes here to
+/// start.
+const Map<String, UiButtonVariant> runActionVariants =
+    <String, UiButtonVariant>{
+      'pause': UiButtonVariant.secondary,
+      'resume': UiButtonVariant.secondary,
+      'cancel': UiButtonVariant.danger,
+      'reprocess': UiButtonVariant.primary,
+    };
 
 /// The closed by default "Processing" disclosure in the status strip.
 class ProcessingDisclosure extends StatelessWidget {
@@ -41,9 +54,11 @@ class ProcessingDisclosure extends StatelessWidget {
   final bool busy;
   final Future<void> Function(Json) onAction;
 
+  /// The disclosure's own title, fixed so the strip and its tests agree.
+  static const String title = 'Processing';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
     final Json run = objectOf(specimen.data['run']);
     final String blocker = textOf(
       run['blocker'],
@@ -65,19 +80,16 @@ class ProcessingDisclosure extends StatelessWidget {
         ? step
         : '$step. Blocked: ${vocabularyLabel(blocker)}.$retry';
 
-    return ExpansionTile(
-      title: const Text('Processing'),
-      subtitle: Text(summary, style: theme.textTheme.bodySmall),
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: EdgeInsets.only(bottom: context.space.space2),
-      children: <Widget>[
-        ProcessingDetail(
-          specimen: specimen,
-          canOperate: canOperate,
-          busy: busy,
-          onAction: onAction,
-        ),
-      ],
+    return UiDisclosure(
+      style: fullTargetDisclosure(context.ui),
+      title: title,
+      summary: summary,
+      child: ProcessingDetail(
+        specimen: specimen,
+        canOperate: canOperate,
+        busy: busy,
+        onAction: onAction,
+      ),
     );
   }
 }
@@ -123,7 +135,7 @@ class ProcessingDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final Json run = objectOf(specimen.data['run']);
     final Json usage = objectOf(run['usage']);
     final Json policy = objectOf(objectOf(run['profile'])['execution']);
@@ -145,14 +157,12 @@ class ProcessingDetail extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (blocker.isNotEmpty && blocker != 'Not recorded')
-          Text(
-            'Blocked: ${vocabularyLabel(blocker)}',
-            style: theme.textTheme.titleSmall,
-          ),
+          Text('Blocked: ${vocabularyLabel(blocker)}', style: ui.type.label),
         if (blocker == 'pilot_evidence_review_required') ...<Widget>[
-          const Text(
+          Text(
             'Pilot evidence review needed. Check the saved label regions and '
             'the independent readings.',
+            style: ui.type.body,
           ),
           const CaveatText(
             label: 'Risk is not measured and clearance is blocked.',
@@ -160,8 +170,9 @@ class ProcessingDetail extends StatelessWidget {
           ),
         ],
         if (blocker.contains('external_outcome_unknown')) ...<Widget>[
-          const Text(
+          Text(
             'The last external request may have run. Its result is unknown.',
+            style: ui.type.body,
           ),
           const CaveatText(
             label:
@@ -171,7 +182,7 @@ class ProcessingDetail extends StatelessWidget {
           ),
         ],
         if (blocker.contains('budget') || blocker.contains('cost')) ...<Widget>[
-          const Text('Processing stopped at a cost limit.'),
+          Text('Processing stopped at a cost limit.', style: ui.type.body),
           const CaveatText(
             label:
                 'An administrator must review the approved limit or the '
@@ -186,10 +197,10 @@ class ProcessingDetail extends StatelessWidget {
             value: relativeInstant(run['next_retry_at']),
           ),
         if (run['dead_letter'] == true) ...<Widget>[
-          const Text('Automatic retries have stopped.'),
+          Text('Automatic retries have stopped.', style: ui.type.body),
           Text(
             'Retrying now requires a reason.',
-            style: theme.textTheme.bodySmall,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
         if (activeLease) ...<Widget>[
@@ -199,12 +210,12 @@ class ProcessingDetail extends StatelessWidget {
           ),
           Text(
             'Retry, resume and new run are unavailable until then.',
-            style: theme.textTheme.bodySmall,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
         if (attempts.isNotEmpty) ...<Widget>[
-          SizedBox(height: context.space.space2),
-          Text('Attempts', style: theme.textTheme.titleSmall),
+          SizedBox(height: ui.space.s2),
+          Text('Attempts', style: ui.type.label),
           for (final MapEntry<String, dynamic> attempt in attempts.entries)
             _Measurement(
               label: vocabularyLabel(attempt.key.split(':').first),
@@ -215,8 +226,8 @@ class ProcessingDetail extends StatelessWidget {
             ),
         ],
         if (usage.isNotEmpty) ...<Widget>[
-          SizedBox(height: context.space.space2),
-          Text('Usage', style: theme.textTheme.titleSmall),
+          SizedBox(height: ui.space.s2),
+          Text('Usage', style: ui.type.label),
           _Measurement(
             label: 'Steps',
             value: _count(usage['steps'], policy['max_steps'], 'steps'),
@@ -272,30 +283,58 @@ class ProcessingDetail extends StatelessWidget {
           ),
         ],
         if (canOperate)
-          Wrap(
-            spacing: context.space.space2,
-            runSpacing: context.space.space2,
-            children: <Widget>[
-              // Only the actions the server permits are rendered at all. A
-              // permitted action that is blocked right now renders disabled
-              // with the reason on it (accessibility, 3.2).
-              for (final MapEntry<String, String> action
-                  in runActionLabels.entries)
-                if (actions.contains(action.key))
-                  _RunAction(
-                    label: action.value,
-                    reason: _blockedReason(
+          _runActions(context, actions, run, activeLease: activeLease),
+      ],
+    );
+  }
+
+  /// The permitted run actions, arranged by `UiButtonRow`.
+  ///
+  /// Only the actions the server permits are rendered at all. A permitted
+  /// action that is blocked right now renders disabled with the reason on it
+  /// (accessibility, 3.2; blueprint 8).
+  Widget _runActions(
+    BuildContext context,
+    List<String> actions,
+    Json run, {
+    required bool activeLease,
+  }) {
+    final List<UiButton> permitted = <UiButton>[
+      for (final MapEntry<String, String> action in runActionLabels.entries)
+        if (actions.contains(action.key))
+          UiButton(
+            label: action.value,
+            variant: runActionVariants[action.key] ?? UiButtonVariant.secondary,
+            disabledReason: _blockedReason(
+              action.key,
+              busy: busy,
+              activeLease: activeLease,
+              leaseUntil: run['lease_until'],
+            ),
+            onPressed:
+                _blockedReason(
                       action.key,
                       busy: busy,
                       activeLease: activeLease,
                       leaseUntil: run['lease_until'],
-                    ),
-                    onPressed: () =>
-                        _confirm(context, action.key, action.value),
-                  ),
-            ],
+                    ) ==
+                    null
+                ? () => _confirm(context, action.key, action.value)
+                : null,
           ),
-      ],
+    ];
+    if (permitted.isEmpty) return const SizedBox.shrink();
+    // The row draws its primary last, so the map's order survives left to
+    // right and "Start new run" ends up where an operator looks for it.
+    return Padding(
+      padding: EdgeInsetsDirectional.only(top: context.ui.space.s2),
+      child: UiButtonRow(
+        primary: permitted.last,
+        secondary: permitted.length >= 2
+            ? permitted[permitted.length - 2]
+            : null,
+        tertiary: permitted.sublist(0, math.max(0, permitted.length - 2)),
+      ),
     );
   }
 
@@ -343,10 +382,10 @@ class _Measurement extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     return MergeSemantics(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: context.space.space1),
+        padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s1),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -357,47 +396,27 @@ class _Measurement extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
                     ),
                   ),
                   if (detail != null)
-                    Text(detail!, style: context.mono.identifier),
+                    Text(
+                      detail!,
+                      style: ui.type.mono.identifier.copyWith(
+                        color: ui.color.inkSecondary,
+                      ),
+                    ),
                 ],
               ),
             ),
-            SizedBox(width: context.space.space2),
-            Text(value, style: theme.textTheme.bodyMedium),
+            SizedBox(width: ui.space.s2),
+            Text(value, style: ui.type.body),
           ],
         ),
       ),
     );
   }
-}
-
-/// One run action, disabled with its reason rather than silently inert.
-class _RunAction extends StatelessWidget {
-  const _RunAction({
-    required this.label,
-    required this.reason,
-    required this.onPressed,
-  });
-
-  final String label;
-  final String? reason;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: reason ?? label,
-    child: Semantics(
-      hint: reason ?? '',
-      child: OutlinedButton(
-        onPressed: reason == null ? onPressed : null,
-        child: Text(label),
-      ),
-    ),
-  );
 }
 
 /// The processing card, as the large record fallback still shows it.
@@ -414,24 +433,34 @@ class OperationalPanel extends StatelessWidget {
   final bool canOperate, busy;
   final Future<void> Function(Json) onAction;
 
+  /// The pane's own heading.
+  static const String heading = 'Processing and recovery';
+
   @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: EdgeInsets.all(context.space.space4),
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return Surface(
+      radius: ui.shape.tile,
+      hairline: true,
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(Symbols.settings, size: context.sizes.iconInline),
-              SizedBox(width: context.space.space2),
-              Text(
-                'Processing and recovery',
-                style: Theme.of(context).textTheme.titleMedium,
+              const UiIcon(UiIcons.settings, size: UiIconSize.inline),
+              SizedBox(width: ui.space.s2),
+              Expanded(
+                child: Semantics(
+                  container: true,
+                  header: true,
+                  child: Text(heading, style: ui.type.title),
+                ),
               ),
             ],
           ),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s2),
           ProcessingDetail(
             specimen: specimen,
             canOperate: canOperate,
@@ -440,6 +469,6 @@ class OperationalPanel extends StatelessWidget {
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
