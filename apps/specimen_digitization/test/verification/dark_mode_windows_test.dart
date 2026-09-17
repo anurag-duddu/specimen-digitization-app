@@ -211,6 +211,15 @@ void main() {
 
   // Both modes, because the defect this group holds is worse in light than it
   // is in dark and a dark only sweep would have reported the better half.
+  // Everything from here on reads rendered pixels; it runs where the goldens
+  // are drawn (`pixelInstrumentsCompare`) and is marked skipped elsewhere.
+  if (!pixelInstrumentsCompare) {
+    test('the pixel measurements run on macOS only', () {
+      markTestSkipped(pixelInstrumentSkip);
+    });
+    return;
+  }
+
   group('the environment band over the sky', () {
     goldenThemes.forEach((String mode, Brightness brightness) {
       goldenWindows.forEach((String window, Size size) {
