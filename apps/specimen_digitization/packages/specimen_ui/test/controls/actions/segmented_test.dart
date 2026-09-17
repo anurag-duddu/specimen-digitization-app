@@ -2,9 +2,10 @@
 // manual activation pattern: arrows move, Enter selects, and arrowing past a
 // segment does not switch the pane under the reviewer on the way through.
 
+import 'dart:math' as math;
 import 'dart:ui' show SemanticsFlags, Tristate;
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,69 @@ const List<UiSegment<_Pane>> _segments = <UiSegment<_Pane>>[
   UiSegment<_Pane>(value: _Pane.fields, label: 'Fields'),
   UiSegment<_Pane>(value: _Pane.history, label: 'History'),
 ];
+
+/// The same three panes, each with a glyph and under a name, so the whole
+/// ladder of 11 section 3.3 is available to the track.
+///
+/// Measured at scale 1.0 in Geist: the words need about 251 dp, the glyphs
+/// about 152, and the select needs only its hit box. The widths the tests
+/// below pump at sit well inside those bands.
+const List<UiSegment<_Pane>> _glyphSegments = <UiSegment<_Pane>>[
+  UiSegment<_Pane>(
+    value: _Pane.readings,
+    label: 'Readings',
+    icon: UiIcons.modelReading,
+  ),
+  UiSegment<_Pane>(value: _Pane.fields, label: 'Fields', icon: UiIcons.record),
+  UiSegment<_Pane>(
+    value: _Pane.history,
+    label: 'History',
+    icon: UiIcons.history,
+  ),
+];
+
+/// A named track of glyph segments in a column exactly [width] wide, whose
+/// value lives in the test so that collapsing it can be told from choosing.
+class _PaneHost extends StatefulWidget {
+  const _PaneHost({required this.width, required this.changes});
+
+  final double width;
+  final List<_Pane> changes;
+
+  @override
+  State<_PaneHost> createState() => _PaneHostState();
+}
+
+class _PaneHostState extends State<_PaneHost> {
+  _Pane _value = _Pane.fields;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: widget.width,
+    child: UiSegmented<_Pane>(
+      label: 'Pane',
+      segments: _glyphSegments,
+      value: _value,
+      onChanged: (_Pane next) {
+        widget.changes.add(next);
+        setState(() => _value = next);
+      },
+    ),
+  );
+}
+
+/// Clause 15 for a track with no [UiSegmented.label]. The select variant is
+/// not available to it, so its segments survive every width and the words in
+/// them are ellipsised rather than dropped.
+Future<void> _everySegmentStillReads(WidgetTester tester, double width) async {
+  for (final UiSegment<_Pane> segment in _segments) {
+    expect(
+      find.text(segment.label),
+      findsOneWidget,
+      reason: '${segment.label} at $width dp',
+    );
+  }
+}
 
 /// A track whose value lives in the test, so the thumb really moves.
 class _Host extends StatefulWidget {
@@ -70,11 +134,15 @@ void main() {
       ),
       semanticsLabel: 'Fields',
       hasRole: (SemanticsFlags flags) => flags.isSelected != Tristate.none,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _everySegmentStillReads),
     );
   });
 
-  testWidgets('a disabled track satisfies the contract and states the reason',
-      (WidgetTester tester) async {
+  testWidgets('a disabled track satisfies the contract and states the reason', (
+    WidgetTester tester,
+  ) async {
     await expectControlContract(
       tester,
       (BuildContext context) => const UiSegmented<_Pane>(
@@ -85,6 +153,9 @@ void main() {
       ),
       semanticsLabel: 'Fields',
       disabledWithReason: true,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _everySegmentStillReads),
     );
   });
 
@@ -92,7 +163,9 @@ void main() {
     WidgetTester tester,
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
-    await tester.pumpWidget(uiHarness(child: const _Host(initial: _Pane.fields)));
+    await tester.pumpWidget(
+      uiHarness(child: const _Host(initial: _Pane.fields)),
+    );
     await tester.pumpAndSettle();
     final SemanticsData chosen = tester
         .getSemantics(find.bySemanticsLabel('Fields'))
@@ -265,6 +338,176 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the track is its widest label times the count, plus its '
+      'insets', (WidgetTester tester) async {
+    late double declared;
+    await tester.pumpWidget(
+      uiHarness(
+        child: Builder(
+          builder: (BuildContext context) {
+            final UiSegmentedStyle style = UiSegmentedStyle.resolve(
+              context.ui,
+              UiSize.md,
+              textScaler: MediaQuery.textScalerOf(context),
+            );
+            final double widest = _segments.fold<double>(
+              0,
+              (double so, UiSegment<_Pane> segment) => math.max(
+                so,
+                measureLabel(context, segment.label, style.labelStyle).width,
+              ),
+            );
+            declared =
+                _segments.length *
+                    math.max(
+                      style.minSegmentWidth,
+                      widest + style.segmentPadding.horizontal,
+                    ) +
+                2 * style.inset;
+            return const _Host();
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(UiSegmented<_Pane>)).width,
+      closeTo(declared, 0.5),
+      reason:
+          'the intrinsic width of 11 section 3.3 is measured, so every '
+          'segment is the widest label wide and the thumb steps evenly',
+    );
+  });
+
+  testWidgets('given less room than its words need, the segments become '
+      'glyphs with a tooltip each', (WidgetTester tester) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(child: const _PaneHost(width: 200, changes: <_Pane>[])),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      find.text('Readings'),
+      findsNothing,
+      reason: 'the words are what gave way, not the track',
+    );
+    expect(
+      find.byType(UiIcon),
+      findsNWidgets(_glyphSegments.length),
+      reason: 'every segment draws the glyph it carries',
+    );
+    expect(
+      find.byType(UiTooltip),
+      findsNWidgets(_glyphSegments.length),
+      reason: 'a glyph on its own says nothing, so each one names itself',
+    );
+    for (final UiSegment<_Pane> segment in _glyphSegments) {
+      expect(
+        find.bySemanticsLabel(segment.label),
+        findsOneWidget,
+        reason: 'a screen reader still hears ${segment.label}',
+      );
+    }
+    handle.dispose();
+  });
+
+  testWidgets('given less room still, a named track becomes a select over '
+      'the same options', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(child: const _PaneHost(width: 100, changes: <_Pane>[])),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final UiSelect<_Pane> select = tester.widget<UiSelect<_Pane>>(
+      find.byType(UiSelect<_Pane>),
+    );
+    expect(
+      select.options.map((UiSelectOption<_Pane> o) => o.value).toList(),
+      _glyphSegments.map((UiSegment<_Pane> s) => s.value).toList(),
+      reason: 'the same options, in the same order',
+    );
+    expect(
+      select.options.map((UiSelectOption<_Pane> o) => o.label).toList(),
+      _glyphSegments.map((UiSegment<_Pane> s) => s.label).toList(),
+    );
+    expect(select.label, 'Pane');
+    expect(
+      select.showLabel,
+      isFalse,
+      reason:
+          'the collapse changes a shape on the screen; it does not add a '
+          'word to it',
+    );
+  });
+
+  testWidgets('collapsing the track changes its form and not its value', (
+    WidgetTester tester,
+  ) async {
+    final List<_Pane> changes = <_Pane>[];
+    await tester.pumpWidget(
+      uiHarness(child: _PaneHost(width: 300, changes: changes)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Readings'), findsOneWidget, reason: 'words at 300 dp');
+
+    await tester.pumpWidget(
+      uiHarness(child: _PaneHost(width: 100, changes: changes)),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<UiSelect<_Pane>>(find.byType(UiSelect<_Pane>)).value,
+      _Pane.fields,
+      reason: 'the chosen pane is the one the segments had',
+    );
+    expect(
+      changes,
+      isEmpty,
+      reason:
+          'nothing was chosen. A narrower window is a change of form, and a '
+          'control that reported one would be a screen re-deciding for the '
+          'reviewer',
+    );
+  });
+
+  testWidgets('choosing in the select reports what the segment would have', (
+    WidgetTester tester,
+  ) async {
+    final List<_Pane> changes = <_Pane>[];
+    await tester.pumpWidget(
+      uiHarness(child: _PaneHost(width: 100, changes: changes)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(UiSelect<_Pane>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('History').last);
+    await tester.pumpAndSettle();
+    expect(changes, <_Pane>[_Pane.history]);
+  });
+
+  testWidgets('a track with no name keeps its segments and cuts the words '
+      'short', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(child: const SizedBox(width: 100, child: _Host())),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byType(UiSelect<_Pane>),
+      findsNothing,
+      reason:
+          'a select needs a name to offer its options under, and a tab strip '
+          'has none to give',
+    );
+    expect(
+      tester
+          .renderObjectList<RenderParagraph>(find.byType(RichText))
+          .every((RenderParagraph p) => p.didExceedMaxLines),
+      isTrue,
+      reason: 'the last resort is an ellipsis in each segment, never a wrap',
+    );
   });
 
   testWidgets('a track outside two to five segments is a defect', (

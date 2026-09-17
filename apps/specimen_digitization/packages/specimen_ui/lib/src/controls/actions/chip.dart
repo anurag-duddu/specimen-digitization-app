@@ -1,13 +1,19 @@
 /// The chip (10 section 4.1, `UiChip`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/color.dart';
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
+import '../../primitives/fit.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'button.dart';
 
 /// What a chip is for.
@@ -37,6 +43,7 @@ class UiChipStyle {
     required this.height,
     required this.gap,
     required this.removeTarget,
+    required this.leadingSize,
   });
 
   /// The fill, by state.
@@ -54,7 +61,8 @@ class UiChipStyle {
   /// The padding inside the capsule, before the remove target is added.
   final EdgeInsetsGeometry padding;
 
-  /// The visual height: `sm`, so 32 in both densities.
+  /// The visual height: the `sm` row of the size table, grown with the text
+  /// (11 section 2.2), so 32 in both densities at scale 1.0.
   final double height;
 
   /// The space between a glyph and the label.
@@ -63,12 +71,17 @@ class UiChipStyle {
   /// The remove glyph's hit box, which is larger than the chip it sits in.
   final double removeTarget;
 
+  /// The leading widget slot's box: `inline`, so an avatar or a swatch is the
+  /// size of the glyph it stands in for.
+  final double leadingSize;
+
   /// The style for [variant] in [ui], tinted by [status] where the chip names
-  /// one.
+  /// one, at [textScaler].
   static UiChipStyle resolve(
     UiThemeData ui,
     UiChipVariant variant, {
     UiStatusTriple? status,
+    TextScaler textScaler = TextScaler.noScaling,
   }) {
     Color fill(Set<WidgetState> states) {
       if (states.contains(WidgetState.disabled)) return ui.color.disabledFill;
@@ -83,8 +96,7 @@ class UiChipStyle {
       return status?.fill ?? ui.color.paper;
     }
 
-    Color text(Set<WidgetState> states) =>
-        states.contains(WidgetState.disabled)
+    Color text(Set<WidgetState> states) => states.contains(WidgetState.disabled)
         ? ui.color.disabledContent
         : status?.onFill ?? ui.color.ink;
 
@@ -117,9 +129,14 @@ class UiChipStyle {
       side: WidgetStateProperty.resolveWith(edge),
       label: ui.type.label,
       padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s3),
-      height: UiButtonStyle.smallHeight,
+      height: UiType.heightAroundAt(
+        UiButtonStyle.smallHeight,
+        ui.type.label,
+        textScaler,
+      ),
       gap: ui.space.s2,
       removeTarget: UiDensity.hitBox,
+      leadingSize: ui.space.iconInline,
     );
   }
 }
@@ -137,6 +154,7 @@ class UiChip extends StatelessWidget {
     required this.label,
     this.variant = UiChipVariant.tag,
     this.icon,
+    this.leading,
     this.status,
     this.selected = false,
     this.onPressed,
@@ -152,6 +170,11 @@ class UiChip extends StatelessWidget {
        assert(
          onRemove == null || variant == UiChipVariant.input,
          'the remove glyph belongs to the input variant',
+       ),
+       assert(
+         icon == null || leading == null,
+         'a chip carries one thing before its label: a registry glyph or the '
+         'widget that stands where one would',
        );
 
   /// The visible label. Sentence case, one to three words.
@@ -162,6 +185,15 @@ class UiChip extends StatelessWidget {
 
   /// An optional leading glyph, drawn at 16.
   final IconSpec? icon;
+
+  /// An optional widget before the label, drawn in an `inline` box.
+  ///
+  /// An avatar, a colour swatch, or a determinate ring where the state the
+  /// chip names is a measured fraction. The slot 10 section 5 needs for the
+  /// `StatusChip` pattern, which drew its own capsule around a ring while the
+  /// slot did not exist. Mutually exclusive with [icon]: one thing stands
+  /// before the label, not two.
+  final Widget? leading;
 
   /// The status triple this chip names, where it names one.
   ///
@@ -190,6 +222,34 @@ class UiChip extends StatelessWidget {
   /// Why a `filter` chip is disabled, in the reviewer's words.
   final String? disabledReason;
 
+  /// The narrowest width this chip draws the whole of its label at
+  /// (11 section 3.3).
+  double _intrinsicWidth(
+    BuildContext context,
+    UiThemeData ui,
+    UiChipStyle style,
+  ) {
+    final double before = switch ((icon, leading)) {
+      (final IconSpec _, _) => ui.space.iconSmall + style.gap,
+      (_, final Widget _) => style.leadingSize + style.gap,
+      _ => 0.0,
+    };
+    final double body =
+        before + measureLabel(context, label, style.label).width;
+    return switch (variant) {
+      UiChipVariant.filter => math.max(
+        UiDensity.hitBox,
+        body + style.padding.horizontal,
+      ),
+      // The capsule's start padding, the content, and the remove target,
+      // which keeps its own 48 dp box inside a 32 dp capsule.
+      UiChipVariant.input when onRemove != null =>
+        ui.space.s3 + body + style.removeTarget,
+      UiChipVariant.tag ||
+      UiChipVariant.input => body + style.padding.horizontal,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
@@ -197,12 +257,31 @@ class UiChip extends StatelessWidget {
       ui,
       variant,
       status: status,
+      textScaler: MediaQuery.textScalerOf(context),
     );
-    return switch (variant) {
-      UiChipVariant.filter => _buildFilter(style),
-      UiChipVariant.input when onRemove != null => _buildInput(context, style),
-      UiChipVariant.tag || UiChipVariant.input => _buildStatic(style),
-    };
+    // 11 section 3.3 gives a chip no compact variant: one declared
+    // arrangement, and an ellipsis with the whole label on a tooltip when the
+    // row it sits in has run out of room for it.
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth: _intrinsicWidth(context, ui, style),
+          builder: (BuildContext context, bool lastResort) {
+            final Widget capsule = switch (variant) {
+              UiChipVariant.filter => _buildFilter(style),
+              UiChipVariant.input when onRemove != null => _buildInput(
+                context,
+                style,
+              ),
+              UiChipVariant.tag || UiChipVariant.input => _buildStatic(style),
+            };
+            return lastResort
+                ? UiTooltip(message: label, child: capsule)
+                : capsule;
+          },
+        ),
+      ],
+    );
   }
 
   /// The capsule and its contents, painted from [states].
@@ -220,16 +299,22 @@ class UiChip extends StatelessWidget {
     ),
   );
 
-  /// The glyph and the label, in reading order.
+  /// What stands before the label, and the label, in reading order.
   Widget _content(UiChipStyle style, Color foreground) => Row(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
       if (icon != null) ...<Widget>[
         UiIcon(icon!, size: UiIconSize.small, color: foreground),
         SizedBox(width: style.gap),
+      ] else if (leading != null) ...<Widget>[
+        SizedBox.square(
+          dimension: style.leadingSize,
+          child: Center(child: leading),
+        ),
+        SizedBox(width: style.gap),
       ],
       Flexible(
-        child: Text(label, style: style.label.copyWith(color: foreground)),
+        child: UiLabel(label, style: style.label.copyWith(color: foreground)),
       ),
     ],
   );

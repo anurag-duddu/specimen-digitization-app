@@ -7137,3 +7137,195 @@ is in `foundation/` or `gallery/`, or it is inside a `CustomPainter.paint`. The
 fit variants of 11 section 3.3 are the place this will bite: a threshold width
 is a measurement, and it goes in the control's style class or in the foundation
 before it goes in a `SizedBox`.
+## 2026-09-16: Front-end refactor wave G, slot G1, the actions family fits
+
+- Task: the `UiSegmented`, `UiButton`, `UiChip`, `UiCapsuleToggle`, `UiBadge`
+  and `UiKeyCap` rows of the fit table in `design/11-fit-and-scale.md` section
+  3.3, `UiButtonRow` from section 3.4, and control contract clauses 13 to 15
+  turned on for the actions family.
+- Branch and worktree: `fe/fit-actions` at `.claude/worktrees/fe-fit-actions`,
+  cut from `front-end-refactor` at `a301748`, which already carried the
+  merged wave F. Pushed to `origin/fe/fit-actions`: the last content commit is
+  `3818b68` and the branch head is the commit carrying this entry. No pull
+  request; the integrator merges the slot with G2 and G3.
+- Outcome: complete. Seven commits, 27 files, 21 new package tests (604 at the
+  head this was cut from, 625 now, none replaced), four actions goldens
+  regenerated and committed, the public API recorded under 0.3.0.
+- Commits (seven, oldest first):
+  - `0154ab7` `feat(foundation): a height derived from a size, not only from a density row`
+  - `a05d736` `feat(actions): one line labels, derived heights, and the chip's leading slot`
+  - `06b1bf1` `feat(actions): the segmented control's fit ladder, from words to a select`
+  - `733e626` `feat(actions): UiButtonRow, the one arrangement every screen needs`
+  - `20f8503` `test(actions): clauses 13 to 15 on, and the ladder asserted rung by rung`
+  - `7e540e3` `feat(gallery): the Fit block on the actions page, and the family reviewed whole`
+  - `3818b68` `docs(design): reconcile 10, 11 and the package with the actions fit pass`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and `rc=$?` read directly rather than off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 625 passed, 0 failed, the four actions goldens included |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1033 passed, 9 skipped, 32 failed. All 32 are screen goldens in `test/golden/size_classes_golden_test.dart` at text scale 2.0, which the wave policy reserves for the integrator. Zero failures outside `test/golden/`, zero fixtures. |
+  | `check_ui_strings.py` | 0 | 197 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (27 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens and fixtures:
+  - Committed: the four `actions-{light,dark}-{touch,pointer}.png`. The window
+    moved from 1180 by 820 to 1180 by 2540, measured against a page that ends
+    at 2492. The whole file is a diff, because the window grew: 10 section 6
+    already recorded the actions page as the one family taller than its window
+    and the page ended at 1616 before this slot, so more than half the family
+    was below the fold and unreviewed. Read before committing, all four. What
+    the new area shows: every control that was previously cut off, the
+    segmented section moved into the wide column where its five segment `lg`
+    track finally draws its words whole, and the Fit block, where the named
+    glyph track takes words at 480, glyphs at 360 and 280 and a select at 200,
+    the unnamed track takes words at 480, 360 and 280 and ellipsises at 200,
+    the button holds its own width and ellipsises at 200 under the page's one
+    focus ring, the entered value chip keeps its remove target and gives way
+    at 200, and `UiButtonRow` is a line at 480 and 360 and a column at 280 and
+    200. The one specimen that is gone is the `focused` button in the
+    `UiButton, states` row: a page has one primary focus and it is spent on
+    the narrow column now, and the ring at a comfortable width is still pinned
+    by `foundation-primitives`, whose focused specimen is a `UiButton`.
+  - Application screen goldens: **32 of 121 moved, and zero of the eight
+    semantics fixtures.** The 32 are `intake`, `workbench-readings`,
+    `workbench-fields` and `workbench-history`, eight each, which is four
+    window classes by two modes, and every one of them is at text scale 2.0.
+    Nothing at 1.0 or in any other screen moved, which is the check this slot
+    wanted: heights that derive from the type are the density number at scale
+    1.0 exactly. Regenerated once with `--update-goldens` to read, then
+    restored with `git checkout --`. The diff is a vertical shift of
+    everything under the first control that holds text, largest on the
+    workbench, whose tab strip is a `UiSegmented`. Left for the integrator.
+- Durable learnings:
+  - **A `LayoutBuilder` cannot live under an intrinsic pass, and `UiLabel` is
+    a `LayoutBuilder`.** `RenderConstrainedLayoutBuilder` throws on
+    `computeMaxIntrinsicWidth` outside a debug intrinsics check, so the moment
+    a label became a `UiLabel` the `IntrinsicWidth` that sized the segmented
+    track had to go. That is a better outcome than the workaround: the track
+    now declares its width from `measureLabel` instead of asking the framework
+    to measure the same thing a second time, which is what 11 section 0 means
+    by one width policy per control. Worth knowing before wave 3: a control
+    with a label can no longer be put inside `IntrinsicWidth` or
+    `IntrinsicHeight`. The only one in the tree is `evidence_panel.dart`, and
+    no control of this family is inside it.
+  - **A tooltip that wraps a label steals nothing; a tooltip that wraps a
+    pressable would.** `UiTooltip`'s gesture detector is
+    `HitTestBehavior.deferToChild` over a `Text`, and a `RenderParagraph` does
+    not hit test itself, so the detector never enters the arena. Put the same
+    tooltip inside a `Pressable`'s builder around something that does hit test
+    and the inner recogniser wins the sweep, because hit testing adds the
+    deepest entry first: the control would stop activating on a tap. The rule
+    this family settled on is that a control that is pressed wraps itself from
+    outside its `Pressable`, and a control that is not (`UiBadge`,
+    `UiKeyCap`) uses `UiLabel`'s own tooltip slot.
+  - **`SizedBox` is the whole width policy, because `enforce` clamps both
+    ways.** A variant that declares `SizedBox(width: w)` is `w` wide under a
+    loose parent, the parent's width under a tight one, and the parent's width
+    under a loose parent narrower than `w`. Those are exactly the three
+    behaviours 11 section 3.3 asks for, including the last resort, and none of
+    them needs a branch in the control.
+  - **A `UiButton` under a tight width fills the box and centres its capsule.**
+    `Pressable` shrink wraps its visual in a `Center(widthFactor: 1)`, so a
+    button given a tight 280 publishes a 280 wide widget whose capsule is its
+    own width in the middle of it. That is why `UiButtonRow` stacks its
+    actions centred rather than stretched, and why a test that reads a
+    stacked button's width has to read the capsule rather than the widget.
+  - **`tester.renderObject<RenderParagraph>(find.text(...))` stops working the
+    moment a label overflows.** An overflowing `UiLabel` publishes its whole
+    string as a `semanticsLabel`, so `Text` wraps itself in a `Semantics` and
+    the element the text finder lands on is the annotation. Go through
+    `find.byType(RichText)` instead.
+  - **A const assert is evaluated by the analyzer, not at run time.** The
+    assertion that a chip carries a glyph or a leading widget and not both
+    fails `flutter analyze` as `const_eval_throws_exception` when the specimen
+    is a const expression, so a test for it has to build the widget through
+    something non const, which reaches the assert where `tester.takeException`
+    can see it.
+  - **`dart format` is not clean on this tree.** Twelve of the thirty one
+    files under `lib/src/controls/inputs`, `overlays` and `primitives` change
+    under the pinned Dart 3.10.4 formatter, and twelve of the seventeen files
+    this slot touched would have changed at `HEAD`. Running it therefore mixes
+    formatting churn into a slot's diff and into any merge. This slot ran it
+    once, reverted the three files where the change was formatting only
+    (`icon_button.dart`, `badge_test.dart`, `key_cap_test.dart`) and kept it
+    where the file was being rewritten anyway. There is no `dart format` hook
+    in `.pre-commit-config.yaml`, so nothing is gating this either way; a
+    later slot should decide whether the tree is formatted or not, rather than
+    each slot deciding for its own files.
+- Failed approaches:
+  - Putting `controlHeightFor`'s size shaped sibling in each control. Three
+    controls needed `max(a size, the scaled line box plus twice the inset)`
+    with a different size each, and writing the formula three times is the
+    seam 11 section 0 names. `UiType.insetAround` and `UiType.heightAround`
+    are one formula with the number handed in, and the density forms call
+    them.
+  - Giving `UiSegmented` an unconditional select rung. `UiTabs` builds a
+    `UiSegmented` inside `SemanticsRole.tabBar` with `explicitChildNodes`, and
+    the SDK's own check fails on a child of a tab bar that is not a tab. The
+    rung is now conditional on the track carrying a `label`, which a tab strip
+    does not give it, and 11 section 3.3 is amended to say so.
+  - Showing every Fit specimen focused as well as at rest. A page has one
+    primary focus; `autofocus` on a second control is granted to whichever
+    asks first, which makes a specimen labelled `focused` a lie in a golden.
+    The page spends its one focus where the new information is.
+  - Stretching a stacked action to the column width. `Pressable` shrink wraps,
+    so the capsule centres itself inside the stretched box and the box is
+    invisible; and a capsule that did fill a phone's width would stop reading
+    as the disc of 09 section 1. The column centres instead, and 11 section
+    3.4 is amended.
+- Remaining follow-ups, and every deviation from the brief:
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slot F2 also recorded.
+  - **`UiSegmented` gained `label` rather than a required name.** Making it
+    required would have been a breaking change to `tabs.dart`, which is slot
+    G2's file, and a tab strip has no name to give.
+  - **The actions page's `focused` button specimen is gone**, as described
+    under goldens above.
+  - **The segmented section moved column on the actions page.** Not asked for,
+    but the specimen it moved was drawing its own last resort in a 345 dp
+    column, which reviews the fit policy rather than the control.
+  - **`UiCapsuleToggle` is in the fit pass although 11 section 3.3's table
+    does not list it.** It is in the family, it arranges labels, and clause 15
+    applies to it; its declared arrangement is the `Wrap` it already had, and
+    each option now ellipsises with a tooltip rather than wrapping.
+  - For a later polish: `StatusChip`'s `_MeasuredChip` in
+    `lib/src/widgets/status_chip.dart` and its `TODO(fe/polish-2)` can now be
+    retired onto `UiChip.leading`, which is the slot it asked for. That file
+    belongs to no wave G slot.
+  - For a later polish: the workbench and intake screens at 200 percent text
+    still show a pattern label wrapping inside a capsule
+    (`Confirm label coverage`). It is an L4 widget rather than a control, so
+    it is wave 3's to re-base; the screen goldens at 2.0 picture it.
+- What the other wave G slots and the integrator will want:
+  - `UiButtonRow(primary:, secondary:, tertiary:)` from the actions barrel.
+    G2's `UiDialog` and `UiSheet` adopt it for their actions; it takes
+    `UiButton`s, aligns the line to the end with the primary last, and stacks
+    with the primary on top when the line does not fit or the window is
+    compact.
+  - `UiButton.intrinsicWidth(context)`, and `UiButtonStyle.restingHeightOf`
+    and `UiButtonStyle.labelStyleOf`, for a control that sizes itself beside a
+    button.
+  - `UiType.insetAround(restingHeight, style)`,
+    `UiType.heightAround(restingHeight, style, context)` and
+    `UiType.heightAroundAt(restingHeight, style, scaler)` in the foundation,
+    for any height that holds text and is not the density row. G2's tile, row,
+    banner and toast heights are the obvious callers.
+  - `UiSegment.icon` and `UiSegmented.label`, and the ladder they unlock.
+    `UiTabs` compiles unchanged and behaves as it did; if G2 wants a tab strip
+    that collapses, the decision to make is what a tab bar's node becomes
+    when it does, not whether the rung exists.
+  - `UiChip.leading` and `UiChipStyle.leadingSize`.
+  - `UiButtonStyle.resolve`, `UiSegmentedStyle.resolve`,
+    `UiChipStyle.resolve`, `UiBadgeStyle.resolve`,
+    `UiCapsuleToggleStyle.resolve` and `UiKeyCapStyle.resolve` all take a
+    `TextScaler` named `textScaler`, defaulting to `TextScaler.noScaling`.
+  - The actions family golden window is 1180 by 2540, in
+    `test/gallery/actions_golden_test.dart`. G3's golden matrix pictures these
+    controls, so it is regenerated after this slot and G2 land, as
+    11 section 7 says.

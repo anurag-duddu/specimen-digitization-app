@@ -1,4 +1,4 @@
-/// The segmented control (10 section 4.1, `UiSegmented`).
+/// The segmented control (10 section 4.1, `UiSegmented`; 11 section 3.3).
 library;
 
 import 'dart:math' as math;
@@ -7,9 +7,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
+import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
+import '../../primitives/fit.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../inputs/select.dart';
+import '../overlays/tooltip.dart';
 import 'button.dart';
 
 /// One segment of a segmented control.
@@ -19,6 +25,7 @@ class UiSegment<T> {
   const UiSegment({
     required this.value,
     required this.label,
+    this.icon,
     this.semanticsLabel,
   });
 
@@ -27,6 +34,13 @@ class UiSegment<T> {
 
   /// The visible label. Sentence case, one or two words.
   final String label;
+
+  /// An optional glyph for this segment.
+  ///
+  /// The icon only variant of 11 section 3.3 is available only when every
+  /// segment carries one: a track that drew glyphs for some segments and
+  /// words for the rest would be two controls in one row.
+  final IconSpec? icon;
 
   /// Overrides the label a screen reader reads, where the visible one does
   /// not stand alone out of context (02 section 4.16).
@@ -53,6 +67,7 @@ class UiSegmentedStyle {
     required this.inset,
     required this.segmentPadding,
     required this.minSegmentWidth,
+    required this.glyphSize,
   });
 
   /// The track's fill, by state.
@@ -77,10 +92,11 @@ class UiSegmentedStyle {
   /// Without the split, hovering the chosen segment shows nothing at all.
   final WidgetStateProperty<Color> overlay;
 
-  /// The label's type role.
+  /// The label's type role. `label` at every size, which is why the height
+  /// below derives from that role rather than from the button's.
   final TextStyle labelStyle;
 
-  /// The track's visual height.
+  /// The track's visual height, grown with the text (11 section 2.2).
   final double trackHeight;
 
   /// The row's height, which is the hit box when the track is shorter.
@@ -95,8 +111,15 @@ class UiSegmentedStyle {
   /// The narrowest a segment may be, so every one clears the hit box.
   final double minSegmentWidth;
 
-  /// The style for [size] in [ui].
-  static UiSegmentedStyle resolve(UiThemeData ui, UiSize size) {
+  /// The glyph an icon only segment draws, at `inline`.
+  final double glyphSize;
+
+  /// The style for [size] in [ui], at [textScaler].
+  static UiSegmentedStyle resolve(
+    UiThemeData ui,
+    UiSize size, {
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
     Color trackFill(Set<WidgetState> states) =>
         states.contains(WidgetState.disabled)
         ? ui.color.disabledFill
@@ -116,7 +139,11 @@ class UiSegmentedStyle {
         ? ui.color.disabledContent
         : ui.color.ink;
 
-    final double trackHeight = UiButtonStyle.heightOf(ui, size);
+    final double trackHeight = UiType.heightAroundAt(
+      UiButtonStyle.restingHeightOf(ui, size),
+      ui.type.label,
+      textScaler,
+    );
     return UiSegmentedStyle(
       track: WidgetStateProperty.resolveWith(trackFill),
       trackSide: WidgetStateProperty.resolveWith(edge),
@@ -139,10 +166,9 @@ class UiSegmentedStyle {
       trackHeight: trackHeight,
       outerHeight: math.max(trackHeight, UiDensity.hitBox),
       inset: ui.space.s1,
-      segmentPadding: EdgeInsetsDirectional.symmetric(
-        horizontal: ui.space.s3,
-      ),
+      segmentPadding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s3),
       minSegmentWidth: UiDensity.hitBox,
+      glyphSize: ui.space.iconInline,
     );
   }
 }
@@ -154,6 +180,15 @@ class UiSegmentedStyle {
 /// Arrow keys move focus and `Enter` selects, which is the WAI-ARIA manual
 /// activation pattern: a reviewer arrowing past a segment does not switch the
 /// pane under them on the way through.
+///
+/// **Fit** (11 section 3.3). Its intrinsic width is the number of segments
+/// times the widest label plus a segment's padding, plus the track's insets;
+/// every segment is drawn at that one width, so the thumb travels an even
+/// step. Given less, in order: icon only segments with a tooltip each, when
+/// every segment carries a glyph; a [UiSelect] over the same options, when
+/// the track has been given a [label] to offer them under; and, when neither
+/// exists, the segments themselves with their labels ellipsised and the whole
+/// word on a tooltip.
 class UiSegmented<T> extends StatefulWidget {
   /// A track of [segments] with [value] chosen.
   const UiSegmented({
@@ -161,6 +196,7 @@ class UiSegmented<T> extends StatefulWidget {
     required this.segments,
     required this.value,
     required this.onChanged,
+    this.label,
     this.size = UiSize.md,
     this.disabledReason,
   });
@@ -179,6 +215,17 @@ class UiSegmented<T> extends StatefulWidget {
 
   /// Reports the newly chosen value. Null disables the control.
   final ValueChanged<T>? onChanged;
+
+  /// What the track chooses: "Pane", "Sort order".
+  ///
+  /// The name the [UiSelect] variant offers the options under, and the only
+  /// thing that variant needs that a track does not. A track without one
+  /// keeps its segments at every width and ellipsises them, which is what a
+  /// tab strip wants: `UiTabs` publishes `SemanticsRole.tabBar` with
+  /// `explicitChildNodes`, and a select under that node is a child of a tab
+  /// bar that is not a tab, which the SDK's own check fails rather than
+  /// degrades.
+  final String? label;
 
   /// The size the track is drawn at.
   final UiSize size;
@@ -255,7 +302,99 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
       'a toggle and more is a select.',
     );
     final UiThemeData ui = context.ui;
-    final UiSegmentedStyle style = UiSegmentedStyle.resolve(ui, widget.size);
+    final UiSegmentedStyle style = UiSegmentedStyle.resolve(
+      ui,
+      widget.size,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    final int count = widget.segments.length;
+    // Every segment is drawn at the widest label's width, so the segments are
+    // equal and the thumb's step is even. Measured rather than estimated, so
+    // the declared width is the width the track actually needs at the
+    // reviewer's text size.
+    final double widest = widget.segments.fold<double>(
+      0,
+      (double so, UiSegment<T> segment) => math.max(
+        so,
+        measureLabel(context, segment.label, style.labelStyle).width,
+      ),
+    );
+    final double labelled = math.max(
+      style.minSegmentWidth,
+      widest + style.segmentPadding.horizontal,
+    );
+    final double glyphs = math.max(
+      style.minSegmentWidth,
+      style.glyphSize + style.segmentPadding.horizontal,
+    );
+    double trackWidth(double segment) => count * segment + 2 * style.inset;
+    final bool everySegmentHasGlyph = widget.segments.every(
+      (UiSegment<T> segment) => segment.icon != null,
+    );
+
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth: trackWidth(labelled),
+          builder: (BuildContext context, bool _) =>
+              _buildTrack(style, trackWidth(labelled), glyphsOnly: false),
+        ),
+        if (everySegmentHasGlyph && glyphs < labelled)
+          FitVariant(
+            intrinsicWidth: trackWidth(glyphs),
+            builder: (BuildContext context, bool _) =>
+                _buildTrack(style, trackWidth(glyphs), glyphsOnly: true),
+          ),
+        if (widget.label != null)
+          // A select stretches to whatever it is given and ellipsises the
+          // option it shows, so the hit box is the whole of what it needs.
+          FitVariant(
+            intrinsicWidth: UiDensity.hitBox,
+            builder: (BuildContext context, bool _) => _buildSelect(),
+          ),
+      ],
+    );
+  }
+
+  /// The same options in the same order, under the same name.
+  ///
+  /// The value and the callback are the track's own, so collapsing the track
+  /// changes the form the reviewer is offered and nothing else: no selection
+  /// moves, nothing is reported, and what a screen reader meets is a control
+  /// of a different kind carrying the same word and the same chosen option.
+  Widget _buildSelect() {
+    final String label = widget.label!;
+    return UiSelect<T>(
+      label: label,
+      // The track never drew the name, and the surface around it is what
+      // named the choice; drawing one now would be the collapse adding a word
+      // to the screen rather than changing a shape on it.
+      showLabel: false,
+      // Never seen: a track always has a chosen segment, so the trigger
+      // always has an option to draw. It names the choice for the case where
+      // a caller hands the control a value no segment carries.
+      placeholder: label,
+      options: <UiSelectOption<T>>[
+        for (final UiSegment<T> segment in widget.segments)
+          UiSelectOption<T>(
+            value: segment.value,
+            label: segment.label,
+            leading: segment.icon,
+          ),
+      ],
+      value: widget.value,
+      onChanged: widget.onChanged,
+      disabledReason: widget.disabledReason,
+    );
+  }
+
+  /// The track itself, at [width], drawn with glyphs or with words.
+  Widget _buildTrack(
+    UiSegmentedStyle style,
+    double width, {
+    required bool glyphsOnly,
+  }) {
+    final UiThemeData ui = context.ui;
     final bool enabled = widget.onChanged != null;
     final Set<WidgetState> states = <WidgetState>{
       if (!enabled) WidgetState.disabled,
@@ -282,74 +421,72 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
               },
             ),
           },
-          // The track is as wide as its widest segment times the number of
-          // segments: `Expanded` inside a row that is measured for its
-          // intrinsic width divides the space equally, which is what "equal
-          // segments" means when nobody has bounded the control from outside.
-          // A caller that does bound it keeps its own width, because a tight
-          // constraint wins over the intrinsic one.
-          child: IntrinsicWidth(
-            child: SizedBox(
-              height: style.outerHeight,
-              child: Stack(
-                alignment: Alignment.center,
-                children: <Widget>[
-                  Positioned.fill(
-                    child: Center(
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: style.trackHeight,
-                        child: DecoratedBox(
-                          decoration: ShapeDecoration(
-                            shape: StadiumBorder(
-                              side: style.trackSide.resolve(states),
-                            ),
-                            color: style.track.resolve(states),
+          // The width the variant declared. A caller that binds the track
+          // tightly keeps its own width, because a tight constraint wins over
+          // this one; a caller with less room than this clamps it down, which
+          // is the last resort the labels then ellipsise into.
+          child: SizedBox(
+            width: width,
+            height: style.outerHeight,
+            child: Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                Positioned.fill(
+                  child: Center(
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: style.trackHeight,
+                      child: DecoratedBox(
+                        decoration: ShapeDecoration(
+                          shape: StadiumBorder(
+                            side: style.trackSide.resolve(states),
                           ),
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.all(style.inset),
-                            child: _Thumb(
-                              colour: style.thumb.resolve(states),
-                              count: count,
-                              index: chosen,
-                              motion: ui.motion,
-                            ),
+                          color: style.track.resolve(states),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsetsDirectional.all(style.inset),
+                          child: _Thumb(
+                            colour: style.thumb.resolve(states),
+                            count: count,
+                            index: chosen,
+                            motion: ui.motion,
                           ),
                         ),
                       ),
                     ),
                   ),
-                  // The same inset the thumb sits at, so a label's centre and
-                  // the thumb's centre are the same point in every segment.
-                  // Without it the thumb, which is inset, and the segment,
-                  // which is not, disagree by the inset at both ends.
-                  Padding(
-                    padding: EdgeInsetsDirectional.symmetric(
-                      horizontal: style.inset,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        for (int i = 0; i < count; i++)
-                          Expanded(
-                            child: _Segment<T>(
-                              segment: widget.segments[i],
-                              style: style,
-                              focusNode: _nodes[i],
-                              selected: i == chosen,
-                              disabledReason: widget.disabledReason,
-                              onPressed: enabled
-                                  ? () => widget.onChanged!(
-                                      widget.segments[i].value,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                      ],
-                    ),
+                ),
+                // The same inset the thumb sits at, so a label's centre and
+                // the thumb's centre are the same point in every segment.
+                // Without it the thumb, which is inset, and the segment,
+                // which is not, disagree by the inset at both ends.
+                Padding(
+                  padding: EdgeInsetsDirectional.symmetric(
+                    horizontal: style.inset,
                   ),
-                ],
-              ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      for (int i = 0; i < count; i++)
+                        Expanded(
+                          child: _Segment<T>(
+                            segment: widget.segments[i],
+                            style: style,
+                            focusNode: _nodes[i],
+                            selected: i == chosen,
+                            glyphOnly: glyphsOnly,
+                            disabledReason: widget.disabledReason,
+                            onPressed: enabled
+                                ? () => widget.onChanged!(
+                                    widget.segments[i].value,
+                                  )
+                                : null,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -429,6 +566,7 @@ class _Segment<T> extends StatelessWidget {
     required this.style,
     required this.focusNode,
     required this.selected,
+    required this.glyphOnly,
     required this.onPressed,
     required this.disabledReason,
   });
@@ -437,13 +575,14 @@ class _Segment<T> extends StatelessWidget {
   final UiSegmentedStyle style;
   final FocusNode focusNode;
   final bool selected;
+  final bool glyphOnly;
   final VoidCallback? onPressed;
   final String? disabledReason;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    return Pressable(
+    final Widget target = Pressable(
       semanticsLabel: segment.spokenLabel,
       onPressed: onPressed,
       disabledReason: disabledReason,
@@ -458,25 +597,50 @@ class _Segment<T> extends StatelessWidget {
       // the 48 dp target, so the segment fills the row it is given rather
       // than padding itself out of the track.
       minHitBox: 0,
-      builder: (BuildContext context, Set<WidgetState> states) =>
-          AnimatedDefaultTextStyle(
-            duration: ui.motion.navigationGlide,
-            curve: MotionTokens.emphasizedCurve,
-            style: style.labelStyle.copyWith(
-              color: selected
-                  ? style.selectedLabel.resolve(states)
-                  : style.label.resolve(states),
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: style.minSegmentWidth),
-              child: Padding(
-                padding: style.segmentPadding,
-                child: Center(
-                  child: Text(segment.label, textAlign: TextAlign.center),
-                ),
+      builder: (BuildContext context, Set<WidgetState> states) {
+        final Color colour = selected
+            ? style.selectedLabel.resolve(states)
+            : style.label.resolve(states);
+        return AnimatedDefaultTextStyle(
+          duration: ui.motion.navigationGlide,
+          curve: MotionTokens.emphasizedCurve,
+          style: style.labelStyle.copyWith(color: colour),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: style.minSegmentWidth),
+            child: Padding(
+              padding: style.segmentPadding,
+              child: Center(
+                child: glyphOnly
+                    ? UiIcon(
+                        segment.icon!,
+                        size: UiIconSize.inline,
+                        color: colour,
+                      )
+                    : UiLabel(
+                        segment.label,
+                        textAlign: TextAlign.center,
+                        // Per segment rather than per track: only the word
+                        // that actually ran out of room carries a pane, and a
+                        // tooltip that repeats a label already on screen is
+                        // noise under the pointer (11 section 3.3, rule 4).
+                        tooltip:
+                            (
+                              BuildContext context,
+                              String message,
+                              Widget label,
+                            ) => UiTooltip(message: message, child: label),
+                      ),
               ),
             ),
           ),
+        );
+      },
     );
+    // Outside the `Pressable`, so a tap reaches the segment underneath rather
+    // than the pane above it. A glyph on its own says nothing, so the word it
+    // stands for is always one hover or one long press away.
+    return glyphOnly
+        ? UiTooltip(message: segment.label, child: target)
+        : target;
   }
 }

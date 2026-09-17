@@ -19,6 +19,19 @@ const List<UiToggleOption<_Reading>> _options = <UiToggleOption<_Reading>>[
   UiToggleOption<_Reading>(value: _Reading.authority, label: 'Authority'),
 ];
 
+/// Clause 15 for a group of capsules. The `Wrap` is the parent arranging its
+/// children, which is what 11 section 3.3 gives a parent to do; every option
+/// still reads at every width.
+Future<void> _everyOptionStillReads(WidgetTester tester, double width) async {
+  for (final UiToggleOption<_Reading> option in _options) {
+    expect(
+      find.text(option.label),
+      findsOneWidget,
+      reason: '${option.label} at $width dp',
+    );
+  }
+}
+
 /// A group whose selection lives in the test, so a tap really changes it.
 class _Host extends StatefulWidget {
   const _Host({
@@ -71,11 +84,15 @@ void main() {
       ),
       semanticsLabel: 'Model',
       hasRole: (SemanticsFlags flags) => flags.isToggled != Tristate.none,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _everyOptionStillReads),
     );
   });
 
-  testWidgets('a disabled group satisfies the contract and states the reason',
-      (WidgetTester tester) async {
+  testWidgets('a disabled group satisfies the contract and states the reason', (
+    WidgetTester tester,
+  ) async {
     await expectControlContract(
       tester,
       (BuildContext context) => const UiCapsuleToggle<_Reading>(
@@ -86,6 +103,9 @@ void main() {
       ),
       semanticsLabel: 'Model',
       disabledWithReason: true,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _everyOptionStillReads),
     );
   });
 
@@ -93,9 +113,7 @@ void main() {
       'off', (WidgetTester tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(
-      uiHarness(
-        child: const _Host(initial: <_Reading>{_Reading.reviewer}),
-      ),
+      uiHarness(child: const _Host(initial: <_Reading>{_Reading.reviewer})),
     );
     await tester.pumpAndSettle();
     expect(
@@ -235,9 +253,7 @@ void main() {
 
   testWidgets('Space toggles the focused option', (WidgetTester tester) async {
     final List<Set<_Reading>> reported = <Set<_Reading>>[];
-    await tester.pumpWidget(
-      uiHarness(child: _Host(onChanged: reported.add)),
-    );
+    await tester.pumpWidget(uiHarness(child: _Host(onChanged: reported.add)));
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);

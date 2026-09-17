@@ -136,6 +136,97 @@ rings per 09 section 3.6 as amended.
 - The inputs gallery page gains the box in every shape at rest, focused and
   focused with a value, and the family golden is captured at 1180 by 1600.
 
+Wave G of the front-end refactor, slot G1: the actions family given the fit
+policy of `design/11-fit-and-scale.md` section 3.3, the row of section 3.4,
+and contract clauses 13 to 15 turned on for all seven controls.
+
+### Public API
+
+- `UiButtonRow` is new (`controls/actions/button_row.dart`, exported from the
+  family barrel): a primary, an optional secondary and optional tertiary
+  actions, ends aligned with the primary last, becoming a column with the
+  primary on top when the line does not fit at the reviewer's text size or
+  the window is compact. Reason: 11 section 3.4. It is the one widget in the
+  package that reads `WindowClass`, because it is an arrangement rather than
+  a control, and arrangement is what section 3.1 gives the window class to
+  decide. Its actions are `UiButton`s rather than bare widgets, because it
+  chooses between the two arrangements by measuring them.
+- `UiButton.intrinsicWidth(context)`: the label at the current text scale
+  plus the glyph slots and the padding, floored at the hit box. Reason:
+  `UiButtonRow` decides on a measurement rather than a guess, and a pattern
+  that arranges buttons itself needs the same number.
+- `UiButtonStyle.resolve` takes a `TextScaler`, defaulting to
+  `TextScaler.noScaling`, as `UiInputStyle.resolve` does and for the same
+  reason (11 section 2.2). `UiButtonStyle.heightOf` takes the same argument
+  as a named parameter, so an existing call site is unchanged at scale 1.0.
+- `UiButtonStyle.restingHeightOf` and `UiButtonStyle.labelStyleOf` are new:
+  the size table of 10 section 4 and the role a label is drawn in, published
+  so that a control sized beside a button derives its own height from the
+  same two values instead of restating them.
+- `UiSegment.icon`, an optional `IconSpec`. Reason: the icon only rung of the
+  ladder in 11 section 3.3 is available only when every segment carries one.
+- `UiSegmented.label`, optional: what the track chooses. Reason: the select
+  rung needs a name to offer the options under. A track without one keeps its
+  segments at every width and ellipsises them, which is what a tab strip
+  wants: `UiTabs` publishes `SemanticsRole.tabBar` with `explicitChildNodes`,
+  and a select under that node is a child of a tab bar that is not a tab,
+  which the SDK's own check fails rather than degrades.
+- `UiSegmentedStyle.resolve` takes a `TextScaler` and the style gained
+  `glyphSize`. `UiChipStyle.resolve` and `UiBadgeStyle.resolve` take one too,
+  and `UiChipStyle` gained `leadingSize`; `UiKeyCapStyle.resolve` takes one.
+  All default to `TextScaler.noScaling`.
+- `UiChip.leading`, a `Widget?` drawn in an `inline` box before the label and
+  mutually exclusive with `icon`. Reason: the slot 10 section 5 needs for
+  `StatusChip`, whose measured form drew its own capsule around a determinate
+  ring because no slot existed. The app's `_MeasuredChip` and its
+  `TODO(fe/polish-2)` can be retired onto it.
+- `UiType.insetAround(restingHeight, style)`, `UiType.heightAround(...)` and
+  `UiType.heightAroundAt(...)` in the foundation. Reason: wave F derived a
+  height from a `UiDensity`, and the `sm` and `lg` rows of the size table, a
+  badge and a key cap are heights that hold text without being the density
+  row. `insetFor` and `controlHeightAt` are now the density shaped call of
+  the same two functions, so there is one formula rather than five copies.
+
+### Actions
+
+- Every label in the family is a `UiLabel`: one line, an ellipsis, and the
+  whole word on a tooltip and on the semantics label only when it actually
+  overflows. Where the control is pressed, the tooltip wraps the control from
+  outside its `Pressable`, so a tap reaches the control rather than the pane
+  over it; where it is not (`UiBadge`, `UiKeyCap`), the label primitive's own
+  tooltip slot carries it.
+- `UiSegmented` declares the fit ladder of 11 section 3.3. Its intrinsic
+  width is the count times the widest label measured at the current text
+  scale plus a segment's padding, plus the track's insets, so every segment
+  is equal at the widest label. Given less: icon only segments with a tooltip
+  each when every segment carries a glyph, then a `UiSelect` over the same
+  options with the same value and the same callback, then the segments with
+  their words cut short. The `IntrinsicWidth` that used to size the track is
+  gone; the width is declared rather than measured a second time by the
+  framework, which is also what lets a label carry a `LayoutBuilder`.
+- Collapsing a track into its select changes the form and not the value:
+  nothing is reported, no selection moves, and what a screen reader meets is
+  a control of a different kind under the same name carrying the same chosen
+  option.
+- `UiButton` and `UiChip` never shrink below their intrinsic width, and their
+  heights derive from the roles they draw rather than from the density
+  constant or from 32, so 200 percent text has room without a new number.
+  `UiBadge` and `UiKeyCap` derive theirs the same way, from `label.small` and
+  from `mono.identifier`.
+- The actions gallery page gains the Fit block of 11 section 3.5: the
+  segmented track named and glyphed, the same track unnamed, a button, an
+  entered value chip and a `UiButtonRow`, each in a 480, 360, 280 and 200 dp
+  column. The page's one focused specimen moved there, to the 200 dp button,
+  because a page has one primary focus and the narrowest column is where a
+  ring drawn outside a control would first meet something.
+- The segmented section moved into the wider column of the page. The five
+  segment track at `lg` needs 403 dp for its words and the narrow column is
+  345, so the specimen was drawing its own last resort.
+- The actions family golden is captured at 1180 by 2540, measured against a
+  page that ends at 2492. It was 820 while the page ended at 1616, which
+  10 section 6 already recorded as the one family taller than its window.
+- Clauses 13, 14 and 15 are on in every actions contract test.
+
 ## 0.2.0
 
 2026-09-16. Wave 1 of the front-end refactor: the five control families of 10

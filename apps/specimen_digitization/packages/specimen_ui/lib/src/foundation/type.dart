@@ -306,7 +306,17 @@ class UiType {
   /// taller than the density row the text sits flush and the control grows
   /// instead of clipping.
   static double insetFor(UiDensity density, TextStyle style) =>
-      math.max(0, (density.controlHeight - unscaledLineHeightOf(style)) / 2);
+      insetAround(density.controlHeight, style);
+
+  /// [insetFor] for a control whose resting height is a size rather than the
+  /// density row.
+  ///
+  /// The `sm` and `lg` rows of the size table in 10 section 4 are 32 and 56
+  /// whatever the density is, and a badge and a key cap are smaller again.
+  /// Each of them holds a line of text, so each of them derives its height
+  /// the same way; only the number the inset is measured against changes.
+  static double insetAround(double restingHeight, TextStyle style) =>
+      math.max(0, (restingHeight - unscaledLineHeightOf(style)) / 2);
 
   /// The height of a control that holds one line of [style]
   /// (11 section 2.2).
@@ -327,9 +337,29 @@ class UiType {
     UiDensity density,
     TextStyle style,
     TextScaler scaler,
+  ) => heightAroundAt(density.controlHeight, style, scaler);
+
+  /// [controlHeightFor] for a control whose resting height is a size rather
+  /// than the density row (11 section 2.2).
+  ///
+  /// `max(restingHeight, scaled line height + 2 * inset)`, the inset being
+  /// [insetAround]. A button at `sm`, a chip, a badge and a key cap are all
+  /// this: a number from the size table at scale 1.0, and the same growth
+  /// above it that a density sized control gets.
+  static double heightAround(
+    double restingHeight,
+    TextStyle style,
+    BuildContext context,
+  ) => heightAroundAt(restingHeight, style, MediaQuery.textScalerOf(context));
+
+  /// [heightAround] at an explicit [scaler].
+  static double heightAroundAt(
+    double restingHeight,
+    TextStyle style,
+    TextScaler scaler,
   ) => math.max(
-    density.controlHeight,
-    lineHeightAt(style, scaler) + 2 * insetFor(density, style),
+    restingHeight,
+    lineHeightAt(style, scaler) + 2 * insetAround(restingHeight, style),
   );
 
   /// The specimen line that proves Geist Mono disambiguates its characters.

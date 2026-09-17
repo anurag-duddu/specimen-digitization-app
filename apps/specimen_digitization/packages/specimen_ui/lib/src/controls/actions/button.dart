@@ -1,13 +1,19 @@
 /// The capsule button (10 section 4.1, `UiButton`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
+import '../../primitives/fit.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../data/progress.dart';
+import '../overlays/tooltip.dart';
 
 /// How much weight a button carries.
 enum UiButtonVariant {
@@ -86,15 +92,39 @@ class UiButtonStyle {
   /// The space between a glyph and the label.
   final double gap;
 
-  /// The visual height of [size] in [ui].
+  /// The visual height of [size] in [ui] at [textScaler].
   ///
   /// Public because a control that sits beside a button in a row has to match
   /// its height without copying the numbers out of the size table.
-  static double heightOf(UiThemeData ui, UiSize size) => switch (size) {
+  ///
+  /// Derived rather than declared (11 section 2.2): the size table gives the
+  /// resting height, and the height a button is actually drawn at is that or
+  /// the scaled line box plus twice the inset, whichever is larger. At scale
+  /// 1.0 the two are the same number, so an untouched call site is unchanged.
+  static double heightOf(
+    UiThemeData ui,
+    UiSize size, {
+    TextScaler textScaler = TextScaler.noScaling,
+  }) => UiType.heightAroundAt(
+    restingHeightOf(ui, size),
+    labelStyleOf(ui, size),
+    textScaler,
+  );
+
+  /// The size table of 10 section 4, before the reviewer's text size grows it.
+  static double restingHeightOf(UiThemeData ui, UiSize size) => switch (size) {
     UiSize.sm => smallHeight,
     UiSize.md => ui.density.controlHeight,
     UiSize.lg => largeHeight,
   };
+
+  /// The type role a label is drawn in at [size].
+  ///
+  /// Public for the same reason [heightOf] is: a control that measures a
+  /// button sized label, or draws one beside a button, reads the role here
+  /// rather than restating the `lg` exception.
+  static TextStyle labelStyleOf(UiThemeData ui, UiSize size) =>
+      size == UiSize.lg ? ui.type.title : ui.type.label;
 
   /// 32, the `sm` row of the size table in 10 section 4.
   static const double smallHeight = 32;
@@ -112,6 +142,7 @@ class UiButtonStyle {
     UiButtonVariant variant,
     UiSize size, {
     bool loading = false,
+    TextScaler textScaler = TextScaler.noScaling,
   }) {
     bool off(Set<WidgetState> states) =>
         states.contains(WidgetState.disabled) && !loading;
@@ -163,12 +194,11 @@ class UiButtonStyle {
       // the same colour and the primary button, the one a reviewer presses
       // most, has no visible press at all.
       overlay: switch (variant) {
-        UiButtonVariant.primary ||
-        UiButtonVariant.danger => ui.color.paper,
+        UiButtonVariant.primary || UiButtonVariant.danger => ui.color.paper,
         UiButtonVariant.secondary || UiButtonVariant.ghost => ui.color.ink,
       },
       side: WidgetStateProperty.resolveWith(edge),
-      label: size == UiSize.lg ? ui.type.title : ui.type.label,
+      label: labelStyleOf(ui, size),
       padding: EdgeInsetsDirectional.symmetric(
         horizontal: switch (size) {
           UiSize.sm => ui.space.s3,
@@ -176,7 +206,7 @@ class UiButtonStyle {
           UiSize.lg => ui.space.s6,
         },
       ),
-      minHeight: heightOf(ui, size),
+      minHeight: heightOf(ui, size, textScaler: textScaler),
       gap: ui.space.s2,
     );
   }
@@ -270,6 +300,46 @@ class UiButton extends StatelessWidget {
   /// otherwise be needed for.
   final WidgetStatesController? statesController;
 
+  /// The narrowest width this button draws the whole of its label at
+  /// (11 section 3.3).
+  ///
+  /// The label measured at the current text scale, plus the glyph slots it
+  /// carries and the padding inside the capsule, floored at the hit box.
+  /// Public because `UiButtonRow` chooses between a row and a column by
+  /// measuring its buttons, and a pattern that arranges several of them needs
+  /// the same number rather than a guess.
+  double intrinsicWidth(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return _intrinsicWidth(
+      context,
+      ui,
+      UiButtonStyle.resolve(
+        ui,
+        variant,
+        size,
+        loading: loading,
+        textScaler: MediaQuery.textScalerOf(context),
+      ),
+    );
+  }
+
+  double _intrinsicWidth(
+    BuildContext context,
+    UiThemeData ui,
+    UiButtonStyle style,
+  ) {
+    // The leading slot is a fixed box in both states, so a button that starts
+    // loading is exactly as wide as it was (10 section 4.1).
+    final double slot = ui.space.iconInline + style.gap;
+    return math.max(
+      UiDensity.hitBox,
+      measureLabel(context, label, style.label).width +
+          (loading || leading != null ? slot : 0) +
+          (trailing != null ? slot : 0) +
+          style.padding.horizontal,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
@@ -278,7 +348,32 @@ class UiButton extends StatelessWidget {
       variant,
       size,
       loading: loading,
+      textScaler: MediaQuery.textScalerOf(context),
     );
+    // 11 section 3.3 gives a button no compact variant: it keeps its width and
+    // the parent arranges it. One declared variant is therefore the whole of
+    // its fit policy, and `lastResort` is the moment the parent gave it less
+    // than it needs. The label then ends in an ellipsis, which `UiLabel` does,
+    // and the tooltip carries the whole of it, which is this.
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth: _intrinsicWidth(context, ui, style),
+          builder: (BuildContext context, bool lastResort) {
+            final Widget capsule = _capsule(ui, style);
+            // Outside the `Pressable` rather than around the label: the whole
+            // control is what the pointer is over, and a tap has to reach the
+            // button underneath rather than the tooltip on top of it.
+            return lastResort
+                ? UiTooltip(message: label, child: capsule)
+                : capsule;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _capsule(UiThemeData ui, UiButtonStyle style) {
     return Pressable(
       semanticsLabel: semanticsLabel ?? label,
       onPressed: loading ? null : onPressed,
@@ -331,8 +426,12 @@ class UiButton extends StatelessWidget {
                     ),
                     SizedBox(width: style.gap),
                   ],
+                  // Loose, so the label takes its own width while there is
+                  // room and gives way only when there is not: rule 2 of 11
+                  // section 3.3 forbids squeezing a label that fits, and rule
+                  // 4 is what happens when nothing does.
                   Flexible(
-                    child: Text(
+                    child: UiLabel(
                       label,
                       style: style.label.copyWith(color: foreground),
                       textAlign: TextAlign.center,
@@ -365,6 +464,9 @@ class _LeadingSlot extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) =>
-      SizedBox(width: size, height: size, child: Center(child: child));
+  Widget build(BuildContext context) => SizedBox(
+    width: size,
+    height: size,
+    child: Center(child: child),
+  );
 }

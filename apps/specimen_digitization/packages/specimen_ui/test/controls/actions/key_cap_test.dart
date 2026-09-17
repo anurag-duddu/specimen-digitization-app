@@ -79,6 +79,31 @@ void main() {
     );
   });
 
+  testWidgets('the cap is the token at rest and the derived height above it',
+      (WidgetTester tester) async {
+    final UiThemeData ui = UiThemeData.light();
+    for (final double scale in <double>[1, 1.3, 2]) {
+      await tester.pumpWidget(
+        uiHarness(
+          textScaler: TextScaler.linear(scale),
+          child: const UiKeyCap(label: 'Esc'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byType(UiKeyCap)).height,
+        UiType.heightAroundAt(
+          ui.space.s6,
+          ui.type.mono.identifier,
+          TextScaler.linear(scale),
+        ),
+        reason:
+            'a cap derives its height from the monospace role it is set in '
+            'at $scale (11 section 2.2)',
+      );
+    }
+  });
+
   testWidgets('nothing about it animates, in either motion mode', (
     WidgetTester tester,
   ) async {

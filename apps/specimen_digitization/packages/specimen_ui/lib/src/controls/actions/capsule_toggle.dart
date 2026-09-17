@@ -1,13 +1,20 @@
 /// The capsule toggle (10 section 4.1, `UiCapsuleToggle`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
+import '../../primitives/fit.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'button.dart';
 
 /// One option of a capsule toggle.
@@ -101,8 +108,12 @@ class UiCapsuleToggleStyle {
   /// The space between two options.
   final double spacing;
 
-  /// The style for [size] in [ui].
-  static UiCapsuleToggleStyle resolve(UiThemeData ui, UiSize size) {
+  /// The style for [size] in [ui], at [textScaler].
+  static UiCapsuleToggleStyle resolve(
+    UiThemeData ui,
+    UiSize size, {
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
     Color fill(Set<WidgetState> states) => states.contains(WidgetState.disabled)
         ? ui.color.disabledFill
         : ui.color.paper;
@@ -142,11 +153,15 @@ class UiCapsuleToggleStyle {
       ),
       onCheck: ui.color.paper,
       label: ui.type.label,
-      padding: EdgeInsetsDirectional.only(
-        start: ui.space.s4,
-        end: ui.space.s3,
+      padding: EdgeInsetsDirectional.only(start: ui.space.s4, end: ui.space.s3),
+      // The resting height of the size table, grown around the role a
+      // capsule actually draws. An option is set in `label` at every size,
+      // so the height that holds it derives from `label` too.
+      minHeight: UiType.heightAroundAt(
+        UiButtonStyle.restingHeightOf(ui, size),
+        ui.type.label,
+        textScaler,
       ),
-      minHeight: UiButtonStyle.heightOf(ui, size),
       discSize: ui.space.iconSmall,
       gap: ui.space.s3,
       spacing: ui.space.s2,
@@ -236,9 +251,10 @@ class _UiCapsuleToggleState<T> extends State<UiCapsuleToggle<T>> {
     final bool wasOn = widget.selected.contains(value);
     final Set<T> next = switch (widget.selection) {
       UiToggleSelection.single => wasOn ? <T>{} : <T>{value},
-      UiToggleSelection.multiple => wasOn
-          ? (Set<T>.of(widget.selected)..remove(value))
-          : (Set<T>.of(widget.selected)..add(value)),
+      UiToggleSelection.multiple =>
+        wasOn
+            ? (Set<T>.of(widget.selected)..remove(value))
+            : (Set<T>.of(widget.selected)..add(value)),
     };
     onChanged(next);
   }
@@ -261,6 +277,7 @@ class _UiCapsuleToggleState<T> extends State<UiCapsuleToggle<T>> {
     final UiCapsuleToggleStyle style = UiCapsuleToggleStyle.resolve(
       ui,
       widget.size,
+      textScaler: MediaQuery.textScalerOf(context),
     );
     final bool rtl = Directionality.of(context) == TextDirection.rtl;
     return FocusTraversalGroup(
@@ -347,8 +364,38 @@ class _ToggleOption<T> extends StatelessWidget {
   final VoidCallback? onPressed;
   final String? disabledReason;
 
+  /// The narrowest width this option draws the whole of its label at.
+  double _intrinsicWidth(BuildContext context, UiCapsuleToggleStyle style) =>
+      math.max(
+        UiDensity.hitBox,
+        style.padding.horizontal +
+            measureLabel(context, option.label, style.label).width +
+            style.gap +
+            style.discSize,
+      );
+
   @override
   Widget build(BuildContext context) {
+    // A group of capsules is arranged by its `Wrap`, which is the parent
+    // owning arrangement (11 section 3.3). One option has no compact variant
+    // of its own: given less than it needs it ellipsises and its tooltip
+    // carries the word, which is rule 4.
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth: _intrinsicWidth(context, style),
+          builder: (BuildContext context, bool lastResort) {
+            final Widget capsule = _capsule(context);
+            return lastResort
+                ? UiTooltip(message: option.label, child: capsule)
+                : capsule;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _capsule(BuildContext context) {
     final UiThemeData ui = context.ui;
     return Pressable(
       semanticsLabel: option.spokenLabel,
@@ -375,7 +422,7 @@ class _ToggleOption<T> extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Flexible(
-                    child: Text(
+                    child: UiLabel(
                       option.label,
                       style: style.label.copyWith(color: foreground),
                     ),
@@ -479,11 +526,7 @@ class _CheckDiscPainter extends CustomPainter {
         ..strokeWidth = stroke,
     );
     if (fillFraction <= 0) return;
-    canvas.drawCircle(
-      centre,
-      radius * fillFraction,
-      Paint()..color = fill,
-    );
+    canvas.drawCircle(centre, radius * fillFraction, Paint()..color = fill);
   }
 
   @override

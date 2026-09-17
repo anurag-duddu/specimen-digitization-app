@@ -10,6 +10,17 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../harness/control_contract.dart';
 
+/// Clause 15 for an icon button. It has no label to arrange, so the clause
+/// asks only that the disc and its target survive every width.
+Future<void> _stillOneDisc(WidgetTester tester, double width) async {
+  expect(find.byType(UiIconButton), findsOneWidget, reason: 'at $width dp');
+  expect(
+    tester.getSize(find.byType(Pressable)).height,
+    greaterThanOrEqualTo(UiDensity.hitBox),
+    reason: 'the disc keeps its 48 dp target at $width dp',
+  );
+}
+
 /// Moves a mouse onto [finder] and leaves it there.
 Future<TestGesture> _hover(WidgetTester tester, Finder finder) async {
   final TestGesture pointer = await tester.createGesture(
@@ -42,6 +53,9 @@ void main() {
       ),
       semanticsLabel: 'Rotate the view',
       hasRole: (SemanticsFlags flags) => flags.isButton,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneDisc),
     );
   });
 
@@ -56,6 +70,9 @@ void main() {
       ),
       semanticsLabel: 'Correct label regions',
       disabledWithReason: true,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneDisc),
     );
   });
 
@@ -288,7 +305,8 @@ void main() {
   testWidgets('a disabled button draws the reason rather than its label', (
     WidgetTester tester,
   ) async {
-    const String reason = 'Label regions can be corrected once processing ends.';
+    const String reason =
+        'Label regions can be corrected once processing ends.';
     await tester.pumpWidget(
       uiHarness(
         child: const UiIconButton(

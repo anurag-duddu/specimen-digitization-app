@@ -24,6 +24,12 @@ reach for: a page is a `UiScaffold` with a `UiTopBar`, a navigation and a
 body, and the frame hosts the toast layer itself, so `UiToasts.show(context,
 message: ...)` works from anywhere inside it.
 
+Beside the components there is one arrangement, because every screen needs it
+and no two should disagree about it: `UiButtonRow` (11 section 3.4) draws a
+primary action, an optional secondary and optional tertiary actions on one
+line with the primary last, and stacks them with the primary on top when the
+line does not fit or the window is compact.
+
 ## Consuming it
 
 The application depends on it by path, so its version moves with the
@@ -68,7 +74,14 @@ clamp, `MediaQuery.withClampedTextScaling(minScaleFactor: 0.85,
 maxScaleFactor: 2.0)`, because the control contract promises 200 percent and
 promises nothing above it. No control reads or clamps the scaler itself; a
 control that has to contain text derives its height from
-`UiType.controlHeightFor` instead (11 sections 2 and 5).
+`UiType.controlHeightFor` instead, or from `UiType.heightAround` where its
+resting height is a size rather than the density row (11 sections 2 and 5).
+
+What a control does with less width than it needs is its own fit policy, and
+it reads the constraints it was given rather than the window (11 section 3.3).
+A label inside a control is a `UiLabel`, which is one line and ends in an
+ellipsis with the whole word on a tooltip; a control with more than one
+arrangement declares them to a `FitBuilder`, widest first.
 
 ## Seeing it
 
