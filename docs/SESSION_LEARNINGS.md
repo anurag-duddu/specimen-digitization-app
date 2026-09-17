@@ -6914,7 +6914,8 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
   turned on for the actions family.
 - Branch and worktree: `fe/fit-actions` at `.claude/worktrees/fe-fit-actions`,
   cut from `front-end-refactor` at `a301748`, which already carried the
-  merged wave F. Pushed to `origin/fe/fit-actions` at `3818b68`. No pull
+  merged wave F. Pushed to `origin/fe/fit-actions`: the last content commit is
+  `3818b68` and the branch head is the commit carrying this entry. No pull
   request; the integrator merges the slot with G2 and G3.
 - Outcome: complete. Seven commits, 27 files, 21 new package tests (604 at the
   head this was cut from, 625 now, none replaced), four actions goldens
