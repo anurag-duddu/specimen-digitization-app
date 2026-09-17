@@ -1,8 +1,17 @@
-/// The region editor (07 section 7; 05 section 3.6; 08 finding V-7).
+/// The region editor (13 section 4.3; 07 section 7; 05 section 3.6).
 ///
-/// Full screen on compact and medium, a 640 dp dialog otherwise. The preview
-/// fills the width and every region can be dragged by its body or resized by
-/// one of four corner handles. The numeric fields stay as the precise
+/// Full screen on compact and medium, a 640 dp dialog otherwise. On the route
+/// it is one scroll: the photograph is a `UiCollapsingHeader` floored at 40
+/// percent of the viewport with the region strip riding its lower edge, and
+/// the coordinate form and the provenance scroll beneath it. Back, the title,
+/// save and the order controls are the top bar's, which the editor publishes
+/// into the frame itself (13 sections 3.4 and 4.3). In the dialog, which has
+/// no bar of its own, they stay in the editor's own sticky footer and the
+/// dialog lends the editor its one scroll rather than wrapping a second one
+/// around it.
+///
+/// The preview fills the width and every region can be dragged by its body or
+/// resized by one of four corner handles. The numeric fields stay as the precise
 /// alternative and as the pointer free path WCAG 2.2 SC 2.5.7 requires, so
 /// nothing here is drag only. Delete and merge are undoable inside the
 /// editor, and saving with no regions is refused with a reason.
@@ -23,6 +32,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
+import 'screens/workbench/workbench_layout.dart';
 import 'source_pixels.dart';
 import 'theme/motion.dart';
 import 'vocabulary.dart';
@@ -30,6 +40,30 @@ import 'widgets/widgets.dart';
 
 /// What the editor is called, wherever it is opened.
 const String regionEditorTitle = 'Correct label regions';
+
+/// What the control that saves a new region version is called.
+const String saveRegionsLabel = 'Save region version';
+
+/// What the control that leaves the editor is called.
+const String closeEditorLabel = 'Close the region editor';
+
+/// The four controls that change the region list, named once.
+const String deleteRegionLabel = 'Delete region';
+
+/// The step earlier in the region order.
+const String moveEarlierLabel = 'Move earlier';
+
+/// The step later in it.
+const String moveLaterLabel = 'Move later';
+
+/// The one that joins two regions into one.
+const String mergeRegionsLabel = 'Merge with next';
+
+/// What the control that adds a region is called.
+const String addRegionLabel = 'Add label region';
+
+/// What the control that turns a label reading is called.
+const String rotateReadingLabel = 'Rotate label reading 90 degrees';
 
 /// Opens the editor in the container the window earns.
 ///
@@ -87,7 +121,12 @@ class RegionEditor extends StatelessWidget {
     // the footer is the one place a save can be pressed.
     child: UiDialog(
       title: regionEditorTitle,
-      child: RegionEditorBody(regions: regions, asset: asset),
+      // The editor scrolls its own form above its own footer, so the dialog
+      // lends it the height and wraps no second scroll around it: two
+      // scrollables on one surface is the first line of 13 section 0 and the
+      // clause 13 section 2.1 states against it.
+      scrollBody: false,
+      child: RegionEditorBody(regions: regions, asset: asset, inDialog: true),
     ),
   );
 }
@@ -98,10 +137,20 @@ class RegionEditorBody extends StatefulWidget {
     super.key,
     required this.regions,
     required this.asset,
+    this.inDialog = false,
   });
 
   final List<Json> regions;
   final Json asset;
+
+  /// True where the editor is the body of a `UiDialog`.
+  ///
+  /// A dialog has no bar across the top, so back, save and the order controls
+  /// stay in the editor's own footer there, and the photograph is a band of
+  /// the form rather than a header that pins. On a route the editor publishes
+  /// all four into the frame's bar and the photograph is the header
+  /// (13 section 4.3).
+  final bool inDialog;
 
   /// The shortest the photograph's band may be on a compact window
   /// (finding V-7). Below this a corner handle has no room to be dragged and
@@ -134,13 +183,15 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   final Set<String> _invalidCoordinates = <String>{};
   bool _coordinateSubmitAttempted = false;
 
-  /// True when the compact sheet's detail disclosure is open (finding V-7).
-  bool _detailsOpen = false;
+  /// What this editor has asked of the frame around it (13 section 3.4).
+  UiScaffoldSlots? _slots;
 
-  /// Bumped only when the editor has to force the disclosure open, so the
-  /// disclosure is rebuilt in that state without losing focus on every
-  /// toggle.
-  int _detailsVersion = 0;
+  /// The one scroll of the routed form, so a save that cannot proceed can put
+  /// the reason it needs back on the screen.
+  final ScrollController _scroll = ScrollController();
+
+  /// The reason field, for the same reason.
+  final GlobalKey _reasonAnchor = GlobalKey();
 
   final TextEditingController _reason = TextEditingController();
 
@@ -166,9 +217,34 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   double get _height => (widget.asset['height'] as num?)?.toDouble() ?? 1;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.inDialog) return;
+    _slots = UiScaffoldSlots.of(context);
+    _publish();
+  }
+
+  @override
   void dispose() {
+    _slots?.release(this);
+    _scroll.dispose();
     _reason.dispose();
     super.dispose();
+  }
+
+  /// Asks the frame for the editor's bar and hides the navigation.
+  ///
+  /// Back, the title, save and the four order controls, which the bar keeps
+  /// two of and puts the rest in its own overflow (13 section 4.3). No pill:
+  /// the way out of an editor opened over a record is the way back into the
+  /// record.
+  void _publish() {
+    final UiScaffoldSlots? slots = _slots;
+    if (slots == null) return;
+    slots
+      ..setTopBar(_bar(context), owner: this)
+      ..setNavVisible(false, owner: this)
+      ..setBandCompact(true, owner: this);
   }
 
   List<Json> _snapshot() => _regions
@@ -280,19 +356,30 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       ? null
       : _regions[_selected.clamp(0, _regions.length - 1)];
 
-  /// Opens the compact disclosure, for an error that lives inside it.
-  void _revealDetails() {
-    if (_detailsOpen) return;
-    _detailsOpen = true;
-    _detailsVersion++;
+  /// Puts the reason back on the screen, for a save that cannot proceed
+  /// without it.
+  ///
+  /// The routed form's save is in the bar and the reason is at the end of the
+  /// scroll, so a reviewer who presses save with an empty reason would
+  /// otherwise be told by a line they cannot see.
+  void _revealReason() {
+    if (widget.inDialog) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final BuildContext? anchor = _reasonAnchor.currentContext;
+      if (!mounted || anchor == null) return;
+      Scrollable.ensureVisible(
+        anchor,
+        duration: context.ui.motion.standard,
+        curve: MotionTokens.standardCurve,
+        alignment: 0.1,
+      );
+    });
   }
 
   void _save() {
     if (_invalidCoordinates.isNotEmpty) {
-      setState(() {
-        _coordinateSubmitAttempted = true;
-        _revealDetails();
-      });
+      setState(() => _coordinateSubmitAttempted = true);
+      _revealReason();
       return;
     }
     if (_regions.isEmpty) {
@@ -301,10 +388,12 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
             'A record needs at least one label region. Add one, or cancel to '
             'keep the regions that are saved.',
       );
+      _revealReason();
       return;
     }
     if (_reason.text.trim().isEmpty) {
       setState(() => _error = reasonRequired);
+      _revealReason();
       return;
     }
     for (final Json r in _regions) {
@@ -335,18 +424,16 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final Json? selected = _current;
-    final List<num> box = selected == null
-        ? const <num>[]
-        : selected['bbox'] as List<num>;
-    // Finding V-7. On a phone the photograph was a thin strip between the
-    // region list above it and the coordinate form below it, which is not
-    // enough to drag a 48 dp corner handle on. On a compact window the
-    // preview now comes first and everything that is not the photograph goes
-    // behind one disclosure, so the sheet's main content is the pixels.
-    final bool compact = WindowClass.of(context).isCompact;
+    if (!widget.inDialog) _publish();
+    return widget.inDialog ? _dialogForm(context) : _routedForm(context);
+  }
 
+  /// The editor inside a dialog: the form above the footer that saves it.
+  ///
+  /// One scroll, and the dialog wraps no second one around it
+  /// (`UiDialog.scrollBody` is false at the call site).
+  Widget _dialogForm(BuildContext context) {
+    final UiThemeData ui = context.ui;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -358,107 +445,12 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const Text(
-                  'Add, resize, rotate, reorder or merge label regions.',
-                ),
-                if (!compact) ..._provenance(context),
+                ..._intro(context),
+                ..._provenance(context),
                 SizedBox(height: ui.space.s3),
-                UiCapsuleToggle<int>(
-                  selection: UiToggleSelection.single,
-                  selected: <int>{_selected},
-                  // Single mode clears the option already on; a region list
-                  // has no "none" state, so choosing the current one again
-                  // leaves the selection where it is.
-                  onChanged: (Set<int> next) {
-                    if (next.isEmpty) return;
-                    SpecimenHaptics.selectionChanged();
-                    setState(() => _selected = next.first);
-                  },
-                  options: <UiToggleOption<int>>[
-                    for (final (int i, Json _) in _regions.indexed)
-                      UiToggleOption<int>(value: i, label: 'Label ${i + 1}'),
-                  ],
-                ),
-                if (_regions.isEmpty)
-                  Padding(
-                    padding: EdgeInsetsDirectional.only(top: ui.space.s2),
-                    child: EmptyState(
-                      icon: UiIcons.wholeImage.glyph,
-                      title: 'No label regions',
-                      body:
-                          'This record cannot be saved without at least one '
-                          'region. Add one below.',
-                    ),
-                  ),
-                if (selected != null) ...<Widget>[
-                  SizedBox(height: ui.space.s4),
-                  if (widget.asset['preview_bytes'] != null)
-                    _preview(context, box, compact: compact),
-                  SizedBox(height: ui.space.s2),
-                  Text(
-                    'Label reading rotation: '
-                    '${(selected['rotation_quarter_turns'] as int) * _quarterDegrees} '
-                    'degrees clockwise. Source coordinates stay unchanged.',
-                    style: ui.type.bodySmall,
-                  ),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: UiButton(
-                      label: 'Rotate label reading 90 degrees',
-                      variant: UiButtonVariant.ghost,
-                      leading: UiIcons.rotateView,
-                      onPressed: () => setState(
-                        () => selected['rotation_quarter_turns'] =
-                            ((selected['rotation_quarter_turns'] as int) + 1) %
-                            4,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: ui.space.s2),
-                  if (compact)
-                    // One disclosure, the same one every other detail layer
-                    // in the product uses (pass criterion 4.1). The pointer
-                    // free path WCAG 2.2 SC 2.5.7 asks for is inside it,
-                    // reachable by keyboard, and the editor opens it itself
-                    // when a coordinate it holds is wrong.
-                    UiDisclosure(
-                      key: ValueKey<String>('region-details-$_detailsVersion'),
-                      initiallyExpanded: _detailsOpen,
-                      onExpansionChanged: (bool open) => _detailsOpen = open,
-                      title: RegionEditorBody.coordinatesTitle,
-                      summary: 'Type coordinates, reorder, merge or delete.',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          ..._provenance(context),
-                          SizedBox(height: ui.space.s2),
-                          ..._coordinateBlock(context, selected, box),
-                        ],
-                      ),
-                    )
-                  else
-                    ..._coordinateBlock(context, selected, box),
-                ],
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: UiButton(
-                    label: 'Add label region',
-                    variant: UiButtonVariant.secondary,
-                    leading: UiIcons.add,
-                    onPressed: _add,
-                  ),
-                ),
-                if (_undo.isNotEmpty)
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: UiButton(
-                      label: 'Undo ${_undo.last.label.toLowerCase()}',
-                      variant: UiButtonVariant.ghost,
-                      leading: UiIcons.undo,
-                      onPressed: _applyUndo,
-                    ),
-                  ),
+                _regionStrip(context),
+                ..._emptyOrPreview(context, banded: true),
+                ..._form(context),
               ],
             ),
           ),
@@ -467,6 +459,249 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       ],
     );
   }
+
+  /// The editor on its own route (13 section 4.3).
+  ///
+  /// The photograph is the header, floored at 40 percent of the viewport with
+  /// the region strip riding its lower edge; the form, the provenance and the
+  /// reason scroll beneath it; back, the title, save and the order controls
+  /// are the bar's.
+  Widget _routedForm(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final EdgeInsetsGeometry gutter = EdgeInsetsDirectional.symmetric(
+      horizontal: ui.space.s6,
+    );
+    return CustomScrollView(
+      controller: _scroll,
+      slivers: <Widget>[
+        if (_current != null && widget.asset['preview_bytes'] != null)
+          _header(context, ui),
+        SliverPadding(
+          padding: gutter.add(EdgeInsets.only(top: ui.space.s4)),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ..._intro(context),
+                SizedBox(height: ui.space.s3),
+                _regionStrip(context),
+                ..._emptyOrPreview(context, banded: false),
+                ..._form(context),
+                ..._provenance(context),
+                SizedBox(height: ui.space.s4),
+                _reasonField(context),
+                SizedBox(
+                  height: ui.space.s6 + UiScaffold.of(context).bottomInset,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The photograph as the one region this route pins.
+  ///
+  /// The band and nothing else. A header with a chrome row draws `glass.flat`
+  /// behind that row once it is collapsed, which is a second frosted pane on
+  /// a window 13 section 2.2 allows one, and this editor's region list has
+  /// the whole width of the form to sit in. The marker declares nothing, for
+  /// the reason `WorkbenchSourcePane` states at length: the photograph is the
+  /// thing under review and 13 section 2.3's budget cannot hold a region that
+  /// is 40 percent of the viewport on its own.
+  ///
+  /// fe/polish-3: `UiCollapsingHeader` should publish no `PinnedChrome` where
+  /// it is the region under review.
+  Widget _header(BuildContext context, UiThemeData ui) {
+    // The band takes the height the photograph actually needs, between the
+    // floor 13 section 4.3 gives it and the 55 percent 13 section 3.1 starts
+    // at. The overlay maps recorded pixel coordinates onto the image, so the
+    // image keeps the asset's ratio at every width and a band taller than
+    // that is empty ground between the pixels and the form under them.
+    final Size viewport = MediaQuery.sizeOf(context);
+    final double natural =
+        (viewport.width - 2 * ui.space.s6) * _height / _width;
+    return PinnedChrome(
+      region: UiPinnedRegion.header,
+      extent: 0,
+      child: UiCollapsingHeader(
+        maxFraction: (natural / viewport.height).clamp(
+          sourceHeaderMinFraction,
+          sourceHeaderMaxFraction,
+        ),
+        minFraction: sourceHeaderMinFraction,
+        content: Padding(
+          padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s6),
+          child: Center(child: _previewImage(context, _box)),
+        ),
+      ),
+    );
+  }
+
+  /// The selected region's box, or an empty list where there is none.
+  List<num> get _box {
+    final Json? selected = _current;
+    return selected == null ? const <num>[] : selected['bbox'] as List<num>;
+  }
+
+  /// The one sentence that says what this editor does.
+  List<Widget> _intro(BuildContext context) => const <Widget>[
+    Text('Add, resize, rotate, reorder or merge label regions.'),
+  ];
+
+  /// The region list, which is also the header's chrome row on a route.
+  Widget _regionStrip(BuildContext context) => UiCapsuleToggle<int>(
+    selection: UiToggleSelection.single,
+    selected: <int>{_selected},
+    // Single mode clears the option already on; a region list has no "none"
+    // state, so choosing the current one again leaves the selection where it
+    // is.
+    onChanged: (Set<int> next) {
+      if (next.isEmpty) return;
+      SpecimenHaptics.selectionChanged();
+      setState(() => _selected = next.first);
+    },
+    options: <UiToggleOption<int>>[
+      for (final (int i, Json _) in _regions.indexed)
+        UiToggleOption<int>(value: i, label: 'Label ${i + 1}'),
+    ],
+  );
+
+  /// The empty state, or the photograph where the form draws it itself.
+  List<Widget> _emptyOrPreview(BuildContext context, {required bool banded}) {
+    final UiThemeData ui = context.ui;
+    if (_regions.isEmpty) {
+      return <Widget>[
+        Padding(
+          padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+          child: EmptyState(
+            icon: UiIcons.wholeImage.glyph,
+            title: 'No label regions',
+            body:
+                'This record cannot be saved without at least one region. Add '
+                'one below.',
+          ),
+        ),
+      ];
+    }
+    if (!banded || widget.asset['preview_bytes'] == null) {
+      return <Widget>[SizedBox(height: ui.space.s4)];
+    }
+    return <Widget>[SizedBox(height: ui.space.s4), _preview(context, _box)];
+  }
+
+  /// The rotation, the coordinates, the order controls where they are not the
+  /// bar's, and the two local edits.
+  List<Widget> _form(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final Json? selected = _current;
+    return <Widget>[
+      if (selected != null) ...<Widget>[
+        SizedBox(height: ui.space.s2),
+        Text(
+          'Label reading rotation: '
+          '${(selected['rotation_quarter_turns'] as int) * _quarterDegrees} '
+          'degrees clockwise. Source coordinates stay unchanged.',
+          style: ui.type.bodySmall,
+        ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: UiButton(
+            label: rotateReadingLabel,
+            variant: UiButtonVariant.ghost,
+            leading: UiIcons.rotateView,
+            onPressed: () => setState(
+              () => selected['rotation_quarter_turns'] =
+                  ((selected['rotation_quarter_turns'] as int) + 1) % 4,
+            ),
+          ),
+        ),
+        SizedBox(height: ui.space.s2),
+        ..._coordinateBlock(context, selected, _box),
+      ],
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: UiButton(
+          label: addRegionLabel,
+          variant: UiButtonVariant.secondary,
+          leading: UiIcons.add,
+          onPressed: _add,
+        ),
+      ),
+      if (_undo.isNotEmpty)
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: UiButton(
+            label: 'Undo ${_undo.last.label.toLowerCase()}',
+            variant: UiButtonVariant.ghost,
+            leading: UiIcons.undo,
+            onPressed: _applyUndo,
+          ),
+        ),
+    ];
+  }
+
+  /// The bar the routed editor publishes into the frame (13 section 4.3).
+  Widget _bar(BuildContext context) => UiTopBar(
+    leading: UiIconButton(
+      icon: UiIcons.back,
+      semanticsLabel: closeEditorLabel,
+      tooltip: closeEditorLabel,
+      onPressed: () => Navigator.of(context).maybePop(),
+    ),
+    title: regionEditorTitle,
+    actions: <Widget>[
+      UiTopBarAction(
+        icon: UiIcons.save,
+        label: saveRegionsLabel,
+        onPressed: _save,
+      ),
+      ..._orderActions(context),
+    ],
+  );
+
+  /// Delete, move earlier, move later and merge, as commands rather than as a
+  /// row of the form (13 section 4.3).
+  List<UiTopBarAction> _orderActions(BuildContext context) {
+    final bool first = _selected == 0;
+    final bool last = _selected >= _regions.length - 1;
+    return <UiTopBarAction>[
+      UiTopBarAction(
+        icon: UiIcons.remove,
+        label: deleteRegionLabel,
+        onPressed: _regions.isEmpty ? null : _delete,
+        disabledReason: _regions.isEmpty
+            ? 'There is no label region to delete.'
+            : null,
+      ),
+      UiTopBarAction(
+        icon: UiIcons.previous,
+        label: moveEarlierLabel,
+        onPressed: first ? null : _moveEarlier,
+        disabledReason: first
+            ? 'This is already the first label region.'
+            : null,
+      ),
+      UiTopBarAction(
+        icon: UiIcons.next,
+        label: moveLaterLabel,
+        onPressed: last ? null : _moveLater,
+        disabledReason: last ? 'This is already the last label region.' : null,
+      ),
+    ];
+  }
+
+  void _moveEarlier() => setState(() {
+    final Json item = _regions.removeAt(_selected);
+    _regions.insert(--_selected, item);
+  });
+
+  void _moveLater() => setState(() {
+    final Json item = _regions.removeAt(_selected);
+    _regions.insert(++_selected, item);
+  });
 
   /// The provenance lines: what saving replaces, and the source basis.
   ///
@@ -517,60 +752,57 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       SizedBox(height: ui.space.s2),
       _coordinates(context, selected, box),
       SizedBox(height: ui.space.s3),
-      // The region toolbar (07 section 7). Not a `UiButtonRow`: that is the
-      // arrangement for a primary and its way out, and it draws the primary
-      // last, which would put the one destructive control at the end of the
-      // reading order. These four are peers, so they keep the order they
-      // shipped in and wrap rather than stack.
-      Wrap(
-        spacing: ui.space.s2,
-        runSpacing: ui.space.s2,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: <Widget>[
-          UiIconButton(
-            icon: UiIcons.remove,
-            semanticsLabel: 'Delete region',
-            onPressed: _delete,
-          ),
-          UiIconButton(
-            icon: UiIcons.previous,
-            semanticsLabel: 'Move earlier',
-            onPressed: _selected == 0
-                ? null
-                : () => setState(() {
-                    final Json item = _regions.removeAt(_selected);
-                    _regions.insert(--_selected, item);
-                  }),
-            disabledReason: _selected == 0
-                ? 'This is already the first label region.'
-                : null,
-          ),
-          UiIconButton(
-            icon: UiIcons.next,
-            semanticsLabel: 'Move later',
-            onPressed: _selected >= _regions.length - 1
-                ? null
-                : () => setState(() {
-                    final Json item = _regions.removeAt(_selected);
-                    _regions.insert(++_selected, item);
-                  }),
-            disabledReason: _selected >= _regions.length - 1
-                ? 'This is already the last label region.'
-                : null,
-          ),
-          // The registry has no merge glyph, and reusing one that already
-          // means something else would give one glyph two meanings
-          // (09 section 7), so this control keeps its word.
-          UiButton(
-            label: 'Merge with next',
-            variant: UiButtonVariant.ghost,
-            onPressed: _selected >= _regions.length - 1 ? null : _merge,
-            disabledReason: _selected >= _regions.length - 1
-                ? 'There is no later label region to merge with.'
-                : null,
-          ),
-        ],
+      // Merge keeps its word wherever it is drawn. 13 section 4.3 puts the
+      // order controls in the bar's overflow and a `UiTopBarAction` is a
+      // glyph with a word beside it in the menu; the registry has no merge
+      // glyph, and reusing one that already means something else would give
+      // one glyph two meanings (09 section 7). So delete, earlier and later
+      // are the bar's on a route and this one is the form's on both.
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: UiButton(
+          label: mergeRegionsLabel,
+          variant: UiButtonVariant.ghost,
+          onPressed: _selected >= _regions.length - 1 ? null : _merge,
+          disabledReason: _selected >= _regions.length - 1
+              ? 'There is no later label region to merge with.'
+              : null,
+        ),
       ),
+      // The dialog has no bar to carry the rest, so it keeps the toolbar
+      // 07 section 7 gave it. Not a `UiButtonRow`: that is the arrangement
+      // for a primary and its way out, and it draws the primary last, which
+      // would put the one destructive control at the end of the reading
+      // order. These are peers, so they keep the order they shipped in.
+      if (widget.inDialog)
+        Wrap(
+          spacing: ui.space.s2,
+          runSpacing: ui.space.s2,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: <Widget>[
+            UiIconButton(
+              icon: UiIcons.remove,
+              semanticsLabel: deleteRegionLabel,
+              onPressed: _regions.isEmpty ? null : _delete,
+            ),
+            UiIconButton(
+              icon: UiIcons.previous,
+              semanticsLabel: moveEarlierLabel,
+              onPressed: _selected == 0 ? null : _moveEarlier,
+              disabledReason: _selected == 0
+                  ? 'This is already the first label region.'
+                  : null,
+            ),
+            UiIconButton(
+              icon: UiIcons.next,
+              semanticsLabel: moveLaterLabel,
+              onPressed: _selected >= _regions.length - 1 ? null : _moveLater,
+              disabledReason: _selected >= _regions.length - 1
+                  ? 'This is already the last label region.'
+                  : null,
+            ),
+          ],
+        ),
     ];
   }
 
@@ -582,13 +814,9 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   /// (finding V-7). The image itself keeps the asset's own ratio at every
   /// width, because the overlay maps recorded pixel coordinates onto it and a
   /// stretched image would move every handle off the pixel it names.
-  Widget _preview(
-    BuildContext context,
-    List<num> box, {
-    required bool compact,
-  }) {
+  Widget _preview(BuildContext context, List<num> box) {
     final Widget image = _previewImage(context, box);
-    if (!compact) return image;
+    if (!WindowClass.of(context).isCompact) return image;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints outer) {
         final double natural = outer.maxWidth.isFinite
@@ -677,9 +905,54 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     );
   }
 
-  Widget _footer(BuildContext context) {
+  /// The reason, and the line that says why a save cannot proceed.
+  ///
+  /// The same two on both surfaces, in the footer of the dialog and at the
+  /// end of the route's one scroll, because a reason is what the save is
+  /// recorded under and belongs beside the change it explains.
+  Widget _reasonField(BuildContext context) {
     final UiThemeData ui = context.ui;
     final String? error = _visibleError;
+    return Column(
+      key: _reasonAnchor,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        UiTextArea(
+          controller: _reason,
+          label: 'Reason',
+          helpText: reasonHelperText,
+          minLines: _reasonMinLines,
+          maxLines: _reasonMaxLines,
+        ),
+        // No shake. The message names the fix; the motion only gets it on
+        // screen without a jump (04 catalog row 80).
+        MotionReveal(
+          visible: error != null,
+          child: Padding(
+            padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                error ?? '',
+                style: ui.type.bodySmall.copyWith(
+                  color: ui.color.status.blocked.content,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The dialog's sticky footer: the reason, and the two controls that end
+  /// the editor (07 section 7).
+  ///
+  /// The route has neither, because its bar carries the save and its scroll
+  /// carries the reason (13 section 4.3).
+  Widget _footer(BuildContext context) {
+    final UiThemeData ui = context.ui;
     return Surface(
       role: SurfaceRole.paper,
       radius: ui.shape.none,
@@ -691,34 +964,11 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              UiTextArea(
-                controller: _reason,
-                label: 'Reason',
-                helpText: reasonHelperText,
-                minLines: _reasonMinLines,
-                maxLines: _reasonMaxLines,
-              ),
-              // No shake. The message names the fix; the motion only gets it
-              // on screen without a jump (04 catalog row 80).
-              MotionReveal(
-                visible: error != null,
-                child: Padding(
-                  padding: EdgeInsetsDirectional.only(top: ui.space.s2),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      error ?? '',
-                      style: ui.type.bodySmall.copyWith(
-                        color: ui.color.status.blocked.content,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              _reasonField(context),
               SizedBox(height: ui.space.s3),
               UiButtonRow(
                 primary: UiButton(
-                  label: 'Save region version',
+                  label: saveRegionsLabel,
                   leading: UiIcons.save,
                   onPressed: _save,
                 ),
