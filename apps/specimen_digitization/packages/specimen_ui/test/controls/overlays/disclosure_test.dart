@@ -34,6 +34,29 @@ Widget _disclosure({
 );
 
 void main() {
+  testWidgets('the header keeps a 48 dp hit box in both densities', (
+    WidgetTester tester,
+  ) async {
+    for (final UiDensityMode density in UiDensityMode.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          density: density,
+          child: const UiDisclosure(title: _title, child: Text(_body)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byType(Pressable)).height,
+        greaterThanOrEqualTo(UiDensity.hitBox),
+        reason:
+            'a header whose title fits one line is density.rowHeight tall, '
+            'which is 44 in pointer, and clause 2 sets 48 in both densities: '
+            'every tap target guideline on a screen with a disclosure failed '
+            'on the 44',
+      );
+    }
+  });
+
   testWidgets('the body is hidden until the row is pressed', (
     WidgetTester tester,
   ) async {
