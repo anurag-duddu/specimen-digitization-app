@@ -14,8 +14,8 @@ library is specified in
 
 | Layer | Directory | What it holds |
 | --- | --- | --- |
-| Foundation | `lib/src/foundation/` | Colour, fields, glass, type, shape, space, density, motion, icons, the theme |
-| Primitives | `lib/src/primitives/` | Geometry and state with no styling opinions: `Pressable`, `Surface`, `GlassSurface`, `FieldLayer`, `FocusRing`, `Squircle`, `Popover`, `ModalRoutes`, `FieldCore`, `Announcer`, `Scrim` |
+| Foundation | `lib/src/foundation/` | Colour, fields, glass, type, shape, space, density, motion, icons, window classes, the theme |
+| Primitives | `lib/src/primitives/` | Geometry and state with no styling opinions: `Pressable`, `Surface`, `GlassSurface`, `FieldLayer`, `FocusRing`, `Squircle`, `Popover`, `ModalRoutes`, `FieldCore`, `UiLabel`, `FitBuilder`, `Announcer`, `Scrim` |
 | Controls | `lib/src/controls/<family>/` | The thirty components a screen composes, one barrel per family: actions, inputs, overlays, navigation, data |
 | Gallery | `lib/src/gallery/` | Every token and component in every state, both modes, both densities |
 
@@ -60,6 +60,15 @@ platform. `UiTheme` and `Density` go **above** the router, never inside a
 page: a route pushed over the page reads them from there, and a modal that
 finds no scope falls back to the light tokens. The package's own test harness
 is wired the same way, for the same reason.
+
+`UiTheme` also publishes the product's ambient text style, `type.body` in
+`ink` with the decoration cleared, so nothing under it is ever drawn in the
+framework's fallback. An application adds one thing of its own: the text scale
+clamp, `MediaQuery.withClampedTextScaling(minScaleFactor: 0.85,
+maxScaleFactor: 2.0)`, because the control contract promises 200 percent and
+promises nothing above it. No control reads or clamps the scaler itself; a
+control that has to contain text derives its height from
+`UiType.controlHeightFor` instead (11 sections 2 and 5).
 
 ## Seeing it
 

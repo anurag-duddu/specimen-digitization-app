@@ -6543,3 +6543,167 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `no_stand_ins` gate scans the package only, so neither trips it.
   - `test/ui_finders.dart` is new and shared. Slot E2 will want the same
     finders; if it wrote its own, the integrator should keep one file.
+
+## 2026-09-16: Front-end refactor wave F, slot F2, the `specimen_ui` foundation of fit and scale
+
+- Task: `design/11-fit-and-scale.md` sections 2, 3.1, 5 and 6, plus the
+  application root clamp. One text style source, window classes in the package
+  foundation, geometry that derives from type, the label and fit primitives
+  wave G converts controls onto, and the three control contract clauses 11
+  section 6 adds. No control is converted here.
+- Branch/worktree: `fe/fit-foundation` at `.claude/worktrees/fe-fit-foundation`,
+  cut from `front-end-refactor` at `bd69f80`. Pushed to
+  `origin/fe/fit-foundation` at `63ebef3`. No pull request; the integrator
+  merges the slot with F1.
+- Outcome: complete. Every item of the slot brief is built and tested. The
+  package is at 0.3.0 unreleased.
+- Commits (seven, oldest first):
+  - `343bbca` `feat(foundation): window classes and Adaptive move into the package`
+  - `4e40063` `feat(foundation): even leading, and the geometry that derives from type`
+  - `f796c32` `feat(primitives): a one line label, and the builder that chooses a variant`
+  - `07ea031` `feat(foundation): one text style source, published with the tokens`
+  - `758573b` `test(harness): clauses 13 to 15, and a harness that no longer hides the fallback`
+  - `d727443` `feat(app): clamp the text scale at the root, and drop both text style patches`
+  - `63ebef3` `docs(specimen_ui): the 0.3.0 entry, and a README that names the new seams`
+- Validation, each gate run on its own against the committed tree, the tree
+  untouched while it ran, and its own exit code read directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 1 | 533 passed, 48 failed. Every failure is a gallery golden pixel diff; zero failures outside `test/gallery/` |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1048 passed, 9 skipped, 17 failed. Every failure is in `test/golden/size_classes_golden_test.dart`; zero failures outside `test/golden/` and `test/accessibility/` |
+  | `check_ui_strings.py` | 0 | 196 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (23 files) | 0 | 11 hooks passed, the rest had no file of that kind |
+
+- Goldens, inspected once and committed nowhere.
+  - **Package gallery goldens: 48 of 48 moved**, which is the whole set, and
+    is what `TextLeadingDistribution.even` on every role predicts. The two
+    goldens under `test/foundation/goldens/` are the mark and did not move,
+    which is the other half of the check: they draw no text. Regenerated once
+    with `--update-goldens` (581 tests green), read by eye on the type page in
+    light, then reverted with `git checkout --`. The diff is glyphs sitting a
+    little lower inside their line boxes, largest on the display roles (the
+    type page is 4.53 percent of pixels, the actions page 0.07 percent).
+    Nothing reflows and nothing is clipped. **The integrator regenerates these
+    after F1 and F2 merge.**
+  - **Application screen goldens: 17 of 121 moved**, and **zero of the
+    semantics fixtures**. The 17 are the eight `signin` windows, the eight
+    `filters` windows and the one `help` window. Regenerated once to look at,
+    then reverted. The reason only 17 moved is worth knowing and is under
+    learnings below.
+- Durable learnings:
+  - **Material text was already centred in its line box; ours was not.**
+    `Typography.englishLike2021` sets `leadingDistribution: even` on every
+    style, and `Theme` merges the product roles onto that geometry, so any
+    `Text` drawn under a `Material` resolved to `even` whatever the role said.
+    Text this package draws reads `context.ui.type.*` directly and had no
+    leading distribution at all, so it fell to the engine default,
+    `proportional`. That is why "the text sits high" was a `specimen_ui`
+    symptom and never a Material one, and why exactly the windows whose words
+    are drawn outside a `Material` are the ones whose goldens moved.
+  - **The yellow double underline is `MaterialApp`'s, not `WidgetsApp`'s.**
+    `_errorTextStyle` is private to `material/app.dart` and reaches the tree
+    as `WidgetsApp.textStyle`, wrapped around the app's `builder` output. So
+    a `UiTheme` inside `MaterialApp.builder` does shadow it, which is what the
+    application's `_Text` was doing, and a bare `WidgetsApp` host has no
+    fallback at all. A gate that pumps under a plain `WidgetsApp` therefore
+    proves nothing: `no_fallback_text_style` installs a reconstruction of the
+    fallback on purpose, and was checked by deleting the publication and
+    watching eleven pages fail.
+  - **`WidgetController.allRenderObjects` returns duplicates.** It maps every
+    element to its nearest render object, so each widget between a `Text` and
+    its paragraph reports the same paragraph again. Anything walking it for
+    render objects needs `.toSet()`, or a `.single` throws "Too many
+    elements" on one `Text`.
+  - **`RenderParagraph` does not expose its line metrics.**
+    `computeLineMetrics` is on `TextPainter` and the paragraph's painter is
+    private. Counting distinct box tops from
+    `getBoxesForSelection(0, length)` is the public way to ask how many lines
+    something laid out, and it is what clause 13 uses.
+  - **A control whose height is a constant is caught by clause 7, not by
+    clause 14.** Clause 7 already fails on a 200 percent overflow, so it fires
+    first. What clause 14 adds beyond it is the scales below 2.0, the hit box
+    at each of them, and truncation: a label the growing text clips is
+    `didExceedMaxLines` rather than an overflow, and nothing reported it
+    before. The harness test proves clause 14 with that defect for exactly
+    that reason.
+  - **A box that simply lets its child paint outside itself reports nothing.**
+    Only a flex reports an overflow, so a specimen built to fail an overflow
+    check has to put the text in a `Column`. A `Center` in a short `SizedBox`
+    silently paints over its neighbours, which is the quieter version of the
+    same defect and one no gate here catches.
+  - **`StrutStyle.fromTextStyle` takes the package prefixed family as is.**
+    `TextStyle(fontFamily: 'Geist', package: 'specimen_ui')` stores
+    `packages/specimen_ui/Geist`, so passing `package:` again to the strut
+    would prefix it twice.
+- Failed approaches:
+  - Putting `controlHeightFor(UiThemeData, ...)` in `foundation/type.dart` as
+    the brief spells it. `type.dart` would have to import `theme.dart`, which
+    imports `material.dart` and is itself composed of the type scale. The
+    helper takes a `UiDensity` instead, from `density.dart`, which has no such
+    cycle. Call sites read `UiType.controlHeightFor(ui.density, style,
+    context)`.
+  - Reaching an overflowing tooltip trigger through `find.byType(SizedBox)`.
+    An empty `SizedBox` hit tests nothing and `UiTooltip` reveals on a press
+    of its child, so the gate's tooltip trigger is painted and keyed.
+  - Asserting clause 13's failure names 200 dp. It names the first width at
+    which the string wrapped, which for a sentence is 360.
+- Remaining follow-ups, and every deviation from the brief:
+  - **`Adaptive.of` returns `T?`.** Every class is optional, as the brief
+    says, so resolution can run off the bottom. Set `compact` and it never
+    returns null, because every class resolves down to it; that is the
+    documented idiom rather than a second non-null accessor.
+  - **The gate lives at `test/foundation/no_fallback_text_style_test.dart`,
+    not `test/gates/`.** The brief allowed either; the other five gate tests
+    are in `test/foundation/`, so there is still one place to look.
+  - **`lib/src/workspace.dart` lost one import line.** It reached
+    `WindowClass` through the patterns barrel, and `specimen_ui` now exports
+    the class directly, so `flutter analyze --fatal-infos` failed on an
+    unnecessary import. One deletion, forced by this slot, in a file no wave F
+    slot owns.
+  - **`showProductModal` is now a forwarder.** With the text style published
+    it does exactly what `UiDialog.showAdaptive` does, so it calls it. Its
+    three call sites (`search_filters.dart` twice, `selection_bar.dart`) are
+    not this slot's files; a later wave can retire the wrapper and call the
+    package directly, which is what its `TODO(fe/polish-2)` asked for.
+  - **`compactWindowMax` is `WindowClass.mediumMin`.** The primitive restated
+    600 while the classes lived in the application. The public constant keeps
+    its name and its value.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, and it is the model that did the work.
+  - **The gallery shell publishes a `DefaultTextStyle` of its own**
+    (`gallery_shell.dart`, wave G slot G3's file). It is now redundant, since
+    `UiTheme` publishes the same thing, and it is why the gate pumps pages
+    rather than the shell. G3 can delete it.
+  - **Nothing turns clauses 13 to 15 on yet.** They are off by default and
+    every family's tests stay as they were. G1, G2 and G3 enable them per
+    control as they do the fit pass.
+- What the other slot and wave G will need from this package:
+  - `WindowClass` and `Adaptive<T>` from `foundation/window.dart`, exported
+    from the top barrel. `Adaptive.all` covers a call site that takes an
+    `Adaptive` where the value does not vary.
+  - `UiType.lineHeightOf(style, context)`, `UiType.unscaledLineHeightOf`,
+    `UiType.strutOf(style)`, `UiType.insetFor(density, style)` and
+    `UiType.controlHeightFor(density, style, context)`. **F1 computes a line
+    height locally behind a `// TODO(fe/fit-foundation)` marker; it is
+    `fontSize` times `height` at the current scaler, which is exactly
+    `lineHeightOf`, so the swap is one line per site.**
+  - `UiThemeData.defaultTextStyle`, the one recipe for the ambient style. Any
+    new overlay frame publishes that, not a copy of it.
+  - `UiLabel(text, style:, textAlign:, tooltip:)` from `primitives/label.dart`.
+    The `tooltip` slot is
+    `(context, message, label) => UiTooltip(message: message, child: label)`
+    at a call site in the controls layer.
+  - `measureLabel(context, text, style)` and
+    `FitBuilder(variants: [FitVariant(intrinsicWidth:, builder:)])` from
+    `primitives/fit.dart`. Variants are tried widest first; the last is built
+    with `lastResort` true when none fits.
+  - `expectControlContract(..., labelsNeverWrap:, wrappingContent:,
+    geometryFromType:, fit:)` with `FitExpectation` and `fitWidths` from
+    `test/harness/control_contract.dart`.
+  - `UiTheme`'s constructor is no longer `const`. No call site in the
+    repository used it as one.

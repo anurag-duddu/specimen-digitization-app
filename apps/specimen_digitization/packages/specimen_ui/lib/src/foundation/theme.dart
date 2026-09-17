@@ -113,6 +113,23 @@ class UiThemeData {
     );
   }
 
+  /// The product's ambient text style: `type.body` in [UiColor.ink], with
+  /// the decoration cleared (11 section 5).
+  ///
+  /// [UiTheme] publishes this around its child, and every overlay frame that
+  /// can be built in a host of its own, a modal route, a popover, a tooltip
+  /// and a toast, publishes it again from `context.ui`. One recipe, so a
+  /// second overlay cannot drift from the first.
+  ///
+  /// The decoration is cleared rather than left unset because `Text` merges
+  /// its own style onto the ambient one: a style that names only a colour
+  /// keeps whatever underline the host left in scope, which is exactly how a
+  /// dialog came to draw its title in a double yellow underline.
+  TextStyle get defaultTextStyle => type.body.copyWith(
+    color: color.ink,
+    decoration: TextDecoration.none,
+  );
+
   /// True for the dark column.
   bool get isDark => color.isDark;
 
@@ -290,14 +307,34 @@ class UiIconRegistry {
   IconSpec? operator [](String key) => UiIcons.spec(key);
 }
 
-/// Publishes [UiThemeData] to the tree.
+/// Publishes [UiThemeData] and the product's ambient text style to the tree.
 ///
 /// One of these wraps the application in `main.dart`. `Theme.of` keeps
 /// working for the infrastructure widgets because `toThemeData()` feeds
 /// `MaterialApp.theme` and `darkTheme`.
+///
+/// The tokens come with a `DefaultTextStyle` of `type.body` in `ink` with the
+/// decoration cleared, so every subtree under this widget, including every
+/// route pushed on the root navigator, reads the system's text style rather
+/// than the framework's fallback (11 section 5). `MaterialApp` installs that
+/// fallback through `WidgetsApp.textStyle`, red monospace with a double
+/// yellow underline, and `Material` is what normally replaces it; a design
+/// system built on `widgets.dart` has to publish its own or every pane
+/// outside a `Material` draws in it. This is the one source: the application
+/// no longer patches it at its root and a product modal no longer patches it
+/// at its call site.
 class UiTheme extends InheritedWidget {
-  /// Publishes [data] to [child].
-  const UiTheme({super.key, required this.data, required super.child});
+  /// Publishes [data], and the text style it implies, to [child].
+  UiTheme({super.key, required this.data, required Widget child})
+    : super(child: _publish(data, child));
+
+  /// The ambient text style [data] implies, wrapped around [child].
+  ///
+  /// Built in the constructor rather than in a `build`, so [UiTheme] stays an
+  /// `InheritedWidget` and `dependOnInheritedWidgetOfExactType` keeps finding
+  /// it in one hop.
+  static Widget _publish(UiThemeData data, Widget child) =>
+      DefaultTextStyle(style: data.defaultTextStyle, child: child);
 
   /// The tokens, before the live density is folded in.
   final UiThemeData data;

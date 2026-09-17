@@ -217,29 +217,45 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       // `MaterialApp`, because this is the highest point in the tree where
       // the resolved brightness is known: `themeMode` follows the platform,
       // and a scope above the app would have to guess. Everything a reviewer
-      // can see, including every overlay and route, is below this builder.
-      builder: (BuildContext context, Widget? child) => Density(
-        child: UiTheme(
-          data: Theme.of(context).brightness == Brightness.dark
-              ? _darkTokens
-              : _lightTokens,
-          child: ExpansionTileTheme(
-            // `ExpansionTile` animates at Material's own 200 ms on a linear
-            // curve. The duration is already the `standard` token; the curve
-            // is not, and the reduced-motion collapse is ours to apply
-            // because a theme built once at startup cannot read an
-            // accessibility feature (motion catalog, row 43).
-            data: ExpansionTileThemeData(
-              expansionAnimationStyle: AnimationStyle(
-                duration: MotionTokens.of(context).standard,
-                curve: MotionTokens.standardCurve,
-                reverseCurve: MotionTokens.standardCurve,
+      // can see, including every overlay and route, is below this builder,
+      // and so is the product's ambient text style: `UiTheme` publishes it
+      // with its tokens now, so the application no longer wraps the router in
+      // a `DefaultTextStyle` of its own (11 section 5).
+      builder: (BuildContext context, Widget? child) =>
+          MediaQuery.withClampedTextScaling(
+            // The one place the text scale is clamped (11 section 2.1). The
+            // control contract promises 200 percent and promises nothing
+            // above it, and nothing below 85 percent is worth reading, so the
+            // root says so once and no control reads or clamps the scaler
+            // itself. On the web the browser's own preference never reaches
+            // Flutter, so the scale here is 1.0 until the reviewer's stored
+            // setting becomes a product feature.
+            minScaleFactor: 0.85,
+            maxScaleFactor: 2,
+            child: Density(
+              child: UiTheme(
+                data: Theme.of(context).brightness == Brightness.dark
+                    ? _darkTokens
+                    : _lightTokens,
+                child: ExpansionTileTheme(
+                  // `ExpansionTile` animates at Material's own 200 ms on a
+                  // linear curve. The duration is already the `standard`
+                  // token; the curve is not, and the reduced-motion collapse
+                  // is ours to apply because a theme built once at startup
+                  // cannot read an accessibility feature (motion catalog,
+                  // row 43).
+                  data: ExpansionTileThemeData(
+                    expansionAnimationStyle: AnimationStyle(
+                      duration: MotionTokens.of(context).standard,
+                      curve: MotionTokens.standardCurve,
+                      reverseCurve: MotionTokens.standardCurve,
+                    ),
+                  ),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
-            child: _Text(child: child ?? const SizedBox.shrink()),
           ),
-        ),
-      ),
     );
     // One scope above the router, because an accessibility feature change and
     // a browser media query change both arrive outside the widget tree and
@@ -249,34 +265,6 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       child: workspace == null
           ? app
           : WorkspaceScope(controller: workspace, child: app),
-    );
-  }
-}
-
-/// The product's ambient text style.
-///
-/// `WidgetsApp` publishes a `DefaultTextStyle` of black with a double yellow
-/// underline, the "you forgot a `Material`" style, and `Material` is what used
-/// to replace it on every screen. The shell and the entry screens are
-/// `UiScaffold` now, so the application publishes its own: `type.body` in
-/// `ink`, with the decoration cleared. It sits under `UiTheme`, which is where
-/// the tokens are, and above the router, so every route and every modal reads
-/// it; a screen still drawn inside a `Material` keeps that widget's own style,
-/// which is how the screens of waves 3 and 4 stay exactly as they are.
-class _Text extends StatelessWidget {
-  const _Text({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return DefaultTextStyle(
-      style: ui.type.body.copyWith(
-        color: ui.color.ink,
-        decoration: TextDecoration.none,
-      ),
-      child: child,
     );
   }
 }
