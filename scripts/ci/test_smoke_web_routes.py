@@ -212,6 +212,8 @@ def test_the_marker_write_deployment_metadata_emits_is_accepted():
     [
         ("schemaVersion", 2),
         ("schemaVersion", "1"),
+        # True == 1 in Python and true == 1 is false in jq.
+        ("schemaVersion", True),
         ("repository", "someone-else/specimen-digitization-app"),
         # Uppercase hex: the guards accept lowercase only.
         ("commitSha", "0123456789ABCDEF0123456789abcdef01234567"),  # pragma: allowlist secret
@@ -459,6 +461,7 @@ def test_the_shell_guard_accepts_the_marker_this_file_accepts(tmp_path):
     "raw",
     [
         json.dumps(dict(MARKER, schemaVersion="1")),
+        json.dumps(dict(MARKER, schemaVersion=True)),
         json.dumps(dict(MARKER, repository="someone-else/x")),
         json.dumps(dict(MARKER, commitSha="0123456")),
         json.dumps(dict(MARKER, runId=1)),
