@@ -1,0 +1,2937 @@
+{
+  "fixture_kind": "live-shape",
+  "shape": "twelve label regions, two readers, every region in disagreement",
+  "derived_from": "docs/execution/backend-wire-examples.json, workspace_response",
+  "evidence": "The pilot scope in docs/execution/CURRENT_RELEASE_CHECKLIST.md is ten original specimens and twenty five regions. Twelve regions on one card is the worst case a museum drawer produces, not the average. The readings are the confusions two readers actually make on 1946 handwriting: a digit, a serif, a doubled consonant.",
+  "not_real": "Shaped from the wire contract and from the evidence cited above. The real slides are in Cloud Storage and are not reachable from a workstation, so no byte here came off a real specimen.",
+  "workspace_response": {
+    "specimen_id": "d1a749ad-879b-4c07-81f3-56b260ba81f9",
+    "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+    "collection_id": "00000000-0000-4000-8000-000000000002",
+    "organization_id": "00000000-0000-4000-8000-000000000001",
+    "revision": 17,
+    "batch_id": "7f3c03d8-d18c-5cd6-b840-cfa6cb844513",
+    "filename": "FMNH-INS-1001.jpg",
+    "created_at": "2026-09-08T05:01:39.876709+00:00",
+    "active_run_id": "c29d92c5-0443-4b2c-a775-ef28c654996a",
+    "record_version_id": "c29d92c5-0443-4b2c-a775-ef28c654996a:17",
+    "status": "completed",
+    "stage": "finalized",
+    "disposition": "needs_human_review",
+    "reason_codes": [
+      "transcription_disagreement"
+    ],
+    "blocker": null,
+    "profile_id": "zoology_insects",
+    "profile_version": "0.1.0-draft",
+    "synthetic": true,
+    "available_actions": [
+      "retry",
+      "pause",
+      "cancel",
+      "reprocess"
+    ],
+    "asset": {
+      "id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "blob_ref": "0000000000000000000000000000000000000000000000000000000000000001",
+      "media_type": "image/png",
+      "size_bytes": 28431,
+      "width": 1000,
+      "height": 520,
+      "filename": "synthetic-label.png",
+      "uploader": "synthetic-reviewer",
+      "created_at": "2026-09-08T05:01:39.876696+00:00"
+    },
+    "run": {
+      "id": "c29d92c5-0443-4b2c-a775-ef28c654996a",
+      "profile": {
+        "id": "zoology_insects",
+        "version": "0.1.0-draft",
+        "schema_version": "insects-v1",
+        "policy_version": "insects-clearance-v1",
+        "mandatory_fields": [
+          "fmnh_ins_number",
+          "collection_code",
+          "country",
+          "province_state",
+          "county",
+          "city",
+          "precise_location",
+          "elevation_from_m",
+          "elevation_to_m",
+          "elevation_from_ft",
+          "elevation_to_ft",
+          "habitat",
+          "collection_method",
+          "date_visited_from",
+          "date_visited_to",
+          "collectors",
+          "verbatim_dts",
+          "taxon",
+          "identified_by_irn",
+          "date_identified"
+        ],
+        "routes": [
+          "handwriting-qwen",
+          "handwriting-muse"
+        ],
+        "synthetic": true,
+        "institutional_policy_approved": true,
+        "semantics_confirmed": true
+      },
+      "stage": "finalized",
+      "completed_steps": [
+        "classification_selected_at_intake",
+        "classify",
+        "segment",
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-qwen",
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-muse",
+        "adjudicate",
+        "parse",
+        "plan",
+        "lookup",
+        "resolve",
+        "normalize",
+        "validate",
+        "finalize"
+      ],
+      "regions": [
+        {
+          "id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 40,
+          "y": 30,
+          "width": 280,
+          "height": 90,
+          "order": 0,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 360,
+          "y": 30,
+          "width": 280,
+          "height": 90,
+          "order": 1,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "3a848e86-55f4-431d-87f6-9048f7901648",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 680,
+          "y": 30,
+          "width": 280,
+          "height": 90,
+          "order": 2,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 40,
+          "y": 150,
+          "width": 280,
+          "height": 90,
+          "order": 3,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 360,
+          "y": 150,
+          "width": 280,
+          "height": 90,
+          "order": 4,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 680,
+          "y": 150,
+          "width": 280,
+          "height": 90,
+          "order": 5,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 40,
+          "y": 270,
+          "width": 280,
+          "height": 90,
+          "order": 6,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "db817243-5234-4da6-8e57-1053a57f81a8",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 360,
+          "y": 270,
+          "width": 280,
+          "height": 90,
+          "order": 7,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 680,
+          "y": 270,
+          "width": 280,
+          "height": 90,
+          "order": 8,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 40,
+          "y": 390,
+          "width": 280,
+          "height": 90,
+          "order": 9,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 360,
+          "y": 390,
+          "width": 280,
+          "height": 90,
+          "order": 10,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        },
+        {
+          "id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 680,
+          "y": 390,
+          "width": 280,
+          "height": 90,
+          "order": 11,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        }
+      ],
+      "observations": [
+        {
+          "id": "ce826ff8-689a-4afa-8693-18a041f54886",
+          "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "literal_text": "Field Museum of Natural History",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000008",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000008",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "2e59fff2-3d02-46d7-88c6-d48d83f98a7a",
+          "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+          "literal_text": "Field Museum of Nat. History",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000009",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000009",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "6a247741-64b5-4f7a-8a42-03579ea53633",
+          "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+          "literal_text": "Chicago, Ill.",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000000b",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000b",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "eb886894-257f-4b32-8fd6-5302759c9f1c",
+          "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+          "literal_text": "Chicago, III.",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000000c",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000c",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "78ba589a-e6d4-4605-8644-3793c55820e0",
+          "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000000d",
+          "literal_text": "Cook Co., Illinois",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000000e",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000e",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "587aec8f-3928-4e02-87fc-45430edad918",
+          "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000000d",
+          "literal_text": "Cook Co., Ilinois",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000000f",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000f",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+          "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000010",
+          "literal_text": "VII 14 1946",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000011",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000011",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "07f52fab-ed49-4e07-860e-8fbce4c43e4d",
+          "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000010",
+          "literal_text": "VII 14 1940",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000012",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000012",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+          "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000013",
+          "literal_text": "Coll. A. B. Wolcott",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000014",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000014",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "0f92e61e-a3b6-423e-8970-5d21e3b28b49",
+          "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000013",
+          "literal_text": "Coll. A. B. Walcott",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000015",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000015",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "1da49407-35cf-4778-8185-1f5f569e15ef",
+          "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000016",
+          "literal_text": "Ex coll. Wm. J. Gerhard",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000017",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000017",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c",
+          "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000016",
+          "literal_text": "Ex coll. Wm. J. Gerhardt",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000018",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000018",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+          "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000019",
+          "literal_text": "det. H. S. Dybas 1951",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000001a",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001a",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "e2c80918-9543-4c61-8a92-ae9dbf948d50",
+          "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000019",
+          "literal_text": "det. H. S. Dybas 1954",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000001b",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001b",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "24c368a0-267d-464c-894b-608ab6f5530c",
+          "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000001c",
+          "literal_text": "Danaus plexippus (Linnaeus)",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000001d",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001d",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "3a9dbe98-71a8-49ad-8f00-845625fd0dee",
+          "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000001c",
+          "literal_text": "Danaus plexippus (Linnaeus.)",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000001e",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001e",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+          "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000001f",
+          "literal_text": "on Asclepias syriaca",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000020",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000020",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "5c10016e-1fcb-4b60-8b91-34bc53646f35",
+          "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "000000000000000000000000000000000000000000000000000000000000001f",
+          "literal_text": "on Asclepias syriata",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000021",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000021",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+          "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000022",
+          "literal_text": "elev. 180 m",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000023",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000023",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "c24599d1-aa8e-43d0-82d1-073ab532d425",
+          "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000022",
+          "literal_text": "elev. 130 m",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000024",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000024",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+          "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000025",
+          "literal_text": "FMNH-INS 1001",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000026",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000026",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "df518e35-3a61-4101-87b2-d1b664b97fc9",
+          "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000025",
+          "literal_text": "FMNH-INS 100I",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000027",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000027",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "985aa312-b423-4551-8837-7e30c4ab4c5d",
+          "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000028",
+          "literal_text": "paratype",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000029",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000029",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        },
+        {
+          "id": "124d4121-80dc-434b-8c2f-0b2aceb27eb9",
+          "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000028",
+          "literal_text": "paratypc",
+          "unreadable_spans": [],
+          "raw_ref": "000000000000000000000000000000000000000000000000000000000000002a",
+          "raw_sha256": "000000000000000000000000000000000000000000000000000000000000002a",
+          "created_at": "2026-09-17T09:14:02.118400+00:00",
+          "input_tokens": 1180,
+          "output_tokens": 24
+        }
+      ],
+      "transcripts": [
+        {
+          "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+          "text": null,
+          "observation_ids": [
+            "ce826ff8-689a-4afa-8693-18a041f54886",
+            "2e59fff2-3d02-46d7-88c6-d48d83f98a7a"
+          ],
+          "alternatives": [
+            "Field Museum of Natural History",
+            "Field Museum of Nat. History"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.2903,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+          "text": null,
+          "observation_ids": [
+            "6a247741-64b5-4f7a-8a42-03579ea53633",
+            "eb886894-257f-4b32-8fd6-5302759c9f1c"
+          ],
+          "alternatives": [
+            "Chicago, Ill.",
+            "Chicago, III."
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.1538,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+          "text": null,
+          "observation_ids": [
+            "78ba589a-e6d4-4605-8644-3793c55820e0",
+            "587aec8f-3928-4e02-87fc-45430edad918"
+          ],
+          "alternatives": [
+            "Cook Co., Illinois",
+            "Cook Co., Ilinois"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.2778,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+          "text": null,
+          "observation_ids": [
+            "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+            "07f52fab-ed49-4e07-860e-8fbce4c43e4d"
+          ],
+          "alternatives": [
+            "VII 14 1946",
+            "VII 14 1940"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0909,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+          "text": null,
+          "observation_ids": [
+            "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+            "0f92e61e-a3b6-423e-8970-5d21e3b28b49"
+          ],
+          "alternatives": [
+            "Coll. A. B. Wolcott",
+            "Coll. A. B. Walcott"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0526,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+          "text": null,
+          "observation_ids": [
+            "1da49407-35cf-4778-8185-1f5f569e15ef",
+            "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c"
+          ],
+          "alternatives": [
+            "Ex coll. Wm. J. Gerhard",
+            "Ex coll. Wm. J. Gerhardt"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+          "text": null,
+          "observation_ids": [
+            "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+            "e2c80918-9543-4c61-8a92-ae9dbf948d50"
+          ],
+          "alternatives": [
+            "det. H. S. Dybas 1951",
+            "det. H. S. Dybas 1954"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0476,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+          "text": null,
+          "observation_ids": [
+            "24c368a0-267d-464c-894b-608ab6f5530c",
+            "3a9dbe98-71a8-49ad-8f00-845625fd0dee"
+          ],
+          "alternatives": [
+            "Danaus plexippus (Linnaeus)",
+            "Danaus plexippus (Linnaeus.)"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0357,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+          "text": null,
+          "observation_ids": [
+            "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+            "5c10016e-1fcb-4b60-8b91-34bc53646f35"
+          ],
+          "alternatives": [
+            "on Asclepias syriaca",
+            "on Asclepias syriata"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.05,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+          "text": null,
+          "observation_ids": [
+            "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+            "c24599d1-aa8e-43d0-82d1-073ab532d425"
+          ],
+          "alternatives": [
+            "elev. 180 m",
+            "elev. 130 m"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0909,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+          "text": null,
+          "observation_ids": [
+            "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+            "df518e35-3a61-4101-87b2-d1b664b97fc9"
+          ],
+          "alternatives": [
+            "FMNH-INS 1001",
+            "FMNH-INS 100I"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0769,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        },
+        {
+          "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+          "text": null,
+          "observation_ids": [
+            "985aa312-b423-4551-8837-7e30c4ab4c5d",
+            "124d4121-80dc-434b-8c2f-0b2aceb27eb9"
+          ],
+          "alternatives": [
+            "paratype",
+            "paratypc"
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.125,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "a96f4452-2275-4243-82f7-60aa5660907d",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+          "observation_ids": [
+            "ce826ff8-689a-4afa-8693-18a041f54886",
+            "2e59fff2-3d02-46d7-88c6-d48d83f98a7a"
+          ],
+          "source": "label",
+          "locator": "region 0",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "5108deb7-1ee1-400d-8e14-ad48f2ddee3d",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+          "observation_ids": [
+            "6a247741-64b5-4f7a-8a42-03579ea53633",
+            "eb886894-257f-4b32-8fd6-5302759c9f1c"
+          ],
+          "source": "label",
+          "locator": "region 1",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "fce15395-0ced-46bb-8fb1-3e9b6c8212fc",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+          "observation_ids": [
+            "78ba589a-e6d4-4605-8644-3793c55820e0",
+            "587aec8f-3928-4e02-87fc-45430edad918"
+          ],
+          "source": "label",
+          "locator": "region 2",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "13f80b3e-0251-4e80-8c39-1300144bd1cb",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+          "observation_ids": [
+            "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+            "07f52fab-ed49-4e07-860e-8fbce4c43e4d"
+          ],
+          "source": "label",
+          "locator": "region 3",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "2d493f25-558c-40ad-887a-79b276fa7cd7",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+          "observation_ids": [
+            "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+            "0f92e61e-a3b6-423e-8970-5d21e3b28b49"
+          ],
+          "source": "label",
+          "locator": "region 4",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "237e9fee-742d-4844-8231-df29595848fe",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+          "observation_ids": [
+            "1da49407-35cf-4778-8185-1f5f569e15ef",
+            "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c"
+          ],
+          "source": "label",
+          "locator": "region 5",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "59a042fe-0f1f-4220-8686-66cde4d8f1df",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+          "observation_ids": [
+            "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+            "e2c80918-9543-4c61-8a92-ae9dbf948d50"
+          ],
+          "source": "label",
+          "locator": "region 6",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "c3e26e5d-bcd4-420b-8e9c-5ba9bbb9628c",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+          "observation_ids": [
+            "24c368a0-267d-464c-894b-608ab6f5530c",
+            "3a9dbe98-71a8-49ad-8f00-845625fd0dee"
+          ],
+          "source": "label",
+          "locator": "region 7",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "ec362d5f-4706-463c-8e78-0e6f8ffdd85c",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+          "observation_ids": [
+            "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+            "5c10016e-1fcb-4b60-8b91-34bc53646f35"
+          ],
+          "source": "label",
+          "locator": "region 8",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "b9f35749-d145-4f68-8a5a-342650f2ae39",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+          "observation_ids": [
+            "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+            "c24599d1-aa8e-43d0-82d1-073ab532d425"
+          ],
+          "source": "label",
+          "locator": "region 9",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "9240364a-e05a-464f-857e-1601a536168c",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+          "observation_ids": [
+            "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+            "df518e35-3a61-4101-87b2-d1b664b97fc9"
+          ],
+          "source": "label",
+          "locator": "region 10",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        },
+        {
+          "id": "2b02e7a7-0e43-4855-8cff-941bd24a34f4",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+          "observation_ids": [
+            "985aa312-b423-4551-8837-7e30c4ab4c5d",
+            "124d4121-80dc-434b-8c2f-0b2aceb27eb9"
+          ],
+          "source": "label",
+          "locator": "region 11",
+          "excerpt": "",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-17T09:14:02.118400+00:00"
+        }
+      ],
+      "fields": {
+        "fmnh_ins_number": {
+          "state": "supported",
+          "literal": "FMNH-INS 1001",
+          "parsed": "FMNH-INS 1001",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "a1f24e0b-bff7-4607-80eb-d962b231a828"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "collection_code": {
+          "state": "supported",
+          "literal": "SYNTHETIC",
+          "parsed": "SYNTHETIC",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "cfae78fe-b51c-44a9-b7d1-f410853b0c4e"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "country": {
+          "state": "supported",
+          "literal": "United States",
+          "parsed": "United States",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "66497653-e1ca-4338-88db-eed59880d7b6"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "province_state": {
+          "state": "supported",
+          "literal": "Illinois",
+          "parsed": "Illinois",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "county": {
+          "state": "supported",
+          "literal": "Cook",
+          "parsed": "Cook",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "5d36b87d-72b9-446c-95d4-062bf58a08f8"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "city": {
+          "state": "supported",
+          "literal": "Chicago",
+          "parsed": "Chicago",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "360bb26d-d3a5-475c-8b3c-1ff621e2169e"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "precise_location": {
+          "state": "supported",
+          "literal": "Synthetic teaching garden",
+          "parsed": "Synthetic teaching garden",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_from_m": {
+          "state": "supported",
+          "literal": "180",
+          "parsed": "180",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "2fb95af9-546d-4fb5-a515-357fd6e349b5"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_to_m": {
+          "state": "supported",
+          "literal": "181",
+          "parsed": "181",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "28d5f7db-7688-443d-8294-75eef124cc28"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_from_ft": {
+          "state": "supported",
+          "literal": "590.55",
+          "parsed": "590.55",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "4f012a9c-b4aa-428b-b811-1a5b5c91a969"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_to_ft": {
+          "state": "supported",
+          "literal": "593.83",
+          "parsed": "593.83",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "b859af8b-9a2e-4db8-a44a-b4838d127be2"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "habitat": {
+          "state": "supported",
+          "literal": "Synthetic grassland",
+          "parsed": "Synthetic grassland",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "82331944-84f8-4dfd-afc3-aa35953bfce0"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "collection_method": {
+          "state": "supported",
+          "literal": "Synthetic net",
+          "parsed": "Synthetic net",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "740b239d-5de5-41d7-89db-cea0f5b40628"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "date_visited_from": {
+          "state": "supported",
+          "literal": "2020-06-01",
+          "parsed": "2020-06-01",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "1a04f894-5977-4e67-a850-ed7f9f5d0841"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "date_visited_to": {
+          "state": "supported",
+          "literal": "2020-06-01",
+          "parsed": "2020-06-01",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "collectors": {
+          "state": "supported",
+          "literal": "Synthetic Collector",
+          "parsed": "Synthetic Collector",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "5f96da08-4eed-4076-b355-b2ee7d32296a"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "verbatim_dts": {
+          "state": "supported",
+          "literal": "Synthetic D/T/S",
+          "parsed": "Synthetic D/T/S",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "2b4a65ff-a641-4310-b006-53150f337ab3"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "taxon": {
+          "state": "supported",
+          "literal": "Danaus plexippus",
+          "parsed": "Danaus plexippus",
+          "normalized": "Danaus plexippus",
+          "authority_id": "synthetic:taxon:1",
+          "evidence_ids": [
+            "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4",
+            "17ca1490-7f2d-411c-a525-43b653eb513f"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "identified_by_irn": {
+          "state": "supported",
+          "literal": "synthetic:eparties:1",
+          "parsed": "synthetic:eparties:1",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "date_identified": {
+          "state": "supported",
+          "literal": "2020-06-02",
+          "parsed": "2020-06-02",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "a231421a-e9aa-4bcb-b1a1-0c42156e83c3"
+          ],
+          "reason": "Explicit labeled source line"
+        }
+      },
+      "lookups": [
+        {
+          "id": "947b20aa-0853-4da0-aa1a-6e3e87e0a503",
+          "provider": "synthetic_taxonomy",
+          "adapter_version": "fixture-v1",
+          "query": {
+            "name": "Danaus plexippus"
+          },
+          "status": "success",
+          "candidates": [
+            {
+              "key": "synthetic:taxon:1",
+              "scientificName": "Danaus plexippus"
+            }
+          ],
+          "metadata": {},
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000003",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000003",
+          "retrieved_at": "2026-09-08T05:01:39.921697+00:00",
+          "retry_after_seconds": null
+        }
+      ],
+      "coverage_confirmed": true,
+      "human_approved": false,
+      "disposition": "needs_human_review",
+      "reasons": [
+        "human_approval_required"
+      ],
+      "blocker": null,
+      "attempts": {
+        "segment": 1,
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-qwen": 1,
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-muse": 1,
+        "lookup": 1
+      },
+      "capability_reason": null,
+      "retry_eligibility": null,
+      "next_retry_at": null,
+      "dead_letter": false,
+      "lease_until": null,
+      "created_at": "2026-09-08T05:01:39.876362+00:00"
+    },
+    "regions": [
+      {
+        "id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 40,
+        "y": 30,
+        "width": 280,
+        "height": 90,
+        "order": 0,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+        "bbox": [
+          40,
+          30,
+          320,
+          120
+        ]
+      },
+      {
+        "id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 360,
+        "y": 30,
+        "width": 280,
+        "height": 90,
+        "order": 1,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+        "bbox": [
+          360,
+          30,
+          640,
+          120
+        ]
+      },
+      {
+        "id": "3a848e86-55f4-431d-87f6-9048f7901648",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 680,
+        "y": 30,
+        "width": 280,
+        "height": 90,
+        "order": 2,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+        "bbox": [
+          680,
+          30,
+          960,
+          120
+        ]
+      },
+      {
+        "id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 40,
+        "y": 150,
+        "width": 280,
+        "height": 90,
+        "order": 3,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+        "bbox": [
+          40,
+          150,
+          320,
+          240
+        ]
+      },
+      {
+        "id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 360,
+        "y": 150,
+        "width": 280,
+        "height": 90,
+        "order": 4,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+        "bbox": [
+          360,
+          150,
+          640,
+          240
+        ]
+      },
+      {
+        "id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 680,
+        "y": 150,
+        "width": 280,
+        "height": 90,
+        "order": 5,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+        "bbox": [
+          680,
+          150,
+          960,
+          240
+        ]
+      },
+      {
+        "id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 40,
+        "y": 270,
+        "width": 280,
+        "height": 90,
+        "order": 6,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+        "bbox": [
+          40,
+          270,
+          320,
+          360
+        ]
+      },
+      {
+        "id": "db817243-5234-4da6-8e57-1053a57f81a8",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 360,
+        "y": 270,
+        "width": 280,
+        "height": 90,
+        "order": 7,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+        "bbox": [
+          360,
+          270,
+          640,
+          360
+        ]
+      },
+      {
+        "id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 680,
+        "y": 270,
+        "width": 280,
+        "height": 90,
+        "order": 8,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+        "bbox": [
+          680,
+          270,
+          960,
+          360
+        ]
+      },
+      {
+        "id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 40,
+        "y": 390,
+        "width": 280,
+        "height": 90,
+        "order": 9,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+        "bbox": [
+          40,
+          390,
+          320,
+          480
+        ]
+      },
+      {
+        "id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 360,
+        "y": 390,
+        "width": 280,
+        "height": 90,
+        "order": 10,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+        "bbox": [
+          360,
+          390,
+          640,
+          480
+        ]
+      },
+      {
+        "id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 680,
+        "y": 390,
+        "width": 280,
+        "height": 90,
+        "order": 11,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+        "bbox": [
+          680,
+          390,
+          960,
+          480
+        ]
+      }
+    ],
+    "observations": [
+      {
+        "id": "ce826ff8-689a-4afa-8693-18a041f54886",
+        "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+        "literal_text": "Field Museum of Natural History",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000008",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000008",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "ce826ff8-689a-4afa-8693-18a041f54886",
+        "verbatim_text": "Field Museum of Natural History"
+      },
+      {
+        "id": "2e59fff2-3d02-46d7-88c6-d48d83f98a7a",
+        "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000007",
+        "literal_text": "Field Museum of Nat. History",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000009",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000009",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "2e59fff2-3d02-46d7-88c6-d48d83f98a7a",
+        "verbatim_text": "Field Museum of Nat. History"
+      },
+      {
+        "id": "6a247741-64b5-4f7a-8a42-03579ea53633",
+        "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+        "literal_text": "Chicago, Ill.",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000000b",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000b",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "6a247741-64b5-4f7a-8a42-03579ea53633",
+        "verbatim_text": "Chicago, Ill."
+      },
+      {
+        "id": "eb886894-257f-4b32-8fd6-5302759c9f1c",
+        "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000000a",
+        "literal_text": "Chicago, III.",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000000c",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000c",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "eb886894-257f-4b32-8fd6-5302759c9f1c",
+        "verbatim_text": "Chicago, III."
+      },
+      {
+        "id": "78ba589a-e6d4-4605-8644-3793c55820e0",
+        "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000000d",
+        "literal_text": "Cook Co., Illinois",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000000e",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000e",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "78ba589a-e6d4-4605-8644-3793c55820e0",
+        "verbatim_text": "Cook Co., Illinois"
+      },
+      {
+        "id": "587aec8f-3928-4e02-87fc-45430edad918",
+        "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000000d",
+        "literal_text": "Cook Co., Ilinois",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000000f",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000000f",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "587aec8f-3928-4e02-87fc-45430edad918",
+        "verbatim_text": "Cook Co., Ilinois"
+      },
+      {
+        "id": "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+        "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000010",
+        "literal_text": "VII 14 1946",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000011",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000011",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+        "verbatim_text": "VII 14 1946"
+      },
+      {
+        "id": "07f52fab-ed49-4e07-860e-8fbce4c43e4d",
+        "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000010",
+        "literal_text": "VII 14 1940",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000012",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000012",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "07f52fab-ed49-4e07-860e-8fbce4c43e4d",
+        "verbatim_text": "VII 14 1940"
+      },
+      {
+        "id": "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+        "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000013",
+        "literal_text": "Coll. A. B. Wolcott",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000014",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000014",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+        "verbatim_text": "Coll. A. B. Wolcott"
+      },
+      {
+        "id": "0f92e61e-a3b6-423e-8970-5d21e3b28b49",
+        "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000013",
+        "literal_text": "Coll. A. B. Walcott",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000015",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000015",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "0f92e61e-a3b6-423e-8970-5d21e3b28b49",
+        "verbatim_text": "Coll. A. B. Walcott"
+      },
+      {
+        "id": "1da49407-35cf-4778-8185-1f5f569e15ef",
+        "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000016",
+        "literal_text": "Ex coll. Wm. J. Gerhard",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000017",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000017",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "1da49407-35cf-4778-8185-1f5f569e15ef",
+        "verbatim_text": "Ex coll. Wm. J. Gerhard"
+      },
+      {
+        "id": "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c",
+        "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000016",
+        "literal_text": "Ex coll. Wm. J. Gerhardt",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000018",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000018",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c",
+        "verbatim_text": "Ex coll. Wm. J. Gerhardt"
+      },
+      {
+        "id": "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+        "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000019",
+        "literal_text": "det. H. S. Dybas 1951",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000001a",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001a",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+        "verbatim_text": "det. H. S. Dybas 1951"
+      },
+      {
+        "id": "e2c80918-9543-4c61-8a92-ae9dbf948d50",
+        "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000019",
+        "literal_text": "det. H. S. Dybas 1954",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000001b",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001b",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "e2c80918-9543-4c61-8a92-ae9dbf948d50",
+        "verbatim_text": "det. H. S. Dybas 1954"
+      },
+      {
+        "id": "24c368a0-267d-464c-894b-608ab6f5530c",
+        "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000001c",
+        "literal_text": "Danaus plexippus (Linnaeus)",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000001d",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001d",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "24c368a0-267d-464c-894b-608ab6f5530c",
+        "verbatim_text": "Danaus plexippus (Linnaeus)"
+      },
+      {
+        "id": "3a9dbe98-71a8-49ad-8f00-845625fd0dee",
+        "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000001c",
+        "literal_text": "Danaus plexippus (Linnaeus.)",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000001e",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000001e",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "3a9dbe98-71a8-49ad-8f00-845625fd0dee",
+        "verbatim_text": "Danaus plexippus (Linnaeus.)"
+      },
+      {
+        "id": "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+        "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000001f",
+        "literal_text": "on Asclepias syriaca",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000020",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000020",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+        "verbatim_text": "on Asclepias syriaca"
+      },
+      {
+        "id": "5c10016e-1fcb-4b60-8b91-34bc53646f35",
+        "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "000000000000000000000000000000000000000000000000000000000000001f",
+        "literal_text": "on Asclepias syriata",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000021",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000021",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "5c10016e-1fcb-4b60-8b91-34bc53646f35",
+        "verbatim_text": "on Asclepias syriata"
+      },
+      {
+        "id": "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+        "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000022",
+        "literal_text": "elev. 180 m",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000023",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000023",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+        "verbatim_text": "elev. 180 m"
+      },
+      {
+        "id": "c24599d1-aa8e-43d0-82d1-073ab532d425",
+        "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000022",
+        "literal_text": "elev. 130 m",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000024",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000024",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "c24599d1-aa8e-43d0-82d1-073ab532d425",
+        "verbatim_text": "elev. 130 m"
+      },
+      {
+        "id": "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+        "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000025",
+        "literal_text": "FMNH-INS 1001",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000026",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000026",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+        "verbatim_text": "FMNH-INS 1001"
+      },
+      {
+        "id": "df518e35-3a61-4101-87b2-d1b664b97fc9",
+        "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000025",
+        "literal_text": "FMNH-INS 100I",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000027",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000027",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "df518e35-3a61-4101-87b2-d1b664b97fc9",
+        "verbatim_text": "FMNH-INS 100I"
+      },
+      {
+        "id": "985aa312-b423-4551-8837-7e30c4ab4c5d",
+        "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000028",
+        "literal_text": "paratype",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000029",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000029",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "985aa312-b423-4551-8837-7e30c4ab4c5d",
+        "verbatim_text": "paratype"
+      },
+      {
+        "id": "124d4121-80dc-434b-8c2f-0b2aceb27eb9",
+        "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000028",
+        "literal_text": "paratypc",
+        "unreadable_spans": [],
+        "raw_ref": "000000000000000000000000000000000000000000000000000000000000002a",
+        "raw_sha256": "000000000000000000000000000000000000000000000000000000000000002a",
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "input_tokens": 1180,
+        "output_tokens": 24,
+        "observation_id": "124d4121-80dc-434b-8c2f-0b2aceb27eb9",
+        "verbatim_text": "paratypc"
+      }
+    ],
+    "transcriptions": [
+      {
+        "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+        "text": null,
+        "observation_ids": [
+          "ce826ff8-689a-4afa-8693-18a041f54886",
+          "2e59fff2-3d02-46d7-88c6-d48d83f98a7a"
+        ],
+        "alternatives": [
+          "Field Museum of Natural History",
+          "Field Museum of Nat. History"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.2903,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+        "text": null,
+        "observation_ids": [
+          "6a247741-64b5-4f7a-8a42-03579ea53633",
+          "eb886894-257f-4b32-8fd6-5302759c9f1c"
+        ],
+        "alternatives": [
+          "Chicago, Ill.",
+          "Chicago, III."
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.1538,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+        "text": null,
+        "observation_ids": [
+          "78ba589a-e6d4-4605-8644-3793c55820e0",
+          "587aec8f-3928-4e02-87fc-45430edad918"
+        ],
+        "alternatives": [
+          "Cook Co., Illinois",
+          "Cook Co., Ilinois"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.2778,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+        "text": null,
+        "observation_ids": [
+          "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+          "07f52fab-ed49-4e07-860e-8fbce4c43e4d"
+        ],
+        "alternatives": [
+          "VII 14 1946",
+          "VII 14 1940"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0909,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+        "text": null,
+        "observation_ids": [
+          "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+          "0f92e61e-a3b6-423e-8970-5d21e3b28b49"
+        ],
+        "alternatives": [
+          "Coll. A. B. Wolcott",
+          "Coll. A. B. Walcott"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0526,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+        "text": null,
+        "observation_ids": [
+          "1da49407-35cf-4778-8185-1f5f569e15ef",
+          "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c"
+        ],
+        "alternatives": [
+          "Ex coll. Wm. J. Gerhard",
+          "Ex coll. Wm. J. Gerhardt"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+        "text": null,
+        "observation_ids": [
+          "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+          "e2c80918-9543-4c61-8a92-ae9dbf948d50"
+        ],
+        "alternatives": [
+          "det. H. S. Dybas 1951",
+          "det. H. S. Dybas 1954"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0476,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+        "text": null,
+        "observation_ids": [
+          "24c368a0-267d-464c-894b-608ab6f5530c",
+          "3a9dbe98-71a8-49ad-8f00-845625fd0dee"
+        ],
+        "alternatives": [
+          "Danaus plexippus (Linnaeus)",
+          "Danaus plexippus (Linnaeus.)"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0357,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+        "text": null,
+        "observation_ids": [
+          "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+          "5c10016e-1fcb-4b60-8b91-34bc53646f35"
+        ],
+        "alternatives": [
+          "on Asclepias syriaca",
+          "on Asclepias syriata"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.05,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+        "text": null,
+        "observation_ids": [
+          "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+          "c24599d1-aa8e-43d0-82d1-073ab532d425"
+        ],
+        "alternatives": [
+          "elev. 180 m",
+          "elev. 130 m"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0909,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+        "text": null,
+        "observation_ids": [
+          "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+          "df518e35-3a61-4101-87b2-d1b664b97fc9"
+        ],
+        "alternatives": [
+          "FMNH-INS 1001",
+          "FMNH-INS 100I"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0769,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      },
+      {
+        "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+        "text": null,
+        "observation_ids": [
+          "985aa312-b423-4551-8837-7e30c4ab4c5d",
+          "124d4121-80dc-434b-8c2f-0b2aceb27eb9"
+        ],
+        "alternatives": [
+          "paratype",
+          "paratypc"
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.125,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      }
+    ],
+    "fields": {
+      "fmnh_ins_number": {
+        "state": "supported",
+        "literal": "FMNH-INS 1001",
+        "parsed": "FMNH-INS 1001",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "a1f24e0b-bff7-4607-80eb-d962b231a828"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "collection_code": {
+        "state": "supported",
+        "literal": "SYNTHETIC",
+        "parsed": "SYNTHETIC",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "cfae78fe-b51c-44a9-b7d1-f410853b0c4e"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "country": {
+        "state": "supported",
+        "literal": "United States",
+        "parsed": "United States",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "66497653-e1ca-4338-88db-eed59880d7b6"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "province_state": {
+        "state": "supported",
+        "literal": "Illinois",
+        "parsed": "Illinois",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "county": {
+        "state": "supported",
+        "literal": "Cook",
+        "parsed": "Cook",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "5d36b87d-72b9-446c-95d4-062bf58a08f8"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "city": {
+        "state": "supported",
+        "literal": "Chicago",
+        "parsed": "Chicago",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "360bb26d-d3a5-475c-8b3c-1ff621e2169e"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "precise_location": {
+        "state": "supported",
+        "literal": "Synthetic teaching garden",
+        "parsed": "Synthetic teaching garden",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_from_m": {
+        "state": "supported",
+        "literal": "180",
+        "parsed": "180",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "2fb95af9-546d-4fb5-a515-357fd6e349b5"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_to_m": {
+        "state": "supported",
+        "literal": "181",
+        "parsed": "181",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "28d5f7db-7688-443d-8294-75eef124cc28"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_from_ft": {
+        "state": "supported",
+        "literal": "590.55",
+        "parsed": "590.55",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "4f012a9c-b4aa-428b-b811-1a5b5c91a969"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_to_ft": {
+        "state": "supported",
+        "literal": "593.83",
+        "parsed": "593.83",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "b859af8b-9a2e-4db8-a44a-b4838d127be2"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "habitat": {
+        "state": "supported",
+        "literal": "Synthetic grassland",
+        "parsed": "Synthetic grassland",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "82331944-84f8-4dfd-afc3-aa35953bfce0"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "collection_method": {
+        "state": "supported",
+        "literal": "Synthetic net",
+        "parsed": "Synthetic net",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "740b239d-5de5-41d7-89db-cea0f5b40628"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "date_visited_from": {
+        "state": "supported",
+        "literal": "2020-06-01",
+        "parsed": "2020-06-01",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "1a04f894-5977-4e67-a850-ed7f9f5d0841"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "date_visited_to": {
+        "state": "supported",
+        "literal": "2020-06-01",
+        "parsed": "2020-06-01",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "collectors": {
+        "state": "supported",
+        "literal": "Synthetic Collector",
+        "parsed": "Synthetic Collector",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "5f96da08-4eed-4076-b355-b2ee7d32296a"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "verbatim_dts": {
+        "state": "supported",
+        "literal": "Synthetic D/T/S",
+        "parsed": "Synthetic D/T/S",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "2b4a65ff-a641-4310-b006-53150f337ab3"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "taxon": {
+        "state": "supported",
+        "literal": "Danaus plexippus",
+        "parsed": "Danaus plexippus",
+        "normalized": "Danaus plexippus",
+        "authority_id": "synthetic:taxon:1",
+        "evidence_ids": [
+          "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4",
+          "17ca1490-7f2d-411c-a525-43b653eb513f"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "identified_by_irn": {
+        "state": "supported",
+        "literal": "synthetic:eparties:1",
+        "parsed": "synthetic:eparties:1",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "date_identified": {
+        "state": "supported",
+        "literal": "2020-06-02",
+        "parsed": "2020-06-02",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "a231421a-e9aa-4bcb-b1a1-0c42156e83c3"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      }
+    },
+    "evidence": [
+      {
+        "id": "a96f4452-2275-4243-82f7-60aa5660907d",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "35d4048c-00f8-4c58-8afb-4128ac2780ff",
+        "observation_ids": [
+          "ce826ff8-689a-4afa-8693-18a041f54886",
+          "2e59fff2-3d02-46d7-88c6-d48d83f98a7a"
+        ],
+        "source": "label",
+        "locator": "region 0",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "a96f4452-2275-4243-82f7-60aa5660907d"
+      },
+      {
+        "id": "5108deb7-1ee1-400d-8e14-ad48f2ddee3d",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "29d9ba76-7d15-4423-83cb-e67d5a1fd309",
+        "observation_ids": [
+          "6a247741-64b5-4f7a-8a42-03579ea53633",
+          "eb886894-257f-4b32-8fd6-5302759c9f1c"
+        ],
+        "source": "label",
+        "locator": "region 1",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "5108deb7-1ee1-400d-8e14-ad48f2ddee3d"
+      },
+      {
+        "id": "fce15395-0ced-46bb-8fb1-3e9b6c8212fc",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "3a848e86-55f4-431d-87f6-9048f7901648",
+        "observation_ids": [
+          "78ba589a-e6d4-4605-8644-3793c55820e0",
+          "587aec8f-3928-4e02-87fc-45430edad918"
+        ],
+        "source": "label",
+        "locator": "region 2",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "fce15395-0ced-46bb-8fb1-3e9b6c8212fc"
+      },
+      {
+        "id": "13f80b3e-0251-4e80-8c39-1300144bd1cb",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "e887fa31-13ea-4114-86c2-b6d0bea1196e",
+        "observation_ids": [
+          "d4bcd924-f485-4397-8049-1a8fa2e3ae1d",
+          "07f52fab-ed49-4e07-860e-8fbce4c43e4d"
+        ],
+        "source": "label",
+        "locator": "region 3",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "13f80b3e-0251-4e80-8c39-1300144bd1cb"
+      },
+      {
+        "id": "2d493f25-558c-40ad-887a-79b276fa7cd7",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "0e5681ff-937e-488c-881e-ba428f6ebef7",
+        "observation_ids": [
+          "2cb17e1f-ba02-435b-8d0c-3510f97faeaa",
+          "0f92e61e-a3b6-423e-8970-5d21e3b28b49"
+        ],
+        "source": "label",
+        "locator": "region 4",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "2d493f25-558c-40ad-887a-79b276fa7cd7"
+      },
+      {
+        "id": "237e9fee-742d-4844-8231-df29595848fe",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "5d5e3be6-83ff-40bd-8607-b6564f7aa3d7",
+        "observation_ids": [
+          "1da49407-35cf-4778-8185-1f5f569e15ef",
+          "33d770a1-f0a5-4dc9-8e28-bee4b3ac667c"
+        ],
+        "source": "label",
+        "locator": "region 5",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "237e9fee-742d-4844-8231-df29595848fe"
+      },
+      {
+        "id": "59a042fe-0f1f-4220-8686-66cde4d8f1df",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "2b8e4ba2-71ed-4549-8ff2-bcb5d7465ad9",
+        "observation_ids": [
+          "7141bea0-c371-455c-8fbb-a0f0e9835d66",
+          "e2c80918-9543-4c61-8a92-ae9dbf948d50"
+        ],
+        "source": "label",
+        "locator": "region 6",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "59a042fe-0f1f-4220-8686-66cde4d8f1df"
+      },
+      {
+        "id": "c3e26e5d-bcd4-420b-8e9c-5ba9bbb9628c",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "db817243-5234-4da6-8e57-1053a57f81a8",
+        "observation_ids": [
+          "24c368a0-267d-464c-894b-608ab6f5530c",
+          "3a9dbe98-71a8-49ad-8f00-845625fd0dee"
+        ],
+        "source": "label",
+        "locator": "region 7",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "c3e26e5d-bcd4-420b-8e9c-5ba9bbb9628c"
+      },
+      {
+        "id": "ec362d5f-4706-463c-8e78-0e6f8ffdd85c",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "bfe0ffb6-5a9e-4595-8685-4713340f5827",
+        "observation_ids": [
+          "a79cedc8-9a16-4d64-8524-2d70e4de7797",
+          "5c10016e-1fcb-4b60-8b91-34bc53646f35"
+        ],
+        "source": "label",
+        "locator": "region 8",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "ec362d5f-4706-463c-8e78-0e6f8ffdd85c"
+      },
+      {
+        "id": "b9f35749-d145-4f68-8a5a-342650f2ae39",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "8ce28294-45bf-4cda-8853-3a6080bd5c5c",
+        "observation_ids": [
+          "d74d39e5-2605-4cf2-8e47-62353a81dc8f",
+          "c24599d1-aa8e-43d0-82d1-073ab532d425"
+        ],
+        "source": "label",
+        "locator": "region 9",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "b9f35749-d145-4f68-8a5a-342650f2ae39"
+      },
+      {
+        "id": "9240364a-e05a-464f-857e-1601a536168c",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "330f8eb9-2ef0-460f-861d-a5c5b4edd102",
+        "observation_ids": [
+          "57d45bdf-ca51-4285-831a-0e8fc0d1e1dd",
+          "df518e35-3a61-4101-87b2-d1b664b97fc9"
+        ],
+        "source": "label",
+        "locator": "region 10",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "9240364a-e05a-464f-857e-1601a536168c"
+      },
+      {
+        "id": "2b02e7a7-0e43-4855-8cff-941bd24a34f4",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "0c48a192-7831-4a89-87b0-151fb34287a8",
+        "observation_ids": [
+          "985aa312-b423-4551-8837-7e30c4ab4c5d",
+          "124d4121-80dc-434b-8c2f-0b2aceb27eb9"
+        ],
+        "source": "label",
+        "locator": "region 11",
+        "excerpt": "",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-17T09:14:02.118400+00:00",
+        "evidence_id": "2b02e7a7-0e43-4855-8cff-941bd24a34f4"
+      }
+    ],
+    "validations": [
+      {
+        "rule_id": "transcription_disagreement",
+        "severity": "hard",
+        "outcome": "fail",
+        "reason_code": "transcription_disagreement"
+      }
+    ],
+    "decisions": [],
+    "events": [
+      {
+        "id": "dbb22027-183e-4afd-b014-4317e2ea0664",
+        "actor": "synthetic-reviewer",
+        "action": "ingest",
+        "reason": "Verified immutable original",
+        "before": {},
+        "after": {},
+        "created_at": "2026-09-08T05:01:39.876723+00:00",
+        "sequence": 1
+      },
+      {
+        "id": "49a5d009-e96c-4fe0-8c80-558489da786f",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "classify",
+        "before": {},
+        "after": {
+          "stage": "segment",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.909467+00:00",
+        "sequence": 2
+      },
+      {
+        "id": "da0b72b0-2277-477f-a50c-4e3d40b326ad",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "segment",
+        "before": {},
+        "after": {
+          "stage": "transcribe",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.911433+00:00",
+        "sequence": 3
+      },
+      {
+        "id": "82904bcd-e19d-4ca1-a577-044237e0644c",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-qwen",
+        "before": {},
+        "after": {
+          "stage": "transcribe",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.913083+00:00",
+        "sequence": 4
+      },
+      {
+        "id": "bc1416b1-9ebc-4310-98b8-40af52a2d9ad",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-muse",
+        "before": {},
+        "after": {
+          "stage": "adjudicate",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.915063+00:00",
+        "sequence": 5
+      },
+      {
+        "id": "2aee55f5-a747-4746-8fbd-349e9d7e7674",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "adjudicate",
+        "before": {},
+        "after": {
+          "stage": "parse",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.916177+00:00",
+        "sequence": 6
+      },
+      {
+        "id": "38f2c372-86d1-4ebc-8891-b38d2396a8ed",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "parse",
+        "before": {},
+        "after": {
+          "stage": "plan",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.917435+00:00",
+        "sequence": 7
+      },
+      {
+        "id": "d299864d-5b0e-4d77-885e-acc74e77db69",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "plan",
+        "before": {},
+        "after": {
+          "stage": "lookup",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.919144+00:00",
+        "sequence": 8
+      },
+      {
+        "id": "c28636b0-670b-4d66-9470-d3d67f65801f",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "lookup",
+        "before": {},
+        "after": {
+          "stage": "resolve",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.921736+00:00",
+        "sequence": 9
+      },
+      {
+        "id": "d7e8d42e-c21b-4c0e-813a-fb78f50248ac",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "resolve",
+        "before": {},
+        "after": {
+          "stage": "normalize",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.923080+00:00",
+        "sequence": 10
+      },
+      {
+        "id": "19c9130a-27f9-49f2-ada5-a0531e2cb224",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "normalize",
+        "before": {},
+        "after": {
+          "stage": "validate",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.924366+00:00",
+        "sequence": 11
+      },
+      {
+        "id": "3d02d831-3bf0-4e1a-8173-063ffe833ef1",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "validate",
+        "before": {},
+        "after": {
+          "stage": "finalize",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.925888+00:00",
+        "sequence": 12
+      },
+      {
+        "id": "decc5525-377a-4baf-a86c-a51b72c4d241",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "finalize",
+        "before": {},
+        "after": {
+          "stage": "finalized",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.927305+00:00",
+        "sequence": 13
+      }
+    ]
+  }
+}
