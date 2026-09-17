@@ -174,7 +174,7 @@ class _PrimitivesPageState extends State<_PrimitivesPage> {
                   padding: EdgeInsetsDirectional.all(ui.space.s2),
                   child: const FocusRing(
                     visible: true,
-                    capsule: true,
+                    shape: FocusRingShape.stadium,
                     child: SizedBox(
                       width: 160,
                       height: 48,
