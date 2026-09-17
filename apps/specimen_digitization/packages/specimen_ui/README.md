@@ -105,6 +105,39 @@ banner's and a toast's action move under the words. A modal's actions stack
 with the primary on top. The gallery's fit section on each family page shows
 all of it at 480, 360, 280 and 200 dp.
 
+## Composition: how a screen is put together
+
+13 section 3 in one paragraph, and the reason wave A exists. A screen is one
+scroll: a `CustomScrollView` whose slivers are the regions, never a list
+inside a list. `UiCollapsingHeader` pins the thing under review between a
+maximum and a minimum fraction of the viewport, with a `chrome` slot riding
+its lower edge that shrinks to one row at the minimum. `UiStatusStrip` states
+the disposition and what blocks it on one line. `UiDecisionBar` decides, in
+the scaffold's action bar, one row tall. `UiBanner.strip` is the one line
+environment band with the sentence behind a tap. A routed screen fills the
+action bar, hides the navigation pill and asks for the one line band through
+`UiScaffoldSlots.of(context)`, the same way it publishes a
+`UiScaffoldExclusion`; it names itself as the owner and calls `release(this)`
+on the way out, because a router builds the screen arriving before it disposes
+the screen leaving.
+
+One frosted pane at compact. Every pinned region used to draw its own, which
+is four on a phone where 13 section 2.2 allows one; the frame spends the pane
+on the chrome it floats and publishes `GlassQuality.off` to everything else
+inside itself, so a top bar, a collapsed header's chrome and a pill are the
+solid form of the same surfaces. Medium and above are unchanged.
+
+Two markers say what a widget tree cannot. `PinnedChrome(region:, extent:)`
+marks a region that holds viewport height, and `PrimaryRegion(minExtent:)`
+marks the one region the screen exists to show. `UiScaffold` marks its own top
+bar, banner, action bar and floating navigation, and `UiCollapsingHeader`
+marks the extent it pins, so a screen usually marks only its primary region.
+Both are free: each builds its child and nothing else, so a marker adds one
+element and no render object, and `PinnedChrome.extentOf` and
+`PrimaryRegion.minExtentOf` are the one rule for reading a height off one. The
+composition gates in `apps/specimen_digitization/test/composition/` find them
+by type and sum what they report against the budget in 13 section 2.3.
+
 ## Seeing it
 
 `flutter run -d chrome` and visit `/gallery`. The route is mounted outside
@@ -114,14 +147,19 @@ shows on a screen. Narrow the window below 600 dp and the page list becomes a
 select above the content: the shell chooses its arrangement by window class,
 like any other scaffold in the system.
 
-Twelve pages: six foundation, five families, and Fit, which draws every
+Thirteen pages: six foundation, five families, Fit, which draws every
 control of the fit table in
-[11 section 3.3](../../design/11-fit-and-scale.md) at 200, 280, 360 and 480 dp.
+[11 section 3.3](../../design/11-fit-and-scale.md) at 200, 280, 360 and 480 dp,
+and Composition, which draws the record screen of
+[13 section 4.1](../../design/13-screen-composition.md) whole, at rest and
+scrolled, beside the patterns it is built from.
 Two golden sets answer two different questions. A family golden is the taste
 review, one page at one comfortable window. The matrix under
 `test/gallery/goldens/matrix/` is the fit review: every page at the four
 window classes by three text scales by two modes, which is where a label that
 wraps at a phone width or a control that clips at 200 percent text shows up.
+The Composition page takes a third set of its own, at 390, 768 and 1180 dp,
+because an arrangement is only evidence at more than one width.
 
 ## Adding a component
 

@@ -43,6 +43,46 @@ Widget _page({
   ),
 );
 
+/// A page that publishes what it wants of the frame, the way a routed screen
+/// does (13 section 3.4).
+class _SlotPublisher extends StatefulWidget {
+  const _SlotPublisher({
+    super.key,
+    this.actionBar,
+    this.navVisible,
+    this.bandCompact,
+  });
+
+  final Widget? actionBar;
+  final bool? navVisible;
+  final bool? bandCompact;
+
+  @override
+  State<_SlotPublisher> createState() => _SlotPublisherState();
+}
+
+class _SlotPublisherState extends State<_SlotPublisher> {
+  UiScaffoldSlots? _slots;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _slots = UiScaffoldSlots.of(context)
+      ?..setActionBar(widget.actionBar, owner: this)
+      ..setNavVisible(widget.navVisible, owner: this)
+      ..setBandCompact(widget.bandCompact, owner: this);
+  }
+
+  @override
+  void dispose() {
+    _slots?.release(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand();
+}
+
 Widget _pill() => UiPillNav(
   destinations: threeDestinations,
   currentIndex: 0,
@@ -316,10 +356,16 @@ void main() {
   testWidgets('the top bar fills once the body has scrolled under it', (
     WidgetTester tester,
   ) async {
+    // A medium window, because at compact the frame spends the window's one
+    // pane on its floating chrome and the bar's fill is the solid form of the
+    // same surface; what this test is about is the threshold, which is the
+    // same at every class.
+    const Size window = Size(700, 900);
     await tester.pumpWidget(
       uiHarness(
-        size: _window,
+        size: window,
         child: _page(
+          size: window,
           topBar: const UiTopBar(title: 'Queue'),
           body: _scrollingBody(),
         ),
@@ -468,10 +514,12 @@ void main() {
   testWidgets('a full page holds the glass budget', (
     WidgetTester tester,
   ) async {
+    const Size window = Size(1000, 900);
     await tester.pumpWidget(
       uiHarness(
-        size: _window,
+        size: window,
         child: _page(
+          size: window,
           topBar: const UiTopBar(title: 'Queue'),
           actionBar: const Text('Approve record'),
           nav: _pill(),
@@ -485,7 +533,9 @@ void main() {
     expect(
       glassPaneCount(),
       3,
-      reason: 'a top bar, an action bar and a pill are three panes',
+      reason:
+          'a top bar, an action bar and a pill are three panes at a class '
+          'whose budget is three',
     );
     expectGlassBudget(tester, window: 'a scrolled page with every slot');
   });
@@ -657,4 +707,406 @@ void main() {
       );
     });
   }
+
+  group('the routed screen fills the frame (13 section 3.4)', () {
+    testWidgets('a page publishes its own action bar', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            body: const _SlotPublisher(actionBar: Text('Clear record')),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clear record'), findsOneWidget);
+      expect(
+        tester
+            .widget<PinnedChrome>(
+              find.ancestor(
+                of: find.text('Clear record'),
+                matching: find.byType(PinnedChrome),
+              ),
+            )
+            .region,
+        UiPinnedRegion.actionBar,
+        reason:
+            'the frame marks what it pins, so a screen marks only its '
+            'primary region',
+      );
+    });
+
+    testWidgets('what the page asks for wins over what the caller passed', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            actionBar: const Text('From the shell'),
+            body: const _SlotPublisher(actionBar: Text('From the screen')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('From the screen'), findsOneWidget);
+      expect(find.text('From the shell'), findsNothing);
+    });
+
+    testWidgets('a record hides the pill and keeps its state', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(body: const SizedBox.expand(), nav: _pill()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final double shown = tester.getSize(find.byType(UiPillNav)).height;
+      expect(shown, greaterThan(0));
+
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            body: const _SlotPublisher(navVisible: false),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Hidden rather than removed: the pill keeps the destination it was on,
+      // and takes no height, so the chrome budget counts it at nothing.
+      expect(find.byType(UiPillNav), findsNothing);
+      expect(
+        find.byType(UiPillNav, skipOffstage: false),
+        findsOneWidget,
+        reason:
+            'a pill taken out of the tree glides in from the first '
+            'destination when the reviewer leaves the record',
+      );
+      expect(
+        PinnedChrome.extentOf(
+          tester.element(
+            find.byWidgetPredicate(
+              (Widget widget) =>
+                  widget is PinnedChrome &&
+                  widget.region == UiPinnedRegion.navigation,
+            ),
+          ),
+        ),
+        0,
+        reason:
+            'the region it holds is nothing, whatever the pill inside it '
+            'still measures',
+      );
+    });
+
+    testWidgets('a hidden pill leaves no gap under the action bar', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            body: const _SlotPublisher(
+              actionBar: SizedBox(height: 48),
+              navVisible: false,
+            ),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Element marker = tester.element(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is PinnedChrome &&
+              widget.region == UiPinnedRegion.navigation,
+        ),
+      );
+      expect(PinnedChrome.extentOf(marker), 0);
+    });
+
+    testWidgets('a page asks its band for the one line form', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            banner: const UiBanner(
+              message: 'Test environment. Not approved museum records.',
+              tone: UiBannerTone.synthetic,
+              detail: 'Each reading names the model that produced it.',
+              sheetTitle: 'About this build',
+            ),
+            body: const _SlotPublisher(bandCompact: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.bySemanticsLabel(UiBanner.defaultDetailLabel),
+        findsNothing,
+        reason:
+            'the strip keeps its detail behind a tap rather than behind a '
+            'chevron (13 section 2.3)',
+      );
+      expect(tester.getSize(find.byType(UiBanner)).height, UiDensity.hitBox);
+    });
+
+    testWidgets('the frame marks the top bar and the band it pins', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: const UiTopBar(title: 'Queue'),
+            banner: const UiBanner(message: 'Test environment'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Set<UiPinnedRegion> marked = tester
+          .widgetList<PinnedChrome>(find.byType(PinnedChrome))
+          .map((PinnedChrome marker) => marker.region)
+          .toSet();
+      expect(
+        marked,
+        containsAll(<UiPinnedRegion>[
+          UiPinnedRegion.topBar,
+          UiPinnedRegion.band,
+        ]),
+      );
+    });
+
+    testWidgets('a page with no scaffold above it publishes nothing', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(uiHarness(child: const _SlotPublisher()));
+      await tester.pumpAndSettle();
+
+      // Null outside a frame, the way the exclusion is, so a publisher is one
+      // call with no branch and a component test pumping one screen on its
+      // own is the normal case rather than an error.
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('a screen leaving keeps the screen arriving in the action bar', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          body: const _SlotPublisher(
+            key: ValueKey<String>('first'),
+            actionBar: Text('From the first screen'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('From the first screen'), findsOneWidget);
+
+    // A router builds the screen arriving before it disposes the screen
+    // leaving. A screen that cleared the slots outright on the way out would
+    // take the next screen's decision bar with it, which is what the owner
+    // makes safe.
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        child: _page(
+          body: const _SlotPublisher(
+            key: ValueKey<String>('second'),
+            actionBar: Text('From the second screen'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('From the second screen'), findsOneWidget);
+    expect(find.text('From the first screen'), findsNothing);
+  });
+
+  testWidgets('nothing the frame reads off a route animates', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        disableAnimations: true,
+        child: _page(body: const SizedBox.expand(), nav: _pill()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      uiHarness(
+        size: _window,
+        disableAnimations: true,
+        child: _page(
+          body: const _SlotPublisher(
+            actionBar: Text('Clear record'),
+            navVisible: false,
+            bandCompact: true,
+          ),
+          nav: _pill(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    // A bar arriving, a pill leaving and a band changing form are all layout
+    // and none of them is a transition: a reviewer who has asked for no
+    // motion sees the new frame and not a frame on its way there
+    // (13 section 3.4; 04 section 2.5).
+    expect(tester.binding.transientCallbackCount, 0);
+    expect(find.text('Clear record'), findsOneWidget);
+  });
+
+  group('the compact window spends one frosted pane (13 section 2.2)', () {
+    testWidgets('the action bar has it and everything else draws solid', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            banner: const UiBanner(message: 'Test environment'),
+            actionBar: const Text('Clear record'),
+            body: _scrollingBody(),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      // Scrolled under, which is when the top bar used to add a second pane
+      // that the budget never saw because it counted at rest.
+      expect(
+        UiScaffold.of(tester.element(find.byType(ListView))).scrolledUnder,
+        isTrue,
+      );
+      expect(
+        glassPaneCount(),
+        1,
+        reason:
+            'a phone draws the one pane the frame gives its floating '
+            'chrome and nothing else',
+      );
+    });
+
+    testWidgets('a window with no action bar spends it on the navigation', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'Queue'),
+            body: _scrollingBody(),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      // A pill is the only thing floating over the page on a list screen, so
+      // it keeps its capsule rather than losing it to a bar that is not there.
+      expect(glassPaneCount(), 1);
+    });
+
+    testWidgets('a collapsed header inside the frame draws solid at compact', (
+      WidgetTester tester,
+    ) async {
+      final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: _pill(),
+            body: CustomScrollView(
+              controller: controller,
+              slivers: <Widget>[
+                const UiCollapsingHeader(
+                  content: ColoredBox(color: Color(0xFF000000)),
+                  chrome: <Widget>[Text('Labels')],
+                ),
+                SliverList.builder(
+                  itemCount: 20,
+                  itemBuilder: (BuildContext context, int index) =>
+                      const SizedBox(height: 80),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      // The header still draws the pane 13 section 3.1 gives it; at compact
+      // the frame turns the blur off inside itself, so the band is the solid
+      // form of the same surface rather than a second save layer.
+      expect(find.byType(GlassSurface), findsWidgets);
+      expect(glassPaneCount(), 1);
+    });
+
+    testWidgets('a medium window keeps the panes it had', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(700, 900),
+          child: _page(
+            size: const Size(700, 900),
+            topBar: const UiTopBar(title: 'Queue'),
+            actionBar: const Text('Clear record'),
+            body: _scrollingBody(),
+            nav: _pill(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      expect(
+        glassPaneCount(),
+        greaterThan(1),
+        reason:
+            'the rule is the compact budget of 09 section 3.3, not a ban '
+            'on frosted glass',
+      );
+    });
+  });
 }

@@ -63,7 +63,13 @@ surface; the screen under the scrim does not count.
 At compact, no surface sits inside another surface: a photograph sits on its
 matte, and the matte sits on the page; a row sits on the page, not on a card
 on the page. Glass at compact is the one pane the scaffold gives the pinned
-region, and nothing else. At medium and above depth is at most two, and glass
+region, and nothing else. **Amendment, wave A (2026-09-17).** The scaffold
+spends that pane on the chrome it floats, the action bar or the navigation
+where there is none, and publishes `GlassQuality.off` to every other region
+inside itself, so a top bar that scrolls under, a collapsed header's chrome and
+the band draw the same surface solid. Section 3.1's clause giving the pane to
+the collapsed header's chrome is superseded by this one: both cannot hold on a
+record screen, and 2.2 is what the gates measure. At medium and above depth is at most two, and glass
 panes at most the budget 09 sets per class (compact 1, medium 2, expanded 3,
 large 4), counted on the whole screen including the navigation.
 
@@ -76,8 +82,8 @@ exceed the budget, the screen has to give one of them up, not shrink them
 below their density height. The rules that make the budget reachable:
 
 - The environment band at compact is one line of `label` text on its tint,
-  32 dp tall, with the detail behind a tap (a sheet), never a two line
-  paragraph with a chevron.
+  32 dp of tint inside a 48 dp hit box that is never shrunk, with the detail
+  behind a tap (a sheet), never a two line paragraph with a chevron.
 - The navigation pill hides on a screen that is inside a record (the record
   screen, the region editor), where the way out is the top bar's back. The
   scaffold owns this by route.
@@ -139,7 +145,15 @@ lands), so the shell owns the bottom of the screen and the budget.
 sky preset paints, whether the environment band is the one line form. The
 shell already switches the sky by route; the pill and the band follow.
 
-### 3.5 `UiBanner.strip`
+### 3.5 `UiStickyBar`
+A pinned `SliverPersistentHeader` of one fixed extent for the region that
+scrolls up to the header and then sticks under it: the record's segments, the
+queue's search and filter row. It carries a `PinnedChrome` marker of the
+`header` region, so the budget counts it while it is stuck, and it draws solid
+under the scaffold's compact pane policy. Added by the integrator at the wave A
+merge so both screen slots compose the same bar.
+
+### 3.6 `UiBanner.strip`
 The one line environment band: tint, glyph, one `label` line, tap for the
 sheet with the full sentence and the administrator contact.
 
@@ -155,7 +169,7 @@ this differs from 05 or 07 the difference is noted.
 | Environment band | yes | One line strip when the environment is not production | 32 |
 | Source header | collapsing, 0.55 to 0.40 | Photograph on its matte edge to edge, region overlays, the view control capsule riding the lower edge, the region toggle strip as the header's last row | 464 to 338 |
 | Status strip | scrolls | Disposition, run and version, blockers summary | 40 |
-| Segments | scrolls, then sticks under the header | Readings, Fields, History | 48 |
+| Segments | scrolls, then sticks under the header (`UiStickyBar`) | Readings, Fields, History | 48 |
 | Evidence | scrolls | The chosen segment's content; commands that belong to the record (correct label regions, correct classification, retry) live in the top bar's overflow menu, not as rows | rest |
 | Decision bar | yes | Primary, secondary or overflow, "1 of 4"; swipe for previous and next | 64 |
 | Navigation pill | hidden | | 0 |

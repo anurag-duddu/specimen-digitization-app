@@ -10268,3 +10268,188 @@ failure messages name the measurement, the budget and the regions or the
 scroll views involved, so the usual loop is one run and one edit. The counted
 backlogs make you move the number as well as delete the line, so a halved
 chrome budget shows up as a line that has to change rather than as a pass.
+
+## 2026-09-17: Front-end refactor wave A, slot A1, the composition patterns
+
+- Task: section 3 of `design/13-screen-composition.md` in `specimen_ui`, so
+  slots A2 and A3 can compose screens with it: `UiCollapsingHeader`,
+  `UiStatusStrip`, `UiDecisionBar`, `UiBanner.strip`, `UiScaffold` by route,
+  the `PinnedChrome` and `PrimaryRegion` markers, a Composition gallery page
+  and contract tests. No screen is composed here.
+- Branch/worktree: `fe/compose-package` at
+  `.claude/worktrees/fe-compose-package`, cut from `front-end-refactor` at
+  `f3b6363`. Pushed to `origin/fe/compose-package`. No pull request; the
+  integrator merges and re-bases onto `front-end-composition`.
+- Outcome: complete. Every item of the slot brief is built and tested, and
+  both findings the composition gates slot sent mid task are closed in this
+  slot's files. The package is at 0.3.0 unreleased.
+- Commits (five, oldest first):
+  - `b04e6ec` `feat(specimen_ui): the two markers the composition gates read`
+  - `1a6c1f7` `feat(specimen_ui): the four composition patterns of 13 section 3`
+  - `b61b074` `feat(specimen_ui): the Composition gallery page, and what it found`
+  - `511f5ad` `feat(specimen_ui): a scaffold slot knows who published to it`
+  - `a1b63a6` `fix(specimen_ui): a compact window spends one frosted pane`
+  51 files, 4061 insertions, 55 deletions. The marker commit is first and was
+  pushed within the hour so slot A4 could build the gates against the real API.
+- Validation, each gate run on its own against the committed tree, the tree
+  untouched while it ran, and its own exit code read directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 741 passed, up from 685 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1287 passed, 7 skipped, 14 failed. Every failure is a screen golden in `test/golden/size_classes_golden_test.dart`, all of them `compact-390x844`; zero failures outside `test/golden/` |
+  | `check_ui_strings.py` | 0 | 199 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (51 files) | 0 | 11 hooks passed, the rest had no file of that kind |
+  | `dart format --set-exit-if-changed` | 0 | package 173 files, application 230 files, 0 changed |
+
+- Goldens.
+  - **Package gallery goldens: 30 added, none moved.** Six are the Composition
+    page's own, at 390 by 2780, 768 by 2580 and 1180 by 1560 in both modes at
+    touch density, each height measured against the page rather than guessed
+    (2768, 2566 and 1558 plus the grid). Twenty four are its matrix cells,
+    four window classes by three text scales by two modes. No existing gallery
+    golden moved at any point, because every other page is captured at 1180
+    and the one behaviour that changed is compact only. The matrix's overflow
+    backlog is still empty: nothing in the system overflows anywhere in it.
+  - **Application screen goldens: 14 of 121 move, and zero semantics
+    fixtures.** All fourteen are `compact-390x844`: the queue's selection in
+    both modes, and the workbench's readings, fields and history panes in both
+    modes at text scale 1.0 and 2.0. They move because a compact window now
+    draws its top bar and its pill solid rather than frosted. Regenerated once
+    to look at, read by eye, then reverted with `git checkout --`. **The
+    integrator regenerates them.**
+- Durable learnings:
+  - **A `Row` hands an inflexible child an unbounded main axis.** That is why
+    a slot a control cannot measure overflows rather than ellipsising: the
+    child lays out at its intrinsic width whatever the row was given. Making
+    it `Flexible` is not the fix either, because the flex algorithm allocates
+    by ratio rather than by need, so a chip that would have fitted whole is
+    cut to half the line. The answer both `UiStatusStrip` and `UiListRow`
+    reach is to read the width with a `LayoutBuilder` and bound the slot to
+    it. This is the rule for any slot in this system a control cannot read.
+  - **A `Column` centres its children.** `UiCollapsingHeader` drew its
+    photograph at the width of the icon inside it until the delegate said
+    `crossAxisAlignment: stretch`. Nothing failed: no overflow, no clipping,
+    no test, just a matte the width of its contents. The gallery picture is
+    what caught it, which is what the gallery is for.
+  - **A glass budget that counts at rest counts the wrong frame.** Every
+    compact screen gained a second pane the moment the top bar filled, and a
+    third when a collapsing header collapsed. The number to assert is the one
+    after the reviewer has scrolled.
+  - **`GlassQuality.off` is how a frame spends its pane.** `GlassSurface`
+    draws no `BackdropFilter` at sigma zero, so publishing a `UiTheme` with
+    the quality off around a subtree turns every pane in it into the solid
+    surface it already was, without any control in that subtree knowing. It
+    costs one cached `UiThemeData`: the class has no value equality, so a
+    fresh `copyWith` per build would tell every widget in the page that its
+    tokens had changed.
+  - **The control contract activates a control several times and never pops
+    what it opened.** A control that pushes a modal route on activation is
+    covered by its own sheet for every clause after the keyboard one, and the
+    leftover route's reverse transition then fails clause 8 under reduced
+    motion, because the route captured its duration when animations were
+    still on. `UiStatusStrip` and `UiBanner.strip` are the first controls in
+    the package to push a route from a `Pressable`; both run the contract
+    with a caller supplied callback and cover the sheet in their own tests.
+    A harness that popped any route a clause pushed would close this.
+  - **A router builds the screen arriving before it disposes the screen
+    leaving.** A screen that cleared `UiScaffoldSlots` outright in `dispose`
+    took the next screen's decision bar with it. The slots take an `owner` and
+    `release(owner)` gives back only what that screen still holds.
+  - **`find.byType` skips offstage widgets.** A hidden navigation is found
+    only with `skipOffstage: false`, and its own box still measures what it
+    always did; the marker around it is what reports zero.
+  - **A `SliverPersistentHeader` reports a shrink offset up to `maxExtent`,
+    not up to the range it travels.** The collapse fraction has to be clamped
+    against `maxExtent - minExtent`, and the collapsed threshold read off the
+    same range.
+- Failed approaches:
+  - Drawing the Composition page's three widths as three frames on the page.
+    A 1180 dp frame cannot be drawn inside a 360 dp matrix window, and capping
+    each frame to the available width made all three identical there. The page
+    draws one compact composition, at rest and scrolled, and its own golden
+    test captures the page at 390, 768 and 1180 instead.
+  - Giving the status strip's disposition and facts one `Flexible` each. It
+    fixed the 200 percent text overflow and cut "Needs review" to "Needs ..."
+    at 280 dp, where it had fitted whole. See the learning above.
+  - Estimating a button's width in the decision bar as its label plus `s6`.
+    The `md` padding is `s5` on each side; a bar that guesses low keeps an
+    arrangement that does not fit. It reads `UiButtonStyle` now.
+  - A sticky segments band inside the gallery page. 13 section 4.1 wants the
+    segments to stick under the header and two screens need the same thing, so
+    a private one in a specimen sheet would have been the second
+    implementation of a control. It is a follow-up below instead; the page
+    draws the segments scrolling.
+- Remaining follow-ups, and every deviation from the brief:
+  - **13 section 3.1 is amended and needs the document changed to match.** It
+    gives the collapsed header's chrome the compact window's one frosted pane;
+    13 section 2.2 allows compact exactly one pane, and a record screen has an
+    action bar as well, so both cannot hold. The frame spends the pane on the
+    chrome it floats and the header's band is the solid form of the same
+    surface at compact. Recorded in the package CHANGELOG and on the class.
+  - **13 section 2.3 budgets the environment band at 32 dp.** `UiBanner.strip`
+    draws 32 dp of tint and lays out at 48, because the strip opens a sheet and
+    a control's hit box is never shrunk (10 section 2 clause 2). The compact
+    pinned total is 168 of 844, 20 percent, still inside the 28 the budget
+    allows.
+  - **No application file changed.** The brief allowed `lib/src/app/shell.dart`
+    for wiring the scaffold's route driven behaviour; the hook is published by
+    the frame and read by the routed screen, so the shell needs no change and
+    the minimum turned out to be nothing. Slot A3 owns the shell's composition.
+  - **A sticky band is wanted and is not built.** 13 section 4.1 sticks the
+    segments under the header and 4.2 sticks the queue's search and filters.
+    That is a pinned sliver that is not chrome and holds no budget, and it is
+    two screens' worth of the same widget. A2 and A3 should agree on one rather
+    than write two; the shape is a `SliverPersistentHeader` with a fixed
+    extent and no marker.
+  - **The compact pane policy is the frame's, not a control's.** `UiTopBar`
+    and `UiPillNav` are not this slot's files and are unchanged: they still
+    ask for `glass.flat` and `glass.floating`, and the frame answers with the
+    quality. A later slot that wants a top bar to keep its frost at compact
+    changes the frame, not the bar.
+  - **`UiDecisionBar` reads `WindowClass`.** 11 section 3.4 called
+    `UiButtonRow` "the one widget in the package that reads `WindowClass`". It
+    is now the second, and for the reason 11 section 3.1 allows: it is a
+    pattern rather than a control, and 13 section 2.3 makes previous and next
+    a window class decision.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slot F2 recorded before.
+  - No cloud command, no deploy, no dependency added, no SDK change, no screen
+    golden and no semantics fixture committed, and no sibling slot's files
+    touched.
+- What slots A2, A3 and A4 need from this package:
+  - `PinnedChrome(region:, extent:, child:)` with `UiPinnedRegion` (`topBar`,
+    `band`, `header`, `actionBar`, `navigation`), and `PrimaryRegion(minExtent:,
+    child:)`. Read a height with `PinnedChrome.extentOf(element)` and
+    `PrimaryRegion.minExtentOf(element)`: the declared extent where there is
+    one, the box under the marker otherwise, and a `FlutterError` naming the
+    region when there is neither. **`UiScaffold` marks its own top bar,
+    banner, action bar and floating navigation, and `UiCollapsingHeader` marks
+    the extent it pins, so a screen built from these patterns marks only its
+    primary region and no two markers nest.** The action bar's marker is on
+    the pane, which is the decision bar plus its padding and so is the 64 dp
+    of 13 section 4.1; `UiDecisionBar` carries none of its own.
+  - `UiCollapsingHeader(content:, chrome:, maxFraction:, minFraction:,
+    primary:)`. `chrome` is a list of rows drawn top to bottom at the lower
+    edge; the last rides the edge and survives the collapse. `primary: true`
+    marks it `PrimaryRegion` at the extent it pins.
+  - `UiStatusStrip(disposition:, facts:, blockers:, onBlockers:, closeLabel:)`
+    with `UiBlockers(summary:, items:, sheetTitle:)`, `UiBlocker(label:,
+    detail:, actionLabel:, onAction:)` and `UiBlockersSheet.show(...)`, which
+    a screen may call from anywhere the same list is reachable.
+  - `UiDecisionBar(primary:, secondary:, count:, onPrevious:, onNext:,
+    previousLabel:, nextLabel:, overflowLabel:)`, `UiDecisionBar.edgesAt(context)`
+    for a screen that wants to know which half it is in, and
+    `UiDecisionSwipe(child:, onPrevious:, onNext:)` around the evidence at
+    compact.
+  - `UiBanner.strip(message:, detail:, contact:, sheetTitle:, onTap:, ...)`,
+    `UiBannerForm` and `UiBandForm`. A shell may keep one `UiBanner` call site
+    and let the route ask for the strip through the scaffold.
+  - `UiScaffoldSlots.of(context)` with `setActionBar`, `setNavVisible` and
+    `setBandCompact`, each taking an `owner`, and `release(owner)` in
+    `dispose`. `UiScaffold.navVisible` is the caller's own answer and what the
+    page asks for wins over it.

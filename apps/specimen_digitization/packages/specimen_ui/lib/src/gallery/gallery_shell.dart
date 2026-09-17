@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import '../../specimen_ui.dart';
 import 'pages/actions_page.dart';
 import 'pages/colour_page.dart';
+import 'pages/composition_page.dart';
 import 'pages/data_page.dart';
 import 'pages/fields_page.dart';
 import 'pages/fit_page.dart';
@@ -123,11 +124,13 @@ const List<GalleryPage> familyPages = <GalleryPage>[
 /// section 3.3, one control to a section at four column widths, and it belongs
 /// to no family because it draws every family's controls. So it is listed here
 /// rather than pushed into [familyPages], where it would sit under a heading
-/// that is not true of it.
+/// that is not true of it. The Composition page is the same shape of thing for
+/// 13 section 3: it draws a whole screen out of four families at once.
 const List<GalleryPage> galleryPages = <GalleryPage>[
   ...foundationPages,
   ...familyPages,
   fitPage,
+  compositionPage,
 ];
 
 /// Which arrangement the shell draws, by window class (11 section 3.5).
