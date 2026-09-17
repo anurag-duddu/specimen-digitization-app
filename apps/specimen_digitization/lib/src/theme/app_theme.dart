@@ -55,22 +55,22 @@ abstract final class AppTheme {
 /// onto the Material 3 forward transition.
 const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
   builders: <TargetPlatform, PageTransitionsBuilder>{
-    TargetPlatform.android: _ReducedMotionTransitions(
+    TargetPlatform.android: ReducedMotionPageTransitions(
       PredictiveBackPageTransitionsBuilder(),
     ),
-    TargetPlatform.iOS: _ReducedMotionTransitions(
+    TargetPlatform.iOS: ReducedMotionPageTransitions(
       CupertinoPageTransitionsBuilder(),
     ),
-    TargetPlatform.macOS: _ReducedMotionTransitions(
+    TargetPlatform.macOS: ReducedMotionPageTransitions(
       CupertinoPageTransitionsBuilder(),
     ),
-    TargetPlatform.windows: _ReducedMotionTransitions(
+    TargetPlatform.windows: ReducedMotionPageTransitions(
       FadeForwardsPageTransitionsBuilder(),
     ),
-    TargetPlatform.linux: _ReducedMotionTransitions(
+    TargetPlatform.linux: ReducedMotionPageTransitions(
       FadeForwardsPageTransitionsBuilder(),
     ),
-    TargetPlatform.fuchsia: _ReducedMotionTransitions(
+    TargetPlatform.fuchsia: ReducedMotionPageTransitions(
       FadeForwardsPageTransitionsBuilder(),
     ),
   },
@@ -82,9 +82,11 @@ const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
 /// reviewer asks for less motion; the Cupertino slide alone travelled the
 /// full 450 ms on iOS (verification report v2, V2-6). The route appears in
 /// place instead, and the platform's own builder runs otherwise.
-class _ReducedMotionTransitions extends PageTransitionsBuilder {
-  const _ReducedMotionTransitions(this.inner);
+class ReducedMotionPageTransitions extends PageTransitionsBuilder {
+  /// Wraps [inner], the platform's own builder.
+  const ReducedMotionPageTransitions(this.inner);
 
+  /// The platform's builder, which runs whenever motion is not reduced.
   final PageTransitionsBuilder inner;
 
   @override

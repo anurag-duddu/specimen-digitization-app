@@ -18,6 +18,17 @@ import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 
 import '../app/routing_test.dart' show pumpApp, systemBack;
 
+/// The platform's own builder inside the reduced motion wrapper every entry
+/// carries (verification report v2, V2-6).
+PageTransitionsBuilder platformDefault(
+  Map<TargetPlatform, PageTransitionsBuilder> builders,
+  TargetPlatform platform,
+) {
+  final PageTransitionsBuilder builder = builders[platform]!;
+  expect(builder, isA<ReducedMotionPageTransitions>());
+  return (builder as ReducedMotionPageTransitions).inner;
+}
+
 void main() {
   test('the manifest enables predictive back', () {
     // Without this the Android 13 and later back gesture falls back to the
@@ -34,15 +45,15 @@ void main() {
     // Restated rather than left implicit, so a future SDK change to a default
     // arrives as a visible diff rather than as a silent change of feel.
     expect(
-      builders[TargetPlatform.android],
+      platformDefault(builders, TargetPlatform.android),
       isA<PredictiveBackPageTransitionsBuilder>(),
     );
     expect(
-      builders[TargetPlatform.iOS],
+      platformDefault(builders, TargetPlatform.iOS),
       isA<CupertinoPageTransitionsBuilder>(),
     );
     expect(
-      builders[TargetPlatform.macOS],
+      platformDefault(builders, TargetPlatform.macOS),
       isA<CupertinoPageTransitionsBuilder>(),
     );
     // Desktop and web move off the zoom transition onto the Material 3
@@ -53,7 +64,7 @@ void main() {
       TargetPlatform.fuchsia,
     ]) {
       expect(
-        builders[platform],
+        platformDefault(builders, platform),
         isA<FadeForwardsPageTransitionsBuilder>(),
         reason: '$platform',
       );

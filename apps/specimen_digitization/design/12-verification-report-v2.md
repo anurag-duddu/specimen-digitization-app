@@ -497,11 +497,25 @@ release build and present on the profile build. Both are correct.
 
 ## Defects, ranked
 
+**Addendum, 2026-09-17.** Three of the six defects below were fixed on the
+integration branch after this report was measured, in commit 4973420: V2-1
+(the field painter clips to its own layer; the band on every entry screen
+measures the pair its tokens declare, 9.31:1 in light and 8.21:1 in dark, and
+`test/verification/dark_mode_windows_test.dart` pins that instead of the
+wash), V2-3 (the queue list adds the scaffold's navigation clearance) and V2-6
+(every page transition collapses under reduced motion). The bar rows above
+and the numbers in each section are as measured before the fixes; the
+instruments that pinned the defects were changed in the same commit, so a
+regression fails a test rather than waiting for the next report.
+
 Severity 0 is "a reviewer cannot do the job", 4 is "a reviewer would not
 notice". None of these is fixed here: this slot owns the report, not the code.
 Each names the file and the line for the integrator.
 
 ### V2-1, severity 2: the sky field paints over the environment band
+
+**Fixed in 4973420**: `FieldPainter.paint` clips to its bounds before drawing, with a test that rasterises past the bounds and finds nothing there. The gallery's navigation goldens moved with it, since the scaffold and top bar specimens had let the sky spill past their boxes.
+
 
 **What a reviewer sees.** On sign in, verify and setup, the strip that says
 "Test environment. Not approved museum records." is washed by whichever field
@@ -582,6 +596,9 @@ closing the rule closes both classes rather than two instances.
 
 ### V2-3, severity 2: the last queue row sits under the floating navigation and cannot be scrolled clear
 
+**Fixed in 4973420**: the queue list's bottom padding adds `UiScaffold.of(context).bottomInset`, which is zero where the navigation is a rail or a sidebar.
+
+
 **What a reviewer sees.** On a phone, the disposition chips of the last record
 in the queue are behind the floating pill navigation. Scrolling does not
 uncover them: the list is already at its end.
@@ -641,6 +658,9 @@ no file needs both, and it costs an import alias the first time one does.
 and frees the noun.
 
 ### V2-6, severity 3: a page transition does not collapse under reduced motion on iOS
+
+**Fixed in 4973420**: every platform's page transition is wrapped in `ReducedMotionPageTransitions`, which returns the route in place when `MotionTokens.of(context).reduced` is true and runs the platform's builder otherwise.
+
 
 **Measured.** 451 ms of residual travel, with a `SlideTransition` and a
 `FadeTransition` part way, one frame after the reviewer crossed the transition,

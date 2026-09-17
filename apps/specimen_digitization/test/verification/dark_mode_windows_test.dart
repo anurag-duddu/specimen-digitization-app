@@ -139,12 +139,6 @@ const Map<String, String> guidelineArtefacts = <String, String>{
 /// change. Every entry is written up in `design/12-verification-report-v2.md`
 /// with its owner.
 const Map<String, String> knownDarkContrastDefects = <String, String>{
-  'sign in at compact-390x844':
-      'V2-1. The sky field paints over the environment band, so the band pair '
-      'drops from 8.21:1 to 4.33:1',
-  'sign in at medium-768x1024': 'V2-1, 4.40:1',
-  'sign in at expanded-1180x820': 'V2-1, 4.34:1',
-  'sign in at large-1440x900': 'V2-1, 4.23:1',
   'queue at compact-390x844':
       'V2-2. The queue freshness line is ink.tertiary over the sun field, '
       'which measures 3.87:1 where the table only ever checked it over the '
@@ -164,24 +158,6 @@ const double bandPairFloor = 4.5;
 const Map<String, double> declaredBandPair = <String, double>{
   'light': 9.31,
   'dark': 8.21,
-};
-
-/// What the band actually measures on an entry screen, per window and mode.
-///
-/// Defect V2-1, and these are the numbers the report quotes. Pinned rather
-/// than bounded, so a change in either direction has to be looked at: the
-/// wash is a function of where the sky's fields sit in the window, which is
-/// why the same defect is 3.31:1 at large in light and 4.40:1 at medium in
-/// dark.
-const Map<String, double> entryBandPair = <String, double>{
-  'compact-390x844/light': 4.63,
-  'medium-768x1024/light': 5.91,
-  'expanded-1180x820/light': 3.64,
-  'large-1440x900/light': 3.31,
-  'compact-390x844/dark': 4.33,
-  'medium-768x1024/dark': 4.40,
-  'expanded-1180x820/dark': 4.34,
-  'large-1440x900/dark': 4.23,
 };
 
 void main() {
@@ -255,20 +231,18 @@ void main() {
             'BANDROW|sign in|$window|$mode|fill=${hexOf(pair.ground)}'
             '|run=${hexOf(pair.run)}|ratio=${pair.ratio.toStringAsFixed(2)}',
           );
+          // Defect V2-1 of the report measured 3.31:1 to 5.91:1 here: the sky
+          // field painted over the band. The field painter clips to its own
+          // layer since 4973420, so the band on an entry screen measures the
+          // pair its tokens declare, and the report's addendum says so.
           expect(
             pair.ratio,
-            closeTo(entryBandPair['$window/$mode']!, 0.05),
+            closeTo(declaredBandPair[mode]!, 0.05),
             reason:
-                'the band on an entry screen is defect V2-1: the sky field '
-                'paints over it and washes both halves of a pair the tokens '
-                'declare at ${declaredBandPair[mode]}:1. These are the '
-                'numbers `design/12-verification-report-v2.md` quotes, so a '
-                'change in either direction changes the report too.',
-          );
-          expect(
-            pair.ratio,
-            lessThan(declaredBandPair[mode]! - 1),
-            reason: 'V2-1 is the wash itself, whatever the window',
+                'the band on an entry screen measures the pair its tokens '
+                'declare, ${declaredBandPair[mode]}:1, now that the sky is '
+                'clipped to its own layer (V2-1, fixed). A lower number means '
+                'something paints over the band again.',
           );
         });
 
