@@ -252,6 +252,18 @@ aside, and refuses `--update-goldens` off macOS so no file is written by a
 platform that did not draw the rest of the set. From the 2026-09-17 status log
 entry.
 
+**A gate with a mode switch measures nothing in the gap.** The composition
+harness read only `PinnedChrome` markers the moment one was mounted anywhere,
+and fell back to a list of widget types only in a tree with none, so the first
+merge to mount a marker (the scaffold, around the top bar, the band and the
+navigation) silently dropped every region no screen had marked yet. The record
+screen measured 27 percent of the phone with its decision bar uncounted, against
+54 with it, and the shrink-only ratchet then demanded the backlog line be
+deleted, which is a false green wearing the gate's own words. Measure the old
+form and the new in one walk, outermost only, for as long as both exist; a
+switch that picks one is right only at the two ends of the migration. From the
+wave A integration.
+
 ## 3. The design lessons
 
 **Every layer was correct and nobody owned the seam.** Checkpoint 1 found a
