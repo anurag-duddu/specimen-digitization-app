@@ -94,6 +94,14 @@ jobs:
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter pub get
 
+      # The cheapest gate, so it runs before the analyzers. It covers the
+      # client and the design system and nothing else: the frozen Dart under
+      # docs/execution/qa-evidence is evidence, not source.
+      - name: Check Dart formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib test packages/specimen_ui/lib packages/specimen_ui/test
+
       - name: Analyze the design system
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter analyze --fatal-infos
