@@ -9382,16 +9382,27 @@ clears the capsule, the queue does not. One of the two is in the report.
 - Branch and worktree: `fe/release-docs` at `.claude/worktrees/fe-release-docs`,
   cut from `front-end-refactor` at `f3b6363`. Pushed to
   `origin/fe/release-docs`. No pull request; the integrator merges the slot.
-- Outcome: complete. Six commits, eleven files, one of them new. No Dart
+- Outcome: complete. Eight commits, twelve files, one of them new. No Dart
   changed, so no screen golden, no semantics fixture and no package golden
   moved, and none was regenerated.
-- Commits (six, oldest first):
+- Commits (eight, oldest first):
   - `e5abdb2` `docs: the client, its design system and the release rules, for a reader who did not watch the refactor`
   - `e13a524` `docs(design): the index says what 03, 05 and 07 defer to`
   - `74ebdbb` `docs(deploy): the Flutter client section is the client that actually ships`
   - `c0a828a` `docs(specimen_ui): 0.3.0 reads as release notes rather than six appended slots`
   - `3151a43` `docs: what the front-end refactor taught, distilled from twenty two closeouts`
   - `846e93e` `docs(plan): how each definition of done item is verified, and the measured size`
+  - `8e62ee1` `docs: slot B2 closeout`
+  - `829b6e0` `docs: the reason a file may import material.dart lives in the gate, not on the line`
+
+The last commit is a correction made after the gate run, found by reading the
+four files the application README's layers section describes rather than by a
+test. Two of the four infrastructure importers carry their reason in a `show`
+clause and two do not; the reason for all four lives in the
+`infrastructureImporters` map in `test/theme/no_material_imports_test.dart`,
+which is also what fails when a named file stops needing the import. It changes
+one sentence of one markdown file, so the gate results below stand; the commit
+hooks ran on it and passed.
 
 ### Validation
 
