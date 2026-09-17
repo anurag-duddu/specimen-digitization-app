@@ -123,6 +123,14 @@ class UiModalActions extends StatelessWidget {
   /// the line and the top of the stack are where the eye finishes either way.
   @override
   Widget build(BuildContext context) {
+    assert(
+      primary == null || primary!.variant == UiButtonVariant.primary,
+      'the primary action of a modal is the primary variant (10 section 4.3)',
+    );
+    assert(
+      secondary == null || secondary!.variant != UiButtonVariant.primary,
+      'a modal carries at most one primary action (10 section 4.3)',
+    );
     final UiButton? lead = primary ?? secondary ?? tertiary.lastOrNull;
     if (lead == null) return const SizedBox.shrink();
     return UiButtonRow(
