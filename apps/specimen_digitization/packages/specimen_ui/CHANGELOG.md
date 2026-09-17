@@ -7,6 +7,9 @@ Wave F slot F2 of the front-end refactor: sections 2, 3.1, 5 and 6 of
 foundation, geometry that derives from type, and the harness the fit clauses
 run in. No control is converted here; wave G does that.
 
+### Testing
+- The package's goldens are compared on macOS only: `PlatformGatedGoldenComparator` in `test/flutter_test_config.dart` renders every golden on other platforms (so layout, overflow and semantics assertions still run) and sets the pixel comparison aside, and refuses `--update-goldens` off macOS, the rule the application's screen goldens already follow. Linux CI had failed all 336 of them by one to eleven percent of pixels.
+
 ### Integration, wave G
 - `UiModalActions` is a forwarder to `UiButtonRow`: the overlays keep their name for a row of actions and the actions family owns the arrangement. A modal without a primary leads with its way out. Its `style` parameter is gone; nothing outside the package passed it.
 - `UiListRow` bounds a trailing it cannot measure (a chip, a switch, a time) to the room left once the title has its minimum, so no custom trailing can push the line over; a declared "trailing under the title" variant for compact windows is recorded for polish.
