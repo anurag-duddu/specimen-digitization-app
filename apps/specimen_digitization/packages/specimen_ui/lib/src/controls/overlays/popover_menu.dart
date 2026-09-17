@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
 import '../../primitives/popover.dart';
 import '../../primitives/pressable.dart';
 
@@ -420,7 +421,7 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
                     if (widget.label != null) ...<Widget>[
                       SizedBox(width: ui.space.s2),
                       Flexible(
-                        child: Text(
+                        child: UiLabel(
                           widget.label!,
                           style: ui.type.label.copyWith(color: ui.color.ink),
                         ),
@@ -504,14 +505,14 @@ class _MenuItem extends StatelessWidget {
                     SizedBox(width: style.gap),
                   ],
                   Expanded(
-                    child: Text(
+                    child: UiLabel(
                       item.label,
                       style: style.label.copyWith(color: foreground),
                     ),
                   ),
                   if (item.shortcut != null) ...<Widget>[
                     SizedBox(width: style.gap),
-                    Text(
+                    UiLabel(
                       item.shortcut!,
                       style: style.shortcut.copyWith(
                         color: states.contains(WidgetState.disabled)

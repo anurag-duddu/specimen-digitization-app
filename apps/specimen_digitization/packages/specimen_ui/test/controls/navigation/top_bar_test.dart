@@ -15,21 +15,42 @@ Widget _bar({
   List<Widget> actions = const <Widget>[],
   bool? scrolledUnder,
   EdgeInsets padding = EdgeInsets.zero,
+  double? width = 800,
 }) => Builder(
-  builder: (BuildContext context) => MediaQuery(
-    data: MediaQuery.of(context).copyWith(padding: padding),
-    child: SizedBox(
-      width: 800,
-      child: UiTopBar(
-        leading: leading,
-        title: title,
-        center: center,
-        actions: actions,
-        scrolledUnder: scrolledUnder,
-      ),
-    ),
-  ),
+  builder: (BuildContext context) {
+    final Widget bar = UiTopBar(
+      leading: leading,
+      title: title,
+      center: center,
+      actions: actions,
+      scrolledUnder: scrolledUnder,
+    );
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(padding: padding),
+      // A null width leaves the bar the column it was given, which is what a
+      // test of the bar's own fit needs: a pinned 800 is a bar that never
+      // runs out of room.
+      child: width == null ? bar : SizedBox(width: width, child: bar),
+    );
+  },
 );
+
+/// The four commands the overflow test hands the bar.
+List<UiTopBarAction> _fourActions() => <UiTopBarAction>[
+  UiTopBarAction(
+    icon: UiIcons.reload,
+    label: 'Reload the queue',
+    onPressed: () {},
+  ),
+  UiTopBarAction(icon: UiIcons.filter, label: 'Filter records', onPressed: () {}),
+  UiTopBarAction(
+    icon: UiIcons.saveFilter,
+    label: 'Save this filter',
+    shortcut: 'S',
+    onPressed: () {},
+  ),
+  UiTopBarAction(icon: UiIcons.help, label: 'Open help', onPressed: () {}),
+];
 
 void main() {
   testWidgets('it is space.topBar at touch and the hit box at pointer', (
@@ -211,12 +232,123 @@ void main() {
     await expectControlContract(
       tester,
       (BuildContext context) => _bar(
+        width: null,
         title: 'Queue',
         actions: <Widget>[
-          UiButton(label: 'Reload the queue', onPressed: () {}),
+          UiTopBarAction(
+            icon: UiIcons.reload,
+            label: 'Reload the queue',
+            onPressed: () {},
+          ),
         ],
       ),
       semanticsLabel: 'Reload the queue',
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(
+            find.text('Queue'),
+            findsOneWidget,
+            reason: 'the title ellipsises rather than leaving (rule 4)',
+          );
+        },
+      ),
     );
+  });
+
+  testWidgets('the actions past the second collapse into an overflow menu', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(360, 800),
+        child: _bar(
+          width: 360,
+          // The compact shell's own bar: the mark leads, because there is
+          // neither a rail nor a sidebar to carry it at this width.
+          leading: const UiIcon(UiIcons.collection),
+          title: 'Queue',
+          actions: _fourActions(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.bySemanticsLabel('Reload the queue'),
+      findsOneWidget,
+      reason: 'the first two commands stay on the bar',
+    );
+    expect(find.bySemanticsLabel('Filter records'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Save this filter'),
+      findsNothing,
+      reason: 'the third and fourth are in the menu, not on the bar',
+    );
+    expect(
+      find.bySemanticsLabel(UiTopBarStyle.overflowLabel),
+      findsOneWidget,
+      reason: 'and the menu has a trigger of its own',
+    );
+
+    await tester.tap(find.bySemanticsLabel(UiTopBarStyle.overflowLabel));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Save this filter'),
+      findsOneWidget,
+      reason: 'the collapsed command keeps its label',
+    );
+    expect(
+      find.text('S'),
+      findsOneWidget,
+      reason: 'and its shortcut, which is what the menu column is for',
+    );
+    expect(find.text('Open help'), findsOneWidget);
+  });
+
+  testWidgets('a bar with room draws every action and no overflow', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(1400, 800),
+        child: _bar(width: 1400, title: 'Queue', actions: _fourActions()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final UiTopBarAction action in _fourActions()) {
+      expect(find.bySemanticsLabel(action.label), findsOneWidget);
+    }
+    expect(find.bySemanticsLabel(UiTopBarStyle.overflowLabel), findsNothing);
+  });
+
+  testWidgets('a bar given opaque widgets keeps them all', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(360, 800),
+        child: _bar(
+          width: 360,
+          leading: const UiIcon(UiIcons.collection),
+          title: 'Queue',
+          actions: const <Widget>[
+            UiIcon(UiIcons.reload),
+            UiIcon(UiIcons.filter),
+            UiIcon(UiIcons.help),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.bySemanticsLabel(UiTopBarStyle.overflowLabel),
+      findsNothing,
+      reason:
+          'a bar cannot put into a menu a control it cannot read, so it keeps '
+          'what it was given and the title ellipsises instead',
+    );
+    expect(find.byType(UiIcon), findsNWidgets(4));
   });
 }

@@ -16,6 +16,13 @@ import '../gallery_shell.dart';
 Widget buildOverlaysPage(BuildContext context) => const _OverlaysPage();
 
 /// The overlays family page, as the gallery shell lists it.
+///
+/// Seven frosted panes rather than the four a product window is held to
+/// (09 section 3.3): three toast capsules in the triggers section and four
+/// more in the fit section, which shows one capsule per column. A specimen
+/// sheet states its own number out loud rather than the golden quietly
+/// skipping the check; a product window never draws seven toasts, because
+/// `UiToastHost` shows one at a time.
 const GalleryPage overlaysPage = GalleryPage(
   id: 'overlays',
   title: 'Overlays',
@@ -23,6 +30,7 @@ const GalleryPage overlaysPage = GalleryPage(
       'Menus, tooltips, toasts, banners, disclosures, tabs, sheets and '
       'dialogs.',
   builder: buildOverlaysPage,
+  maxGlassPanes: 7,
 );
 
 class _OverlaysPage extends StatefulWidget {
@@ -35,9 +43,14 @@ class _OverlaysPage extends StatefulWidget {
 class _OverlaysPageState extends State<_OverlaysPage> {
   final ValueNotifier<int> _tab = ValueNotifier<int>(0);
 
+  /// The fit section's strips, all on the middle tab, so the golden shows a
+  /// scrolling strip that has been scrolled rather than one at its start.
+  final ValueNotifier<int> _fit = ValueNotifier<int>(1);
+
   @override
   void dispose() {
     _tab.dispose();
+    _fit.dispose();
     super.dispose();
   }
 
@@ -228,10 +241,60 @@ class _OverlaysPageState extends State<_OverlaysPage> {
             ],
           ),
         ),
+        GallerySection(
+          title: 'Fit: a banner, a toast and a tab strip in narrow columns',
+          child: Wrap(
+            spacing: ui.space.s4,
+            runSpacing: ui.space.s4,
+            crossAxisAlignment: WrapCrossAlignment.start,
+            children: <Widget>[
+              for (final double width in fitColumns)
+                GallerySpecimen(
+                  label: '${width.toInt()} dp',
+                  child: SizedBox(
+                    width: width,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const UiBanner(
+                          message: 'Upload paused. The network dropped.',
+                          tone: UiBannerTone.blocked,
+                          actionLabel: 'Retry upload',
+                          onAction: _noop,
+                        ),
+                        SizedBox(height: ui.space.s2),
+                        const UiToast(
+                          data: UiToastData(
+                            message: 'Upload paused. The network dropped.',
+                            icon: UiIcons.syncProblem,
+                            actionLabel: 'Retry upload',
+                            onAction: _noop,
+                          ),
+                        ),
+                        SizedBox(height: ui.space.s2),
+                        UiTabs(
+                          tabs: _tabs,
+                          selected: _fit,
+                          semanticsLabel: 'Record panels at $width dp',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
+
+/// The columns 11 section 3.3 measures a control's fit in.
+///
+/// Repeated on each family page rather than shared, because the file that
+/// would hold it is the gallery shell, which slot G3 owns this wave.
+const List<double> fitColumns = <double>[480, 360, 280, 200];
 
 /// A stack of banners, so the tones read as one grid rather than as a column
 /// the length of the page.

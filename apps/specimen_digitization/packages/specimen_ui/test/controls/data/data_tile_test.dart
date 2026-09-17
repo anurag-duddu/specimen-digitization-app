@@ -3,6 +3,7 @@
 // never varies with the value, a numeral whose width holds, and a tick that
 // keeps its cross fade under reduced motion while losing its slide.
 
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -70,6 +71,113 @@ void main() {
     expect(
       find.bySemanticsLabel('Cleared today, Not measured'),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('the numeral steps down a role at a time rather than wrapping', (
+    WidgetTester tester,
+  ) async {
+    final UiThemeData ui = UiThemeData.light();
+    final List<TextStyle> steps = UiDataTileStyle.resolve(ui).numeralSteps;
+    expect(
+      steps.map((TextStyle role) => role.fontSize).toList(),
+      <double?>[ui.type.displayLarge.fontSize, ui.type.displayMedium.fontSize],
+      reason: '11 section 3.3: down to display.medium and no further',
+    );
+
+    // Wide enough for `display.large`, then narrow enough that it is not.
+    final List<double> drawn = <double>[];
+    for (final double width in <double>[600, 240]) {
+      await tester.pumpWidget(
+        uiHarness(
+          size: Size(width, 600),
+          child: SizedBox(
+            width: width,
+            child: const UiDataTile(
+              label: 'Cleared today',
+              value: 'Not measured',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final RenderParagraph numeral = tester.renderObject<RenderParagraph>(
+        find.text('Not measured'),
+      );
+      expect(
+        numeral.text.style!.fontSize,
+        isNotNull,
+        reason: 'the numeral is set in a display role at every width',
+      );
+      drawn.add(numeral.text.style!.fontSize!);
+      expect(
+        numeral.maxLines,
+        1,
+        reason:
+            'a numeral never wraps: the tile steps the role down and then '
+            'scales, which is what replaced the two line reading of '
+            '02 section 4.14',
+      );
+    }
+    expect(
+      drawn.last,
+      lessThan(drawn.first),
+      reason: 'the narrow tile is set a role smaller than the wide one',
+    );
+  });
+
+  testWidgets('the last resort scales the numeral and its unit together', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(120, 600),
+        child: const SizedBox(
+          width: 120,
+          child: UiDataTile(
+            label: 'Cleared today',
+            value: 'Not measured',
+            unit: 'OF 240',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(FittedBox),
+      findsOneWidget,
+      reason: 'below display.medium the measurement is scaled, not resized',
+    );
+    expect(
+      find.descendant(
+        of: find.byType(FittedBox),
+        matching: find.text('OF 240'),
+      ),
+      findsOneWidget,
+      reason:
+          'the unit is inside the box, because a scaled box reports its '
+          'unscaled baseline and a unit aligned to that would float',
+    );
+    expect(
+      UiDataTileStyle.resolve(UiThemeData.light()).unit.fontSize,
+      UiThemeData.light().type.unit.fontSize,
+      reason: 'the unit role itself never steps down',
+    );
+  });
+
+  testWidgets('a hero tile starts one role higher and ends in the same place', (
+    WidgetTester tester,
+  ) async {
+    final UiThemeData ui = UiThemeData.light();
+    expect(
+      UiDataTileStyle.resolve(ui, hero: true).numeralSteps
+          .map((TextStyle role) => role.fontSize)
+          .toList(),
+      <double?>[
+        ui.type.displayHero.fontSize,
+        ui.type.displayLarge.fontSize,
+        ui.type.displayMedium.fontSize,
+      ],
     );
   });
 

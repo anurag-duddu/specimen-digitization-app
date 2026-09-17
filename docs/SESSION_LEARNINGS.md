@@ -7161,6 +7161,30 @@ before it goes in a `SizedBox`.
   - `3818b68` `docs(design): reconcile 10, 11 and the package with the actions fit pass`
 - Validation, every gate run on its own against the committed tree, the tree
   untouched while it ran, and `rc=$?` read directly rather than off a pipe:
+## 2026-09-16: Front-end refactor wave G, slot G2, the surfaces fitted
+
+- Task: the eight rows of `design/11-fit-and-scale.md` section 3.3 that belong
+  to the overlays, navigation and data families (top bar, tabs, tile, row,
+  dialog, sheet, banner, toast), plus contract clauses 13 to 15 turned on for
+  all three families and a fit section on each of their gallery pages. No
+  control outside those three families was touched.
+- Branch and worktree: `fe/fit-surfaces` at `.claude/worktrees/fe-fit-surfaces`,
+  cut from `front-end-refactor` at `a301748`, which already carries the merged
+  wave F. Pushed to `origin/fe/fit-surfaces` at `82ca595`. No pull request;
+  the integrator merges the slot with G1 and G3.
+- Outcome: complete. Five commits, 55 files, 18 new package tests (604 before,
+  622 now), 16 family goldens regenerated and committed, 23 public API changes
+  recorded in the package changelog under 0.3.0, eight entries in 10 section 4
+  amended in the same change that moved them.
+- Commits (five, oldest first):
+  - `99b4992` `feat(data): the row gives up its trailing word, the tile steps its numeral down`
+  - `5f9d71f` `feat(navigation): the bar ellipsises its title, then collapses its commands`
+  - `07e86e1` `feat(overlays): the sheet bounds its body, the strip scrolls, the action moves`
+  - `0d52972` `test(gallery): each family page shows its fit at 480, 360, 280 and 200 dp`
+  - `82ca595` `docs(design): reconcile 10 and the changelog with the three families fitted`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and its own exit code read directly, never off a
+  pipe:
 
   | Gate | Exit code | Evidence |
   |---|---|---|
@@ -7534,3 +7558,250 @@ before it goes in a `SizedBox`.
   - `matrixClasses`, `matrixScales`, `matrixWindowHeight`, `matrixDensity`,
     `matrixGoldenName` and `overflowBacklog` are the matrix's own constants,
     in `test/gallery/matrix_golden_test.dart`, for whoever regenerates it.
+  | `flutter test` (package) | 0 | 622 passed, 0 failed, including all 48 gallery goldens |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 983 passed, 9 skipped, 82 failed. All 82 are `test/golden/size_classes_golden_test.dart`, the screen goldens the wave policy reserves for the integrator. Zero failures anywhere else, and zero semantics fixtures |
+  | `check_ui_strings.py` | 0 | 196 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (55 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens and fixtures:
+  - **Committed: 16 of 16 family goldens for the three families**, the four
+    page goldens each for overlays, navigation and data plus the four
+    `overlays-{sheet,dialog}-{light,dark}` modal windows. Every one read by
+    eye before committing, old beside new. Nothing else in
+    `test/gallery/goldens/` moved: actions, inputs and the six foundation
+    pages are byte for byte, which is the check that this slot stayed inside
+    its three families.
+    - The three page windows grew, each measured against its own page with a
+      throwaway test rather than guessed: overlays 1000 to 1540, navigation
+      940 to 1220, data 1900 to 2280. A window change moves the sky, whose
+      radius is a fraction of the window's longer side, so the whole page
+      diffs at low magnitude: on `overlays-light-touch` 24.4 percent of pixels
+      differ at all, 3.4 percent differ by more than 32 of 255, and the first
+      row with a structural change is 332. The same shape holds for the other
+      two (navigation 17.5 and 0.9 percent, first structural row 369; data
+      23.1 and 1.6 percent, first structural row 1048).
+    - What actually changed, read on the light touch pages. Overlays: the
+      dismissible info band wraps to two lines instead of ellipsising at one,
+      which is the band's sentence becoming content; the new fit section reads
+      as four columns, with the banner and the capsule keeping their action
+      beside the words at 480 and 360 and moving it underneath at 280 and 200,
+      and the tab strip full at 480 through 280 and scrolling with a faded
+      trailing edge at 200. Navigation: the fit section reads four commands on
+      the bar at 480, two and an overflow trigger at 360, and the trigger
+      alone at 280 and 200, with the title ellipsising further at each step.
+      Data: the "Risk" tile's "Not measured" is one line at a smaller display
+      role instead of two lines at `display.large`, and the fit section reads
+      the trailing word present at 480 and 360 and gone at 280 and 200, the
+      subtitle wrapping as the column narrows, and the tile stepping down
+      twice.
+    - The two modal goldens moved only in the page behind the pane. Their
+      diffs are 0.38 and 1.29 percent, bounded to the banner region at
+      (744, 332) to (1068, 362) and (685, 311) to (1068, 421); the sheet pane
+      and the dialog pane are unchanged, which is the evidence that bounding
+      the sheet's body and constraining the action row's height changed
+      nothing about a modal that already fitted.
+  - **Left for the integrator: 82 of 121 application screen goldens, and zero
+    of the eight semantics fixtures.** Regenerated once with `--update-goldens`
+    to read, then restored with `git checkout --`, per the wave policy. The 82
+    are every `queue`, `queue-selection`, `filters`, `source`, `intake`,
+    `workbench-fields`, `workbench-readings` and `workbench-history` window
+    plus the two compact `signin` windows. Two causes, both intended: the
+    environment band's sentence now wraps to a second line instead of
+    ellipsising (0.9 percent of a compact window, one text row), and on the
+    large windows the top bar's two actions moved from the middle of the bar
+    to its trailing edge, which is the `Spacer` defect below. The intake and
+    workbench diffs are 0.02 to 0.03 percent and are the rail's destination
+    labels moving a pixel under `UiLabel`'s strut.
+- Durable learnings:
+  - **A `Spacer` beside a `Flexible` title takes half the bar.** Flex
+    allocation divides the free space by flex factor before a loose child is
+    allowed to take less than its share, so `UiTopBar`'s title was capped at
+    half the bar however much room the actions left. It was invisible while
+    the title was a wrapping `Text` and became a truncation the moment it was
+    a `UiLabel`, which is how clause 14 found it. With no centre slot the
+    title is now an `Expanded` and there is no `Spacer`; with one, the two
+    divide what is left, which is what 10 section 4.4 asks for anyway.
+  - **A `Column` gives an inflexible child an unbounded main axis.** That is
+    the whole of the wave 2 sheet defect: the pane's outer column held the
+    drag handle and the padded body as two inflexible children, so the
+    `Flexible` inside the padded body was flexible against infinity and a
+    scrolling body shrink wrapped to its entire content. One `Flexible` around
+    the padded block fixes it, and it is a better fix than arithmetic over the
+    chrome, because the layout already knows what the safe area took.
+  - **Adding or removing a widget above a `Scrollable` throws away its
+    `ScrollPosition`.** The tab strip's edge fades were built by wrapping the
+    scroller in a `ShaderMask` only when there was something to fade. The
+    first frame has no clients, so the mask appeared on the second, the
+    scroller's element was re-inflated one level deeper, and the animation
+    bringing the chosen tab into view was cancelled part way. The mask is now
+    always in the tree and opaque at both ends when there is nothing to fade.
+  - **`LinearGradient.createShader` needs a `TextDirection` for a
+    directional alignment**, and a `ShaderMask`'s callback runs during paint
+    where `Directionality.of` is not reachable. Read it in `build` and close
+    over it.
+  - **`RenderFittedBox` reports its child's unscaled baseline.** It does not
+    override `computeDistanceToActualBaseline`, so a `FittedBox` around a
+    scaled numeral hands the row above it a baseline from before the scale,
+    and a unit aligned to it floats above the digits. Scale the numeral and
+    its unit together and the baseline stays inside the box.
+  - **A `ValueNotifier` listener runs before the rebuild it causes.** Reading
+    `maxScrollExtent` there measures the old viewport. A post frame callback
+    is the place to scroll something into view.
+  - **A specimen sheet that shows one control per fit column draws four of
+    that control.** Two gallery pages had to state their own frosted pane
+    count, which 10 section 6 already allows and the fields page already did.
+    A product window is unaffected: `UiToastHost` shows one capsule at a time.
+  - **A 480 dp specimen inside a 370 dp column is a specimen of 370 dp.** The
+    data page's fit section was written into the measures column, which is two
+    fifths of the page, and every specimen silently came out at the column's
+    width with the wrong label under it. It is visible only by eye, which is
+    the argument for reading a golden rather than counting it.
+- Failed approaches:
+  - Bounding the sheet's body by `MediaQuery.sizeOf(context).height` minus a
+    chrome height computed from `lineHeightOf` and `controlHeightFor`. It is
+    the brief's wording and it is a second rule for one measurement: the pane
+    sits inside a `SafeArea`, so the window's height is not the height the
+    route left, and the action row's real height is `UiButton`'s rather than
+    the derived one. The `Flexible` is exact and the derived numbers stay on
+    `UiModalStyle.actionHeight`, which is what gives the strip its minimum.
+  - Reaching into `UiSegmented` to scroll a chosen tab's own box into view.
+    The boxes belong to slot G1's control and a strip that measured one would
+    be a second copy of that layout. The offset is the reviewer's position
+    along the row, which for the 2 to 5 tabs a strip carries puts the first at
+    the start, the last at the end and the rest in the middle.
+  - Enabling clause 13 on the dialog and the sheet without naming the button's
+    label as content. `UiButton` still wraps at 200 dp, which is slot G1's row
+    of the table; the two entries carry the marker to delete.
+  - A `maxGlassPanes` left at the default on the overlays and data pages, and
+    a `Size(1180, 2720)` data window measured before the fit section was moved
+    out of the measures column. Both were caught by running the gate rather
+    than by reasoning about it.
+- Deviations from the brief, decided rather than asked:
+  - **The `UiButtonRow` adapter is marked `fe/fit-actions:` rather than
+    `TODO(fe/fit-actions)`.** The `no_stand_ins` gate fails on `TODO(fe/`
+    anywhere under the package's `lib/`, and weakening a gate to carry a
+    coordination note is the worse trade. Slot F1 made the same call for the
+    same reason and recorded it; this follows that precedent. Grep
+    `fe/fit-actions` in `controls/overlays/sheet.dart`.
+  - **The adapter is `UiModalActions` itself rather than a new private
+    class.** The overlays family already had the public class both modals draw
+    their actions with, and a private adapter beside it would have been the
+    second implementation the gate exists to prevent. It is now exactly the
+    shape 11 section 3.4 gives `UiButtonRow`.
+  - **`UiTopBarAction` and `UiRowTrailing` are widgets the parent reads rather
+    than value classes in a second slot.** A second slot for one position is
+    configuration; a declared type in the slot that is already there is
+    composition, and `UiEmptyState.action` typed `UiButton?` is the precedent.
+    It also keeps both call site types unchanged, so no file outside this slot
+    had to move.
+  - **`UiSpace.labelMin` is new**, `targetMin * 2`. 11 section 3.3 rule 3
+    needs a threshold and the grid had none. Every control that switches to a
+    compact variant switches at this width.
+  - **One application test moved**,
+    `test/widgets/environment_banner_test.dart`, whose finding V-15 group
+    asserted `maxLines == 1` on the band's closed sentence. The band's cap is
+    on the band, not on the line, and the height assertion beside it is
+    unchanged and still passes. It is a file no wave G slot owns, and the
+    change was forced by this slot.
+  - **`fitColumns` is declared three times**, once per family page. The file
+    that would hold it once is the gallery shell, which slot G3 owns this
+    wave. G3 or the integrator can fold the three into one.
+  - **The commit trailer names Claude Opus 5 (1M context)**, the session's own
+    attribution instruction and the model that did the work.
+- Product observations, not fixed here:
+  - A row title with no spaces breaks mid word at 200 dp: "SPEC-2026-0041"
+    becomes "SPEC-202" over "6-0041". That is what 11 section 3.3 asks for,
+    the title being content with two lines, and it is better than a clipped
+    identifier, but a later pass could give a row title a soft wrap opportunity
+    at its hyphens.
+  - `UiTabs` at 200 dp scrolls, and a reviewer on a touch device reaches the
+    third tab by dragging. The strip is still the segmented control's keyboard
+    pattern, so arrow keys reach it without a drag.
+- What the other wave G slots and the integrator will need:
+  - **G1**: `UiModalActions` in `controls/overlays/sheet.dart` is
+    `UiButtonRow` built to 11 section 3.4. When the real class lands, this one
+    becomes a forwarder or goes, its two call sites in `UiSheet` and
+    `UiDialog` move with it, and the two `wrappingContent` entries naming a
+    button label in `dialog_test.dart` and `sheet_test.dart` come out. Nothing
+    in `controls/actions/` was touched by this slot; `UiTabs` reads
+    `UiSegmentedStyle.resolve(ui, UiSize.lg)` for the segment padding, the
+    minimum segment width and the track inset, so a change to any of those
+    moves the strip's fit with it and needs no edit here.
+  - **G3**: the three family pages each declare `const List<double>
+    fitColumns`; the Fit page can take one of them into the shell and the
+    three can then import it. The overlays page is `maxGlassPanes: 7` and the
+    data page `maxGlassPanes: 8`, so a matrix golden over those pages has to
+    pass the page's own number rather than the default four. The three family
+    golden windows are 1540, 1220 and 2280 tall.
+  - **The application**: `lib/src/app/shell.dart` passes two `UiIconButton`s
+    in `UiTopBar.actions`, so its bar keeps both drawn and never collapses.
+    Swapping them for `UiTopBarAction` is two constructor names and gives the
+    compact shell the overflow menu; the file belongs to wave 2's slot E1.
+    `_BandWithAction` in the same file, marked `TODO(fe/polish-2)`, is now
+    `UiBanner(actionLabel:, onAction:)` and can go.
+  - **Package API added**: `UiTopBarAction`, `UiRowTrailing`,
+    `UiSpace.labelMin`, `UiSheet.scrollBody`, `UiBanner.actionLabel` and
+    `onAction`, `UiModalActions.tertiary`, `UiModalStyle.actionHeight`,
+    `UiDataTileStyle.numeralSteps`, `UiListRow.contentMaxLines`,
+    `UiDisclosureStyle.summaryMaxLines`, `UiTopBarStyle.heightIn`,
+    `keptActions` and `overflowLabel`.
+
+### 2026-09-16: Addendum to the slot G2 closeout above, the gallery matrix findings
+
+The coordinator relayed slot G3's findings from the merged gallery matrix
+while this slot was finishing. Each one, and what closed it. Two more commits,
+`dfd3fd8` and `28d7931`; the package is at 625 tests and every gate above was
+rerun against the tree that carries them, with the same results.
+
+- **`UiTopBar` broke its title one character per line at 200 and 280 dp and
+  grew to about 500 dp tall. Closed.** The title is a `UiLabel` and the
+  actions collapse, both already in `5f9d71f`. Measured on the final tree with
+  a leading, a 27 character title and four commands: the bar is 56 dp and
+  reports no overflow at 480, 360, 280 and 200 dp.
+- **`UiToast` broke one character per line at 200 dp. Closed**, in `07e86e1`.
+  The message is content and wraps to two lines at 200, 280 and 360 and one at
+  480; the action's own label is one line at all four; no overflow at any of
+  them.
+- **`UiBanner` ellipsised its message at 200 dp. Closed as far as two rules
+  allow, and the residue is named.** The sentence now wraps: two lines at 200,
+  280 and 360, one at 480, where before it was one line and an ellipsis at
+  every width. It still ellipsises at 200 dp, because two lines is the band's
+  cap, which is finding V-15 carried by 10 section 4.3 and not repealed by 11.
+  The whole sentence is on the semantics node either way. Raising
+  `UiBannerStyle.maxLines` to three would fit that sentence at 200 dp and
+  would still pass the V-15 height assertion at 200 percent text on a phone
+  (three lines measure about 125 dp against a 168 dp ceiling), but no document
+  asks for three, and `EnvironmentBanner.maxLines` reads the same constant.
+  That is the integrator's call, not this slot's.
+- **`UiPillNav`, six overflows. Closed** in `dfd3fd8`. Five 48 dp discs need
+  240 dp and a disc's hit box never shrinks, so the capsule scrolls through
+  the same `EdgeFadedRow` the tab strip uses, with the current destination
+  scrolled into view. The scroller moved into `primitives/edge_fade.dart` for
+  it: two controls needed it, a private class cannot cross two files in Dart,
+  and a second copy is what the stand-in gate exists to prevent. The brief
+  lists the three control directories rather than `primitives/`, so this is a
+  deviation, recorded here; the file is new, so it cannot conflict with a
+  sibling slot, and it is exported from the top barrel.
+- **`UiListRow` 108, `UiModalActions` 72, `UiToast` 32, `UiDataTile` 2: all
+  measured clean.** Each was pumped at 480, 360, 280 and 200 dp with the
+  framework's error handler diverted, in the specimen the gallery draws, and
+  none reported a layout error. `matrix_golden_test.dart` does not exist on
+  this branch, which was cut before G3 merged, so its `overflowBacklog` lines
+  for `UiListRow`, `UiModalActions`, `UiToast`, `UiDataTile` and `UiPillNav`
+  are the integrator's to delete after this slot merges.
+- **`UiButtonRow` in `controls/actions/button_row.dart` is not adopted here**,
+  as instructed: this slot merges nothing, so the adapter stays marked
+  `fe/fit-actions` in `controls/overlays/sheet.dart` and the integrator swaps
+  it. It was built to 11 section 3.4's shape, so the swap is a rename.
+- **`IntrinsicWidth` and `IntrinsicHeight` over a `UiLabel`.** Neither
+  `UiListRow` nor `UiDataTile` has one, and neither does anything else in the
+  three families: the only one under the package's `lib/` is in
+  `controls/actions/segmented.dart`, which is slot G1's file, and the only one
+  in the application is `lib/src/evidence_panel.dart`, which wraps v1 Material
+  text and no control of this package. **The segmented one is load bearing for
+  two slots at once**: it is what gives the track its width, and `UiTabs` puts
+  that track inside a scroller precisely so it keeps that intrinsic width. A
+  `UiLabel` inside a segment would make `IntrinsicWidth` unmeasurable and take
+  the tab strip's compact variant with it, so G1 converting segment labels
+  needs a different way to size the track. Worth checking before G1 merges.

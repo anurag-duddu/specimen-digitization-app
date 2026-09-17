@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
 
 /// How much of the circle the arc covers.
 enum UiArcSweep {
@@ -198,7 +199,7 @@ class UiArcIndicator extends StatelessWidget {
           if (fraction == null)
             Padding(
               padding: EdgeInsetsDirectional.only(top: ui.space.s1),
-              child: Text(unmeasuredLabel, style: style.absence),
+              child: UiLabel(unmeasuredLabel, style: style.absence),
             )
           else if (min != null || max != null)
             Padding(
@@ -208,8 +209,8 @@ class UiArcIndicator extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Text(min ?? '', style: style.label),
-                    Text(max ?? '', style: style.label),
+                    Flexible(child: UiLabel(min ?? '', style: style.label)),
+                    Flexible(child: UiLabel(max ?? '', style: style.label)),
                   ],
                 ),
               ),

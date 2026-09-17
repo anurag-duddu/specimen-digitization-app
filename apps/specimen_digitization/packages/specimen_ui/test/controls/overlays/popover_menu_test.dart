@@ -241,6 +241,13 @@ void main() {
       (BuildContext context) =>
           UiMenuTrigger(semanticsLabel: 'Record actions', items: items()),
       semanticsLabel: 'Record actions',
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.bySemanticsLabel('Record actions'), findsOneWidget);
+        },
+      ),
     );
   });
 }

@@ -171,9 +171,72 @@ Widget buildNavigationPage(BuildContext context) {
           ],
         ),
       ),
+      GallerySection(
+        title: 'Fit: a top bar with four commands, in narrow columns',
+        child: Wrap(
+          spacing: ui.space.s4,
+          runSpacing: ui.space.s4,
+          crossAxisAlignment: WrapCrossAlignment.start,
+          children: <Widget>[
+            for (final double width in fitColumns)
+              GallerySpecimen(
+                label: '${width.toInt()} dp',
+                note: switch (width) {
+                  >= 480 => 'every command on the bar',
+                  >= 360 => 'two on the bar, two in the menu',
+                  _ => 'every command in the menu',
+                },
+                child: _OverFields(
+                  width: width,
+                  height: 72,
+                  padded: false,
+                  child: const Align(
+                    alignment: Alignment.topCenter,
+                    child: UiTopBar(
+                      leading: UiIcon(UiIcons.collection),
+                      title: 'Queue and everything in it',
+                      actions: _commands,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     ],
   );
 }
+
+/// The columns 11 section 3.3 measures a control's fit in.
+///
+/// Repeated on each family page rather than shared, because the file that
+/// would hold it is the gallery shell, which slot G3 owns this wave.
+const List<double> fitColumns = <double>[480, 360, 280, 200];
+
+/// Four commands, so the bar has two to keep and two to collapse.
+const List<Widget> _commands = <Widget>[
+  UiTopBarAction(
+    icon: UiIcons.reload,
+    label: 'Reload the queue',
+    onPressed: _noop,
+  ),
+  UiTopBarAction(
+    icon: UiIcons.filter,
+    label: 'Filter records',
+    onPressed: _noop,
+  ),
+  UiTopBarAction(
+    icon: UiIcons.saveFilter,
+    label: 'Save this filter',
+    shortcut: 'Cmd S',
+    onPressed: _noop,
+  ),
+  UiTopBarAction(icon: UiIcons.help, label: 'Open help', onPressed: _noop),
+];
+
+/// The gallery presses nothing. A null callback would render a control
+/// disabled, which is a different specimen.
+void _noop() {}
 
 /// A specimen box with a sky behind it, so glass has something to blur.
 class _OverFields extends StatelessWidget {

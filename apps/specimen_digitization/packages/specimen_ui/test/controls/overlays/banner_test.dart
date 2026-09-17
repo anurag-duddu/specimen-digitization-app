@@ -193,6 +193,74 @@ void main() {
     );
   });
 
+  testWidgets('a band offers its recovery beside the words when they fit', (
+    WidgetTester tester,
+  ) async {
+    int taken = 0;
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(900, 600),
+        child: SizedBox(
+          width: 900,
+          child: UiBanner(
+            message: _message,
+            tone: UiBannerTone.blocked,
+            actionLabel: 'Retry upload',
+            onAction: () => taken++,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final double wordsBottom = tester.getBottomLeft(find.text(_message)).dy;
+    final double actionTop = tester
+        .getTopLeft(find.bySemanticsLabel('Retry upload'))
+        .dy;
+    expect(
+      actionTop,
+      lessThan(wordsBottom),
+      reason: 'a 900 dp band has room for both on one line',
+    );
+
+    await tester.tap(find.bySemanticsLabel('Retry upload'));
+    await tester.pumpAndSettle();
+    expect(taken, 1);
+  });
+
+  testWidgets('a band moves its recovery under the words when they do not', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(280, 600),
+        child: SizedBox(
+          width: 280,
+          child: UiBanner(
+            message: _message,
+            tone: UiBannerTone.blocked,
+            actionLabel: 'Retry upload',
+            onAction: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Retry upload')).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(find.text(_message)).dy),
+      reason:
+          '11 section 3.3: the action moves under the text rather than the '
+          'text being squeezed, because the text is content',
+    );
+    expect(
+      find.text(_message),
+      findsOneWidget,
+      reason: 'and the sentence is still whole',
+    );
+  });
+
   testWidgets('the dismiss control satisfies the control contract', (
     WidgetTester tester,
   ) async {
@@ -205,6 +273,18 @@ void main() {
         dismissLabel: 'Hide this banner',
       ),
       semanticsLabel: 'Hide this banner',
+      labelsNeverWrap: true,
+      // The band's sentence is content and wraps: 11 section 3.3 makes that
+      // the last resort for this row, capped at the two lines the band has
+      // promised since finding V-15.
+      wrappingContent: <String>{_message},
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text(_message), findsOneWidget);
+          expect(find.bySemanticsLabel('Hide this banner'), findsOneWidget);
+        },
+      ),
     );
   });
 
@@ -219,6 +299,17 @@ void main() {
         detail: _detail,
       ),
       semanticsLabel: UiBanner.defaultDetailLabel,
+      labelsNeverWrap: true,
+      wrappingContent: <String>{_message, _detail},
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(
+            find.bySemanticsLabel(UiBanner.defaultDetailLabel),
+            findsOneWidget,
+          );
+        },
+      ),
     );
   });
 }

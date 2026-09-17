@@ -20,11 +20,14 @@ const List<GalleryPage> _pages = <GalleryPage>[overlaysPage];
 /// The window the family page is captured at.
 ///
 /// Taller than the 1180 by 820 every other gallery golden uses, because the
-/// page is 922 logical pixels of content at touch density and a golden that
-/// stops at 820 reviews the banners and nothing else. The modal goldens below
-/// keep the standard window: a sheet and a dialog are judged against the
-/// window they are drawn over, not against the page behind them.
-const Size _pageWindow = Size(1180, 1000);
+/// page is 1534 logical pixels of content at touch density and a golden that
+/// stops at 820 reviews the banners and nothing else. It grew from 1000 in
+/// wave G, measured against the page again, when the page gained the fit
+/// section 11 section 3.3 asks for: a banner, a toast and a tab strip in each
+/// of the four columns that document measures a control in. The modal goldens
+/// below keep the standard window: a sheet and a dialog are judged against
+/// the window they are drawn over, not against the page behind them.
+const Size _pageWindow = Size(1180, 1540);
 
 /// `light` or `dark`, as the file names spell it.
 String _mode(Brightness mode) => mode == Brightness.dark ? 'dark' : 'light';
@@ -41,7 +44,11 @@ void main() {
           density: density,
           window: _pageWindow,
         );
-        expectGlassBudget(tester, window: name);
+        expectGlassBudget(
+          tester,
+          maxPanes: overlaysPage.maxGlassPanes,
+          window: name,
+        );
         await expectLater(
           find.byType(UiGallery),
           matchesGoldenFile('goldens/$name'),
@@ -62,7 +69,14 @@ void main() {
         open(tester.element(find.byType(UiGallery)));
         await tester.pumpAndSettle();
 
-        expectGlassBudget(tester, window: name);
+        // The page's own panes plus the one the modal route draws. 09
+        // section 3.3's other half, at most one inside a modal route, is what
+        // the plus one states.
+        expectGlassBudget(
+          tester,
+          maxPanes: overlaysPage.maxGlassPanes + 1,
+          window: name,
+        );
         await expectLater(
           // The whole window, because the modal is pushed above the page
           // rather than inside it.

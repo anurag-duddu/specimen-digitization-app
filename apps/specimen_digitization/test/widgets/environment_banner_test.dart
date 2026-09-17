@@ -141,13 +141,21 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('closed, it is one line and a small fraction of the window', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('closed, it is two lines at most and a small fraction of the '
+        'window', (WidgetTester tester) async {
       await pumpPhone(tester);
+      // Two rather than one since wave G. 11 section 3.3 calls a band's
+      // sentence content and lets it wrap, and the cap finding V-15 asks for
+      // is on the band, not on the line: closed, the sentence may take both
+      // of the band's two lines; open, it takes one and the detail takes the
+      // other. The height below is the guarantee either way.
       expect(
         tester.widget<Text>(find.textContaining('Test environment.')),
-        isA<Text>().having((Text t) => t.maxLines, 'maxLines', 1),
+        isA<Text>().having(
+          (Text t) => t.maxLines,
+          'maxLines',
+          EnvironmentBanner.maxLines,
+        ),
       );
       expect(
         tester.getSize(find.byType(EnvironmentBanner)).height,

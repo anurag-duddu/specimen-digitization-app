@@ -4,6 +4,7 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
 import '../../primitives/modal_routes.dart';
 import '../actions/button.dart';
 import 'sheet.dart';
@@ -110,7 +111,7 @@ class UiDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final UiModalStyle paint = style ?? UiModalStyle.resolve(context.ui);
+    final UiModalStyle paint = style ?? UiModalStyle.resolve(context.ui, context);
     return Padding(
       padding: paint.padding,
       child: Column(
@@ -119,7 +120,7 @@ class UiDialog extends StatelessWidget {
         children: <Widget>[
           Semantics(
             header: true,
-            child: Text(
+            child: UiLabel(
               title,
               style: paint.title.copyWith(color: paint.titleColor),
             ),

@@ -83,6 +83,26 @@ A label inside a control is a `UiLabel`, which is one line and ends in an
 ellipsis with the whole word on a tooltip; a control with more than one
 arrangement declares them to a `FitBuilder`, widest first.
 
+## Fit: what a control does with less room than it needs
+
+11 section 3.3 in one paragraph. A label never wraps: it is a `UiLabel`, one
+line, and it ends in an ellipsis with the whole of it on the semantics label.
+A control never shrinks below its intrinsic width; given less, it switches to
+the compact variant it declares, through `FitBuilder`. Content is not a label
+and wraps as content should: a row's title and subtitle, a banner's sentence,
+a dialog's body, an empty state's copy.
+
+Each control's variants are its own. A top bar ellipsises its title and then
+collapses its actions into an overflow menu, which needs `UiTopBarAction`
+rather than a widget it cannot read. A tab strip and a pill scroll with fading
+edges, through the `EdgeFadedRow` primitive they share, and the chosen tab or
+destination is scrolled into view. A
+data tile steps its numeral down one display role at a time and then scales
+it. A list row's `UiRowTrailing` drops its word and keeps its glyph. A
+banner's and a toast's action move under the words. A modal's actions stack
+with the primary on top. The gallery's fit section on each family page shows
+all of it at 480, 360, 280 and 200 dp.
+
 ## Seeing it
 
 `flutter run -d chrome` and visit `/gallery`. The route is mounted outside

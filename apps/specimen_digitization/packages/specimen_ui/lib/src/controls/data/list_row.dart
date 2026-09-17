@@ -4,7 +4,10 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
+import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../actions/button.dart' show UiSize;
 
@@ -39,6 +42,9 @@ class UiListRowStyle {
     required this.gap,
     required this.minHeight,
     required this.barWidth,
+    required this.trailingLabel,
+    required this.trailingColor,
+    required this.titleMin,
   });
 
   /// The fill, by state. Transparent except when the row is selected.
@@ -65,6 +71,16 @@ class UiListRowStyle {
   /// The leading bar's width, which is also the gutter reserved for it on
   /// every row whether or not it is drawn.
   final double barWidth;
+
+  /// The type role a [UiRowTrailing] sets its label in.
+  final TextStyle trailingLabel;
+
+  /// The colour a [UiRowTrailing] draws its label and its glyph in.
+  final Color trailingColor;
+
+  /// The least width the title may be given before the row switches to its
+  /// compact variant (11 section 3.3, rule 3).
+  final double titleMin;
 
   /// The fixed box the leading slot occupies.
   ///
@@ -109,6 +125,85 @@ class UiListRowStyle {
       gap: ui.space.s3,
       minHeight: heightOf(ui),
       barWidth: ui.shape.stroke.bar,
+      trailingLabel: ui.type.label,
+      trailingColor: ui.color.inkSecondary,
+      titleMin: ui.space.labelMin,
+    );
+  }
+}
+
+/// The end of a row, as a glyph with a word beside it.
+///
+/// The declared form of the `trailing` slot, and the one the row can make
+/// narrower: 11 section 3.3 gives `UiListRow` one compact variant, "trailing
+/// drops its label and keeps its glyph", which a row can only do to a
+/// trailing it can read. A `Text`, a chip or a caret passed straight into the
+/// slot is drawn as it is and the title ellipsises instead, which is rule 4.
+///
+/// The label is not announced. A row publishes one merged node whose words
+/// the caller states in `UiListRow.semanticsLabel`, so a trailing that says
+/// something a screen reader needs says it there: a second node inside the
+/// row would be a second stop on a row that is one thing.
+class UiRowTrailing extends StatelessWidget {
+  /// A glyph with [label] beside it.
+  const UiRowTrailing({
+    super.key,
+    required this.label,
+    required this.icon,
+    this.compact = false,
+    this.style,
+  });
+
+  /// The word. One or two, in sentence case (02 section 4.13).
+  final String label;
+
+  /// The glyph, which is what survives when the label is dropped.
+  final IconSpec icon;
+
+  /// True to draw the glyph alone.
+  ///
+  /// Set by the row when the title would otherwise fall under its minimum, so
+  /// a call site passes the trailing once and the row decides.
+  final bool compact;
+
+  /// Overrides the resolved style. A code review event (10 section 1.5).
+  final UiListRowStyle? style;
+
+  /// The width this trailing needs in [context], with or without its label.
+  ///
+  /// Measured through the same painter the engine lays the line out with, so
+  /// the row switches on the width the words actually take at the reviewer's
+  /// text scale rather than on an estimate.
+  double widthIn(BuildContext context, UiListRowStyle paint) {
+    final double glyph = UiIconSize.inline.dimension;
+    if (compact) return glyph;
+    return glyph +
+        paint.gap +
+        measureLabel(context, label, paint.trailingLabel).width;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final UiListRowStyle paint = style ?? UiListRowStyle.resolve(ui, UiSize.md);
+    final Widget glyph = UiIcon(
+      icon,
+      size: UiIconSize.inline,
+      color: paint.trailingColor,
+    );
+    if (compact) return glyph;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        glyph,
+        SizedBox(width: paint.gap),
+        Flexible(
+          child: UiLabel(
+            label,
+            style: paint.trailingLabel.copyWith(color: paint.trailingColor),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -227,12 +322,12 @@ class UiListRow extends StatelessWidget {
       autofocus: autofocus,
       statesController: statesController,
       builder: (BuildContext context, Set<WidgetState> states) =>
-          _body(ui, style, states),
+          _body(context, style, states),
     );
   }
 
   Widget _body(
-    UiThemeData ui,
+    BuildContext context,
     UiListRowStyle style,
     Set<WidgetState> states,
   ) => ColoredBox(
@@ -255,22 +350,7 @@ class UiListRow extends StatelessWidget {
             padding: style.padding,
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: style.minHeight),
-              child: Row(
-                children: <Widget>[
-                  if (leading != null) ...<Widget>[
-                    SizedBox.square(
-                      dimension: UiListRowStyle.leadingExtent,
-                      child: Center(child: leading),
-                    ),
-                    SizedBox(width: style.gap),
-                  ],
-                  Expanded(child: _text(ui, style)),
-                  if (trailing != null) ...<Widget>[
-                    SizedBox(width: style.gap),
-                    trailing!,
-                  ],
-                ],
-              ),
+              child: _fitted(context, style),
             ),
           ),
         ),
@@ -278,10 +358,90 @@ class UiListRow extends StatelessWidget {
     ),
   );
 
+  /// The row's two arrangements (11 section 3.3).
+  ///
+  /// The title is content and takes two lines, so the row never has to choose
+  /// between a word and an ellipsis for it. What it does choose is whether
+  /// the trailing keeps its label: below the width at which the title falls
+  /// under `titleMin` the trailing drops to its glyph, which is worth some
+  /// seventy logical pixels on a two word status and is the difference
+  /// between a readable identifier and four characters of one.
+  ///
+  /// Only a [UiRowTrailing] can be made narrower. Anything else in the slot
+  /// is drawn as it was given, the row declares one variant, and rule 4 takes
+  /// over.
+  Widget _fitted(BuildContext context, UiListRowStyle style) {
+    final Widget? end = trailing;
+    final double chrome =
+        style.padding.resolve(Directionality.of(context)).horizontal +
+        style.barWidth +
+        (leading == null ? 0 : UiListRowStyle.leadingExtent + style.gap) +
+        (end == null ? 0 : style.gap);
+
+    if (end is! UiRowTrailing) {
+      return FitBuilder(
+        variants: <FitVariant>[
+          FitVariant(
+            intrinsicWidth: chrome + style.titleMin,
+            builder: (BuildContext context, bool _) =>
+                _line(context, style, end),
+          ),
+        ],
+      );
+    }
+
+    final UiRowTrailing full = UiRowTrailing(
+      label: end.label,
+      icon: end.icon,
+      style: style,
+    );
+    final UiRowTrailing glyph = UiRowTrailing(
+      label: end.label,
+      icon: end.icon,
+      compact: true,
+      style: style,
+    );
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth:
+              chrome + style.titleMin + full.widthIn(context, style),
+          builder: (BuildContext context, bool _) =>
+              _line(context, style, full),
+        ),
+        FitVariant(
+          intrinsicWidth:
+              chrome + style.titleMin + glyph.widthIn(context, style),
+          builder: (BuildContext context, bool _) =>
+              _line(context, style, glyph),
+        ),
+      ],
+    );
+  }
+
+  Widget _line(BuildContext context, UiListRowStyle style, Widget? end) => Row(
+    children: <Widget>[
+      if (leading != null) ...<Widget>[
+        SizedBox.square(
+          dimension: UiListRowStyle.leadingExtent,
+          child: Center(child: leading),
+        ),
+        SizedBox(width: style.gap),
+      ],
+      Expanded(child: _text(style)),
+      if (end != null) ...<Widget>[SizedBox(width: style.gap), end],
+    ],
+  );
+
   /// The title over the subtitle, both clipped so that neither can push the
   /// row wider than the pane it sits in. The whole of both is in the
   /// semantics label, so nothing an ellipsis hides is lost.
-  Widget _text(UiThemeData ui, UiListRowStyle style) {
+  ///
+  /// Both are content rather than labels (11 section 3.3): a record's
+  /// identifier and the sentence under it are what the row is for, so they
+  /// wrap to a second line before they are cut. The row grows; its minimum
+  /// height is a floor and never a ceiling.
+  Widget _text(UiListRowStyle style) {
     final String? second = subtitle;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,17 +451,23 @@ class UiListRow extends StatelessWidget {
         Text(
           title,
           style: style.title,
-          maxLines: 1,
+          maxLines: contentMaxLines,
           overflow: TextOverflow.ellipsis,
         ),
         if (second != null)
           Text(
             second,
             style: style.subtitle,
-            maxLines: 2,
+            maxLines: contentMaxLines,
             overflow: TextOverflow.ellipsis,
           ),
       ],
     );
   }
+
+  /// The most lines the title or the subtitle takes before it ellipsises.
+  ///
+  /// Two, per 11 section 3.3: the title is content, and a row four lines deep
+  /// is a card.
+  static const int contentMaxLines = 2;
 }

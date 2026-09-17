@@ -1,11 +1,15 @@
 /// Tabs and their panes (10 section 4.3, `UiTabs` and `UiTabView`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/edge_fade.dart';
+import '../../primitives/fit.dart';
 import '../actions/button.dart' show UiSize;
 import '../actions/segmented.dart';
 
@@ -63,36 +67,98 @@ class UiTabs extends StatelessWidget {
   /// control passes it here rather than getting a second one.
   final Widget? strip;
 
+  /// The width the strip needs to draw every label in full.
+  ///
+  /// The same arithmetic `UiSegmented` lays itself out with, asked of that
+  /// control's own style rather than restated here: equal segments at the
+  /// widest label, each floored at the hit box, inside the track's inset. A
+  /// change to the segment padding therefore moves this with it.
+  double _intrinsicWidth(BuildContext context, UiSegmentedStyle style) {
+    if (tabs.isEmpty) return 0;
+    double widest = 0;
+    for (final UiTab tab in tabs) {
+      final double width = measureLabel(
+        context,
+        tab.label,
+        style.labelStyle,
+      ).width;
+      if (width > widest) widest = width;
+    }
+    final double padding = style.segmentPadding
+        .resolve(Directionality.of(context))
+        .horizontal;
+    return tabs.length *
+            math.max(style.minSegmentWidth, widest + padding) +
+        2 * style.inset;
+  }
+
   @override
   Widget build(BuildContext context) {
     final Widget? given = strip;
     if (given != null) return given;
-    return Semantics(
-      container: true,
-      // The bar and its tabs, and nothing between them: a node of any other
-      // role under `tabBar` fails the SDK's own check rather than degrading.
-      explicitChildNodes: true,
-      role: SemanticsRole.tabBar,
-      label: semanticsLabel,
-      child: ValueListenableBuilder<int>(
-        valueListenable: selected,
-        builder: (BuildContext context, int index, Widget? _) =>
-            UiSegmented<int>(
-              size: UiSize.lg,
-              value: tabs.isEmpty ? 0 : index.clamp(0, tabs.length - 1),
-              segments: <UiSegment<int>>[
-                for (int i = 0; i < tabs.length; i++)
-                  UiSegment<int>(
-                    value: i,
-                    label: tabs[i].label,
-                    semanticsLabel: tabs[i].semanticsLabel,
-                  ),
-              ],
-              onChanged: (int value) => selected.value = value,
-            ),
-      ),
+    final UiSegmentedStyle style = UiSegmentedStyle.resolve(
+      context.ui,
+      UiSize.lg,
+    );
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth: _intrinsicWidth(context, style),
+          builder: (BuildContext context, bool _) => _track(),
+        ),
+        // 11 section 3.3 gives a tab row one compact variant: it scrolls, and
+        // the edges fade so the reviewer can see that there is more. The
+        // track inside is the same control at the same size, so there is one
+        // thumb, one keyboard pattern and one set of tokens either way.
+        FitVariant(
+          intrinsicWidth: 0,
+          builder: (BuildContext context, bool _) =>
+              ValueListenableBuilder<int>(
+                valueListenable: selected,
+                builder: (BuildContext context, int index, Widget? _) =>
+                    EdgeFadedRow(
+                      index: index,
+                      length: tabs.length,
+                      fadeExtent: context.ui.space.s6,
+                      child: _track(),
+                    ),
+              ),
+        ),
+      ],
     );
   }
+
+  /// The strip itself, and the node a screen reader reads it as.
+  ///
+  /// The `tabBar` role sits directly over the segments, inside the scroller
+  /// rather than around it: every child node of a tab bar has to carry the
+  /// `tab` role, and a `Scrollable`'s own node between the two would fail
+  /// that check rather than degrade.
+  Widget _track() => Semantics(
+    container: true,
+    // The bar and its tabs, and nothing between them: a node of any other
+    // role under `tabBar` fails the SDK's own check rather than degrading.
+    explicitChildNodes: true,
+    role: SemanticsRole.tabBar,
+    label: semanticsLabel,
+    child: ValueListenableBuilder<int>(
+      valueListenable: selected,
+      builder: (BuildContext context, int index, Widget? _) =>
+          UiSegmented<int>(
+            size: UiSize.lg,
+            value: tabs.isEmpty ? 0 : index.clamp(0, tabs.length - 1),
+            segments: <UiSegment<int>>[
+              for (int i = 0; i < tabs.length; i++)
+                UiSegment<int>(
+                  value: i,
+                  label: tabs[i].label,
+                  semanticsLabel: tabs[i].semanticsLabel,
+                ),
+            ],
+            onChanged: (int value) => selected.value = value,
+          ),
+    ),
+  );
 }
 
 /// The pane under a [UiTabs].

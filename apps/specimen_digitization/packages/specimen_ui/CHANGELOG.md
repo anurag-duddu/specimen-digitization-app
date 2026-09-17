@@ -68,6 +68,153 @@ run in. No control is converted here; wave G does that.
   pages offer, pumped in a host that installs the fallback on purpose, with no
   paragraph allowed to carry its debug label or its double underline.
 
+Wave G slot G2 of the front-end refactor: the overlays, navigation and data
+families put on the fit rules of `design/11-fit-and-scale.md` section 3.3, and
+contract clauses 13 to 15 turned on for all three. Eight rows of that
+section's table: top bar, tabs, tile, row, dialog, sheet, banner and toast.
+
+### Public API
+
+- `UiTopBarAction` is new: a command with a glyph, a label, an optional
+  shortcut and a callback, passed in `UiTopBar.actions`. Reason: the bar's
+  compact variant is an overflow menu, and a menu needs a label, a glyph and a
+  shortcut for every row it lists. A `Widget` carries none of those, so a bar
+  given plain widgets keeps them all drawn. `actions` keeps its `List<Widget>`
+  type, so no call site had to move; the application's own bar should adopt
+  the class to gain the overflow (see the closeout).
+- `UiTopBarStyle` gains `actionExtent`, `titleMin`, `heightIn`, `keptActions`
+  and `overflowLabel`, and `height` is now the floor rather than the height.
+  Reason: 11 section 2.2, a bar that holds one line of `type.title` derives
+  its height from that line box; at scale 1.0 it is 56 or 48 exactly, as
+  before.
+- `UiTopBar` draws its title with an `Expanded` rather than a `Flexible`
+  beside a `Spacer` when there is no `center`. Reason: a `Spacer` is a flex
+  child, so the title was capped at half the bar and ellipsised at 200 percent
+  text with the other half empty beside it. With a `center` the two still
+  divide what the leading and the actions leave, which is 10 section 4.4's
+  rule that the centre is centred in that space rather than in the window.
+- `UiRowTrailing` is new: the declared form of `UiListRow.trailing`, a glyph
+  with a word beside it. Reason: the row's one compact variant is "trailing
+  drops its label and keeps its glyph", which a row can only do to a trailing
+  it can read. Anything else in the slot is drawn as given and the title
+  wraps instead.
+- `UiListRowStyle` gains `trailingLabel`, `trailingColor` and `titleMin`, and
+  `UiListRow.contentMaxLines` is 2. Reason: 11 section 3.3 calls the row's
+  title content and gives it two lines; the title used to be capped at one.
+- `UiDataTileStyle.numeral` is now a getter over `numeralSteps`, the display
+  roles the numeral steps down through. Reason: 11 section 3.3 has the tile
+  step down one role at a time to `display.medium` and then scale. A caller
+  reading `numeral` still gets the widest role.
+- `UiBanner` takes `actionLabel` and `onAction`. Reason: 07 section 11 asks
+  every failure class to name its own recovery, and the band had a dismiss and
+  a disclosure and nothing else. Wave 2's shell composed the action beside the
+  strip and asked for this slot.
+- `UiBannerStyle` gains `messageMin`, and the band's sentence now wraps to
+  `UiBannerStyle.maxLines` when the detail is closed and to one line when it
+  is open. Reason: 11 section 3.3 calls a band's text content, and the cap
+  finding V-15 asks for is on the band rather than on the line. The band is
+  still one line or two at every text scale. One application test moved with
+  it, named in the closeout.
+- `UiToastStyle` gains `messageMin`. Reason: the capsule's action moves under
+  the message rather than either being squeezed, and the switch is measured
+  against the width the message is left.
+- `UiModalActions` takes `tertiary` and stacks with the primary on top when
+  the row does not fit one line or the window is compact. Reason: this is
+  `UiButtonRow` of 11 section 3.4 under the name the overlays family already
+  had for it; slot G1 owns `controls/actions/` and lands the real class. Grep
+  `fe/fit-actions` in `controls/overlays/sheet.dart` for the swap.
+- `UiModalStyle.resolve` takes an optional `BuildContext` and the style gains
+  `actionHeight`. Reason: 11 section 2.2, the action strip's height derives
+  from the label role its buttons are set in. Without a context it reports the
+  density height, which is that value at scale 1.0.
+- `UiSheet` takes `scrollBody`, default true. Reason: the sheet now bounds its
+  body and scrolls it; a caller whose body is already a scrollable passes
+  false, because two scrollables in one column give the inner one an unbounded
+  height again.
+- `UiDisclosureStyle.summaryMaxLines` is 2 and the summary wraps. Reason: a
+  disclosure's summary is the row's second line, the same object a list row's
+  subtitle is, and is content rather than a label.
+- `UiSpace.labelMin` is new: `targetMin * 2`, the least width a one line label
+  or title is worth drawing in before a control switches to its compact
+  variant. Reason: 11 section 3.3 rule 3 needs a threshold and the grid had
+  none. Below it an ellipsis leaves a word fragment rather than a word.
+- `primitives/edge_fade.dart` is new and exported. `EdgeFadedRow` is the
+  compact variant 11 section 3.3 gives a tab strip and a navigation row: the
+  row at its own intrinsic width inside a scroller, the edge faded on the side
+  there is more, and the chosen item scrolled into view. Reason: `UiTabs` and
+  `UiPillNav` both need it, a private class cannot cross two files in Dart,
+  and two copies of one behaviour is what one vocabulary exists to prevent. It
+  takes its fade extent as a token from the control, because a primitive makes
+  no styling decision of its own.
+
+### Overlays
+
+- The sheet's padded block is `Flexible`, so the body is bounded by the window
+  minus the chrome and scrolls inside it. A `Column` hands an inflexible child
+  an unbounded main axis, which is why the inner `Flexible` had nothing to be
+  flexible against and a filter sheet overflowed a phone by 1044 dp. The bound
+  is the flex rather than arithmetic over the chrome, so it stays right
+  whatever the safe area takes.
+- `UiTabs` draws its track through `FitBuilder`: at its intrinsic width when
+  that fits, and otherwise in a horizontal scroller whose edges fade on the
+  side there is something to scroll to, with the chosen tab scrolled into
+  view. The track inside is the same `UiSegmented` at the same size, so there
+  is one thumb, one keyboard pattern and one set of tokens either way. The
+  `tabBar` role sits inside the scroller rather than around it, because every
+  child node of a tab bar has to carry `tab` and a `Scrollable`'s own node
+  between the two would fail that check.
+- Menu item labels and shortcuts, the menu trigger's label, the disclosure's
+  title and the modal titles are `UiLabel`. Banner text, toast text, dialog
+  and sheet bodies, the tooltip's sentence and the disclosure's summary stay
+  wrapping `Text`: they are content.
+- The overlays gallery page states seven frosted panes rather than four, and
+  the family golden window is 1180 by 1540. Both are the fit section: one
+  toast capsule per column, four columns.
+
+### Navigation
+
+- `UiPillNav` scrolls when its discs do not fit, through `EdgeFadedRow`, with
+  the current destination scrolled into view. Five discs need 240 dp and a
+  disc's hit box never shrinks (clause 2), so at 200 dp the capsule overflowed
+  by 56 dp; the gallery matrix counted that six times.
+- The bar has three arrangements: every action drawn, the first two drawn with
+  the rest in an overflow `UiPopoverMenu`, and every action in the menu for a
+  column too narrow for two discs and a trigger. The menu carries the same
+  labels, glyphs and shortcuts.
+- `UiNavDestination` labels on a rail disc are `UiLabel`.
+- The navigation gallery page's golden window is 1180 by 1220, measured
+  against the page with its fit section.
+
+### Data
+
+- The tile's numeral never wraps. It steps down one display role at a time to
+  `display.medium` and then scales the numeral and its unit together, because
+  a `FittedBox` reports its child's unscaled baseline and a unit aligned to a
+  scaled numeral's would float above the digits. The unit's role never
+  changes. This amends the wave 1 reading of 02 section 4.14, which had no
+  third option between clipping and a second line.
+- The row's title and subtitle take two lines each and the trailing drops its
+  word when the title would fall under `titleMin`.
+- The avatar's initials and the arc indicator's absence and scale labels are
+  `UiLabel`. The empty state's title and sentence stay content.
+- The data gallery page states eight frosted panes rather than four, and the
+  family golden window is 1180 by 2280. The fit section spans the page rather
+  than sitting in the measures column: a 480 dp specimen inside a 370 dp
+  column is a specimen of 370 dp.
+
+### Testing
+- Clauses 13, 14 and 15 are on in all fifteen contract tests of the three
+  families, with the content strings named in `wrappingContent`. Two of them
+  name a `UiButton` label there as well, because a button still wraps at 200
+  dp and 11 section 3.3 gives it an ellipsis and a tooltip that slot G1 owns.
+  Both entries carry the marker to delete.
+- New behaviour tests: the bar's overflow at three widths and with opaque
+  widgets; the strip scrolling, keeping every tab and revealing the chosen
+  one; the band and the capsule moving their action under the words; the
+  sheet's bounded scrolling body and a body that scrolls itself; the modal
+  actions as a row, as a stack, and on a compact window; the tile's step down,
+  its last resort and the hero chain.
+
 Wave F of the front-end refactor, slot F1: the field rebuilt inside out per
 `design/11-fit-and-scale.md` section 4, and the focus ring given the shape it
 rings per 09 section 3.6 as amended.

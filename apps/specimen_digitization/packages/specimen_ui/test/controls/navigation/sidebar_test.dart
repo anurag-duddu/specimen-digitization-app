@@ -315,6 +315,17 @@ void main() {
         (BuildContext context) =>
             const _SidebarHost(destinations: threeDestinations),
         semanticsLabel: destination.label,
+        labelsNeverWrap: true,
+        geometryFromType: true,
+        fit: FitExpectation(
+          check: (WidgetTester tester, double width) async {
+            expect(
+              find.bySemanticsLabel(destination.label),
+              findsOneWidget,
+              reason: 'every destination stays reachable at $width dp',
+            );
+          },
+        ),
       );
     });
   }

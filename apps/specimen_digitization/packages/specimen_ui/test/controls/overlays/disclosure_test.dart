@@ -163,6 +163,14 @@ void main() {
       tester,
       (BuildContext context) => _disclosure(),
       semanticsLabel: _label,
+      labelsNeverWrap: true,
+      wrappingContent: <String>{_summary},
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text(_title), findsOneWidget);
+        },
+      ),
     );
   });
 }

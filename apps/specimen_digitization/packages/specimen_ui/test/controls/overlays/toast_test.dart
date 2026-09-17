@@ -8,6 +8,9 @@ import 'package:specimen_ui/testing.dart';
 
 import '../../harness/control_contract.dart';
 
+/// A callback that does nothing, so a specimen toast can carry an action.
+void _noop() {}
+
 const String _first = 'Review recorded on version 4';
 const String _second = 'Upload paused. The network dropped.';
 
@@ -246,6 +249,59 @@ void main() {
     expect(find.text(_first), findsNothing);
   });
 
+  testWidgets('the action sits beside the words in a wide window', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(900, 600),
+        child: const SizedBox(
+          width: 900,
+          child: UiToast(
+            data: UiToastData(
+              message: _second,
+              actionLabel: 'Retry upload',
+              onAction: _noop,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Retry upload')).dy,
+      lessThan(tester.getBottomLeft(find.text(_second)).dy),
+    );
+  });
+
+  testWidgets('the action moves under the words on a phone', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(280, 600),
+        child: const SizedBox(
+          width: 280,
+          child: UiToast(
+            data: UiToastData(
+              message: _second,
+              actionLabel: 'Retry upload',
+              onAction: _noop,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Retry upload')).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(find.text(_second)).dy),
+      reason:
+          'the capsule stacks rather than squeezing either the sentence or '
+          'the hit box (11 section 3.3)',
+    );
+  });
+
   testWidgets('the action satisfies the control contract', (
     WidgetTester tester,
   ) async {
@@ -260,6 +316,17 @@ void main() {
         ),
       ),
       semanticsLabel: 'Retry upload',
+      labelsNeverWrap: true,
+      // The capsule's line is content and wraps; the action is the label,
+      // and it moves under the words rather than being squeezed beside them.
+      wrappingContent: <String>{_second},
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text(_second), findsOneWidget);
+          expect(find.bySemanticsLabel('Retry upload'), findsOneWidget);
+        },
+      ),
     );
   });
 }
