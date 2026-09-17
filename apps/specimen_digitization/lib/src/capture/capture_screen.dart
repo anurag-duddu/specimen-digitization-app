@@ -1,5 +1,4 @@
-/// The full-screen capture route (screen blueprints, section 5; responsive
-/// and platform adaptation, section 7).
+/// The full-screen capture route (07 section 5; 05 section 7).
 ///
 /// `image_picker` hands the whole capture to the operating system's camera
 /// app, which returns one photograph with no framing guide, no exposure hint
@@ -7,6 +6,11 @@
 /// for Android and iOS: viewfinder, framing guides, tap to focus, an
 /// uncalibrated exposure hint, a review step, and a batch mode that returns
 /// to the viewfinder after each accepted photograph.
+///
+/// The preview is the evidence, so the frame carries no sky and no
+/// navigation and the controls float over the pixels: a `glass.floating`
+/// capsule at the top for leaving, and the shutter and the counter at the
+/// bottom.
 ///
 /// What this screen does not do, stated rather than faked: it does not detect
 /// the specimen, does not verify that anything is inside the guides, does not
@@ -19,12 +23,15 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart' show XFile;
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+// `MaterialPageRoute` is infrastructure rather than anatomy: it is what gives
+// a pushed route the platform's own transition (05 section 5), which 10
+// section 1.3 keeps alongside `MaterialApp` and `MaterialPage`. Nothing
+// Material is drawn on this screen.
+import 'package:flutter/material.dart' show MaterialPageRoute;
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../capture_quality.dart';
-import '../theme/icons.dart';
-import '../theme/motion.dart';
 import '../widgets/not_calibrated_chip.dart';
 import 'capture_camera.dart';
 
@@ -68,6 +75,16 @@ class CaptureScreen extends StatefulWidget {
 
   /// How wide the label guide is, as a fraction of the specimen guide.
   static const double labelGuideWidth = 0.55;
+
+  /// What the control that leaves the camera is called.
+  static const String closeLabel = 'Close the camera';
+
+  /// What the control that hands the batch back is called.
+  static const String doneLabel = 'Done';
+
+  /// What the shutter is called. A control that draws no word needs one
+  /// (10 section 11).
+  static const String shutterLabel = 'Take photograph';
 
   @override
   State<CaptureScreen> createState() => _CaptureScreenState();
@@ -215,158 +232,110 @@ class _CaptureScreenState extends State<CaptureScreen> {
       : '$count photographs in this batch';
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return PopScope<CaptureResult>(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, CaptureResult? _) {
-        if (didPop) return;
-        // A back gesture keeps what was already accepted. Nothing the
-        // operator confirmed is thrown away by leaving.
-        _unavailable == null ? _finish() : _fallback();
-      },
-      child: Scaffold(
-        backgroundColor: theme.colorScheme.inverseSurface,
-        appBar: AppBar(
-          backgroundColor: theme.colorScheme.inverseSurface,
-          foregroundColor: theme.colorScheme.onInverseSurface,
-          title: const Text('Take photographs'),
-          leading: IconButton(
-            onPressed: _unavailable == null ? _finish : _fallback,
-            icon: const Icon(Symbols.close),
-            tooltip: 'Close the camera',
-          ),
-          actions: <Widget>[
-            if (_unavailable == null)
-              Padding(
-                padding: EdgeInsets.only(right: context.space.space4),
-                child: TextButton(
-                  onPressed: _finish,
-                  style: TextButton.styleFrom(
-                    foregroundColor: theme.colorScheme.onInverseSurface,
-                    minimumSize: Size(
-                      context.sizes.targetMin,
-                      context.sizes.targetMin,
-                    ),
-                  ),
-                  child: const Text('Done'),
-                ),
-              ),
-          ],
-        ),
-        body: SafeArea(child: _body(context)),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => PopScope<CaptureResult>(
+    canPop: false,
+    onPopInvokedWithResult: (bool didPop, CaptureResult? _) {
+      if (didPop) return;
+      // A back gesture keeps what was already accepted. Nothing the
+      // operator confirmed is thrown away by leaving.
+      _unavailable == null ? _finish() : _fallback();
+    },
+    // No sky and no navigation: the preview is the evidence and it fills the
+    // window (07 section 5).
+    child: UiScaffold(
+      sky: SkyPreset.none,
+      body: SafeArea(child: _body()),
+    ),
+  );
 
-  Widget _body(BuildContext context) {
+  Widget _body() {
     if (_starting) {
       return Center(
-        child: Semantics(
-          liveRegion: true,
-          child: CircularProgressIndicator(
-            semanticsLabel: 'Starting the camera',
-            color: Theme.of(context).colorScheme.onInverseSurface,
-          ),
+        child: UiProgress.ring(
+          semanticsLabel: 'Starting the camera',
+          size: UiProgressSize.large,
         ),
       );
     }
-    if (_unavailable != null) return _unavailableBody(context);
-    if (_reviewBytes != null) return _reviewBody(context);
-    return _viewfinder(context);
+    if (_unavailable != null) return _unavailableBody();
+    if (_reviewBytes != null) return _reviewBody();
+    return _viewfinder();
   }
 
-  Widget _unavailableBody(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+  Widget _unavailableBody() {
+    final UiThemeData ui = context.ui;
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(context.space.space6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                _unavailable!.message,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onInverseSurface,
+        padding: EdgeInsetsDirectional.all(ui.space.s6),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Semantics(
+                container: true,
+                liveRegion: true,
+                child: Text(
+                  _unavailable!.message,
+                  style: ui.type.bodyLarge.copyWith(color: ui.color.ink),
                 ),
               ),
-            ),
-            SizedBox(height: context.space.space6),
-            FilledButton(
-              onPressed: _fallback,
-              child: const Text('Use the device camera instead'),
-            ),
-          ],
+              SizedBox(height: ui.space.s6),
+              UiButtonRow(
+                primary: UiButton(
+                  label: 'Use the device camera instead',
+                  onPressed: _fallback,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _reviewBody(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+  Widget _reviewBody() {
+    final UiThemeData ui = context.ui;
     return Column(
       children: <Widget>[
         Expanded(
-          child: Center(
-            child: Image.memory(
-              _reviewBytes!,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              semanticLabel: 'The photograph you took',
+          child: Surface(
+            role: SurfaceRole.matte,
+            radius: ui.shape.sheet,
+            child: Center(
+              child: Image.memory(
+                _reviewBytes!,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+                semanticLabel: 'The photograph you took',
+              ),
             ),
           ),
         ),
         Padding(
-          padding: EdgeInsets.all(context.space.space4),
+          padding: EdgeInsetsDirectional.all(ui.space.s4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Text(
                 'Check the smallest text, the glare and that every label is '
                 'inside the frame.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onInverseSurface,
-                ),
+                style: ui.type.body.copyWith(color: ui.color.ink),
               ),
-              SizedBox(height: context.space.space4),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _retake,
-                      icon: const Icon(Symbols.refresh),
-                      label: const Text('Retake'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: theme.colorScheme.onInverseSurface,
-                        side: BorderSide(
-                          color: theme.colorScheme.onInverseSurface,
-                          width: context.shape.strokeBoundary,
-                        ),
-                        minimumSize: Size(
-                          context.sizes.targetMin,
-                          context.sizes.targetMin,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: context.space.space4),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _use,
-                      icon: const Icon(Symbols.check),
-                      label: const Text('Use photograph'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: Size(
-                          context.sizes.targetMin,
-                          context.sizes.targetMin,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              SizedBox(height: ui.space.s4),
+              UiButtonRow(
+                primary: UiButton(
+                  label: 'Use photograph',
+                  leading: UiIcons.check,
+                  onPressed: _use,
+                ),
+                secondary: UiButton(
+                  label: 'Retake',
+                  variant: UiButtonVariant.secondary,
+                  leading: UiIcons.retry,
+                  onPressed: _retake,
+                ),
               ),
             ],
           ),
@@ -375,8 +344,8 @@ class _CaptureScreenState extends State<CaptureScreen> {
     );
   }
 
-  Widget _viewfinder(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+  Widget _viewfinder() {
+    final UiThemeData ui = context.ui;
     final CaptureCamera camera = _camera!;
     final String? hint = _reading?.hint;
     return Column(
@@ -413,9 +382,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
                               'capture-framing-guides',
                             ),
                             painter: _FramingGuidePainter(
-                              stroke: theme.colorScheme.onInverseSurface,
-                              width: context.shape.strokeEmphasis,
-                              radius: context.shape.radiusSm,
+                              // Drawn in `paper` rather than in `ink`: the
+                              // guide sits over a photograph, and the one
+                              // thing a specimen photograph always has is
+                              // dark ground around a pinned insect.
+                              stroke: ui.color.paper,
+                              width: ui.shape.stroke.emphasis,
+                              radius: ui.shape.inner,
                             ),
                           ),
                         ],
@@ -423,73 +396,83 @@ class _CaptureScreenState extends State<CaptureScreen> {
                     ),
                   ),
                   if (_focusPoint != null)
-                    _FocusMark(
-                      at: _focusPoint!,
-                      locked: _focusLocked,
-                      color: theme.colorScheme.onInverseSurface,
+                    _FocusMark(at: _focusPoint!, locked: _focusLocked),
+                  // The one capsule over the pixels: the way out of the
+                  // camera, floating rather than welded into a bar, so the
+                  // preview keeps the whole window.
+                  PositionedDirectional(
+                    top: ui.space.s4,
+                    end: ui.space.s4,
+                    child: GlassSurface(
+                      level: GlassLevel.floating,
+                      capsule: true,
+                      padding: EdgeInsetsDirectional.all(ui.space.s1),
+                      child: UiIconButton(
+                        icon: UiIcons.close,
+                        semanticsLabel: CaptureScreen.closeLabel,
+                        tooltip: CaptureScreen.closeLabel,
+                        onPressed: _finish,
+                      ),
                     ),
+                  ),
                 ],
               );
             },
           ),
         ),
         Padding(
-          padding: EdgeInsets.all(context.space.space4),
+          padding: EdgeInsetsDirectional.all(ui.space.s4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Semantics(
+                container: true,
                 liveRegion: true,
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const NotCalibratedChip(),
-                    SizedBox(width: context.space.space3),
+                    SizedBox(width: ui.space.s3),
                     Expanded(
                       child: Text(
                         hint ??
                             (_reading == null
                                 ? 'Exposure is not measured on this device.'
                                 : 'No clipping measured in this frame.'),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onInverseSurface,
-                        ),
+                        style: ui.type.body.copyWith(color: ui.color.ink),
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(height: context.space.space2),
+              SizedBox(height: ui.space.s2),
               Text(
                 'Framing, focus and label coverage are not checked here.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onInverseSurface,
-                ),
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
               ),
-              SizedBox(height: context.space.space4),
+              SizedBox(height: ui.space.s4),
               Row(
                 children: <Widget>[
                   Expanded(
                     child: Semantics(
+                      container: true,
                       liveRegion: true,
                       child: Text(
                         counterLabel(_accepted.length),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onInverseSurface,
-                        ),
+                        style: ui.type.body.copyWith(color: ui.color.ink),
                       ),
                     ),
                   ),
-                  FilledButton.icon(
+                  SizedBox(width: ui.space.s4),
+                  _Shutter(
                     key: const ValueKey<String>('capture-shutter'),
                     onPressed: _capturing ? null : _capture,
-                    icon: const Icon(Symbols.photo_camera),
-                    label: Text(_capturing ? 'Capturing' : 'Capture'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: Size(
-                        context.sizes.targetMin,
-                        context.sizes.targetMin,
-                      ),
-                    ),
+                  ),
+                  SizedBox(width: ui.space.s4),
+                  UiButton(
+                    label: CaptureScreen.doneLabel,
+                    variant: UiButtonVariant.secondary,
+                    onPressed: _finish,
                   ),
                 ],
               ),
@@ -497,6 +480,61 @@ class _CaptureScreenState extends State<CaptureScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The shutter: an `ink` disc inside a `paper` ring (07 section 5).
+///
+/// A disc rather than a labelled button, because it is the one control on a
+/// camera screen an operator finds without reading. It carries the name a
+/// screen reader needs and the 0.98 press scale the control contract allows a
+/// capsule; there is no shutter row in the motion catalog, so no sound, no
+/// flash and no haptic is invented for it. The confirmation the operator gets
+/// is the review step the capture opens.
+class _Shutter extends StatelessWidget {
+  const _Shutter({super.key, required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    // 72 dp: the hit box plus one gutter on each side, so the disc is a
+    // thumb's target with room around it rather than a number of its own.
+    final double diameter = ui.space.targetMin + ui.space.s6;
+    final double ring = ui.space.s1;
+    return Pressable(
+      semanticsLabel: CaptureScreen.shutterLabel,
+      onPressed: onPressed,
+      capsule: true,
+      scaleOnPress: true,
+      builder: (BuildContext context, Set<WidgetState> states) =>
+          SizedBox.square(
+            dimension: diameter,
+            child: DecoratedBox(
+              decoration: ShapeDecoration(
+                color: ui.color.paper,
+                shape: CircleBorder(
+                  side: BorderSide(
+                    color: ui.color.boundary,
+                    width: ui.shape.stroke.boundary,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: EdgeInsetsDirectional.all(ring),
+                child: DecoratedBox(
+                  decoration: ShapeDecoration(
+                    color: onPressed == null
+                        ? ui.color.disabledFill
+                        : ui.color.ink,
+                    shape: const CircleBorder(),
+                  ),
+                ),
+              ),
+            ),
+          ),
     );
   }
 }
@@ -556,32 +594,34 @@ class _FramingGuidePainter extends CustomPainter {
 
 /// The focus and exposure lock indicator, drawn where the operator tapped.
 class _FocusMark extends StatelessWidget {
-  const _FocusMark({
-    required this.at,
-    required this.locked,
-    required this.color,
-  });
+  const _FocusMark({required this.at, required this.locked});
 
   final Offset at;
   final bool locked;
-  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final double side = context.sizes.targetMin;
-    final MotionTokens motion = MotionTokens.of(context);
-    final Widget mark = Container(
-      width: side,
-      height: side,
-      decoration: BoxDecoration(
-        border: Border.all(color: color, width: context.shape.strokeEmphasis),
-        borderRadius: BorderRadius.circular(context.shape.radiusXs),
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        locked ? Symbols.lock : Symbols.lock_open,
-        size: context.sizes.iconInline,
-        color: color,
+    final UiThemeData ui = context.ui;
+    final double side = ui.space.targetMin;
+    final Widget mark = SizedBox.square(
+      dimension: side,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(
+          shape: Squircle.border(
+            ui.shape.inner,
+            side: BorderSide(
+              color: ui.color.paper,
+              width: ui.shape.stroke.emphasis,
+            ),
+          ),
+        ),
+        child: Center(
+          child: UiIcon(
+            locked ? UiIcons.locked : UiIcons.unlocked,
+            size: UiIconSize.inline,
+            color: ui.color.paper,
+          ),
+        ),
       ),
     );
     return Positioned(
@@ -595,14 +635,7 @@ class _FocusMark extends StatelessWidget {
           label: locked
               ? 'Focus and exposure locked'
               : 'This camera did not lock focus',
-          child: motion.reduced
-              ? mark
-              : AnimatedOpacity(
-                  opacity: 1,
-                  duration: motion.quick,
-                  curve: MotionTokens.standardCurve,
-                  child: mark,
-                ),
+          child: mark,
         ),
       ),
     );

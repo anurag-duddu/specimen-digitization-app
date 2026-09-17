@@ -14,24 +14,20 @@ import 'package:specimen_ui/specimen_ui.dart';
 /// Every `Symbols.` and `Icons.` use still under `lib/`. Shrink only.
 ///
 /// Wave 2, slot E1 took the shell, the entry screens and the D1 patterns off
-/// it: thirty seven glyphs, every one of them now a `UiIcons` entry.
+/// it: thirty seven glyphs, every one of them now a `UiIcons` entry. Wave 3,
+/// slot E5 took the intake, capture and sources screens and the D6 patterns
+/// off it: forty one more.
 ///
 /// `UiIcons.fromSymbolName` is what a screen agent replaces one with: it maps
 /// the Material name onto a registry key, so the choice of glyph is made once
 /// in the registry rather than per call site.
 const Map<String, int> glyphBacklog = <String, int>{
   'lib/src/audit_history.dart': 3,
-  'lib/src/capture/capture_screen.dart': 6,
   'lib/src/evidence_panel.dart': 2,
-  'lib/src/intake.dart': 3,
   'lib/src/large_record.dart': 1,
   'lib/src/operational_panel.dart': 1,
   'lib/src/reading_declarations.dart': 2,
   'lib/src/region_editor.dart': 5,
-  'lib/src/screens/intake/capture_card.dart': 6,
-  'lib/src/screens/intake/manifest_panel.dart': 4,
-  'lib/src/screens/sources/source_screen.dart': 5,
-  'lib/src/screens/sources/sources_screen.dart': 4,
   'lib/src/screens/workbench/decision_bar.dart': 3,
   'lib/src/screens/workbench/fields_panel.dart': 2,
   'lib/src/screens/workbench/readings_panel.dart': 3,
@@ -43,9 +39,6 @@ const Map<String, int> glyphBacklog = <String, int>{
   'lib/src/widgets/field_row.dart': 3,
   'lib/src/widgets/reading_card.dart': 1,
   'lib/src/widgets/risk_meter.dart': 1,
-  'lib/src/widgets/source_import_sheet.dart': 1,
-  'lib/src/widgets/source_object_row.dart': 3,
-  'lib/src/widgets/upload_item.dart': 9,
   'lib/src/workbench.dart': 8,
 };
 

@@ -1,9 +1,10 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
 
-import 'theme/icons.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import 'widgets/caveat_text.dart';
 import 'widgets/not_calibrated_chip.dart';
 
@@ -238,15 +239,15 @@ class CaptureQualitySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData tokens = context.ui;
     final List<String> values = valuesOf(quality);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Wrap(
-          spacing: context.space.space6,
-          runSpacing: context.space.space2,
+          spacing: tokens.space.s6,
+          runSpacing: tokens.space.s2,
           crossAxisAlignment: WrapCrossAlignment.end,
           children: <Widget>[
             for (int i = 0; i < labels.length; i++)
@@ -260,11 +261,14 @@ class CaptureQualitySummary extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       labels[i],
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      style: tokens.type.labelSmall.copyWith(
+                        color: tokens.color.inkSecondary,
                       ),
                     ),
-                    Text(values[i], style: theme.textTheme.bodyMedium),
+                    Text(
+                      values[i],
+                      style: tokens.type.body.copyWith(color: tokens.color.ink),
+                    ),
                   ],
                 ),
               ),
@@ -276,80 +280,106 @@ class CaptureQualitySummary extends StatelessWidget {
   }
 }
 
+/// The full set of local measurements, behind one disclosure.
+///
+/// Every number here is descriptive: a histogram of a thumbnail, never a
+/// focus, glare or readability grade and never a pass. The boundary is stated
+/// twice, once as the summary line a reader meets before opening anything and
+/// once as the caveats inside.
 class CaptureQualityView extends StatelessWidget {
   const CaptureQualityView({
     super.key,
     required this.quality,
     this.previewBytes,
   });
+
+  /// The measurement, or null when this device could not decode the image.
   final CaptureQuality? quality;
+
+  /// The decoded thumbnail, when there is one to show beside the numbers.
   final Uint8List? previewBytes;
+
+  /// The disclosure's own title.
+  static const String title = 'Before-upload image check';
+
   @override
   Widget build(BuildContext context) {
-    final q = quality;
-    return ExpansionTile(
+    final UiThemeData tokens = context.ui;
+    final CaptureQuality? q = quality;
+    final Uint8List? bytes = previewBytes;
+    return UiDisclosure(
       initiallyExpanded: true,
-      title: const Text('Before-upload image check'),
-      subtitle: Text(
-        q == null
-            ? 'Not measured'
-            : 'Not calibrated. Measured from a thumbnail.',
-      ),
-      children: [
-        if (previewBytes != null && q != null)
-          SizedBox(
-            height: 160,
-            child: Image.memory(
-              previewBytes!,
-              cacheWidth: q.width,
-              cacheHeight: q.height,
-              fit: BoxFit.contain,
-              semanticLabel: 'Selected source photograph before upload',
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (q != null) ...[
-                Text(
-                  'Brightness ${q.mean.toStringAsFixed(1)} / 255 · Contrast ${q.contrast.toStringAsFixed(1)}',
+      title: title,
+      summary: q == null
+          ? 'Not measured'
+          : 'Not calibrated. Measured from a thumbnail.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (bytes != null && q != null) ...<Widget>[
+            // The thumbnail's own shape, so the preview is never letterboxed
+            // into a height nobody measured.
+            Surface(
+              role: SurfaceRole.matte,
+              radius: tokens.shape.inner,
+              clip: true,
+              child: AspectRatio(
+                aspectRatio: q.width / q.height,
+                child: Image.memory(
+                  bytes,
+                  cacheWidth: q.width,
+                  cacheHeight: q.height,
+                  fit: BoxFit.contain,
+                  semanticLabel: 'Selected source photograph before upload',
                 ),
-                Text(
-                  'Near-black pixels ${(q.darkFraction * 100).toStringAsFixed(1)}% · Near-white pixels ${(q.brightFraction * 100).toStringAsFixed(1)}%',
-                ),
-                Text(
-                  'Neighbor contrast ${q.gradient.toStringAsFixed(1)} / 255 · Sample ${q.width} × ${q.height}',
-                ),
-                const CaveatText(
-                  label: 'Clipping or low contrast can hide text.',
-                  why:
-                      'Compare the preview with the original. These measurements '
-                      'do not show sharpness or readability.',
-                ),
-              ] else
-                const CaveatText(
-                  label:
-                      'This device cannot preview this image. Check the original '
-                      'in another viewer before you confirm readability.',
-                  why:
-                      'Your original file is uploaded unchanged. The server decodes '
-                      'it and records its dimensions. If it cannot, the upload stays '
-                      'and you can retry.',
-                ),
-              const CaveatText(
-                label:
-                    'Focus, glare, framing and label coverage are not checked '
-                    'automatically.',
-                why:
-                    'Check the smallest text, any reflections, and that every label '
-                    'is in the frame. Retake the photograph if it is not.',
               ),
-            ],
+            ),
+            SizedBox(height: tokens.space.s3),
+          ],
+          if (q != null) ...<Widget>[
+            Text(
+              'Brightness ${q.mean.toStringAsFixed(1)} of 255 · Contrast '
+              '${q.contrast.toStringAsFixed(1)}',
+              style: tokens.type.body.copyWith(color: tokens.color.ink),
+            ),
+            Text(
+              'Near-black pixels '
+              '${(q.darkFraction * 100).toStringAsFixed(1)}% · Near-white '
+              'pixels ${(q.brightFraction * 100).toStringAsFixed(1)}%',
+              style: tokens.type.body.copyWith(color: tokens.color.ink),
+            ),
+            Text(
+              'Neighbour contrast ${q.gradient.toStringAsFixed(1)} of 255 · '
+              'Sample ${q.width} by ${q.height}',
+              style: tokens.type.body.copyWith(color: tokens.color.ink),
+            ),
+            const CaveatText(
+              label: 'Clipping or low contrast can hide text.',
+              why:
+                  'Compare the preview with the original. These measurements '
+                  'do not show sharpness or readability.',
+            ),
+          ] else
+            const CaveatText(
+              label:
+                  'This device cannot preview this image. Check the original '
+                  'in another viewer before you confirm readability.',
+              why:
+                  'Your original file is uploaded unchanged. The server decodes '
+                  'it and records its dimensions. If it cannot, the upload stays '
+                  'and you can retry.',
+            ),
+          const CaveatText(
+            label:
+                'Focus, glare, framing and label coverage are not checked '
+                'automatically.',
+            why:
+                'Check the smallest text, any reflections, and that every label '
+                'is in the frame. Retake the photograph if it is not.',
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -1,15 +1,14 @@
-/// The capture card (screen blueprints, section 5).
+/// The capture card (07 section 5).
 ///
-/// One card, one job: choose how photographs arrive, say how sensitive they
+/// One pane, one job: choose how photographs arrive, say how sensitive they
 /// are, and confirm that this batch was looked at. The manifest is a separate
-/// card, so the card an operator presses repeatedly never scrolls away from
-/// the list it fills (responsive, section 3.4).
+/// pane, so the control an operator presses repeatedly never scrolls away from
+/// the list it fills (05 section 3.4).
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../../theme/icons.dart';
 import '../../widgets/caveat_text.dart';
 
 /// The five checks an operator makes before a batch leaves the device
@@ -59,7 +58,7 @@ class IntakeCaptureCard extends StatelessWidget {
   final VoidCallback? onTakePhotograph;
 
   /// False on web and desktop, where this client has no camera to offer. The
-  /// button is not rendered at all rather than rendered dead.
+  /// control is not rendered at all rather than rendered dead.
   final bool cameraAvailable;
 
   /// Whether this batch has been confirmed.
@@ -77,6 +76,20 @@ class IntakeCaptureCard extends StatelessWidget {
   /// How many rows this batch would send.
   final int pendingCount;
 
+  /// The card's own title, which names the screen (02 section 4.1).
+  static const String title = 'Add photographs';
+
+  /// What the checklist is called.
+  static const String checklistTitle = 'Before you upload, check:';
+
+  /// What the one confirmation says under itself.
+  static const String confirmationHelp =
+      'Clears whenever you add a photograph.';
+
+  /// What a build with no camera says instead of a control it cannot offer.
+  static const String noCameraHelp =
+      'Camera capture runs in the Android and iOS apps. Here, choose a file.';
+
   /// The upload button's word, which names the count it authorises
   /// (pass criterion 5.2).
   static String uploadLabel({required bool uploading, required int pending}) {
@@ -87,166 +100,177 @@ class IntakeCaptureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(context.space.space6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text('Add photographs', style: theme.textTheme.headlineSmall),
-            SizedBox(height: context.space.space2),
-            Text('One photograph per specimen.'),
-            SizedBox(height: context.space.space4),
-            Wrap(
-              spacing: context.space.space3,
-              runSpacing: context.space.space3,
-              children: <Widget>[
-                if (cameraAvailable)
-                  FilledButton.icon(
+    final UiThemeData ui = context.ui;
+    return Surface(
+      radius: ui.shape.tile,
+      padding: EdgeInsetsDirectional.all(ui.space.s6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Semantics(
+            header: true,
+            child: Text(
+              title,
+              style: ui.type.titleLarge.copyWith(color: ui.color.ink),
+            ),
+          ),
+          SizedBox(height: ui.space.s2),
+          Text(
+            'One photograph per specimen.',
+            style: ui.type.body.copyWith(color: ui.color.ink),
+          ),
+          SizedBox(height: ui.space.s4),
+          UiButtonRow(
+            primary: UiButton(
+              key: const ValueKey<String>('intake-choose-files'),
+              label: 'Choose files',
+              leading: UiIcons.uploadFile,
+              onPressed: onChooseFiles,
+            ),
+            secondary: cameraAvailable
+                ? UiButton(
                     key: const ValueKey<String>('intake-take-photograph'),
+                    label: 'Take photograph',
+                    variant: UiButtonVariant.secondary,
+                    leading: UiIcons.camera,
                     onPressed: onTakePhotograph,
-                    icon: const Icon(Symbols.photo_camera),
-                    label: const Text('Take photograph'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: Size(
-                        context.sizes.targetMin,
-                        context.sizes.targetMin,
-                      ),
-                    ),
-                  ),
-                OutlinedButton.icon(
-                  key: const ValueKey<String>('intake-choose-files'),
-                  onPressed: onChooseFiles,
-                  icon: const Icon(Symbols.upload_file),
-                  label: const Text('Choose files'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: Size(
-                      context.sizes.targetMin,
-                      context.sizes.targetMin,
-                    ),
-                  ),
+                  )
+                : null,
+          ),
+          if (!cameraAvailable) ...<Widget>[
+            SizedBox(height: ui.space.s3),
+            Text(
+              noCameraHelp,
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+          ],
+          SizedBox(height: ui.space.s6),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UiSegmented<bool>(
+              key: const ValueKey<String>('intake-sensitivity'),
+              // The name the select rung offers the options under, on a
+              // column too narrow for the track (11 section 3.3). The track
+              // itself never draws it; the line below the control does.
+              label: 'Sensitivity',
+              value: sensitive,
+              onChanged: onSensitivityChanged,
+              segments: const <UiSegment<bool>>[
+                UiSegment<bool>(
+                  value: true,
+                  label: 'Sensitive',
+                  icon: UiIcons.locked,
+                ),
+                UiSegment<bool>(
+                  value: false,
+                  label: 'Not sensitive',
+                  icon: UiIcons.unlocked,
                 ),
               ],
             ),
-            if (!cameraAvailable) ...<Widget>[
-              SizedBox(height: context.space.space3),
-              Text(
-                'Camera capture runs in the Android and iOS apps. Here, '
-                'choose a file.',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-            SizedBox(height: context.space.space6),
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<bool>(
-                key: const ValueKey<String>('intake-sensitivity'),
-                segments: const <ButtonSegment<bool>>[
-                  ButtonSegment<bool>(
-                    value: true,
-                    label: Text('Sensitive'),
-                    icon: Icon(Symbols.lock),
-                  ),
-                  ButtonSegment<bool>(
-                    value: false,
-                    label: Text('Not sensitive'),
-                    icon: Icon(Symbols.lock_open),
-                  ),
-                ],
-                selected: <bool>{sensitive},
-                showSelectedIcon: false,
-                onSelectionChanged: onSensitivityChanged == null
-                    ? null
-                    : (Set<bool> selection) =>
-                          onSensitivityChanged!(selection.first),
-              ),
+          ),
+          SizedBox(height: ui.space.s2),
+          Text(
+            'Applies to photographs you add next.',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+          SizedBox(height: ui.space.s4),
+          const CaveatText(
+            label: 'Sensitivity cannot be changed after an upload starts.',
+            why:
+                'Choose Not sensitive only if these photographs and their '
+                'labels are suitable for ordinary collection access. A '
+                'photograph already sent keeps the classification its '
+                'upload was created with.',
+          ),
+          SizedBox(height: ui.space.s4),
+          const CaveatText(
+            label:
+                'HEIC, TIFF and DNG may not preview on this device. You can '
+                'still upload them.',
+            why:
+                'Previews depend on this device. The server verifies the '
+                'bytes, format and dimensions of the file when the upload '
+                'completes. If the server cannot decode it, your upload is '
+                'kept so you can retry.',
+          ),
+          SizedBox(height: ui.space.s4),
+          Semantics(
+            header: true,
+            child: Text(
+              checklistTitle,
+              style: ui.type.label.copyWith(color: ui.color.inkSecondary),
             ),
-            SizedBox(height: context.space.space2),
-            Text(
-              'Applies to photographs you add next.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const CaveatText(
-              label: 'Sensitivity cannot be changed after an upload starts.',
-              why:
-                  'Choose Not sensitive only if these photographs and their '
-                  'labels are suitable for ordinary collection access. A '
-                  'photograph already sent keeps the classification its '
-                  'upload was created with.',
-            ),
-            SizedBox(height: context.space.space4),
-            const CaveatText(
-              label:
-                  'HEIC, TIFF and DNG may not preview on this device. You can '
-                  'still upload them.',
-              why:
-                  'Previews depend on this device. The server verifies the '
-                  'bytes, format and dimensions of the file when the upload '
-                  'completes. If the server cannot decode it, your upload is '
-                  'kept so you can retry.',
-            ),
-            SizedBox(height: context.space.space4),
-            Text(
-              'Before you upload, check:',
-              style: theme.textTheme.titleSmall,
-            ),
-            SizedBox(height: context.space.space2),
-            for (final String check in preUploadChecklist)
-              Padding(
-                padding: EdgeInsets.only(bottom: context.space.space1),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Icon(
-                      Symbols.check_box_outline_blank,
-                      size: context.sizes.iconInline,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    SizedBox(width: context.space.space2),
-                    Expanded(child: Text(check)),
-                  ],
-                ),
-              ),
-            CheckboxListTile(
+          ),
+          for (final String check in preUploadChecklist)
+            _ChecklistItem(check: check),
+          SizedBox(height: ui.space.s2),
+          // One confirmation for the whole batch, not one per line: a tick
+          // that authorises a batch has to be a single deliberate act
+          // (heuristics audit, H5.3).
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UiCheckbox(
               key: const ValueKey<String>('intake-confirm'),
-              contentPadding: EdgeInsets.zero,
+              label: batchConfirmationLabel,
               value: confirmed,
-              onChanged: onConfirmedChanged == null
-                  ? null
-                  : (bool? value) => onConfirmedChanged!(value ?? false),
-              title: const Text(batchConfirmationLabel),
-              subtitle: Text(
-                'Clears whenever you add a photograph.',
-                style: theme.textTheme.bodySmall,
-              ),
+              onChanged: onConfirmedChanged,
             ),
-            SizedBox(height: context.space.space3),
-            FilledButton.icon(
+          ),
+          SizedBox(height: ui.space.s1),
+          Text(
+            confirmationHelp,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+          SizedBox(height: ui.space.s4),
+          UiButtonRow(
+            // The label is the present participle while a batch is in
+            // flight and the control is disabled, which is what 02 section
+            // 4.3 asks for. The measured progress is on the manifest, where
+            // the denominator is.
+            primary: UiButton(
               key: const ValueKey<String>('intake-upload'),
+              label: uploadLabel(uploading: uploading, pending: pendingCount),
+              leading: UiIcons.cloudUpload,
               onPressed: onUpload,
-              icon: const Icon(Symbols.cloud_upload),
-              label: Text(
-                uploadLabel(uploading: uploading, pending: pendingCount),
-              ),
-              style: FilledButton.styleFrom(
-                minimumSize: Size(
-                  context.sizes.targetMin,
-                  context.sizes.targetMin,
-                ),
-              ),
             ),
-            SizedBox(height: context.space.space2),
-            Text(
-              'The server runs its own checks.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
+          ),
+          SizedBox(height: ui.space.s2),
+          Text(
+            'The server runs its own checks.',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// One line of the pre-upload checklist.
+///
+/// A row rather than a control: the five checks are what an operator looks
+/// at, and the one thing on this card that can be ticked is the batch
+/// confirmation below them. The row publishes its own words and none of
+/// `UiListRow`'s press semantics, because there is nothing here to press.
+class _ChecklistItem extends StatelessWidget {
+  const _ChecklistItem({required this.check});
+
+  final String check;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    label: check,
+    excludeSemantics: true,
+    child: UiListRow(
+      size: UiSize.sm,
+      title: check,
+      leading: UiIcon(
+        UiIcons.unselected,
+        size: UiIconSize.inline,
+        color: context.ui.color.inkSecondary,
+      ),
+    ),
+  );
 }

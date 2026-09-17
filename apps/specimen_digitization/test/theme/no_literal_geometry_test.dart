@@ -46,9 +46,12 @@ const String modelsPrefix = 'lib/src/models';
 
 /// Per-file counts on 2026-09-16, when the gate was written. Shrink only.
 ///
-/// Twenty six numbers over nine files. Wave 3 burns them down file by file: a
-/// file that reaches zero comes out of the map, and a file that gains a number
-/// fails the gate.
+/// Twenty six numbers over nine files when the gate was written. Wave 3 burns
+/// them down file by file: a file that reaches zero comes out of the map, and
+/// a file that gains a number fails the gate. Slot E5 cleared
+/// `capture_quality.dart`, whose two were a preview box height and a padding;
+/// the box is now the thumbnail's own aspect ratio and the padding is the
+/// disclosure's.
 ///
 /// Ten of the twenty six are elapsed time rather than motion, and they are all
 /// of `api_repository.dart`, `workspace.dart` and `magic_link.dart`: seven
@@ -58,7 +61,6 @@ const String modelsPrefix = 'lib/src/models';
 /// sixteen are paddings, widths and heights that have a token already.
 const Map<String, int> geometryBacklog = <String, int>{
   'lib/src/api_repository.dart': 7,
-  'lib/src/capture_quality.dart': 2,
   'lib/src/magic_link.dart': 1,
   'lib/src/reading_alignment.dart': 2,
   'lib/src/reading_declarations.dart': 2,

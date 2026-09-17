@@ -4,8 +4,9 @@
 // only happens under `tester.runAsync`. Every test needs the same "press the
 // button, wait for the decode to finish" dance, so it lives here once.
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// The file picker button.
 final Finder chooseFilesButton = find.byKey(
@@ -35,11 +36,11 @@ final Finder sensitivityControl = find.byKey(
 
 /// True when the button [finder] names is pressable.
 bool buttonEnabled(WidgetTester tester, Finder finder) =>
-    tester.widget<ButtonStyleButton>(finder).onPressed != null;
+    tester.widget<UiButton>(finder).onPressed != null;
 
 /// True when the per-batch confirmation is ticked.
 bool batchConfirmed(WidgetTester tester) =>
-    tester.widget<CheckboxListTile>(confirmCheckbox).value ?? false;
+    tester.widget<UiCheckbox>(confirmCheckbox).value ?? false;
 
 /// Picks one of the two sensitivity segments by its visible word.
 ///

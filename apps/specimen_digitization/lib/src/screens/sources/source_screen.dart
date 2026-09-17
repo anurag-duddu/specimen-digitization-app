@@ -18,13 +18,12 @@
 /// words that nothing is run and nothing is spent.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
 import '../../selection.dart';
 import '../../sources.dart';
-import '../../theme/icons.dart';
 import '../../widgets/source_import_sheet.dart';
 import '../../widgets/source_object_row.dart';
 import '../../widgets/widgets.dart';
@@ -32,6 +31,12 @@ import 'source_controller.dart';
 
 /// How many rows stand in for the first page while it loads.
 const int sourceSkeletonRows = 6;
+
+/// What the recaptured-snapshot band's dismiss control is called.
+///
+/// A band's dismiss draws a glyph rather than a word, so the name it
+/// publishes is the only handle a reviewer or a test has on it.
+const String sourceRefreshedDismissLabel = 'Dismiss this notice';
 
 /// What a long press does on a narrow window, in this screen's noun.
 ///
@@ -70,8 +75,17 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     identify: (SourceObject object) => object.objectName,
   );
   final ScrollController _scroll = ScrollController();
+
+  /// A context inside the toast layer.
+  ///
+  /// `UiToasts.show` walks up from the context it is given, and this pane's
+  /// own context is above the layer it installs, so a toast raised from here
+  /// would find no host at all.
+  final GlobalKey _toastScope = GlobalKey(debugLabel: 'Source toast scope');
+
   bool _adding = false;
   int _added = 0;
+  int _addingTotal = 0;
 
   @override
   void initState() {
@@ -157,6 +171,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     setState(() {
       _adding = true;
       _added = 0;
+      _addingTotal = chosen.length;
     });
     final SourceImportProgress progress = await controller.importSelection(
       chosen,
@@ -172,13 +187,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     await controller.load();
     if (!mounted) return;
     if (progress.complete && progress.unchanged.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${photographsLabel(progress.imported)} added to the queue',
-          ),
-        ),
-      );
+      _toast('${photographsLabel(progress.imported)} added to the queue');
       return;
     }
     // Anything less than whole is something the reviewer has to act on, so it
@@ -186,25 +195,36 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     await showSourceImportOutcome(context, progress: progress);
   }
 
+  /// Raises [message] on the nearest toast layer.
+  void _toast(String message) {
+    final BuildContext? scope = _toastScope.currentContext;
+    if (scope == null) return;
+    UiToasts.show(scope, message: message, icon: UiIcons.cleared);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _ToastLayer(
+    child: KeyedSubtree(key: _toastScope, child: _pane(context)),
+  );
+
+  Widget _pane(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final SourceBrowseController controller = widget.controller;
-    final ThemeData theme = Theme.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Padding(
-          padding: EdgeInsets.fromLTRB(
-            context.space.space4,
-            context.space.space4,
-            context.space.space4,
-            context.space.space2,
+          padding: EdgeInsetsDirectional.fromSTEB(
+            ui.space.s4,
+            ui.space.s4,
+            ui.space.s4,
+            ui.space.s2,
           ),
           child: _Header(controller: controller, source: widget.source),
         ),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: context.space.space4),
+          padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
           child: _Controls(
             controller: controller,
             selection: _selection,
@@ -213,15 +233,31 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
         ),
         if (controller.refreshed)
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              context.space.space4,
-              context.space.space2,
-              context.space.space4,
-              0,
+            padding: EdgeInsetsDirectional.only(
+              top: ui.space.s2,
+              bottom: ui.space.s0,
             ),
             child: _RefreshedNotice(onDismiss: controller.acknowledgeRefresh),
           ),
-        Expanded(child: _body(context, controller, theme)),
+        // The import has a denominator, so its progress is drawn rather than
+        // described (02 section 4.8). It is one bar for one gesture, however
+        // many requests the server's bound takes.
+        MotionReveal(
+          visible: _adding,
+          child: Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              ui.space.s4,
+              ui.space.s2,
+              ui.space.s4,
+              ui.space.s0,
+            ),
+            child: UiProgress.bar(
+              value: _addingTotal == 0 ? null : _added / _addingTotal,
+              semanticsLabel: _addingLabel(),
+            ),
+          ),
+        ),
+        Expanded(child: _body(context, controller)),
         MotionReveal(
           visible: _selection.isNotEmpty,
           child: SelectionBar(
@@ -238,8 +274,8 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
               (
                 label: _adding
                     ? 'Adding ${photographsLabel(_added)}'
-                    : 'Add to queue',
-                icon: Symbols.library_add,
+                    : addToQueueLabel,
+                icon: UiIcons.addToBatch.defaultGlyph,
                 onPressed: _addSelection,
               ),
             ],
@@ -249,27 +285,33 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     );
   }
 
+  /// What the import bar reads as, counted rather than a bare percentage
+  /// (02 section 4.8).
+  String _addingLabel() =>
+      'Adding ${photographsLabel(_added)} of ${photographsLabel(_addingTotal)}';
+
   /// The sentence under a select all that stopped at the loaded page, in this
   /// screen's noun.
   static const String _moreMatchLabel =
       'More photographs match this filter. Load more to select them.';
 
-  Widget _body(
-    BuildContext context,
-    SourceBrowseController controller,
-    ThemeData theme,
-  ) {
+  /// What the selection bar's one action is called.
+  static const String addToQueueLabel = 'Add to queue';
+
+  Widget _body(BuildContext context, SourceBrowseController controller) {
+    final UiThemeData ui = context.ui;
     final ApiFailure? failure = controller.error;
     if (failure != null && controller.items.isEmpty) {
       return _Failure(failure: failure, onRetry: controller.load);
     }
     if (controller.loading && controller.items.isEmpty) {
       return ListView(
-        padding: EdgeInsets.all(context.space.space4),
+        padding: EdgeInsetsDirectional.all(ui.space.s4),
         children: <Widget>[
+          const LoadingAnnouncement(thing: 'this source'),
           for (int row = 0; row < sourceSkeletonRows; row++)
             Padding(
-              padding: EdgeInsets.only(bottom: context.space.space2),
+              padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
               child: const SkeletonRow(),
             ),
         ],
@@ -277,7 +319,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     }
     if (controller.loaded && controller.items.isEmpty) {
       return EmptyState(
-        icon: Symbols.inventory_2,
+        icon: UiIcons.noResults.defaultGlyph,
         title: controller.filter == SourceFilter.all
             ? 'No photographs here'
             : 'No photographs match',
@@ -297,7 +339,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
 
     return ListView.builder(
       controller: _scroll,
-      padding: EdgeInsets.all(context.space.space4),
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
       // One extra row carries the paging footer.
       itemCount: items.length + 1,
       itemBuilder: (BuildContext context, int index) {
@@ -313,7 +355,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
         );
         return Padding(
           key: ValueKey<String>('source-row-${object.objectName}'),
-          padding: EdgeInsets.symmetric(vertical: context.space.space1),
+          padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s1),
           child: SelectableRow(
             selected: _selection.isSelected(object),
             label: object.displayName,
@@ -332,6 +374,22 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
       },
     );
   }
+}
+
+/// Installs a toast layer only where there is not one already.
+///
+/// `UiScaffold` hosts the layer for a page built on it, which is what the
+/// shell gives this pane in the application. A component test that pumps the
+/// pane on its own has no frame above it, and a result nobody can read is
+/// worse than one drawn in a bare host.
+class _ToastLayer extends StatelessWidget {
+  const _ToastLayer({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      UiToastHost.maybeOf(context) == null ? UiToastHost(child: child) : child;
 }
 
 /// The source's name and what its snapshot holds.
@@ -357,20 +415,26 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(source.displayName, style: theme.textTheme.headlineSmall),
-        SizedBox(height: context.space.space1),
         Semantics(
+          container: true,
+          header: true,
+          child: Text(
+            source.displayName,
+            style: ui.type.headline.copyWith(color: ui.color.ink),
+          ),
+        ),
+        SizedBox(height: ui.space.s1),
+        Semantics(
+          container: true,
           liveRegion: true,
           child: Text(
             summary(),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
           ),
         ),
       ],
@@ -390,26 +454,28 @@ class _Controls extends StatelessWidget {
   final PagedSelection<SourceObject> selection;
   final Future<void> Function() onSelectAll;
 
+  /// The name the filter's options are offered under on a column too narrow
+  /// for the track (11 section 3.3).
+  static const String filterLabel = 'Photographs';
+
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final int? reach = controller.reachableCount;
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: context.space.space3,
-      runSpacing: context.space.space2,
+      spacing: ui.space.s3,
+      runSpacing: ui.space.s2,
       children: <Widget>[
-        SegmentedButton<SourceFilter>(
-          segments: <ButtonSegment<SourceFilter>>[
+        UiSegmented<SourceFilter>(
+          label: filterLabel,
+          value: controller.filter,
+          onChanged: (SourceFilter chosen) =>
+              controller.applyFilter(filter: chosen),
+          segments: <UiSegment<SourceFilter>>[
             for (final SourceFilter filter in SourceFilter.values)
-              ButtonSegment<SourceFilter>(
-                value: filter,
-                label: Text(filter.label),
-              ),
+              UiSegment<SourceFilter>(value: filter, label: filter.label),
           ],
-          selected: <SourceFilter>{controller.filter},
-          showSelectedIcon: false,
-          onSelectionChanged: (Set<SourceFilter> chosen) =>
-              controller.applyFilter(filter: chosen.first),
         ),
         // Offered only where the reach can be named. Under the in-queue
         // filters the server does not count the snapshot, because that would
@@ -417,13 +483,11 @@ class _Controls extends StatelessWidget {
         // there is no honest number to put on the control and it is absent
         // rather than vague.
         if (reach != null && reach > 0 && !selection.allLoadedSelected)
-          TextButton.icon(
+          UiButton(
+            label: 'Select all ${groupedCount(reach)}',
+            variant: UiButtonVariant.ghost,
+            leading: UiIcons.selectAll,
             onPressed: controller.loading ? null : onSelectAll,
-            icon: const Icon(Symbols.select_all),
-            // The noun is left off: the budget for a button label is 24
-            // characters and "Select all 1000 photographs" is past it. The
-            // list above the control is already photographs.
-            label: Text('Select all ${groupedCount(reach)}'),
           ),
       ],
     );
@@ -436,21 +500,31 @@ class _Footer extends StatelessWidget {
 
   final SourceBrowseController controller;
 
+  /// What the control that asks for the next page is called.
+  static const String loadMoreLabel = 'Load more';
+
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     if (controller.loadingMore) {
       return Padding(
-        padding: EdgeInsets.all(context.space.space4),
-        child: const Center(child: CircularProgressIndicator()),
+        padding: EdgeInsetsDirectional.all(ui.space.s4),
+        child: const Center(
+          child: UiProgress.ring(
+            semanticsLabel: 'Loading more photographs',
+            size: UiProgressSize.medium,
+          ),
+        ),
       );
     }
     if (!controller.moreToLoad) return const SizedBox.shrink();
     return Padding(
-      padding: EdgeInsets.all(context.space.space4),
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
       child: Center(
-        child: TextButton(
+        child: UiButton(
+          label: loadMoreLabel,
+          variant: UiButtonVariant.ghost,
           onPressed: controller.loadMore,
-          child: const Text('Load more'),
         ),
       ),
     );
@@ -469,24 +543,11 @@ class _RefreshedNotice extends StatelessWidget {
       'This source was listed again, so the photographs start from the top.';
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(context.shape.radiusSm),
-      child: Padding(
-        padding: EdgeInsets.all(context.space.space3),
-        child: Row(
-          children: <Widget>[
-            Icon(Symbols.info, color: theme.colorScheme.onSurfaceVariant),
-            SizedBox(width: context.space.space3),
-            Expanded(child: Text(body, style: theme.textTheme.bodySmall)),
-            TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UiBanner(
+    message: body,
+    dismissLabel: sourceRefreshedDismissLabel,
+    onDismiss: onDismiss,
+  );
 }
 
 /// A listing that did not answer.
@@ -507,7 +568,9 @@ class _Failure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => EmptyState(
-    icon: Symbols.inventory_2,
+    icon: failure.status == 403
+        ? UiIcons.locked.defaultGlyph
+        : UiIcons.syncProblem.defaultGlyph,
     title: failure.status == 403 ? 'Source not available' : 'Source not loaded',
     body: failure.status == 403 ? denied : failure.message,
     actionLabel: failure.status == 403 ? null : 'Retry',

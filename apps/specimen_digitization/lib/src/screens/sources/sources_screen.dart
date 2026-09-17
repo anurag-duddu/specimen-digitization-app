@@ -1,5 +1,4 @@
-/// The registered sources a collection may add from (screen blueprints,
-/// section 13).
+/// The registered sources a collection may add from (07 section 13).
 ///
 /// A source is configuration, not a resource: no endpoint creates one, and a
 /// reviewer chooses within a source rather than naming a bucket. So this is a
@@ -8,12 +7,11 @@
 /// same answer as a runtime configured with no sources at all.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
 import '../../sources.dart';
-import '../../theme/icons.dart';
 import '../../widgets/source_object_row.dart';
 import '../../widgets/widgets.dart';
 
@@ -59,10 +57,11 @@ class _SourcesScreenState extends State<SourcesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final ApiFailure? failure = _error;
     if (failure != null) {
       return EmptyState(
-        icon: Symbols.inventory_2,
+        icon: UiIcons.syncProblem.defaultGlyph,
         title: 'Sources not loaded',
         body: failure.message,
         actionLabel: 'Retry',
@@ -75,19 +74,26 @@ class _SourcesScreenState extends State<SourcesScreen> {
     final List<RegisteredSource>? sources = _sources;
     if (sources == null) {
       return Padding(
-        padding: EdgeInsets.all(context.space.space4),
-        child: const SkeletonRow(),
+        padding: EdgeInsetsDirectional.all(ui.space.s4),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            LoadingAnnouncement(thing: 'the registered sources'),
+            SkeletonRow(),
+          ],
+        ),
       );
     }
     if (sources.isEmpty) {
-      return const EmptyState(
-        icon: Symbols.inventory_2,
+      return EmptyState(
+        icon: UiIcons.source.defaultGlyph,
         title: 'No sources registered',
         body: SourcesScreenCopy.noneBody,
       );
     }
     return ListView(
-      padding: EdgeInsets.all(context.space.space4),
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
       children: <Widget>[
         for (final RegisteredSource source in sources)
           _SourceTile(source: source, onOpen: () => widget.onOpen(source)),
@@ -114,13 +120,14 @@ abstract final class SourcesScreenCopy {
   static const String notListed = 'Not listed yet';
 }
 
+/// One registered source, as a row.
 class _SourceTile extends StatelessWidget {
   const _SourceTile({required this.source, required this.onOpen});
 
   final RegisteredSource source;
   final VoidCallback onOpen;
 
-  /// What the tile says under the name.
+  /// What the row says under the name.
   String get summary {
     final SourceInventory? inventory = source.inventory;
     return inventory == null
@@ -130,66 +137,18 @@ class _SourceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: context.space.space2),
-      child: MergeSemantics(
-        child: Semantics(
-          button: true,
-          label: '${source.displayName}, $summary',
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: onOpen,
-              borderRadius: BorderRadius.circular(context.shape.radiusSm),
-              child: ExcludeSemantics(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: context.sizes.targetMin,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.all(context.space.space3),
-                    child: Row(
-                      children: <Widget>[
-                        Icon(
-                          Symbols.folder,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        SizedBox(width: context.space.space3),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                source.displayName,
-                                style: context.mono.identifier,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: context.space.space1),
-                              Text(
-                                summary,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Symbols.chevron_right,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+    final UiThemeData ui = context.ui;
+    return UiListRow(
+      title: source.displayName,
+      subtitle: summary,
+      semanticsLabel: '${source.displayName}, $summary',
+      leading: const UiIcon(UiIcons.source),
+      trailing: UiIcon(
+        UiIcons.next,
+        size: UiIconSize.inline,
+        color: ui.color.inkTertiary,
       ),
+      onPressed: onOpen,
     );
   }
 }

@@ -1,11 +1,14 @@
 // The intake item: measurements, a state chip, a reason, a way out.
 
+// `material.dart` here is the harness, not the component: `productThemes` is
+// a map of `ThemeData`, which is the carrier `MaterialApp` still expects.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/widgets/status_chip.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 Widget _item({
@@ -105,24 +108,24 @@ void main() {
   ) async {
     int removed = 0;
     await pumpComponent(tester, _item(onRemove: () => removed++));
-    await tester.tap(find.byTooltip(UploadItem.removeLabel));
+    await tester.tap(uiIconButton(UploadItem.removeLabel));
     await tester.pumpAndSettle();
     expect(removed, 1);
 
     // No callback and no reason: no control at all.
     await pumpComponent(tester, _item());
-    expect(find.byType(IconButton), findsNothing);
+    expect(find.byType(UiIconButton), findsNothing);
 
     // A reason: the control is there, disabled, and names the reason.
     await pumpComponent(
       tester,
       _item(removeBlockedReason: 'The server has taken this file.'),
     );
-    final IconButton button = tester.widget<IconButton>(
-      find.byType(IconButton),
+    final UiIconButton button = tester.widget<UiIconButton>(
+      find.byType(UiIconButton),
     );
     expect(button.onPressed, isNull);
-    expect(button.tooltip, contains('The server has taken this file.'));
+    expect(button.disabledReason, 'The server has taken this file.');
   });
 
   testWidgets('the duplicate state uses the agreed words', (
@@ -137,7 +140,12 @@ void main() {
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpComponent(tester, _item(state: UploadState.accepted));
-    expect(find.bySemanticsLabel('Upload: accepted'), findsOneWidget);
+    // The row is one merged node, so the state is a clause in the row's own
+    // phrase rather than a second stop for a reader working through a batch.
+    expect(
+      find.bySemanticsLabel(RegExp('IMG_4821.jpg, Upload: accepted, 4.2 MB')),
+      findsOneWidget,
+    );
     handle.dispose();
   });
 

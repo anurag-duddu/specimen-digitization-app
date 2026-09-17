@@ -43,12 +43,9 @@ const Set<String> packageMaterialFiles = <String>{
 /// Files that still import `material.dart`. Shrink only.
 ///
 /// Wave 2, slot E1 removed the shell, the entry screens and the D1 patterns
-/// from it.
+/// from it. Wave 3, slot E5 removed intake, the sources screens and the D6
+/// patterns.
 const List<String> importBacklog = <String>[
-  'lib/src/screens/intake/capture_card.dart',
-  'lib/src/screens/intake/manifest_panel.dart',
-  'lib/src/screens/sources/source_screen.dart',
-  'lib/src/screens/sources/sources_screen.dart',
   'lib/src/screens/workbench/decision_bar.dart',
   'lib/src/screens/workbench/evidence_picker.dart',
   'lib/src/screens/workbench/fields_panel.dart',
@@ -65,9 +62,6 @@ const List<String> importBacklog = <String>[
   'lib/src/widgets/reason_sheet.dart',
   'lib/src/widgets/region_overlay.dart',
   'lib/src/widgets/risk_meter.dart',
-  'lib/src/widgets/source_import_sheet.dart',
-  'lib/src/widgets/source_object_row.dart',
-  'lib/src/widgets/upload_item.dart',
 ];
 
 final RegExp _materialImport = RegExp(
