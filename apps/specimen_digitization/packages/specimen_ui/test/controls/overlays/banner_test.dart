@@ -3,7 +3,6 @@
 import 'dart:ui' show Tristate;
 
 import 'package:flutter/rendering.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -382,13 +381,13 @@ void main() {
       await tester.pumpWidget(
         uiHarness(
           size: const Size(390, 844),
-          child: SizedBox(
+          child: const SizedBox(
             width: 390,
             child: UiBanner.strip(
               message: _message,
               detail: _detail,
               sheetTitle: 'About this build',
-              contact: const Text('Ask the collection administrator'),
+              contact: Text('Ask the collection administrator'),
             ),
           ),
         ),
@@ -435,7 +434,7 @@ void main() {
       await tester.pumpWidget(
         uiHarness(
           size: const Size(390, 844),
-          child: SizedBox(
+          child: const SizedBox(
             width: 390,
             child: UiBandForm(
               form: UiBannerForm.strip,

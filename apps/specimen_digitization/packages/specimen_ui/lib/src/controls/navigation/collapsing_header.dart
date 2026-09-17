@@ -244,6 +244,10 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
         : lerpDouble(maxChrome, minChrome, progress)!;
 
     return Column(
+      // Stretched, because the thing under review is the width of the window:
+      // a `Column` centres its children by default, and a photograph on its
+      // matte then sits as wide as whatever it happens to contain.
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         // The thing under review takes whatever the band leaves, and is
         // clipped rather than allowed to paint over the evidence below it.

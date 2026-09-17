@@ -162,12 +162,15 @@ class UiDecisionBar extends StatelessWidget {
     final bool edges = edgesAt(context);
     final UiButton? second = secondary;
 
+    final double fixed = _fixedWidth(context, paint, edges: edges);
     final double intrinsic =
-        _fixedWidth(context, paint, edges: edges) +
+        fixed +
         (second == null
             ? 0
             : _buttonWidth(context, ui, second.label, UiButtonVariant.ghost) +
                   paint.gap);
+    final double overflowed =
+        fixed + (second == null ? 0 : UiDensity.hitBox + paint.gap);
 
     return SizedBox(
       height: paint.height,
@@ -181,11 +184,18 @@ class UiDecisionBar extends StatelessWidget {
           // The secondary decision moves into the bar's own menu rather than
           // being dropped or squeezed: it is a decision, and a decision that
           // is unreachable at a phone width is a decision the product does
-          // not offer on a phone.
+          // not offer on a phone. Below even that the primary is allowed to
+          // ellipsise, which is the last resort 11 section 3.3 gives every
+          // control and the only thing left to give.
           FitVariant(
-            intrinsicWidth: 0,
-            builder: (BuildContext context, bool _) =>
-                _row(context, paint, edges: edges, overflowed: second != null),
+            intrinsicWidth: overflowed,
+            builder: (BuildContext context, bool lastResort) => _row(
+              context,
+              paint,
+              edges: edges,
+              overflowed: second != null,
+              squeeze: lastResort,
+            ),
           ),
         ],
       ),
@@ -229,6 +239,7 @@ class UiDecisionBar extends StatelessWidget {
     UiDecisionBarStyle paint, {
     required bool edges,
     required bool overflowed,
+    bool squeeze = false,
   }) {
     final UiButton? second = secondary;
     final String? shown = count;
@@ -273,7 +284,7 @@ class UiDecisionBar extends StatelessWidget {
           ),
           SizedBox(width: paint.gap),
         ],
-        primary,
+        if (squeeze) Flexible(child: primary) else primary,
         if (edges) ...<Widget>[
           SizedBox(width: paint.gap),
           UiIconButton(

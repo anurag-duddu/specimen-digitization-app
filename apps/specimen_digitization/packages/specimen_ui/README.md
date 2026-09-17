@@ -137,14 +137,19 @@ shows on a screen. Narrow the window below 600 dp and the page list becomes a
 select above the content: the shell chooses its arrangement by window class,
 like any other scaffold in the system.
 
-Twelve pages: six foundation, five families, and Fit, which draws every
+Thirteen pages: six foundation, five families, Fit, which draws every
 control of the fit table in
-[11 section 3.3](../../design/11-fit-and-scale.md) at 200, 280, 360 and 480 dp.
+[11 section 3.3](../../design/11-fit-and-scale.md) at 200, 280, 360 and 480 dp,
+and Composition, which draws the record screen of
+[13 section 4.1](../../design/13-screen-composition.md) whole, at rest and
+scrolled, beside the patterns it is built from.
 Two golden sets answer two different questions. A family golden is the taste
 review, one page at one comfortable window. The matrix under
 `test/gallery/goldens/matrix/` is the fit review: every page at the four
 window classes by three text scales by two modes, which is where a label that
 wraps at a phone width or a control that clips at 200 percent text shows up.
+The Composition page takes a third set of its own, at 390, 768 and 1180 dp,
+because an arrangement is only evidence at more than one width.
 
 ## Adding a component
 

@@ -276,21 +276,47 @@ class UiStatusStrip extends StatelessWidget {
     constraints: BoxConstraints(minHeight: paint.minHeight),
     child: Row(
       children: <Widget>[
-        if (disposition != null) ...<Widget>[
-          disposition!,
-          SizedBox(width: paint.gap),
-        ],
-        // The facts take the line the summary leaves, so a short run sits
-        // next to the disposition and the summary stays at the end.
-        if (facts.isEmpty)
-          const Spacer()
-        else
-          Expanded(
-            child: UiLabel(
-              facts.join(UiStatusStripStyle.factSeparator),
-              style: paint.fact.copyWith(color: paint.factColor),
+        // The disposition and the facts are one group that takes the line
+        // the summary leaves. Inside it the disposition keeps its own width
+        // while there is one to keep, because where the record stands is the
+        // first thing on the strip worth reading, and the facts take what is
+        // left and ellipsise.
+        //
+        // The bound is measured rather than declared. A `Row` hands an
+        // inflexible child an unbounded main axis, so a chip at 200 percent
+        // text lays out at its intrinsic width and pushes the line over; and
+        // a flexible one is given an even share whether it needs it or not,
+        // which ellipsises the disposition at widths where it would have
+        // fitted whole. The group reads the width it was given and bounds the
+        // slot to it, which is the same answer `UiListRow` reached for a
+        // trailing it cannot measure. The gap rides with the facts, so a line
+        // with no room for them spends nothing on the space they would have
+        // sat in.
+        Expanded(
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints group) => Row(
+              children: <Widget>[
+                if (disposition != null)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: group.maxWidth),
+                    child: disposition,
+                  ),
+                if (facts.isNotEmpty)
+                  Flexible(
+                    child: Padding(
+                      padding: EdgeInsetsDirectional.only(
+                        start: disposition == null ? 0 : paint.gap,
+                      ),
+                      child: UiLabel(
+                        facts.join(UiStatusStripStyle.factSeparator),
+                        style: paint.fact.copyWith(color: paint.factColor),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
+        ),
         if (summary != null) ...<Widget>[SizedBox(width: paint.gap), summary],
       ],
     ),
