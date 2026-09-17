@@ -16,7 +16,7 @@
 // and the bar separately, because the brief for wave 0 names `ScaffoldMessenger`
 // as its own term in the regex. The five sites were in `queue_screen.dart`,
 // `source_screen.dart`, `evidence_drawer.dart` and `workbench.dart` (twice);
-// the queue's is now a `UiToast`.
+// the queue's is now a `UiToast`. Every one of the 208 is gone.
 
 import 'dart:io';
 
@@ -79,17 +79,16 @@ final RegExp _constructors = RegExp(
 
 /// Per-file counts at the start of the refactor. Shrink only.
 ///
-/// `lib/src/theme/` is out of scope: it is the adapter layer this wave
-/// rewrote, and it configures the Material widgets the screens still use.
+/// Empty since the cleanup slot, which took the last entry: the transparent
+/// `Scaffold` in `app_router.dart` that stood over the collection subtree
+/// while its screens still needed a `Material` ancestor and a messenger. The
+/// gate now allows nothing, so any of the 42 widgets above, anywhere under
+/// `lib/`, fails it.
 ///
-/// Wave 2, slot E1: the shell, the entry screens and the D1 patterns are off
-/// the list. `app_router.dart` keeps one, the transparent `Scaffold` that
-/// stands in for the shell's own until the screens that raise a snackbar or
-/// build a Material component move in wave 3.
-///
-const Map<String, int> componentBacklog = <String, int>{
-  'lib/src/app/app_router.dart': 1,
-};
+/// `lib/src/theme/` was out of scope while it was the adapter layer that
+/// configured those widgets. It is scanned now: the six adapter files are
+/// gone and the bridge that is left builds no component at all.
+const Map<String, int> componentBacklog = <String, int>{};
 
 /// Counts the retired widgets in [source], ignoring line comments so a
 /// comment naming a widget does not read as a use of it.
@@ -106,7 +105,6 @@ Map<String, int> measure() {
   final Map<String, int> found = <String, int>{};
   for (final FileSystemEntity entity in root.listSync(recursive: true)) {
     if (entity is! File || !entity.path.endsWith('.dart')) continue;
-    if (entity.path.startsWith('lib/src/theme/')) continue;
     final int count = countIn(entity.readAsStringSync());
     if (count > 0) found[entity.path] = count;
   }
