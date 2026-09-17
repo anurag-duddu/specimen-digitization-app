@@ -7823,8 +7823,9 @@ rerun against the tree that carries them, with the same results.
   five the coordinator relayed from the intake and source pane slots while
   this slot was running. The two `TODO(fe/polish-2)` markers left under
   `lib/` are retargeted rather than left stale, because both ask for a control
-  the design system has no entry for. Fifteen commits; 24 Dart files and 108
-  package goldens. Package tests 670 before, 684 now.
+  the design system has no entry for. Sixteen commits, 123 files: 27 Dart
+  files, 92 package goldens and four documents. Package tests 670 before, 684
+  now.
 - Commits (nine, oldest first):
   - `600ec4b` `fix(primitives): a disabled control tells a pointer why, and is never hovered`
   - `476e5df` `fix(data): the row's tone follows its state, and its trailing has a line of its own`
@@ -7848,18 +7849,18 @@ rerun against the tree that carries them, with the same results.
   |---|---|---|
   | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved, package still 0.2.0 with 0.3.0 open |
   | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
-  | `flutter test` (package) | 0 | 684 passed, 0 failed, the 108 regenerated goldens included |
+  | `flutter test` (package) | 0 | 684 passed, 0 failed, the 92 regenerated goldens included |
   | `flutter analyze --fatal-infos` (app) | 0 | no issues |
   | `flutter test` (app) | 1 | 1021 passed, 9 skipped, 48 failed. All 48 are the workbench screen goldens the work sky moves, which the wave policy reserves for the integrator. Zero failures outside `test/golden/`, zero fixtures. |
   | `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
-  | `pre-commit run --files` (130 files) | 0 | 13 hooks passed, 4 had no file of that kind |
-  | `dart format --set-exit-if-changed` (24 files) | 0 | 0 changed |
+  | `pre-commit run --files` (123 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+  | `dart format --set-exit-if-changed` (27 files) | 0 | 0 changed |
 
 - Goldens and fixtures:
-  - Committed: **92 package goldens**, 20 family and 72 matrix. Family: the
-    four `data`, the four `actions`, the eight `overlays` (including the sheet
-    and dialog windows) and the four `foundation-type`. Matrix: 24 `type`, 24
-    `overlays`, 20 `data` and 4 `actions`. Every one was read before it was
+  - Committed: **92 package goldens**, 20 family and 72 matrix. Family: four
+    `data`, four `actions`, eight `overlays` (including the sheet and dialog
+    windows) and four `foundation-type`. Matrix: 24 `type`, 24 `overlays`,
+    20 `data` and 4 `actions`. Every one was read before it was
     committed, and each moved region was measured with an image difference
     rather than judged by eye alone: `foundation-type` (244, 153) to
     (1100, 804), the display specimen's copy at every role; `actions`
