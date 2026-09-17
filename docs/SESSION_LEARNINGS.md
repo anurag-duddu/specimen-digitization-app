@@ -10453,3 +10453,287 @@ chrome budget shows up as a line that has to change rather than as a pass.
     `setBandCompact`, each taking an `owner`, and `release(owner)` in
     `dispose`. `UiScaffold.navVisible` is the caller's own answer and what the
     page asks for wins over it.
+
+## 2026-09-17: Front-end refactor wave A, slot A3, the shell and the list screens
+
+- **Task.** 13 sections 2.3, 4.2, 4.4, 4.5 and 4.6: compose the shell's chrome
+  by route and rebuild the queue, intake, sources, one source, sign in, help
+  and setup as one scroll each, on the patterns slot A1 landed. Branch
+  `fe/compose-shell`, cut from `front-end-composition` at c90c3af, worktree
+  `.claude/worktrees/fe-compose-shell`. Pull request #65 is the wave's.
+- **Outcome.** Done. Every composition backlog line that named one of this
+  slot's screens is gone from `test/composition/`, and the two the gates
+  measure that cannot go are recorded with what they now measure.
+
+### What changed
+
+- **The shell by route** (`lib/src/app/shell.dart`). `AppShell` is stateful
+  and publishes `ShellChrome`, the hook a routed screen names the bar
+  through. The frame now decides four things from the location: the sky (as
+  before), whether the navigation is drawn, what the bar carries, and which
+  form the environment band takes.
+  - Inside a record the bar is back, the record's own identifier in
+    `mono.identifier`, and refresh, which is 13 section 4.1's list. The
+    identifier is in the `center` slot rather than `title`, because the
+    centre takes a widget and a title takes a string, so the role 13 asks for
+    is drawable without leaving the bar's fit ladder for a slot that cannot
+    ellipsise.
+  - The collection switcher is not shown inside a record.
+  - The pill hides inside a record, and only the pill: a rail and a sidebar
+    are columns beside the body, they spend width rather than viewport
+    height, and a desktop with its sidebar taken away has no navigation at
+    all. Hiding the sidebar was tried first and moved three dark mode
+    contrast cells off their recorded instrument artefacts, which is how it
+    was caught.
+  - Pressing a destination the reviewer is already inside now returns to that
+    destination's root. It used to do nothing, which left the sources list
+    with no way back but the system gesture: half of finding V2-4.
+  - At compact the bar draws its scrolled fill solid on `ground` and is
+    passed `scrolledUnder: false`, which is the wave A amendment to 13
+    section 2.2 read the way the gate measures it, and `UiStickyBar`'s own
+    precedent for a region that is solid rather than frosted.
+- **The band** is `UiBanner.strip` at compact, through `UiBandForm` around the
+  shell's one banner call site and around the entry screens' band in
+  `app_router.dart`, which also marks itself `PinnedChrome(band)` and now
+  draws for a production build carrying a pilot stamp (`showsBand` rather
+  than `showsFor`). `shell.dart` passes the open collection's
+  `AdministratorContact.of(controller.scope).sentence` to it, as slot B3's
+  `EnvironmentBanner` asked.
+- **The queue** (`screens/queue/queue_screen.dart`) is one `CustomScrollView`
+  whose rows are a lazy `SliverList.builder`. Header: "Queue" with the count
+  as a numeral in `display.medium` and its unit in `unit`, the breakdown
+  under it, the freshness line last; the whole sentence stays on the live
+  region. Search and the filter control are one row. The six dispositions are
+  in the filter sheet at compact and a row of chips from medium up, with the
+  chosen one on a removable chip so a filter is never invisible once the
+  sheet closes. The bulk bar is published into the scaffold's action bar.
+- **Intake** (`intake.dart`, `screens/intake/*`) is one `CustomScrollView` of
+  sections with an `s6` gap: the batch header, the capture card, the
+  manifest, the checks. The capture card lost the checks, the upload action
+  and the two caveats; `IntakeChecks` is new and carries the caveats, the
+  checklist, the confirmation and the upload action where there is no frame
+  to hold it. The upload action goes in the frame's action bar while there is
+  a batch to send. `IntakeManifest.nested` is now `scrollable`, and it is a
+  column rather than a shrink wrapped list wherever its caller scrolls it.
+- **Sources** (`screens/sources/sources_screen.dart`) gains the heading, the
+  count and the way back to uploading that finding V2-4 asked for, and is one
+  scroll with a lazy row list. **One source** (`source_screen.dart`) is one
+  `CustomScrollView`, and its selection's decision is a `UiDecisionBar` in the
+  action bar: primary "Add to queue", secondary "Clear selection", the count
+  as the bar's label. The select all and the sentence about how far it reached
+  are in the controls row above the list, where the control that reaches is.
+- **The import sheet** (`widgets/source_import_sheet.dart`) draws a column,
+  because the modal frame that opens it already scrolls what it is given.
+- **Help** (`app/help_screen.dart`) puts its list in an `Expanded` instead of
+  shrink wrapping it into a `Flexible`.
+- **`SelectionBar` gained `pane`** (default true). False is what the queue
+  passes now that the scaffold's action bar is the pane; a pane inside a pane
+  is the depth 13 section 2.2 counts.
+
+### Validation
+
+Run one gate at a time, `LANG`/`LC_ALL` exported, from the worktree.
+
+| Gate | Result |
+|---|---|
+| `specimen_ui`: `flutter analyze --fatal-infos` | rc 0, no issues |
+| `specimen_ui`: `flutter test` | rc 0, 742 passed |
+| app: `flutter analyze --fatal-infos` | rc 0, no issues |
+| app: `flutter test` | rc 1: 1428 passed, 7 skipped, 126 failed. 118 are size class golden images and 4 are semantics fixtures, both of which the integrator regenerates; the other 4 are the `record@*` chrome budget cells, below |
+| `scripts/ci/check_ui_strings.py` | rc 0, 200 files, 0 violations |
+| `pre-commit run --files <21 changed files>` | rc 0 |
+
+**The composition gates.** `flutter test test/composition` is rc 1 with four
+failures, all `chrome_budget` `record@*`, and none of them this slot's. They
+are the harness undercount the integrator described: `composition_harness.dart`
+on this branch reads only `PinnedChrome` markers the moment one is mounted
+anywhere, and `UiScaffold` mounts markers, so the record's own unmarked
+decision bar is not counted and the cell measures 0.144 against a backlog line
+of 0.540. The integrator's union harness on `front-end-composition` at 870b3d3
+counts a marker **or** a fallback widget, which restores those four cells. No
+region this slot pins is unmarked: the band, the top bar and the navigation
+are inside the scaffold's own markers, and nothing else here pins.
+`composition_harness.dart` was not edited.
+
+**Backlog lines before and after** (`test/composition/`):
+
+| Gate, backlog | Before | After |
+|---|---|---|
+| `nestedScrollBacklog` | `intake@compact`, `import-sheet@` all four windows, `region-editor@expanded`, `region-editor@large` | `region-editor@expanded`, `region-editor@large` (slot A2) |
+| `shrinkWrapBacklog` | `help_screen.dart` 1, `manifest_panel.dart` 2 | empty |
+| `glassCountBacklog` | `setup@compact` 2, `queue@compact` 2, `intake@compact` 2, `source@compact` 2, `import-sheet@compact` 3, `record@compact` 4, `record@medium` 3 | `import-sheet@compact` 2, `record@compact` 3, `record@medium` 3 |
+| `surfaceDepthBacklog` | `record@compact` 2 | unchanged (slot A2) |
+| `aboveTheFoldBacklog` | `record@compact`, `intake@compact`, `queue@compact` | `record@compact` (slot A2) |
+| `chromeBudgetBacklog` | four `record@` cells | unchanged (slot A2) |
+| `pinnedRepetitionBacklog`, `backRowBacklog` | empty, three `record@` cells | unchanged (slot A2) |
+
+`record@compact` moved from four frosted panes to three because the shell
+stopped spending one on the top bar at compact. The line was moved to what it
+measures, in slot A2's half of the map, because the gate fails a line that
+over-states a debt.
+
+**Numbers the changes are built on**, measured at 390 by 844 through the
+composition harness, in light and dark at 1.0, 1.3 and 2.0:
+
+- Pinned chrome at compact: 172 dp at 1.0 and 185.75 at 2.0 (top bar 56 or
+  69.75, band 52, pill 64), against the 236.3 the budget allows. The band was
+  92 dp at 2.0 before the strip.
+- The queue's first row started at 763 of 844 at 2.0 and now starts at 398;
+  the second at 1020 and now at 656.
+- The queue built 1000 of 1000 rows for a page of a thousand and now builds 5
+  at the phone and 6 at the tablet. `eagerQueueRows` in
+  `test/live_shapes_test.dart` moved from 1000 to 6.
+- Intake's capture card laid out 818 dp tall at 2.0 with the caveats in it.
+
+**Goldens and fixtures.** Regenerated once to inspect, then reverted with
+`git checkout -- test/golden/images test/accessibility/fixtures`. 102 screen
+goldens moved, 16 are new (the `source-selection` cells this slot added: four
+windows by two modes by two text scales), and four semantics fixtures moved:
+`queue.txt` (the header's numeral, the search field's hint, and the sliver
+order of a `CustomScrollView`, which is child order rather than the traversal
+order a screen reader is sent) and the three workbench fixtures (the record's
+top bar). The integrator regenerates all of them.
+
+### Decisions recorded
+
+- **The queue's search row does not stick, and 13 section 4.2 asks it to.**
+  13 section 2.3 is the clause that decides: at 390 by 844 and 200 percent
+  text the queue already pins 185.75 dp of the 236.3 the budget allows, and a
+  row holding a text control is 69.75 dp of the 50.6 that leaves. Section 2.3
+  says a screen over the budget gives a region up rather than shrinking one
+  below its density height, and the row a reviewer uses once is the one to
+  give up. Measured at every window: only medium has the headroom (108 dp at
+  2.0), and expanded has 34.3. Recorded rather than worked around. In a
+  production build, where there is no band, the row would fit at compact.
+- **Intake's checks are under the manifest, and 13 section 4.4 lists them
+  over it.** 13 section 2.5 asks for the manifest's first row inside the first
+  viewport. At 200 percent text the chrome takes 122 dp and leaves 722: the
+  batch header is 137 of it and the capture card 320, so the manifest starts
+  at 643 with the checks after it and at 964 with the checks before it. The
+  order also reads better: the confirmation that releases a batch sits next
+  to the control that sends it.
+- **The account menu is not on the record's bar below large.** 13 section 4.1
+  gives that bar three things. It is also the only arrangement that does not
+  open a menu off the window, because `Popover` anchors a pane's start to its
+  trigger's start and flips only vertically: a trigger hard against the end of
+  a bar takes its pane with it. Measured at 800 by 600 in a record: the
+  trigger at 736 to 784, the menu's first item at 788 to 1036 of an 800 dp
+  window. `widget_test.dart` now leaves the record before signing out.
+- **The dispositions are in the filter sheet at compact.** Six chips that wrap
+  are 216 dp at 2.0 above a list whose first row has to be visible, and 13
+  section 4.2 gives the queue at compact a header, a search row and the rows.
+  Two controls that both filter the queue are also two regions doing one job
+  (13 section 2.4). From medium up they stay a row of chips, so
+  `request_budget_test.dart` and the semantics fixtures, both taken above
+  compact, are unchanged.
+- **The queue's search help line became the field's placeholder.** "Exact
+  match. Use Filters for anything else." wrapped to three lines at 200 percent
+  text; the filter control now sits beside the field and says the second half
+  better than a sentence does. The field's semantics hint is
+  "Specimen ID, exact match".
+- **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+  asked for a different model's line; the session's own attribution
+  instruction is the one followed, as slots F2 and A1 recorded before.
+
+### Durable learnings
+
+- **A screen under a pushed route keeps publishing to the frame.** The sources
+  list and one source are routes under intake, so intake stays mounted beneath
+  them and its action bar followed the reviewer into both: the chrome budget
+  read 31.4 percent on `sources@compact` for a bar that belonged to a screen
+  nobody was looking at. `ModalRoute.of(context)` depends on the scope that
+  carries `isCurrent`, so a screen that reads it is rebuilt when a route is
+  pushed over it or popped back off, and that is the cheap way to publish only
+  while you are the route on top. The queue, intake and one source all do it.
+- **Publish to `UiScaffoldSlots` on change, never per build.** The slot
+  notifies the frame, the frame rebuilds its body, and a publish from `build`
+  is a loop that `pumpAndSettle` never finishes. Two shapes work: cache one
+  widget instance and publish it when a flag flips, which is what the queue
+  and one source do; or compare a record of what the bar says and publish only
+  when it differs, which is what intake does because its bar's words change
+  with the batch.
+- **`find.byType` skips offstage widgets by default.** A hidden navigation is
+  `Offstage` rather than absent, so `find.byType(UiPillNav)` finds nothing
+  when it is hidden and an `ancestor` check built on it silently reports the
+  opposite. `skipOffstage: false` is the difference between "the pill is
+  gone" and "the pill is hidden", and only the second is what 13 asks for.
+- **A `CustomScrollView` reports its slivers to semantics in reverse.**
+  `RenderViewport.childrenInPaintOrder` runs from the last sliver back, so a
+  dumped semantics tree shows the rows before the header. The platform is sent
+  the traversal order, which is geometric, so this is a fixture diff rather
+  than a change to what a screen reader hears; a dump that walks
+  `SemanticsNode.visitChildren` is walking child order.
+- **A component test pumps a screen with no frame.** Every screen that moved
+  its decision into the action bar keeps drawing it in the page when
+  `UiScaffoldSlots.of(context)` is null, which is what a `pumpComponent` host
+  and the intake harness have. Without that the seven source screen tests and
+  the intake harness lose the control they press.
+- **`pumpAndSettle` never finishes on the queue.** The header ages its
+  freshness line once a second for as long as there is an answer to age. Use
+  single pumps, and a pump with a duration where a `MotionReveal` has to
+  finish before the thing it reveals is on stage.
+- **Closing a `TestSession` twice hangs the test for its whole ten minutes.**
+  `addTearDown` already closes it; an explicit `await session.controller.close()`
+  after that reads as a timeout with no message worth anything.
+
+### Failed approaches
+
+- Hiding the navigation inside a record at every window class. It takes the
+  sidebar away on a desktop and moved three `dark_mode_windows_test` cells off
+  their recorded guideline artefacts, which is what caught it.
+- Putting the record's identifier in `UiTopBar.title`. The slot cannot draw
+  `mono.identifier` there, and the bar with no centre slot puts its last
+  action against the window's edge, which is where `Popover` opens a menu off
+  screen.
+- `UiDecisionBar` for intake's single upload action. A bar carrying only a
+  primary has no second arrangement to fall back to, and "Upload 0
+  photographs" with its glyph overflowed a 390 dp window by 4.9 dp at 200
+  percent text. `UiButtonRow`, which is 11 section 3.4's arrangement for a row
+  of actions, stacks and ellipsises instead.
+- Keeping the placeholders and the rows in one `AnimatedSwitcher`. A lazy
+  sliver list and a cross fade between two box children are not compatible,
+  and the rows are the defect that mattered. The queue's first answer now
+  replaces the placeholders rather than cross fading into them; motion catalog
+  row 13 wanted opacity and reduced motion already allowed the instant swap.
+
+### Follow-ups
+
+- `Popover` flips only on the vertical axis (10 section 3). A trigger at the
+  end of a bar opens its pane off the window: measured at 800 by 600, a pane
+  736 to 1052. `UiTopBar`'s own overflow menu is the same control in the same
+  place, so this reaches any bar whose actions collapse.
+- `UiDecisionBar` declares no last resort for a bar carrying only a primary.
+- `UiScaffoldSlots` carries the action bar, the navigation and the band's
+  form; it does not carry the bar's title or leading. `ShellChrome` in
+  `shell.dart` is this application's hook for those two, written clause for
+  clause like the package's and marked `fe/polish-3`. The package growing
+  `setTitle` and `setLeading` retires it.
+- `glass_count` on `import-sheet@compact` cannot reach 1 from a screen: the
+  modal's pane over the navigation's is two, and 13 section 2.2 exempts a
+  sheet in prose while the gate counts every `GlassSurface` on the window.
+  The clause and the instrument are for the integrator to reconcile.
+- Intake with a batch in flight pins 31.4 percent at 200 percent text on a
+  phone, because the action bar is 80 dp on top of the 185.75 the frame
+  already pins. The gate's fixture has no batch, so no cell records it. 13
+  section 4.4 asks for both the action bar and the pill.
+- `specimen_ui` has no sliver cross fade, which is what a list that swaps one
+  result set for another wants (motion catalog rows 13, 24 and 28).
+
+### What slot A2 and wave G need from this slot
+
+- `ShellChrome.of(context)` with `setTitle(String?, {owner})`,
+  `setLeading(Widget?, {owner})` and `release(owner)`, published by `AppShell`
+  through `ShellChromeScope`. Null outside the collection shell. What a screen
+  publishes wins over what the route derived; the shell derives the record's
+  identifier and its back action when nothing is published, so a record that
+  publishes nothing is already correct.
+- `AppShell.recordIn(Uri)` and `AppShell.insideRecord(Uri)`, which are the one
+  reading of "inside a record" the sky, the pill and the bar all use.
+- `AppShell.backLabel` is the bar's back action's name.
+- `SelectionBar(pane: false)` for a bar that sits in the scaffold's action bar.
+- `IntakeChecks`, `intakeTitle`, `intakePurpose` and `intakeUploadLabel` in
+  `screens/intake/capture_card.dart`; `IntakeManifest.scrollable` replaces
+  `nested`.
+- `SearchFilters.show(..., dispositions:, dispositionLabel:, disposition:,
+  onDisposition:)`, which is how a screen that does not draw its own
+  disposition control hands it to the sheet and gets it back.
