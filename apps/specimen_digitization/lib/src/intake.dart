@@ -15,20 +15,18 @@ import 'dart:ui' as ui;
 import 'package:crypto/crypto.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'capture/capture_camera.dart';
 import 'capture/capture_screen.dart';
 import 'capture_quality.dart';
-import 'layout/window_class.dart';
 import 'models.dart';
 import 'screens/intake/capture_card.dart';
 import 'screens/intake/manifest_entry.dart';
 import 'screens/intake/manifest_panel.dart';
-import 'theme/icons.dart';
 import 'theme/motion.dart';
 import 'vocabulary.dart';
 import 'widgets/motion_reveal.dart';
@@ -56,6 +54,9 @@ const int intakeMaximumSide = 20000;
 ///
 /// Verb first, three words, inside the 24 character button budget.
 const String intakeBrowseSourcesLabel = 'Add from storage';
+
+/// What the message band's dismiss control is called.
+const String dismissMessageLabel = 'Dismiss this message';
 
 class IntakeScreen extends StatefulWidget {
   const IntakeScreen({
@@ -632,98 +633,73 @@ class _IntakeScreenState extends State<IntakeScreen> {
   int get _pendingCount =>
       _entries.where((ManifestEntry e) => e.sendable).length;
 
-  Widget _errorCard(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: context.space.space4),
-      child: Card(
-        color: theme.colorScheme.errorContainer,
-        child: Padding(
-          padding: EdgeInsets.all(context.space.space4),
-          child: Semantics(
-            liveRegion: true,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Icon(
-                  Symbols.error,
-                  size: context.sizes.iconAction,
-                  color: theme.colorScheme.onErrorContainer,
+  /// The one message slot on this screen.
+  ///
+  /// A band rather than a card: it reports a condition of the device or the
+  /// last attempt, which is operational rather than evidentiary, and it names
+  /// what to do next in the same sentence (02 section 4.9).
+  Widget _errorBand(BuildContext context) => UiBanner(
+    message: _error!,
+    tone: UiBannerTone.blocked,
+    dismissLabel: dismissMessageLabel,
+    onDismiss: () => setState(() => _error = null),
+  );
+
+  Widget _captureColumn(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        // Height and opacity, no shake and no colour pulse: the control below
+        // is already the retry (motion catalog, row 69).
+        MotionReveal(
+          visible: _error != null,
+          child: _error == null
+              ? const SizedBox(width: double.infinity)
+              : Padding(
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
+                  child: _errorBand(context),
                 ),
-                SizedBox(width: context.space.space3),
-                Expanded(
-                  child: Text(
-                    _error!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => setState(() => _error = null),
-                  icon: const Icon(Symbols.close),
-                  iconSize: context.sizes.iconAction,
-                  tooltip: 'Dismiss this message',
-                  color: theme.colorScheme.onErrorContainer,
-                  constraints: BoxConstraints(
-                    minWidth: context.sizes.targetMin,
-                    minHeight: context.sizes.targetMin,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
-      ),
+        IntakeCaptureCard(
+          sensitive: _newSensitive,
+          onSensitivityChanged: _busy
+              ? null
+              : (bool value) => setState(() => _newSensitive = value),
+          onChooseFiles: _busy ? null : _chooseFiles,
+          onTakePhotograph: _busy ? null : _takePhotograph,
+          cameraAvailable: _cameraAvailable,
+          confirmed: _qualityConfirmed,
+          onConfirmedChanged: _busy
+              ? null
+              : (bool value) => setState(() => _qualityConfirmed = value),
+          onUpload: _busy || !_qualityConfirmed || _pendingCount == 0
+              ? null
+              : _send,
+          uploading: _busy,
+          pendingCount: _pendingCount,
+        ),
+        if (widget.onBrowseSources != null) ...<Widget>[
+          SizedBox(height: ui.space.s4),
+          _sourcesEntry(context),
+        ],
+      ],
     );
   }
-
-  Widget _captureColumn(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    mainAxisSize: MainAxisSize.min,
-    children: <Widget>[
-      // Height and opacity, no shake and no colour pulse: the button below
-      // is already the retry (motion catalog, row 69).
-      MotionReveal(
-        visible: _error != null,
-        child: _error == null
-            ? const SizedBox(width: double.infinity)
-            : _errorCard(context),
-      ),
-      IntakeCaptureCard(
-        sensitive: _newSensitive,
-        onSensitivityChanged: _busy
-            ? null
-            : (bool value) => setState(() => _newSensitive = value),
-        onChooseFiles: _busy ? null : _chooseFiles,
-        onTakePhotograph: _busy ? null : _takePhotograph,
-        cameraAvailable: _cameraAvailable,
-        confirmed: _qualityConfirmed,
-        onConfirmedChanged: _busy
-            ? null
-            : (bool value) => setState(() => _qualityConfirmed = value),
-        onUpload: _busy || !_qualityConfirmed || _pendingCount == 0
-            ? null
-            : _send,
-        uploading: _busy,
-        pendingCount: _pendingCount,
-      ),
-      if (widget.onBrowseSources != null) ...<Widget>[
-        SizedBox(height: context.space.space4),
-        _sourcesEntry(context),
-      ],
-    ],
-  );
 
   /// The way to the photographs the collection already holds.
   ///
   /// Under the capture card rather than beside it: uploading is still the
   /// ordinary path, and this is the one for a collection whose photographs
   /// are already in storage.
-  Widget _sourcesEntry(BuildContext context) => OutlinedButton.icon(
-    onPressed: _busy ? null : widget.onBrowseSources,
-    icon: const Icon(Symbols.inventory_2),
-    label: const Text(intakeBrowseSourcesLabel),
+  Widget _sourcesEntry(BuildContext context) => UiButtonRow(
+    primary: UiButton(
+      label: intakeBrowseSourcesLabel,
+      variant: UiButtonVariant.secondary,
+      leading: UiIcons.sources,
+      onPressed: _busy ? null : widget.onBrowseSources,
+    ),
   );
 
   Widget _manifest(
@@ -743,15 +719,20 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final WindowClass window = WindowClass.of(context);
-    // One column below 600dp, two at 600dp and above (blueprint 5). The
-    // decision reads the window, never the platform.
-    if (window.isCompact) {
+    final UiThemeData ui = context.ui;
+    // Two declared arrangements, one per window class: a single column below
+    // 600 dp and two columns from 600 up, with the capture card fixed on the
+    // start edge so the control an operator presses repeatedly never scrolls
+    // away from the list it fills (05 section 3.4; 07 section 5). The window
+    // decides, never the platform.
+    final bool twoColumn =
+        const Adaptive<bool>(compact: false, medium: true).of(context) ?? false;
+    if (!twoColumn) {
       return ListView(
-        padding: EdgeInsets.all(context.space.space4),
+        padding: EdgeInsetsDirectional.all(ui.space.s4),
         children: <Widget>[
           _captureColumn(context),
-          SizedBox(height: context.space.space6),
+          SizedBox(height: ui.space.s6),
           _manifest(context, padding: EdgeInsets.zero, nested: true),
         ],
       );
@@ -763,11 +744,13 @@ class _IntakeScreenState extends State<IntakeScreen> {
           key: const ValueKey<String>('intake-capture-column'),
           width: intakeCaptureColumnWidth,
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(context.space.space6),
+            padding: EdgeInsetsDirectional.all(ui.space.s6),
             child: _captureColumn(context),
           ),
         ),
-        VerticalDivider(width: context.space.space0),
+        // Decorative separation between two panes, never a boundary
+        // (09 section 3.1).
+        const UiHairline.vertical(),
         Expanded(child: _manifest(context)),
       ],
     );

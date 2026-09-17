@@ -1,4 +1,4 @@
-/// The upload manifest (screen blueprints, section 5).
+/// The upload manifest (07 section 5).
 ///
 /// Every file the operator chose is a row, including the ones this client
 /// refused, so the manifest is the complete account PRD 9.1.5 asks for. A
@@ -6,17 +6,19 @@
 /// and H9.4), not a banner somewhere else on the screen.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'dart:async';
 
-import '../../capture_quality.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import '../../administrator_contact.dart';
+import '../../capture_quality.dart';
 import '../../models.dart';
 import '../../review_context.dart';
-import '../../theme/icons.dart';
-import '../../theme/motion.dart';
 import '../../vocabulary.dart';
 import '../../widgets/caveat_text.dart';
+import '../../widgets/empty_state.dart';
 import '../../widgets/evidence_drawer.dart';
 import '../../widgets/motion_reveal.dart';
 import '../../widgets/upload_item.dart';
@@ -61,6 +63,16 @@ class IntakeManifest extends StatefulWidget {
   /// compact layout. It then shrink wraps and leaves scrolling to its parent.
   final bool nested;
 
+  /// The pane's own title.
+  static const String title = 'Upload manifest';
+
+  /// What an empty manifest is called.
+  static const String emptyTitle = 'No photographs yet';
+
+  /// What would fill an empty manifest.
+  static const String emptyBody =
+      'Photographs appear here as you choose or take them.';
+
   @override
   State<IntakeManifest> createState() => _IntakeManifestState();
 }
@@ -83,7 +95,7 @@ class _IntakeManifestState extends State<IntakeManifest> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final List<ManifestEntry> entries = widget.entries;
     final bool hadCards = _drawn.isNotEmpty;
     final Set<String> arriving = <String>{
@@ -93,110 +105,28 @@ class _IntakeManifestState extends State<IntakeManifest> {
     _drawn.addAll(entries.map((ManifestEntry e) => e.digest));
 
     return ListView(
-      padding: widget.padding ?? EdgeInsets.all(context.space.space6),
+      padding: widget.padding ?? EdgeInsetsDirectional.all(ui.space.s6),
       shrinkWrap: widget.nested,
       primary: widget.nested ? false : null,
       physics: widget.nested ? const NeverScrollableScrollPhysics() : null,
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text('Upload manifest', style: theme.textTheme.titleLarge),
-                  SizedBox(height: context.space.space1),
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      batchProgressLine(entries),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (widget.busy)
-              OutlinedButton.icon(
-                key: const ValueKey<String>('intake-stop'),
-                onPressed: widget.stopping ? null : widget.onStop,
-                icon: const Icon(Symbols.stop_circle),
-                label: Text(widget.stopping ? 'Stopping' : 'Stop'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size(
-                    context.sizes.targetMin,
-                    context.sizes.targetMin,
-                  ),
-                ),
-              ),
-          ],
+        _ManifestHeader(
+          entries: entries,
+          busy: widget.busy,
+          stopping: widget.stopping,
+          onStop: widget.onStop,
         ),
-        // The one summary line the whole batch earns, arriving with height
-        // and opacity beside the one light impact (motion catalog, row 67).
-        MotionReveal(
-          visible: batchComplete(entries) && !widget.busy,
-          child: Padding(
-            padding: EdgeInsets.only(top: context.space.space2),
-            child: Semantics(
-              liveRegion: true,
-              child: Row(
-                children: <Widget>[
-                  Icon(
-                    Symbols.check_circle,
-                    size: context.sizes.iconInline,
-                    color: context.tokens.clearedContent,
-                  ),
-                  SizedBox(width: context.space.space2),
-                  Flexible(
-                    child: Text(
-                      batchCompleteLine(entries),
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        MotionReveal(
-          visible: widget.stopping,
-          child: Padding(
-            padding: EdgeInsets.only(top: context.space.space2),
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                'Stopping. The file already sending finishes first.',
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(height: context.space.space3),
-        const CaveatText(
-          label: 'After a restart, select the same files again to resume.',
-          why:
-              'Checksums match your files to the uploads already on the '
-              'server. Records that were accepted are not created twice.',
-        ),
-        SizedBox(height: context.space.space4),
+        SizedBox(height: ui.space.s4),
         if (entries.isEmpty)
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: context.space.space8),
-            child: Text(
-              'Nothing here yet. Photographs appear as you add them.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+          EmptyState(
+            icon: UiIcons.intake.defaultGlyph,
+            title: IntakeManifest.emptyTitle,
+            body: IntakeManifest.emptyBody,
           ),
         for (final ManifestEntry entry in entries)
           Padding(
             key: ValueKey<String>('manifest-slot-${entry.digest}'),
-            padding: EdgeInsets.only(bottom: context.space.space4),
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
             // Fade and size, never a slide: the card did not come from
             // anywhere, the operator made it (motion catalog, row 62).
             child: _ArrivingCard(
@@ -209,6 +139,211 @@ class _IntakeManifestState extends State<IntakeManifest> {
                 onServerCheck: () => widget.onServerCheck(entry),
               ),
             ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The pane above the rows: what the batch is, how far it got, and the one
+/// way to stop it.
+class _ManifestHeader extends StatelessWidget {
+  const _ManifestHeader({
+    required this.entries,
+    required this.busy,
+    required this.stopping,
+    required this.onStop,
+  });
+
+  final List<ManifestEntry> entries;
+  final bool busy;
+  final bool stopping;
+  final VoidCallback? onStop;
+
+  /// What Stop does and what it does not, stated beside the control rather
+  /// than after it has been pressed (02 section 4.4).
+  static const String stopConsequence =
+      'Stop cancels the files that have not started. The file already '
+      'sending finishes first.';
+
+  /// What a reviewer is told once Stop has been pressed.
+  static const String stoppingLine =
+      'Stopping. The file already sending finishes first.';
+
+  int _count(UploadState state) =>
+      entries.where((ManifestEntry e) => e.state == state).length;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return Surface(
+      radius: ui.shape.tile,
+      padding: EdgeInsetsDirectional.all(ui.space.s6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Semantics(
+            header: true,
+            child: Text(
+              IntakeManifest.title,
+              style: ui.type.titleLarge.copyWith(color: ui.color.ink),
+            ),
+          ),
+          SizedBox(height: ui.space.s4),
+          // One node for the whole account: the three numerals are the
+          // headline and the sentence under them names every outcome the
+          // batch reached, including the ones with no tile of their own. A
+          // reader hears "8 of 12 accepted, 1 skipped" once when it changes
+          // rather than three tiles and then the sentence again.
+          Semantics(
+            container: true,
+            liveRegion: true,
+            label: batchProgressLine(entries),
+            excludeSemantics: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // A batch with nothing in it has nothing to count, and three
+                // zeroes over a sentence that says the same is the interface
+                // stating an absence three times.
+                if (entries.isNotEmpty) ...<Widget>[
+                  Wrap(
+                    spacing: ui.space.s6,
+                    runSpacing: ui.space.s4,
+                    children: <Widget>[
+                      _CountTile(
+                        label: 'Accepted',
+                        value: _count(UploadState.accepted),
+                        footer: 'of ${entries.length}',
+                      ),
+                      _CountTile(
+                        label: 'Already in collection',
+                        value: _count(UploadState.duplicate),
+                      ),
+                      _CountTile(
+                        label: 'Failed',
+                        value: _count(UploadState.failed),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: ui.space.s2),
+                ],
+                Text(
+                  batchProgressLine(entries),
+                  style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+                ),
+              ],
+            ),
+          ),
+          if (busy) ...<Widget>[
+            SizedBox(height: ui.space.s4),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              // The label is the present participle and the control is
+              // disabled, which is what 02 section 4.3 asks of a control in
+              // flight. No indeterminate ring: the batch's own progress is
+              // the determinate ring on the row that is sending.
+              child: UiButton(
+                key: const ValueKey<String>('intake-stop'),
+                label: stopping ? 'Stopping' : 'Stop',
+                variant: UiButtonVariant.danger,
+                leading: UiIcons.stop,
+                onPressed: stopping ? null : onStop,
+              ),
+            ),
+            SizedBox(height: ui.space.s2),
+            Semantics(
+              container: true,
+              liveRegion: true,
+              child: Text(
+                stopping
+                    ? _ManifestHeader.stoppingLine
+                    : _ManifestHeader.stopConsequence,
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+            ),
+          ],
+          // The one summary line the whole batch earns, arriving with height
+          // and opacity beside the one light impact (motion catalog, row 67).
+          MotionReveal(
+            visible: batchComplete(entries) && !busy,
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(top: ui.space.s4),
+              child: Semantics(
+                container: true,
+                liveRegion: true,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    UiIcon(
+                      UiIcons.cleared,
+                      size: UiIconSize.inline,
+                      color: ui.color.status.cleared.content,
+                    ),
+                    SizedBox(width: ui.space.s2),
+                    Flexible(
+                      child: Text(
+                        batchCompleteLine(entries),
+                        style: ui.type.body.copyWith(color: ui.color.ink),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: ui.space.s3),
+          const CaveatText(
+            label: 'After a restart, select the same files again to resume.',
+            why:
+                'Checksums match your files to the uploads already on the '
+                'server. Records that were accepted are not created twice.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One counted outcome in the manifest header.
+///
+// fe/polish-2: `UiDataTile` is the control this draws, and it cannot be used
+// here: it is a `GlassSurface`, which asserts in debug when it is built inside
+// a scrolling list, and three of them plus the shell's bar and navigation
+// would break the four pane budget of 09 section 3.3. The package needs a
+// tile that draws on a `Surface`, or a `UiTileGroup` that is one pane holding
+// several numerals.
+class _CountTile extends StatelessWidget {
+  const _CountTile({required this.label, required this.value, this.footer});
+
+  final String label;
+  final int value;
+  final String? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final String? under = footer;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          label,
+          style: ui.type.label.copyWith(color: ui.color.inkSecondary),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        Text(
+          '$value',
+          style: ui.type.displayMedium.copyWith(color: ui.color.ink),
+        ),
+        if (under != null)
+          Text(
+            under,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkTertiary),
           ),
       ],
     );
@@ -273,15 +408,17 @@ class IntakeManifestRow extends StatelessWidget {
       state == UploadState.interrupted ||
       state == UploadState.skipped;
 
+  /// What the server check control is called.
+  static const String serverCheckLabel = 'Send for server check';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final MotionTokens motion = MotionTokens.of(context);
+    final UiThemeData ui = context.ui;
     // A determinate value is information, so it keeps its motion and its
     // linear curve under reduced motion (motion, rows 65 and 2.5).
     final Widget item = TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: entry.progress, end: entry.progress),
-      duration: motion.meaningful(MotionTokens.standardRaw),
+      duration: ui.motion.meaningful(MotionTokens.standardRaw),
       curve: MotionTokens.progressCurve,
       builder: (BuildContext context, double value, Widget? _) => UploadItem(
         name: entry.label,
@@ -300,38 +437,30 @@ class IntakeManifestRow extends StatelessWidget {
         // The per-row action and the per-row evidence live inside the
         // component rather than in a column around it, so a manifest row is
         // one thing a reviewer learns once.
-        details: _details(context, theme),
+        details: _details(context, ui),
       ),
     );
 
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(context.space.space4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Semantics(liveRegion: announces(entry.state), child: item),
-            if (entry.why != null)
-              CaveatText(label: entry.reason ?? '', why: entry.why!),
-            Text(
-              entry.session != null
-                  ? 'Existing upload, classification unchanged'
-                  : entry.file?.sensitive == false
-                  ? 'Not sensitive'
-                  : 'Sensitive',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            SizedBox(height: context.space.space2),
-            SelectableText(
-              'Checksum (SHA-256) ${entry.digest}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+    return Surface(
+      radius: ui.shape.tile,
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Semantics(liveRegion: announces(entry.state), child: item),
+          if (entry.why != null)
+            CaveatText(label: entry.reason ?? '', why: entry.why!),
+          Text(
+            entry.session != null
+                ? 'Existing upload, classification unchanged'
+                : entry.file?.sensitive == false
+                ? 'Not sensitive'
+                : 'Sensitive',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+          SizedBox(height: ui.space.s2),
+          _ChecksumLine(digest: entry.digest),
+        ],
       ),
     );
   }
@@ -339,7 +468,7 @@ class IntakeManifestRow extends StatelessWidget {
   /// The local measurements, the server check result, and the two caveats
   /// that keep either from reading as a verdict. Rendered inside the
   /// component through its `details` slot.
-  Widget? _details(BuildContext context, ThemeData theme) {
+  Widget? _details(BuildContext context, UiThemeData ui) {
     if (entry.file == null) return null;
     final Json? preflight = entry.preflight;
     return Column(
@@ -347,7 +476,7 @@ class IntakeManifestRow extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         CaptureQualitySummary(quality: entry.quality),
-        SizedBox(height: context.space.space3),
+        SizedBox(height: ui.space.s3),
         const CaveatText(
           label: 'Focus, glare and label coverage are not measured.',
           why:
@@ -356,17 +485,12 @@ class IntakeManifestRow extends StatelessWidget {
               'yourself before you confirm this batch.',
         ),
         Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
+          alignment: AlignmentDirectional.centerStart,
+          child: UiButton(
+            label: entry.checking ? 'Checking' : serverCheckLabel,
+            variant: UiButtonVariant.secondary,
+            leading: UiIcons.sourceImport,
             onPressed: entry.checking || busy ? null : onServerCheck,
-            icon: const Icon(Symbols.cloud_sync),
-            label: Text(entry.checking ? 'Checking' : 'Send for server check'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: Size(
-                context.sizes.targetMin,
-                context.sizes.targetMin,
-              ),
-            ),
           ),
         ),
         const CaveatText(
@@ -378,21 +502,22 @@ class IntakeManifestRow extends StatelessWidget {
         ),
         if (entry.preflightError != null)
           Semantics(
+            container: true,
             liveRegion: true,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(
-                  Symbols.error,
-                  size: context.sizes.iconInline,
-                  color: theme.colorScheme.error,
+                UiIcon(
+                  UiIcons.error,
+                  size: UiIconSize.inline,
+                  color: ui.color.status.blocked.content,
                 ),
-                SizedBox(width: context.space.space2),
+                SizedBox(width: ui.space.s2),
                 Expanded(
                   child: Text(
                     entry.preflightError!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
+                    style: ui.type.body.copyWith(
+                      color: ui.color.status.blocked.content,
                     ),
                   ),
                 ),
@@ -401,7 +526,7 @@ class IntakeManifestRow extends StatelessWidget {
           ),
         if (preflight != null) ...<Widget>[
           if (objectOf(preflight['decode'])['reason'] ==
-              'memory_limit_unavailable')
+              'memory_limit_unavailable') ...<Widget>[
             const CaveatText(
               label:
                   'The server check is not available. Memory-limit '
@@ -411,24 +536,75 @@ class IntakeManifestRow extends StatelessWidget {
                   'image intake is checked separately and is '
                   'unaffected.',
             ),
-          if (objectOf(preflight['decode'])['reason'] ==
-              'memory_limit_unavailable')
             const AdministratorContactLine(),
+          ],
           Text(
             'Server check: '
             '${vocabularyLabel(textOf(preflight['status']))}. '
             'Check quality yourself as well.',
+            style: ui.type.body.copyWith(color: ui.color.ink),
           ),
           for (final dynamic issue
               in preflight['issues'] as List<dynamic>? ?? const <dynamic>[])
-            Text(vocabularyLabel(issue.toString())),
-          Text('Not measured: ${preflight['unmeasured'] ?? 'Not recorded'}'),
+            Text(
+              vocabularyLabel(issue.toString()),
+              style: ui.type.body.copyWith(color: ui.color.ink),
+            ),
+          Text(
+            'Not measured: ${preflight['unmeasured'] ?? 'Not recorded'}',
+            style: ui.type.body.copyWith(color: ui.color.ink),
+          ),
           EvidenceDrawer(
             title: 'Server codec support and check evidence',
             payload: preflight,
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The file's checksum, truncated with a copy control (02 section 4.14).
+///
+/// The v1 line was a `SelectableText`, which is a Material component and a
+/// drag a touch reviewer has to discover. The whole value goes to the
+/// clipboard; the line shows the first twelve characters, which is what the
+/// guideline asks of a checksum outside a details sheet.
+class _ChecksumLine extends StatelessWidget {
+  const _ChecksumLine({required this.digest});
+
+  final String digest;
+
+  /// How many characters of a checksum are shown.
+  static const int shown = 12;
+
+  /// What the copy control is called.
+  static const String copyLabel = 'Copy the checksum';
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final String head = digest.length <= shown
+        ? digest
+        : '${digest.substring(0, shown)}…';
+    return MergeSemantics(
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              'Checksum (SHA-256) $head',
+              style: ui.type.mono.digest.copyWith(color: ui.color.inkSecondary),
+            ),
+          ),
+          UiIconButton(
+            icon: UiIcons.copy,
+            semanticsLabel: copyLabel,
+            tooltip: copyLabel,
+            onPressed: () =>
+                unawaited(Clipboard.setData(ClipboardData(text: digest))),
+          ),
+        ],
+      ),
     );
   }
 }
