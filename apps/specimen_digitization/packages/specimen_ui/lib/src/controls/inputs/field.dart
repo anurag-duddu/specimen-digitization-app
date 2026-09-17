@@ -1,6 +1,8 @@
 /// The text field (10 section 4.2, `UiField`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -56,8 +58,11 @@ class UiInputStyle {
   /// The fill behind the text. It does not change on focus (10 section 4.2).
   final WidgetStateProperty<Color> fill;
 
-  /// The edge: `boundary`, `ink` at `stroke.emphasis` on focus,
-  /// `status.blocked.content` on error.
+  /// The one edge: `boundary` at `stroke.boundary`,
+  /// `status.blocked.content` on error, `disabled.outline` when disabled.
+  ///
+  /// Its width never changes. Focus is the ring and nothing else
+  /// (09 section 3.6, fit amendment).
   final WidgetStateProperty<BorderSide> side;
 
   /// The label above the field.
@@ -78,8 +83,9 @@ class UiInputStyle {
   /// The padding inside the edge.
   final EdgeInsetsDirectional padding;
 
-  /// The visual height of a single line field. The hit box is
-  /// [UiDensity.hitBox] in both densities.
+  /// The visual height of a single line field: the density's control height,
+  /// or the scaled line box plus its insets, whichever is taller
+  /// (11 section 2.2). The hit box is [UiDensity.hitBox] in both densities.
   final double minHeight;
 
   /// The corner radius, for the outline and the focus ring.
@@ -91,11 +97,14 @@ class UiInputStyle {
   /// The style for [shape] in [ui].
   ///
   /// [hasTrailing] shortens the end padding, because a trailing action brings
-  /// its own 48 dp hit box and that box becomes the end inset.
+  /// its own 48 dp hit box and that box becomes the end inset. [textScaler]
+  /// is the reviewer's text size, which the box's height derives from: a
+  /// height that holds text is never a constant (11 section 2.2).
   static UiInputStyle resolve(
     UiThemeData ui,
     UiFieldShape shape, {
     bool hasTrailing = false,
+    TextScaler textScaler = TextScaler.noScaling,
   }) {
     final bool capsule = shape == UiFieldShape.capsule;
 
@@ -104,21 +113,18 @@ class UiInputStyle {
         : ui.color.paper;
 
     BorderSide side(Set<WidgetState> states) {
-      final bool focused = states.contains(WidgetState.focused);
       final Color color;
       if (states.contains(WidgetState.disabled)) {
         color = ui.color.disabledOutline;
       } else if (states.contains(WidgetState.error)) {
         color = ui.color.status.blocked.content;
-      } else if (focused) {
-        color = ui.color.ink;
       } else {
         color = ui.color.boundary;
       }
-      return BorderSide(
-        color: color,
-        width: focused ? ui.shape.stroke.emphasis : ui.shape.stroke.boundary,
-      );
+      // One edge, and it never moves. A focused field used to thicken this to
+      // `stroke.emphasis` and then draw a ring around it as well, which read
+      // as two outlines and shifted the text inside by a pixel (11 section 0).
+      return BorderSide(color: color, width: ui.shape.stroke.boundary);
     }
 
     Color footerColor(Set<WidgetState> states) {
@@ -148,10 +154,28 @@ class UiInputStyle {
         start: start,
         end: hasTrailing ? ui.space.s1 : start,
       ),
-      minHeight: ui.density.controlHeight,
+      minHeight: _minHeight(ui, textScaler),
       radius: ui.shape.field,
       capsule: capsule,
     );
+  }
+
+  /// The box's height at the current text scale (11 section 2.2).
+  ///
+  /// `max(density height, scaled line box + 2 * inset)`, where the inset is
+  /// the one that reproduces the density height at scale 1.0. The box is
+  /// therefore unchanged at 1.0 and grows with the text above it, instead of
+  /// holding a constant height and clipping the glyphs inside.
+  static double _minHeight(UiThemeData ui, TextScaler textScaler) {
+    // fe/fit-foundation: replace the next three lines with
+    // UiTypeScale.lineHeightOf(ui.type.body, textScaler), which lands on
+    // foundation/type.dart in the sibling slot of this wave.
+    final TextStyle role = ui.type.body;
+    final double size = role.fontSize!;
+    final double multiplier = role.height ?? 1;
+    final double inset = (ui.density.controlHeight - size * multiplier) / 2;
+    final double scaled = textScaler.scale(size) * multiplier;
+    return math.max(ui.density.controlHeight, scaled + 2 * inset);
   }
 }
 
@@ -240,6 +264,7 @@ class UiFieldBox extends StatelessWidget {
     this.trailing,
     this.focusRing = false,
     this.multiline = false,
+    this.semantics,
   });
 
   /// The resolved tokens.
@@ -257,37 +282,56 @@ class UiFieldBox extends StatelessWidget {
   /// An action at the end. It is given its own 48 dp hit box.
   final Widget? trailing;
 
-  /// True to draw the keyboard focus ring. A control whose own `Pressable`
-  /// draws the ring leaves this false.
+  /// True to draw the focus ring, on the box's own shape.
+  ///
+  /// The caller decides, because the rule differs by control: a text editing
+  /// field rings for any focus, pointer or keyboard, and a select's trigger
+  /// rings for keyboard focus like every other control (09 section 3.6, fit
+  /// amendment).
   final bool focusRing;
 
   /// True when the box holds a paragraph rather than a line.
   final bool multiline;
 
+  /// Wraps the box and everything inside it, and never [trailing].
+  ///
+  /// This is where a control says how it is announced. A field folds its
+  /// editor into one node whose rect is this box, so the 48 dp hit box is
+  /// what a screen reader and a tap target guideline measure; the trailing
+  /// action stays outside that fold, because it is a second control with its
+  /// own words and its own 48 dp box.
+  final Widget Function(Widget box)? semantics;
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final Widget box = SizedBox(width: double.infinity, child: _box(ui));
+    Widget content = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
+      child: Align(
+        heightFactor: 1,
+        child: SizedBox(width: double.infinity, child: _box(ui)),
+      ),
+    );
+    // Wrapped here rather than around the whole control, so the node the
+    // caller publishes is the 48 dp hit box and the trailing action below is
+    // outside it.
+    content = semantics?.call(content) ?? content;
+    if (trailing == null) return content;
     // The trailing action is positioned rather than laid out in the row, so
     // it can be 48 dp tall inside a 40 dp field in pointer density: the 8 dp
     // the box pads its own hit box with is exactly the room it needs.
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
-      child: trailing == null
-          ? Align(heightFactor: 1, child: box)
-          : Stack(
-              alignment: AlignmentDirectional.center,
-              children: <Widget>[
-                box,
-                Positioned.directional(
-                  textDirection: Directionality.of(context),
-                  end: ui.space.s1,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(child: trailing),
-                ),
-              ],
-            ),
+    return Stack(
+      alignment: AlignmentDirectional.center,
+      children: <Widget>[
+        content,
+        Positioned.directional(
+          textDirection: Directionality.of(context),
+          end: ui.space.s1,
+          top: 0,
+          bottom: 0,
+          child: Center(child: trailing),
+        ),
+      ],
     );
   }
 
@@ -299,7 +343,11 @@ class UiFieldBox extends StatelessWidget {
     return FocusRing(
       visible: focusRing,
       radius: style.radius,
-      capsule: style.capsule,
+      // The ring takes the box's own shape, so the two run concentric at
+      // every corner instead of meeting and parting along one (11 section 4).
+      shape: style.capsule
+          ? FocusRingShape.stadium
+          : FocusRingShape.superellipse,
       child: DecoratedBox(
         decoration: ShapeDecoration(
           shape: shape,
@@ -343,10 +391,14 @@ class UiFieldBox extends StatelessWidget {
 /// A text field.
 ///
 /// The label sits above in `type.label`; the field is a `radius.field`
-/// superellipse of `paper` with a `boundary` edge that becomes `ink` at
-/// `stroke.emphasis` on focus and `status.blocked.content` on error; help or
-/// error text sits below in `body.small`. There is no floating label, no
-/// notch, and the fill does not change on focus.
+/// superellipse of `paper` with one `boundary` edge that turns
+/// `status.blocked.content` on error and never changes width; help or error
+/// text sits below in `body.small`. There is no floating label and no notch.
+///
+/// Focus is the ring and nothing else, drawn on the box's own shape, and a
+/// field shows it for any focus rather than for keyboard focus alone, because
+/// a focused field is being edited and a caret does not say which of several
+/// fields that is (09 section 3.6, fit amendment).
 ///
 /// Retires `TextField`, `TextFormField`, `InputDecoration` and
 /// `OutlineInputBorder` at call sites.
@@ -500,7 +552,6 @@ class _UiFieldState extends State<UiField> {
   TextEditingController? _internalController;
   FocusNode? _internalNode;
   bool _focused = false;
-  bool _keyboardFocus = false;
 
   TextEditingController get _controller =>
       widget.controller ?? (_internalController ??= TextEditingController());
@@ -512,9 +563,7 @@ class _UiFieldState extends State<UiField> {
     super.initState();
     _controller.addListener(_contentChanged);
     _node.addListener(_focusChanged);
-    FocusManager.instance.addHighlightModeListener(_highlightChanged);
     _focused = _node.hasFocus;
-    _keyboardFocus = _focused && _traditional;
   }
 
   @override
@@ -535,7 +584,6 @@ class _UiFieldState extends State<UiField> {
 
   @override
   void dispose() {
-    FocusManager.instance.removeHighlightModeListener(_highlightChanged);
     widget.controller?.removeListener(_contentChanged);
     widget.focusNode?.removeListener(_focusChanged);
     _internalController
@@ -547,15 +595,6 @@ class _UiFieldState extends State<UiField> {
     super.dispose();
   }
 
-  /// True while the reviewer is driving from the keyboard.
-  ///
-  /// The edge thickens for any focus, because a reviewer who clicked into a
-  /// field is owed the same "you are here" the keyboard gives. The ring is
-  /// drawn only under `FocusHighlightMode.traditional`, which is clause 4 of
-  /// the control contract.
-  bool get _traditional =>
-      FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
-
   void _contentChanged() {
     if (mounted) setState(() {});
   }
@@ -563,15 +602,9 @@ class _UiFieldState extends State<UiField> {
   void _focusChanged() {
     if (!mounted) return;
     final bool focused = _node.hasFocus;
-    final bool ring = focused && _traditional;
-    if (focused == _focused && ring == _keyboardFocus) return;
-    setState(() {
-      _focused = focused;
-      _keyboardFocus = ring;
-    });
+    if (focused == _focused) return;
+    setState(() => _focused = focused);
   }
-
-  void _highlightChanged(FocusHighlightMode mode) => _focusChanged();
 
   void _clear() {
     _controller.clear();
@@ -593,6 +626,7 @@ class _UiFieldState extends State<UiField> {
       ui,
       widget.shape,
       hasTrailing: trailing != null,
+      textScaler: MediaQuery.textScalerOf(context),
     );
     final Set<WidgetState> states = _states;
     final String? footer = widget.errorText ?? widget.helpText;
@@ -606,34 +640,41 @@ class _UiFieldState extends State<UiField> {
       counter: widget.maxLength == null
           ? null
           : '${_controller.text.characters.length} / ${widget.maxLength}',
-      child: Semantics(
-        container: true,
-        textField: true,
-        label: widget.semanticsLabel ?? widget.label,
-        value: _controller.text.isEmpty ? null : _controller.text,
-        hint: widget.enabled
-            ? (footer ?? widget.hintText)
-            : widget.disabledReason,
-        enabled: widget.enabled,
-        readOnly: widget.readOnly,
-        obscured: widget.obscureText,
-        child: _buildHitArea(style, states, trailing),
+      child: UiFieldBox(
+        style: style,
+        states: states,
+        leading: widget.leading,
+        trailing: trailing,
+        // Any focus, pointer or keyboard: a focused field is being edited.
+        focusRing: _focused,
+        multiline: widget.maxLines != 1,
+        semantics: (Widget box) => _announce(box, footer),
+        child: _buildCore(style),
       ),
     );
   }
 
-  Widget _buildHitArea(
-    UiInputStyle style,
-    Set<WidgetState> states,
-    Widget? trailing,
-  ) => UiFieldBox(
-    style: style,
-    states: states,
-    leading: widget.leading,
-    trailing: trailing,
-    focusRing: _keyboardFocus,
-    multiline: widget.maxLines != 1,
-    child: _buildCore(style),
+  /// One node for the whole field, whose rect is the 48 dp box.
+  ///
+  /// Wave 2 recorded the defect this closes: the editor published a node
+  /// 22 dp tall inside a 48 dp control, so the labelled, Android and iOS tap
+  /// target guidelines all failed on a field. `MergeSemantics` folds the
+  /// editor's flags and its text editing actions into this node rather than
+  /// leaving them on a node the size of one line of text, so what a screen
+  /// reader finds and what a finger has to hit are the same rectangle.
+  Widget _announce(Widget box, String? footer) => MergeSemantics(
+    child: Semantics(
+      container: true,
+      textField: true,
+      label: widget.semanticsLabel ?? widget.label,
+      hint: widget.enabled
+          ? (footer ?? widget.hintText)
+          : widget.disabledReason,
+      enabled: widget.enabled,
+      readOnly: widget.readOnly,
+      obscured: widget.obscureText,
+      child: box,
+    ),
   );
 
   Widget _buildCore(UiInputStyle style) => FieldCore(
@@ -659,9 +700,6 @@ class _UiFieldState extends State<UiField> {
     minLines: widget.minLines,
     maxLines: widget.maxLines,
     maxLength: widget.maxLength,
-    // The field draws the focus state on its own edge and its own ring, and
-    // the ring only for keyboard focus.
-    showFocusRing: false,
   );
 
   Widget? _buildTrailing() {

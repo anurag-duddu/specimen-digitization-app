@@ -1,22 +1,30 @@
-/// Text editing with no Material chrome (10 section 3, `FieldCore`).
+/// Text editing, and nothing else (10 section 3; 11 section 4).
 ///
 /// This is the one file in `primitives/` allowed to import `material.dart`,
 /// and it imports it for `TextField` alone: the selection toolbar, the
-/// magnifier, autofill, spell check, the IME and the semantics of a text field
-/// are thousands of lines that `EditableText` on its own does not give
-/// (10 section 1.3). Every piece of decoration is stripped with
-/// `InputDecoration.collapsed`; the label, the edge, the help text and the
-/// error all belong to `UiField` in the inputs family.
+/// magnifier, autofill, spell check, the IME and the semantics of a text
+/// field are thousands of lines that `EditableText` on its own does not give
+/// (10 section 1.3).
+///
+/// The decoration is not stripped, it is absent: `decoration: null` builds no
+/// `InputDecorator` at all, so the bridge `ThemeData`'s
+/// `InputDecorationTheme` has nothing to paint through and a field renders
+/// the same with the bridge theme above it and without. A collapsed
+/// decoration was still a decorator, and its enabled and focused borders were
+/// two of the three edges a focused field drew (11 section 0).
+///
+/// What is left is one object with one style: the typed text, the placeholder
+/// drawn in the same style on the same baseline, the caret and the selection.
+/// The edge, the label, the help line and the error all belong to `UiField`
+/// in the inputs family, and the ring belongs to the box.
 library;
 
 // The one Material import in primitives, for TextField's editing behaviour.
-import 'package:flutter/material.dart'
-    show InputDecoration, Material, MaterialType, TextField;
+import 'package:flutter/material.dart' show Material, MaterialType, TextField;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../foundation/theme.dart';
-import 'focus_ring.dart';
 
 /// A text input with no chrome of its own.
 class FieldCore extends StatefulWidget {
@@ -45,7 +53,6 @@ class FieldCore extends StatefulWidget {
     this.expands = false,
     this.autocorrect = true,
     this.textAlignVertical,
-    this.showFocusRing = true,
     this.excludeFromSemantics = false,
   });
 
@@ -117,10 +124,6 @@ class FieldCore extends StatefulWidget {
   /// Where the text sits in a taller box.
   final TextAlignVertical? textAlignVertical;
 
-  /// False where the wrapping control draws the focus state itself, such as a
-  /// field whose edge thickens on focus.
-  final bool showFocusRing;
-
   /// True where an ancestor already publishes the semantics for this editor.
   ///
   /// `UiField` in the inputs family publishes one node for the whole control,
@@ -134,39 +137,46 @@ class FieldCore extends StatefulWidget {
 }
 
 class _FieldCoreState extends State<FieldCore> {
-  FocusNode? _internalNode;
-  bool _focused = false;
+  TextEditingController? _internalController;
+  bool _empty = true;
 
-  FocusNode get _node => widget.focusNode ?? (_internalNode ??= FocusNode());
+  TextEditingController get _controller =>
+      widget.controller ?? (_internalController ??= TextEditingController());
 
   @override
   void initState() {
     super.initState();
-    _node.addListener(_focusChanged);
+    _controller.addListener(_contentChanged);
+    _empty = _controller.text.isEmpty;
   }
 
   @override
   void didUpdateWidget(FieldCore oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.focusNode != widget.focusNode) {
-      oldWidget.focusNode?.removeListener(_focusChanged);
-      _internalNode?.removeListener(_focusChanged);
-      _node.addListener(_focusChanged);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.removeListener(_contentChanged);
+      _internalController?.removeListener(_contentChanged);
+      _controller.addListener(_contentChanged);
+      _contentChanged();
     }
   }
 
   @override
   void dispose() {
-    widget.focusNode?.removeListener(_focusChanged);
-    _internalNode
-      ?..removeListener(_focusChanged)
+    widget.controller?.removeListener(_contentChanged);
+    _internalController
+      ?..removeListener(_contentChanged)
       ..dispose();
     super.dispose();
   }
 
-  void _focusChanged() {
-    if (!mounted || _focused == _node.hasFocus) return;
-    setState(() => _focused = _node.hasFocus);
+  /// The placeholder is drawn while the value is empty and taken away the
+  /// moment it is not, which is a rebuild the editor does not ask for.
+  void _contentChanged() {
+    if (!mounted) return;
+    final bool empty = _controller.text.isEmpty;
+    if (empty == _empty) return;
+    setState(() => _empty = empty);
   }
 
   @override
@@ -174,54 +184,88 @@ class _FieldCoreState extends State<FieldCore> {
     final UiThemeData ui = context.ui;
     final TextStyle style = (widget.style ?? ui.type.body).copyWith(
       color: widget.enabled ? ui.color.ink : ui.color.disabledContent,
+      // fe/fit-foundation: drop this once UiType carries
+      // TextLeadingDistribution.even on every role. Flutter's default splits
+      // the leading in proportion to ascent and descent, and Geist's
+      // asymmetry then floats the text above the centre of its line box,
+      // which is the visible cause of "the text sits high" in a field
+      // (11 section 2.2).
+      leadingDistribution: TextLeadingDistribution.even,
     );
+    // The line box is locked from the role, so the placeholder, the typed
+    // text and the caret share one box whatever the value is.
+    final StrutStyle strut = StrutStyle.fromTextStyle(style);
+
     // `TextField` asserts on a `Material` ancestor, for the selection
     // handles and the magnifier it paints into. Transparent, so it draws
     // nothing: the chrome is ours, and the widget 10 section 1.3 retires is
     // `Material` at a call site, not the ancestor its own `TextField` needs.
-    final Widget field = TextField(
-      controller: widget.controller,
-      focusNode: _node,
-      style: style,
-      cursorColor: ui.color.ink,
-      // Every piece of Material decoration removed: no border, no notch, no
-      // floating label, no counter, no fill. The chrome is ours.
-      decoration: InputDecoration.collapsed(
-        hintText: widget.hintText,
-        hintStyle: ui.type.body.copyWith(color: ui.color.inkTertiary),
+    final Widget field = Material(
+      type: MaterialType.transparency,
+      child: TextField(
+        controller: _controller,
+        focusNode: widget.focusNode,
+        style: style,
+        strutStyle: strut,
+        cursorColor: ui.color.ink,
+        cursorWidth: ui.shape.stroke.emphasis,
+        cursorRadius: Radius.circular(ui.shape.stroke.caretRadius),
+        // No decorator at all. Not a collapsed one: a collapsed
+        // `InputDecoration` still builds an `InputDecorator`, which reads the
+        // bridge theme's `InputDecorationTheme` and paints its enabled and
+        // focused borders under our edge (11 section 0).
+        decoration: null,
+        inputFormatters: widget.inputFormatters,
+        keyboardType: widget.keyboardType,
+        textInputAction: widget.textInputAction,
+        textCapitalization: widget.textCapitalization,
+        onChanged: widget.onChanged,
+        onSubmitted: widget.onSubmitted,
+        onEditingComplete: widget.onEditingComplete,
+        readOnly: widget.readOnly,
+        obscureText: widget.obscureText,
+        enabled: widget.enabled,
+        autofocus: widget.autofocus,
+        maxLines: widget.maxLines,
+        minLines: widget.minLines,
+        maxLength: widget.maxLength,
+        expands: widget.expands,
+        autocorrect: widget.autocorrect,
+        textAlignVertical: widget.textAlignVertical,
       ),
-      inputFormatters: widget.inputFormatters,
-      keyboardType: widget.keyboardType,
-      textInputAction: widget.textInputAction,
-      textCapitalization: widget.textCapitalization,
-      onChanged: widget.onChanged,
-      onSubmitted: widget.onSubmitted,
-      onEditingComplete: widget.onEditingComplete,
-      readOnly: widget.readOnly,
-      obscureText: widget.obscureText,
-      enabled: widget.enabled,
-      autofocus: widget.autofocus,
-      maxLines: widget.maxLines,
-      minLines: widget.minLines,
-      maxLength: widget.maxLength,
-      expands: widget.expands,
-      autocorrect: widget.autocorrect,
-      textAlignVertical: widget.textAlignVertical,
-      // The counter is UiField's, below the box, beside the help text.
-      buildCounter:
-          (
-            BuildContext context, {
-            required int currentLength,
-            required int? maxLength,
-            required bool isFocused,
-          }) => null,
     );
 
-    final Widget core = FocusRing(
-      visible: widget.showFocusRing && _focused,
-      radius: ui.shape.field,
-      child: Material(type: MaterialType.transparency, child: field),
+    // The caret and the selection come from here rather than from the Material
+    // theme, so the package paints the same inside a bare `WidgetsApp` as it
+    // does inside the application.
+    Widget core = DefaultSelectionStyle(
+      cursorColor: ui.color.ink,
+      selectionColor: ui.color.selection,
+      child: field,
     );
+
+    final String? hint = widget.hintText;
+    if (hint != null) {
+      core = Stack(
+        children: <Widget>[
+          if (_empty)
+            _Placeholder(
+              text: hint,
+              style: style,
+              strut: strut,
+              // Where the editor puts its own first line. A single line
+              // editor centres its text in a box one caret taller than the
+              // line; a paragraph starts at the top and grows down.
+              alignment: widget.maxLines == 1 && !widget.expands
+                  ? AlignmentDirectional.centerStart
+                  : AlignmentDirectional.topStart,
+              paragraph: widget.maxLines != 1,
+            ),
+          core,
+        ],
+      );
+    }
+
     if (widget.excludeFromSemantics) return core;
 
     return Semantics(
@@ -233,4 +277,49 @@ class _FieldCoreState extends State<FieldCore> {
       child: core,
     );
   }
+}
+
+/// The placeholder, drawn by us because there is no decorator to draw it.
+///
+/// The same style, the same strut and the same alignment as the first line of
+/// the value, in `ink.tertiary`, so the text a reviewer types lands exactly
+/// where the placeholder sat. It is excluded from semantics because the
+/// control's own node already carries the hint, and it ignores the pointer so
+/// a tap on the placeholder is a tap on the editor behind it.
+class _Placeholder extends StatelessWidget {
+  const _Placeholder({
+    required this.text,
+    required this.style,
+    required this.strut,
+    required this.alignment,
+    required this.paragraph,
+  });
+
+  final String text;
+  final TextStyle style;
+  final StrutStyle strut;
+  final AlignmentGeometry alignment;
+
+  /// True where the editor holds a paragraph, so a long placeholder wraps the
+  /// way the text it stands in for will.
+  final bool paragraph;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: IgnorePointer(
+      child: ExcludeSemantics(
+        child: Align(
+          alignment: alignment,
+          child: Text(
+            text,
+            style: style.copyWith(color: context.ui.color.inkTertiary),
+            strutStyle: strut,
+            maxLines: paragraph ? null : 1,
+            softWrap: paragraph,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    ),
+  );
 }

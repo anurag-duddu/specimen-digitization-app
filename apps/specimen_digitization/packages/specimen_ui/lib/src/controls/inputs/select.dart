@@ -93,8 +93,14 @@ class UiSelectStyle {
   /// Above this many options the list gets a filter field (10 section 4.2).
   final int filterThreshold;
 
-  /// The style in [ui].
-  static UiSelectStyle resolve(UiThemeData ui) {
+  /// The style in [ui], at [textScaler].
+  ///
+  /// The trigger is a field, so its height derives from the text the same way
+  /// a field's does (11 section 2.2).
+  static UiSelectStyle resolve(
+    UiThemeData ui, {
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
     TextStyle value(Set<WidgetState> states) => ui.type.body.copyWith(
       color: states.contains(WidgetState.disabled)
           ? ui.color.disabledContent
@@ -103,7 +109,11 @@ class UiSelectStyle {
 
     final double rowHeight = UiListRowStyle.heightOf(ui);
     return UiSelectStyle(
-      input: UiInputStyle.resolve(ui, UiFieldShape.box),
+      input: UiInputStyle.resolve(
+        ui,
+        UiFieldShape.box,
+        textScaler: textScaler,
+      ),
       value: WidgetStateProperty.resolveWith(value),
       placeholder: ui.type.body.copyWith(color: ui.color.inkTertiary),
       rowHeight: rowHeight,
@@ -285,7 +295,10 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final UiSelectStyle style = UiSelectStyle.resolve(ui);
+    final UiSelectStyle style = UiSelectStyle.resolve(
+      ui,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
     final UiSelectOption<T>? selected = _selected;
     final String? message = widget.errorText ?? widget.helpText;
 
@@ -335,6 +348,9 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
         onPressed: _enabled ? _toggle : null,
         disabledReason: widget.disabledReason,
         radius: style.input.radius,
+        // The box rings itself, on its own edge. A ring around the hit box
+        // would miss the edge by the slop in pointer density.
+        focusRing: false,
         builder: (BuildContext context, Set<WidgetState> pressed) =>
             // The node above reads the label and the selected option; the
             // drawn text saying the same thing would be read after it.
@@ -343,6 +359,10 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
                 style: style.input,
                 states: <WidgetState>{...states, ...pressed},
                 leading: selected?.leading,
+                // Keyboard focus only, which is what `Pressable` puts in the
+                // states: a select is not being edited, so clause 4 of the
+                // control contract stands unamended for it.
+                focusRing: pressed.contains(WidgetState.focused),
                 child: Row(
                   children: <Widget>[
                     Expanded(
@@ -469,7 +489,6 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
               focusNode: _filterFocus,
               autofocus: true,
               autocorrect: false,
-              showFocusRing: false,
               style: ui.type.body,
               onChanged: (String _) => setState(() {}),
             ),
