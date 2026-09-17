@@ -43,10 +43,15 @@ import 'composition_harness.dart';
 /// filter row that all scroll with them.
 ///
 /// Slot A2 owns the record and slot A3 owns the queue and intake.
+///
+/// The queue left this backlog in slot A3: its header is a heading with the
+/// count as a numeral beside it rather than a sentence that wraps to four
+/// lines, the search field carries its hint as a placeholder rather than a
+/// three line footer, and the six dispositions are in the filter sheet on a
+/// phone. The first row now starts at 398 of 844 at 200 percent text, where
+/// it started at 763.
 final Set<String> aboveTheFoldBacklog = <String>{
   'record@compact-390x844',
-  'intake@compact-390x844',
-  'queue@compact-390x844',
 };
 
 // ---------------------------------------------------------------------------

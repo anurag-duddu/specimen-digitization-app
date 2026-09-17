@@ -57,27 +57,31 @@ const Map<String, num> surfaceDepthBacklog = <String, num>{
 };
 
 /// The panes each cell draws today, where it is over budget.
-/// Seven cells, and six of them are one sentence: the shell gives a phone two
-/// panes rather than one, because `UiTopBar` fills with `glass.flat` the
-/// moment the body scrolls under it and the pill is already a pane. The size
-/// class goldens' own `glass_budget` never saw it, because it counts at rest
-/// and the second pane arrives on the first scroll. `sources` is absent for
-/// the same reason read the other way: its content is shorter than a phone,
-/// so it never scrolls and never gains the second pane. Slot A3 owns the
-/// shell's half of 13 section 2.3.
 ///
-/// The record screen at compact is four: the two above, the source pane's own
-/// pane and the decision bar's. The import sheet at compact is three: the two
-/// above and the modal's. The record at medium is three against two, which is
-/// the same decision bar over the same scrolled top bar with a rail instead of
-/// a pill. Slot A2 owns the record's half.
+/// It held seven, and six of them were one sentence: the shell gave a phone
+/// two panes rather than one, because `UiTopBar` filled with `glass.flat` the
+/// moment the body scrolled under it and the pill was already a pane. The size
+/// class goldens' own `glass_budget` never saw it, because it counts at rest
+/// and the second pane arrived on the first scroll. Slot A3 closed that half:
+/// at compact the shell draws the bar's fill solid on `ground` and passes
+/// `scrolledUnder: false`, which is the wave A amendment to 13 section 2.2
+/// read as the gate measures it, so `setup`, `queue`, `intake` and `source`
+/// are down to the pill's one pane.
+///
+/// Three left. The record screen at compact is three: the pill, the source
+/// pane's own pane and the decision bar's; at medium it is three against two,
+/// which is the same decision bar over the same rail. Slot A2 owns those.
+///
+/// The import sheet at compact is two and cannot reach one from a screen. A
+/// sheet is its own surface, which is the exemption 13 section 2.2 states in
+/// prose and this gate does not implement: it counts every `GlassSurface` on
+/// the window, and a sheet opened over a list screen is the modal's pane over
+/// the navigation's. Neither is a screen's to spend differently, so the line
+/// records what it measures and the clause and the instrument are for the
+/// integrator to reconcile.
 const Map<String, num> glassCountBacklog = <String, num>{
-  'setup@compact-390x844': 2,
-  'queue@compact-390x844': 2,
-  'intake@compact-390x844': 2,
-  'source@compact-390x844': 2,
-  'import-sheet@compact-390x844': 3,
-  'record@compact-390x844': 4,
+  'import-sheet@compact-390x844': 2,
+  'record@compact-390x844': 3,
   'record@medium-768x1024': 3,
 };
 
