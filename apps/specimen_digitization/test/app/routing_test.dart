@@ -14,6 +14,8 @@ import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
+import 'package:specimen_digitization/src/workbench.dart';
+
 import '../ui_finders.dart';
 
 /// The collection the fixture repository publishes.
@@ -139,7 +141,7 @@ void main() {
       ),
     );
     expect(find.byType(WorkbenchScreen), findsOneWidget);
-    await tester.tap(find.text('Back to queue'));
+    await tester.tap(uiIconButton(backToQueueLabel));
     await tester.pumpAndSettle();
     expect(locationOf(tester), endsWith('/queue'));
     await tester.pumpWidget(const SizedBox());

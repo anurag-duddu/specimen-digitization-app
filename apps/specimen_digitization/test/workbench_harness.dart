@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import 'ui_finders.dart';
+
 /// The widths that select each of the three workbench regimes
 /// (responsive and platform adaptation, 3.5).
 const Size compactWindow = Size(390, 844);
@@ -28,7 +30,12 @@ void useWindow(WidgetTester tester, Size size) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-/// Pumps [child] on the product theme, in a scaffold.
+/// Pumps [child] on the product theme, inside the frame it ships in.
+///
+/// The frame is a `UiScaffold` because the record publishes its chrome into
+/// one: the top bar it names itself in and the action bar its two decisions
+/// sit on are `UiScaffoldSlots` asks, and a screen pumped with no frame above
+/// it would be a screen with no decision bar at all (13 section 3.4).
 ///
 /// [reduceMotion] drives `MediaQuery.disableAnimationsOf`, the one
 /// reduced-motion signal a widget test can set.
@@ -41,7 +48,21 @@ Widget workbenchHost(
   home: Builder(
     builder: (BuildContext context) => MediaQuery(
       data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
-      child: Scaffold(body: child),
+      child: UiTheme(
+        // The tokens the application publishes at its root, published here
+        // for the same reason: without them `UiScaffold` builds its own
+        // derived set on every frame, every control under it is told its
+        // tokens changed, and a screen that answers that by publishing into
+        // the frame never settles. `main.dart` and the golden harness both
+        // do this; a screen harness that did not was measuring a tree the
+        // product never draws.
+        data: Theme.of(context).brightness == Brightness.dark
+            ? UiThemeData.dark()
+            : UiThemeData.light(),
+        child: Scaffold(
+          body: UiScaffold(sky: SkyPreset.none, body: child),
+        ),
+      ),
     ),
   ),
 );
@@ -108,6 +129,40 @@ String? disabledReasonOf(WidgetTester tester, String label) {
   final Finder ui = find.widgetWithText(UiButton, label);
   if (ui.evaluate().isEmpty) return null;
   return tester.widget<UiButton>(ui.first).disabledReason;
+}
+
+/// The record command named [label], as the top bar declares it.
+///
+/// 13 section 4.1 moves the record's own commands into the bar, which keeps
+/// the first two as discs and puts the rest in its own overflow menu, so a
+/// test that wants to know whether a command is available reads the command
+/// rather than hunting for whichever of the two arrangements the width
+/// earned. The same answer a screen reader gets: `UiTopBarAction` carries the
+/// label, the callback and the reason into both.
+UiTopBarAction recordCommand(WidgetTester tester, String label) => tester
+    .widget<UiTopBar>(find.byType(UiTopBar))
+    .actions
+    .whereType<UiTopBarAction>()
+    .firstWhere(
+      (UiTopBarAction action) => action.label == label,
+      orElse: () => throw StateError('no record command named "$label"'),
+    );
+
+/// Presses the record command named [label], wherever the bar drew it.
+///
+/// `UiTopBar` keeps the first two commands as discs and puts the rest in its
+/// own overflow menu (11 section 3.3), so which of the two a test finds is a
+/// property of the width rather than of the record.
+Future<void> openRecordCommand(WidgetTester tester, String label) async {
+  final Finder disc = uiIconButton(label);
+  if (disc.evaluate().isNotEmpty) {
+    await tester.tap(disc);
+  } else {
+    await tester.tap(uiMenuTrigger(UiTopBarStyle.overflowLabel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+  }
+  await tester.pumpAndSettle();
 }
 
 /// Closes the modal on screen by dismissing its scrim.

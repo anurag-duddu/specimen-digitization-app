@@ -47,28 +47,24 @@ import 'composition_harness.dart';
 /// (`source_import_sheet.dart` lines 119 and 194); the sheet's own scroll is
 /// the allowed one and the body's is the second.
 ///
-/// The region editor is the same defect as the import sheet by the same
+/// The region editor was the same defect as the import sheet by the same
 /// cause, found by this gate rather than predicted: from the expanded floor up
 /// `showRegionEditor` opens a `UiDialog`, whose body `UiDialog` already wraps
-/// in a scroll, and `region_editor.dart` line 355 wraps the coordinate form in
-/// a second. Below that floor it is a full screen route and there is one
-/// scroll, which is why only two of its four windows are here. Slot A2 owns
-/// 13 section 4.3.
+/// in a scroll, and the editor wrapped its coordinate form in a second. The
+/// dialog passes `scrollBody: false` now, so it lends the editor the height
+/// and the editor keeps the one scroll it has always had above its own
+/// footer, which is what 13 section 2.1 grants a surface that owns a scroll.
 ///
 /// The record screen is deliberately not here. 13 section 0 names it as the
-/// screen the defect was found on, and it was: the fix for finding V-1 landed
-/// before this gate was written, and `workbench.dart` now hands
-/// `_evidenceContent` `scrollable: false` in the branch that scrolls. The walk
-/// below finds no nesting on it at any window or scale, so the gate says so
-/// rather than carrying a line that is no longer true.
+/// screen the defect was found on, and it was; it is one `CustomScrollView`
+/// of slivers now (13 sections 2.1 and 4.1) and the walk below finds no
+/// nesting on it at any window or scale.
 final Set<String> nestedScrollBacklog = <String>{
   'intake@compact-390x844',
   'import-sheet@compact-390x844',
   'import-sheet@medium-768x1024',
   'import-sheet@expanded-1180x820',
   'import-sheet@large-1440x900',
-  'region-editor@expanded-1180x820',
-  'region-editor@large-1440x900',
 };
 
 /// Per file counts of `shrinkWrap` and `NeverScrollableScrollPhysics` under

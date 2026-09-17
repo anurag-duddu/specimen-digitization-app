@@ -121,15 +121,23 @@ const Map<String, String> guidelineArtefacts = <String, String>{
   'intake at large-1440x900': 'the same top bar title node',
   'sources at large-1440x900': 'the same top bar title node',
   'source at large-1440x900': 'the same top bar title node',
-  'record readings at medium-768x1024':
-      'the Source photograph disclosure header node is the full pane width '
-      'and the matte under it is near black, so the histogram reports two '
-      'shades of matte. The glyphs are ink #f2f2ef and measure 17.10:1',
-  'record readings at large-1440x900': 'the same disclosure header node',
-  'record fields at medium-768x1024': 'the same disclosure header node',
-  'record fields at large-1440x900': 'the same disclosure header node',
-  'record history at medium-768x1024': 'the same disclosure header node',
-  'record history at large-1440x900': 'the same disclosure header node',
+  // The decision bar's count, on every record cell that draws one. 13
+  // section 3.3 makes the count the bar's `Expanded` child, because the
+  // decision is what the reviewer came to make and the count is what gives
+  // way, so "1 of 1" is a node the width of the bar holding thirty dp of
+  // glyphs and the histogram reports two shades of the pane. The glyphs are
+  // ink.secondary #b9bcc3 on the action bar's pane #16171a and measure
+  // 8.98:1.
+  'record readings at medium-768x1024': 'the decision bar count node',
+  'record readings at expanded-1180x820': 'the decision bar count node',
+  'record readings at large-1440x900': 'the decision bar count node',
+  'record fields at compact-390x844': 'the decision bar count node',
+  'record fields at medium-768x1024': 'the decision bar count node',
+  'record fields at expanded-1180x820': 'the decision bar count node',
+  'record fields at large-1440x900': 'the decision bar count node',
+  'record history at medium-768x1024': 'the decision bar count node',
+  'record history at expanded-1180x820': 'the decision bar count node',
+  'record history at large-1440x900': 'the decision bar count node',
 };
 
 /// Cells where the guideline reports a failure and the pixels agree.

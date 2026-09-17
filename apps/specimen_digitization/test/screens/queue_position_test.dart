@@ -11,9 +11,11 @@ import 'package:specimen_digitization/src/app/help_screen.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 import '../golden/golden_harness.dart';
+import '../ui_finders.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
@@ -44,7 +46,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(QueuePane), findsNothing);
 
-    await tester.tap(find.text('Back to queue'));
+    await tester.tap(uiIconButton(backToQueueLabel));
     await tester.pumpAndSettle();
 
     final ScrollableState returned = tester.state<ScrollableState>(

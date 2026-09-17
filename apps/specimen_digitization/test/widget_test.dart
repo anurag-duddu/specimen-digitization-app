@@ -282,6 +282,12 @@ void main() {
     // scroll swallows the next tap, and the account menu is a toggle, so a
     // swallowed press reads as a menu that will not open.
     await tester.pumpAndSettle();
+    // The bar inside a record carries the record: back, the identifier and
+    // the record's own commands, and neither the collection switcher nor the
+    // account (13 section 4.1). The way out is the bar's back, which is what
+    // this presses before reaching for the shell's chrome again.
+    await tester.tap(uiIconButton(backToQueueLabel));
+    await tester.pumpAndSettle();
     // Signing out lives in the account menu, which is also the only place a
     // reviewer can read which account they are using (05 section 2).
     await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
@@ -523,14 +529,13 @@ void main() {
         reason: 'the disabled reason must be on the control itself',
       );
     }
-    await tester.tap(find.text('Fields'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Retry processing'),
-      200,
-      scrollable: find.byType(Scrollable).first,
+    // Retry is a command of the record rather than a row of its evidence, so
+    // it is in the top bar with the rest of them (13 section 4.1).
+    expect(recordCommand(tester, retryLabel).onPressed, isNull);
+    expect(
+      recordCommand(tester, retryLabel).disabledReason,
+      contains('does not include operating runs'),
     );
-    expect(controlEnabled(tester, 'Retry processing'), isFalse);
   });
 
   testWidgets(
@@ -606,14 +611,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(controlEnabled(tester, 'Approve record'), isFalse);
       expect(controlEnabled(tester, 'Confirm label coverage'), isFalse);
-      await tester.tap(find.text('Fields'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text('Retry processing'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(controlEnabled(tester, 'Retry processing'), isTrue);
+      expect(recordCommand(tester, retryLabel).onPressed, isNotNull);
     },
   );
 }
