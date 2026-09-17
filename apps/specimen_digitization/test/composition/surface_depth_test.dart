@@ -57,33 +57,23 @@ int glassBudgetFor(String window) => switch (windowClassOf(window)) {
 const Map<String, num> surfaceDepthBacklog = <String, num>{};
 
 /// The panes each cell draws today, where it is over budget.
-/// Seven cells, and six of them are one sentence: the shell gives a phone two
-/// panes rather than one, because `UiTopBar` fills with `glass.flat` the
-/// moment the body scrolls under it and the pill is already a pane. The size
-/// class goldens' own `glass_budget` never saw it, because it counts at rest
-/// and the second pane arrives on the first scroll. `sources` is absent for
-/// the same reason read the other way: its content is shorter than a phone,
-/// so it never scrolls and never gains the second pane. Slot A3 owns the
-/// shell's half of 13 section 2.3.
+/// Two cells. The import sheet at compact draws its own pane over the
+/// navigation pill the scaffold floats beneath the barrier: the pill is still
+/// mounted and still blurs under a modal, and a phone's budget is one pane
+/// (slot A3 owns the shell's half of 13 section 2.2). The record at medium
+/// draws three where the class allows two: the scrolled top bar, the frame's
+/// action bar and the collapsed header's own chrome all blur from medium up,
+/// because the wave A amendment to 13 section 2.2 publishes `GlassQuality.off`
+/// at compact only. One of the three has to draw solid at medium, and which
+/// is a pattern decision for `fe/polish-3` rather than a screen's.
 ///
-/// The record screen at compact is four and at medium three, and after wave A
-/// they are the same numbers for different panes: the scrolled top bar, the
-/// scaffold's action bar, the collapsed header's own chrome band, and at
-/// compact the hidden pill, which is `Offstage` rather than absent and so
-/// builds its pane while holding no height. Three of the four draw the solid
-/// form of the surface at compact, because `UiScaffold` publishes
-/// `GlassQuality.off` to everything but the chrome it floats (13 section 2.2,
-/// wave A amendment); this gate counts `GlassSurface` rather than
-/// `BackdropFilter`, so it counts them all. No screen slot can close these
-/// two: the panes belong to the frame and to the pattern, and what would
-/// close them is the instrument agreeing with the amendment it now measures.
+/// Five compact cells left this backlog when the instrument started counting
+/// what the amendment counts: a `GlassSurface` published `GlassQuality.off`
+/// draws solid and builds no filter, and the earlier count of every
+/// `GlassSurface` put the frame's solid top bar, band and header chrome on
+/// the same footing as the one pane that blurs.
 const Map<String, num> glassCountBacklog = <String, num>{
-  'setup@compact-390x844': 2,
-  'queue@compact-390x844': 2,
-  'intake@compact-390x844': 2,
-  'source@compact-390x844': 2,
-  'import-sheet@compact-390x844': 3,
-  'record@compact-390x844': 4,
+  'import-sheet@compact-390x844': 2,
   'record@medium-768x1024': 3,
 };
 
@@ -110,9 +100,35 @@ int surfaceDepthNow() {
 }
 
 /// The frosted panes in the tree right now.
+///
+/// A `GlassSurface` published `GlassQuality.off` draws the same surface solid
+/// (13 section 2.2, wave A amendment) and builds no `BackdropFilter`, so it is
+/// not a pane this budget counts: the budget is the count of save layers, and
+/// a solid fill is not one. A pane is frosted where its own build put a filter
+/// under it, which is read here as a filter in its subtree above any pane it
+/// holds, since `GlassSurface` is the one widget in the system that blurs.
 List<Element> glassPanesNow() => compositionElements()
-    .where((Element element) => element.widget is GlassSurface)
+    .where(
+      (Element element) => element.widget is GlassSurface && isFrosted(element),
+    )
     .toList();
+
+/// True where the pane at [pane] blurs what is behind it.
+bool isFrosted(Element pane) {
+  bool found = false;
+  void visit(Element element) {
+    if (found) return;
+    if (element.widget is BackdropFilter) {
+      found = true;
+      return;
+    }
+    if (element != pane && element.widget is GlassSurface) return;
+    element.visitChildren(visit);
+  }
+
+  visit(pane);
+  return found;
+}
 
 /// How many frosted panes are in the tree right now.
 int glassCountNow() => glassPanesNow().length;
