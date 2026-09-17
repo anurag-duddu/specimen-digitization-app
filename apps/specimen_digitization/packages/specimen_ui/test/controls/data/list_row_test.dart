@@ -331,6 +331,71 @@ void main() {
     );
   });
 
+  testWidgets('a row with nothing to do is not a disabled button', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiListRow(
+          title: 'IMG_4471.jpg',
+          subtitle: 'Uploading, 3 of 12',
+          semanticsLabel: 'IMG_4471.jpg, uploading, 3 of 12',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final SemanticsData data = tester
+        .getSemantics(find.bySemanticsLabel('IMG_4471.jpg, uploading, 3 of 12'))
+        .getSemanticsData();
+    expect(
+      data.flagsCollection.isButton,
+      isFalse,
+      reason:
+          'an upload row and a photograph that is not a record are not '
+          'controls; "disabled button" promises a button, and a reviewer who '
+          'goes looking for it finds nothing',
+    );
+    expect(
+      data.flagsCollection.isEnabled,
+      Tristate.none,
+      reason: 'a node with no enabled state is not a control that is off',
+    );
+    expect(
+      find.byType(Pressable),
+      findsNothing,
+      reason: 'and nothing to focus, hover or press either',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a row the server forbids is still a control', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiListRow(
+          title: 'SPEC-2026-0045',
+          disabledReason: 'This record is open in another reviewer session.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final SemanticsData data = tester
+        .getSemantics(find.bySemanticsLabel('SPEC-2026-0045'))
+        .getSemanticsData();
+    expect(
+      data.flagsCollection.isButton,
+      isTrue,
+      reason:
+          'there is a control here and the server has turned it off, which is '
+          'a different thing from there being no control',
+    );
+    expect(data.flagsCollection.isEnabled, Tristate.isFalse);
+    handle.dispose();
+  });
+
   testWidgets('the row tone follows the row state', (
     WidgetTester tester,
   ) async {

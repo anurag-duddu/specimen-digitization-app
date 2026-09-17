@@ -268,6 +268,14 @@ class UiRowTrailing extends StatelessWidget {
 /// `checkbox` carrying `checked`, and a row that is one destination of a
 /// navigation is a `tab`.
 ///
+/// A row with nothing to do and no reason it cannot be done is not a control
+/// at all: an upload in progress, a photograph that is not yet a record. It
+/// publishes the same one merged node with the same words, and no role, no
+/// focus and no state layer, because "disabled button" is a promise that
+/// there is a button, and a reviewer who tries to find it finds nothing. A
+/// row the server forbids is the other case and keeps its `Pressable`: it is
+/// a control, it is disabled, and it owes the reviewer [disabledReason].
+///
 /// Never glass. A row is a repeated item, and 09 section 11 rejects glass on
 /// repeated items outright: the list's container may be a pane, its rows are
 /// `paper` or nothing at all.
@@ -347,10 +355,32 @@ class UiListRow extends StatelessWidget {
     return second == null ? title : '$title, $second';
   }
 
+  /// True where the row is a control: it does something, or it is a control
+  /// the server has turned off and owes a reason for.
+  bool get _interactive =>
+      onPressed != null || onLongPress != null || disabledReason != null;
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final UiListRowStyle style = UiListRowStyle.resolve(ui, size);
+    if (!_interactive) {
+      final Set<WidgetState> states = <WidgetState>{
+        if (selected) WidgetState.selected,
+      };
+      return Semantics(
+        container: true,
+        label: _label,
+        // One node, as the control path publishes: the title, the subtitle
+        // and whatever the slots hold are read as the row rather than as
+        // four stops. A slot holding a control of its own is read out of the
+        // tree with them, which is the same trade the control path makes and
+        // the reason a row is not the place to put one.
+        excludeSemantics: true,
+        selected: selected ? true : null,
+        child: _body(context, style, states),
+      );
+    }
     return Pressable(
       semanticsLabel: _label,
       onPressed: onPressed,
