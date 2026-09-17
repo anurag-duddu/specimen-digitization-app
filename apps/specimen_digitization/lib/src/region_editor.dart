@@ -513,7 +513,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   /// is 40 percent of the viewport on its own.
   ///
   /// fe/polish-3: `UiCollapsingHeader` should publish no `PinnedChrome` where
-  /// it is the region under review.
+  /// it is the region under review. Integration note (slot P2, 2026-09-17):
+  /// P1's contract keeps the marker on a header built without `primary`, and
+  /// this one passes none, because 13 section 5 names no primary region for
+  /// the editor and the fold clause runs at compact only. The wrapper comes
+  /// out only if the call site moves to `primary: true` at the merge, with
+  /// the fold clause then measuring the photograph here too; until then it is
+  /// the reading the gates take.
   Widget _header(BuildContext context, UiThemeData ui) {
     // The band takes the height the photograph actually needs, between the
     // floor 13 section 4.3 gives it and the 55 percent 13 section 3.1 starts

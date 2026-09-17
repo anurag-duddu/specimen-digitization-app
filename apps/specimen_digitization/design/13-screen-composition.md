@@ -73,6 +73,26 @@ record screen, and 2.2 is what the gates measure. At medium and above depth is a
 panes at most the budget 09 sets per class (compact 1, medium 2, expanded 3,
 large 4), counted on the whole screen including the navigation.
 
+**Amendment, polish 3 (2026-09-17).** Two cells of `glass_count` are open
+lines with an owner, slot P1 (`fe/polish3-package`), and neither is a screen's
+to close. The record at medium draws three frosted panes where the class
+allows two, `record@medium-768x1024: 3`: the scrolled top bar, the frame's
+action bar and the collapsed header's chrome all blur from medium up, because
+the wave A amendment above publishes `GlassQuality.off` at compact only, and
+which pane medium gives up is a decision the frame makes once for every screen
+rather than one a screen makes for itself. The design intent P1 builds to: the
+pane the frame floats (the action bar) and the pane over the photograph (the
+collapsed header's chrome, 09 section 11) are the two, and the top bar draws
+solid once content scrolls under it from medium up, as it does at compact. The
+import sheet at compact draws its `glass.modal` pane over the navigation pill
+the frame still frosts beneath the barrier, `import-sheet@compact-390x844: 2`
+where the budget is one: the sheet exemption in this document is about scrolls
+(section 2.1), 09 section 3.3 counts the modal within the four, and the frame
+needs a way to draw its floated chrome solid while a modal route is current
+above it, which P1 gives it. Both lines stay in `glassCountBacklog` at what
+they measure until P1's frame is merged and measured; the screen slot deletes
+them then, and never before.
+
 ### 2.3 The chrome budget
 Pinned chrome at compact is at most 28 percent of the viewport height: top
 bar, environment band, any pinned header at its collapsed height, the decision
@@ -158,6 +178,23 @@ record's decision bar with it. `setNavVisible(false)` hides the navigation the
 frame floats, the pill, and never a rail or a sidebar: they are columns beside
 the body and the only navigation a desktop has inside a record.
 
+**Amendment, polish 3 (2026-09-17).** The two rules above, restated as the
+screens now use them. A route's ask comes before the shell's window rule: the
+shell states the band's form by window and the record asks for the strip at
+every window, and the shell takes the ask where one exists. A null written by
+a screen that does not hold a slot is not a release, and a null written by the
+screen that does hold it is: that is how the record gives the action bar back
+from `expanded` up while keeping its bar (section 4.1), through
+`setActionBar(null, owner: this)`, and how the queue gives back its bulk bar
+under a record pushed over it. The same rule reaches a region a screen pins
+inside its own scroll: the queue stays mounted beneath the record, the gates
+count every marker in the tree, and a region a covered screen pins is height
+the reader never sees and height the record's budget would be charged for
+(the record at medium read 27.0 percent with the queue's stuck search row
+beneath it, against 22.3 without). A screen therefore pins only while it is
+the route on top, read through `ModalRoute.of(context).isCurrent`, which is
+the same reading the bulk bar already took.
+
 ### 3.5 `UiStickyBar`
 A pinned `SliverPersistentHeader` of one fixed extent for the region that
 scrolls up to the header and then sticks under it: the record's segments, the
@@ -193,6 +230,103 @@ the segments in the evidence; they stick under the header here so the reader
 never loses which evidence is showing, which 07 did not say and 05's wireframe
 implies.
 
+**Amendment, wave A slot A2 (2026-09-17), placed by polish 3.** Four
+decisions the record was built with, each an argument a reader can have.
+The segments stick at the reviewer's default type size and scroll above it:
+`UiStickyBar` is pinned chrome while it is stuck, at 130 percent on a phone
+the frame has already spent 177 dp of the 236 the budget allows and the
+segments are 61 more, so above default type the segments are the region the
+record gives up, one flick from the top of the evidence and the tab strip
+still saying which evidence is showing. On a phone the strip states the
+disposition and what blocks clearance and not the run and the version: 358 dp
+cannot hold a 130 dp chip, 160 of provenance and a 180 dp summary, the north
+star says a count is never a colour or a glyph alone, so the summary keeps its
+words, and 11 section 3.3 rule 3 says a control below its threshold drops a
+variant rather than cutting a word to a letter, so the version and the run
+leave the line rather than ellipsising to "V..."; they are on the strip from
+medium up and in the Fields segment's processing disclosure at every width.
+While there are corrections the reviewer has made and not sent, the save is
+the decision bar's primary and the approval its second: `UiDecisionBar` holds
+two and the record has three, unsaved corrections are what stands between the
+reviewer and any decision, and an approval taken over them records a version
+without them; the strip keeps the amber count as a statement rather than a
+second control for the same job. And a queue step answers rather than sitting
+disabled: the bar draws both edge controls from medium up whether or not the
+screen gave it somewhere to go, so the record hands each a callback that says
+why there is nowhere to go, the same sentence `J` and `K` already say, rather
+than leaving a control that does nothing.
+
+**Amendment, polish 3 (2026-09-17): the record at expanded and large.**
+Measured with the composition gates' own instrument, worst over both modes.
+At 200 percent text the frame's own top bar is 61.25 dp, the one line band 52
+and the action bar 71.6, which is 184.85 of the 164 an 820 dp window allows
+and of the 180 a 900 dp window allows; at default type and 130 percent the
+same three regions are 48, 52 and 64, which is 164 of 164 at 1180 by 820. No
+arrangement that keeps all three holds the budget at 200 percent, so section
+2.3 applies: the screen gives a region up rather than shrinking one below its
+density height. Two regions could go. The band's sentence could move into the
+top bar as a tinted chip, so the band region is gone where width is plentiful;
+or the decision bar's job could move into the top bar, so the action bar is
+gone. The band is the region that says which data this is (07 section 1.3), a
+strip the width of the window is more visible than a chip in a bar, and a
+reviewer on a desktop reads a bar's trailing end as where a page's action
+lives; so the action bar goes, and the record's decision sits in the top bar
+from `expanded` up, as a variant per window class and not a text scale
+switch. The bar's middle holds the identifier at its own width and the
+decision bar in what is left, so the name is never cut and the decision
+degrades by its own ladder: the secondary into the bar's menu, then the
+primary's ellipsis; with the fixture's nine character identifier both decisions
+still draw at 1180 by 820 at 200 percent, and the ladder is there for a longer
+name or a narrower window. Previous and next
+stay edge buttons (07 section 6.1), the count stays a label, and the frame
+then floats nothing inside a record at those classes, so the evidence runs to
+the last row of the window. Compact and medium keep the action bar, because
+the decision belongs under the thumb there and the 28 and 24 percent those
+classes allow hold it (27.0 and 22.3 percent measured).
+
+| Region | Pinned | Content | Height at 1180 by 820 | Height at 1440 by 900 |
+|---|---|---|---|---|
+| Top bar | yes | Back, specimen id (`mono.identifier`), the decision bar (previous, "3 of 38", secondary, primary, next), refresh, the record's commands behind one overflow trigger | 48; 48 at 1.3; 61.25 at 2.0 | 48; 48 at 1.3; 61.25 at 2.0 |
+| Environment band | yes | One line strip | 52 | 52 |
+| Source pane | fixed, beside the evidence (two pane, 07 section 6.1) | Photograph, overlays, view controls, region toggles | 0 of the budget | at 1440 beside the queue pane and the sidebar the record is 799 dp and stacked: the collapsing header, counted at nothing (section 2.3, decision 1 of the A2 closeout) |
+| Status strip | scrolls | Disposition, run and version, blockers summary | 0 | 0 |
+| Segments | scrolls (two pane: a row of the evidence pane) | Readings, Fields, History | 0 | stacked: sticks at default type (`UiStickyBar`, 56), scrolls above it |
+| Evidence | scrolls | The chosen segment | rest | rest |
+| Action bar | none | given back | 0 | 0 |
+| Navigation | rail, beside the body | | 0 | sidebar, beside the body: 0 |
+
+Pinned totals: at 1180 by 820, 100 of 820 at default type and at 130 percent
+(12.2 percent), 113.25 at 200 percent (13.8 percent), against 20; at 1440 by
+900, 156 at default type with the segments stuck (17.3 percent), 100 at 130
+percent (11.1 percent), 113.25 at 200 percent (12.6 percent), against 20.
+Before, the same cells were 164 and 184.85 (20.0 and 22.5 percent) at 820 and
+164 and 184.85 (18.2 and 20.5 percent) at 900. The two `chrome_budget` lines
+are deleted. The segments stick at default type at every class now, not only
+at compact and medium: the window class still decides, through the same rule
+that put the decision in the bar, so a frame that puts the action bar back at
+a class takes the sticky segments away from it in the same change.
+
+**The bar's commands, polish 3 (2026-09-17).** The regenerated golden of the
+record at 1440 by 900 showed seven discs at the trailing end of the bar:
+refresh, correct label regions, correct classification, retry, copy the
+identifier, source details and the shortcut list, with classification and
+source details sharing the provenance glyph. All seven were the record's own
+declared actions, drawn in full because `UiTopBar`'s fit ladder draws every
+declared action wherever there is width for it and collapses them only when
+the title has no room, and the `icons_unique` gate passed because it holds the
+registry to one glyph per name and not a screen to one name per command. This
+table gives the bar three things and puts the record's commands in its
+overflow menu, and section 2.4 gives a region one job, so the record builds
+the trigger itself rather than leaving it to the bar's ladder: refresh is the
+one disc it keeps at every width and the six commands are rows of one menu,
+carrying the same labels, glyphs, shortcuts and reasons. Source details takes
+`UiIcons.info`, the registry's glyph for supporting information, which is what
+a photograph's checksum and coordinate basis are; classification keeps the
+provenance tree. The trigger sits at the bar's end, and until P1's `Popover`
+fits its pane inside the window horizontally (P1 task 1) the menu it opens
+crosses the window's trailing edge at every width, as A3 measured for the
+account menu; the record's bar had that trigger at compact and medium already.
+
 ### 4.2 Queue
 | Region | Pinned | Content |
 |---|---|---|
@@ -202,6 +336,29 @@ implies.
 | Search and filters | scrolls, sticks | The search field with the filter control beside it; filters open a sheet |
 | Rows | scrolls | The list |
 | Navigation pill | yes | Queue, Intake, Sources |
+
+**Amendment, polish 3 (2026-09-17): the search row sticks at medium and
+scrolls elsewhere.** The table says the row scrolls and then sticks; section
+2.3 decides where. A stuck row is pinned chrome (section 3.5), and a row
+holding a text control is 48 dp at default type and 69.75 at 200 percent. At
+390 by 844 and 200 percent text the queue already pins 185.75 dp of the 236.3
+the phone's 28 percent allows (top bar 69.75, one line band 52, pill 64), so
+the row's 69.75 does not fit in the 50.6 that leaves, and section 2.3 says the
+screen gives a region up rather than shrinking it: the row a reviewer uses
+once is the one to give up on a phone, which is slot A3's arithmetic and
+decision. At 768 by 1024 the queue pins 124 dp at default type and 137.75 at
+200 percent (top bar, full band, no pill) of the 245.76 that 24 percent
+allows, so the row fits at every size: measured 172, 178.52 and 207.5 with it
+stuck, 16.8, 17.4 and 20.3 percent. From expanded up the budget is 20 percent
+of a landscape window: at 1180 by 820 the frame pins 116 dp at default type
+and 129.75 at 200 percent of 164, and a stuck row at 200 percent is 61.75,
+which is 191.5 and 23.4 percent; at 1440 by 900 it is 191 of 180, 21.2
+percent. A variant is chosen per window class and not per text size, so the
+row sticks at medium and scrolls at compact, expanded and large. It sticks
+only while the queue is the route on top (section 3.4, polish 3), and the
+bar's extent is the row's own height, `UiInputStyle`'s box at the live text
+scale floored at the hit box, so the sticky bar is never shorter than the
+field it holds nor taller than it.
 
 ### 4.3 Region editor
 Full screen route (05 section 3.6): top bar (back, title, save), the
@@ -213,6 +370,18 @@ no pill.
 One scroll: the batch header, the capture card, the pre-upload checks, the
 manifest, each a section with an `s6` gap; the upload action in the decision
 bar slot; the pill visible.
+
+**Amendment, wave A slot A3 (2026-09-17), placed by polish 3.** The checks
+are under the manifest, not over it. Section 2.5 asks for the manifest's first
+row inside the first viewport, and at 200 percent text on a phone the chrome
+takes 122 dp and leaves 722: the batch header is 137 of it and the capture
+card 320, so the manifest starts at 643 with the checks after it and at 964,
+below the fold, with the checks before it. The order also reads better: the
+confirmation that releases a batch sits next to the control that sends it.
+The capture card carries the capture alone; `IntakeChecks` carries the
+caveats, the checklist, the confirmation and, where there is no frame to hold
+it, the upload action, which otherwise goes in the frame's action bar while
+there is a batch to send.
 
 ### 4.5 Sources
 One scroll: a heading (V2-4), the import action, the rows; the pill visible.
@@ -289,6 +458,25 @@ Two of those were found by the gates rather than predicted by section 0: the
 region editor's nested scroll above the expanded floor, and the second glass
 pane every compact screen gains on its first scroll, which `glass_budget` never
 saw because it counts at rest.
+
+**The backlogs after polish 3 (2026-09-17).** Every line a screen could
+delete is deleted. What remains has an owner:
+
+| Gate | Cells | What they are | Owner |
+|---|---|---|---|
+| `no_nested_scrollables` | 0 | Empty, and `shrinkWrapBacklog` is empty | |
+| `surface_depth` | 0 depth, 2 panes | `record@medium-768x1024: 3` and `import-sheet@compact-390x844: 2`, the frame's and the pattern's decisions of the section 2.2 polish 3 amendment | P1 `fe/polish3-package`, deleted by the screen slot once merged and measured |
+| `chrome_budget` | 0 | Empty. The record at expanded and large gave the action bar up (section 4.1) | |
+| `above_the_fold` | 0 | Empty | |
+| `one_job` | 0 | Both sets empty | |
+
+One finding for the integrator from the same slot: `chrome_budget` counts
+every `PinnedChrome` in the tree, including a marker on a route beneath the
+current one, so the record at medium read 27.0 percent with the queue's stuck
+search row mounted beneath it. Every screen now pins only while it is the
+route on top, which is the honest fix on the screen's side and leaves the gate
+as it is; a gate that read only the current route's markers would measure the
+same thing without depending on every screen remembering to.
 
 The `PinnedChrome` and `PrimaryRegion` markers are read by name, and their
 `extent` and `minExtent` through a dynamic call, so the gates measure a screen
