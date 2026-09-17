@@ -138,10 +138,7 @@ void main() {
         tester.widget<UiCheckbox>(checkboxFor('a.jpg')).onChanged,
         isNotNull,
       );
-      expect(
-        tester.widget<UiCheckbox>(checkboxFor('b.pdf')).onChanged,
-        isNull,
-      );
+      expect(tester.widget<UiCheckbox>(checkboxFor('b.pdf')).onChanged, isNull);
     });
 
     testWidgets('an unavailable row stays aligned with the rest', (
@@ -289,10 +286,7 @@ void main() {
       expect(repository.imports, <List<String>>[
         <String>['microscopic-slides/subject_105526321.jpg'],
       ]);
-      expect(
-        find.text('1 photograph added to the queue'),
-        findsOneWidget,
-      );
+      expect(find.text('1 photograph added to the queue'), findsOneWidget);
     });
 
     testWidgets('opens a report when something did not land', (
@@ -388,10 +382,7 @@ void main() {
       await controller.loadMore();
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('listed again'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('listed again'), findsOneWidget);
       await tester.tap(find.text('Dismiss'));
       await tester.pumpAndSettle();
       expect(find.textContaining('listed again'), findsNothing);

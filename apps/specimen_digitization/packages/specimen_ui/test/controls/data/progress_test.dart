@@ -129,10 +129,7 @@ void main() {
       uiHarness(
         child: const SizedBox(
           width: 320,
-          child: UiProgress.bar(
-            semanticsLabel: 'Upload progress',
-            value: 0.5,
-          ),
+          child: UiProgress.bar(semanticsLabel: 'Upload progress', value: 0.5),
         ),
       ),
     );
@@ -211,10 +208,7 @@ void main() {
       uiHarness(
         child: const SizedBox(
           width: 400,
-          child: UiProgress.bar(
-            semanticsLabel: 'Upload progress',
-            value: 0.5,
-          ),
+          child: UiProgress.bar(semanticsLabel: 'Upload progress', value: 0.5),
         ),
       ),
     );
@@ -332,9 +326,7 @@ void main() {
       await tester.pumpWidget(
         uiHarness(
           disableAnimations: reduced,
-          child: const UiProgress.ring(
-            semanticsLabel: 'Waiting on the server',
-          ),
+          child: const UiProgress.ring(semanticsLabel: 'Waiting on the server'),
         ),
       );
       await tester.pump();
@@ -349,7 +341,9 @@ void main() {
       // The painter is rebuilt frame by frame, so something visibly changes
       // over a quarter of a cycle in both modes.
       final CustomPainter first = _painterOf(tester);
-      await tester.pump(UiProgressStyle.resolve(UiThemeData.light()).cycle ~/ 4);
+      await tester.pump(
+        UiProgressStyle.resolve(UiThemeData.light()).cycle ~/ 4,
+      );
       expect(_painterOf(tester).shouldRepaint(first), isTrue);
       await tester.pumpWidget(uiHarness(child: const SizedBox.shrink()));
     }
@@ -381,7 +375,10 @@ void main() {
   ) async {
     final UiThemeData ui = UiThemeData.light();
     expect(UiProgressStyle.resolve(ui).arc, ui.color.ink);
-    expect(UiProgressStyle.resolve(ui, color: ui.color.paper).arc, ui.color.paper);
+    expect(
+      UiProgressStyle.resolve(ui, color: ui.color.paper).arc,
+      ui.color.paper,
+    );
     expect(UiProgressStyle.resolve(ui).track, ui.color.hairline);
   });
 
@@ -394,10 +391,7 @@ void main() {
         textScaler: const TextScaler.linear(2),
         child: const SizedBox(
           width: 320,
-          child: UiProgress.bar(
-            semanticsLabel: 'Upload progress',
-            value: 0.25,
-          ),
+          child: UiProgress.bar(semanticsLabel: 'Upload progress', value: 0.25),
         ),
       ),
     );

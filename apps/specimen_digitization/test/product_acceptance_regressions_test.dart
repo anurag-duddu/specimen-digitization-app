@@ -290,7 +290,10 @@ void main() {
       ..failOnRequest = 2;
     await openReview(tester, session, repository);
     await stageCountry(tester);
-    await scrollAndTap(tester, find.byTooltip(RegExp(r'^Edit as written')).last);
+    await scrollAndTap(
+      tester,
+      find.byTooltip(RegExp(r'^Edit as written')).last,
+    );
     await scrollAndTap(tester, find.text('Keep this correction'));
     await confirmReason(tester, 'Save 2 pending changes');
     final pending = tester

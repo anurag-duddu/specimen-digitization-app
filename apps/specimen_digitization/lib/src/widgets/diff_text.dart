@@ -113,7 +113,8 @@ class DiffOutcome {
 
   /// The runs that make up the literal, in order. Concatenating their text
   /// reproduces the literal exactly.
-  Iterable<DiffRun> get literalRuns => runs.where((DiffRun run) => run.inLiteral);
+  Iterable<DiffRun> get literalRuns =>
+      runs.where((DiffRun run) => run.inLiteral);
 
   /// True when the literal and the reference are identical.
   bool get identical => editRegions == 0;

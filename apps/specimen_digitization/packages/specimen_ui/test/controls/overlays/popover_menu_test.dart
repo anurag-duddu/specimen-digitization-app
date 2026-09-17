@@ -166,7 +166,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.getSemantics(_withRole(SemanticsRole.menu)).getSemanticsData().role,
+      tester
+          .getSemantics(_withRole(SemanticsRole.menu))
+          .getSemanticsData()
+          .role,
       SemanticsRole.menu,
     );
     for (final UiMenuItem item in items()) {

@@ -45,10 +45,7 @@ void main() {
       await controller.loadMore();
 
       expect(controller.items, hasLength(8));
-      expect(
-        controller.items.first.displayName,
-        'subject_105526321.jpg',
-      );
+      expect(controller.items.first.displayName, 'subject_105526321.jpg');
     });
 
     test('changing a filter starts the list again', () async {
@@ -63,9 +60,7 @@ void main() {
       // A filter is part of a cursor's binding, so every loaded page is
       // invalid and the request goes out with no cursor.
       expect(repository.listCursors.last, isNull);
-      expect(repository.listFilters.last, <String, String>{
-        'imported': 'true',
-      });
+      expect(repository.listFilters.last, <String, String>{'imported': 'true'});
     });
   });
 
@@ -132,33 +127,35 @@ void main() {
       expect(controller.reachableCount, 10);
     });
 
-    test('cannot be stated under the in-queue filter until all is loaded',
-        () async {
-      final FakeSourceRepository repository = FakeSourceRepository(
-        objects: <SourceObject>[
-          object('a.jpg', state: 'imported', specimenId: 'spec-a'),
-          object('b.jpg', state: 'imported', specimenId: 'spec-b'),
-          object('c.jpg', state: 'imported', specimenId: 'spec-c'),
-          object('d.jpg', state: 'imported', specimenId: 'spec-d'),
-          object('e.jpg', state: 'imported', specimenId: 'spec-e'),
-        ],
-      );
-      final SourceBrowseController controller = controllerFor(repository);
-      addTearDown(controller.dispose);
+    test(
+      'cannot be stated under the in-queue filter until all is loaded',
+      () async {
+        final FakeSourceRepository repository = FakeSourceRepository(
+          objects: <SourceObject>[
+            object('a.jpg', state: 'imported', specimenId: 'spec-a'),
+            object('b.jpg', state: 'imported', specimenId: 'spec-b'),
+            object('c.jpg', state: 'imported', specimenId: 'spec-c'),
+            object('d.jpg', state: 'imported', specimenId: 'spec-d'),
+            object('e.jpg', state: 'imported', specimenId: 'spec-e'),
+          ],
+        );
+        final SourceBrowseController controller = controllerFor(repository);
+        addTearDown(controller.dispose);
 
-      await controller.applyFilter(filter: SourceFilter.inQueue);
+        await controller.applyFilter(filter: SourceFilter.inQueue);
 
-      // The server does not count under this filter, so there is no honest
-      // number to put on a select all and the screen must not invent one.
-      expect(controller.matchingCount, isNull);
-      expect(controller.reachableCount, isNull);
+        // The server does not count under this filter, so there is no honest
+        // number to put on a select all and the screen must not invent one.
+        expect(controller.matchingCount, isNull);
+        expect(controller.reachableCount, isNull);
 
-      await controller.loadAll();
+        await controller.loadAll();
 
-      // Once everything is loaded the loaded count is the exact answer,
-      // whatever the server counted.
-      expect(controller.reachableCount, 5);
-    });
+        // Once everything is loaded the loaded count is the exact answer,
+        // whatever the server counted.
+        expect(controller.reachableCount, 5);
+      },
+    );
 
     test('loadAll pages until the snapshot is exhausted', () async {
       final FakeSourceRepository repository = FakeSourceRepository(
@@ -220,76 +217,80 @@ void main() {
       expect(seen, <int>[50, 100, 120]);
     });
 
-    test('carries one key per chunk, memoised on what that chunk names',
-        () async {
-      final FakeSourceRepository repository = FakeSourceRepository(
-        objects: manyObjects(60),
-        pageSize: 60,
-      );
-      final SourceBrowseController controller = controllerFor(repository);
-      addTearDown(controller.dispose);
-      await controller.load();
-
-      await controller.importSelection(controller.items);
-      final List<String> first = List<String>.from(repository.importKeys);
-      await controller.importSelection(controller.items);
-
-      // A retry after an uncertain answer carries the key it carried the
-      // first time, so the server reconciles rather than importing twice.
-      expect(repository.importKeys.sublist(2), first);
-      expect(first.toSet(), hasLength(2));
-    });
-
-    test('stops on an integrity failure and names what already landed',
-        () async {
-      final FakeSourceRepository repository = FakeSourceRepository(
-        objects: manyObjects(120),
-        pageSize: 120,
-      )
-        ..importsBeforeFailure = 1
-        ..importFailure = const ApiFailure(
-          'An object changed.',
-          code: 'source_object_changed',
-          status: 422,
+    test(
+      'carries one key per chunk, memoised on what that chunk names',
+      () async {
+        final FakeSourceRepository repository = FakeSourceRepository(
+          objects: manyObjects(60),
+          pageSize: 60,
         );
-      final SourceBrowseController controller = controllerFor(repository);
-      addTearDown(controller.dispose);
-      await controller.load();
+        final SourceBrowseController controller = controllerFor(repository);
+        addTearDown(controller.dispose);
+        await controller.load();
 
-      final SourceImportProgress progress = await controller.importSelection(
-        controller.items,
-      );
+        await controller.importSelection(controller.items);
+        final List<String> first = List<String>.from(repository.importKeys);
+        await controller.importSelection(controller.items);
 
-      expect(progress.imported, 50);
-      expect(progress.complete, isFalse);
-      expect(progress.stoppedReason, contains('Reload the source'));
-      // The run stopped rather than sending the remaining chunk into a
-      // snapshot that is no longer true.
-      expect(repository.imports, hasLength(2));
-    });
+        // A retry after an uncertain answer carries the key it carried the
+        // first time, so the server reconciles rather than importing twice.
+        expect(repository.importKeys.sublist(2), first);
+        expect(first.toSet(), hasLength(2));
+      },
+    );
 
-    test('an unsupported photograph is refused alone, not the selection',
-        () async {
-      final FakeSourceRepository repository = FakeSourceRepository(
-        objects: <SourceObject>[
-          object('a.jpg'),
-          object('b.pdf', state: 'unsupported_media_type'),
-          object('c.jpg'),
-        ],
-        pageSize: 10,
-      );
-      final SourceBrowseController controller = controllerFor(repository);
-      addTearDown(controller.dispose);
-      await controller.load();
+    test(
+      'stops on an integrity failure and names what already landed',
+      () async {
+        final FakeSourceRepository repository =
+            FakeSourceRepository(objects: manyObjects(120), pageSize: 120)
+              ..importsBeforeFailure = 1
+              ..importFailure = const ApiFailure(
+                'An object changed.',
+                code: 'source_object_changed',
+                status: 422,
+              );
+        final SourceBrowseController controller = controllerFor(repository);
+        addTearDown(controller.dispose);
+        await controller.load();
 
-      final SourceImportProgress progress = await controller.importSelection(
-        controller.items,
-      );
+        final SourceImportProgress progress = await controller.importSelection(
+          controller.items,
+        );
 
-      expect(progress.imported, 2);
-      expect(progress.unchanged, hasLength(1));
-      expect(progress.stoppedReason, isNull);
-    });
+        expect(progress.imported, 50);
+        expect(progress.complete, isFalse);
+        expect(progress.stoppedReason, contains('Reload the source'));
+        // The run stopped rather than sending the remaining chunk into a
+        // snapshot that is no longer true.
+        expect(repository.imports, hasLength(2));
+      },
+    );
+
+    test(
+      'an unsupported photograph is refused alone, not the selection',
+      () async {
+        final FakeSourceRepository repository = FakeSourceRepository(
+          objects: <SourceObject>[
+            object('a.jpg'),
+            object('b.pdf', state: 'unsupported_media_type'),
+            object('c.jpg'),
+          ],
+          pageSize: 10,
+        );
+        final SourceBrowseController controller = controllerFor(repository);
+        addTearDown(controller.dispose);
+        await controller.load();
+
+        final SourceImportProgress progress = await controller.importSelection(
+          controller.items,
+        );
+
+        expect(progress.imported, 2);
+        expect(progress.unchanged, hasLength(1));
+        expect(progress.stoppedReason, isNull);
+      },
+    );
   });
 
   group('a listing that did not answer', () {

@@ -141,11 +141,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(
-      selected,
-      <int>[1],
-      reason: 'left is forward under RTL, so it lands on the second',
-    );
+    expect(selected, <int>[
+      1,
+    ], reason: 'left is forward under RTL, so it lands on the second');
   });
 
   testWidgets('the disc glides to the destination it was sent to', (

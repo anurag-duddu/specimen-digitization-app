@@ -9,10 +9,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 void main() {
   test('both faces exist under the package', () {
-    for (final String asset in <String>[
-      UiFonts.sansAsset,
-      UiFonts.monoAsset,
-    ]) {
+    for (final String asset in <String>[UiFonts.sansAsset, UiFonts.monoAsset]) {
       expect(File(asset).existsSync(), isTrue, reason: '$asset is missing');
     }
   });

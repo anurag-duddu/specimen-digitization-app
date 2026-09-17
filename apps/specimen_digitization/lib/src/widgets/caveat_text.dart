@@ -62,10 +62,7 @@ class _CaveatTextState extends State<CaveatText> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(
-            widget.label,
-            style: ui.type.body.copyWith(color: ui.color.ink),
-          ),
+          Text(widget.label, style: ui.type.body.copyWith(color: ui.color.ink)),
           Align(
             alignment: AlignmentDirectional.centerStart,
             // One node, so a screen reader reads "Why, button, collapsed"

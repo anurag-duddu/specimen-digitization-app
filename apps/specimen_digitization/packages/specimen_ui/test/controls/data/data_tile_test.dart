@@ -170,9 +170,10 @@ void main() {
   ) async {
     final UiThemeData ui = UiThemeData.light();
     expect(
-      UiDataTileStyle.resolve(ui, hero: true).numeralSteps
-          .map((TextStyle role) => role.fontSize)
-          .toList(),
+      UiDataTileStyle.resolve(
+        ui,
+        hero: true,
+      ).numeralSteps.map((TextStyle role) => role.fontSize).toList(),
       <double?>[
         ui.type.displayHero.fontSize,
         ui.type.displayLarge.fontSize,
@@ -281,7 +282,10 @@ void main() {
   ) async {
     for (final bool reduced in <bool>[false, true]) {
       await tester.pumpWidget(
-        uiHarness(disableAnimations: reduced, child: _tile(value: '128')),
+        uiHarness(
+          disableAnimations: reduced,
+          child: _tile(value: '128'),
+        ),
       );
       await tester.pumpAndSettle();
       // Where a numeral sits when nothing is happening to it, measured
@@ -290,7 +294,10 @@ void main() {
       final double rest = tester.getTopLeft(find.text('128')).dy;
 
       await tester.pumpWidget(
-        uiHarness(disableAnimations: reduced, child: _tile(value: '129')),
+        uiHarness(
+          disableAnimations: reduced,
+          child: _tile(value: '129'),
+        ),
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 40));

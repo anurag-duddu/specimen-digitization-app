@@ -87,8 +87,7 @@ class UiTabs extends StatelessWidget {
     final double padding = style.segmentPadding
         .resolve(Directionality.of(context))
         .horizontal;
-    return tabs.length *
-            math.max(style.minSegmentWidth, widest + padding) +
+    return tabs.length * math.max(style.minSegmentWidth, widest + padding) +
         2 * style.inset;
   }
 
@@ -143,20 +142,19 @@ class UiTabs extends StatelessWidget {
     label: semanticsLabel,
     child: ValueListenableBuilder<int>(
       valueListenable: selected,
-      builder: (BuildContext context, int index, Widget? _) =>
-          UiSegmented<int>(
-            size: UiSize.lg,
-            value: tabs.isEmpty ? 0 : index.clamp(0, tabs.length - 1),
-            segments: <UiSegment<int>>[
-              for (int i = 0; i < tabs.length; i++)
-                UiSegment<int>(
-                  value: i,
-                  label: tabs[i].label,
-                  semanticsLabel: tabs[i].semanticsLabel,
-                ),
-            ],
-            onChanged: (int value) => selected.value = value,
-          ),
+      builder: (BuildContext context, int index, Widget? _) => UiSegmented<int>(
+        size: UiSize.lg,
+        value: tabs.isEmpty ? 0 : index.clamp(0, tabs.length - 1),
+        segments: <UiSegment<int>>[
+          for (int i = 0; i < tabs.length; i++)
+            UiSegment<int>(
+              value: i,
+              label: tabs[i].label,
+              semanticsLabel: tabs[i].semanticsLabel,
+            ),
+        ],
+        onChanged: (int value) => selected.value = value,
+      ),
     ),
   );
 }
@@ -169,11 +167,7 @@ class UiTabs extends StatelessWidget {
 /// to drift the other way (04 section 5.4).
 class UiTabView extends StatelessWidget {
   /// Shows the pane [selected] names.
-  const UiTabView({
-    super.key,
-    required this.selected,
-    required this.children,
-  });
+  const UiTabView({super.key, required this.selected, required this.children});
 
   /// The current index, shared with the strip.
   final ValueNotifier<int> selected;
@@ -199,10 +193,7 @@ class UiTabView extends StatelessWidget {
             switchOutCurve: MotionTokens.standardCurve,
             child: children.isEmpty
                 ? const SizedBox.shrink()
-                : KeyedSubtree(
-                    key: ValueKey<int>(safe),
-                    child: children[safe],
-                  ),
+                : KeyedSubtree(key: ValueKey<int>(safe), child: children[safe]),
           ),
         );
       },

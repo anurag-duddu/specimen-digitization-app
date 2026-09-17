@@ -156,9 +156,7 @@ void main() {
     }
   });
 
-  testWidgets('it satisfies the control contract', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('it satisfies the control contract', (WidgetTester tester) async {
     await expectControlContract(
       tester,
       (BuildContext context) => _disclosure(),

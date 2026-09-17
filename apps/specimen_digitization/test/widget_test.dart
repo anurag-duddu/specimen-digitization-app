@@ -203,6 +203,7 @@ class TestRepository implements SpecimenRepository {
         ),
     ]);
   }
+
   @override
   Future<Json> createIntake(
     CollectionScope scope,

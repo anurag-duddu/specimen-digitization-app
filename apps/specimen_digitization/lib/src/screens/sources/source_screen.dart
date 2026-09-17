@@ -114,7 +114,9 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
 
   void _onScroll() {
     final SourceBrowseController controller = widget.controller;
-    if (!_scroll.hasClients || controller.loadingMore || !controller.moreToLoad) {
+    if (!_scroll.hasClients ||
+        controller.loadingMore ||
+        !controller.moreToLoad) {
       return;
     }
     final double remaining =
@@ -172,7 +174,9 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     if (progress.complete && progress.unchanged.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${photographsLabel(progress.imported)} added to the queue'),
+          content: Text(
+            '${photographsLabel(progress.imported)} added to the queue',
+          ),
         ),
       );
       return;
@@ -476,9 +480,7 @@ class _RefreshedNotice extends StatelessWidget {
           children: <Widget>[
             Icon(Symbols.info, color: theme.colorScheme.onSurfaceVariant),
             SizedBox(width: context.space.space3),
-            Expanded(
-              child: Text(body, style: theme.textTheme.bodySmall),
-            ),
+            Expanded(child: Text(body, style: theme.textTheme.bodySmall)),
             TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
           ],
         ),

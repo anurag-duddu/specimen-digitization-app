@@ -14,15 +14,14 @@ final RegExp _colorLiteral = RegExp(r'Color\(0x');
 
 /// Drops line and doc comments, so a comment that names the pattern is not
 /// read as a use of it. The gate is about code.
-String withoutComments(String source) =>
-    source.replaceAll(RegExp(r'//.*'), '');
-
+String withoutComments(String source) => source.replaceAll(RegExp(r'//.*'), '');
 
 void main() {
   test('only the palette carries a colour literal', () {
     final Map<String, int> found = <String, int>{};
-    for (final FileSystemEntity entity
-        in Directory('lib').listSync(recursive: true)) {
+    for (final FileSystemEntity entity in Directory(
+      'lib',
+    ).listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       if (entity.path == paletteFile) continue;
       final int count = _colorLiteral
@@ -43,7 +42,9 @@ void main() {
     final File palette = File(paletteFile);
     expect(palette.existsSync(), isTrue);
     expect(
-      _colorLiteral.allMatches(withoutComments(palette.readAsStringSync())).length,
+      _colorLiteral
+          .allMatches(withoutComments(palette.readAsStringSync()))
+          .length,
       greaterThan(50),
       reason:
           'if the palette holds almost no literal, either this gate is '
@@ -55,9 +56,10 @@ void main() {
     // Kept pure so a contrast test can run without a binding, and so the one
     // file holding the values cannot grow a dependency on a widget.
     final String source = File(paletteFile).readAsStringSync();
-    final Iterable<String> imports = RegExp(r"^import '([^']+)'", multiLine: true)
-        .allMatches(source)
-        .map((RegExpMatch m) => m.group(1)!);
+    final Iterable<String> imports = RegExp(
+      r"^import '([^']+)'",
+      multiLine: true,
+    ).allMatches(source).map((RegExpMatch m) => m.group(1)!);
     expect(imports, <String>['dart:ui']);
   });
 }

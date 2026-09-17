@@ -62,7 +62,8 @@ void main() {
     expect(
       controller.error,
       isNotNull,
-      reason: 'a background refresh cleared an error the reviewer may not '
+      reason:
+          'a background refresh cleared an error the reviewer may not '
           'have read',
     );
 

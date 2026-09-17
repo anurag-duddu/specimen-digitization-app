@@ -77,8 +77,9 @@ final RegExp _materialImport = RegExp(
 /// Every file under [roots] that imports `material.dart`.
 List<String> importersUnder(List<String> roots, {String? except}) {
   final List<String> found = <String>[];
-  for (final FileSystemEntity entity
-      in Directory('lib').listSync(recursive: true)) {
+  for (final FileSystemEntity entity in Directory(
+    'lib',
+  ).listSync(recursive: true)) {
     if (entity is! File || !entity.path.endsWith('.dart')) continue;
     final String path = entity.path;
     if (!roots.any(path.startsWith)) continue;
@@ -128,8 +129,9 @@ void main() {
 
   test('only three files in the package may import material.dart', () {
     final List<String> found = <String>[];
-    for (final FileSystemEntity entity
-        in Directory('packages/specimen_ui/lib').listSync(recursive: true)) {
+    for (final FileSystemEntity entity in Directory(
+      'packages/specimen_ui/lib',
+    ).listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       if (_materialImport.hasMatch(entity.readAsStringSync())) {
         found.add(entity.path);

@@ -71,7 +71,11 @@ void main() {
     await tester.pumpWidget(
       uiHarness(
         size: _window,
-        child: _page(sky: SkyPreset.work, exclusion: matte, body: const Text('Body')),
+        child: _page(
+          sky: SkyPreset.work,
+          exclusion: matte,
+          body: const Text('Body'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -293,7 +297,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final Rect body = tester.getRect(find.byKey(const ValueKey<String>('body')));
+    final Rect body = tester.getRect(
+      find.byKey(const ValueKey<String>('body')),
+    );
     final Rect pill = tester.getRect(find.byType(UiPillNav));
     expect(
       body.contains(pill.topLeft) && body.contains(pill.bottomRight),
@@ -531,10 +537,7 @@ void main() {
       await tester.pumpWidget(
         uiHarness(
           size: _window,
-          child: _page(
-            overlays: overlays,
-            body: const _MeasuredBody(),
-          ),
+          child: _page(overlays: overlays, body: const _MeasuredBody()),
         ),
       );
       await tester.pumpAndSettle();

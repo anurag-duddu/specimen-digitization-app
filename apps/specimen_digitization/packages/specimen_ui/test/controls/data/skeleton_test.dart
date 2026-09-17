@@ -127,9 +127,7 @@ void main() {
         uiHarness(density: density, child: const UiSkeleton.row()),
       );
       await tester.pump();
-      final UiThemeData ui = UiThemeData.light(
-        density: UiDensity.of(density),
-      );
+      final UiThemeData ui = UiThemeData.light(density: UiDensity.of(density));
       expect(
         tester.getSize(find.byType(UiSkeleton)).height,
         UiListRowStyle.heightOf(ui),

@@ -103,9 +103,7 @@ void main() {
         },
       ),
     );
-    final UiProgress ring = tester.widget<UiProgress>(
-      find.byType(UiProgress),
-    );
+    final UiProgress ring = tester.widget<UiProgress>(find.byType(UiProgress));
     expect(ring.value, 0.5);
     expect(find.byType(Icon), findsNothing);
   });

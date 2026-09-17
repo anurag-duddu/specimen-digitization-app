@@ -53,8 +53,7 @@ abstract final class AppRoutes {
   /// Under intake rather than beside it: adding from a source creates a batch
   /// through the same batch and items surface an upload does, so it is the
   /// same errand by another route in.
-  static String sourcesOf(String routeKey) =>
-      '${intakeOf(routeKey)}/sources';
+  static String sourcesOf(String routeKey) => '${intakeOf(routeKey)}/sources';
 
   /// One registered source.
   static String sourceOf(String routeKey, String sourceId) =>

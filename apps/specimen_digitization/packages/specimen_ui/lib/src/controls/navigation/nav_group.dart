@@ -92,7 +92,9 @@ class _NavGroupState extends State<NavGroup> {
       _nodes.removeLast().dispose();
     }
     while (_nodes.length < widget.length) {
-      _nodes.add(FocusNode(debugLabel: 'NavGroup destination ${_nodes.length}'));
+      _nodes.add(
+        FocusNode(debugLabel: 'NavGroup destination ${_nodes.length}'),
+      );
     }
   }
 
@@ -103,7 +105,9 @@ class _NavGroupState extends State<NavGroup> {
   /// rather than nowhere.
   void _move(int delta) {
     if (_nodes.isEmpty) return;
-    final int from = _nodes.indexWhere((FocusNode node) => node.hasPrimaryFocus);
+    final int from = _nodes.indexWhere(
+      (FocusNode node) => node.hasPrimaryFocus,
+    );
     if (from < 0) {
       _nodes.first.requestFocus();
       return;

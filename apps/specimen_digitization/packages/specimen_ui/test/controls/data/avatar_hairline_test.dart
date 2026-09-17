@@ -14,12 +14,73 @@ import '../../harness/control_contract.dart';
 
 /// A one pixel image, so the image path is exercised without a fixture file.
 final Uint8List _onePixel = Uint8List.fromList(<int>[
-  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-  0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-  0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+  0x89,
+  0x50,
+  0x4E,
+  0x47,
+  0x0D,
+  0x0A,
+  0x1A,
+  0x0A,
+  0x00,
+  0x00,
+  0x00,
+  0x0D,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1F,
+  0x15,
+  0xC4,
+  0x89,
+  0x00,
+  0x00,
+  0x00,
+  0x0A,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x78,
+  0x9C,
+  0x63,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x05,
+  0x00,
+  0x01,
+  0x0D,
+  0x0A,
+  0x2D,
+  0xB4,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4E,
+  0x44,
+  0xAE,
+  0x42,
+  0x60,
+  0x82,
 ]);
 
 void main() {
@@ -62,13 +123,15 @@ void main() {
     });
 
     testWidgets('the two sizes are 32 and 40', (WidgetTester tester) async {
-      expect(
-        UiAvatarSize.values.map((UiAvatarSize s) => s.diameter),
-        <double>[32, 40],
-      );
+      expect(UiAvatarSize.values.map((UiAvatarSize s) => s.diameter), <double>[
+        32,
+        40,
+      ]);
       for (final UiAvatarSize size in UiAvatarSize.values) {
         await tester.pumpWidget(
-          uiHarness(child: UiAvatar(name: 'Ana Ruiz', size: size)),
+          uiHarness(
+            child: UiAvatar(name: 'Ana Ruiz', size: size),
+          ),
         );
         await tester.pumpAndSettle();
         expect(
@@ -98,10 +161,7 @@ void main() {
         'initials', (WidgetTester tester) async {
       await tester.pumpWidget(
         uiHarness(
-          child: UiAvatar(
-            name: 'Ana Ruiz',
-            image: MemoryImage(_onePixel),
-          ),
+          child: UiAvatar(name: 'Ana Ruiz', image: MemoryImage(_onePixel)),
         ),
       );
       await tester.pumpAndSettle();
@@ -207,10 +267,7 @@ void main() {
         await tester.pumpWidget(
           uiHarness(
             textDirection: direction,
-            child: const SizedBox(
-              width: 200,
-              child: UiHairline(indent: 40),
-            ),
+            child: const SizedBox(width: 200, child: UiHairline(indent: 40)),
           ),
         );
         await tester.pumpAndSettle();

@@ -84,7 +84,8 @@ void main() {
     expect(
       find.text(_second),
       findsOneWidget,
-      reason: 'taking the action away after six seconds takes it away as the '
+      reason:
+          'taking the action away after six seconds takes it away as the '
           'reviewer reaches for it',
     );
 
@@ -166,7 +167,10 @@ void main() {
     useWindow(tester, window);
     for (final double inset in <double>[0, 96]) {
       await tester.pumpWidget(
-        uiHarness(size: window, child: _host(bottomInset: inset)),
+        uiHarness(
+          size: window,
+          child: _host(bottomInset: inset),
+        ),
       );
       UiToasts.show(hostContext, message: _first);
       await tester.pumpAndSettle();
@@ -192,9 +196,7 @@ void main() {
   testWidgets('the entrance collapses under reduced motion', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(
-      uiHarness(disableAnimations: true, child: _host()),
-    );
+    await tester.pumpWidget(uiHarness(disableAnimations: true, child: _host()));
     UiToasts.show(hostContext, message: _first);
     await tester.pump();
     expect(find.text(_first), findsOneWidget);
@@ -212,11 +214,7 @@ void main() {
           (TextDirection.ltr, const TextScaler.linear(2)),
         ]) {
       await tester.pumpWidget(
-        uiHarness(
-          textDirection: direction,
-          textScaler: scaler,
-          child: _host(),
-        ),
+        uiHarness(textDirection: direction, textScaler: scaler, child: _host()),
       );
       UiToasts.show(
         hostContext,

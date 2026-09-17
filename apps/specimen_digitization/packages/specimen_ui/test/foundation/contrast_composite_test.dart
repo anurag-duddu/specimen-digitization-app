@@ -48,9 +48,7 @@ const double nonTextMinimum = 3.0;
 /// extremes of every field: the field's centre over `ground`, and `ground`
 /// itself where the field has fallen to nothing.
 Map<String, Color> surfacesFor(UiThemeData ui) {
-  final Map<String, Color> extremes = <String, Color>{
-    'plain': ui.color.ground,
-  };
+  final Map<String, Color> extremes = <String, Color>{'plain': ui.color.ground};
   ui.field.all.forEach((String name, UiFieldStyle field) {
     extremes['field.$name'] = field.extremeOver(ui.color.ground);
   });
@@ -144,17 +142,20 @@ void main() {
         });
       });
 
-      test('every status content colour clears 4.5:1 on glass over a field', () {
-        ui.color.status.contentColors.forEach((String role, Color colour) {
-          surfaces.forEach((String where, Color background) {
-            expect(
-              contrast(colour, background),
-              greaterThanOrEqualTo(textMinimum),
-              reason: '$mode $role on $where',
-            );
+      test(
+        'every status content colour clears 4.5:1 on glass over a field',
+        () {
+          ui.color.status.contentColors.forEach((String role, Color colour) {
+            surfaces.forEach((String where, Color background) {
+              expect(
+                contrast(colour, background),
+                greaterThanOrEqualTo(textMinimum),
+                reason: '$mode $role on $where',
+              );
+            });
           });
-        });
-      });
+        },
+      );
 
       test('every on-fill clears 4.5:1 on its own fill', () {
         ui.color.status.triples.forEach((String key, UiStatusTriple triple) {

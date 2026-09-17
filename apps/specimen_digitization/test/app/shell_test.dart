@@ -49,7 +49,8 @@ void expectOnly(Type navigation) {
     expect(
       find.byType(candidate),
       candidate == navigation ? findsOneWidget : findsNothing,
-      reason: '$candidate should ${candidate == navigation ? '' : 'not '}'
+      reason:
+          '$candidate should ${candidate == navigation ? '' : 'not '}'
           'be the navigation here',
     );
   }
@@ -91,9 +92,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('large windows carry a sidebar and a list pane', (
-    tester,
-  ) async {
+  testWidgets('large windows carry a sidebar and a list pane', (tester) async {
     await pumpAt(tester, 1300);
     expectOnly(UiSidebar);
     // List detail: the queue keeps its own pane beside the detail half.

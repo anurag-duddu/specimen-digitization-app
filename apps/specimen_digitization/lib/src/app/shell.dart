@@ -115,11 +115,7 @@ class AppShell extends StatelessWidget {
       // route is the work sky, and the workbench slot passes the matte's
       // exclusion rectangle through `UiScaffold.exclusion` when it lands.
       sky: SkyPreset.home,
-      topBar: _TopBar(
-        controller: controller,
-        window: window,
-        sidebar: sidebar,
-      ),
+      topBar: _TopBar(controller: controller, window: window, sidebar: sidebar),
       banner: _Chrome(controller: controller, busy: busy),
       nav: navigation,
       // The routed screen is a nested `Navigator`, and a route's modal
@@ -129,11 +125,7 @@ class AppShell extends StatelessWidget {
       // its own the screen erased all of it: a reviewer working through a
       // browser's accessibility tree found a queue with no navigation and no
       // way into a record.
-      body: Semantics(
-        container: true,
-        explicitChildNodes: true,
-        child: child,
-      ),
+      body: Semantics(container: true, explicitChildNodes: true, child: child),
     );
   }
 }

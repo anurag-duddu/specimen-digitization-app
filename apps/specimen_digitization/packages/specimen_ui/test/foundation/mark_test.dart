@@ -32,9 +32,9 @@ class _Pixels {
   final int height;
 
   /// The colour at (`x`, `y`), opaque.
-  ui.Color at(int x, int y) =>
-      ui.Color(_bytes.getUint32((y * width + x) * 4, Endian.big) >> 8 |
-          0xFF000000);
+  ui.Color at(int x, int y) => ui.Color(
+    _bytes.getUint32((y * width + x) * 4, Endian.big) >> 8 | 0xFF000000,
+  );
 
   /// Whether (`x`, `y`) is closer to `colour` than to anything else drawn.
   bool isNear(int x, int y, ui.Color colour) {

@@ -90,11 +90,15 @@ class PagedSelection<T extends Object> extends ChangeNotifier {
   void syncLoaded(List<T> loaded, {required bool moreToLoad}) {
     final List<T> next = List<T>.unmodifiable(loaded);
     final Set<String> present = next.map(identify).toSet();
-    final int removed = _selected.length - _selected.intersection(present).length;
+    final int removed =
+        _selected.length - _selected.intersection(present).length;
     final bool changed =
         removed > 0 ||
         _moreToLoad != moreToLoad ||
-        !listEquals(_loaded.map(identify).toList(), next.map(identify).toList());
+        !listEquals(
+          _loaded.map(identify).toList(),
+          next.map(identify).toList(),
+        );
     _loaded = next;
     _moreToLoad = moreToLoad;
     if (removed > 0) _selected.retainAll(present);

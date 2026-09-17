@@ -76,10 +76,7 @@ class FitVariant {
 class FitBuilder extends StatelessWidget {
   /// Draws the first of [variants] that fits.
   const FitBuilder({super.key, required this.variants})
-    : assert(
-        variants.length != 0,
-        'a control declares at least one variant',
-      );
+    : assert(variants.length != 0, 'a control declares at least one variant');
 
   /// The arrangements, widest first.
   final List<FitVariant> variants;

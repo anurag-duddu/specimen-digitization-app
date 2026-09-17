@@ -40,12 +40,7 @@ import 'package:specimen_digitization/src/widgets/diff_text.dart';
 import 'golden_harness.dart';
 
 /// One labelled comparison on the sheet.
-typedef DiffCase = ({
-  String label,
-  String text,
-  String? reference,
-  bool dense,
-});
+typedef DiffCase = ({String label, String text, String? reference, bool dense});
 
 /// Every state the comparison has, on one sheet.
 ///
@@ -153,9 +148,10 @@ void main() {
   test('the sheet reaches every run kind and both summaries', () {
     final Set<DiffRunKind> kinds = <DiffRunKind>{
       for (final DiffCase c in diffCases)
-        ...DiffText.compare(c.text, c.reference).runs.map(
-          (DiffRun run) => run.kind,
-        ),
+        ...DiffText.compare(
+          c.text,
+          c.reference,
+        ).runs.map((DiffRun run) => run.kind),
     };
     expect(
       kinds,

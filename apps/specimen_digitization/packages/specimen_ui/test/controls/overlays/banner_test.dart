@@ -20,7 +20,9 @@ void main() {
   ) async {
     for (final UiBannerTone tone in UiBannerTone.values) {
       await tester.pumpWidget(
-        uiHarness(child: UiBanner(message: _message, tone: tone)),
+        uiHarness(
+          child: UiBanner(message: _message, tone: tone),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.text(_message), findsOneWidget, reason: tone.name);

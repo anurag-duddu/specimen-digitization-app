@@ -162,9 +162,8 @@ class UiIconButton extends StatelessWidget {
         tooltip: phrase,
         child: forbidden
             ? UiTooltip.reason(
-                builder:
-                    (BuildContext context, ValueChanged<String> report) =>
-                        _disc(style, onDisabledReason: report),
+                builder: (BuildContext context, ValueChanged<String> report) =>
+                    _disc(style, onDisabledReason: report),
               )
             : UiTooltip(message: phrase, child: _disc(style)),
       ),

@@ -46,12 +46,7 @@ void main() {
   for (final Brightness mode in Brightness.values) {
     final String name = mode == Brightness.dark ? 'dark' : 'light';
     testWidgets('mark-$name', (WidgetTester tester) async {
-      await goldenGalleryPage(
-        tester,
-        _specimen(),
-        mode: mode,
-        window: _window,
-      );
+      await goldenGalleryPage(tester, _specimen(), mode: mode, window: _window);
       await expectLater(
         find.byKey(_sheet),
         matchesGoldenFile('goldens/mark-$name.png'),

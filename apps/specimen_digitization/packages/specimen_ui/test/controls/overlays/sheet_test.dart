@@ -11,7 +11,8 @@ import 'package:specimen_ui/testing.dart';
 import '../../harness/control_contract.dart';
 
 const String _title = 'Record a reason';
-const String _body = 'Recorded in the audit history with your name and the '
+const String _body =
+    'Recorded in the audit history with your name and the '
     'time.';
 
 /// The context of the page under the sheet.
@@ -186,11 +187,7 @@ void main() {
           (TextDirection.ltr, const TextScaler.linear(2)),
         ]) {
       await tester.pumpWidget(
-        uiHarness(
-          textDirection: direction,
-          textScaler: scaler,
-          child: _page(),
-        ),
+        uiHarness(textDirection: direction, textScaler: scaler, child: _page()),
       );
       await tester.tap(find.text('Open a sheet'));
       await tester.pumpAndSettle();
@@ -203,9 +200,7 @@ void main() {
   testWidgets('the entrance collapses under reduced motion', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(
-      uiHarness(disableAnimations: true, child: _page()),
-    );
+    await tester.pumpWidget(uiHarness(disableAnimations: true, child: _page()));
     await tester.tap(find.text('Open a sheet'));
     await tester.pumpAndSettle();
     expect(

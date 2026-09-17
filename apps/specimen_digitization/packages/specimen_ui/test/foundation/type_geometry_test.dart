@@ -149,7 +149,11 @@ void main() {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text('128', key: const ValueKey<String>('plain'), style: type.body),
+              Text(
+                '128',
+                key: const ValueKey<String>('plain'),
+                style: type.body,
+              ),
               line('locked', strut: UiType.strutOf(type.body)),
               line('loose'),
             ],

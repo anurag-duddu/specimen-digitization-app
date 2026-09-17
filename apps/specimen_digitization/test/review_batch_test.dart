@@ -385,7 +385,8 @@ void main() {
       expect(
         find.textContaining('Select all matching'),
         findsNothing,
-        reason: 'the list API answers a page, never a total, so no control '
+        reason:
+            'the list API answers a page, never a total, so no control '
             'may claim the whole filter',
       );
       await tester.pumpWidget(const SizedBox());
@@ -425,7 +426,8 @@ void main() {
         expect(
           find.textContaining(absent),
           findsNothing,
-          reason: 'the queue offers "$absent" across records, which the '
+          reason:
+              'the queue offers "$absent" across records, which the '
               'decisions endpoint does not take',
         );
       }

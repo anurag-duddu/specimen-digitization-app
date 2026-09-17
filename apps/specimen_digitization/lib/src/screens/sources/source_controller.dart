@@ -277,7 +277,11 @@ class SourceBrowseController extends ChangeNotifier {
     SourceImportProgress progress = SourceImportProgress(
       requested: selection.length,
     );
-    for (int start = 0; start < selection.length; start += sourceImportBatchSize) {
+    for (
+      int start = 0;
+      start < selection.length;
+      start += sourceImportBatchSize
+    ) {
       final List<SourceObject> chunk = selection.sublist(
         start,
         (start + sourceImportBatchSize).clamp(0, selection.length),

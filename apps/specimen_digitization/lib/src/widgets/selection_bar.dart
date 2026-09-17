@@ -346,10 +346,7 @@ class SelectionBar extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: ui.space.s4,
                   runSpacing: ui.space.s2,
-                  children: <Widget>[
-                    _summary(ui),
-                    ..._controls(ui),
-                  ],
+                  children: <Widget>[_summary(ui), ..._controls(ui)],
                 ),
                 // Only once a select all has been taken at face value is the
                 // reviewer told how far it reached. Said earlier it is noise;
@@ -409,7 +406,8 @@ class SelectionBar extends StatelessWidget {
   ];
 
   /// Why every control is held while a bulk call is out.
-  static const String _busyReason = 'A decision on this selection is in flight.';
+  static const String _busyReason =
+      'A decision on this selection is in flight.';
 }
 
 /// Tells the reviewer what a bulk action did, record by record.

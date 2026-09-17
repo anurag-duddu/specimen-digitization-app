@@ -25,9 +25,7 @@ final RegExp _colorLiteral = RegExp(r'Color\(0x');
 
 /// Drops line and doc comments, so a comment that names the pattern is not
 /// read as a use of it. The gate is about code.
-String withoutComments(String source) =>
-    source.replaceAll(RegExp(r'//.*'), '');
-
+String withoutComments(String source) => source.replaceAll(RegExp(r'//.*'), '');
 
 /// Every Dart file the gate scans: the application's widgets and screens, and
 /// the design system package.
@@ -92,7 +90,9 @@ void main() {
       reason: 'the one file allowed to hold a literal is missing',
     );
     expect(
-      _colorLiteral.allMatches(withoutComments(palette.readAsStringSync())).length,
+      _colorLiteral
+          .allMatches(withoutComments(palette.readAsStringSync()))
+          .length,
       greaterThan(0),
       reason:
           'if the palette holds no literal, either the gate is scanning the '

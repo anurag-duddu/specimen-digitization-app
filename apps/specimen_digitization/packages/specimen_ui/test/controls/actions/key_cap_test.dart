@@ -55,7 +55,9 @@ void main() {
   testWidgets('a printed form that does not say itself aloud gets a spoken '
       'one', (WidgetTester tester) async {
     await tester.pumpWidget(
-      uiHarness(child: const UiKeyCap(label: '/', semanticsLabel: 'Slash')),
+      uiHarness(
+        child: const UiKeyCap(label: '/', semanticsLabel: 'Slash'),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.bySemanticsLabel('Slash'), findsOneWidget);
@@ -79,8 +81,9 @@ void main() {
     );
   });
 
-  testWidgets('the cap is the token at rest and the derived height above it',
-      (WidgetTester tester) async {
+  testWidgets('the cap is the token at rest and the derived height above it', (
+    WidgetTester tester,
+  ) async {
     final UiThemeData ui = UiThemeData.light();
     for (final double scale in <double>[1, 1.3, 2]) {
       await tester.pumpWidget(

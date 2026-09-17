@@ -120,8 +120,7 @@ class Density extends StatefulWidget {
     PointerDeviceKind.mouse ||
     PointerDeviceKind.trackpad => UiDensityMode.pointer,
     PointerDeviceKind.touch || PointerDeviceKind.stylus => UiDensityMode.touch,
-    PointerDeviceKind.invertedStylus ||
-    PointerDeviceKind.unknown => null,
+    PointerDeviceKind.invertedStylus || PointerDeviceKind.unknown => null,
   };
 
   @override

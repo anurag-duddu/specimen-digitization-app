@@ -55,7 +55,10 @@ void main() {
       // what it costs, so that is what it says. It must not name a price or
       // an allowance, because no endpoint reports either yet and a
       // confirmation that invented one would look authoritative.
-      expect(find.text('No model runs and no allowance is used.'), findsOneWidget);
+      expect(
+        find.text('No model runs and no allowance is used.'),
+        findsOneWidget,
+      );
       expect(find.textContaining('cents'), findsNothing);
       expect(find.textContaining(r'$'), findsNothing);
       expect(find.textContaining('remaining'), findsNothing);
@@ -87,7 +90,9 @@ void main() {
       );
 
       expect(
-        find.textContaining('342 photographs of these are already in the queue'),
+        find.textContaining(
+          '342 photographs of these are already in the queue',
+        ),
         findsOneWidget,
       );
     });

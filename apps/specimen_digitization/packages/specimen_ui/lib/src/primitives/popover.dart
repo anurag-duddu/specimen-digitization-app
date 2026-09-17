@@ -225,10 +225,7 @@ class _PopoverState extends State<Popover> {
               targetAnchor: _targetAnchor,
               followerAnchor: _followerAnchor,
               offset: _offset(ui),
-              child: Align(
-                alignment: _followerAnchor,
-                child: _pane(context),
-              ),
+              child: Align(alignment: _followerAnchor, child: _pane(context)),
             ),
           ],
         ),

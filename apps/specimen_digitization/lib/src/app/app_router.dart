@@ -276,8 +276,7 @@ GoRouter buildAppRouter({
                     builder: (BuildContext context, GoRouterState state) =>
                         _SourceRoute(
                           sourceId:
-                              state.pathParameters[AppRoutes
-                                  .sourceParameter] ??
+                              state.pathParameters[AppRoutes.sourceParameter] ??
                               '',
                         ),
                   ),

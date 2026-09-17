@@ -12,8 +12,11 @@ import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'harness.dart';
 
-SelectionAction action(String label, {VoidCallback? onPressed}) =>
-    (label: label, icon: UiIcons.cleared.defaultGlyph, onPressed: onPressed ?? () {});
+SelectionAction action(String label, {VoidCallback? onPressed}) => (
+  label: label,
+  icon: UiIcons.cleared.defaultGlyph,
+  onPressed: onPressed ?? () {},
+);
 
 Widget bar({
   int count = 3,
@@ -97,7 +100,8 @@ void main() {
       expect(
         find.textContaining('Select all matching'),
         findsNothing,
-        reason: 'the list API answers a page, so no control may claim the '
+        reason:
+            'the list API answers a page, so no control may claim the '
             'whole filter',
       );
     });
@@ -121,10 +125,7 @@ void main() {
     testWidgets('with nothing left to load it claims nothing', (
       WidgetTester tester,
     ) async {
-      await pumpComponent(
-        tester,
-        bar(count: 6, allLoadedSelected: true),
-      );
+      await pumpComponent(tester, bar(count: 6, allLoadedSelected: true));
       await tester.pumpAndSettle();
       expect(find.text(SelectionBar.recordsMoreMatch), findsNothing);
     });
@@ -281,9 +282,7 @@ void main() {
       expect(toggles, 1);
     });
 
-    testWidgets('a long press starts a selection', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('a long press starts a selection', (WidgetTester tester) async {
       int started = 0;
       await pumpComponent(
         tester,
@@ -350,7 +349,8 @@ void main() {
       expect(
         contentLeft(tester),
         picked,
-        reason: 'a list needs only one unselectable row for every row below '
+        reason:
+            'a list needs only one unselectable row for every row below '
             'it to be read against a different left edge',
       );
       // Drawn and unavailable, rather than absent. A reader told nothing
@@ -374,7 +374,8 @@ void main() {
       expect(
         started,
         0,
-        reason: 'a gesture that picks a record the server will refuse is '
+        reason:
+            'a gesture that picks a record the server will refuse is '
             'worse than no gesture',
       );
     });
@@ -422,7 +423,8 @@ void main() {
       expect(
         find.text('Pinned beetle a'),
         findsNothing,
-        reason: 'the records that changed are the queue\'s to show, not a '
+        reason:
+            'the records that changed are the queue\'s to show, not a '
             'list to read back',
       );
     });

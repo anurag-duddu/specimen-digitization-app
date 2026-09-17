@@ -220,7 +220,9 @@ void main() {
     FocusManager.instance.highlightStrategy =
         FocusHighlightStrategy.alwaysTraditional;
     await tester.pumpWidget(
-      uiHarness(child: _group(value: 'model', onChanged: (String? _) {})),
+      uiHarness(
+        child: _group(value: 'model', onChanged: (String? _) {}),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);

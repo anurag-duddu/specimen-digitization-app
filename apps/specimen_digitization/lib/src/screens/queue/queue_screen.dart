@@ -273,10 +273,8 @@ class _QueuePaneState extends State<QueuePane> {
   WorkspaceController get _controller => WorkspaceScope.read(context);
 
   /// The node row [id] takes focus on.
-  FocusNode _rowFocusNode(String id) => _rowFocus.putIfAbsent(
-    id,
-    () => FocusNode(debugLabel: 'Queue row $id'),
-  );
+  FocusNode _rowFocusNode(String id) =>
+      _rowFocus.putIfAbsent(id, () => FocusNode(debugLabel: 'Queue row $id'));
 
   void _move(int delta) {
     final List<Specimen> items = _controller.items;
@@ -666,9 +664,8 @@ class _ToastLayer extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => UiToastHost.maybeOf(context) == null
-      ? UiToastHost(child: child)
-      : child;
+  Widget build(BuildContext context) =>
+      UiToastHost.maybeOf(context) == null ? UiToastHost(child: child) : child;
 }
 
 /// The title, the live summary line and when the list was last answered.

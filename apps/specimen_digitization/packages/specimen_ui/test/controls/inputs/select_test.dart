@@ -418,11 +418,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.pumpAndSettle();
-      expect(
-        visibleRings(tester),
-        1,
-        reason: 'one ring in ${density.name}',
-      );
+      expect(visibleRings(tester), 1, reason: 'one ring in ${density.name}');
       expect(
         visibleRings(tester, find.byType(UiFieldBox)),
         1,
@@ -461,7 +457,9 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      uiHarness(child: _select(value: 'deferred', onChanged: (String _) {})),
+      uiHarness(
+        child: _select(value: 'deferred', onChanged: (String _) {}),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel(_label));
@@ -482,7 +480,10 @@ void main() {
           'picking an option moves the trigger rather than ticking a box, so '
           'the row stays a button that is selected',
     );
-    expect(rows.where((UiListRow row) => row.selected).single.title, 'Deferred');
+    expect(
+      rows.where((UiListRow row) => row.selected).single.title,
+      'Deferred',
+    );
   });
 
   testWidgets('the list stops at seven rows and part of an eighth', (
@@ -498,15 +499,15 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.bySemanticsLabel(_label));
       await tester.pumpAndSettle();
-      final double row = tester
-          .getSize(find.byType(UiListRow).first)
-          .height;
+      final double row = tester.getSize(find.byType(UiListRow).first).height;
       expect(
         row,
         greaterThanOrEqualTo(UiDensity.hitBox),
         reason: 'the row is floored at the hit box in both densities',
       );
-      final BuildContext context = tester.element(find.byType(UiSelect<String>));
+      final BuildContext context = tester.element(
+        find.byType(UiSelect<String>),
+      );
       expect(
         UiSelectStyle.resolve(context.ui).menuMaxHeight,
         row * 7.5,

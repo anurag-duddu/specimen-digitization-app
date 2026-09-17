@@ -198,15 +198,13 @@ abstract final class ProductPalette {
   static const Color focusRingDark = GroundPalette.inkDark;
 
   /// A disabled control's text, light.
-  static const Color disabledContentLight =
-      GroundPalette.disabledContentLight;
+  static const Color disabledContentLight = GroundPalette.disabledContentLight;
 
   /// A disabled control's text, dark.
   static const Color disabledContentDark = GroundPalette.disabledContentDark;
 
   /// A disabled control's edge, light.
-  static const Color disabledOutlineLight =
-      GroundPalette.disabledOutlineLight;
+  static const Color disabledOutlineLight = GroundPalette.disabledOutlineLight;
 
   /// A disabled control's edge, dark.
   static const Color disabledOutlineDark = GroundPalette.disabledOutlineDark;

@@ -38,9 +38,7 @@ void main() {
   });
 
   test('the licence text ships with the faces', () {
-    final File licence = File(
-      'packages/specimen_ui/LICENSES/OFL-Geist.txt',
-    );
+    final File licence = File('packages/specimen_ui/LICENSES/OFL-Geist.txt');
     expect(licence.existsSync(), isTrue);
     expect(
       licence.readAsStringSync(),

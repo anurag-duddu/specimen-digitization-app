@@ -105,7 +105,10 @@ void main() {
 
     test('two declarations of the same values are the same value', () {
       expect(columns, const Adaptive<int>(compact: 1, expanded: 3));
-      expect(columns.hashCode, const Adaptive<int>(compact: 1, expanded: 3).hashCode);
+      expect(
+        columns.hashCode,
+        const Adaptive<int>(compact: 1, expanded: 3).hashCode,
+      );
       expect(columns, isNot(const Adaptive<int>(compact: 2, expanded: 3)));
     });
 

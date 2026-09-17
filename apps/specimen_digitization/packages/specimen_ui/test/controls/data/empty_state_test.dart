@@ -45,14 +45,8 @@ void main() {
   ) async {
     await tester.pumpWidget(uiHarness(child: _filtered()));
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<UiIcon>(find.byType(UiIcon)).size,
-      UiIconSize.display,
-    );
-    expect(
-      tester.widget<UiIcon>(find.byType(UiIcon)).spec,
-      UiIcons.noResults,
-    );
+    expect(tester.widget<UiIcon>(find.byType(UiIcon)).size, UiIconSize.display);
+    expect(tester.widget<UiIcon>(find.byType(UiIcon)).spec, UiIcons.noResults);
     expect(
       UiIcons.noResults.weight,
       UiIconWeight.light,
@@ -145,7 +139,10 @@ void main() {
   ) async {
     for (final bool reduced in <bool>[false, true]) {
       await tester.pumpWidget(
-        uiHarness(disableAnimations: reduced, child: _filtered(onClear: () {})),
+        uiHarness(
+          disableAnimations: reduced,
+          child: _filtered(onClear: () {}),
+        ),
       );
       await tester.pump();
       expect(tester.binding.transientCallbackCount, 0);

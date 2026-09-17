@@ -281,10 +281,7 @@ void main() {
   // `glass.modal`. Pumped on nothing it captures half transparent pixels and
   // a contrast guideline measuring one measures nothing, so it is given the
   // opaque surface a route would be.
-  bothThemes(
-    'Help',
-    () => const Scaffold(body: HelpScreen()),
-  );
+  bothThemes('Help', () => const Scaffold(body: HelpScreen()));
 
   bothThemes(
     'Empty state',

@@ -259,9 +259,7 @@ void main() {
       expect(find.bySemanticsLabel('Reason'), findsOneWidget);
     });
 
-    testWidgets('it paints text and nothing else', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('it paints text and nothing else', (WidgetTester tester) async {
       final FocusNode node = FocusNode();
       addTearDown(node.dispose);
       await tester.pumpWidget(
@@ -346,9 +344,7 @@ void main() {
       );
       await tester.pumpWidget(build());
       await tester.pumpAndSettle();
-      final Offset placeholder = tester.getTopLeft(
-        find.text('Chicago, 1946'),
-      );
+      final Offset placeholder = tester.getTopLeft(find.text('Chicago, 1946'));
 
       await tester.enterText(find.byType(FieldCore), 'Chicago, 1946');
       await tester.pumpAndSettle();
@@ -383,7 +379,10 @@ void main() {
       );
       expect(editable.cursorColor, ui.color.ink);
       expect(editable.cursorWidth, ui.shape.stroke.emphasis);
-      expect(editable.cursorRadius, Radius.circular(ui.shape.stroke.caretRadius));
+      expect(
+        editable.cursorRadius,
+        Radius.circular(ui.shape.stroke.caretRadius),
+      );
       expect(
         editable.selectionColor ??
             DefaultSelectionStyle.of(

@@ -125,10 +125,8 @@ class UiThemeData {
   /// its own style onto the ambient one: a style that names only a colour
   /// keeps whatever underline the host left in scope, which is exactly how a
   /// dialog came to draw its title in a double yellow underline.
-  TextStyle get defaultTextStyle => type.body.copyWith(
-    color: color.ink,
-    decoration: TextDecoration.none,
-  );
+  TextStyle get defaultTextStyle =>
+      type.body.copyWith(color: color.ink, decoration: TextDecoration.none);
 
   /// True for the dark column.
   bool get isDark => color.isDark;

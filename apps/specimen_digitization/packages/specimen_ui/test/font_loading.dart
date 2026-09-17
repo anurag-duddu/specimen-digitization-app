@@ -29,8 +29,7 @@ Future<ByteData> loadPackageFont(String asset) async {
 /// rather than off disk: the package's own assets are in the test bundle, a
 /// dependency's are reached by their package path.
 Future<void> loadPhosphorFonts() async {
-  for (final MapEntry<String, String> face
-      in PhosphorFonts.families.entries) {
+  for (final MapEntry<String, String> face in PhosphorFonts.families.entries) {
     final FontLoader loader = FontLoader(PhosphorFonts.prefixed(face.key));
     loader.addFont(rootBundle.load(PhosphorFonts.bundlePath(face.value)));
     await loader.load();

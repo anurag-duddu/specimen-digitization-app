@@ -183,9 +183,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
             MotionReveal(
               visible: controller.message != null,
               child: Padding(
-                padding: EdgeInsetsDirectional.symmetric(
-                  vertical: ui.space.s4,
-                ),
+                padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s4),
                 child: UiBanner(message: controller.message ?? ''),
               ),
             ),

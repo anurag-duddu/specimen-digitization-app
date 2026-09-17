@@ -46,28 +46,31 @@ void main() {
       expect(sets.single.count, 2);
     });
 
-    test('reusing a name replaces that set rather than adding a second', () async {
-      const SavedFilterStore store = SavedFilterStore(collection);
-      await store.save(
-        const SavedFilterSet(
-          name: 'Mine',
-          filters: <String, String>{'uploader_id': 'a'},
-        ),
-      );
-      final List<SavedFilterSet> sets = await store.save(
-        const SavedFilterSet(
-          name: 'Mine',
-          filters: <String, String>{'uploader_id': 'b'},
-        ),
-      );
-      expect(sets, hasLength(1));
-      expect(sets.single.filters['uploader_id'], 'b');
-    });
+    test(
+      'reusing a name replaces that set rather than adding a second',
+      () async {
+        const SavedFilterStore store = SavedFilterStore(collection);
+        await store.save(
+          const SavedFilterSet(
+            name: 'Mine',
+            filters: <String, String>{'uploader_id': 'a'},
+          ),
+        );
+        final List<SavedFilterSet> sets = await store.save(
+          const SavedFilterSet(
+            name: 'Mine',
+            filters: <String, String>{'uploader_id': 'b'},
+          ),
+        );
+        expect(sets, hasLength(1));
+        expect(sets.single.filters['uploader_id'], 'b');
+      },
+    );
 
     test('sets belong to one collection', () async {
-      await const SavedFilterStore(collection).save(
-        const SavedFilterSet(name: 'Mine', filters: <String, String>{}),
-      );
+      await const SavedFilterStore(
+        collection,
+      ).save(const SavedFilterSet(name: 'Mine', filters: <String, String>{}));
       expect(await const SavedFilterStore('org/plants').load(), isEmpty);
     });
 
@@ -142,9 +145,7 @@ void main() {
 
       await tester.tap(find.text('Blocked this week'));
       await tester.pumpAndSettle();
-      expect(applied, <String, String>{
-        'blocker': 'external_outcome_unknown',
-      });
+      expect(applied, <String, String>{'blocker': 'external_outcome_unknown'});
     });
 
     testWidgets('names and saves the filters on screen, and deletes a set', (
@@ -221,8 +222,9 @@ void main() {
 
       expect(find.text('Blocked, week 37'), findsOneWidget);
       expect(find.text('Blocked this week'), findsNothing);
-      final List<SavedFilterSet> stored =
-          await const SavedFilterStore(collection).load();
+      final List<SavedFilterSet> stored = await const SavedFilterStore(
+        collection,
+      ).load();
       expect(stored, hasLength(1));
       expect(stored.single.name, 'Blocked, week 37');
       expect(stored.single.filters, <String, String>{

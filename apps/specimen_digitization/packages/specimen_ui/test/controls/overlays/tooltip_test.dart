@@ -149,9 +149,8 @@ void main() {
                 disabledReason: reason,
                 onDisabledReason: report,
                 capsule: true,
-                builder:
-                    (BuildContext context, Set<WidgetState> states) =>
-                        const SizedBox(width: 160, height: 48),
+                builder: (BuildContext context, Set<WidgetState> states) =>
+                    const SizedBox(width: 160, height: 48),
               ),
         ),
       ),

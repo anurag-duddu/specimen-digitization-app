@@ -27,11 +27,8 @@ class Announcer extends StatelessWidget {
   final bool assertive;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    liveRegion: true,
-    container: true,
-    child: child,
-  );
+  Widget build(BuildContext context) =>
+      Semantics(liveRegion: true, container: true, child: child);
 }
 
 /// Sends a one-shot announcement for an event with no text on screen.

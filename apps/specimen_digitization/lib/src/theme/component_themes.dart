@@ -18,10 +18,8 @@ import 'tokens.dart';
 
 /// A superellipse at [radius], which is what every corner in this product is
 /// (09 section 5).
-OutlinedBorder _shape(
-  double radius, [
-  BorderSide side = BorderSide.none,
-]) => Squircle.border(radius, side: side);
+OutlinedBorder _shape(double radius, [BorderSide side = BorderSide.none]) =>
+    Squircle.border(radius, side: side);
 
 /// The capsule every button, chip and search field now draws.
 OutlinedBorder _capsule([BorderSide side = BorderSide.none]) =>

@@ -268,7 +268,9 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
       ui,
       destructive: true,
     );
-    final int first = widget.items.indexWhere((UiMenuItem item) => item.enabled);
+    final int first = widget.items.indexWhere(
+      (UiMenuItem item) => item.enabled,
+    );
     return Popover(
       controller: widget.controller,
       placement: widget.placement,
@@ -414,10 +416,7 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: <Widget>[
-                    UiIcon(
-                      widget.icon ?? UiIcons.more,
-                      color: ui.color.ink,
-                    ),
+                    UiIcon(widget.icon ?? UiIcons.more, color: ui.color.ink),
                     if (widget.label != null) ...<Widget>[
                       SizedBox(width: ui.space.s2),
                       Flexible(

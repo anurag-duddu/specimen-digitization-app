@@ -25,10 +25,7 @@ void main() {
       find.text('Upload a photograph to create the first record.'),
       findsOneWidget,
     );
-    expect(
-      find.widgetWithText(UiButton, 'Add photographs'),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(UiButton, 'Add photographs'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('No specimens yet')).dy,
       lessThan(tester.getTopLeft(find.byType(UiButton)).dy),

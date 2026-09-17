@@ -67,9 +67,9 @@ Widget _bridgeHarness({
         data: ui,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: ui
-              .toThemeData()
-              .copyWith(inputDecorationTheme: _bridgeInputTheme(ui)),
+          theme: ui.toThemeData().copyWith(
+            inputDecorationTheme: _bridgeInputTheme(ui),
+          ),
           home: Align(child: child),
         ),
       ),
@@ -296,7 +296,9 @@ void main() {
             'reviewer would have no way to press just the one.',
       );
       expect(
-        tester.getSemantics(find.bySemanticsLabel(_label)).getSemanticsData()
+        tester
+            .getSemantics(find.bySemanticsLabel(_label))
+            .getSemanticsData()
             .label,
         _label,
       );

@@ -16,9 +16,7 @@ void main() {
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(
-      uiHarness(
-        child: const UiBadge(4, semanticsLabel: '4 records waiting'),
-      ),
+      uiHarness(child: const UiBadge(4, semanticsLabel: '4 records waiting')),
     );
     await tester.pumpAndSettle();
     expect(find.text('4'), findsOneWidget);

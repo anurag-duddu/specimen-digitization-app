@@ -37,7 +37,10 @@ const Set<String> materialAllowlist = <String>{
   'lib/src/controls/overlays/tooltip.dart',
 };
 
-final RegExp _import = RegExp(r"^\s*(?:import|export)\s+'([^']+)'", multiLine: true);
+final RegExp _import = RegExp(
+  r"^\s*(?:import|export)\s+'([^']+)'",
+  multiLine: true,
+);
 
 /// Every Dart file under `lib/src/`, by path relative to the package root.
 List<String> sourceFiles() {

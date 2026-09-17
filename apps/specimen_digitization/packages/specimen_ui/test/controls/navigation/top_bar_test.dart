@@ -42,7 +42,11 @@ List<UiTopBarAction> _fourActions() => <UiTopBarAction>[
     label: 'Reload the queue',
     onPressed: () {},
   ),
-  UiTopBarAction(icon: UiIcons.filter, label: 'Filter records', onPressed: () {}),
+  UiTopBarAction(
+    icon: UiIcons.filter,
+    label: 'Filter records',
+    onPressed: () {},
+  ),
   UiTopBarAction(
     icon: UiIcons.saveFilter,
     label: 'Save this filter',
@@ -58,7 +62,10 @@ void main() {
   ) async {
     for (final UiDensityMode density in UiDensityMode.values) {
       await tester.pumpWidget(
-        uiHarness(density: density, child: _bar(title: 'Queue')),
+        uiHarness(
+          density: density,
+          child: _bar(title: 'Queue'),
+        ),
       );
       await tester.pumpAndSettle();
       final UiThemeData ui = tester.element(find.byType(UiTopBar)).ui;
@@ -174,10 +181,15 @@ void main() {
     final Rect switcher = tester.getRect(
       find.byKey(const ValueKey<String>('switcher')),
     );
-    expect(switcher.left, greaterThan(tester.getRect(find.text('Queue')).right));
+    expect(
+      switcher.left,
+      greaterThan(tester.getRect(find.text('Queue')).right),
+    );
     expect(
       switcher.right,
-      lessThan(tester.getRect(find.byKey(const ValueKey<String>('reload'))).left),
+      lessThan(
+        tester.getRect(find.byKey(const ValueKey<String>('reload'))).left,
+      ),
     );
   });
 
@@ -193,10 +205,7 @@ void main() {
 
     await tester.pumpWidget(
       uiHarness(
-        child: _bar(
-          title: 'Queue',
-          padding: const EdgeInsets.only(top: 44),
-        ),
+        child: _bar(title: 'Queue', padding: const EdgeInsets.only(top: 44)),
       ),
     );
     await tester.pumpAndSettle();

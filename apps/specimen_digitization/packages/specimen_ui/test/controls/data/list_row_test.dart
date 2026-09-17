@@ -54,8 +54,7 @@ void main() {
         ),
         onPressed: () {},
       ),
-      semanticsLabel:
-          'SPEC-2026-0041, Two readings disagree on the collector',
+      semanticsLabel: 'SPEC-2026-0041, Two readings disagree on the collector',
       labelsNeverWrap: true,
       // The title and the subtitle are what the row is for. 11 section 3.3
       // calls them content and gives them two lines each; the trailing is the
@@ -131,10 +130,7 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(
       uiHarness(
-        child: UiListRow(
-          title: 'SPEC-2026-0041',
-          onPressed: () {},
-        ),
+        child: UiListRow(title: 'SPEC-2026-0041', onPressed: () {}),
       ),
     );
     await tester.pumpAndSettle();

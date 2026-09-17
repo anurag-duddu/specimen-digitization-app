@@ -144,9 +144,7 @@ abstract final class UiIcons {
   static const IconSpec reviewer = IconSpec(PhosphorIconsRegular.user);
 
   /// An external authority matched this value.
-  static const IconSpec authority = IconSpec(
-    PhosphorIconsRegular.bookOpenText,
-  );
+  static const IconSpec authority = IconSpec(PhosphorIconsRegular.bookOpenText);
 
   /// The low risk band.
   static const IconSpec riskLow = IconSpec(PhosphorIconsRegular.cellSignalLow);
@@ -197,9 +195,7 @@ abstract final class UiIcons {
   // Actions.
 
   /// Reload a list. Distinct from [retry], which restarts processing.
-  static const IconSpec reload = IconSpec(
-    PhosphorIconsRegular.arrowClockwise,
-  );
+  static const IconSpec reload = IconSpec(PhosphorIconsRegular.arrowClockwise);
 
   /// Retry processing from a checkpoint.
   static const IconSpec retry = IconSpec(
@@ -215,9 +211,7 @@ abstract final class UiIcons {
   static const IconSpec filter = IconSpec(PhosphorIconsRegular.funnel);
 
   /// Search.
-  static const IconSpec search = IconSpec(
-    PhosphorIconsRegular.magnifyingGlass,
-  );
+  static const IconSpec search = IconSpec(PhosphorIconsRegular.magnifyingGlass);
 
   /// Correct label regions.
   static const IconSpec correctRegions = IconSpec(PhosphorIconsRegular.crop);
@@ -247,9 +241,7 @@ abstract final class UiIcons {
   static const IconSpec check = IconSpec(PhosphorIconsRegular.check);
 
   /// Edit with a reason.
-  static const IconSpec editReason = IconSpec(
-    PhosphorIconsRegular.notePencil,
-  );
+  static const IconSpec editReason = IconSpec(PhosphorIconsRegular.notePencil);
 
   /// Edit.
   static const IconSpec edit = IconSpec(PhosphorIconsRegular.pencilSimple);
@@ -285,9 +277,7 @@ abstract final class UiIcons {
   );
 
   /// Fit the photograph to the view.
-  static const IconSpec fitToView = IconSpec(
-    PhosphorIconsRegular.frameCorners,
-  );
+  static const IconSpec fitToView = IconSpec(PhosphorIconsRegular.frameCorners);
 
   /// Zoom in.
   static const IconSpec zoomIn = IconSpec(
@@ -366,9 +356,7 @@ abstract final class UiIcons {
   static const IconSpec addToBatch = IconSpec(PhosphorIconsRegular.stackPlus);
 
   /// The overflow menu.
-  static const IconSpec more = IconSpec(
-    PhosphorIconsRegular.dotsThreeVertical,
-  );
+  static const IconSpec more = IconSpec(PhosphorIconsRegular.dotsThreeVertical);
 
   /// Pending.
   static const IconSpec pending = IconSpec(
@@ -385,9 +373,7 @@ abstract final class UiIcons {
   );
 
   /// Select every row.
-  static const IconSpec selectAll = IconSpec(
-    PhosphorIconsRegular.selectionAll,
-  );
+  static const IconSpec selectAll = IconSpec(PhosphorIconsRegular.selectionAll);
 
   /// Cancel processing.
   static const IconSpec stop = IconSpec(PhosphorIconsRegular.stopCircle);
@@ -401,9 +387,7 @@ abstract final class UiIcons {
   static const IconSpec undo = IconSpec(PhosphorIconsRegular.arrowUUpLeft);
 
   /// Upload a file.
-  static const IconSpec uploadFile = IconSpec(
-    PhosphorIconsRegular.fileArrowUp,
-  );
+  static const IconSpec uploadFile = IconSpec(PhosphorIconsRegular.fileArrowUp);
 
   /// Reveal a value.
   static const IconSpec show = IconSpec(PhosphorIconsRegular.eye);

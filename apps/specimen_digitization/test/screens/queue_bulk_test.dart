@@ -178,11 +178,7 @@ void main() {
     testWidgets('a narrow window reveals the column on a long press', (
       WidgetTester tester,
     ) async {
-      await pumpQueue(
-        tester,
-        BulkRepository(queue(3)),
-        window: narrowQueue,
-      );
+      await pumpQueue(tester, BulkRepository(queue(3)), window: narrowQueue);
       expect(rowBoxes, findsNothing);
       await tester.longPress(find.text('Pinned beetle 2'));
       await tester.pumpAndSettle();
@@ -315,10 +311,7 @@ void main() {
       await pick(tester, 'Pinned beetle 3');
       await tester.tap(find.text('Confirm coverage'));
       await tester.pumpAndSettle();
-      expect(
-        find.text('Confirm label coverage on 2 records?'),
-        findsOneWidget,
-      );
+      expect(find.text('Confirm label coverage on 2 records?'), findsOneWidget);
     });
   });
 
@@ -437,7 +430,8 @@ void main() {
       expect(
         repository.calls[0].key,
         repository.calls[1].key,
-        reason: 'an uncertain answer retried under a new key records the '
+        reason:
+            'an uncertain answer retried under a new key records the '
             'decision twice',
       );
     });
@@ -462,7 +456,8 @@ void main() {
       expect(
         find.text('4 records selected'),
         findsOneWidget,
-        reason: 'the count a reviewer is about to confirm must not change '
+        reason:
+            'the count a reviewer is about to confirm must not change '
             'between reading it and confirming it',
       );
     });

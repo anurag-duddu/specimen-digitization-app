@@ -255,10 +255,7 @@ class UiToast extends StatelessWidget {
                 line(withAction: false),
                 SizedBox(height: paint.gap),
                 // Aligned to the end, where the eye finishes the message.
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: action,
-                ),
+                Align(alignment: AlignmentDirectional.centerEnd, child: action),
               ],
             ),
           ),

@@ -99,13 +99,10 @@ class UiRailStyle {
       }
     }
     return UiRailStyle(
-      width: extended
-          ? math.max(minWidth, widest + padding * 2)
-          : minWidth,
+      width: extended ? math.max(minWidth, widest + padding * 2) : minWidth,
       discExtent: UiDensity.hitBox,
       discVisual: ui.density.controlHeight,
-      itemExtent: UiDensity.hitBox +
-          (extended ? ui.space.s1 + lineHeight : 0),
+      itemExtent: UiDensity.hitBox + (extended ? ui.space.s1 + lineHeight : 0),
       padding: padding,
       currentFill: ui.color.ink,
       glide: ui.motion.navigationGlide,

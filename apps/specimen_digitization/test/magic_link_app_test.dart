@@ -77,16 +77,10 @@ void main() {
       expect(find.text('Confirm your email'), findsOneWidget);
       expect(session.completed, isEmpty);
       expect(
-        tester
-            .widget<UiField>(find.byType(UiField))
-            .controller!
-            .text,
+        tester.widget<UiField>(find.byType(UiField)).controller!.text,
         isEmpty,
       );
-      await tester.enterText(
-        find.byType(UiField),
-        'STAFF@FIELDMUSEUM.ORG',
-      );
+      await tester.enterText(find.byType(UiField), 'STAFF@FIELDMUSEUM.ORG');
       await tester.tap(find.text('Confirm and sign in'));
       await tester.pump();
       expect(find.text('Signing in…'), findsOneWidget);
@@ -152,10 +146,7 @@ void main() {
           home: MagicLinkSignInScreen(access: access, controller: controller),
         ),
       );
-      await tester.enterText(
-        find.byType(UiField),
-        'staff@fieldmuseum.org',
-      );
+      await tester.enterText(find.byType(UiField), 'staff@fieldmuseum.org');
       await tester.tap(find.text('Send sign-in link'));
       await tester.pump();
       expect(find.text('Sending link…'), findsOneWidget);
@@ -180,10 +171,7 @@ void main() {
       await tester.tap(find.text('Use a different email'));
       await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<UiField>(find.byType(UiField))
-            .controller!
-            .text,
+        tester.widget<UiField>(find.byType(UiField)).controller!.text,
         isEmpty,
       );
       expect(storage.value.email, isNull);

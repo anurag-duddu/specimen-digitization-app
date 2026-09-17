@@ -232,7 +232,9 @@ class _Option extends StatelessWidget {
         // owns the focus node and the gestures for a radio, and a second
         // `Pressable` around it would put two stops in the Tab order.
         Positioned.fill(
-          child: IgnorePointer(child: StateLayer(states: states, shape: shape)),
+          child: IgnorePointer(
+            child: StateLayer(states: states, shape: shape),
+          ),
         ),
       ],
     );

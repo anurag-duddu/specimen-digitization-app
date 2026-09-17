@@ -93,9 +93,7 @@ void main() {
     await pumpManifest(tester, <ManifestEntry>[
       entryIn(UploadState.uploading, progress: 0.42),
     ]);
-    final UiProgress ring = tester.widget<UiProgress>(
-      find.byType(UiProgress),
-    );
+    final UiProgress ring = tester.widget<UiProgress>(find.byType(UiProgress));
     expect(ring.value, closeTo(0.42, 0.0001));
   });
 

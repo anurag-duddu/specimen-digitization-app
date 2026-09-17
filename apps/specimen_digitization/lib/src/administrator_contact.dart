@@ -264,9 +264,8 @@ class AdministratorContactLine extends StatelessWidget {
                 icon: UiIcons.copy,
                 semanticsLabel: copyLabel,
                 tooltip: copyLabel,
-                onPressed: () => unawaited(
-                  Clipboard.setData(ClipboardData(text: link)),
-                ),
+                onPressed: () =>
+                    unawaited(Clipboard.setData(ClipboardData(text: link))),
               ),
             ],
           ),

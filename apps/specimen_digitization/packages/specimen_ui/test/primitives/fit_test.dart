@@ -173,11 +173,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        drawn,
-        <String>['full false'],
-        reason: 'a control never shrinks itself (11 section 3.3, rule 2)',
-      );
+      expect(drawn, <String>[
+        'full false',
+      ], reason: 'a control never shrinks itself (11 section 3.3, rule 2)');
     });
   });
 

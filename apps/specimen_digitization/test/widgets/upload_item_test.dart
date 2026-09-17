@@ -71,9 +71,7 @@ void main() {
       tester,
       _item(state: UploadState.uploading, progress: 0.42),
     );
-    final UiProgress ring = tester.widget<UiProgress>(
-      find.byType(UiProgress),
-    );
+    final UiProgress ring = tester.widget<UiProgress>(find.byType(UiProgress));
     expect(ring.value, 0.42);
 
     await pumpComponent(

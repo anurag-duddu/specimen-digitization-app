@@ -84,9 +84,7 @@ void main() {
   });
 
   group('GlassSurface', () {
-    testWidgets('blurs at the level it was given', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('blurs at the level it was given', (WidgetTester tester) async {
       for (final GlassLevel level in GlassLevel.values) {
         await tester.pumpWidget(
           uiHarness(
@@ -227,9 +225,7 @@ void main() {
   });
 
   group('Scrim', () {
-    testWidgets('an inert scrim takes no pointer', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('an inert scrim takes no pointer', (WidgetTester tester) async {
       await tester.pumpWidget(uiHarness(child: const Scrim()));
       expect(find.byType(IgnorePointer), findsWidgets);
     });
@@ -321,15 +317,14 @@ void main() {
       final UiStroke stroke = ui.shape.stroke;
       expect(
         find.byType(FocusRing),
-        paints
-          ..rsuperellipse(
-            rsuperellipse: RSuperellipse.fromRectAndRadius(
-              (Offset.zero & box).inflate(stroke.focusGap + stroke.focus / 2),
-              Radius.circular(ui.shape.field + stroke.focusRadiusOffset),
-            ),
-            color: ui.color.focusRing,
-            strokeWidth: stroke.focus,
+        paints..rsuperellipse(
+          rsuperellipse: RSuperellipse.fromRectAndRadius(
+            (Offset.zero & box).inflate(stroke.focusGap + stroke.focus / 2),
+            Radius.circular(ui.shape.field + stroke.focusRadiusOffset),
           ),
+          color: ui.color.focusRing,
+          strokeWidth: stroke.focus,
+        ),
         reason:
             'a circular rounded rectangle around a superellipse meets the '
             'edge along a corner and parts from it at the ends, which reads '
@@ -357,15 +352,14 @@ void main() {
       );
       expect(
         find.byType(FocusRing),
-        paints
-          ..rrect(
-            rrect: RRect.fromRectAndRadius(
-              bounds,
-              Radius.circular(bounds.shortestSide / 2),
-            ),
-            color: ui.color.focusRing,
-            strokeWidth: stroke.focus,
+        paints..rrect(
+          rrect: RRect.fromRectAndRadius(
+            bounds,
+            Radius.circular(bounds.shortestSide / 2),
           ),
+          color: ui.color.focusRing,
+          strokeWidth: stroke.focus,
+        ),
         reason: 'what StadiumBorder draws is what rings a capsule',
       );
     });
@@ -387,14 +381,13 @@ void main() {
           box.shortestSide / 2 + stroke.focusGap + stroke.focus / 2;
       expect(
         find.byType(FocusRing),
-        paints
-          ..circle(
-            x: box.width / 2,
-            y: box.height / 2,
-            radius: radius,
-            color: ui.color.focusRing,
-            strokeWidth: stroke.focus,
-          ),
+        paints..circle(
+          x: box.width / 2,
+          y: box.height / 2,
+          radius: radius,
+          color: ui.color.focusRing,
+          strokeWidth: stroke.focus,
+        ),
       );
     });
 

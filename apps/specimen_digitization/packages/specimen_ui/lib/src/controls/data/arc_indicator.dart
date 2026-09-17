@@ -240,7 +240,9 @@ class _ArcPainter extends CustomPainter {
     final double radius = (size.width - style.stroke) / 2;
     final Offset centre = Offset(
       size.width / 2,
-      sweep == UiArcSweep.half ? size.height - style.stroke / 2 : size.width / 2,
+      sweep == UiArcSweep.half
+          ? size.height - style.stroke / 2
+          : size.width / 2,
     );
     final Rect bounds = Rect.fromCircle(center: centre, radius: radius);
     canvas.drawArc(
@@ -259,7 +261,8 @@ class _ArcPainter extends CustomPainter {
     if (fraction == null) return;
 
     final double angle = sweep.start + sweep.sweep * fraction;
-    final Offset at = centre + Offset(math.cos(angle), math.sin(angle)) * radius;
+    final Offset at =
+        centre + Offset(math.cos(angle), math.sin(angle)) * radius;
     // The tip sits on the arc and the base falls away inside it, so the
     // marker points at the value without covering the scale it is read
     // against and without reaching outside the box the gauge was given.

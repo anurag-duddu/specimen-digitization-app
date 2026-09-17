@@ -229,9 +229,7 @@ class UiTopBar extends StatelessWidget {
         minHeight: style.heightIn(ui, context) + safe.top,
       ),
       child: Padding(
-        padding: EdgeInsetsDirectional.symmetric(
-          horizontal: style.gutter,
-        ).add(
+        padding: EdgeInsetsDirectional.symmetric(horizontal: style.gutter).add(
           EdgeInsets.only(left: safe.left, top: safe.top, right: safe.right),
         ),
         child: _fitted(context, ui, style),
@@ -287,18 +285,17 @@ class UiTopBar extends StatelessWidget {
   }
 
   /// [keep] actions on the bar, and the rest behind one overflow trigger.
-  List<Widget> _collapsed(List<UiTopBarAction> declared, int keep) =>
-      <Widget>[
-        ...declared.take(keep),
-        UiMenuTrigger(
-          semanticsLabel: UiTopBarStyle.overflowLabel,
-          icon: UiIcons.more,
-          items: <UiMenuItem>[
-            for (final UiTopBarAction action in declared.skip(keep))
-              action.menuItem,
-          ],
-        ),
-      ];
+  List<Widget> _collapsed(List<UiTopBarAction> declared, int keep) => <Widget>[
+    ...declared.take(keep),
+    UiMenuTrigger(
+      semanticsLabel: UiTopBarStyle.overflowLabel,
+      icon: UiIcons.more,
+      items: <UiMenuItem>[
+        for (final UiTopBarAction action in declared.skip(keep))
+          action.menuItem,
+      ],
+    ),
+  ];
 
   /// One arrangement of the bar, with [drawn] at its end.
   ///
@@ -312,10 +309,7 @@ class UiTopBar extends StatelessWidget {
   Widget _row(UiThemeData ui, UiTopBarStyle style, List<Widget> drawn) {
     final Widget? name = title == null
         ? null
-        : UiLabel(
-            title!,
-            style: style.title.copyWith(color: ui.color.ink),
-          );
+        : UiLabel(title!, style: style.title.copyWith(color: ui.color.ink));
     return Row(
       children: <Widget>[
         if (leading != null) ...<Widget>[leading!, SizedBox(width: style.gap)],

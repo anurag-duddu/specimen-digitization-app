@@ -613,7 +613,11 @@ class GoldenSourceRepository extends GoldenRepository
       specimenId: goldenSpecimenId,
     ),
     _row('field_notes_1946.tiff', mediaType: 'image/tiff'),
-    _row('catalogue.pdf', state: 'unsupported_media_type', mediaType: 'application/pdf'),
+    _row(
+      'catalogue.pdf',
+      state: 'unsupported_media_type',
+      mediaType: 'application/pdf',
+    ),
   ];
 
   static SourceObject _row(

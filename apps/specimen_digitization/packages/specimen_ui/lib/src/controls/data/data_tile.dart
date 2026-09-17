@@ -224,49 +224,47 @@ class UiDataTile extends StatelessWidget {
   /// the row above it, so a unit aligned to a scaled numeral's baseline would
   /// float above the digits it belongs to; scaling the pair keeps the two on
   /// one baseline and leaves that baseline inside the box.
-  Widget _measurement(
-    UiThemeData ui,
-    UiDataTileStyle style,
-    String? measure,
-  ) => Builder(
-    builder: (BuildContext context) {
-      Widget line(TextStyle numeral) => Row(
-        // The unit sits on the numeral's baseline, not on its box.
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Flexible(child: _numeral(ui, style, numeral)),
-          if (measure != null) ...<Widget>[
-            SizedBox(width: style.unitGap),
-            Text(measure, style: style.unit, maxLines: 1, softWrap: false),
-          ],
-        ],
-      );
+  Widget _measurement(UiThemeData ui, UiDataTileStyle style, String? measure) =>
+      Builder(
+        builder: (BuildContext context) {
+          Widget line(TextStyle numeral) => Row(
+            // The unit sits on the numeral's baseline, not on its box.
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Flexible(child: _numeral(ui, style, numeral)),
+              if (measure != null) ...<Widget>[
+                SizedBox(width: style.unitGap),
+                Text(measure, style: style.unit, maxLines: 1, softWrap: false),
+              ],
+            ],
+          );
 
-      double widthOf(TextStyle numeral) =>
-          measureLabel(context, value, numeral).width +
-          (measure == null
-              ? 0
-              : style.unitGap + measureLabel(context, measure, style.unit).width);
+          double widthOf(TextStyle numeral) =>
+              measureLabel(context, value, numeral).width +
+              (measure == null
+                  ? 0
+                  : style.unitGap +
+                        measureLabel(context, measure, style.unit).width);
 
-      return FitBuilder(
-        variants: <FitVariant>[
-          for (final TextStyle numeral in style.numeralSteps)
-            FitVariant(
-              intrinsicWidth: widthOf(numeral),
-              builder: (BuildContext context, bool lastResort) => lastResort
-                  ? FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: AlignmentDirectional.centerStart,
-                      child: line(numeral),
-                    )
-                  : line(numeral),
-            ),
-        ],
+          return FitBuilder(
+            variants: <FitVariant>[
+              for (final TextStyle numeral in style.numeralSteps)
+                FitVariant(
+                  intrinsicWidth: widthOf(numeral),
+                  builder: (BuildContext context, bool lastResort) => lastResort
+                      ? FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: AlignmentDirectional.centerStart,
+                          child: line(numeral),
+                        )
+                      : line(numeral),
+                ),
+            ],
+          );
+        },
       );
-    },
-  );
 
   /// The numeral, cross-fading and sliding 6 dp upward when it changes.
   ///

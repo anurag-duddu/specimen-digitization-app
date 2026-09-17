@@ -337,8 +337,7 @@ class _UiBannerState extends State<UiBanner> {
         variants: <FitVariant>[
           FitVariant(
             intrinsicWidth: _chrome(context, style, detail),
-            builder: (BuildContext context, bool _) =>
-                strip(withAction: false),
+            builder: (BuildContext context, bool _) => strip(withAction: false),
           ),
         ],
       );
@@ -349,11 +348,7 @@ class _UiBannerState extends State<UiBanner> {
           intrinsicWidth:
               _chrome(context, style, detail) +
               style.gap +
-              measureLabel(
-                context,
-                action.label,
-                ui.type.label,
-              ).width +
+              measureLabel(context, action.label, ui.type.label).width +
               ui.space.s6,
           builder: (BuildContext context, bool _) => strip(withAction: true),
         ),
@@ -375,19 +370,13 @@ class _UiBannerState extends State<UiBanner> {
 
   /// The width of everything on the strip that is not the sentence, plus the
   /// least width the sentence itself is worth drawing in.
-  double _chrome(
-    BuildContext context,
-    UiBannerStyle style,
-    String? detail,
-  ) =>
+  double _chrome(BuildContext context, UiBannerStyle style, String? detail) =>
       style.padding.resolve(Directionality.of(context)).horizontal +
       UiIconSize.inline.dimension +
       style.gap +
       style.messageMin +
       (detail == null ? 0 : style.gap + UiIconSize.inline.dimension) +
-      (widget.onDismiss == null
-          ? 0
-          : style.gap + UiIconSize.inline.dimension);
+      (widget.onDismiss == null ? 0 : style.gap + UiIconSize.inline.dimension);
 
   /// The sentence, and the second line when it is open.
   ///

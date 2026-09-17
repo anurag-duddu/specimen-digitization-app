@@ -162,10 +162,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       uiHarness(
-        child: const _RailHost(
-          destinations: threeDestinations,
-          extended: true,
-        ),
+        child: const _RailHost(destinations: threeDestinations, extended: true),
       ),
     );
     await tester.pumpAndSettle();
@@ -190,10 +187,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       uiHarness(
-        child: const _RailHost(
-          destinations: threeDestinations,
-          extended: true,
-        ),
+        child: const _RailHost(destinations: threeDestinations, extended: true),
       ),
     );
     await tester.pumpAndSettle();
@@ -202,10 +196,7 @@ void main() {
     await tester.pumpWidget(
       uiHarness(
         textScaler: const TextScaler.linear(2),
-        child: const _RailHost(
-          destinations: threeDestinations,
-          extended: true,
-        ),
+        child: const _RailHost(destinations: threeDestinations, extended: true),
       ),
     );
     await tester.pumpAndSettle();
@@ -280,31 +271,28 @@ void main() {
 
   for (final bool extended in <bool>[false, true]) {
     for (final UiNavDestination destination in threeDestinations) {
-      testWidgets(
-        'control contract: ${destination.label}, '
-        '${extended ? 'extended' : 'collapsed'}',
-        (WidgetTester tester) async {
-          await expectControlContract(
-            tester,
-            (BuildContext context) => _RailHost(
-              destinations: threeDestinations,
-              extended: extended,
-            ),
-            semanticsLabel: destination.label,
-            labelsNeverWrap: true,
-            geometryFromType: true,
-            fit: FitExpectation(
-              check: (WidgetTester tester, double width) async {
-                expect(
-                  find.bySemanticsLabel(destination.label),
-                  findsOneWidget,
-                  reason: 'every destination stays reachable at $width dp',
-                );
-              },
-            ),
-          );
-        },
-      );
+      testWidgets('control contract: ${destination.label}, '
+          '${extended ? 'extended' : 'collapsed'}', (
+        WidgetTester tester,
+      ) async {
+        await expectControlContract(
+          tester,
+          (BuildContext context) =>
+              _RailHost(destinations: threeDestinations, extended: extended),
+          semanticsLabel: destination.label,
+          labelsNeverWrap: true,
+          geometryFromType: true,
+          fit: FitExpectation(
+            check: (WidgetTester tester, double width) async {
+              expect(
+                find.bySemanticsLabel(destination.label),
+                findsOneWidget,
+                reason: 'every destination stays reachable at $width dp',
+              );
+            },
+          ),
+        );
+      });
     }
   }
 }

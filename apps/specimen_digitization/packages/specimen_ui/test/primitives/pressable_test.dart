@@ -212,10 +212,10 @@ void main() {
       reason: 'a disabled control has no hover or press layer to show',
     );
     expect(
-      StateLayer.opacityFor(
-        <WidgetState>{WidgetState.hovered, WidgetState.pressed},
-        light,
-      ),
+      StateLayer.opacityFor(<WidgetState>{
+        WidgetState.hovered,
+        WidgetState.pressed,
+      }, light),
       light.color.pressedOpacity,
       reason: 'a press wins over a hover, because the press is the newer fact',
     );
@@ -224,10 +224,11 @@ void main() {
   testWidgets('scale on press applies on touch and not on a pointer', (
     WidgetTester tester,
   ) async {
-    for (final (UiDensityMode density, double expected) in <(
-      UiDensityMode,
-      double,
-    )>[(UiDensityMode.touch, 0.98), (UiDensityMode.pointer, 1.0)]) {
+    for (final (UiDensityMode density, double expected)
+        in <(UiDensityMode, double)>[
+          (UiDensityMode.touch, 0.98),
+          (UiDensityMode.pointer, 1.0),
+        ]) {
       await tester.pumpWidget(
         uiHarness(
           density: density,

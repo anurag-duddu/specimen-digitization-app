@@ -58,9 +58,7 @@ void main() {
     // 10 section 4.5 does ask for: a slow opacity pulse, which stops outright
     // under reduced motion rather than running at zero duration.
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: const SkeletonRow()),
-      ),
+      MaterialApp(home: Scaffold(body: const SkeletonRow())),
     );
     await tester.pump();
     expect(

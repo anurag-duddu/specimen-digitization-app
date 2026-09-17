@@ -171,18 +171,14 @@ void main() {
 
   testWidgets('a caller can pass its own strip', (WidgetTester tester) async {
     await tester.pumpWidget(
-      uiHarness(
-        child: const _TabsHost(strip: Text('Somebody else strip')),
-      ),
+      uiHarness(child: const _TabsHost(strip: Text('Somebody else strip'))),
     );
     await tester.pumpAndSettle();
     expect(find.text('Somebody else strip'), findsOneWidget);
     expect(find.text('Readings'), findsNothing);
   });
 
-  testWidgets('panes cross fade and never slide', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('panes cross fade and never slide', (WidgetTester tester) async {
     await tester.pumpWidget(uiHarness(child: const _TabsHost()));
     await tester.pumpAndSettle();
     expect(
@@ -232,9 +228,7 @@ void main() {
     expectGlassBudget(tester);
   });
 
-  testWidgets('a strip that fits does not scroll', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('a strip that fits does not scroll', (WidgetTester tester) async {
     await tester.pumpWidget(
       uiHarness(size: const Size(600, 800), child: const _TabsHost()),
     );

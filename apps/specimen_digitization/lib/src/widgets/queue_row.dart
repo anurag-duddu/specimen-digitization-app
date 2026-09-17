@@ -161,8 +161,7 @@ class QueueRow extends StatelessWidget {
 
   Widget _row(BuildContext context, double available) {
     final UiThemeData ui = context.ui;
-    final bool beside =
-        !available.isFinite || available >= _metaBesideTextMin;
+    final bool beside = !available.isFinite || available >= _metaBesideTextMin;
 
     // The label carries every fact the row draws, because the row is one
     // merged node: a reader is not walked through the identifier, the reason,

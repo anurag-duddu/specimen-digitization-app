@@ -211,8 +211,12 @@ class FakeSourceRepository implements SourceRepository {
       'batch_id': 'batch-1',
       'source_id': sourceId,
       'requested': selection.length,
-      'imported': results.where((Map<String, dynamic> r) => r['state'] == 'imported').length,
-      'duplicates': results.where((Map<String, dynamic> r) => r['state'] == 'duplicate').length,
+      'imported': results
+          .where((Map<String, dynamic> r) => r['state'] == 'imported')
+          .length,
+      'duplicates': results
+          .where((Map<String, dynamic> r) => r['state'] == 'duplicate')
+          .length,
       'items': results,
     });
   }

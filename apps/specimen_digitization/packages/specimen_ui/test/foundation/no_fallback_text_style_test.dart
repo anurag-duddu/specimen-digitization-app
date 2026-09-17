@@ -357,9 +357,7 @@ void main() {
         tester,
         _hostWithFallbackBelowTheTokens(
           const Align(
-            child: UiToast(
-              data: UiToastData(message: 'Decision recorded'),
-            ),
+            child: UiToast(data: UiToastData(message: 'Decision recorded')),
           ),
         ),
       );

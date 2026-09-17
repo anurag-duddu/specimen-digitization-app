@@ -124,15 +124,16 @@ class GlassSurface extends StatelessWidget {
     }
 
     pane = capsule
-        ? ClipPath(clipper: ShapeBorderClipper(shape: shape), child: pane)
+        ? ClipPath(
+            clipper: ShapeBorderClipper(shape: shape),
+            child: pane,
+          )
         : Squircle.clip(radius: corner, corners: corners, child: pane);
 
     return DecoratedBox(
       decoration: ShapeDecoration(
         shape: shape,
-        shadows: style.shadow == null
-            ? null
-            : <BoxShadow>[style.shadow!],
+        shadows: style.shadow == null ? null : <BoxShadow>[style.shadow!],
       ),
       child: pane,
     );

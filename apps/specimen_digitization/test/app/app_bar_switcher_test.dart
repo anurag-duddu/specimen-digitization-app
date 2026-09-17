@@ -140,8 +140,9 @@ void main() {
       brightness: Brightness.light,
       location: goldenQueueLocation,
     );
-    for (final UiSelect<String> select
-        in tester.widgetList<UiSelect<String>>(switcher)) {
+    for (final UiSelect<String> select in tester.widgetList<UiSelect<String>>(
+      switcher,
+    )) {
       expect(
         select.showLabel,
         isFalse,

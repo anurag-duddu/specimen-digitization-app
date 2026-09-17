@@ -73,10 +73,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(UiArcIndicator.unmeasuredLabel), findsOneWidget);
-    expect(
-      tester.widget<UiIcon>(find.byType(UiIcon)).spec,
-      UiIcons.unmeasured,
-    );
+    expect(tester.widget<UiIcon>(find.byType(UiIcon)).spec, UiIcons.unmeasured);
     expect(find.text('0'), findsNothing);
     expect(
       find.text('100'),

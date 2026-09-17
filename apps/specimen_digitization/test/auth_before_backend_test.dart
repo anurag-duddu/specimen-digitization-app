@@ -131,10 +131,7 @@ void main() {
     await tester.pumpWidget(
       SpecimenDigitizationApp(session: session, setupMessage: backendPending),
     );
-    await tester.enterText(
-      find.byType(UiField).at(0),
-      'test@example.test',
-    );
+    await tester.enterText(find.byType(UiField).at(0), 'test@example.test');
     await tester.enterText(find.byType(UiField).at(1), 'local-test-only');
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();

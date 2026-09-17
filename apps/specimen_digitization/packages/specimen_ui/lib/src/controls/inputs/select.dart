@@ -109,11 +109,7 @@ class UiSelectStyle {
 
     final double rowHeight = UiListRowStyle.heightOf(ui);
     return UiSelectStyle(
-      input: UiInputStyle.resolve(
-        ui,
-        UiFieldShape.box,
-        textScaler: textScaler,
-      ),
+      input: UiInputStyle.resolve(ui, UiFieldShape.box, textScaler: textScaler),
       value: WidgetStateProperty.resolveWith(value),
       placeholder: ui.type.body.copyWith(color: ui.color.inkTertiary),
       rowHeight: rowHeight,

@@ -147,6 +147,5 @@ class Adaptive<T> {
       other.extraLarge == extraLarge;
 
   @override
-  int get hashCode =>
-      Object.hash(compact, medium, expanded, large, extraLarge);
+  int get hashCode => Object.hash(compact, medium, expanded, large, extraLarge);
 }

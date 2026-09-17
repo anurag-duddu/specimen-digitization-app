@@ -152,8 +152,7 @@ Future<void> showSourceImportOutcome(
 }) => showAdaptiveForm<void>(
   context,
   width: DialogWidths.standard,
-  builder: (BuildContext formContext) =>
-      SourceImportReport(progress: progress),
+  builder: (BuildContext formContext) => SourceImportReport(progress: progress),
 );
 
 /// The body of [showSourceImportOutcome], exposed so it can be tested on its
@@ -167,8 +166,7 @@ class SourceImportReport extends StatelessWidget {
   static String reasonFor(String state) => switch (state) {
     'unsupported_media_type' =>
       'Not added. This source does not admit this media type.',
-    'not_in_source' =>
-      'Not added. This object is not in the current snapshot.',
+    'not_in_source' => 'Not added. This object is not in the current snapshot.',
     'duplicate' => 'Already in the queue, unchanged.',
     _ => 'Not added.',
   };

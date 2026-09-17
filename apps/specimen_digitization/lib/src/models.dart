@@ -79,10 +79,8 @@ class Specimen {
   /// renamed to `latest_record_version_id` on the way in, so a record built
   /// from either answers here. Empty when neither was sent, which is the
   /// signal that this record cannot carry an optimistic concurrency check.
-  String get recordVersionId => textOf(
-    data['record_version_id'] ?? data['latest_record_version_id'],
-    '',
-  );
+  String get recordVersionId =>
+      textOf(data['record_version_id'] ?? data['latest_record_version_id'], '');
   String get state =>
       textOf(data['operational_state'], textOf(data['status'], 'unknown'));
   String? get disposition =>

@@ -54,8 +54,9 @@ final RegExp _materialGlyph = RegExp(r'\b(?:Symbols|Icons)\.[a-zA-Z_0-9]+');
 /// Every file under `lib/` that still names a Material glyph.
 Map<String, int> measure() {
   final Map<String, int> found = <String, int>{};
-  for (final FileSystemEntity entity
-      in Directory('lib').listSync(recursive: true)) {
+  for (final FileSystemEntity entity in Directory(
+    'lib',
+  ).listSync(recursive: true)) {
     if (entity is! File || !entity.path.endsWith('.dart')) continue;
     final int count = _materialGlyph
         .allMatches(entity.readAsStringSync())

@@ -31,10 +31,11 @@ Future<TextStyle> _published(WidgetTester tester, UiThemeData data) async {
 }
 
 void main() {
-  for (final (String mode, UiThemeData Function() build) in <(
-    String,
-    UiThemeData Function(),
-  )>[('light', UiThemeData.light), ('dark', UiThemeData.dark)]) {
+  for (final (String mode, UiThemeData Function() build)
+      in <(String, UiThemeData Function())>[
+        ('light', UiThemeData.light),
+        ('dark', UiThemeData.dark),
+      ]) {
     testWidgets('$mode publishes body in ink with no decoration', (
       WidgetTester tester,
     ) async {
@@ -102,7 +103,9 @@ void main() {
     expect(seen.color.ground, ui.color.ground);
     expect(seen.isDark, isTrue);
     expect(
-      tester.element(find.byType(SizedBox)).getInheritedWidgetOfExactType<UiTheme>(),
+      tester
+          .element(find.byType(SizedBox))
+          .getInheritedWidgetOfExactType<UiTheme>(),
       isNotNull,
     );
   });
