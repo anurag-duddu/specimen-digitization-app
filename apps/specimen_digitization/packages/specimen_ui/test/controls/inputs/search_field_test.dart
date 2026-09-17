@@ -168,6 +168,45 @@ void main() {
     expect(find.bySemanticsLabel(_clear), findsNothing);
   });
 
+  testWidgets('the capsule is ringed by a stadium, on any focus', (
+    WidgetTester tester,
+  ) async {
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTouch;
+    await tester.pumpWidget(
+      uiHarness(
+        child: const SizedBox(
+          width: 320,
+          child: UiSearchField(label: _label, clearLabel: _clear),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(visibleRings(tester), 0);
+
+    await tester.tap(find.byType(FieldCore));
+    await tester.pumpAndSettle();
+    final Iterable<FocusRing> rings = tester
+        .widgetList<FocusRing>(find.byType(FocusRing))
+        .where((FocusRing ring) => ring.visible);
+    expect(
+      rings,
+      hasLength(1),
+      reason: 'a tapped search field is being typed into, and says so',
+    );
+    expect(
+      rings.single.shape,
+      FocusRingShape.stadium,
+      reason:
+          'a capsule is ringed by a stadium, so the two run concentric at '
+          'the ends of the curve (09 section 3.6, fit amendment)',
+    );
+  });
+
   testWidgets('the capsule reads the error edge like any other field', (
     WidgetTester tester,
   ) async {

@@ -210,6 +210,45 @@ void main() {
     );
   });
 
+  testWidgets('the focused option is ringed as a circle, around its disc', (
+    WidgetTester tester,
+  ) async {
+    addTearDown(
+      () => FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.automatic,
+    );
+    FocusManager.instance.highlightStrategy =
+        FocusHighlightStrategy.alwaysTraditional;
+    await tester.pumpWidget(
+      uiHarness(child: _group(value: 'model', onChanged: (String? _) {})),
+    );
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+    final Iterable<FocusRing> rings = tester
+        .widgetList<FocusRing>(find.byType(FocusRing))
+        .where((FocusRing ring) => ring.visible);
+    expect(rings, hasLength(1));
+    expect(
+      rings.single.shape,
+      FocusRingShape.circle,
+      reason:
+          'a disc is ringed by a circle. The ring used to take the row\'s '
+          'corner, which put a rounded rectangle around a circle with 20 dp '
+          'of empty label beside it (09 section 3.6, fit amendment).',
+    );
+    final Size ringed = tester.getSize(
+      find.byWidgetPredicate(
+        (Widget widget) => widget is FocusRing && widget.visible,
+      ),
+    );
+    expect(
+      ringed,
+      const Size.square(20),
+      reason: 'what is ringed is the disc 10 section 4.2 specifies',
+    );
+  });
+
   testWidgets('every option keeps a 48 dp row in both densities', (
     WidgetTester tester,
   ) async {

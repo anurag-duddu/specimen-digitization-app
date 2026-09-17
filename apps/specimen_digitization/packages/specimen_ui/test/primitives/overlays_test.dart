@@ -259,7 +259,7 @@ void main() {
       expect(find.bySemanticsLabel('Reason'), findsOneWidget);
     });
 
-    testWidgets('it rings on focus and not before', (
+    testWidgets('it paints text and nothing else', (
       WidgetTester tester,
     ) async {
       final FocusNode node = FocusNode();
@@ -272,10 +272,128 @@ void main() {
           ),
         ),
       );
-      expect(tester.widget<FocusRing>(find.byType(FocusRing)).visible, isFalse);
       node.requestFocus();
       await tester.pumpAndSettle();
-      expect(tester.widget<FocusRing>(find.byType(FocusRing)).visible, isTrue);
+      expect(
+        find.descendant(
+          of: find.byType(FieldCore),
+          matching: find.byType(FocusRing),
+        ),
+        findsNothing,
+        reason:
+            'the ring belongs to the box that has the edge, and a core that '
+            'drew one as well was the second of the three edges a focused '
+            'field showed (11 section 4)',
+      );
+    });
+
+    testWidgets('the placeholder is its own, and goes when the value comes', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final TextEditingController controller = TextEditingController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          child: SizedBox(
+            width: 300,
+            child: FieldCore(
+              semanticsLabel: 'Reason',
+              controller: controller,
+              hintText: 'Say what you saw on the label',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Say what you saw on the label'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Say what you saw on the label'),
+        findsNothing,
+        reason:
+            'the control publishes the hint once, on its own node; the drawn '
+            'placeholder is for the eye',
+      );
+
+      await tester.enterText(find.byType(FieldCore), 'The label is torn');
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Say what you saw on the label'),
+        findsNothing,
+        reason: 'the placeholder goes the moment the value is not empty',
+      );
+
+      controller.clear();
+      await tester.pumpAndSettle();
+      expect(find.text('Say what you saw on the label'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('the placeholder sits where the value will sit', (
+      WidgetTester tester,
+    ) async {
+      final TextEditingController controller = TextEditingController();
+      addTearDown(controller.dispose);
+      Widget build() => uiHarness(
+        child: SizedBox(
+          width: 300,
+          child: FieldCore(
+            semanticsLabel: 'Reason',
+            controller: controller,
+            hintText: 'Chicago, 1946',
+          ),
+        ),
+      );
+      await tester.pumpWidget(build());
+      await tester.pumpAndSettle();
+      final Offset placeholder = tester.getTopLeft(
+        find.text('Chicago, 1946'),
+      );
+
+      await tester.enterText(find.byType(FieldCore), 'Chicago, 1946');
+      await tester.pumpAndSettle();
+      final Offset value = tester.getTopLeft(find.byType(EditableText));
+      expect(
+        value.dy,
+        moreOrLessEquals(placeholder.dy, epsilon: 0.5),
+        reason:
+            'the placeholder and the text it stands in for are one object '
+            'with one style, on one baseline (11 section 4). A placeholder '
+            'two pixels above the value is the word moving as the reviewer '
+            'types the first character.',
+      );
+      expect(value.dx, moreOrLessEquals(placeholder.dx, epsilon: 0.5));
+    });
+
+    testWidgets('the caret and the selection are the system\'s own', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          child: const SizedBox(
+            width: 300,
+            child: FieldCore(semanticsLabel: 'Reason'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final UiThemeData ui = tester.element(find.byType(FieldCore)).ui;
+      final EditableText editable = tester.widget<EditableText>(
+        find.byType(EditableText),
+      );
+      expect(editable.cursorColor, ui.color.ink);
+      expect(editable.cursorWidth, ui.shape.stroke.emphasis);
+      expect(editable.cursorRadius, Radius.circular(ui.shape.stroke.caretRadius));
+      expect(
+        editable.selectionColor ??
+            DefaultSelectionStyle.of(
+              tester.element(find.byType(EditableText)),
+            ).selectionColor,
+        ui.color.selection,
+        reason:
+            'the selection is the accent at 35 percent, not the platform blue '
+            '(11 section 4)',
+      );
     });
 
     testWidgets('a read only field can be read and not edited', (

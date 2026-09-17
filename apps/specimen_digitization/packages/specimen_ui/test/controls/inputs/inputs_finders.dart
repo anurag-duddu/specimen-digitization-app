@@ -34,6 +34,66 @@ BorderSide fieldSide(WidgetTester tester) =>
 /// The fill of the first field box on screen.
 Color fieldFill(WidgetTester tester) => _decoration(tester).color!;
 
+/// Every edge on screen that a reviewer can see.
+///
+/// A `ShapeDecoration` whose shape carries a side wider than nothing. 11
+/// section 4 gives a field exactly one, so counting them is how a test says
+/// "one edge" rather than "the edge I happened to look at".
+int visibleEdges(WidgetTester tester, [Finder? within]) {
+  final Finder boxes = within == null
+      ? find.byType(DecoratedBox)
+      : find.descendant(of: within, matching: find.byType(DecoratedBox));
+  return tester.widgetList<DecoratedBox>(boxes).where((DecoratedBox box) {
+    final Decoration decoration = box.decoration;
+    if (decoration is! ShapeDecoration) return false;
+    final ShapeBorder shape = decoration.shape;
+    return shape is OutlinedBorder &&
+        shape.side.style != BorderStyle.none &&
+        shape.side.width > 0;
+  }).length;
+}
+
+/// How many focus rings are being painted.
+int visibleRings(WidgetTester tester, [Finder? within]) {
+  final Finder rings = within == null
+      ? find.byType(FocusRing)
+      : find.descendant(of: within, matching: find.byType(FocusRing));
+  return tester
+      .widgetList<FocusRing>(rings)
+      .where((FocusRing ring) => ring.visible)
+      .length;
+}
+
+/// How many rings are actually on the canvas under [within].
+///
+/// Counted from the painting side rather than from the widget side: each
+/// `FocusRing` is asked for the `CustomPaint` it builds, and only the ones
+/// carrying a foreground painter are counted. Everything else that paints
+/// inside a field is left out by construction, including the
+/// `BorderSide.none` painter the transparent `Material` the editor needs
+/// brings with it.
+int ringPainters(WidgetTester tester, Finder within) {
+  int painting = 0;
+  for (final Element ring in tester.elementList(
+    find.descendant(of: within, matching: find.byType(FocusRing)),
+  )) {
+    CustomPaint? own;
+    void nearestPaint(Element element) {
+      if (own != null) return;
+      final Widget widget = element.widget;
+      if (widget is CustomPaint) {
+        own = widget;
+        return;
+      }
+      element.visitChildren(nearestPaint);
+    }
+
+    ring.visitChildren(nearestPaint);
+    if (own?.foregroundPainter != null) painting++;
+  }
+  return painting;
+}
+
 /// Every live region label on screen, in tree order.
 ///
 /// A message that has to be announced once lives in a live region, so this is
