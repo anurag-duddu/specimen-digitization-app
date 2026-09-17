@@ -299,6 +299,7 @@ motion state the test asked for rather than in the light fallback.
 | `ModalRoutes` | `RawDialogRoute`, `showGeneralDialog`, `PopScope` | `showUiSheet` (bottom, drag handle, `glass.modal`) and `showUiDialog` (centred, max 560 wide); `showUiModal` picks by window class (compact gets the sheet, wider gets the dialog, per 05 section 3.7) | Focus trap, scrim, reduced-motion entrance. |
 | `FieldCore` | `TextField(decoration: null)` | Text only: the value, its own placeholder in the same style on the same baseline, the caret and the selection. Exposes controller, focus node, input formatters, `onSubmitted`, read-only, obscured | Amended in wave F: the decoration is absent rather than collapsed, so no `InputDecorator` exists for the bridge theme to paint through, and `showFocusRing` is gone. The one Material component import in the package. |
 | `Announcer` | `SemanticsService.announce`, `Semantics(liveRegion:)` | Announce a status change once (06 section 3) | Used by toast, banner, progress. |
+| `EdgeFadedRow` | `SingleChildScrollView`, `ShaderMask` | Added in wave G: a row at its own intrinsic width inside a column too narrow for it, scrolled, with the edge faded on the side there is more, and the chosen item scrolled into view | The compact variant 11 section 3.3 gives a tab strip and a navigation row. Used by `UiTabs` and `UiPillNav`, which would otherwise carry two copies of it. The fade extent comes in as a token, because a primitive makes no styling decision of its own. |
 | `Scrim` | `AnimatedOpacity` | `scrim` token behind modal glass | |
 | `Density` | `InheritedWidget`, `Listener` on the app root | Resolves `UiDensity` from the last `PointerDeviceKind` seen, defaulting from window width | `Density.of(context)`. |
 
@@ -718,6 +719,14 @@ wrong for the 250 ms the disc is still over it. Colour and opacity may run
 alongside the one authored move (04 section 5.2). The undrawn label reaches a
 pointer reviewer as a real `UiTooltip` and a screen reader as a
 `Semantics(tooltip:)` folded into the disc's own node (section 4.3).
+
+Amended in wave G: the pill has the compact variant 11 section 3.3 gives a
+navigation row, because five 48 dp discs need 240 dp and a pill in a narrow
+pane does not always have it. A disc's hit box is 48 at every density and
+every text scale, so what gives is the capsule: it scrolls through
+`EdgeFadedRow`, the edge fades on the side there is more, and the current
+destination is scrolled into view when it changes. The pill overflowed by 56
+dp at 200 dp before this, which the gallery matrix counted six times.
 
 **`UiRail`.** For medium windows: a 72 dp column of the same discs, top-aligned
 under the mark; extended form at expanded width shows `label.small` under each

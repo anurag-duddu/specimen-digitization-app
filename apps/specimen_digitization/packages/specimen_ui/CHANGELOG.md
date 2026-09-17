@@ -138,6 +138,14 @@ section's table: top bar, tabs, tile, row, dialog, sheet, banner and toast.
   or title is worth drawing in before a control switches to its compact
   variant. Reason: 11 section 3.3 rule 3 needs a threshold and the grid had
   none. Below it an ellipsis leaves a word fragment rather than a word.
+- `primitives/edge_fade.dart` is new and exported. `EdgeFadedRow` is the
+  compact variant 11 section 3.3 gives a tab strip and a navigation row: the
+  row at its own intrinsic width inside a scroller, the edge faded on the side
+  there is more, and the chosen item scrolled into view. Reason: `UiTabs` and
+  `UiPillNav` both need it, a private class cannot cross two files in Dart,
+  and two copies of one behaviour is what one vocabulary exists to prevent. It
+  takes its fade extent as a token from the control, because a primitive makes
+  no styling decision of its own.
 
 ### Overlays
 
@@ -165,6 +173,10 @@ section's table: top bar, tabs, tile, row, dialog, sheet, banner and toast.
 
 ### Navigation
 
+- `UiPillNav` scrolls when its discs do not fit, through `EdgeFadedRow`, with
+  the current destination scrolled into view. Five discs need 240 dp and a
+  disc's hit box never shrinks (clause 2), so at 200 dp the capsule overflowed
+  by 56 dp; the gallery matrix counted that six times.
 - The bar has three arrangements: every action drawn, the first two drawn with
   the rest in an overflow `UiPopoverMenu`, and every action in the menu for a
   column too narrow for two discs and a trigger. The menu carries the same

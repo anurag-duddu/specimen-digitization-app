@@ -81,7 +81,9 @@ a dialog's body, an empty state's copy.
 
 Each control's variants are its own. A top bar ellipsises its title and then
 collapses its actions into an overflow menu, which needs `UiTopBarAction`
-rather than a widget it cannot read. A tab strip scrolls with fading edges. A
+rather than a widget it cannot read. A tab strip and a pill scroll with fading
+edges, through the `EdgeFadedRow` primitive they share, and the chosen tab or
+destination is scrolled into view. A
 data tile steps its numeral down one display role at a time and then scales
 it. A list row's `UiRowTrailing` drops its word and keeps its glyph. A
 banner's and a toast's action move under the words. A modal's actions stack
