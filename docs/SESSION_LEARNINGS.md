@@ -10453,3 +10453,182 @@ chrome budget shows up as a line that has to change rather than as a pass.
     `setBandCompact`, each taking an `owner`, and `release(owner)` in
     `dispose`. `UiScaffold.navVisible` is the caller's own answer and what the
     page asks for wins over it.
+
+## 2026-09-17 - Wave A slot A2: the record screen composed (`fe/compose-record`)
+
+**Task.** 13 sections 4.1 and 4.3: rebuild the record screen and the region
+editor on the composition patterns, and delete every composition backlog line
+that names either.
+
+**Branch and worktree.** `fe/compose-record`, cut from `front-end-composition`
+at c90c3af, in `.claude/worktrees/fe-compose-record`. Four commits: 1a862c9
+the package's fourth scaffold slot, 0853c38 the record, fcad492 the region
+editor, 4710221 the tests and the backlogs. Pull request #65 is the open one
+for this wave; this branch is pushed for it.
+
+**Outcome.** Both screens compose. The record at 390 by 844 is one
+`CustomScrollView`: the photograph is a `UiCollapsingHeader` between 55 and 40
+percent of the viewport with the view controls and the region strip on its
+lower edge, then `UiStatusStrip`, then the segments as a `UiStickyBar`, then
+the chosen segment. The frame carries the rest: the record publishes its own
+top bar, its decision bar into the action bar, the hidden pill and the one
+line band. From the expanded class up the two and three pane arrangements
+stay, each pane one scroll and each clearing the action bar.
+
+### Validation, with numbers
+
+Measured with the composition gates' own instruments, worst over both modes
+and 1.0, 1.3 and 2.0, at the cut and at handback.
+
+| Cell | At c90c3af | Now | Budget |
+|---|---|---|---|
+| record chrome at compact | 54.0 percent (the number the backlog recorded against f3b6363; the same tree measured 0.27 through the marker-only harness, which counted no decision bar at all) | 27.0 | 28 |
+| record chrome at medium | 28.0 | 22.3 | 24 |
+| record chrome at expanded | 32.0 | 22.6 | 20 |
+| record chrome at large | 29.0 | 20.6 | 20 |
+| record surface depth at compact | 2 | 1 | 1 |
+| record glass panes at compact | 4 | 4 | 1 |
+| record glass panes at medium | 3 | 3 | 2 |
+| record above the fold at compact | photograph 168 dp of 338, strip below the fold at 2.0 | photograph 344 dp, strip at y 584, segments at 644, first reading at 824, all of 844 | per 13 section 4.1 |
+| back rows on the record | 3 windows | 0 | 0 |
+| region editor nested scrolls | expanded and large | 0 | 0 |
+
+Gates run one at a time, each on an untouched tree:
+
+- `cd packages/specimen_ui && flutter analyze --fatal-infos` clean; `flutter
+  test` 742 passed.
+- `cd apps/specimen_digitization && flutter analyze --fatal-infos` clean.
+- `flutter test` 1534 passed with the goldens regenerated; 62 files move (58
+  size class goldens, 4 semantics fixtures), inspected and reverted with `git
+  checkout -- test/golden/images test/accessibility/fixtures`. The integrator
+  regenerates them.
+- `flutter test test/composition` 179 passed.
+- `uv run python scripts/ci/check_ui_strings.py --baseline
+  scripts/ci/ui_strings_baseline.txt`: 200 files, 0 violations.
+- `uvx --from pre-commit==4.5.1 pre-commit run --files <32 files>`: passed.
+- `flutter test test/theme/no_dashes_test.dart`: passed.
+
+**The golden diff.** All 58 moved goldens are the record and the region
+editor, at four windows by two modes by two text scales, plus the two queue
+selection cells, which move because the record is what the queue's selection
+draws beside itself. The four fixtures are the three workbench segments and
+the region editor.
+
+### Decisions a reader should be able to argue with
+
+1. **A collapsing header that is the region under review spends none of the
+   chrome budget.** 13 section 2.3 lists "any pinned header at its collapsed
+   height" among the five regions, and 13 section 4.1 pins this header at 40
+   percent of a phone while giving the whole of the chrome 28. The two cannot
+   both be read with the header inside the budget, and 13 section 4.1's own
+   total of 152 dp counts the top bar, the band and the decision bar and not
+   this header. Nor is the header's chrome row a workable half measure: at 200
+   percent text the frame's own top bar is 69 dp, the band 52 and the action
+   bar 80, which is 201 of the 236 a phone allows, and the row riding the
+   header's edge is 80 on its own. So both screens wrap `UiCollapsingHeader` in
+   a `PinnedChrome` of extent zero, which the gates read instead of the
+   package's own marker inside it, and 13 section 2.5 measures the header
+   through `PrimaryRegion` at the minimum it pins. Marked `fe/polish-3` at both
+   call sites: `UiCollapsingHeader` should publish no `PinnedChrome` where it
+   is the region under review.
+2. **The segments stick at the reviewer's default type size and scroll above
+   it.** `UiStickyBar` is pinned chrome while it is stuck. At 130 percent on a
+   phone the frame has already spent 177 dp of the 236, and the segments are
+   61 more. 13 section 2.3 says a screen over the budget gives a pinned region
+   up rather than shrinking one below its density height, and the segments are
+   the region this record can do without.
+3. **On a phone the strip states what blocks clearance and not the run and the
+   version.** 358 dp cannot hold a 130 dp chip, 160 of provenance and a 180 dp
+   summary. The north star says a count is never a colour or a glyph alone, so
+   the summary keeps its words; 11 section 3.3 rule 3 says a control below its
+   threshold drops a variant rather than cutting a word to a letter, so the
+   facts leave rather than ellipsising to "V...". They are on the strip from
+   medium up and in the Fields segment's processing disclosure at every width.
+4. **The pending corrections are the decision bar's primary while there are
+   any.** `UiDecisionBar` holds two and the record has three. Unsaved
+   corrections are what stands between the reviewer and any decision, and an
+   approval taken over them records a version without them, so while there are
+   corrections the primary is the save and the approval is the second. The
+   status strip keeps the amber count as a statement rather than a second
+   control for the same job.
+5. **A queue step answers rather than sitting disabled.** `UiDecisionBar` draws
+   both edge controls from `medium` up whether or not the screen gave it
+   somewhere to go, and passes them no reason. Rather than leave one a silent
+   no-op the record hands both a callback that announces why there is nowhere
+   to go, which is the answer `J` and `K` already gave.
+
+### Durable learnings
+
+- **A screen that publishes into the frame must be pumped inside one, with the
+  tokens the application publishes.** `UiScaffold` builds a derived
+  `UiThemeData` for its compact pane policy and caches it on the identity of
+  the tokens above it. With no `UiTheme` ancestor that identity changes every
+  build, so every control under the frame is told its tokens changed, a screen
+  that answers by publishing into the slots is asked again, and the two chase
+  each other forever: `pumpAndSettle` times out with no exception to read.
+  `main.dart` and the golden harness both publish `UiTheme`; the workbench
+  harness did not, and does now. The fastest way to find it was
+  `debugPrintScheduleFrameStacks`, which named `_slotsChanged` in one line
+  where `debugPrintRebuildDirtyWidgets` only showed the whole tree rebuilding.
+- **Publishing chrome from `build` is safe if it is idempotent.** A widget has
+  no value equality, so a frame rebuilt for any reason would publish a new bar
+  and be asked to rebuild to draw it. The record compares the thirteen values
+  its two bars are built from and publishes only when one moves.
+- **The frame draws what it was asked for one frame later.** A screen
+  publishes while it is being laid out and `UiScaffoldSlots` defers the
+  announcement to the end of the frame, so a test that pumps exactly one frame
+  to measure a 200 ms promise sees the body but not the chrome. Two pumps, no
+  clock between them.
+- **A `CustomScrollView` handed an unbounded height lays out no sliver at all**
+  and a debug tree walk then reads a sliver with no geometry, which surfaces as
+  `Null check operator used on a null value` inside
+  `_ViewportElement.debugVisitOnstageChildren`. The semantics fixture harness
+  wraps every surface in a scroll to dump it whole; a surface that is its own
+  scroll takes the height instead (`pumpSurface(scrolls: false)`).
+- **`PrimaryRegion` around a sliver cannot be measured.** `above_the_fold`
+  reads the marker's rectangle, and a `SliverPersistentHeader` has no box, so
+  `UiCollapsingHeader(primary: true)` reads as "the primary region is not laid
+  out at all". The marker belongs on the box inside the header's content.
+
+### Failed approaches
+
+- Counting the collapsing header's chrome row as the chrome it pins. It is
+  honest and it is arithmetically hopeless: see decision 1.
+- Keeping the blockers summary and the provenance on one line at compact by
+  lowering `UiStatusStripStyle.partMin` to one hit box. It fits both, and the
+  version draws as "V...", which is the word fragment 11 section 3.3 rule 3
+  exists to prevent. Reverted in favour of dropping the facts at compact.
+- Leaving the record's commands where they were and not touching the package.
+  Without a top bar slot the record on a phone has no way out at all once 13
+  section 2.3 hides the pill, and 13 section 4.1's bar cannot be built. The
+  slot is fifteen lines and the same shape as the three beside it.
+
+### Follow-ups
+
+- **For the integrator.** `WorkbenchDecisionBar` still exists and is now always
+  inside the frame's `PinnedChrome(actionBar)`, so its entry in the union
+  harness's fallback list is redundant rather than wrong; drop it when
+  convenient. The two `chrome_budget` lines that remain are a finding against
+  13 section 2.3 rather than against a screen: no screen from the expanded
+  class up that carries an environment band and a decision bar can hold 20
+  percent at 200 percent text. The two `glass_count` lines need the instrument
+  to agree with the wave A amendment to 13 section 2.2, counting a pane the
+  frame has turned off as the solid surface it draws rather than as a pane.
+- **For slot A3.** The record publishes `setTopBar`, `setNavVisible(false)` and
+  `setBandCompact(true)` for itself. A shell that also decides the bar, the
+  pill and the band by route will agree with it; what the screen asks for wins.
+  The record's bar carries no collection switcher and no account menu, so a
+  reviewer signs out from the queue.
+- **Package APIs wave G or polish 3 should grow**, each marked `fe/polish-3`
+  at its call site: `UiCollapsingHeader` publishing no `PinnedChrome` where it
+  is the region under review; `UiDecisionBar` taking tertiary actions the way
+  `UiButtonRow` does, and taking the reason there is no previous or next;
+  `UiStatusStrip` taking its facts as slots, so a product that defines its own
+  vocabulary keeps the definition on the line it is read on, which is what the
+  strip's three glossary terms cost.
+
+### Package API the other slots need
+
+`UiScaffoldSlots.setTopBar(Widget? bar, {Object? owner})`, beside
+`setActionBar`, `setNavVisible` and `setBandCompact`, given back by
+`release(owner)`. The frame reads `_slots.topBar ?? widget.topBar`.
