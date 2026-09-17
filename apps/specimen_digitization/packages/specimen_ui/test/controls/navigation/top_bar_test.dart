@@ -1,5 +1,6 @@
 // The top bar (10 section 4.4, `UiTopBar`).
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -314,6 +315,48 @@ void main() {
       reason: 'and its shortcut, which is what the menu column is for',
     );
     expect(find.text('Open help'), findsOneWidget);
+  });
+
+  testWidgets('the overflow menu opens inside the window it is at the end of', (
+    WidgetTester tester,
+  ) async {
+    // The trigger is the last thing on the bar, one gutter from the window's
+    // edge. Its menu used to hang from the trigger's start and run 200 dp
+    // past the window; the popover mirrors so the pane's end meets the
+    // trigger's (10 section 3, fit).
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.reset);
+    for (final TextDirection direction in TextDirection.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(360, 800),
+          textDirection: direction,
+          child: _bar(
+            width: 360,
+            leading: const UiIcon(UiIcons.collection),
+            title: 'Queue',
+            actions: _fourActions(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Finder trigger = find.bySemanticsLabel(UiTopBarStyle.overflowLabel);
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+
+      final Rect anchor = tester.getRect(trigger);
+      final Rect pane = tester.getRect(find.byType(GlassSurface));
+      expect(pane.left, greaterThanOrEqualTo(0), reason: direction.name);
+      expect(pane.right, lessThanOrEqualTo(360), reason: direction.name);
+      if (direction == TextDirection.ltr) {
+        expect(pane.right, moreOrLessEquals(anchor.right, epsilon: 0.5));
+      } else {
+        expect(pane.left, moreOrLessEquals(anchor.left, epsilon: 0.5));
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
   });
 
   testWidgets('a bar with room draws every action and no overflow', (

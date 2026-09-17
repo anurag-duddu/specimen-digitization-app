@@ -191,6 +191,45 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('a trigger at the end of a phone\'s line keeps its menu on it', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 800);
+    addTearDown(tester.view.reset);
+    for (final TextDirection direction in TextDirection.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 800),
+          textDirection: direction,
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: UiMenuTrigger(
+              semanticsLabel: 'Record actions',
+              items: items(),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.bySemanticsLabel('Record actions'));
+      await tester.pumpAndSettle();
+
+      final Rect anchor = tester.getRect(
+        find.bySemanticsLabel('Record actions'),
+      );
+      final Rect pane = tester.getRect(find.byType(GlassSurface));
+      expect(pane.left, greaterThanOrEqualTo(0), reason: direction.name);
+      expect(pane.right, lessThanOrEqualTo(390), reason: direction.name);
+      if (direction == TextDirection.ltr) {
+        expect(pane.right, moreOrLessEquals(anchor.right, epsilon: 0.5));
+      } else {
+        expect(pane.left, moreOrLessEquals(anchor.left, epsilon: 0.5));
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('the menu pane is the window only frosted pane', (
     WidgetTester tester,
   ) async {

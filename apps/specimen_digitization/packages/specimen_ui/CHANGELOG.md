@@ -88,6 +88,21 @@ Moving from 0.2.0: `FocusRing.capsule` is now `shape: FocusRingShape.stadium`,
   walks.
 
 ### Primitives
+- `Popover` fits the overlay it opens in (10 section 3; polish 3). A pane
+  below or above its trigger hangs from the trigger's leading edge; where that
+  would carry it past the overlay's trailing edge the anchor mirrors and the
+  pane hangs from the trailing edge instead, and where neither edge holds it
+  the pane is clamped inside the overlay's padding, the safe area plus
+  `space.s4`, except that a pane may come as close to an edge as its own
+  trigger does, so a select flush with the window keeps its list flush under
+  it. Reason: slot A3 measured a record's account menu at 788 to 1036 of an
+  800 dp window and had to move the menu off the bar, and `UiTopBar`'s
+  overflow and `UiSelect` open through the same primitive. The vertical rule
+  is unchanged. `start` and `end` now follow the reading direction, as their
+  names say, and the fit is measured against the overlay the pane is drawn in
+  rather than the media query's window, because the overlay is the only
+  rectangle a pane can be drawn in: in the application the two are one, and a
+  gallery frame with an `Overlay` of its own is measured against the frame.
 - `primitives/label.dart` is new. `UiLabel` is the one line label of clause
   13: `maxLines: 1`, `softWrap: false`, an ellipsis, and the full text on the
   semantics label and in a tooltip only when the label actually overflows. The
