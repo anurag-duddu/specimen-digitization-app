@@ -235,11 +235,14 @@ shell guards enforce with streaming `jq`: exactly six fields, no duplicate key,
 no second document, `schemaVersion` the number 1, the repository string, a 40
 character lowercase hex `commitSha`, `runId` and `runAttempt` as positive
 integers written as strings, and a `builtAt` that round trips through
-`%Y-%m-%dT%H:%M:%SZ`. Twelve tests run the marker through **the filter actually
-read out of `scripts/ci/smoke_hosting.sh`** and assert the two agree on every
-case, so the restatement cannot drift from the guard.
+`%Y-%m-%dT%H:%M:%SZ`. Thirteen tests run the marker through **the filter
+actually read out of `scripts/ci/smoke_hosting.sh`** and assert the two agree
+on every case, so the restatement cannot drift from the guard. One divergence
+was found that way and closed: `True == 1` in Python and `true == 1` is false
+in jq, so a `schemaVersion` of `true` was accepted here and would have been
+refused at the deploy.
 
-`scripts/ci/test_smoke_web_routes.py` is 62 tests and passes.
+`scripts/ci/test_smoke_web_routes.py` is 64 tests and passes.
 
 ### 5.3 What the green run at `3fa61d7` does not include
 
