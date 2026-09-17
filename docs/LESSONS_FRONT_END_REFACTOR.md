@@ -287,6 +287,18 @@ takes the next screen's chrome with it; a null that names no one is the only
 outright clear, and it belongs to `release` alone. The same rule applies to any
 ambient a screen publishes and a frame reads. From the wave A integration.
 
+**Honouring one screen's ask can change another screen's regime.** Letting the
+sidebar stay inside a record was a two line fix in the frame, and it moved the
+record at 1440 by 900 from the two pane regime to the stacked one: the record
+sits beside a 360 dp queue pane and a 280 dp sidebar, which leaves it 799 dp,
+below the 840 the two pane regime needs, so the collapsing header and the
+sticky segments came back at a window class whose chrome budget cannot hold
+them. A screen that chooses its regime from the width it is given has as many
+regimes as there are frames it can be placed in, and a rule that spends chrome
+by text size alone is a rule that has not met the frame yet. Weigh the window
+class as well, and measure every window after a frame change, not the one that
+changed. From the wave A integration.
+
 ## 3. The design lessons
 
 **Every layer was correct and nobody owned the seam.** Checkpoint 1 found a
