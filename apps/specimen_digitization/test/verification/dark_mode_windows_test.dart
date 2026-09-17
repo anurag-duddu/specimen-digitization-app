@@ -134,7 +134,6 @@ const Map<String, String> guidelineArtefacts = <String, String>{
   // 690 dp wide over the bar and still reads two shades of it.
   'record readings at medium-768x1024': 'the decision bar count node',
   'record readings at large-1440x900': 'the decision bar count node',
-  'record fields at compact-390x844': 'the decision bar count node',
   'record fields at medium-768x1024': 'the decision bar count node',
   'record fields at large-1440x900': 'the decision bar count node',
   'record history at medium-768x1024': 'the decision bar count node',

@@ -57,31 +57,24 @@ int glassBudgetFor(String window) => switch (windowClassOf(window)) {
 const Map<String, num> surfaceDepthBacklog = <String, num>{};
 
 /// The panes each cell draws today, where it is over budget.
-/// Two cells. The import sheet at compact draws its own pane over the
-/// navigation pill the scaffold floats beneath the barrier: the pill is still
-/// mounted and still blurs under a modal, and a phone's budget is one pane
-/// (slot A3 owns the shell's half of 13 section 2.2). The record at medium
-/// draws three where the class allows two: the scrolled top bar, the frame's
-/// action bar and the collapsed header's own chrome all blur from medium up,
-/// because the wave A amendment to 13 section 2.2 publishes `GlassQuality.off`
-/// at compact only. One of the three has to draw solid at medium, and which
-/// is a pattern decision for `fe/polish-3` rather than a screen's.
+/// Empty since polish 3. The record at medium drew three panes where the
+/// class allows two, because the top bar, the frame's action bar and the
+/// collapsed header's chrome all blurred from medium up; the frame's top bar
+/// is never a pane now, so medium spends its two on the action bar and the
+/// header (13 section 2.2, polish 3 amendment). The import sheet at compact
+/// drew its own pane over the navigation pill the frame floated beneath the
+/// barrier; the frame draws its floated chrome solid while a modal shown from
+/// inside it is open (`UiModalScope`), so a phone under a sheet has the
+/// sheet's one pane.
 ///
-/// Five compact cells left this backlog when the instrument started counting
-/// what the amendment counts: a `GlassSurface` published `GlassQuality.off`
-/// draws solid and builds no filter, and the earlier count of every
-/// `GlassSurface` put the frame's solid top bar, band and header chrome on
-/// the same footing as the one pane that blurs.
-///
-/// Slot A3 closed the shell's half of it in the same wave: at compact the
-/// shell draws the bar's fill solid on `ground` and passes
-/// `scrolledUnder: false`, which is the wave A amendment to 13 section 2.2
-/// read as the gate measures it, so `setup`, `queue`, `intake` and `source`
-/// are down to the pill's one pane by either count.
-const Map<String, num> glassCountBacklog = <String, num>{
-  'import-sheet@compact-390x844': 2,
-  'record@medium-768x1024': 3,
-};
+/// Five compact cells left this backlog earlier in wave A when the instrument
+/// started counting what the amendment counts: a `GlassSurface` published
+/// `GlassQuality.off` draws solid and builds no filter, and the earlier count
+/// of every `GlassSurface` put the frame's solid top bar, band and header
+/// chrome on the same footing as the one pane that blurs. Slot A3 closed the
+/// shell's half in the same wave: at compact the shell draws the bar's fill
+/// solid on `ground` and passes `scrolledUnder: false`.
+const Map<String, num> glassCountBacklog = <String, num>{};
 
 // ---------------------------------------------------------------------------
 // The measurements.
