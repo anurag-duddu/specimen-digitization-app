@@ -9583,6 +9583,33 @@ Commits, all on `fe/release-ci`:
 Every gate run one at a time, the tree untouched while each ran, `rc=$?` read
 directly and never off a pipe, with `LANG` and `LC_ALL` exported and the
 placeholder Firebase options in place.
+## 2026-09-17: Front-end refactor wave A, slot A4, the composition gates
+
+Task: slot A4 (`fe/compose-gates`), section 5 of
+`apps/specimen_digitization/design/13-screen-composition.md` and item A4 of
+`docs/execution/FRONT_END_REFACTOR.md` section 3H. Branch `fe/compose-gates`,
+worktree `.claude/worktrees/fe-compose-gates`, cut from `front-end-refactor` at
+`f3b6363`. Sibling slots `fe-compose-package`, `fe-release-ci`,
+`fe-release-docs` and `fe-release-client` live throughout; nothing of theirs was
+touched and `origin/fe/compose-package` was read with `git show` and never
+merged.
+
+Outcome: complete. Five gates, one shared harness, a capture script, and the
+allowances recorded in 13 section 5. **179 new tests, all five gates red on the
+tree they were written against and green with the backlog each one now carries.
+Two findings the gates made that 13 section 0 did not predict, and a third
+found while driving a screen.**
+
+Commits, all on `fe/compose-gates`:
+
+- `aa93583` test(composition): the gates that fail when a screen breaks the contract
+- `7ace380` build(capture): drive the emulator and the simulator through every route
+- `c47e18d` docs(design): the composition gates as built, and the backlog each starts with
+
+### Validation
+
+Every gate run one at a time with the tree untouched, `rc=$?` read directly,
+`LANG` and `LC_ALL` exported:
 
 | Gate | rc | Result |
 |---|---|---|
@@ -9996,3 +10023,248 @@ letting every other exception fail where it happened.
   `sources.dart` or `lib/src/app/` other than nothing at all. No sibling
   slot's file. No screen golden or semantics fixture committed. No cloud or
   deploy command. No dependency added, no SDK change. No em dash or en dash.
+| `flutter test` (application) | 0 | 1480 passed, 7 skipped |
+| `uv run python scripts/ci/check_ui_strings.py --baseline ...` | 0 | 194 files, 0 violations |
+| `uvx --from pre-commit==4.5.1 pre-commit run --files ...` (8 files) | 0 | every hook Passed or Skipped |
+| `dart format --set-exit-if-changed test/composition/` | 0 | 6 files, 0 changed |
+
+The application suite was 1301 at the cut and is 1480: this slot adds 179.
+**No screen golden and no semantics fixture moved, and none was regenerated.**
+`--update-goldens` was never run: these gates measure layout and text and write
+no binaries.
+
+Timing, which the brief bounds. Each file alone, including the tool's own
+start up: `no_nested_scrollables` 30 s, `surface_depth` 18 s, `chrome_budget`
+16 s, `above_the_fold` 7 s, `one_job` 15 s. `flutter test test/composition` as
+one run is **29 s** for all 179.
+
+Device captures: two taken to prove the script end to end, the record at the
+phone window on `emulator-5554` and the queue at the tablet window in dark on
+the iPad Pro 13 inch, both inspected by eye and both deleted. Nothing under
+`design/screenshots/` is committed. Neither device was left with an application
+running, and the emulator is back at its own 1080 by 2400 at density 420.
+
+### What the gates hold, and the backlog each starts with
+
+One test per cell, and a cell is one screen at one window; both modes and 1.0,
+1.3 and 2.0 are swept inside the cell and the worst reading is what it reports.
+Mode and scale are deliberately not in a cell's name: a composition defect is a
+property of an arrangement, an arrangement is chosen by the window class, and a
+screen that broke the contract in dark and not in light would be a finding about
+the theme. Boolean clauses are checked in both directions, the mechanism
+`knownWorkbenchOverflows` uses; counted clauses record the worst number and are
+checked three ways, that the cell is still over the contract's budget, that it
+is no worse than the line, and that the line states what it measures rather than
+rounding it.
+
+The matrix is the eight routed locations (`signin`, `setup`, `help`, `queue`,
+`record`, `intake`, `sources`, `source`) plus `import-sheet` and
+`region-editor`, which are surfaces a screen opens over itself and compose in
+their own right. `verify` is behind a redirect the fixture session does not
+reach, which the fit matrix of 12 also recorded.
+
+**`no_nested_scrollables`, 7 cells and 2 files.** Intake at compact nests the
+manifest `ListView` in the page's `ListView` (`intake.dart` `_manifest(nested:
+true)`; `manifest_panel.dart` 109 to 111). The import sheet at all four windows
+and the region editor at expanded and large put a `SingleChildScrollView`
+inside the one `UiDialog.showAdaptive` already wraps a body in
+(`source_import_sheet.dart` 119 and 194; `region_editor.dart` 355). The text
+half carries `help_screen.dart` 1 and `manifest_panel.dart` 2.
+
+**`surface_depth`, 1 depth cell and 7 pane cells.** The record at compact
+stacks two surfaces where compact allows one. On panes, six of the seven are
+one sentence, below.
+
+**`chrome_budget`, 4 cells.** The record screen at all four windows: 54 percent
+of the viewport against 28 at compact, 28 against 24 at medium, 32 against 20
+at expanded, 29 against 20 at large. At 390 by 844 that is a 56 dp top bar, a
+64 dp band, a 200 dp decision bar and a 64 dp pill; 13 section 4.1 budgets the
+same screen at 152 dp.
+
+**`above_the_fold`, 3 cells.** The record's photograph shows 168 dp of the 338
+that 40 percent of a phone asks for, and the status strip beneath it starts at
+750 and is off the bottom from 1.3 up. Intake's capture card is 1018 dp tall
+inside 844. The queue holds the fold at 1.0 and 1.3 and loses it at 2.0, where
+the first row starts at 803 of 844.
+
+**`one_job`, 3 cells.** The "Back to queue" row (`workbench_screen.dart` 110)
+at compact, medium and expanded. The repetition clause starts at a real zero:
+no pinned region on any screen repeats another's words today.
+
+### The three findings
+
+**The region editor nests a scroll above the expanded floor.** Not in 13
+section 0, and the same cause as the import sheet: `UiDialog` and `UiSheet`
+wrap a body in a `SingleChildScrollView` when `scrollBody`, and the body wraps
+itself in another. Below the expanded floor the editor is a full screen route
+and has one scroll, which is why only two of its four windows are in the
+backlog. One of the two wraps has to go, and the choice is a package decision
+rather than a screen one.
+
+**Every compact screen gains a second glass pane on its first scroll.**
+`UiTopBar` fills with `glass.flat` the moment `UiScaffoldGeometry.scrolledUnder`
+turns true, and the pill is already a pane, so `setup`, `queue`, `intake` and
+`source` all reach two at compact where 09 section 3.3 and 13 section 2.2 allow
+one. `sources` is absent from that list for the same reason read the other way:
+its content is shorter than a phone, so it never scrolls and never gains the
+pane. The size class goldens' own `glass_budget` never saw any of it, because it
+counts at rest and the second pane arrives on the first scroll.
+
+**The source screen's selection bar overflows by 17 pixels at 200 percent text
+on a phone.** Only at 2.0, and only at compact: the `Column` at
+`lib/src/screens/sources/source_screen.dart` 260 to 284 holds
+`Expanded(child: _body)` above the `MotionReveal` that reveals `SelectionBar`,
+and at 2.0 the bar's own height is 17 dp more than the column has left. The
+"Add to queue" control is built and laid out, and a tap on it misses its hit
+box. Found by driving the screen to open the import sheet, not by a gate.
+Nothing in `test/golden` covers the source screen with a live selection, which
+is why it has survived. Slot A3 owns `screens/sources/*`.
+
+### Durable learnings
+
+**An element walk taken at rest cannot see a nested list, and that is the
+defect's favourite hiding place.** A `ListView` builds only what its viewport
+holds. Intake's manifest is the third child of the page's list on a phone, the
+capture card above it fills an 844 dp window on its own, and the manifest is
+therefore not in the element tree at all until the page is scrolled to it. The
+first version of this gate reported zero nestings on every screen and was
+wrong about the one screen 13 names. Every gate here now samples at rest and
+then once per viewport of every vertical scroll view, bounded at twelve, and
+takes the union. The static text scan for `shrinkWrap` and
+`NeverScrollableScrollPhysics` is the belt to that brace rather than the rule
+itself.
+
+**The element tree already grants the sheet allowance, so do not look up a
+route to grant it.** 13 section 2.1 allows a sheet or a dialog its own scroll
+over a page that has one. The first version proved the two were on different
+surfaces by comparing `ModalRoute.of` on each, which throws "Looking up a
+deactivated widget's ancestor is unsafe" on an element the sweep has just
+deactivated, and which registers a dependency from a test walk besides. It is
+also unnecessary: a modal route's content is its own overlay entry, a sibling
+of the entry the page is in, so the page's scroll view is never an ancestor of
+anything inside the sheet. `visitAncestorElements` has already done the
+filtering.
+
+**`pumpWidget` reuses an element whose widget is of the same type, navigator
+and all.** A helper that pumped one screen six times, once per mode and scale,
+measured six stacked import sheets rather than one: each pump pushed a dialog
+on a navigator the previous pump had left mounted, and the pane count for that
+cell came back 8 against a real 3. `await tester.pumpWidget(const
+SizedBox.shrink())` between pumps is the whole fix, and it is the same reason
+`expectGoldenFinder` does it after a capture.
+
+**A greedy `\s*` in front of a negative lookahead matches the space before the
+word the lookahead excludes.** `\bshrinkWrap\s*:\s*(?!false\b)` matches
+`shrinkWrap: false`, because the engine retries with `\s*` consuming nothing
+and then finds " false" does not start with "false". Count the argument and
+subtract the disabled form instead; the unit test for the scanner is what
+caught it, and a scanner without one would have carried the bug into a backlog.
+
+**A launch is not a frame, and a fixed sleep is not the answer.** The Android
+native splash is on screen from the activity starting until Flutter draws, and
+`flutter run` prints "Flutter run key commands" and the VM service line well
+before that. Six seconds after the VM service line captured the splash every
+time; the emulator here skips about three hundred frames reaching the first
+one. The capture script watches the screen instead: the frame at launch is the
+splash by definition, and the app is ready once the screen has both changed
+from it and stopped changing. Some screens never produce two identical frames,
+because the queue draws "Updated 3 s ago", so a grace period after the first
+change is what finishes those; without it every queue cell waited out the full
+timeout.
+
+**`xcrun simctl` takes the word "booted" and `flutter run -d` does not.** The
+first iPad run asked flutter for a device named "booted" and was told there is
+no such thing, having listed the simulator by name and UDID in the same
+message. Resolve the UDID once and give it to both tools. `adb` is not on the
+PATH of a login shell on this machine either, and is found under
+`~/Library/Android/sdk/platform-tools`.
+
+**The record screen on the emulator is still exactly the capture 13 section 0
+was written from.** Collection switcher, two line band, "Back to queue" row,
+"Source photograph" heading with its own collapse control, photograph in a
+matte in a pane with the tool capsule over its lower edge, region toggles,
+title with three commands, "Correct label regions", "Source details", a
+decision bar carrying previous, a count, next and two stacked buttons, and the
+pill. The readings are below the fold. Every number the four backlogs carry is
+visible in that one screenshot, which is the argument for taking the capture
+before writing the gate rather than after.
+
+### Failed approaches
+
+**Tapping the source screen's add control to open the import sheet.** It works
+at 1.0 and 1.3 and misses at 2.0 on a phone, for the third finding above, so
+the cell that should report a nested scroll reported a missed hit test instead.
+The sheet is now raised through `confirmSourceImport`, the call the screen's own
+control makes, from a context inside the mounted screen: the surface, the
+navigator, the theme and the window are the application's either way and only
+the finger is skipped. The overflow it found is written up rather than worked
+around.
+
+**Keying a boolean backlog by screen, window, mode and scale.** The first
+version asserted per cell and per mode and per scale, and the queue fails the
+fold at 2.0 and passes it at 1.0 and 1.3, so the both directions check fired on
+four of its six cells at once. A cell is a screen at a window, and the sweep
+belongs inside it.
+
+**Building the failure sentence for every cell.** `expect`'s `reason` is an
+argument rather than a callback, so a `reason` that walks the element tree to
+name the pinned regions walks it for every passing cell too. The chrome gate
+was 53 s that way and is 16 s taking the sentence out of the same walk as the
+measurement.
+
+### Follow-ups and deviations
+
+1. **The commit trailer names `Claude Opus 5 (1M context)`** where the slot
+   brief names a different model's line, as slots F2, G1, G2, G3, G4, E1, E4,
+   E5, polish 2 and H3 all recorded. The integrator may normalise the trailers.
+2. **No `CHANGELOG.md` entry, deliberately.** Nothing under the package's
+   `lib/` changed. This slot adds tests, a script and a document paragraph.
+3. **Three readers in `composition_harness.dart` become one import once A1 is
+   merged.** `pinnedChromeMarker` and `primaryRegionMarker` match by runtime
+   type name and `_declaredDouble` reads `extent` and `minExtent` dynamically,
+   which reproduces `PinnedChrome.extentOf` and `PrimaryRegion.minExtentOf`
+   from `fe/compose-package` at `b04e6ec` exactly. They exist because this slot
+   cannot import a class from a branch it is not merged with, and a gate that
+   waits for a sibling measures nothing meanwhile. Replacing them with
+   `import 'package:specimen_ui/specimen_ui.dart'` and the two static calls is
+   a five line change and nothing else in the file moves.
+4. **The gates switch to the markers per pump, not per merge.** Where any
+   `PinnedChrome` is mounted only markers are counted, and where none is the
+   widgets that draw the five regions of 13 section 2.3 are. So A2 and A3 can
+   move one screen at a time and the unmoved ones stay measured.
+5. **`sources` has a primary region and no next region.** The fixture registers
+   one source, so there is no second row and 13 section 4.5 names nothing under
+   the list. If A3 adds the heading V2-4 asks for, the screen's entry in
+   `compositionScreens` should gain a `next`.
+6. **A full capture sweep is 48 cells and the better part of an hour on this
+   machine.** `CAPTURE_LOCATION` is a compile time define and this client
+   declares no deep link, so every route is its own build. A deep link in the
+   application, or a runtime location channel in `capture_app.dart`, would make
+   the sweep minutes. The script is resumable in the meantime: a capture that
+   exists is skipped unless `--force`, and `--device`, `--routes`, `--modes`
+   and `--sizes` cut it down.
+7. **No landscape capture, and the large window class still has no device
+   capture.** `xcrun simctl` has no rotate verb and the Android emulator is
+   resized rather than rotated. The same gap H3 recorded, unchanged.
+8. **The script writes three gitignored Firebase placeholders** if they are
+   absent: `lib/firebase_options.dart`, `android/app/google-services.json` and
+   `ios/Runner/GoogleService-Info.plist`. The iOS one carries a well formed
+   `GOOGLE_APP_ID`, because the Firebase iOS SDK calls `[FIRApp configure]` at
+   plugin registration and throws on a malformed one before any Dart runs. This
+   is the `.ci` pair H3 asked for, written by the one script that needs it.
+9. **The queue is pumped with four records** rather than the one the default
+   fixture answers, because 13 section 2.5 asks for the first two rows and a
+   list with one row cannot answer that either way.
+10. No cloud command, no deploy, no dependency added, no SDK change, no golden
+    or fixture committed, no screen capture committed, and nothing under
+    `lib/`, another slot's files or another worktree touched.
+
+### For slots A2 and A3
+
+Run `flutter test test/composition` after each screen you change. A gate that
+goes green on a cell you have not fixed is telling you something; a gate that
+stays red with a line you deleted is telling you the fix is partial. The
+failure messages name the measurement, the budget and the regions or the
+scroll views involved, so the usual loop is one run and one edit. The counted
+backlogs make you move the number as well as delete the line, so a halved
+chrome budget shows up as a line that has to change rather than as a pass.
