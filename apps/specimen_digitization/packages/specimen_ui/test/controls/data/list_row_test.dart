@@ -303,7 +303,7 @@ void main() {
         0,
         reason: 'an unselected row has no fill of its own',
       );
-      expect(style.bar, ui.color.ink);
+      expect(style.bar.resolve(const <WidgetState>{}), ui.color.ink);
       expect(style.barWidth, ui.shape.stroke.bar);
     }
 
@@ -328,6 +328,200 @@ void main() {
       boxes.map((ColoredBox box) => box.color),
       contains(ui.color.ink),
       reason: 'the 3 dp leading bar is painted in ink',
+    );
+  });
+
+  testWidgets('a row with nothing to do is not a disabled button', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiListRow(
+          title: 'IMG_4471.jpg',
+          subtitle: 'Uploading, 3 of 12',
+          semanticsLabel: 'IMG_4471.jpg, uploading, 3 of 12',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final SemanticsData data = tester
+        .getSemantics(find.bySemanticsLabel('IMG_4471.jpg, uploading, 3 of 12'))
+        .getSemanticsData();
+    expect(
+      data.flagsCollection.isButton,
+      isFalse,
+      reason:
+          'an upload row and a photograph that is not a record are not '
+          'controls; "disabled button" promises a button, and a reviewer who '
+          'goes looking for it finds nothing',
+    );
+    expect(
+      data.flagsCollection.isEnabled,
+      Tristate.none,
+      reason: 'a node with no enabled state is not a control that is off',
+    );
+    expect(
+      find.byType(Pressable),
+      findsNothing,
+      reason: 'and nothing to focus, hover or press either',
+    );
+    handle.dispose();
+  });
+
+  testWidgets('a row the server forbids is still a control', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiListRow(
+          title: 'SPEC-2026-0045',
+          disabledReason: 'This record is open in another reviewer session.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final SemanticsData data = tester
+        .getSemantics(find.bySemanticsLabel('SPEC-2026-0045'))
+        .getSemanticsData();
+    expect(
+      data.flagsCollection.isButton,
+      isTrue,
+      reason:
+          'there is a control here and the server has turned it off, which is '
+          'a different thing from there being no control',
+    );
+    expect(data.flagsCollection.isEnabled, Tristate.isFalse);
+    handle.dispose();
+  });
+
+  testWidgets('the row tone follows the row state', (
+    WidgetTester tester,
+  ) async {
+    for (final Brightness mode in Brightness.values) {
+      final UiThemeData ui = mode == Brightness.dark
+          ? UiThemeData.dark()
+          : UiThemeData.light();
+      final UiListRowStyle style = UiListRowStyle.resolve(ui, UiSize.md);
+      const Set<WidgetState> off = <WidgetState>{WidgetState.disabled};
+      expect(style.titleColor.resolve(const <WidgetState>{}), ui.color.ink);
+      expect(
+        style.subtitleColor.resolve(const <WidgetState>{}),
+        ui.color.inkSecondary,
+      );
+      expect(
+        style.trailingColor.resolve(const <WidgetState>{}),
+        ui.color.inkSecondary,
+      );
+      for (final WidgetStateProperty<Color> part
+          in <WidgetStateProperty<Color>>[
+            style.titleColor,
+            style.subtitleColor,
+            style.trailingColor,
+            style.bar,
+          ]) {
+        expect(
+          part.resolve(off),
+          ui.color.disabledContent,
+          reason:
+              'every part of a row the server will not open is drawn in '
+              'disabled.content, as every other control in the system is; '
+              'the row used to draw full strength ink and say nothing',
+        );
+      }
+    }
+
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiListRow(
+          title: 'SPEC-2026-0041',
+          subtitle: 'Two readings disagree on the collector',
+          trailing: UiRowTrailing(
+            label: 'Needs review',
+            icon: UiIcons.needsReview,
+          ),
+          disabledReason: 'This record is open in another reviewer session.',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final UiThemeData light = UiThemeData.light();
+    for (final String words in <String>[
+      'SPEC-2026-0041',
+      'Two readings disagree on the collector',
+      'Needs review',
+    ]) {
+      expect(
+        tester.widget<Text>(find.text(words)).style?.color,
+        light.color.disabledContent,
+        reason: '"$words" is drawn in the tone the row resolved',
+      );
+    }
+    expect(
+      tester.widget<Icon>(find.byIcon(UiIcons.needsReview.defaultGlyph)).color,
+      light.color.disabledContent,
+      reason: 'the trailing glyph takes the same tone as its word',
+    );
+  });
+
+  testWidgets('a trailing the row cannot measure moves under the title', (
+    WidgetTester tester,
+  ) async {
+    Future<void> pumpAt(double width) => tester.pumpWidget(
+      uiHarness(
+        child: SizedBox(
+          width: width,
+          child: UiListRow(
+            title: 'SPEC-2026-0041',
+            subtitle: 'Two readings disagree on the collector',
+            leading: const UiIcon(UiIcons.record, size: UiIconSize.action),
+            trailing: const UiChip(label: 'Needs review'),
+            semanticsLabel: 'SPEC-2026-0041, needs review',
+            onPressed: () {},
+          ),
+        ),
+      ),
+    );
+
+    // Beside the title while the line still leaves the trailing a hit box.
+    await pumpAt(480);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final Offset besideChip = tester.getTopLeft(find.byType(UiChip));
+    final Offset besideTitle = tester.getTopLeft(find.text('SPEC-2026-0041'));
+    expect(
+      besideChip.dx,
+      greaterThan(besideTitle.dx),
+      reason: 'the trailing is at the end of the line',
+    );
+    expect(besideChip.dy, lessThan(besideTitle.dy + 24));
+
+    // Under the title once it is not.
+    await pumpAt(200);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final Rect subtitle = tester.getRect(
+      find.text('Two readings disagree on the collector'),
+    );
+    final Rect chip = tester.getRect(find.byType(UiChip));
+    expect(
+      chip.top,
+      greaterThanOrEqualTo(subtitle.bottom),
+      reason:
+          'the declared compact variant is the trailing on a line of its own '
+          'under the title, not a chip squeezed into thirteen logical pixels',
+    );
+    expect(
+      chip.left,
+      closeTo(subtitle.left, 1),
+      reason:
+          'a trailing that has left the end of the row reads with the '
+          'words above it, so it starts where they start',
+    );
+    expect(
+      tester.renderObject<RenderBox>(find.byType(UiListRow)).size.width,
+      lessThanOrEqualTo(200),
     );
   });
 

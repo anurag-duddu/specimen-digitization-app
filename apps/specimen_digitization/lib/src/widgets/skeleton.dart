@@ -87,6 +87,12 @@ class SkeletonBlock extends StatelessWidget {
 /// screen to host it is exactly what `sendAnnouncement` is for. It is not
 /// given a one-pixel box instead: a node a screen reader can focus and nobody
 /// can see is worse than the announcement.
+///
+/// It says its phrase once per element, so a screen that can start a second
+/// load of the same thing gives this a `Key` naming what is being loaded: a
+/// collection, a record, a page. Without one the second load reuses the
+/// element and passes in silence, because [message] has not changed and
+/// nothing else on a screen of placeholders is in the semantics tree at all.
 class LoadingAnnouncement extends StatefulWidget {
   const LoadingAnnouncement({
     super.key,

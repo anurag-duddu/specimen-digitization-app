@@ -8319,3 +8319,271 @@ by any test, which is what the common section says that pass is for:
   panels will need it.
 - `SourceMatte` is public in `source_pane.dart`. Anything that draws a
   photograph belongs inside it rather than beside it.
+## 2026-09-16: Front-end refactor, polish 2, the package and shell defects closed
+
+- Task: slot H2 (`fe/polish-2`). The package and shell defects waves 2, F, G
+  and 3 recorded in this file's closeouts and in
+  `docs/execution/FRONT_END_REFACTOR.md` section 13: a disabled `Pressable`'s
+  hover, `UiListRow`'s tone, the shell's double loading announcement, the two
+  private adapters the package now has slots for, the gallery's "Needs human
+  review" copy, and the row's declared trailing-under-title variant, which
+  wave G's integration left open.
+- Branch and worktree: `fe/polish-2` at `.claude/worktrees/fe-polish-2`, cut
+  from `front-end-refactor` at `8e32d29`, which carries waves F and G. Pushed
+  to `origin/fe/polish-2` at the commit carrying this entry. No pull request;
+  the integrator merges the slot.
+- Outcome: complete. Every defect the brief listed is closed, and so are the
+  five the coordinator relayed from the intake and source pane slots while
+  this slot was running. The two `TODO(fe/polish-2)` markers left under
+  `lib/` are retargeted rather than left stale, because both ask for a control
+  the design system has no entry for. Sixteen commits, 123 files: 27 Dart
+  files, 92 package goldens and four documents. Package tests 670 before, 684
+  now.
+- Commits (nine, oldest first):
+  - `600ec4b` `fix(primitives): a disabled control tells a pointer why, and is never hovered`
+  - `476e5df` `fix(data): the row's tone follows its state, and its trailing has a line of its own`
+  - `62766dd` `feat(overlays): the dialog scrolls its body, as the sheet does`
+  - `5cb8e87` `fix(gallery): the chip reads "Needs review", as 02 section 4.13 spells it`
+  - `0850199` `fix(shell): one announcement, a band that carries its own action, declared bar commands`
+  - `65888b2` `fix(queue): the loading announcement speaks for every collection`
+  - `7baa2cc` `refactor(widgets): the status chip takes UiChip's leading slot`
+  - `61c4c0a` `refactor(app): the filter body is a body, and its frame scrolls it`
+  - `694ee4a` `docs(design): reconcile 10, 11 and the changelog with polish 2`
+  - `00ec462` `fix(data): a row with nothing to do stops calling itself a disabled button`
+  - `e9e2a4f` `feat(data): a tile a list header can hold`
+  - `f2c5a12` `fix(overlays): the disclosure keeps a 48 dp hit box in both densities`
+  - `58ff9a9` `feat(navigation): a page can ask the frame to keep a rectangle clear`
+  - `f7a875b` `feat(app): the record route paints the work sky, and one sky fades into the next`
+  - `541dead` `docs(design): reconcile 10 and the changelog with the four slot findings`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and `rc=$?` read directly rather than off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved, package still 0.2.0 with 0.3.0 open |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 684 passed, 0 failed, the 92 regenerated goldens included |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1021 passed, 9 skipped, 48 failed. All 48 are the workbench screen goldens the work sky moves, which the wave policy reserves for the integrator. Zero failures outside `test/golden/`, zero fixtures. |
+  | `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (123 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+  | `dart format --set-exit-if-changed` (27 files) | 0 | 0 changed |
+
+- Goldens and fixtures:
+  - Committed: **92 package goldens**, 20 family and 72 matrix. Family: four
+    `data`, four `actions`, eight `overlays` (including the sheet and dialog
+    windows) and four `foundation-type`. Matrix: 24 `type`, 24 `overlays`,
+    20 `data` and 4 `actions`. Every one was read before it was
+    committed, and each moved region was measured with an image difference
+    rather than judged by eye alone: `foundation-type` (244, 153) to
+    (1100, 804), the display specimen's copy at every role; `actions`
+    (983, 642) to (1083, 674), one chip; `overlays` (402, 305) to (638, 316),
+    one line of banner text, and `overlays-dialog` the same line plus the
+    blur that carries it under the pane, which is why a copy change moves a
+    dialog golden at all. `data` carries the row's tone and its new variant,
+    described below.
+  - The `data` family window is 1180 by 2360 rather than 2280. Measured: the
+    page needs 2343 with the taller 200 dp row on it, and 2360 is the first
+    height with nothing left to scroll. 10 section 6 amended in the same
+    change.
+  - **Application screen goldens: 48 of 121 moved, and 0 of the 8 semantics
+    fixtures.** Regenerated once with `--update-goldens` to read, then
+    restored with `git checkout --`; left for the integrator. The 48 are
+    `workbench-fields`, `workbench-history` and `workbench-readings`, sixteen
+    each, which is four window classes by two modes by two text scales, and
+    every one of them is the sky: the record route now paints `sky.work`, one
+    violet field from the top right at 60 percent of its alpha, where it
+    painted the home sky's three. Read at
+    `workbench-readings expanded light 1.0` before the revert. Nothing else
+    moved, which is the check that matters: the row, the tile, the
+    disclosure, the scaffold hook and the filter body changed no screen.
+    Before the sky change this slot moved **zero** screen goldens and zero
+    fixtures, which is the number the first thirteen commits are worth.
+- The five defects the coordinator relayed mid pass, and what closed each:
+  - **A `UiListRow` with no `onPressed` announced a disabled button** (intake
+    slot). **Closed.** A row with nothing to do and no reason it cannot be
+    done publishes a plain node with the row's words and no role, no focus and
+    no state layer; a row the server forbids keeps its `Pressable`, because
+    there is a control and it is off. The intake screens' own
+    `Semantics(excludeSemantics: true)` wrappers are left in place, as
+    instructed, and can go with the file.
+  - **`UiDataTile` could not sit in a list header** (intake slot). **Closed.**
+    `UiDataTile.surface` is `glass` or `paper`: the same shape, the same
+    tokens and the same one sentence, painted rather than blurred. The
+    manifest's private `_CountTile` and its `fe/polish-2` marker live in a
+    file cut after this branch was, so whoever next owns
+    `lib/src/sources.dart` or `lib/src/screens/sources/source_screen.dart`
+    retires it onto `UiDataTileSurface.paper`.
+  - **`UiDisclosure` published a 44 dp tap target** (source pane slot).
+    **Closed.** The header takes `Pressable`'s own 48 dp floor and keeps its
+    density height as the visual, so the slop is transparent and inside the
+    control's own box. `disclosureStyleWithFullTarget` in
+    `lib/src/region_editor.dart` can be retired by the cleanup slot.
+  - **`UiScaffold.exclusion` was unreachable from a screen** (source pane
+    slot). **Closed, and without the shell in the path.**
+    `UiScaffoldExclusion.of(context)?.publish(rect)` is answered by the
+    enclosing scaffold itself rather than by the application's shell, so the
+    hook works in any host and the cleanup slot only has to point the pane at
+    it. A deviation from the brief's sketch, which had the shell listening and
+    passing the rect in; recorded because it is one fewer moving part, not
+    because the sketch was wrong.
+  - **No screen used `SkyPreset.work`** (source pane slot). **Closed.** The
+    shell reads the location and paints `sky.work` on the record route, which
+    is the one route with a segment after `queue`, and `FieldLayer` cross
+    fades one preset into the next at `motion.standard`, zero under reduced
+    motion. 48 workbench screen goldens move, described above.
+  - **`UiButton.loading` hangs `pumpAndSettle`** (intake slot, offered rather
+    than asked for). **Declined, with the reason.** Making an indeterminate
+    indicator static under `disableAnimations` is not a defect fix: 04 section
+    2.5 lists indeterminate progress indicators under "what keeps its motion,
+    because the motion is the information", and 10 section 4.5 declares the
+    reduced motion form as an opacity pulse rather than nothing. The
+    repeating pulse is what `pumpAndSettle` cannot settle, and this system
+    already has the answer for it in 10 section 6: wrap the specimen under
+    test in `TickerMode(enabled: false)`, which is what every gallery golden
+    does, or pump rather than settle, which is what wave 2's fixture harness
+    does. Changing the control would need 04 and 10 amended first and would
+    move goldens in three families.
+- Durable learnings:
+  - **`AnimatedSwitcher`'s default layout is a loose `Stack`, and a
+    `CustomPaint` under a loose constraint is `Size.zero` and does not clip.**
+    Wrapping the field painter in a switcher without a `StackFit.expand`
+    layout builder handed it a zero size; it computed a zero radius from that,
+    and painted one field's centre colour across the whole window. It cost 110
+    app test failures and two minutes, and the tell was a text contrast
+    guideline reporting 1.02 against a full strength `sun` yellow rather than
+    a golden diff.
+  - **A `Semantics(container: true)` node absorbs every compatible descendant
+    below it, and a scrollable is what usually stops it.** The filter form's
+    group headings ("Status", "Provenance", "Dates") were separate nodes only
+    because a `SingleChildScrollView` sat inside the form's own node. Move the
+    scroller outside, as letting the modal frame scroll the body does, and the
+    form announces the six headings as one phrase in its own label. The fix is
+    to say `explicitChildNodes: true` on the form rather than to depend on a
+    viewport being in the right place; the checked-in fixture then holds byte
+    for byte. Worth knowing for wave 3: any pattern that wraps a column of
+    headings in a container node has this shape.
+  - **`FocusableActionDetector` reports a hover only while it is enabled**
+    (`shouldShowHoverHighlight` is `_hovering && target.enabled &&
+    _canShowHighlight`), and clears a hover lost to a disable in a post frame
+    callback. So a disabled control gets no hover callback at all, which is
+    why `Pressable`'s reason never reached a pointer, and a control turned off
+    under the pointer carries `{hovered, disabled}` for exactly one frame,
+    which is why every builder was handed a pair with no defined resolution.
+    Both were measured with a probe before either was changed: the probe
+    printed `{WidgetState.hovered, WidgetState.disabled}` on the disabling
+    frame and `{WidgetState.disabled}` one frame later.
+  - **The state layer hid the second half of that defect.**
+    `StateLayer.opacityFor` tests `disabled` first and returns 0, and every
+    control's own resolver tests `disabled` first too, so the contradictory
+    frame painted nothing wrong anywhere in the package today. It was still
+    worth closing at the source: the next resolver written the other way round
+    would have had a defect nobody could reproduce twice.
+  - **`find.byIcon` lands on the SDK's `Icon`, not on `UiIcon`.** `UiIcon`
+    builds one; a test reading a glyph's colour reads `tester.widget<Icon>`.
+  - **A gallery matrix golden is 900 dp tall, so a page's lower half is not
+    in it.** The Fit page's `UiListRow` section is below that fold, so the new
+    variant is pictured by the data family golden and not by the matrix. A
+    variant that only the Fit page shows is a variant no golden reviews.
+  - **The family golden windows are measured, and three of them still end a
+    little above their page.** Measured on this tree by reading
+    `ScrollableState.position.maxScrollExtent` at each declared window:
+    `actions` 32, `overlays` 56, `data` 62 (34 of it before this slot).
+    The shell gives its content 24 dp of scroll padding and each section 32 dp
+    of bottom padding, so 32 to 56 is the trailing padding rather than a
+    specimen. `data` was the one where real content had fallen below the fold,
+    so `data` is the one that moved.
+- Failed approaches:
+  - Making the filter form a plain column and leaving its semantics to the
+    frame. It compiles, it lays out, the app suite is green apart from two
+    tests, and it quietly merges six headings into one label. The fixture
+    caught it, which is what the fixture is for.
+  - Removing the form's height cap without removing its scroller. That leaves
+    the sheet scrolling a scroller, which is the thing `UiSheet.scrollBody`'s
+    own documentation tells a caller to avoid, and leaves the cap's arithmetic
+    in a file that does not own the chrome it was sized against.
+  - Reading a `UiIcon`'s colour through `tester.widget<UiIcon>`, per the
+    learning above.
+- Remaining follow-ups, and every deviation from the brief:
+  - **The sky predicate lives in `shell.dart`, not in `AppRoutes`.** It
+    belongs beside `isEntryLocation` and `isGlobalLocation`; `routes.dart` is
+    not this slot's file, so `AppShell.skyOf(Uri)` is written once in the
+    shell for the cleanup slot to move.
+  - **A non-interactive `UiListRow` still excludes its children's
+    semantics.** That is the same trade the control path makes, and it means
+    `ReduceMotionSetting` in `lib/src/app/help_screen.dart`, which puts a
+    `UiSwitch` in a row's trailing slot, publishes no node for the switch. It
+    published none before this slot either, so nothing regressed; the row
+    simply stopped calling itself a button around it. The remedy is in that
+    file, which is not this slot's: a control beside a label is a `Row`, not a
+    `UiListRow`.
+  - **`UiListRow` subtracts its own padding and the bar gutter twice.**
+    `_fitted` runs inside `Padding(style.padding)` and `Padding(barWidth)`, so
+    the width its `LayoutBuilder` sees is already net of both, and `chrome`
+    adds them again: the row switches variants some 27 dp earlier than it
+    needs to. Inherited from wave G's integration and deliberately left alone,
+    because it is conservative (a row switches early, never late), because the
+    contract test's width table is calibrated to it, and because three wave 3
+    slots are building against this control right now. A later pass that fixes
+    it re-derives `matcher(width)` in `list_row_test.dart` in the same change.
+  - **The row does not tint a slot the caller filled.** A leading glyph or a
+    chip in `trailing` states its own colours, so a disabled row's leading is
+    still full `ink` in the data golden. Publishing the resolved tone as a
+    `DefaultTextStyle` around the row's content would reach a `UiIcon` given
+    no colour of its own; it would also reach any uncoloured `Text` a caller
+    puts in a slot, which is a wider blast radius than this defect asked for.
+  - **`UiListRow` still has no `destructive` tone**, which is the other half
+    of the wave 1.5 follow-up: `UiPopoverMenu` keeps its private rows because
+    a menu item needs a tint and a shortcut slot as well as a state resolved
+    colour, and the brief scoped this slot's "tone" to the colours.
+  - **`UiDialog.scrollBody` is a package change the brief did not list.** The
+    `TODO(fe/polish-2)` in `search_filters.dart` names `UiSheet`, which
+    already had the slot; the dialog half of the same adaptive modal did not,
+    so retiring the adapter needed it. It is also the dialog's own fit at 200
+    percent text. Recorded in 10 section 4.3 and in the changelog.
+  - **Two `TODO(fe/polish-2)` markers are retargeted rather than closed.**
+    `search_filters.dart` asks for a `UiDateField` and `queue_screen.dart` for
+    a `UiRefreshControl`. Neither exists, neither is an adapter for a slot
+    wave G added, and 10 section 10 requires a new component to be proposed as
+    an entry in 10 section 4 before it is built. Both now read
+    `TODO(specimen_ui)` and say so.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slots F2, G1 and E1 also recorded.
+  - **`test/saved_filters_test.dart` gained a two line `_Frame`.** It pumps
+    the filter body on its own, which the product never does, so it now
+    supplies the scroller both modal frames supply. A file this slot's change
+    broke, which the brief covers.
+  - The banner's two line cap (V-15) is untouched. Wave G's addendum measured
+    that three lines would fit at 200 percent text on a phone and left the
+    call to the integrator because no document asks for three; nothing this
+    slot found changes that, and raising `UiBannerStyle.maxLines` moves
+    `EnvironmentBanner` with it.
+- What wave 3 and the integrator will want:
+  - `UiListRowStyle` is a different shape: `title` and `subtitle` are type
+    roles with no colour, and `titleColor`, `subtitleColor`, `trailingColor`
+    and `bar` are `WidgetStateProperty<Color>`. A call site that read
+    `style.title` for a colour reads `style.titleColor.resolve(states)`.
+    `stackGap` and `trailingMin` are new.
+  - `UiRowTrailing` takes `color`. A row passes its own; anything else keeps
+    the resting colour.
+  - `UiDialog(scrollBody:)`, `UiDialog.show(scrollBody:)` and
+    `UiDialog.showAdaptive(scrollBody:)`, all defaulting to true. Pass false
+    for a body that is already a scrollable.
+  - `Pressable.onDisabledReason` now fires on hover. A control that passes it
+    a callback and draws nothing will draw on hover where it did not before;
+    `UiIconButton` is the only one in the package.
+  - The data family golden window is `Size(1180, 2360)` in
+    `test/gallery/data_golden_test.dart`.
+  - `showProductModal` in `lib/src/widgets/product_modal.dart` does not
+    forward `scrollBody`. No call site needs it today, since every body it
+    opens wants the default; the cleanup slot that owns that file can forward
+    it when one does.
+  - `UiDataTileSurface.paper` and `UiDataTile(surface:)`, for the manifest's
+    three counts and anything else in a list header.
+  - `UiScaffoldExclusion.of(context)?.publish(rect)`, for the source pane's
+    matte band. Null outside a scaffold; what a page publishes wins over what
+    the shell passed.
+  - `UiDisclosure`'s header is 48 dp tall in pointer density where it was 44,
+    so a column of them is 4 dp taller per header than it was.
+  - `AppShell.skyOf(Uri)`, until `AppRoutes` takes it.

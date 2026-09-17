@@ -8,6 +8,7 @@ import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/glass_surface.dart';
+import '../../primitives/surface.dart';
 import '../../primitives/label.dart';
 
 /// The resolved paint of one tile.
@@ -112,6 +113,21 @@ class UiDataTileStyle {
       (style.fontSize ?? 0) * (style.height ?? 1);
 }
 
+/// What a tile is drawn on.
+enum UiDataTileSurface {
+  /// `glass.flat`, which is the tile of 09 section 3.3 and the default.
+  glass,
+
+  /// A solid `paper` pane with a hairline edge.
+  ///
+  /// For the two places a frosted pane cannot go. Inside a scrolling list's
+  /// item, where 09 section 3.3 forbids glass outright because a blurred pane
+  /// per row multiplies save layers by the row count; and in a row of tiles
+  /// wide enough to spend the whole four pane glass budget on one header, of
+  /// which a manifest's three counts are the product's own example.
+  paper,
+}
+
 /// A numeral under its label, on one frosted pane.
 ///
 /// Retires the ad hoc numeral containers the application grew.
@@ -140,6 +156,7 @@ class UiDataTile extends StatelessWidget {
     this.footer,
     this.child,
     this.hero = false,
+    this.surface = UiDataTileSurface.glass,
     this.semanticsLabel,
   });
 
@@ -163,6 +180,9 @@ class UiDataTile extends StatelessWidget {
   /// responsible for keeping to one (09 section 4.2).
   final bool hero;
 
+  /// What the tile is drawn on. Frosted unless the caller cannot afford it.
+  final UiDataTileSurface surface;
+
   /// Overrides the sentence a screen reader reads.
   final String? semanticsLabel;
 
@@ -180,34 +200,43 @@ class UiDataTile extends StatelessWidget {
     final String? measure = unit;
     final String? under = footer;
     final Widget? slot = child;
+    final Widget body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        UiLabel(label, style: style.label),
+        SizedBox(height: style.labelGap),
+        _measurement(ui, style, measure),
+        if (under != null) ...<Widget>[
+          SizedBox(height: style.footerGap),
+          Text(under, style: style.footer),
+        ],
+        if (slot != null) ...<Widget>[SizedBox(height: style.childGap), slot],
+      ],
+    );
     return Semantics(
       label: _label,
       excludeSemantics: true,
-      child: GlassSurface(
+      child: switch (surface) {
         // In flow, and one pane per tile. A tile group sharing one pane is
         // the caller's composition; the tile itself is the object a reviewer
         // reads as one thing (09 section 3.3).
-        level: GlassLevel.flat,
-        radius: style.radius,
-        padding: style.padding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            UiLabel(label, style: style.label),
-            SizedBox(height: style.labelGap),
-            _measurement(ui, style, measure),
-            if (under != null) ...<Widget>[
-              SizedBox(height: style.footerGap),
-              Text(under, style: style.footer),
-            ],
-            if (slot != null) ...<Widget>[
-              SizedBox(height: style.childGap),
-              slot,
-            ],
-          ],
+        UiDataTileSurface.glass => GlassSurface(
+          level: GlassLevel.flat,
+          radius: style.radius,
+          padding: style.padding,
+          child: body,
         ),
-      ),
+        // The same shape and the same tokens, painted rather than blurred.
+        // A hairline rather than a boundary: the edge separates one tile from
+        // the next and is not an edge a reviewer has to find (09 section 3.1).
+        UiDataTileSurface.paper => Surface(
+          radius: style.radius,
+          hairline: true,
+          padding: style.padding,
+          child: body,
+        ),
+      },
     );
   }
 

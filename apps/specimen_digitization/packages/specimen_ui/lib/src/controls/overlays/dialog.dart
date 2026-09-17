@@ -17,7 +17,8 @@ import 'sheet.dart';
 ///
 /// The difference from a sheet is the shape and the handle: a dialog floats,
 /// so all four of its corners turn and there is nothing to drag. Its width is
-/// capped at `space.dialogMax` by the route.
+/// capped at `space.dialogMax` by the route, and its body scrolls inside the
+/// height the window leaves it, as a sheet's does.
 ///
 /// [UiDialog.show] is the wrapper that pushes the route and fills this in.
 class UiDialog extends StatelessWidget {
@@ -28,6 +29,7 @@ class UiDialog extends StatelessWidget {
     required this.child,
     this.primaryAction,
     this.secondaryAction,
+    this.scrollBody = true,
     this.style,
   });
 
@@ -45,6 +47,17 @@ class UiDialog extends StatelessWidget {
   /// The way out.
   final UiButton? secondaryAction;
 
+  /// True to scroll [child] inside the height the chrome leaves it.
+  ///
+  /// The default, and what [UiSheet] does with the same parameter, so a body
+  /// written for [UiDialog.showAdaptive] never has to know which of the two
+  /// frames it landed in. A dialog is bounded by the window it floats in, so
+  /// a body taller than that height, which two sentences become at 200
+  /// percent text on a short window, scrolls rather than overflowing. Pass
+  /// false when [child] is already a scrollable, because two scrollables in
+  /// one column give the inner one an unbounded height again.
+  final bool scrollBody;
+
   /// Overrides the resolved style. A code review event (10 section 1.5).
   final UiModalStyle? style;
 
@@ -61,6 +74,7 @@ class UiDialog extends StatelessWidget {
     String? semanticsLabel,
     String? dismissLabel,
     bool dismissible = true,
+    bool scrollBody = true,
   }) => showUiDialog<T>(
     context: context,
     semanticsLabel: semanticsLabel ?? title,
@@ -70,6 +84,7 @@ class UiDialog extends StatelessWidget {
       title: title,
       primaryAction: primaryAction?.call(context),
       secondaryAction: secondaryAction?.call(context),
+      scrollBody: scrollBody,
       child: body(context),
     ),
   );
@@ -87,6 +102,7 @@ class UiDialog extends StatelessWidget {
     String? semanticsLabel,
     String? dismissLabel,
     bool dismissible = true,
+    bool scrollBody = true,
   }) => isCompactWindow(context)
       ? UiSheet.show<T>(
           context: context,
@@ -97,6 +113,7 @@ class UiDialog extends StatelessWidget {
           semanticsLabel: semanticsLabel,
           dismissLabel: dismissLabel,
           dismissible: dismissible,
+          scrollBody: scrollBody,
         )
       : UiDialog.show<T>(
           context: context,
@@ -107,6 +124,7 @@ class UiDialog extends StatelessWidget {
           semanticsLabel: semanticsLabel,
           dismissLabel: dismissLabel,
           dismissible: dismissible,
+          scrollBody: scrollBody,
         );
 
   @override
@@ -127,7 +145,9 @@ class UiDialog extends StatelessWidget {
             ),
           ),
           SizedBox(height: paint.gap),
-          Flexible(child: child),
+          Flexible(
+            child: scrollBody ? SingleChildScrollView(child: child) : child,
+          ),
           if (primaryAction != null || secondaryAction != null) ...<Widget>[
             SizedBox(height: paint.gap),
             UiModalActions(primary: primaryAction, secondary: secondaryAction),

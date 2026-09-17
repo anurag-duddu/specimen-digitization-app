@@ -197,6 +197,77 @@ void main() {
     expect(seen, isNot(contains(WidgetState.hovered)));
   });
 
+  testWidgets('a disabled control tells a pointer that arrives why', (
+    WidgetTester tester,
+  ) async {
+    final List<String> reported = <String>[];
+    await tester.pumpWidget(
+      uiHarness(
+        child: Builder(
+          builder: (BuildContext context) => _box(
+            context,
+            disabledReason: 'Waiting for label coverage to be confirmed.',
+            onDisabledReason: reported.add,
+          ),
+        ),
+      ),
+    );
+    final TestGesture pointer = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    await pointer.addPointer(location: Offset.zero);
+    addTearDown(pointer.removePointer);
+    await tester.pump();
+    await pointer.moveTo(tester.getCenter(find.byType(Pressable)));
+    await tester.pumpAndSettle();
+    expect(
+      reported,
+      <String>['Waiting for label coverage to be confirmed.'],
+      reason:
+          'the reason is what a disabled control owes a reviewer, and a '
+          'pointer arriving on it is the cheapest way to ask; it used to be '
+          'reachable only by pressing the control that does nothing',
+    );
+  });
+
+  testWidgets('a control turned off under the pointer is not hovered', (
+    WidgetTester tester,
+  ) async {
+    late Set<WidgetState> seen;
+    Widget tree({required bool enabled}) => uiHarness(
+      child: Builder(
+        builder: (BuildContext context) => _box(
+          context,
+          onPressed: enabled ? () {} : null,
+          disabledReason: enabled ? null : 'Not while a save is going out.',
+          onStates: (Set<WidgetState> s) => seen = s,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(tree(enabled: true));
+    final TestGesture pointer = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    await pointer.addPointer(location: Offset.zero);
+    addTearDown(pointer.removePointer);
+    await tester.pump();
+    await pointer.moveTo(tester.getCenter(find.byType(Pressable)));
+    await tester.pumpAndSettle();
+    expect(seen, contains(WidgetState.hovered));
+
+    await tester.pumpWidget(tree(enabled: false));
+    expect(
+      seen,
+      <WidgetState>{WidgetState.disabled},
+      reason:
+          'the frame that disables the control is the frame that clears its '
+          'hover: the detector only clears it a frame later, and until this '
+          'was cleared here every builder was handed hovered and disabled at '
+          'once, which is a pair no style object has an answer for',
+    );
+  });
+
   testWidgets('the state layer carries the opacities the contract names', (
     WidgetTester tester,
   ) async {

@@ -97,12 +97,15 @@ class Pressable extends StatefulWidget {
   /// reason.
   final String? disabledReason;
 
-  /// Called with [disabledReason] when the reviewer hovers or long presses a
-  /// disabled control.
+  /// Called with [disabledReason] when the reviewer hovers, taps or long
+  /// presses a disabled control.
   ///
-  /// `UiTooltip` (slot C3) is the intended consumer. Until it exists this is
-  /// how a control surfaces the reason without this primitive owning an
-  /// overlay of its own.
+  /// `UiTooltip.reason` is the consumer: it draws whatever is reported here,
+  /// so the reason reaches a pointer without this primitive owning an overlay
+  /// of its own. The hover is watched separately from [WidgetState.hovered],
+  /// because a disabled control is never hovered in the state sense and still
+  /// owes the reviewer the reason the moment a pointer arrives
+  /// (03 section 3.6).
   final ValueChanged<String>? onDisabledReason;
 
   /// The control's outline, for the state layer. Defaults to a superellipse
@@ -211,9 +214,20 @@ class _PressableState extends State<Pressable> {
   }
 
   void _syncStates() {
+    final bool enabled = widget.enabled;
     _states
-      ..update(WidgetState.disabled, !widget.enabled)
+      ..update(WidgetState.disabled, !enabled)
       ..update(WidgetState.selected, widget.selected);
+    if (enabled) return;
+    // Disabled is exclusive of hover and press, and it is cleared here rather
+    // than left to the detector. A control turned off under the pointer keeps
+    // its hover until `FocusableActionDetector` clears it in a post frame
+    // callback, so `{hovered, disabled}` reached every builder for one frame:
+    // a state set clause 1 has no answer for, and one a style object resolves
+    // by whichever of the two it happens to test first.
+    _states
+      ..update(WidgetState.hovered, false)
+      ..update(WidgetState.pressed, false);
   }
 
   void _activate() {
@@ -229,10 +243,14 @@ class _PressableState extends State<Pressable> {
     if (reason != null) widget.onDisabledReason?.call(reason);
   }
 
-  void _setHovered(bool value) {
-    _states.update(WidgetState.hovered, value && widget.enabled);
-    if (value && !widget.enabled) _reportReason();
-  }
+  /// The hover the state layer draws.
+  ///
+  /// `FocusableActionDetector` reports this only while the control is enabled
+  /// and only under `FocusHighlightMode.traditional`, which is the pair the
+  /// contract wants: a touch that lands on a control paints no hover, and a
+  /// control that cannot respond shows nothing that says it can.
+  void _setHovered(bool value) =>
+      _states.update(WidgetState.hovered, value && widget.enabled);
 
   void _setFocusRing(bool value) {
     // FocusableActionDetector only reports true under
@@ -344,6 +362,18 @@ class _PressableState extends State<Pressable> {
         child: core,
       ),
     );
+
+    if (!enabled && widget.disabledReason != null) {
+      // The reason, on hover. The detector above reports no hover at all
+      // while it is disabled, which is right for the state layer and wrong
+      // for the reason: a reviewer who cannot press a control learns why by
+      // putting a pointer on it, and had to press the dead control to find
+      // out. Watched here so the two stay separate.
+      core = MouseRegion(
+        onEnter: (PointerEnterEvent event) => _reportReason(),
+        child: core,
+      );
+    }
 
     if (widget.excludeFromSemantics) return core;
 

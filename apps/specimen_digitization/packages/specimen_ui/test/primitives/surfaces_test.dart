@@ -201,6 +201,46 @@ void main() {
       expect(UiFields.light.sky(SkyPreset.none), isEmpty);
     });
 
+    testWidgets('one sky cross fades into the next, instantly when reduced', (
+      WidgetTester tester,
+    ) async {
+      for (final (bool reduced, bool fades) in <(bool, bool)>[
+        (false, true),
+        (true, false),
+      ]) {
+        await tester.pumpWidget(
+          uiHarness(
+            disableAnimations: reduced,
+            child: const FieldLayer(preset: SkyPreset.home),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          uiHarness(
+            disableAnimations: reduced,
+            child: const FieldLayer(preset: SkyPreset.work),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        final int skies = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .where((CustomPaint paint) => paint.painter is FieldPainter)
+            .length;
+        expect(
+          skies,
+          fades ? 2 : 1,
+          reason: reduced
+              ? 'reduced motion collapses the swap: the tokens return zero, '
+                    'so the old sky is gone on the first frame'
+              : 'the light behind the whole window changes when a route goes '
+                    'from the queue to the workbench, and a hard cut reads as a '
+                    'flash rather than as a room',
+        );
+        await tester.pumpAndSettle();
+      }
+    });
+
     testWidgets('a sheet gets no field of its own', (
       WidgetTester tester,
     ) async {

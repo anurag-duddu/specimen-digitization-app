@@ -50,7 +50,11 @@ class UiDisclosureStyle {
   /// The gap between the text column and the caret.
   final double gap;
 
-  /// The header row's minimum height, from density.
+  /// The header row's visual height, from density.
+  ///
+  /// The hit box is the 48 dp of clause 2 in both densities, applied by
+  /// `Pressable`; in pointer density the difference is transparent slop
+  /// around this.
   final double minHeight;
 
   /// The header row's corner radius, for its state layer and focus ring.
@@ -172,7 +176,14 @@ class _UiDisclosureState extends State<UiDisclosure> {
             semanticsLabel: _label,
             onPressed: _toggle,
             radius: style.radius,
-            minHitBox: 0,
+            // The primitive's own 48 dp floor, not the density row. A header
+            // whose title fits one line is `density.rowHeight` tall, which is
+            // 44 in pointer, and clause 2 sets 48 in both densities; the
+            // header used to publish the 44 and fail every tap target
+            // guideline a screen with a disclosure on it ran. The visual row
+            // keeps its density height and the difference is transparent
+            // slop inside the control's own box, so a column of disclosures
+            // still tiles without gaps.
             excludeFromSemantics: true,
             builder: (BuildContext context, Set<WidgetState> states) =>
                 ConstrainedBox(

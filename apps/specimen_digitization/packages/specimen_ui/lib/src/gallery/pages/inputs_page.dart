@@ -389,7 +389,7 @@ class _InputsPageState extends State<_InputsPage> {
         ),
         UiSelectOption<String>(
           value: 'review',
-          label: 'Needs human review',
+          label: 'Needs review',
           leading: UiIcons.needsReview,
         ),
         UiSelectOption<String>(

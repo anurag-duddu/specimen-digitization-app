@@ -78,7 +78,11 @@ class _DataPageState extends State<_DataPage> {
             for (final double width in fitColumns)
               GallerySpecimen(
                 label: '${width.toInt()} dp',
-                note: width >= 360 ? 'the word and the glyph' : 'the glyph',
+                note: switch (width) {
+                  >= 360 => 'the word and the glyph',
+                  >= 280 => 'the glyph',
+                  _ => 'under the title',
+                },
                 child: SizedBox(
                   width: width,
                   child: Column(
@@ -138,12 +142,12 @@ class _DataPageState extends State<_DataPage> {
               subtitle: 'Waiting on label coverage',
               leading: const UiAvatar(name: 'Ana Ruiz'),
               trailing: UiChip(
-                label: 'Needs human review',
+                label: 'Needs review',
                 icon: UiIcons.needsReview,
                 status: ui.color.status.needsReview,
               ),
               semanticsLabel:
-                  'SPEC-2026-0042, needs human review, waiting on label '
+                  'SPEC-2026-0042, needs review, waiting on label '
                   'coverage',
               onPressed: _noop,
             ),
@@ -432,9 +436,23 @@ class _DataPageState extends State<_DataPage> {
               child: SizedBox(
                 width: 240,
                 child: UiDataTile(
-                  label: 'Needs human review',
+                  label: 'Needs review',
                   value: '17',
                   hero: true,
+                ),
+              ),
+            ),
+            SizedBox(height: ui.space.s4),
+            const GallerySpecimen(
+              label: 'on paper',
+              note: 'for a header or a list item, where glass is forbidden',
+              child: SizedBox(
+                width: 240,
+                child: UiDataTile(
+                  label: 'In this manifest',
+                  value: '312',
+                  unit: 'FILES',
+                  surface: UiDataTileSurface.paper,
                 ),
               ),
             ),

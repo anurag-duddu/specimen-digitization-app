@@ -4,7 +4,7 @@ library;
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart' show RenderProxyBox;
-import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/fields.dart';
@@ -15,6 +15,80 @@ import '../../primitives/glass_surface.dart';
 import '../overlays/toast.dart';
 import 'rail.dart';
 import 'sidebar.dart';
+
+/// The rectangle a screen asks the field layer to keep clear.
+///
+/// `UiScaffold.exclusion` is a constructor argument, and the frame is built by
+/// the application's shell, which does not know where the photograph is. The
+/// screen that does publishes it here and the enclosing scaffold clips its
+/// fields out of it, so the 24 dp clear band around a matte is a clip on the
+/// field layer rather than layout inside the pane. Principle 1 of 09
+/// section 2 is why it exists at all: a colour cast on a faded label is a
+/// data error.
+///
+/// ```dart
+/// UiScaffoldExclusion.of(context)?.publish(matte.inflate(clearBand));
+/// ```
+///
+/// Null outside a scaffold, which is what a component test pumping a pane on
+/// its own has, so a publisher is a single call with no branch. A screen that
+/// leaves publishes null, and one that stops being visible publishes null in
+/// `dispose`; nothing else clears it.
+class UiScaffoldExclusion extends ChangeNotifier {
+  /// What is kept clear now, or null for nothing.
+  Rect? get rect => _rect;
+  Rect? _rect;
+
+  bool _disposed = false;
+
+  /// Asks for [rect] to be kept clear. Null asks for nothing.
+  ///
+  /// Safe to call from a layout callback, which is where a pane learns its
+  /// own rectangle: a change reported while the frame is being built is
+  /// announced after it, because the scaffold above is already laid out by
+  /// then and rebuilding it during its own build is not allowed.
+  void publish(Rect? rect) {
+    if (rect == _rect) return;
+    _rect = rect;
+    final SchedulerPhase phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks) {
+      SchedulerBinding.instance.addPostFrameCallback((Duration _) {
+        if (!_disposed) notifyListeners();
+      });
+      return;
+    }
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  /// The nearest scaffold's exclusion, or null when there is no scaffold.
+  ///
+  /// Reads without depending: a publisher wants the object, not a rebuild
+  /// every time the rectangle it published itself moves.
+  static UiScaffoldExclusion? of(BuildContext context) => context
+      .getInheritedWidgetOfExactType<_UiScaffoldExclusionScope>()
+      ?.exclusion;
+}
+
+/// Publishes one scaffold's exclusion to its body.
+class _UiScaffoldExclusionScope extends InheritedWidget {
+  const _UiScaffoldExclusionScope({
+    required this.exclusion,
+    required super.child,
+  });
+
+  final UiScaffoldExclusion exclusion;
+
+  @override
+  bool updateShouldNotify(_UiScaffoldExclusionScope oldWidget) =>
+      oldWidget.exclusion != exclusion;
+}
 
 /// Where a scaffold puts its navigation.
 enum UiNavPlacement {
@@ -207,6 +281,15 @@ class _UiScaffoldState extends State<UiScaffold> {
   bool _scrolledUnder = false;
   double _floatingHeight = 0;
 
+  /// What the page inside this frame asks to be kept clear.
+  final UiScaffoldExclusion _exclusion = UiScaffoldExclusion();
+
+  @override
+  void dispose() {
+    _exclusion.dispose();
+    super.dispose();
+  }
+
   /// True once a vertical scroll view in the body has anything above its
   /// viewport.
   ///
@@ -334,15 +417,26 @@ class _UiScaffoldState extends State<UiScaffold> {
         bottomInset: bottomInset,
         scrolledUnder: _scrolledUnder,
       ),
-      child: FieldLayer(
-        preset: widget.sky,
-        exclusion: widget.exclusion,
-        child: Column(
-          children: <Widget>[
-            ?widget.topBar,
-            ?widget.banner,
-            Expanded(child: belowBar),
-          ],
+      child: _UiScaffoldExclusionScope(
+        exclusion: _exclusion,
+        child: ListenableBuilder(
+          listenable: _exclusion,
+          builder: (BuildContext context, Widget? child) => FieldLayer(
+            preset: widget.sky,
+            // What the page asked for wins over what the caller passed, and
+            // the caller's is the fallback: a shell that knows the rectangle
+            // still states it, and a screen inside one that does not can say
+            // so for itself.
+            exclusion: _exclusion.rect ?? widget.exclusion,
+            child: child,
+          ),
+          child: Column(
+            children: <Widget>[
+              ?widget.topBar,
+              ?widget.banner,
+              Expanded(child: belowBar),
+            ],
+          ),
         ),
       ),
     );

@@ -63,7 +63,84 @@ Widget _scrollingBody() => ListView.builder(
       SizedBox(height: 60, child: Text('Row $index')),
 );
 
+/// A page that asks for a rectangle to be kept clear, the way a source pane
+/// asks for the band around its photograph.
+class _Publisher extends StatefulWidget {
+  const _Publisher({required this.rect});
+
+  final Rect rect;
+
+  @override
+  State<_Publisher> createState() => _PublisherState();
+}
+
+class _PublisherState extends State<_Publisher> {
+  @override
+  Widget build(BuildContext context) {
+    UiScaffoldExclusion.of(context)?.publish(widget.rect);
+    return const SizedBox.expand();
+  }
+}
+
 void main() {
+  testWidgets('a page can ask the field layer to keep a rectangle clear', (
+    WidgetTester tester,
+  ) async {
+    const Rect matte = Rect.fromLTWH(24, 96, 320, 420);
+    await tester.pumpWidget(
+      uiHarness(
+        child: _page(body: const _Publisher(rect: matte)),
+      ),
+    );
+    // The rectangle is reported during the body's build, so it reaches the
+    // frame on the next one.
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FieldLayer>(find.byType(FieldLayer)).exclusion,
+      matte,
+      reason:
+          'UiScaffold.exclusion is a constructor argument and the frame is '
+          'built by the shell, which does not know where the photograph is; '
+          'the screen that does says so through the scope',
+    );
+  });
+
+  testWidgets('what the page asks for wins over what the caller passed', (
+    WidgetTester tester,
+  ) async {
+    const Rect fromCaller = Rect.fromLTWH(0, 0, 10, 10);
+    const Rect fromPage = Rect.fromLTWH(24, 96, 320, 420);
+    await tester.pumpWidget(
+      uiHarness(
+        child: _page(
+          exclusion: fromCaller,
+          body: const _Publisher(rect: fromPage),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FieldLayer>(find.byType(FieldLayer)).exclusion,
+      fromPage,
+    );
+  });
+
+  testWidgets('publishing outside a scaffold is a no op', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(child: const _Publisher(rect: Rect.fromLTWH(0, 0, 4, 4))),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'a component test that pumps a pane on its own has no frame above '
+          'it, and a publisher should not need a branch for that',
+    );
+  });
+
   testWidgets('it paints the ground and the sky it is given', (
     WidgetTester tester,
   ) async {

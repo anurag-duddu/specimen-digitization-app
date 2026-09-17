@@ -87,6 +87,56 @@ void main() {
     );
   });
 
+  testWidgets('a body taller than the window it floats in scrolls', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(900, 360),
+        child: Builder(
+          builder: (BuildContext context) => UiButton(
+            label: 'Open a dialog',
+            variant: UiButtonVariant.secondary,
+            onPressed: () => UiDialog.show<void>(
+              context: context,
+              title: _title,
+              body: (BuildContext context) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  for (int line = 0; line < 20; line++) Text('Reading $line'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open a dialog'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'a dialog is bounded by the window it floats in, so a body taller '
+          'than that height scrolls the way a sheet body does rather than '
+          'overflowing the pane it was given',
+    );
+    expect(
+      find.descendant(
+        of: find.byType(UiDialog),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.getSize(find.byType(GlassSurface)).height,
+      lessThanOrEqualTo(360),
+    );
+  });
+
   testWidgets('all four of its corners turn and it has no handle', (
     WidgetTester tester,
   ) async {
