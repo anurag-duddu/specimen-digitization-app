@@ -1,6 +1,8 @@
 /// The banner (10 section 4.3, `UiBanner`).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/color.dart';
@@ -8,8 +10,10 @@ import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/announcer.dart';
 import '../../primitives/fit.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../actions/button.dart';
+import 'sheet.dart';
 
 /// What a banner is reporting.
 ///
@@ -39,6 +43,41 @@ enum UiBannerTone {
   blocked,
 }
 
+/// Which of the band's two forms is drawn (13 sections 2.3 and 3.5).
+enum UiBannerForm {
+  /// Glyph, sentence, and the controls the band carries. The default.
+  full,
+
+  /// One `label` line on the tint, with everything else behind a tap.
+  ///
+  /// What a compact window gets, where a two line paragraph with a chevron
+  /// spends a twelfth of the viewport on a condition of the build
+  /// (13 section 2.3).
+  strip,
+}
+
+/// The band form a route has asked for, published around a banner.
+///
+/// `UiScaffold` publishes it around its own banner slot when the routed
+/// screen calls `UiScaffoldSlots.setBandCompact`, so the shell writes one
+/// call site and the route decides which form it draws. A banner that names
+/// its own [UiBanner.form] ignores this: an explicit form is a decision and
+/// the ambient one is a default.
+class UiBandForm extends InheritedWidget {
+  /// Asks every banner under [child] for [form].
+  const UiBandForm({super.key, required this.form, required super.child});
+
+  /// The form to draw.
+  final UiBannerForm form;
+
+  /// The form asked for around [context], or null where nothing asked.
+  static UiBannerForm? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<UiBandForm>()?.form;
+
+  @override
+  bool updateShouldNotify(UiBandForm oldWidget) => oldWidget.form != form;
+}
+
 /// The resolved paint of one banner.
 @immutable
 class UiBannerStyle {
@@ -54,6 +93,11 @@ class UiBannerStyle {
     required this.message,
     required this.detail,
     required this.messageMin,
+    required this.stripPadding,
+    required this.stripGap,
+    required this.stripMinHeight,
+    required this.stripLabel,
+    required this.radius,
   });
 
   /// The strip's fill.
@@ -91,6 +135,27 @@ class UiBannerStyle {
   /// The least width the message is given before the action moves under it
   /// (11 section 3.3).
   final double messageMin;
+
+  /// Padding inside the one line strip.
+  final EdgeInsetsGeometry stripPadding;
+
+  /// The gap between the strip's glyph and its line.
+  final double stripGap;
+
+  /// The strip's own height, before the hit box floors it.
+  ///
+  /// 32 dp, which is what 13 section 2.3 budgets for the band at compact. A
+  /// strip opens a sheet, so it is a control, and a control's hit box is 48
+  /// in both densities and is never shrunk (10 section 2 clause 2): the tint
+  /// fills the taller of the two rather than floating inside it. The band
+  /// around a control has always been what gives in this family.
+  final double stripMinHeight;
+
+  /// The strip's type role. One `label` line (13 section 2.3).
+  final TextStyle stripLabel;
+
+  /// The strip's corner radius, for the state layer and the focus ring.
+  final double radius;
 
   /// The style a banner of [tone] draws with in [ui].
   static UiBannerStyle resolve(UiThemeData ui, UiBannerTone tone) {
@@ -153,6 +218,14 @@ class UiBannerStyle {
       message: ui.type.bodySmall,
       detail: ui.type.bodySmall,
       messageMin: ui.space.labelMin,
+      stripPadding: EdgeInsetsDirectional.symmetric(
+        horizontal: ui.space.s4,
+        vertical: ui.space.s1,
+      ),
+      stripGap: ui.space.s2,
+      stripMinHeight: ui.space.s8,
+      stripLabel: ui.type.label,
+      radius: ui.shape.none,
     );
   }
 
@@ -187,8 +260,51 @@ class UiBanner extends StatefulWidget {
     this.actionLabel,
     this.onAction,
     this.detailLabel = defaultDetailLabel,
+    this.form,
+    this.contact,
+    this.sheetTitle,
+    this.onTap,
+    this.closeLabel = defaultCloseLabel,
     this.style,
   }) : assert(
+         onDismiss == null || dismissLabel != null,
+         'a dismiss control has no visible text, so it needs a label '
+         '(10 section 11)',
+       ),
+       assert(
+         (actionLabel == null) == (onAction == null),
+         'a recovery action needs both a label and a callback',
+       );
+
+  /// The one line band: [message] on the tint, everything else behind a tap
+  /// (13 section 3.5).
+  ///
+  /// The environment band at compact. One `label` line, no second line, no
+  /// chevron: tapping it opens a sheet carrying the whole sentence, the
+  /// administrator [contact] and the recovery the band offers, so nothing the
+  /// full form shows is lost, only moved.
+  ///
+  /// The tint is 32 dp of band. A strip opens a sheet, so it is a control,
+  /// and its hit box is the 48 dp this system never shrinks; the tint fills
+  /// it rather than floating in it.
+  const UiBanner.strip({
+    super.key,
+    required this.message,
+    this.tone = UiBannerTone.synthetic,
+    this.detail,
+    this.icon,
+    this.contact,
+    this.sheetTitle,
+    this.onTap,
+    this.actionLabel,
+    this.onAction,
+    this.onDismiss,
+    this.dismissLabel,
+    this.closeLabel = defaultCloseLabel,
+    this.style,
+  }) : form = UiBannerForm.strip,
+       detailLabel = defaultDetailLabel,
+       assert(
          onDismiss == null || dismissLabel != null,
          'a dismiss control has no visible text, so it needs a label '
          '(10 section 11)',
@@ -240,11 +356,44 @@ class UiBanner extends StatefulWidget {
   /// the flag. The caret is what says it visually.
   final String detailLabel;
 
+  /// Which form to draw, or null to take the form the route asked for
+  /// through [UiBandForm] and the full band where nothing asked.
+  final UiBannerForm? form;
+
+  /// Who to reach when the condition needs a person, shown in the strip's
+  /// sheet under the sentence.
+  ///
+  /// A slot rather than a string, because an administrator is reached by an
+  /// address, a row, a copyable identifier or a button depending on the
+  /// deployment, and none of those is a banner's decision to make.
+  final Widget? contact;
+
+  /// The title of the strip's sheet. Defaults to [message].
+  ///
+  /// A question or an imperative, 40 characters or fewer, no period
+  /// (02 section 4.5). The message is the fallback rather than a sentence
+  /// this package invented for a product it does not know.
+  final String? sheetTitle;
+
+  /// What tapping the strip does.
+  ///
+  /// Null shows the package's own sheet: the whole sentence, the [contact],
+  /// and the recovery the band offers. A shell that already has a place for
+  /// the environment's detail passes its own. Only the strip form is
+  /// tappable; the full band carries its own controls.
+  final VoidCallback? onTap;
+
+  /// What the control that closes the strip's sheet is called.
+  final String closeLabel;
+
   /// Overrides the resolved style. A code review event (10 section 1.5).
   final UiBannerStyle? style;
 
   /// The default label of the disclosure control.
   static const String defaultDetailLabel = 'Show more';
+
+  /// The default label of the control that closes the strip's sheet.
+  static const String defaultCloseLabel = 'Close';
 
   @override
   State<UiBanner> createState() => _UiBannerState();
@@ -258,6 +407,9 @@ class _UiBannerState extends State<UiBanner> {
     final UiThemeData ui = context.ui;
     final UiBannerStyle style =
         widget.style ?? UiBannerStyle.resolve(ui, widget.tone);
+    final UiBannerForm form =
+        widget.form ?? UiBandForm.of(context) ?? UiBannerForm.full;
+    if (form == UiBannerForm.strip) return _strip(context, style);
     final String? detail = widget.detail;
     final String? actionLabel = widget.actionLabel;
     final UiButton? action = actionLabel == null
@@ -277,6 +429,104 @@ class _UiBannerState extends State<UiBanner> {
           constraints: BoxConstraints(minHeight: style.minHeight),
           child: _fitted(context, ui, style, detail, action),
         ),
+      ),
+    );
+  }
+
+  /// The one line band (13 section 3.5).
+  ///
+  /// A glyph, one `label` line on the tint, and nothing else drawn. The whole
+  /// band is the control, because there is nothing else on it to press and a
+  /// chevron beside a line this short is a second target for the same job.
+  /// The semantics label is the line itself, which stands alone, and the tap
+  /// hint says where the rest of it went.
+  Widget _strip(BuildContext context, UiBannerStyle style) => Pressable(
+    semanticsLabel: widget.message,
+    onPressed: () => _stripPressed(context),
+    radius: style.radius,
+    builder: (BuildContext context, Set<WidgetState> states) => DecoratedBox(
+      decoration: BoxDecoration(color: style.fill, border: style.border),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: style.stripMinHeight),
+        child: Padding(
+          padding: style.stripPadding,
+          child: Row(
+            children: <Widget>[
+              UiIcon(
+                widget.icon ?? style.icon,
+                size: UiIconSize.small,
+                color: style.foreground,
+              ),
+              SizedBox(width: style.stripGap),
+              Expanded(
+                child: Announcer(
+                  child: UiLabel(
+                    widget.message,
+                    style: style.stripLabel.copyWith(
+                      color: style.foreground,
+                      // The line is locked to its own box, so a band beside a
+                      // top bar keeps its height whatever glyph it carries.
+                      leadingDistribution: TextLeadingDistribution.even,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// What the strip keeps behind its tap: the sentence, the contact, and the
+  /// recovery the band offers.
+  void _stripPressed(BuildContext context) {
+    final VoidCallback? own = widget.onTap;
+    if (own != null) {
+      own();
+      return;
+    }
+    _openStripSheet(context);
+  }
+
+  void _openStripSheet(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final String? actionLabel = widget.actionLabel;
+    unawaited(
+      UiSheet.show<void>(
+        context: context,
+        title: widget.sheetTitle ?? widget.message,
+        dismissLabel: widget.closeLabel,
+        body: (BuildContext context) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(widget.detail ?? widget.message, style: ui.type.body),
+            if (widget.contact != null) ...<Widget>[
+              SizedBox(height: ui.space.s4),
+              widget.contact!,
+            ],
+          ],
+        ),
+        primaryAction: actionLabel == null
+            ? null
+            : (BuildContext sheetContext) => UiButton(
+                label: actionLabel,
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  widget.onAction?.call();
+                },
+              ),
+        secondaryAction: widget.onDismiss == null
+            ? null
+            : (BuildContext sheetContext) => UiButton(
+                label: widget.dismissLabel!,
+                variant: UiButtonVariant.ghost,
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  widget.onDismiss?.call();
+                },
+              ),
       ),
     );
   }
