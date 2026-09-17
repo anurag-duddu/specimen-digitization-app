@@ -20,6 +20,8 @@ import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession, fixture;
+import '../ui_finders.dart';
+import 'package:specimen_digitization/src/widgets/reason_sheet.dart';
 
 /// One bulk call, as the repository received it.
 typedef BulkCall = ({
@@ -153,9 +155,9 @@ Future<void> confirm(
   String action, {
   String reason = 'Reviewed together at the copy stand',
 }) async {
-  await tester.enterText(find.byType(TextField).last, reason);
+  await tester.enterText(uiField(ReasonForm.reasonLabel), reason);
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(FilledButton, action));
+  await tester.tap(uiButton(action));
   await tester.pumpAndSettle();
 }
 
@@ -249,10 +251,7 @@ void main() {
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
       expect(find.text('Approve 3 records?'), findsOneWidget);
-      expect(
-        find.widgetWithText(FilledButton, 'Approve 3 records'),
-        findsOneWidget,
-      );
+      expect(uiButton('Approve 3 records'), findsOneWidget);
       expect(
         repository.calls,
         isEmpty,
@@ -280,11 +279,7 @@ void main() {
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'Approve 1 record'),
-            )
-            .onPressed,
+        tester.widget<UiButton>(uiButton('Approve 1 record')).onPressed,
         isNull,
       );
       expect(repository.calls, isEmpty);
@@ -299,7 +294,7 @@ void main() {
       await pick(tester, 'Pinned beetle 2');
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.tap(uiButton('Cancel'));
       await tester.pumpAndSettle();
       expect(repository.calls, isEmpty);
       expect(find.text('2 records selected'), findsOneWidget);

@@ -9,12 +9,12 @@
 //
 // A guideline that a screen fails is marked `skip:` with the finding it belongs
 // to, never weakened, so the skip list doubles as the remediation backlog. The
-// list carries two entries, both on `SearchFilters` and both the same defect in
-// `specimen_ui`; every other screen passes every guideline. That is a real
-// result, not an empty harness: every icon-only control here carries a label,
-// and the token table clears 4.5:1. The `renders an inspectable semantics tree`
-// test in each group is what keeps that claim honest: it fails if a screen ever
-// stops producing nodes for the guidelines to inspect.
+// list is empty: wave F rebuilt `UiField` so its editor and its box are one
+// 48 dp node, which closed the two entries `SearchFilters` carried. That is a
+// real result, not an empty harness: every icon-only control here carries a
+// label, and the token table clears 4.5:1. The `renders an inspectable
+// semantics tree` test in each group is what keeps that claim honest: it fails
+// if a screen ever stops producing nodes for the guidelines to inspect.
 //
 // https://api.flutter.dev/flutter/flutter_test/AccessibilityGuideline-class.html
 
@@ -145,17 +145,6 @@ int countSemantics(WidgetTester tester, bool Function(SemanticsNode) matches) {
   return total;
 }
 
-/// The one finding in the skip list below.
-///
-/// `UiField`'s editor publishes a node 22 dp tall because
-/// `InputDecoration.collapsed` strips Material's padded tap target and the
-/// 48 dp box `UiFieldBox` draws sits outside the `TextField`. The control a
-/// reviewer actually presses is 48 dp; the node the guideline measures is not.
-const String uiFieldEditorNodeFinding =
-    'specimen_ui: a UiField editor publishes a 22 dp semantics node inside a '
-    '48 dp control, because InputDecoration.collapsed removes the padded tap '
-    'target and UiFieldBox adds the height outside the TextField.';
-
 const guidelines = <String, AccessibilityGuideline>{
   'android tap target': androidTapTargetGuideline,
   'iOS tap target': iOSTapTargetGuideline,
@@ -250,15 +239,6 @@ void main() {
 
   // The filter form is the body of `UiDialog.showAdaptive` now, not a dialog
   // of its own, so it is pumped as a screen.
-  //
-  // Both tap-target guidelines are skipped, on one finding that belongs to the
-  // design system rather than to this screen: `FieldCore` builds its editor
-  // with `InputDecoration.collapsed`, which removes the padded tap target
-  // Material's own decoration adds, and `UiFieldBox` puts the 48 dp box
-  // outside the `TextField`. The editor therefore publishes a semantics node
-  // the height of one text line, 22 dp, inside a control whose real hit area
-  // is 48. Every `UiField` in the product has it; the fix is one line of
-  // `specimen_ui` and is not a screen slot's to make.
   guidelineSuite(
     'SearchFilters',
     (tester) => pumpScreen(
@@ -267,10 +247,6 @@ void main() {
         body: SingleChildScrollView(child: SearchFilters(initial: {})),
       ),
     ),
-    skips: const {
-      'android tap target': uiFieldEditorNodeFinding,
-      'iOS tap target': uiFieldEditorNodeFinding,
-    },
   );
 
   guidelineSuite(

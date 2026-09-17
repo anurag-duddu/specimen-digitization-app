@@ -27,6 +27,7 @@ import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../golden/golden_harness.dart';
+import '../ui_finders.dart';
 
 /// The budget criterion 1.2 gives a control to report that it is working.
 const Duration progressBudget = Duration(milliseconds: 200);
@@ -96,7 +97,7 @@ Finder versionLine(int revision) => find.byWidgetPredicate(
   (Widget widget) =>
       widget is TermText &&
       widget.term == 'Version' &&
-      widget.trailing == ' $revision',
+      widget.spokenTerm == 'Version $revision',
 );
 
 /// The progress affordance every one of these controls swaps in.
@@ -170,7 +171,7 @@ void main() {
     // Collectors, because it is the field the fixture reports as Unknown:
     // the correction form needs no authority match to keep, which keeps this
     // test about the timing rather than about the form.
-    final Finder edit = find.byTooltip('Edit as written for Collectors');
+    final Finder edit = uiIconButton('Edit as written for Collectors');
     await tester.ensureVisible(edit);
     await tester.tap(edit);
     await tester.pumpAndSettle();
@@ -182,14 +183,14 @@ void main() {
     await tester.tap(find.text('Save 1 pending change').last);
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
+      uiField('Reason'),
       'The label does not carry a country',
     );
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Save 1 pending change'),
+        matching: uiButton('Save 1 pending change'),
       ),
     );
 
@@ -234,17 +235,14 @@ void main() {
     await tester.tap(find.text(WorkbenchDecisionBar.approveLabel).last);
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
+      uiField('Reason'),
       'Both readings agree and the label is legible',
     );
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(
-          FilledButton,
-          WorkbenchDecisionBar.approveLabel,
-        ),
+        matching: uiButton(WorkbenchDecisionBar.approveLabel),
       ),
     );
 

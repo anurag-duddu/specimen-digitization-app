@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/risk_assessment.dart';
 import 'package:specimen_digitization/src/widgets/risk_meter.dart';
 
@@ -70,8 +71,12 @@ void main() {
         child: RiskMeter(composite: 62, components: _components),
       ),
     );
-    expect(find.text('Risk 62 of 100'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    // The tile states the word, the numeral and the unit as three parts of
+    // one object, and the arc draws the same value (10 section 5).
+    expect(find.text(RiskMeter.label), findsOneWidget);
+    expect(find.text('62'), findsOneWidget);
+    expect(find.text('OF ${RiskMeter.scale}'), findsOneWidget);
+    expect(find.byType(UiArcIndicator), findsOneWidget);
     expect(find.text('Reading disagreement, weight 0.4'), findsOneWidget);
   });
 
@@ -89,8 +94,10 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Not measured'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    // "Not measured" twice: once as the tile's value and once as the arc's
+    // own absence. Neither is a zero.
+    expect(find.text(RiskMeter.absence), findsOneWidget);
+    expect(find.text(UiArcIndicator.unmeasuredLabel), findsOneWidget);
     expect(find.text('0'), findsNothing);
   });
 
@@ -108,8 +115,8 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Not measured'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.text(RiskMeter.absence), findsOneWidget);
+    expect(find.text(UiArcIndicator.unmeasuredLabel), findsOneWidget);
   });
 
   testWidgets('an uncalibrated score carries the chip and the caveat', (

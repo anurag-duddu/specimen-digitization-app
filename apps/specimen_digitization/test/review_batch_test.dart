@@ -23,6 +23,7 @@ import 'package:specimen_digitization/src/workbench.dart';
 import 'golden/golden_harness.dart';
 import 'widget_test.dart' show TestRepository, fixture;
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
 
 /// A repository that records every call the batch makes.
 class RecordingRepository extends TestRepository {
@@ -290,7 +291,7 @@ void main() {
     for (int i = 0; i < 5; i++) {
       await scrollAndTap(
         tester,
-        find.byTooltip(RegExp(r'^Edit as written')).at(i),
+        uiIconButton(RegExp(r'^Edit as written')).at(i),
       );
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
@@ -300,14 +301,14 @@ void main() {
     await tester.tap(find.text('Save 5 pending changes').last);
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
+      uiField('Reason'),
       'Nothing on the label supports these fields',
     );
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Save 5 pending changes'),
+        matching: uiButton('Save 5 pending changes'),
       ),
     );
     await tester.pumpAndSettle();

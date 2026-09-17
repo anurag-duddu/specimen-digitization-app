@@ -203,11 +203,16 @@ void main() {
     testWidgets('the risk meter opens the definition of Risk', (
       WidgetTester tester,
     ) async {
+      // The one line form, which is where a reviewer first meets the word:
+      // the workbench's form draws the label on a `UiDataTile`, and the tile
+      // takes its label as a string rather than as a slot, so the definition
+      // affordance cannot ride on it (recorded in the slot closeout).
       await pumpComponent(
         tester,
         RiskMeter(
           composite: 62,
           components: const <String>['Two readings disagree'],
+          compact: true,
         ),
       );
       expect(termNamed('Risk'), findsOneWidget);

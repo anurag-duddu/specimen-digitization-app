@@ -5,6 +5,8 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 void main() {
   testWidgets(
@@ -99,12 +101,12 @@ void main() {
       // typed, the primary is disabled rather than a silent no-op.
       final confirm = find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Use this match'),
+        matching: uiButton('Use this match'),
       );
-      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      expect(tester.widget<UiButton>(confirm).onPressed, isNull);
       expect(change, isNull);
       await tester.enterText(
-        find.widgetWithText(TextField, 'Reason'),
+        uiField('Reason'),
         'Matched retained institutional evidence',
       );
       await tester.pumpAndSettle();

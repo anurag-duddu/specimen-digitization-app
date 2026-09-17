@@ -10,6 +10,20 @@ import 'package:specimen_digitization/src/reading_declarations.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
+/// Scrolls the form's primary action into view and presses it.
+///
+/// Every form in this slot puts its actions at the foot of its own scrolling
+/// body, the way the reason sheet does, so a short window has to reach them.
+Future<void> saveDeclaration(WidgetTester tester) async {
+  final Finder save = uiButton(ReadingDeclarationDialog.action);
+  await tester.ensureVisible(save);
+  await tester.pumpAndSettle();
+  await tester.tap(save);
+  await tester.pumpAndSettle();
+}
 
 void main() {
   final fixture =
@@ -215,55 +229,37 @@ void main() {
       await tester.pumpWidget(
         workbenchHost(
           Builder(
-            builder: (context) => TextButton(
+            builder: (context) => UiButton(
+              label: 'Open declaration',
               onPressed: () async {
-                saved = await showDialog<Json>(
-                  context: context,
-                  builder: (_) => const ReadingDeclarationDialog(
-                    observationId: 'observation-test',
-                  ),
+                saved = await showDeclarationForm(
+                  context,
+                  observationId: 'observation-test',
                 );
               },
-              child: const Text('Open declaration'),
             ),
           ),
         ),
       );
-      await tester.tap(find.text('Open declaration'));
+      await tester.tap(uiButton('Open declaration'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save declaration'));
-      await tester.pumpAndSettle();
+      await saveDeclaration(tester);
       expect(find.text('Enter a reason for this decision.'), findsOneWidget);
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Languages'),
-        'English',
+      await tester.enterText(uiField('Languages'), 'English');
+      await tester.enterText(uiField('Scripts'), 'Latin');
+      await tester.enterText(uiField('Reason'), 'Visible two-language source');
+      await pickUiSelect(
+        tester,
+        ReadingDeclarationDialog.relationLabel,
+        'Multiple languages on this label',
       );
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Scripts'),
-        'Latin',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Reason'),
-        'Visible two-language source',
-      );
-      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Multiple languages on this label').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Save declaration'));
-      await tester.pumpAndSettle();
+      await saveDeclaration(tester);
       expect(
         find.text('This relationship requires at least 2 distinct languages.'),
         findsOneWidget,
       );
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Languages'),
-        'English\nDeutsch',
-      );
-      await tester.tap(find.text('Save declaration'));
-      await tester.pumpAndSettle();
+      await tester.enterText(uiField('Languages'), 'English\nDeutsch');
+      await saveDeclaration(tester);
       expect(saved, {
         'kind': 'reading_metadata',
         'target_id': 'observation-test',

@@ -11,6 +11,7 @@ import 'package:specimen_digitization/src/large_record.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'workbench_harness.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 void main() {
   final fixture =
@@ -247,7 +248,7 @@ void main() {
       expect(loads, 1);
       // Two sections on a wide window, so the picker is the segmented
       // control rather than the dropdown (blueprint section 9).
-      expect(find.byType(SegmentedButton<String>), findsOneWidget);
+      expect(find.byType(UiSegmented<String>), findsOneWidget);
       await tester.tap(find.text('observations').last);
       await tester.pumpAndSettle();
       expect(find.text('Text page 1 of 2'), findsOneWidget);

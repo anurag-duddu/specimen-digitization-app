@@ -54,6 +54,9 @@ void main() {
     await tester.tap(find.text('Technical detail').last);
     await tester.pumpAndSettle();
     expect(find.textContaining('Retained original evidence'), findsOneWidget);
+    // The payload is a modal now, so it is put back before the page behind it
+    // is reached for again (10 section 5).
+    await closeUiModal(tester);
     await tester.ensureVisible(find.text('Load more versions'));
     await tester.tap(find.text('Load more versions'));
     await tester.pumpAndSettle();

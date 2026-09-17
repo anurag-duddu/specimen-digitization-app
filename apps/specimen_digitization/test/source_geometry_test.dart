@@ -11,6 +11,7 @@ import 'package:specimen_digitization/src/screens/workbench/source_geometry.dart
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'workbench_harness.dart';
+import 'package:specimen_digitization/src/widgets/selectable_evidence.dart';
 
 void main() {
   final bytes = File(
@@ -320,7 +321,7 @@ void main() {
         );
         expect(text, findsOneWidget);
         expect(
-          find.ancestor(of: text, matching: find.byType(SelectionArea)),
+          find.ancestor(of: text, matching: find.byType(SelectableEvidence)),
           findsOneWidget,
         );
         expect(

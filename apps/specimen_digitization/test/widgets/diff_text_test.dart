@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/diff_text.dart';
+import 'package:specimen_digitization/src/widgets/selectable_evidence.dart';
 
 import 'harness.dart';
 
@@ -352,7 +353,7 @@ void main() {
     expect(find.text('Differs in 1 place'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Differs in 1 place')).dy,
-      lessThan(tester.getTopLeft(find.byType(SelectionArea)).dy),
+      lessThan(tester.getTopLeft(find.byType(SelectableEvidence)).dy),
     );
   });
 
@@ -384,7 +385,7 @@ void main() {
     );
     final Text body = tester.widget<Text>(
       find.descendant(
-        of: find.byType(SelectionArea),
+        of: find.byType(SelectableEvidence),
         matching: find.byType(Text),
       ),
     );
@@ -411,7 +412,7 @@ void main() {
     );
     final Text body = tester.widget<Text>(
       find.descendant(
-        of: find.byType(SelectionArea),
+        of: find.byType(SelectableEvidence),
         matching: find.byType(Text),
       ),
     );
@@ -427,7 +428,7 @@ void main() {
     );
     final Text body = tester.widget<Text>(
       find.descendant(
-        of: find.byType(SelectionArea),
+        of: find.byType(SelectableEvidence),
         matching: find.byType(Text),
       ),
     );
@@ -464,7 +465,7 @@ void main() {
       expect(find.text('Differs in 8 places'), findsOneWidget);
       final Text body = tester.widget<Text>(
         find.descendant(
-          of: find.byType(SelectionArea),
+          of: find.byType(SelectableEvidence),
           matching: find.byType(Text),
         ),
       );

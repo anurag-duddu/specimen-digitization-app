@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/widgets/source_import_sheet.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 SourceImportProgress progressOf({
@@ -190,14 +191,15 @@ void main() {
             child: const Text('Open'),
           ),
         ),
-        // Compact: showAdaptiveForm draws a bottom sheet rather than a
-        // dialog, and the count has to survive the change of surface.
+        // Compact: showAdaptiveForm draws a sheet against the bottom of the
+        // window rather than a dialog, and the count has to survive the
+        // change of surface.
         size: const Size(390, 844),
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(modalIsSheet(tester), isTrue);
       expect(find.text('Add 1,000 photographs to the queue?'), findsOneWidget);
 
       await tester.tap(find.text('Add 1,000 photographs'));
