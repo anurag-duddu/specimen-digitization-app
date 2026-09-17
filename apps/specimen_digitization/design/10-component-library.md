@@ -288,7 +288,7 @@ motion state the test asked for rather than in the light fallback.
 
 | Primitive | Built on | Responsibility | Notes |
 |---|---|---|---|
-| `Pressable` | `FocusableActionDetector`, `GestureDetector`, `WidgetStatesController`, `Semantics` | The one way anything becomes interactive: states, hit-box padding to 48, keyboard activation, focus ring, state layer, semantics role and label, disabled reason | Replaces `InkWell`, `InkResponse`, `Material`, `GestureDetector` at call sites. Exposes `builder(context, states)` so a control paints itself from states. |
+| `Pressable` | `FocusableActionDetector`, `GestureDetector`, `WidgetStatesController`, `Semantics` | The one way anything becomes interactive: states, hit-box padding to 48, keyboard activation, focus ring, state layer, semantics role and label, disabled reason | Replaces `InkWell`, `InkResponse`, `Material`, `GestureDetector` at call sites. Exposes `builder(context, states)` so a control paints itself from states. Amended in polish 2: it watches the pointer itself while it is disabled, because `FocusableActionDetector` reports a hover only while enabled, so the reason reaches a pointer that arrives rather than only a press; and `disabled` is exclusive of `hovered` and `pressed` in the set the builder is handed. |
 | `StateLayer` | `AnimatedContainer` | The hover and press overlay per the contract | Used only inside `Pressable`. |
 | `Surface` | `DecoratedBox`, `ClipRSuperellipse` | A solid `paper` or `matte` pane with a shape token and optional hairline | The non-glass container. |
 | `GlassSurface` | `BackdropFilter`, `ClipRSuperellipse`, `DecoratedBox` | The 09 section 3.3 recipe at a level; honours `GlassQuality`; asserts in debug that it is not inside a scrolling list item | Counted by `glass_budget`. |
@@ -750,6 +750,13 @@ titles are `UiLabel`, one line with the whole of the title on the semantics
 node, because a title that wraps to four lines pushes the body out of the
 pane.
 
+Amended in polish 2. `scrollBody` is on the dialog as well as the sheet, and
+defaults to true on both, so a body written for `showAdaptive` never has to
+know which of the two frames it landed in. A dialog is bounded by the window
+it floats in, and two sentences are three lines at 200 percent text on a short
+window, so the dialog needed the same thing the sheet has. The application's
+filter form was carrying the difference as a height cap of its own.
+
 ### 4.4 Navigation family
 
 **`UiPillNav`.** The reference's floating row: a `glass.floating` capsule of
@@ -908,9 +915,23 @@ Amended in wave G: the row's fit is 11 section 3.3's row for it. The title and
 the subtitle are content and take two lines each before they ellipsise; the
 title was capped at one. The trailing drops its word and keeps its glyph when
 the title would otherwise fall under `space.labelMin`, which needs a trailing
-the row can read, so `UiRowTrailing` is the declared form of the slot. Text, a
-chip or a caret passed straight into `trailing` is drawn as it was given and
-the title wraps instead.
+the row can read, so `UiRowTrailing` is the declared form of the slot.
+
+Amended in polish 2, two ways. The row has a third variant, which is 11
+section 3.3's "trailing under the title": the trailing takes a line of its
+own, at the start of the column the title heads, when the line cannot hold
+both. A `UiRowTrailing` reaches it after its word and its glyph rungs; a
+trailing the row cannot read (a chip, a switch, a time) has no glyph rung and
+goes there directly, at the point where the line would leave it less than the
+hit box, which replaces the bound wave G's integration put on such a trailing.
+And the row's tone follows its state, as every other control's does: the
+title, the subtitle, a `UiRowTrailing`'s word and glyph, and the selected
+row's bar all resolve `disabled.content` when the row is disabled. A row the
+server will not open used to be drawn in exactly the ink of one that opens,
+with only the absence of a hover saying otherwise, which is nothing at all on
+a touch window. What the row does not tint is a slot the caller filled: a
+leading glyph or a chip states its own colours and the row does not reach into
+them.
 
 **`UiProgress`.** `ring` (16, 24, 40; determinate arc in `ink`, track
 `hairline`; indeterminate rotates unless reduced motion, then pulses opacity)
@@ -1039,7 +1060,10 @@ section.
 
 Overlays, navigation and data moved again in wave G, measured the same way,
 when each page gained the fit section 11 section 3.3 asks for: 1540 for
-overlays, 1220 for navigation and 2280 for data. Two of those pages also state
+overlays, 1220 for navigation and 2280 for data. Data moved once more in
+polish 2, to 2360, when the row gained the variant that puts its trailing
+under the title and the 200 dp specimen grew by a line: the page measures 2343
+and 2360 is the first height with nothing left to scroll. Two of those pages also state
 a frosted pane count of their own, seven for overlays and eight for data,
 because a sheet that shows one toast or one tile per column draws four of
 them; a product window draws one toast and one row of tiles.

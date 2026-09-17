@@ -439,6 +439,71 @@ two modes.
   sidebar's start edge above it, and a page opened from the keyboard in both
   arrangements.
 
+Polish 2 of the front-end refactor: the package defects waves 2, F, G and 3
+recorded, closed. `Pressable` and `UiListRow`, the row's declared
+trailing-under-title variant, the gallery's own copy, and the slot the filter
+sheet asked for.
+
+### Primitives
+- A disabled `Pressable` tells a pointer that arrives on it why it is
+  disabled. `FocusableActionDetector` reports a hover only while it is enabled,
+  which is right for the state layer and wrong for the reason, so the pointer
+  is watched separately: `WidgetState.hovered` still means "hovered and able to
+  respond", and `onDisabledReason` now fires on hover as well as on a tap and a
+  long press. `UiIconButton`'s reason tooltip, which 10 section 4.1 says
+  appears on hover, appeared only after the reviewer pressed a control that
+  does nothing.
+- A `Pressable` never hands its builder `hovered` and `disabled` at once. A
+  control turned off under the pointer kept its hover until the detector
+  cleared it a frame later, and a pair no style object has an answer for
+  resolved by whichever of the two the resolver happened to test first. Both
+  hover and press are cleared in the same pass that sets `disabled`.
+
+### Data
+- `UiListRow`'s tone follows its state, as every other control's does.
+  `UiListRowStyle.titleColor`, `subtitleColor` and `trailingColor` are
+  `WidgetStateProperty<Color>`, and `bar` is one too; each resolves
+  `disabled.content` for a row the server will not open. `title` and `subtitle`
+  are now the type roles alone, with the colour resolved beside them, so there
+  is one colour source per part rather than a resting colour baked into a role.
+  Reason: a disabled row drew its title in full `ink` and its subtitle and
+  trailing in `ink.secondary`, so the only thing saying the row was
+  unavailable was the absence of a hover, which is nothing at all on a touch
+  window.
+- `UiRowTrailing` takes `color`, the colour the row resolved from its own
+  states. Null keeps the resting colour out of the style, which is what a
+  trailing built outside a row draws in.
+- `UiListRow` gains the third variant 11 section 3.3 declares for it: the
+  trailing moves under the title, on a line of its own at the start of the
+  column, when the line cannot hold both. A `UiRowTrailing` reaches it after
+  its word and its glyph rungs; a trailing the row cannot read (a chip, a
+  switch, a time) has no glyph rung and goes there directly, at the point
+  where the line would leave it less than `UiListRowStyle.trailingMin`, the hit
+  box. It replaces the bound wave G's integration put on such a trailing, which
+  at 200 dp was thirteen logical pixels of chip.
+- `UiListRowStyle` gains `stackGap`, the space between the text and a trailing
+  drawn under it, and `trailingMin`.
+
+### Overlays
+- `UiDialog` takes `scrollBody`, defaulting to true, and `UiDialog.show` and
+  `UiDialog.showAdaptive` forward it. Reason: `UiSheet` already had it, so a
+  body written for `showAdaptive` had to know which of the two frames it landed
+  in; and a dialog is bounded by the window it floats in, so a body that two
+  sentences become three lines of at 200 percent text on a short window had
+  nowhere to go. The application's filter form was carrying the difference as a
+  height cap of its own.
+
+### Gallery
+- Every "Needs human review" in the gallery is "Needs review", which is the
+  chip label 02 section 4.13 specifies; the long form is the queue state's own
+  name and stays in the token documentation, where it names which state a role
+  and a glyph stand for.
+- The data page's fit section notes the row's third variant at 200 dp, and the
+  data family golden window is 1180 by 2360 rather than 2280: the page needs
+  2343 with the taller 200 dp row on it, and 2360 is the first height with
+  nothing left to scroll. Measured, not guessed (10 section 6).
+- The Fit page's `UiListRow` section names all three variants.
+
 ## 0.2.0
 
 2026-09-16. Wave 1 of the front-end refactor: the five control families of 10

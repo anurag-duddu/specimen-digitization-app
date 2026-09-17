@@ -117,7 +117,7 @@ titles, help text, banner text) is not a label and wraps as content should.
 | `UiTabs`, navigation rows | sum of labels | a scrolling row with edge fades | ellipsis |
 | `UiTopBar` | leading plus title plus actions | title ellipsis; actions beyond two collapse into an overflow menu | title ellipsis |
 | `UiDataTile` | numeral plus unit | the numeral steps down one display role at a time to `display.medium` | `FittedBox` on the numeral |
-| `UiListRow` | title plus trailing | trailing drops its label and keeps its glyph; the title takes two lines (it is content) | title ellipsis |
+| `UiListRow` | title plus trailing | trailing drops its label and keeps its glyph; then the trailing moves under the title, on a line of its own; the title takes two lines (it is content) | title ellipsis |
 | `UiDialog`, `UiSheet` actions | primary plus secondary | the actions stack, primary on top | ellipsis |
 | `UiBanner`, `UiToast` | text plus action | the action moves under the text | the text wraps (it is content) |
 | `UiField` | label, box, footer | none: the box stretches to the width given; label and footer wrap as content | none |
@@ -126,9 +126,14 @@ titles, help text, banner text) is not a label and wraps as content should.
 overflow with a `LayoutBuilder`, so a control that carries a label cannot sit
 under `IntrinsicWidth` or `IntrinsicHeight`; a pane that needs equal widths
 uses a `Table`, a `Flex` with fixed flexes, or `Adaptive` widths. A trailing a
-`UiListRow` cannot measure (a chip, a switch, a time) is bounded to the room
-left once the title has its minimum, and ellipsises through its own label;
-the declared "trailing under the title" variant for compact windows is open.
+`UiListRow` cannot measure (a chip, a switch, a time) has no glyph rung,
+because a row cannot drop a word it cannot read. **Closed in polish 2
+(2026-09-16):** such a trailing keeps the line while the line still leaves it
+a hit box, and moves under the title below that, rather than being bounded to
+whatever the title leaves; at 200 dp that bound was thirteen logical pixels of
+chip. A stacked trailing starts where the title starts, because a trailing
+that has left the end of the row is a second line of the column the title
+heads rather than an end.
 Gallery pages stack their specimen columns below 320 dp per column
 (`GalleryColumns`), so the matrix pictures a control's fit policy at 360 dp
 and never the page's squeeze.
