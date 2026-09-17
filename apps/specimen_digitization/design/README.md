@@ -10,17 +10,17 @@ first time; afterwards, go straight to the one that covers your change.
 | [00-north-star.md](00-north-star.md) | The one goal statement, the experience we are building, the bar we hold ourselves to, and the sequencing of the redesign | Any front-end work |
 | [01-usability-heuristics-audit.md](01-usability-heuristics-audit.md) | Nielsen Norman Group ten-heuristic audit of the current app: what works, what fails, severity, and pass criteria for the redesign | Changing any flow |
 | [02-ux-writing-guidelines.md](02-ux-writing-guidelines.md) | Voice, tone, vocabulary, pattern rules, before and after rewrites, and the checklist every user-facing string must pass | Writing or editing any string |
-| [03-design-system.md](03-design-system.md) | Principles, brand direction, color and type tokens, spacing, shape, icons, the atomic component inventory, and the Flutter theme implementation plan | Adding or restyling any widget |
+| [03-design-system.md](03-design-system.md) | The v1 system. Principles, colour and type tokens, spacing, shape, icons, the atomic component inventory, and the Flutter theme implementation plan. **Defers to 09** for brand, colour, type, shape and icons, and **to 10** for the inventory and the implementation; sections 1, 5.1, 5.2, 5.4 to 5.9 and 9 still stand | A spacing, elevation or status rule 09 does not restate |
 | [04-motion-and-microinteractions.md](04-motion-and-microinteractions.md) | Motion principles, duration and easing tokens, tooling decision (built-in, animations package, Rive), and the per-interaction catalog | Adding any animation or transition |
-| [05-responsive-and-platform-adaptation.md](05-responsive-and-platform-adaptation.md) | Window size classes, navigation per class, screen-by-screen layouts, input modalities, iOS, Android and web conventions, camera capture, testing matrix | Changing layout or navigation |
+| [05-responsive-and-platform-adaptation.md](05-responsive-and-platform-adaptation.md) | Window size classes, navigation per class, screen-by-screen layouts, input modalities, iOS, Android and web conventions, camera capture, testing matrix. **Defers to 11** for what a control does when it is given less room than a layout here assumes, and for where the classes now live; **to 13** for the per screen arrangements of section 3, which 13 enforces and wins | Changing layout or navigation |
 | [06-accessibility.md](06-accessibility.md) | WCAG 2.2 AA commitment, audit of current semantics, requirements by principle, and the testing plan | Every UI pull request |
-| [07-screen-blueprints.md](07-screen-blueprints.md) | The redesigned information architecture and a blueprint for every screen, with what changes from today and why | Building any screen |
+| [07-screen-blueprints.md](07-screen-blueprints.md) | The redesigned information architecture and a blueprint for every screen, with what changes from today and why. **Defers to 10** for component anatomy, which its preamble still sends to 03, and **to 13** for how a screen is composed from those components, which 13 enforces and wins | Building any screen |
 | [08-verification-report.md](08-verification-report.md) | The independent re-audit of the rebuilt client: every pass criterion and every dimension of the bar marked Pass, Partial or Fail with its evidence, the ranked remaining defects with their exact fixes, and the gate results | Picking up any remaining defect, or claiming a criterion now passes |
 | [09-brand-direction.md](09-brand-direction.md) | The agreed 2026-09-16 visual direction: frosted glass over light fields, Geist, Phosphor, superellipse shape, the accent, density, the mark; supersedes sections 2 to 6 of 03 | Any front-end work from the refactor on |
 | [10-component-library.md](10-component-library.md) | What makes the design system strong and how each property is enforced; the `specimen_ui` package: layers, the control contract, every primitive and control, the gallery, the gates, the definition of done; supersedes sections 7 and 8 of 03 | Adding or changing any component |
 | [11-fit-and-scale.md](11-fit-and-scale.md) | Units (what Flutter has for `px` and `rem`), text scale, window classes, the fit policy of every control, the one edge field anatomy, the one text style source, contract clauses 13 to 15, waves F and G | Any sizing, responsive or field work |
-| [13-screen-composition.md](13-screen-composition.md) | How a screen is composed from the controls: one scroll per screen, surface depth, the chrome budget, one job per region, above the fold; the collapsing header, status strip and decision bar patterns; every screen at compact; the composition gates | Any screen layout work |
 | [12-verification-report-v2.md](12-verification-report-v2.md) | The re-audit of the rebuilt client after the refactor: the eight dimensions of the bar re-measured, the fit matrix at three text scales, the reduced motion and dark mode passes, the glass measurement that chooses `GlassQuality`, the device captures, and six new defects with their file and line | Picking up a defect from the refactor, or claiming a dimension of the bar is met |
+| [13-screen-composition.md](13-screen-composition.md) | How a screen is composed from the controls: one scroll per screen, surface depth, the chrome budget, one job per region, above the fold; the collapsing header, status strip and decision bar patterns; every screen at compact; the composition gates | Any screen layout work |
 | [screenshots/](screenshots/) | Captures of the current app used as evidence in the audit | Reference only |
 
 ## Evidence from the rebuild
@@ -41,6 +41,17 @@ The north star sets the goal. The heuristics audit and accessibility audit say
 what is wrong today. The design system, writing guidelines and motion system say
 what right looks like. The responsive document says how right adapts to each
 window and platform. The screen blueprints put all of it together per screen.
+
+11 and 13 are what building it taught. Each was written after a review of the
+built client found defects that no document before it had a rule against, and
+each traces those defects to one cause: a seam that every layer was correct
+either side of and nobody owned. 11 owns the seams inside a control,
+between the layers that draw it: one text style source, one width policy, one
+edge. 13 owns the seams inside a screen, between the regions that fill it: one
+scroll, one surface depth, one chrome budget, one job per region. Both turn
+every rule into a test, which is why they are the two documents a new screen is
+measured against rather than read beside.
+
 The verification report closes the loop: it measures the built client against the
 pass criteria and the bar, and says with evidence which ones are met. There are
 two of them now. 08 measured the v1 client, whose interface was Material 3 with
