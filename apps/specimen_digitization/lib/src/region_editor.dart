@@ -1,4 +1,4 @@
-/// The region editor (screen blueprints, section 7; responsive 3.6).
+/// The region editor (07 section 7; 05 section 3.6; 08 finding V-7).
 ///
 /// Full screen on compact and medium, a 640 dp dialog otherwise. The preview
 /// fills the width and every region can be dragged by its body or resized by
@@ -9,39 +9,63 @@
 ///
 /// All edits stay in original pixel coordinates. The API validates and
 /// versions them.
+///
+/// Nothing here raises a message: the editor never had a `SnackBar` to
+/// convert, and the undo the blueprint asks for is the control that names the
+/// last change and takes it back, which is on screen for as long as there is
+/// something to undo rather than for as long as a toast lasts.
 library;
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
 import 'source_pixels.dart';
-import 'theme/icons.dart';
 import 'theme/motion.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
+/// What the editor is called, wherever it is opened.
+const String regionEditorTitle = 'Correct label regions';
+
 /// Opens the editor in the container the window earns.
+///
+/// Expanded and above take the dialog half of `UiDialog.showAdaptive`, which
+/// is the only half this editor uses: 07 section 7 gives compact and medium a
+/// full window route instead, because direct manipulation of a bounding box
+/// needs the whole screen. The dialog is published as [RegionEditor] so the
+/// surface stays addressable without a route, which is what the golden, dark
+/// mode and guideline fixtures render.
 Future<Json?> showRegionEditor(
   BuildContext context, {
   required List<Json> regions,
   required Json asset,
 }) {
-  final WindowClass window = WindowClass.of(context);
-  if (window.isAtLeast(WindowClass.expanded)) {
-    return showDialog<Json>(
+  if (WindowClass.of(context).isAtLeast(WindowClass.expanded)) {
+    return showUiDialog<Json>(
       context: context,
+      semanticsLabel: regionEditorTitle,
       builder: (_) => RegionEditor(regions: regions, asset: asset),
     );
   }
   return Navigator.of(context).push<Json>(
-    MaterialPageRoute<Json>(
-      fullscreenDialog: true,
-      builder: (_) => Scaffold(
-        appBar: AppBar(title: const Text('Correct label regions')),
+    uiFullScreenRoute<Json>(
+      context,
+      builder: (BuildContext routeContext) => UiScaffold(
+        // No sky behind an editor whose whole subject is one photograph
+        // (09 section 2, principle 1).
+        sky: SkyPreset.none,
+        topBar: UiTopBar(
+          leading: UiIconButton(
+            icon: UiIcons.back,
+            semanticsLabel: 'Close the region editor',
+            onPressed: () => Navigator.of(routeContext).maybePop(),
+          ),
+          title: regionEditorTitle,
+        ),
         body: RegionEditorBody(regions: regions, asset: asset),
       ),
     ),
@@ -56,33 +80,14 @@ class RegionEditor extends StatelessWidget {
   final Json asset;
 
   @override
-  Widget build(BuildContext context) => Dialog(
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(context.shape.radiusMd),
-    ),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: DialogWidths.wide),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              context.space.space6,
-              context.space.space6,
-              context.space.space6,
-              context.space.space0,
-            ),
-            child: Text(
-              'Correct label regions',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
-          Flexible(
-            child: RegionEditorBody(regions: regions, asset: asset),
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: DialogWidths.wide),
+    // The editor carries its save in its own sticky footer beside the reason
+    // it needs (07 section 7), so the dialog's action slots stay empty and
+    // the footer is the one place a save can be pressed.
+    child: UiDialog(
+      title: regionEditorTitle,
+      child: RegionEditorBody(regions: regions, asset: asset),
     ),
   );
 }
@@ -102,6 +107,9 @@ class RegionEditorBody extends StatefulWidget {
   /// (finding V-7). Below this a corner handle has no room to be dragged and
   /// the editor is a coordinate form with a thumbnail.
   static const double compactPreviewMinHeight = 240;
+
+  /// What the coordinate disclosure is called.
+  static const String coordinatesTitle = 'Exact coordinates and region order';
 
   @override
   State<RegionEditorBody> createState() => _RegionEditorBodyState();
@@ -130,7 +138,8 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   bool _detailsOpen = false;
 
   /// Bumped only when the editor has to force the disclosure open, so the
-  /// tile is rebuilt in that state without losing focus on every toggle.
+  /// disclosure is rebuilt in that state without losing focus on every
+  /// toggle.
   int _detailsVersion = 0;
 
   final TextEditingController _reason = TextEditingController();
@@ -240,7 +249,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 
   /// Direct manipulation writes straight into the recorded coordinates, with
   /// no animation, because a box that lags the finger reads as a box that
-  /// does not belong to the number beside it (motion catalog row 74).
+  /// does not belong to the number beside it (04 catalog row 74).
   void _drag(int corner, Offset delta, Size box) {
     final Json? selected = _current;
     if (selected == null) return;
@@ -326,13 +335,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final Json? selected = _current;
     final List<num> box = selected == null
         ? const <num>[]
         : selected['bbox'] as List<num>;
     // Finding V-7. On a phone the photograph was a thin strip between the
-    // region chips above it and the coordinate form below it, which is not
+    // region list above it and the coordinate form below it, which is not
     // enough to drag a 48 dp corner handle on. On a compact window the
     // preview now comes first and everything that is not the photograph goes
     // behind one disclosure, so the sheet's main content is the pixels.
@@ -344,7 +353,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       children: <Widget>[
         Flexible(
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(context.space.space6),
+            padding: EdgeInsetsDirectional.all(ui.space.s6),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
@@ -353,44 +362,28 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                   'Add, resize, rotate, reorder or merge label regions.',
                 ),
                 if (!compact) ..._provenance(context),
-                SizedBox(height: context.space.space3),
-                Wrap(
-                  spacing: context.space.space2,
-                  runSpacing: context.space.space2,
-                  children: <Widget>[
-                    for (final (int i, Json r) in _regions.indexed)
-                      ChoiceChip(
-                        // The region list takes focus on open (accessibility,
-                        // section 4.2 step 5; finding V-10). Deliberately not
-                        // a coordinate field: a touch reviewer opening the
-                        // editor should see the photograph, not a keyboard.
-                        autofocus: i == 0,
-                        // Reordering a `Wrap` cannot be animated and is not
-                        // worth building. The numbering change is carried by
-                        // a label cross-fade (motion catalog, row 79).
-                        label: AnimatedSwitcher(
-                          duration: context.motion.quick,
-                          switchInCurve: MotionTokens.standardCurve,
-                          child: Text(
-                            'Label ${i + 1}',
-                            key: ValueKey<String>(
-                              'editor-chip-${r['region_id'] ?? i}-${i + 1}',
-                            ),
-                          ),
-                        ),
-                        selected: _selected == i,
-                        onSelected: (_) {
-                          SpecimenHaptics.selectionChanged();
-                          setState(() => _selected = i);
-                        },
-                      ),
+                SizedBox(height: ui.space.s3),
+                UiCapsuleToggle<int>(
+                  selection: UiToggleSelection.single,
+                  selected: <int>{_selected},
+                  // Single mode clears the option already on; a region list
+                  // has no "none" state, so choosing the current one again
+                  // leaves the selection where it is.
+                  onChanged: (Set<int> next) {
+                    if (next.isEmpty) return;
+                    SpecimenHaptics.selectionChanged();
+                    setState(() => _selected = next.first);
+                  },
+                  options: <UiToggleOption<int>>[
+                    for (final (int i, Json _) in _regions.indexed)
+                      UiToggleOption<int>(value: i, label: 'Label ${i + 1}'),
                   ],
                 ),
                 if (_regions.isEmpty)
                   Padding(
-                    padding: EdgeInsets.only(top: context.space.space2),
-                    child: const EmptyState(
-                      icon: Symbols.crop_free,
+                    padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+                    child: EmptyState(
+                      icon: UiIcons.wholeImage.glyph,
                       title: 'No label regions',
                       body:
                           'This record cannot be saved without at least one '
@@ -398,70 +391,73 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                     ),
                   ),
                 if (selected != null) ...<Widget>[
-                  SizedBox(height: context.space.space4),
+                  SizedBox(height: ui.space.s4),
                   if (widget.asset['preview_bytes'] != null)
                     _preview(context, box, compact: compact),
-                  SizedBox(height: context.space.space2),
+                  SizedBox(height: ui.space.s2),
                   Text(
                     'Label reading rotation: '
-                    '${(selected['rotation_quarter_turns'] as int) * _quarterDegrees} degrees clockwise. '
-                    'Source coordinates stay unchanged.',
-                    style: theme.textTheme.bodySmall,
+                    '${(selected['rotation_quarter_turns'] as int) * _quarterDegrees} '
+                    'degrees clockwise. Source coordinates stay unchanged.',
+                    style: ui.type.bodySmall,
                   ),
                   Align(
                     alignment: AlignmentDirectional.centerStart,
-                    child: TextButton.icon(
+                    child: UiButton(
+                      label: 'Rotate label reading 90 degrees',
+                      variant: UiButtonVariant.ghost,
+                      leading: UiIcons.rotateView,
                       onPressed: () => setState(
                         () => selected['rotation_quarter_turns'] =
                             ((selected['rotation_quarter_turns'] as int) + 1) %
                             4,
                       ),
-                      icon: const Icon(Symbols.rotate_right),
-                      label: const Text('Rotate label reading 90 degrees'),
                     ),
                   ),
-                  SizedBox(height: context.space.space2),
+                  SizedBox(height: ui.space.s2),
                   if (compact)
-                    // One disclosure, an `ExpansionTile` like every other
-                    // disclosure in the product (pass criterion 4.1). The
-                    // pointer free path WCAG 2.2 SC 2.5.7 asks for is inside
-                    // it, reachable by keyboard, and the editor opens it
-                    // itself when a coordinate it holds is wrong.
-                    ExpansionTile(
+                    // One disclosure, the same one every other detail layer
+                    // in the product uses (pass criterion 4.1). The pointer
+                    // free path WCAG 2.2 SC 2.5.7 asks for is inside it,
+                    // reachable by keyboard, and the editor opens it itself
+                    // when a coordinate it holds is wrong.
+                    UiDisclosure(
                       key: ValueKey<String>('region-details-$_detailsVersion'),
+                      style: disclosureStyleWithFullTarget(context),
                       initiallyExpanded: _detailsOpen,
                       onExpansionChanged: (bool open) => _detailsOpen = open,
-                      tilePadding: EdgeInsets.zero,
-                      childrenPadding: EdgeInsets.zero,
-                      expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-                      title: const Text('Exact coordinates and region order'),
-                      subtitle: const Text(
-                        'Type coordinates, reorder, merge or delete.',
+                      title: RegionEditorBody.coordinatesTitle,
+                      summary: 'Type coordinates, reorder, merge or delete.',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          ..._provenance(context),
+                          SizedBox(height: ui.space.s2),
+                          ..._coordinateBlock(context, selected, box),
+                        ],
                       ),
-                      children: <Widget>[
-                        ..._provenance(context),
-                        SizedBox(height: context.space.space2),
-                        ..._coordinateBlock(context, selected, box),
-                      ],
                     )
                   else
                     ..._coordinateBlock(context, selected, box),
                 ],
                 Align(
                   alignment: AlignmentDirectional.centerStart,
-                  child: OutlinedButton.icon(
+                  child: UiButton(
+                    label: 'Add label region',
+                    variant: UiButtonVariant.secondary,
+                    leading: UiIcons.add,
                     onPressed: _add,
-                    icon: const Icon(Symbols.add),
-                    label: const Text('Add label region'),
                   ),
                 ),
                 if (_undo.isNotEmpty)
                   Align(
                     alignment: AlignmentDirectional.centerStart,
-                    child: TextButton.icon(
+                    child: UiButton(
+                      label: 'Undo ${_undo.last.label.toLowerCase()}',
+                      variant: UiButtonVariant.ghost,
+                      leading: UiIcons.undo,
                       onPressed: _applyUndo,
-                      icon: const Icon(Symbols.undo),
-                      label: Text('Undo ${_undo.last.label.toLowerCase()}'),
                     ),
                   ),
               ],
@@ -477,21 +473,24 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   ///
   /// Shown inline on a dialog and behind the compact disclosure, so a phone
   /// opens on the photograph rather than on three paragraphs about it.
-  List<Widget> _provenance(BuildContext context) => <Widget>[
-    const CaveatText(
-      label: 'Saving replaces the readings that depend on these regions.',
-      why:
-          'Coordinates follow the recorded source basis. Earlier readings '
-          'stay in history.',
-    ),
-    SizedBox(height: context.space.space2),
-    Text(
-      'Source coordinate dimensions: ${widget.asset['width']} by '
-      '${widget.asset['height']} pixels',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-    SourceBasisNotice(asset: widget.asset),
-  ];
+  List<Widget> _provenance(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return <Widget>[
+      const CaveatText(
+        label: 'Saving replaces the readings that depend on these regions.',
+        why:
+            'Coordinates follow the recorded source basis. Earlier readings '
+            'stay in history.',
+      ),
+      SizedBox(height: ui.space.s2),
+      Text(
+        'Source coordinate dimensions: ${widget.asset['width']} by '
+        '${widget.asset['height']} pixels',
+        style: ui.type.bodySmall,
+      ),
+      SourceBasisNotice(asset: widget.asset),
+    ];
+  }
 
   /// The numeric path and the region order controls.
   List<Widget> _coordinateBlock(
@@ -499,15 +498,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     Json selected,
     List<num> box,
   ) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     return <Widget>[
       Align(
         alignment: AlignmentDirectional.centerStart,
-        child: Text(
+        child: UiLabel(
           'Exact coordinates',
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: ui.type.label.copyWith(color: ui.color.inkSecondary),
         ),
       ),
       Align(
@@ -515,44 +512,63 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
         child: Text(
           'Typing here is the precise alternative to dragging, and the path '
           'that needs no pointer.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
         ),
       ),
-      SizedBox(height: context.space.space2),
+      SizedBox(height: ui.space.s2),
       _coordinates(context, selected, box),
-      SizedBox(height: context.space.space3),
+      SizedBox(height: ui.space.s3),
+      // The region toolbar (07 section 7). Not a `UiButtonRow`: that is the
+      // arrangement for a primary and its way out, and it draws the primary
+      // last, which would put the one destructive control at the end of the
+      // reading order. These four are peers, so they keep the order they
+      // shipped in and wrap rather than stack.
       Wrap(
-        spacing: context.space.space2,
-        runSpacing: context.space.space2,
+        spacing: ui.space.s2,
+        runSpacing: ui.space.s2,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
-          TextButton.icon(
+          UiIconButton(
+            icon: UiIcons.remove,
+            semanticsLabel: 'Delete region',
             onPressed: _delete,
-            icon: const Icon(Symbols.delete),
-            label: const Text('Delete region'),
           ),
-          TextButton(
+          UiIconButton(
+            icon: UiIcons.previous,
+            semanticsLabel: 'Move earlier',
             onPressed: _selected == 0
                 ? null
                 : () => setState(() {
                     final Json item = _regions.removeAt(_selected);
                     _regions.insert(--_selected, item);
                   }),
-            child: const Text('Move earlier'),
+            disabledReason: _selected == 0
+                ? 'This is already the first label region.'
+                : null,
           ),
-          TextButton(
+          UiIconButton(
+            icon: UiIcons.next,
+            semanticsLabel: 'Move later',
             onPressed: _selected >= _regions.length - 1
                 ? null
                 : () => setState(() {
                     final Json item = _regions.removeAt(_selected);
                     _regions.insert(++_selected, item);
                   }),
-            child: const Text('Move later'),
+            disabledReason: _selected >= _regions.length - 1
+                ? 'This is already the last label region.'
+                : null,
           ),
-          TextButton(
+          // The registry has no merge glyph, and reusing one that already
+          // means something else would give one glyph two meanings
+          // (09 section 7), so this control keeps its word.
+          UiButton(
+            label: 'Merge with next',
+            variant: UiButtonVariant.ghost,
             onPressed: _selected >= _regions.length - 1 ? null : _merge,
-            child: const Text('Merge with next'),
+            disabledReason: _selected >= _regions.length - 1
+                ? 'There is no later label region to merge with.'
+                : null,
           ),
         ],
       ),
@@ -562,12 +578,11 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   /// The photograph, with every region drawn over it.
   ///
   /// On a compact window the band is floored at
-  /// [RegionEditorBody.compactPreviewMinHeight] so
-  /// the image is the dominant element of the sheet and a 48 dp corner handle
-  /// has somewhere to go (finding V-7). The image itself keeps the asset's
-  /// own ratio at every width, because the overlay maps recorded pixel
-  /// coordinates onto it and a stretched image would move every handle off
-  /// the pixel it names.
+  /// [RegionEditorBody.compactPreviewMinHeight] so the image is the dominant
+  /// element of the sheet and a 48 dp corner handle has somewhere to go
+  /// (finding V-7). The image itself keeps the asset's own ratio at every
+  /// width, because the overlay maps recorded pixel coordinates onto it and a
+  /// stretched image would move every handle off the pixel it names.
   Widget _preview(
     BuildContext context,
     List<num> box, {
@@ -605,7 +620,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                 key: ValueKey<Object>(r['region_id'] ?? i),
                 index: i + 1,
                 selected: i == _selected,
-                bbox: (r['bbox'] as List<num>),
+                bbox: r['bbox'] as List<num>,
                 imageWidth: _width,
                 imageHeight: _height,
                 size: size,
@@ -624,109 +639,95 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     ),
   );
 
-  Widget _coordinates(BuildContext context, Json selected, List<num> box) =>
-      Wrap(
-        spacing: context.space.space3,
-        runSpacing: context.space.space3,
-        children: <Widget>[
-          for (final (int i, String label) in <String>[
-            'Left x',
-            'Top y',
-            'Right x',
-            'Bottom y',
-          ].indexed)
-            SizedBox(
-              width: _coordinateFieldWidth,
-              child: TextFormField(
-                key: ValueKey<String>(
-                  '${selected['region_id']}-$i-$_coordinateVersion',
-                ),
-                initialValue: '${box[i]}',
-                keyboardType: TextInputType.number,
-                inputFormatters: <TextInputFormatter>[
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
-                decoration: InputDecoration(
-                  labelText: label,
-                  suffixText: 'px',
-                  errorText:
-                      _invalidCoordinates.contains(
-                        '${selected['region_id']}-$i',
-                      )
-                      ? 'Whole pixels'
-                      : null,
-                ),
-                onChanged: (String v) {
-                  final String coordinateKey = '${selected['region_id']}-$i';
-                  final int? n = int.tryParse(v);
-                  setState(() {
-                    _coordinateSubmitAttempted = false;
-                    if (n != null) {
-                      box[i] = n;
-                      _invalidCoordinates.remove(coordinateKey);
-                    } else {
-                      _invalidCoordinates.add(coordinateKey);
-                    }
-                  });
-                },
-              ),
+  Widget _coordinates(BuildContext context, Json selected, List<num> box) {
+    final UiThemeData ui = context.ui;
+    return Wrap(
+      spacing: ui.space.s3,
+      runSpacing: ui.space.s3,
+      children: <Widget>[
+        for (final (int i, String label) in _coordinateLabels.indexed)
+          SizedBox(
+            width: coordinateFieldWidth,
+            child: _CoordinateField(
+              label: label,
+              value: '${box[i]}',
+              // The version is what tells the field its value moved under it:
+              // a drag, a merge or an undo rewrites the box, and typing does
+              // not, so the caret never jumps while a reviewer is in it.
+              version: _coordinateVersion,
+              errorText:
+                  _invalidCoordinates.contains('${selected['region_id']}-$i')
+                  ? 'Whole pixels'
+                  : null,
+              onChanged: (String v) {
+                final String coordinateKey = '${selected['region_id']}-$i';
+                final int? n = int.tryParse(v);
+                setState(() {
+                  _coordinateSubmitAttempted = false;
+                  if (n != null) {
+                    box[i] = n;
+                    _invalidCoordinates.remove(coordinateKey);
+                  } else {
+                    _invalidCoordinates.add(coordinateKey);
+                  }
+                });
+              },
             ),
-        ],
-      );
+          ),
+      ],
+    );
+  }
 
   Widget _footer(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final String? error = _visibleError;
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainer,
+    return Surface(
+      role: SurfaceRole.paper,
+      radius: ui.shape.none,
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: EdgeInsets.all(context.space.space4),
+          padding: EdgeInsetsDirectional.all(ui.space.s4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              TextField(
+              UiTextArea(
                 controller: _reason,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Reason',
-                  helperText: reasonHelperText,
-                ),
+                label: 'Reason',
+                helpText: reasonHelperText,
+                minLines: _reasonMinLines,
+                maxLines: _reasonMaxLines,
               ),
               // No shake. The message names the fix; the motion only gets it
-              // on screen without a jump (motion catalog, row 80).
+              // on screen without a jump (04 catalog row 80).
               MotionReveal(
                 visible: error != null,
                 child: Padding(
-                  padding: EdgeInsets.only(top: context.space.space2),
+                  padding: EdgeInsetsDirectional.only(top: ui.space.s2),
                   child: Semantics(
                     liveRegion: true,
                     child: Text(
                       error ?? '',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
+                      style: ui.type.bodySmall.copyWith(
+                        color: ui.color.status.blocked.content,
                       ),
                     ),
                   ),
                 ),
               ),
-              SizedBox(height: context.space.space3),
-              Wrap(
-                alignment: WrapAlignment.end,
-                spacing: context.space.space2,
-                runSpacing: context.space.space2,
-                children: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  FilledButton(
-                    onPressed: _save,
-                    child: const Text('Save region version'),
-                  ),
-                ],
+              SizedBox(height: ui.space.s3),
+              UiButtonRow(
+                primary: UiButton(
+                  label: 'Save region version',
+                  leading: UiIcons.save,
+                  onPressed: _save,
+                ),
+                secondary: UiButton(
+                  label: 'Cancel',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
             ],
           ),
@@ -737,8 +738,179 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 
   /// The corner index that means "move the whole box".
   static const int _dragBody = -1;
-  static const double _coordinateFieldWidth = 140;
   static const int _quarterDegrees = 90;
+  static const int _reasonMinLines = 2;
+  static const int _reasonMaxLines = 4;
+  static const List<String> _coordinateLabels = <String>[
+    'Left x',
+    'Top y',
+    'Right x',
+    'Bottom y',
+  ];
+}
+
+/// How wide one coordinate field is drawn.
+///
+/// Four digits, a unit and the field's own padding: the widest coordinate a
+/// forty megapixel original can carry, so the four fields never disagree
+/// about their width as the numbers change.
+const double coordinateFieldWidth = 140;
+
+/// A full window route built on `package:flutter/widgets.dart`.
+///
+/// `MaterialPageRoute` is the only route `PageTransitionsTheme` reaches, and
+/// it comes with `material.dart`, which no screen imports any more. The
+/// entrance is therefore the system's own: the emphasized pair `ModalRoutes`
+/// uses, which collapses to nothing under reduced motion because the duration
+/// does.
+/// fe/polish-2: a `UiPageRoute` in the package, so a screen pushing a full
+/// window surface gets one entrance rather than each writing its own.
+PageRoute<T> uiFullScreenRoute<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+}) {
+  final MotionTokens motion = context.ui.motion;
+  return PageRouteBuilder<T>(
+    transitionDuration: motion.emphasized,
+    reverseTransitionDuration: motion.standard,
+    fullscreenDialog: true,
+    pageBuilder:
+        (
+          BuildContext context,
+          Animation<double> animation,
+          Animation<double> secondary,
+        ) => builder(context),
+    transitionsBuilder:
+        (
+          BuildContext context,
+          Animation<double> animation,
+          Animation<double> secondary,
+          Widget child,
+        ) {
+          final CurvedAnimation curved = CurvedAnimation(
+            parent: animation,
+            curve: MotionTokens.emphasizedEnterCurve,
+            reverseCurve: MotionTokens.emphasizedExitCurve,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, fullScreenEntranceRise),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
+  );
+}
+
+/// How far a full window surface rises as it arrives, as a fraction of it.
+///
+/// The same rise `ModalRoutes` gives a sheet, so the two entrances read as
+/// one system.
+const double fullScreenEntranceRise = 0.08;
+
+/// A disclosure whose header is a full tap target.
+///
+/// `UiDisclosureStyle.resolve` takes the header's minimum height from
+/// `density.rowHeight`, which is 44 in pointer density, and the header
+/// publishes a node with a tap action. Both Android and iOS tap target
+/// guidelines then fail on every disclosure in the product wherever its title
+/// fits on one line. The floor is raised here rather than the row shortened,
+/// because the row is what a reviewer presses.
+/// fe/polish-2: `UiDisclosure` should take its header's minimum height from
+/// the hit box rather than the row height, the way every other control does.
+UiDisclosureStyle disclosureStyleWithFullTarget(BuildContext context) {
+  final UiThemeData ui = context.ui;
+  final UiDisclosureStyle base = UiDisclosureStyle.resolve(ui);
+  return UiDisclosureStyle(
+    title: base.title,
+    summary: base.summary,
+    titleColor: base.titleColor,
+    summaryColor: base.summaryColor,
+    caretColor: base.caretColor,
+    padding: base.padding,
+    bodyPadding: base.bodyPadding,
+    gap: base.gap,
+    minHeight: math.max(base.minHeight, ui.space.targetMin),
+    radius: base.radius,
+  );
+}
+
+/// One coordinate, as a field the reviewer can type a whole pixel into.
+///
+/// `UiField` edits through a controller rather than an initial value, so the
+/// two ways a coordinate changes are kept apart here: typing writes through
+/// [onChanged] and leaves the text alone, and a drag, a merge or an undo
+/// arrives as a new [version] and rewrites it.
+class _CoordinateField extends StatefulWidget {
+  const _CoordinateField({
+    required this.label,
+    required this.value,
+    required this.version,
+    required this.errorText,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final int version;
+  final String? errorText;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<_CoordinateField> createState() => _CoordinateFieldState();
+}
+
+class _CoordinateFieldState extends State<_CoordinateField> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.value,
+  );
+
+  @override
+  void didUpdateWidget(_CoordinateField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.version == oldWidget.version ||
+        _controller.text == widget.value) {
+      return;
+    }
+    _controller.value = TextEditingValue(
+      text: widget.value,
+      selection: TextSelection.collapsed(offset: widget.value.length),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return UiField(
+      label: widget.label,
+      controller: _controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.digitsOnly,
+      ],
+      errorText: widget.errorText,
+      onChanged: widget.onChanged,
+      // The unit, not an action: it names what the number is in and is read
+      // out of the field's own label rather than as a control of its own
+      // (02 section 4.14).
+      trailing: ExcludeSemantics(
+        child: UiLabel(
+          'px',
+          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+        ),
+      ),
+    );
+  }
 }
 
 /// One draggable region over the preview.
@@ -772,7 +944,7 @@ class _RegionBox extends StatefulWidget {
 
 class _RegionBoxState extends State<_RegionBox> {
   /// False for the single frame after a region is added, which is what gives
-  /// the opacity somewhere to come from (motion catalog, row 77).
+  /// the opacity somewhere to come from (04 catalog row 77).
   bool _shown = false;
 
   @override
@@ -797,7 +969,7 @@ class _RegionBoxState extends State<_RegionBox> {
       bbox[3] / widget.imageHeight * size.height,
     );
     final void Function(Offset)? body = widget.onDragBody;
-    final MotionTokens motion = context.motion;
+    final MotionTokens motion = context.ui.motion;
 
     // The rectangle itself follows the numbers with zero animation, always:
     // typing a coordinate and watching the box lag two hundred milliseconds
@@ -865,7 +1037,7 @@ class _RegionBoxState extends State<_RegionBox> {
 
 /// A corner handle whose hit box is a full target even though the square the
 /// reviewer sees is small, so it never covers the pixels underneath it
-/// (responsive 4, touch targets).
+/// (05 section 4, touch targets).
 class _CornerHandle extends StatelessWidget {
   const _CornerHandle({
     required this.corner,
@@ -883,8 +1055,9 @@ class _CornerHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double target = context.sizes.targetMin;
-    final double visual = context.space.space3;
+    final UiThemeData ui = context.ui;
+    final double target = ui.space.targetMin;
+    final double visual = ui.space.s3;
     return Positioned(
       left: centre.dx - target / 2,
       top: centre.dy - target / 2,
@@ -899,11 +1072,18 @@ class _CornerHandle extends StatelessWidget {
             child: SizedBox.square(
               dimension: visual,
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: context.tokens.regionSelectedCore,
-                  border: Border.all(
-                    color: context.tokens.regionSelectedCasing,
-                    width: context.shape.strokeHairline,
+                // The handle belongs to the selected region's marker, so it
+                // carries the same accent and the same casing the stroke
+                // does: one marker, with somewhere to take hold of it
+                // (09 section 3.4).
+                decoration: ShapeDecoration(
+                  color: ui.color.accent,
+                  shape: Squircle.border(
+                    ui.shape.inner,
+                    side: BorderSide(
+                      color: ui.color.ink,
+                      width: ui.shape.stroke.hairline,
+                    ),
                   ),
                 ),
               ),

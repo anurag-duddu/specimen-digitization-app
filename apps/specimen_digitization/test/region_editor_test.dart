@@ -1,12 +1,44 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/source_pixels.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
+import 'ui_finders.dart';
 import 'workbench_harness.dart';
+
+/// The field named [label], by the name it publishes rather than by a
+/// Material type.
+Finder uiField(String label) => find.byWidgetPredicate(
+  (Widget widget) => widget is UiField && widget.label == label,
+  description: 'UiField("$label")',
+);
+
+/// The text area named [label]. The reason is the only one in this editor.
+Finder uiTextArea(String label) => find.byWidgetPredicate(
+  (Widget widget) => widget is UiTextArea && widget.label == label,
+  description: 'UiTextArea("$label")',
+);
+
+/// One option of the region list, which is a capsule toggle in single mode.
+Finder regionOption(String label) => find.byWidgetPredicate(
+  (Widget widget) =>
+      widget is Pressable &&
+      widget.role == PressableRole.toggle &&
+      widget.semanticsLabel == label,
+  description: 'region option "$label"',
+);
+
+/// A trigger that opens the editor, so each test says what it presses.
+Widget opener(String label, Future<void> Function(BuildContext) onPressed) =>
+    Builder(
+      builder: (BuildContext context) => Center(
+        child: UiButton(label: label, onPressed: () => onPressed(context)),
+      ),
+    );
 
 void main() {
   testWidgets(
@@ -24,28 +56,22 @@ void main() {
       useWindow(tester, largeWindow);
       await tester.pumpWidget(
         workbenchHost(
-          Builder(
-            builder: (context) => Center(
-              child: TextButton(
-                onPressed: () async {
-                  decision = await showDialog<Json>(
-                    context: context,
-                    builder: (_) => RegionEditor(
-                      regions: source,
-                      asset: {
-                        'width': 1000,
-                        'height': 520,
-                        'preview_bytes': File(
-                          'test/fixtures/synthetic-wide-label.png',
-                        ).readAsBytesSync(),
-                      },
-                    ),
-                  );
+          opener('Edit', (BuildContext context) async {
+            decision = await showUiDialog<Json>(
+              context: context,
+              semanticsLabel: regionEditorTitle,
+              builder: (_) => RegionEditor(
+                regions: source,
+                asset: <String, dynamic>{
+                  'width': 1000,
+                  'height': 520,
+                  'preview_bytes': File(
+                    'test/fixtures/synthetic-wide-label.png',
+                  ).readAsBytesSync(),
                 },
-                child: const Text('Edit'),
               ),
-            ),
-          ),
+            );
+          }),
         ),
       );
       await tester.tap(find.text('Edit'));
@@ -54,15 +80,12 @@ void main() {
       await tester.tap(find.text('Rotate label reading 90 degrees'));
       await tester.pumpAndSettle();
       expect(find.textContaining('90 degrees clockwise'), findsOneWidget);
-      final left = find.widgetWithText(TextFormField, 'Left x');
+      final left = uiField('Left x');
       await tester.ensureVisible(left);
       await tester.enterText(left, '800');
       await tester.pump();
-      await tester.ensureVisible(find.widgetWithText(TextField, 'Reason'));
-      await tester.enterText(
-        find.widgetWithText(TextField, 'Reason'),
-        'Correct orientation',
-      );
+      await tester.ensureVisible(uiTextArea('Reason'));
+      await tester.enterText(uiTextArea('Reason'), 'Correct orientation');
       await tester.tap(find.text('Save region version'));
       await tester.pumpAndSettle();
       expect(find.textContaining('positive area'), findsOneWidget);
@@ -86,26 +109,23 @@ void main() {
     useWindow(tester, largeWindow);
     await tester.pumpWidget(
       workbenchHost(
-        Builder(
-          builder: (context) => Center(
-            child: TextButton(
-              onPressed: () async => saved(
-                await showDialog<Json>(
-                  context: context,
-                  builder: (_) => const RegionEditor(
-                    regions: [
-                      {
-                        'region_id': 'small',
-                        'bbox': [5, 7, 45, 57],
-                        'order': 0,
-                        'rotation_quarter_turns': 1,
-                      },
-                    ],
-                    asset: {'width': 64, 'height': 96},
-                  ),
-                ),
+        opener(
+          'Edit small region',
+          (BuildContext context) async => saved(
+            await showUiDialog<Json>(
+              context: context,
+              semanticsLabel: regionEditorTitle,
+              builder: (_) => const RegionEditor(
+                regions: <Json>[
+                  <String, dynamic>{
+                    'region_id': 'small',
+                    'bbox': <int>[5, 7, 45, 57],
+                    'order': 0,
+                    'rotation_quarter_turns': 1,
+                  },
+                ],
+                asset: <String, dynamic>{'width': 64, 'height': 96},
               ),
-              child: const Text('Edit small region'),
             ),
           ),
         ),
@@ -120,11 +140,11 @@ void main() {
     (tester) async {
       Json? decision;
       await openSmallEditor(tester, (value) => decision = value);
-      final reason = find.widgetWithText(TextField, 'Reason');
+      final reason = uiTextArea('Reason');
       await tester.ensureVisible(reason);
       await tester.enterText(reason, 'Synthetic coordinate replacement');
-      final left = find.widgetWithText(TextFormField, 'Left x');
-      final top = find.widgetWithText(TextFormField, 'Top y');
+      final left = uiField('Left x');
+      final top = uiField('Top y');
       await tester.ensureVisible(left);
       await tester.enterText(left, '');
       await tester.pump();
@@ -174,7 +194,7 @@ void main() {
       await tester.tap(find.text('Save region version'));
       await tester.pumpAndSettle();
       expect(find.text('Enter a reason for this decision.'), findsOneWidget);
-      final left = find.widgetWithText(TextFormField, 'Left x');
+      final left = uiField('Left x');
       await tester.ensureVisible(left);
       await tester.enterText(left, '');
       await tester.pump();
@@ -200,46 +220,42 @@ void main() {
     Json? decision;
     await tester.pumpWidget(
       workbenchHost(
-        Builder(
-          builder: (context) => Center(
-            child: TextButton(
-              onPressed: () async => decision = await showRegionEditor(
-                context,
-                regions: const [
-                  {
-                    'region_id': 'a',
-                    'bbox': [0, 0, 20, 20],
-                    'order': 0,
-                  },
-                  {
-                    'region_id': 'b',
-                    'bbox': [20, 20, 40, 40],
-                    'order': 1,
-                  },
-                ],
-                asset: const {'width': 64, 'height': 96},
-              ),
-              child: const Text('Edit regions'),
-            ),
+        opener(
+          'Edit regions',
+          (BuildContext context) async => decision = await showRegionEditor(
+            context,
+            regions: const <Json>[
+              <String, dynamic>{
+                'region_id': 'a',
+                'bbox': <int>[0, 0, 20, 20],
+                'order': 0,
+              },
+              <String, dynamic>{
+                'region_id': 'b',
+                'bbox': <int>[20, 20, 40, 40],
+                'order': 1,
+              },
+            ],
+            asset: const <String, dynamic>{'width': 64, 'height': 96},
           ),
         ),
       ),
     );
     await tester.tap(find.text('Edit regions'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, 'Label 2'), findsOneWidget);
+    expect(regionOption('Label 2'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Delete region'));
-    await tester.tap(find.text('Delete region'));
+    await tester.ensureVisible(uiIconButton('Delete region'));
+    await tester.tap(uiIconButton('Delete region'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, 'Label 2'), findsNothing);
+    expect(regionOption('Label 2'), findsNothing);
 
     // A local delete is reversible without closing the editor
     // (pass criterion 3.5).
     await tester.ensureVisible(find.text('Undo delete label region'));
     await tester.tap(find.text('Undo delete label region'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, 'Label 2'), findsOneWidget);
+    expect(regionOption('Label 2'), findsOneWidget);
     expect(decision, isNull);
   });
 
@@ -248,27 +264,23 @@ void main() {
     Json? decision;
     await tester.pumpWidget(
       workbenchHost(
-        Builder(
-          builder: (context) => Center(
-            child: TextButton(
-              onPressed: () async => decision = await showRegionEditor(
-                context,
-                regions: const [
-                  {
-                    'region_id': 'a',
-                    'bbox': [0, 0, 20, 20],
-                    'order': 0,
-                  },
-                  {
-                    'region_id': 'b',
-                    'bbox': [30, 30, 40, 40],
-                    'order': 1,
-                  },
-                ],
-                asset: const {'width': 64, 'height': 96},
-              ),
-              child: const Text('Edit regions'),
-            ),
+        opener(
+          'Edit regions',
+          (BuildContext context) async => decision = await showRegionEditor(
+            context,
+            regions: const <Json>[
+              <String, dynamic>{
+                'region_id': 'a',
+                'bbox': <int>[0, 0, 20, 20],
+                'order': 0,
+              },
+              <String, dynamic>{
+                'region_id': 'b',
+                'bbox': <int>[30, 30, 40, 40],
+                'order': 1,
+              },
+            ],
+            asset: const <String, dynamic>{'width': 64, 'height': 96},
           ),
         ),
       ),
@@ -278,19 +290,16 @@ void main() {
     await tester.ensureVisible(find.text('Merge with next'));
     await tester.tap(find.text('Merge with next'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, 'Label 2'), findsNothing);
+    expect(regionOption('Label 2'), findsNothing);
     await tester.ensureVisible(
       find.text('Undo merge with the next label region'),
     );
     await tester.tap(find.text('Undo merge with the next label region'));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(ChoiceChip, 'Label 2'), findsOneWidget);
+    expect(regionOption('Label 2'), findsOneWidget);
 
-    await tester.ensureVisible(find.widgetWithText(TextField, 'Reason'));
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
-      'Kept both label regions',
-    );
+    await tester.ensureVisible(uiTextArea('Reason'));
+    await tester.enterText(uiTextArea('Reason'), 'Kept both label regions');
     await tester.tap(find.text('Save region version'));
     await tester.pumpAndSettle();
     expect(decision?['regions'], hasLength(2));
@@ -305,36 +314,29 @@ void main() {
     Json? decision;
     await tester.pumpWidget(
       workbenchHost(
-        Builder(
-          builder: (context) => Center(
-            child: TextButton(
-              onPressed: () async => decision = await showRegionEditor(
-                context,
-                regions: const [
-                  {
-                    'region_id': 'only',
-                    'bbox': [0, 0, 20, 20],
-                    'order': 0,
-                  },
-                ],
-                asset: const {'width': 64, 'height': 96},
-              ),
-              child: const Text('Edit regions'),
-            ),
+        opener(
+          'Edit regions',
+          (BuildContext context) async => decision = await showRegionEditor(
+            context,
+            regions: const <Json>[
+              <String, dynamic>{
+                'region_id': 'only',
+                'bbox': <int>[0, 0, 20, 20],
+                'order': 0,
+              },
+            ],
+            asset: const <String, dynamic>{'width': 64, 'height': 96},
           ),
         ),
       ),
     );
     await tester.tap(find.text('Edit regions'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Delete region'));
-    await tester.tap(find.text('Delete region'));
+    await tester.ensureVisible(uiIconButton('Delete region'));
+    await tester.tap(uiIconButton('Delete region'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(TextField, 'Reason'));
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
-      'Removed the only region',
-    );
+    await tester.ensureVisible(uiTextArea('Reason'));
+    await tester.enterText(uiTextArea('Reason'), 'Removed the only region');
     await tester.tap(find.text('Save region version'));
     await tester.pumpAndSettle();
     // A record cannot be saved into a structurally impossible state
@@ -353,28 +355,24 @@ void main() {
     Json? saved;
     await tester.pumpWidget(
       workbenchHost(
-        Builder(
-          builder: (context) => Center(
-            child: TextButton(
-              onPressed: () async => saved = await showRegionEditor(
-                context,
-                regions: <Json>[
-                  {
-                    'region_id': 'r',
-                    'bbox': [100, 52, 700, 312],
-                    'order': 0,
-                  },
-                ],
-                asset: {
-                  'width': 1000,
-                  'height': 520,
-                  'preview_bytes': File(
-                    'test/fixtures/synthetic-wide-label.png',
-                  ).readAsBytesSync(),
-                },
-              ),
-              child: const Text('Edit regions'),
-            ),
+        opener(
+          'Edit regions',
+          (BuildContext context) async => saved = await showRegionEditor(
+            context,
+            regions: <Json>[
+              <String, dynamic>{
+                'region_id': 'r',
+                'bbox': <int>[100, 52, 700, 312],
+                'order': 0,
+              },
+            ],
+            asset: <String, dynamic>{
+              'width': 1000,
+              'height': 520,
+              'preview_bytes': File(
+                'test/fixtures/synthetic-wide-label.png',
+              ).readAsBytesSync(),
+            },
           ),
         ),
       ),
@@ -401,11 +399,8 @@ void main() {
     await tester.pumpAndSettle();
     // Direct manipulation and the pointer-free path are one state, not two:
     // the drag is readable in the saved coordinates.
-    await tester.ensureVisible(find.widgetWithText(TextField, 'Reason'));
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
-      'Resized by hand',
-    );
+    await tester.ensureVisible(uiTextArea('Reason'));
+    await tester.enterText(uiTextArea('Reason'), 'Resized by hand');
     await tester.tap(find.text('Save region version'));
     await tester.pumpAndSettle();
     expect(saved!['regions'][0]['bbox'][0], isNot(100));
@@ -438,8 +433,9 @@ void main() {
       useWindow(tester, compactWindow);
       await tester.pumpWidget(
         workbenchHost(
-          Scaffold(
-            appBar: AppBar(title: const Text('Correct label regions')),
+          UiScaffold(
+            sky: SkyPreset.none,
+            topBar: const UiTopBar(title: regionEditorTitle),
             body: RegionEditorBody(regions: oneRegion(), asset: wideAsset()),
           ),
         ),
@@ -475,8 +471,8 @@ void main() {
       // behind one closed disclosure, so nothing else on the scrolled body
       // is taller than the pixels.
       expect(find.text('Exact coordinates'), findsNothing);
-      expect(find.widgetWithText(TextFormField, 'Left x'), findsNothing);
-      expect(find.text('Exact coordinates and region order'), findsOneWidget);
+      expect(uiField('Left x'), findsNothing);
+      expect(find.text(RegionEditorBody.coordinatesTitle), findsOneWidget);
       expect(image, greaterThan(compactWindow.height * 0.15));
     });
 
@@ -501,11 +497,11 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpPhoneEditor(tester);
-      final Finder disclosure = find.text('Exact coordinates and region order');
+      final Finder disclosure = find.text(RegionEditorBody.coordinatesTitle);
       await tester.ensureVisible(disclosure);
       await tester.tap(disclosure);
       await tester.pumpAndSettle();
-      final Finder left = find.widgetWithText(TextFormField, 'Left x');
+      final Finder left = uiField('Left x');
       expect(left, findsOneWidget);
       await tester.enterText(left, '');
       await tester.pump();
@@ -515,11 +511,11 @@ void main() {
       await tester.ensureVisible(disclosure);
       await tester.tap(disclosure);
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextFormField, 'Left x'), findsNothing);
+      expect(uiField('Left x'), findsNothing);
       await tester.ensureVisible(find.text('Save region version'));
       await tester.tap(find.text('Save region version'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextFormField, 'Left x'), findsOneWidget);
+      expect(uiField('Left x'), findsOneWidget);
       expect(
         find.textContaining('whole pixel numbers before you save'),
         findsOneWidget,
