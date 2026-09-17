@@ -493,6 +493,19 @@ class UiColor {
   /// Opacity of the state layer while pressed.
   double get pressedOpacity => isDark ? 0.14 : 0.12;
 
+  /// Opacity of the selection behind the characters a reviewer has
+  /// highlighted inside a field (11 section 4).
+  double get selectionOpacity => 0.35;
+
+  /// Behind the characters a reviewer has selected inside a field.
+  ///
+  /// [accent] at [selectionOpacity]. The accent is the product's one
+  /// non-status colour, so a selection reads as this system rather than as
+  /// the platform's blue, and at this opacity [ink] on the composite clears
+  /// 4.5:1 over every opaque surface in both modes, which the composite
+  /// contrast gate holds.
+  Color get selection => accent.withValues(alpha: selectionOpacity);
+
   /// The hover or press overlay over any surface.
   ///
   /// 10 section 2 clause 6 names `ink` in light and `paper` in dark. Both

@@ -30,6 +30,14 @@ class UiStroke {
   /// The ring's radius is the component's radius plus this.
   double get focusRadiusOffset => 4;
 
+  /// The caret's corner. The caret is [emphasis] wide and as tall as the
+  /// scaled line box, so its ends are rounded rather than cut square
+  /// (11 section 4).
+  ///
+  /// Deliberately absent from [UiShape.strokes]: that map is the widths the
+  /// foundation gallery page walks, and this is a corner.
+  double get caretRadius => 1;
+
   /// 3 dp. The leading bar of a selected row and of a diff addition.
   double get bar => 3;
 }

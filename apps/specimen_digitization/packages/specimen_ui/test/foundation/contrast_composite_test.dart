@@ -171,6 +171,26 @@ void main() {
         });
       });
 
+      test('text stays readable through a selection', () {
+        // 11 section 4 puts the selection behind the characters a reviewer
+        // has highlighted, at `accent` 35 percent. The set here is the three
+        // opaque surfaces rather than the composite set above, because a
+        // selection is only ever painted inside a field box, whose fill is
+        // `paper`, and a control is never drawn on glass over a light field:
+        // the light fields sit behind a screen and the controls sit on
+        // `paper` above them (09 sections 3.2 and 3.3).
+        ui.color.surfaces.forEach((String where, Color background) {
+          expect(
+            contrast(
+              ui.color.ink,
+              Color.alphaBlend(ui.color.selection, background),
+            ),
+            greaterThanOrEqualTo(textMinimum),
+            reason: '$mode ink on a selection over $where',
+          );
+        });
+      });
+
       test('the accent carries its own text', () {
         expect(
           contrast(ui.color.onAccent, ui.color.accent),
