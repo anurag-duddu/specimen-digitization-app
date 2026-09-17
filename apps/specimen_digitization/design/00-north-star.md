@@ -135,7 +135,7 @@ waves, ownership and gates is
 [docs/execution/FRONT_END_REFACTOR.md](../../../docs/execution/FRONT_END_REFACTOR.md).
 Work lands on the `front-end-refactor` branch. Everything in this document
 other than the sequencing list stands; the bar in "The bar" is re-measured in
-`11-verification-report-v2.md` when the refactor completes.
+`12-verification-report-v2.md` when the refactor completes.
 
 ## Out of scope for this foundation
 

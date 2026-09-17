@@ -418,9 +418,14 @@ class _QueuePaneState extends State<QueuePane> {
       // narrow to keep the list mounted beside it (pass criterion 6.5).
       key: const PageStorageKey<String>('queue-list'),
       controller: controller.queueScroll,
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: gutter,
-        vertical: ui.space.s4,
+      // The last row scrolls clear of the floating navigation on a phone: the
+      // scaffold says how much clearance its bar takes (verification report
+      // v2, V2-3), and it is zero where the navigation is a rail or sidebar.
+      padding: EdgeInsetsDirectional.only(
+        start: gutter,
+        end: gutter,
+        top: ui.space.s4,
+        bottom: ui.space.s4 + UiScaffold.of(context).bottomInset,
       ),
       children: <Widget>[
         _QueueHeader(controller: controller),

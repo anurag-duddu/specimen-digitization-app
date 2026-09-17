@@ -139,6 +139,11 @@ class FieldPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final Rect bounds = Offset.zero & size;
     canvas.save();
+    // A field is a disc that may be centred near an edge, and a `CustomPaint`
+    // does not clip for its painter, so without this the sky bled over
+    // whatever sat above the layer: the environment band on every entry
+    // screen measured below AA (verification report v2, V2-1).
+    canvas.clipRect(bounds);
     final Rect? clip = exclusion;
     if (clip != null) {
       canvas.clipPath(

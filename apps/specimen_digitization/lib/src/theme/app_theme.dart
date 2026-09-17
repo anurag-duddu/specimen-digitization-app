@@ -55,11 +55,53 @@ abstract final class AppTheme {
 /// onto the Material 3 forward transition.
 const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
   builders: <TargetPlatform, PageTransitionsBuilder>{
-    TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-    TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-    TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-    TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
+    TargetPlatform.android: _ReducedMotionTransitions(
+      PredictiveBackPageTransitionsBuilder(),
+    ),
+    TargetPlatform.iOS: _ReducedMotionTransitions(
+      CupertinoPageTransitionsBuilder(),
+    ),
+    TargetPlatform.macOS: _ReducedMotionTransitions(
+      CupertinoPageTransitionsBuilder(),
+    ),
+    TargetPlatform.windows: _ReducedMotionTransitions(
+      FadeForwardsPageTransitionsBuilder(),
+    ),
+    TargetPlatform.linux: _ReducedMotionTransitions(
+      FadeForwardsPageTransitionsBuilder(),
+    ),
+    TargetPlatform.fuchsia: _ReducedMotionTransitions(
+      FadeForwardsPageTransitionsBuilder(),
+    ),
   },
 );
+
+/// A platform's page transition, collapsed under reduced motion.
+///
+/// 04 section 2.5 has every transition collapse when the platform or the
+/// reviewer asks for less motion; the Cupertino slide alone travelled the
+/// full 450 ms on iOS (verification report v2, V2-6). The route appears in
+/// place instead, and the platform's own builder runs otherwise.
+class _ReducedMotionTransitions extends PageTransitionsBuilder {
+  const _ReducedMotionTransitions(this.inner);
+
+  final PageTransitionsBuilder inner;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MotionTokens.of(context).reduced) return child;
+    return inner.buildTransitions<T>(
+      route,
+      context,
+      animation,
+      secondaryAnimation,
+      child,
+    );
+  }
+}
