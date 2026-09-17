@@ -9098,3 +9098,276 @@ with the 48 dp hit box, and all four guidelines pass with no skip.
   Duration` declaration, or the map keeps three entries for good.
 - No cloud command, no deploy, no dependency added, no SDK change, no screen
   golden and no semantics fixture committed.
+## 2026-09-17: Front-end refactor wave H, slot H3, the second verification report
+
+Task: slot H3 (`fe/verification`), items F2, F3 and F4 of
+`docs/execution/FRONT_END_REFACTOR.md` section 3F and definition of done items
+7 and 9. Branch `fe/verification`, worktree
+`.claude/worktrees/fe-verification`, cut from `front-end-refactor` at
+`cbe78eb`, which is every wave merged: 0, 1, 2, F, G, wave 3 and polish 2.
+Sibling slot `fe-cleanup` live on the application's `lib/` and `test/theme/`;
+nothing under either was touched.
+
+Outcome: complete. The report is
+`apps/specimen_digitization/design/12-verification-report-v2.md`. **Six new
+defects, two at severity 2**, each with its file and its line, none of them
+fixed here because this slot owns the report rather than the code.
+
+Commits, all on `fe/verification`:
+
+- `dbb7eda` test(verification): the instruments the second report measures with
+- `1045cd6` docs(design): device captures of the client the refactor built
+- `83b0ebc` docs(design): the second verification report, and the deltas it forces
+
+### Validation
+
+Every gate run one at a time with the tree untouched, `rc=$?` read directly,
+`LANG` and `LC_ALL` exported:
+
+| Gate | rc | Result |
+|---|---|---|
+| `flutter analyze --fatal-infos` (`packages/specimen_ui`) | 0 | No issues found |
+| `flutter test` (`packages/specimen_ui`) | 0 | 684 passed, 0 failed |
+| `flutter analyze --fatal-infos` (application) | 0 | No issues found |
+| `flutter test` (application) | 0 | 1296 passed, 7 skipped, 0 failed |
+| `uv run python scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt` | 0 | 202 files, 0 violations |
+| `uvx --from pre-commit==4.5.1 pre-commit run --files ...` (54 files) | 0 | every hook Passed or Skipped |
+| `dart format --set-exit-if-changed` over the seven Dart files | 0 | 0 changed |
+| `flutter build web --release` | 0 | Built `build/web` |
+
+The application suite was 1092 at the cut and is 1296: this slot's three test
+files add 204 assertions. **No screen golden and no semantics fixture moved**,
+and none was regenerated: this slot adds tests and documents and changes one
+doc comment in the package, so there was nothing for a golden to move for.
+
+### The six defects, in one line each
+
+Full write-ups, with the measured numbers and the suggested owner, are in
+section "Defects, ranked" of the report.
+
+- **V2-1, severity 2.** The sky field paints over the environment band on every
+  entry screen. `FieldPainter.paint` in
+  `packages/specimen_ui/lib/src/primitives/field_layer.dart` clips to its own
+  bounds only inside `if (clip != null)`, so the unbounded `drawCircle` calls
+  paint over whatever the enclosing column drew first, and the enclosing
+  `Stack` pushes no clip because a `Positioned.fill` child produces no visual
+  overflow for it to detect. `_EnvironmentFrame` at
+  `lib/src/app/app_router.dart:439-461` is what exposes the band to it. The
+  band's tokens measure 9.31:1 in light and 8.21:1 in dark; on sign in it
+  renders 4.63, 5.91, 3.64 and 3.31 in light and 4.33, 4.40, 4.34 and 4.23 in
+  dark at the four window classes. Six of eight below AA, worst 3.31:1. For
+  scale, finding V-8 in 08 was 2.26:1 to 2.39:1.
+- **V2-2, severity 3.** `ink.tertiary` clears 6.70:1 over `ground`, 6.21:1 over
+  `paper` and 5.70:1 over `matte`, which is every surface 03 and 09 take a ratio
+  over, and 3.29:1 over the sun field's centre. The queue's freshness line at
+  `lib/src/screens/queue/queue_screen.dart:769` measures 3.87:1 where it
+  actually sits.
+- **V2-3, severity 2.** The last queue row's disposition chips sit under the
+  floating pill navigation on a phone and cannot be scrolled clear.
+  `lib/src/screens/queue/queue_screen.dart:416-424` never reads
+  `UiScaffold.of(context).bottomInset`; `decision_bar.dart:137-141` does, and is
+  the only site in `lib/` that does.
+- **V2-4, severity 3.** `lib/src/screens/sources/sources_screen.dart` draws no
+  page heading: the reviewer lands on one row under the band with no statement
+  of where they are.
+- **V2-5, severity 4.** `lib/src/widgets/field_row.dart:19` declares
+  `enum FieldLayer`, which collides with `package:specimen_ui`'s `FieldLayer`
+  widget. Any file importing both must alias one, which is how it was found.
+- **V2-6, severity 3.** A route push and a destination change still travel
+  **451 ms** under the iOS reduced motion signal.
+  `lib/main.dart:277-286` names `CupertinoPageTransitionsBuilder` with no
+  reduced motion branch and `lib/src/app/app_router.dart:233`, `:218` and
+  `:266` take the platform page. On the Android signal the same two run 23 ms,
+  which is Flutter's own five percent of 450 and is what 04 section 2.5
+  expects.
+
+### The measurements, with their numbers
+
+**Fit, 132 cells.** Eleven screens by four window classes by text scales 1.0,
+1.3 and 2.0, light. **123 intended, 9 squeezed, 0 overflow.** The nine are sign
+in at six cells, the queue at two and the source at one, every one of them a
+screen that fits at 1.0 and scrolls once the type grows. The navigation
+arrangement is the declared one in every cell.
+
+**Reduced motion, 14 transitions.** Seven crossings under each of the two
+signals. **Ten collapse, four travel**, and the four are the same two
+transitions counted twice. Residuals measured a millisecond at a time rather
+than described: 23 ms on the Android signal, 451 ms on the iOS signal.
+
+**Dark, 40 screen cells plus 18 more.** Glass over the darkest field is
+14.71:1 and the `GlassQuality.off` fallback is 15.67:1, so the pane a slow
+device gets is no worse than the one it replaces. The pane budget's worst case
+is three of four, on the record. **The accent measures exactly one mark per
+screen at all 40 cells**, counted off the rendered pixels rather than asserted:
+the product mark. Seventeen contrast failures, ten of them the instrument.
+
+**Glass, three surfaces.** At the budget maximum over a ground that changes
+every frame: the web spent nothing measurable (0 of 699 frames over 16.7 ms at
+full); the iPad simulator spent 2.31 ms of raster at full against 0.52 ms with
+the blur off; the Android emulator spent 15.77 ms at full and 16.00 ms with the
+blur off, which is its own rasterizer rather than the blur.
+**`GlassQuality.full` stays the default on every platform** and `glass.dart` is
+unchanged except for the doc line its own comment asked for.
+
+**Web smoke.** Every route walked twice, on the release build and on the
+profile capture build. **One console error, and it is the server**: the service
+worker fails to register in this browsing context, while
+`flutter_service_worker.js` answers 200 from both servers. No Dart exception,
+no assertion, no asset 404, no layout error on any route.
+
+**Device captures, 43.** An Android phone, an iPad Pro 13 inch and a desktop
+browser, both modes.
+
+### Durable learnings
+
+**`textContrastGuideline` cannot be trusted on a node whose rectangle is much
+wider than its glyphs, or over a gradient ground.** It takes the most frequent
+colour on each side of a luminance threshold across the whole rectangle, so
+both frequencies land on the background and it reports a ratio between two
+shades of the same thing. It reported 0.66:1 for a top bar title that measures
+11.22:1 and 1.06:1 for a disclosure header that measures 17.10:1. Ten of the
+seventeen failures in the dark sweep were that. Slot E4 recorded the same
+weakness as a control straddling a scroll fold and slot E3 as a package surface
+measured through Material's scrim. Three sightings is a property of the
+instrument, not three coincidences: read the pixels before you write the
+defect. `measurePair` in `test/verification/verification_harness.dart` is the
+method, and it is eleven lines.
+
+**A `CustomPaint` with no clip paints outside its own box, and a `Stack` will
+not stop it.** `RenderStack` pushes a clip only when it detects visual overflow
+from a positioned child, and a `Positioned.fill` child is exactly in bounds, so
+nothing is detected and nothing is clipped. The painter inside is then free to
+draw anywhere. That is V2-1, and slot F2 predicted the class of it in its own
+closeout: "a box that simply lets its child paint outside itself reports
+nothing ... one no gate here catches". It still is.
+
+**A contrast table over the opaque surfaces is not a contrast table.** 09 added
+a painted sky between the ground and the content, and every ratio in 03 and 09
+is still taken over `ground`, `paper` and `matte`. Two of the six defects are
+that one gap, and a third of the way through the sweep it was clear that the
+question "which surface is this pair on" no longer has three answers. A pair
+over a field needs its own row, and the composite is computable from the tokens
+in four lines.
+
+**One instrument that makes a device tell you the number beats three that make
+you infer it.** The glass measurement failed four ways from the outside:
+synthetic `wheel`, `pointer` and `resize` events do not reach the Flutter web
+engine's input path, and the automation surface throttles `requestAnimationFrame`
+between tool calls, so no forced re-raster could be timed. Putting
+`SchedulerBinding.addTimingsCallback` inside a target that draws its own
+results on screen took twenty minutes and produced the same three numbers on
+the web, an iOS simulator and an Android emulator, readable from a screenshot.
+
+**The emulator cannot answer a rendering question.** The Android emulator's
+raster phase was 15.77 ms at full glass and 16.00 ms with the blur off. It
+does not discriminate, so it must not be used to choose, and saying that is
+more useful than reporting its number as if it meant something.
+
+**A device capture needs data, and the data can come from the slot's own
+target.** The application's `main()` needs Firebase and a production API or a
+synthetic API on loopback. `test/verification/capture_app.dart` composes the
+shipped `SpecimenDigitizationApp` with the size class goldens' own fixture, so
+a simulator shows the queue and the record rather than the setup screen, and
+every pixel a capture shows is still the product's. It is 500 lines and it
+turned "no device evidence" into 43 captures.
+
+**`detect-secrets` reads a base64 image as 317 secrets.** The first version of
+the capture target carried `synthetic-wide-label.png` as base64, because a test
+fixture is not in the asset bundle and `pubspec.yaml` belongs to no slot. The
+replacement paints the label at startup with a `PictureRecorder`: same seven
+lines, same cream, same 1000 by 520, no blob, and the two label regions still
+fall on real words. Ten captures were retaken so the committed target and the
+committed captures agree.
+
+### Failed approaches
+
+**Timing a web frame from outside the page.** Four attempts, all dead ends,
+recorded so nobody repeats them: a synthetic `WheelEvent` on `flt-glass-pane`
+(which is 0 by 0 and not the input target), the same on `flutter-view` (the
+engine does not accept a synthesised wheel), `window.dispatchEvent(new
+Event('resize'))` (Flutter ignores a resize to the same size), and setting
+`flutter-view`'s CSS width a pixel either way each frame (the canvas never
+changed size). The frame cadence was 8.3 ms throughout, which is this display's
+own 120 Hz and says nothing about the raster. The in-app probe replaced all
+four.
+
+**Rotating the iOS simulator.** `xcrun simctl` has no rotate verb.
+`osascript` driving the Simulator's own Device menu hangs on a macOS
+accessibility grant this session cannot ask for. Recorded as a gap rather than
+worked around, so no capture in this repository is in landscape and the `large`
+window class has no device capture at all.
+
+**Profile mode on the iOS simulator.** Refused: "Profilemode is not supported
+by iPad Pro 13-inch (M5)". The iPad captures are debug builds, which changes
+nothing a capture shows and does change a frame timing, so the glass table says
+which build each row came from.
+
+**Believing the first scroll.** The intake screen looked like it had the same
+bottom inset defect as the queue, and two swipes were not enough to prove it
+either way. Six swipes to the true end of each list separated them: intake
+clears the capsule, the queue does not. One of the two is in the report.
+
+### Follow-ups and deviations
+
+1. **The commit trailer names `Claude Opus 5 (1M context)`** where the slot
+   brief names a different model's line, as slots F2, G1, G2, G3, G4, E1, E4,
+   E5 and polish 2 all recorded. The integrator may normalise the trailers.
+2. **No `CHANGELOG.md` entry, deliberately.** The only change under the
+   package's `lib/` is a doc comment on `GlassQuality`, which is not a public
+   API change. The measurement it records is in the report.
+3. **`capture_app.dart` and `glass_probe.dart` are targets, not tests.**
+   Neither matches `*_test.dart`, so `flutter test` does not run them and
+   `flutter analyze` does. They are run with
+   `flutter run -t test/verification/<file> -d <device>`, or built and
+   installed, which is what the report's captures and glass table came from.
+4. **Two gitignored Firebase placeholders were created locally** and are not
+   committed: `ios/Runner/GoogleService-Info.plist` and
+   `android/app/google-services.json`. The Xcode project lists the plist as a
+   resource and the Gradle `google-services` plugin requires the json, so
+   neither platform builds without them, and neither is in the repository
+   because both are gitignored. They carry placeholder values in the shape
+   `firebase_options.ci.dart` uses. The iOS one has to carry a
+   well formed `GOOGLE_APP_ID`: the Firebase iOS SDK calls `[FIRApp configure]`
+   at plugin registration and throws on a malformed one before any Dart runs,
+   so `1:000000000000:ios:ci-placeholder` crashes the app on launch and
+   `1:123456789012:ios:abcdef0123456789abcdef` does not. Worth a `.ci` pair
+   beside `firebase_options.ci.dart` so the next agent that wants a device does
+   not spend twenty minutes on it.
+5. **The fit matrix covers eleven screens, not every location.** `verify` and
+   `setup` are behind a redirect the fixture session does not reach, so neither
+   is in the matrix or in the captures. V2-1 applies to both by construction,
+   since they share `_EnvironmentFrame` with sign in, and the report says so
+   rather than implying they were looked at.
+6. **The Usability row of the bar is "Not re-measured".** The 58 pass criteria
+   of 01 were re-audited against the v1 client in 08 and are not re-audited
+   here. Most are carried by tests that are still green, and four of this pass's
+   six defects are ones a heuristic audit would have caught, which is the
+   argument for doing it.
+7. **`no_dashes` holds.** No em dash or en dash in the report, the amendments
+   or the six Dart files.
+
+### For the integrator, and for whoever picks the defects up
+
+- **V2-1's package half is the one worth doing first**, because it stops a
+  class rather than an instance: move the `clipRect` in `FieldPainter.paint`
+  out of its `if`. The application half, passing the band through
+  `UiScaffold.banner` on the entry screens, closes this instance and makes the
+  entry screens the same anatomy the collection screens already use.
+- **V2-2 and V2-1 share a root**, and it is a document: 09 section 3.2 does not
+  say what a text pair is allowed to be over a field. Closing the rule and
+  taking the composite in `theme/contrast_test.dart` closes both classes.
+- **V2-3 has a package half too.** Slot E4 asked for "a way for a routed screen
+  to fill `UiScaffold.actionBar`" and noted that until then a screen has to pad
+  itself by `bottomInset`. Two screens have now been caught by that, one fixed
+  and one not.
+- **The four items this report carries from the wave closeouts** are named in
+  its last section: `UiBannerStyle.maxLines` 2 against 3, the two unowned
+  gallery foundation page overflows, the region editor's 560 against 05's 640,
+  and the bridge `Scaffold` in `app_router.dart` that slots E3, E4 and E5 each
+  said nothing they own needs.
+- **`design/00-north-star.md` points at `11-verification-report-v2.md`** in its
+  2026-09-16 refactor note. 11 is fit and scale; the report is 12. One stale
+  cross reference, in a file no slot owns.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed, and nothing under the application's
+  `lib/` or `test/theme/` touched.
