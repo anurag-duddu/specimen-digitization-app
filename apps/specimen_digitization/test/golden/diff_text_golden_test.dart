@@ -34,8 +34,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:specimen_digitization/src/theme/icons.dart';
 import 'package:specimen_digitization/src/widgets/diff_text.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'golden_harness.dart';
 
@@ -130,9 +130,9 @@ class DiffTextSheet extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          SizedBox(height: context.space.space1),
+          SizedBox(height: context.ui.space.s1),
           DiffText(text: c.text, reference: c.reference, dense: c.dense),
-          SizedBox(height: context.space.space4),
+          SizedBox(height: context.ui.space.s4),
         ],
       ],
     );

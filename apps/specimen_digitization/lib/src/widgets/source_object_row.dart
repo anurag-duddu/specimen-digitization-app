@@ -246,9 +246,6 @@ extension on SourceObjectState {
       fill: triple.fill,
       onFill: triple.onFill,
       icon: iconSpec.resolve(),
-      // A settled row is drawn filled; a row still waiting is not
-      // (09 section 7).
-      fill01: this == SourceObjectState.available ? 0 : 1,
       label: label,
       semanticsLabel: semanticsLabel,
       spec: iconSpec,

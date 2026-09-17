@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:specimen_digitization/src/widgets/empty_state.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -13,7 +12,7 @@ void main() {
     await pumpComponent(
       tester,
       EmptyState(
-        icon: Symbols.inbox,
+        icon: UiIcons.queue.defaultGlyph,
         title: 'No specimens yet',
         body: 'Upload a photograph to create the first record.',
         actionLabel: 'Add photographs',
@@ -35,8 +34,8 @@ void main() {
   testWidgets('the action is optional', (WidgetTester tester) async {
     await pumpComponent(
       tester,
-      const EmptyState(
-        icon: Symbols.inbox,
+      EmptyState(
+        icon: UiIcons.queue.defaultGlyph,
         title: 'Queue clear',
         body: 'Nothing needs review in this collection.',
       ),
@@ -50,7 +49,7 @@ void main() {
     await pumpComponent(
       tester,
       EmptyState(
-        icon: Symbols.rule,
+        icon: UiIcons.noResults.defaultGlyph,
         title: 'No matches',
         body: 'No records match the current search and filters.',
         actionLabel: 'Clear filters',
@@ -65,7 +64,7 @@ void main() {
   test('a label without a callback is refused', () {
     expect(
       () => EmptyState(
-        icon: Symbols.inbox,
+        icon: UiIcons.queue.defaultGlyph,
         title: 'No specimens yet',
         body: 'Upload a photograph to create the first record.',
         actionLabel: 'Add photographs',
@@ -81,7 +80,7 @@ void main() {
       await pumpComponent(
         tester,
         EmptyState(
-          icon: Symbols.inbox,
+          icon: UiIcons.queue.defaultGlyph,
           title: 'No specimens yet',
           body: 'Upload a photograph to create the first record.',
           actionLabel: 'Add photographs',

@@ -11,8 +11,6 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
-
 /// Everything a chip needs to draw one status, resolved against the theme.
 ///
 /// There is deliberately no public constructor that takes a bare color: a
@@ -25,7 +23,6 @@ class StatusPresentation {
     required this.fill,
     required this.onFill,
     required this.icon,
-    required this.fill01,
     required this.label,
     required this.semanticsLabel,
     this.progress,
@@ -42,10 +39,11 @@ class StatusPresentation {
   final Color onFill;
 
   /// The glyph. Status is never color alone.
+  ///
+  /// Whether it is drawn filled is carried by [spec], the registry entry it
+  /// came from, rather than by an axis of its own: Phosphor publishes a
+  /// weight per entry and 09 section 7 chooses it once, in the registry.
   final IconData icon;
-
-  /// The Material Symbols fill axis: 1 for a settled disposition, 0 otherwise.
-  final double fill01;
 
   /// The visible word, sentence case, 2 to 20 characters.
   final String label;
@@ -210,16 +208,20 @@ enum SpecimenStatus {
   String get semanticsLabel =>
       '${isRecordStatus ? 'Queue' : 'Field'}: ${label.toLowerCase()}';
 
-  /// Resolves the color triple from the theme and pairs it with the glyph and
-  /// the word.
+  /// Resolves the colour triple from the token layer and pairs it with the
+  /// glyph and the word.
+  ///
+  /// A key the design system has no triple for is drawn in the model triple,
+  /// which is the quietest of the eight: a state this client cannot name is
+  /// reported, never coloured as a verdict.
   StatusPresentation presentation(BuildContext context) {
-    final DispositionStyle style = context.dispositionStyle(tokenKey);
+    final UiStatusColors status = context.ui.color.status;
+    final UiStatusTriple triple = status.triples[tokenKey] ?? status.model;
     return StatusPresentation(
-      content: style.content,
-      fill: style.fill,
-      onFill: style.onFill,
+      content: triple.content,
+      fill: triple.fill,
+      onFill: triple.onFill,
       icon: icon,
-      fill01: style.fill01,
       label: label,
       semanticsLabel: semanticsLabel,
       spec: iconSpec,
