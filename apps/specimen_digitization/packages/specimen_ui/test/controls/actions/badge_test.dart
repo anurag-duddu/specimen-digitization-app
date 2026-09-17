@@ -114,6 +114,31 @@ void main() {
     );
   });
 
+  testWidgets('the capsule is the token at rest and the derived height '
+      'above it', (WidgetTester tester) async {
+    final UiThemeData ui = UiThemeData.light();
+    for (final double scale in <double>[1, 1.3, 2]) {
+      await tester.pumpWidget(
+        uiHarness(
+          textScaler: TextScaler.linear(scale),
+          child: const UiBadge(128, semanticsLabel: '128 records waiting'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byType(UiBadge)).height,
+        UiType.heightAroundAt(
+          ui.space.s5,
+          ui.type.labelSmall,
+          TextScaler.linear(scale),
+        ),
+        reason:
+            'the height a count sits in derives from the count\'s own role '
+            'at $scale, never from a constant (11 section 2.2)',
+      );
+    }
+  });
+
   testWidgets('nothing about it animates, in either motion mode', (
     WidgetTester tester,
   ) async {

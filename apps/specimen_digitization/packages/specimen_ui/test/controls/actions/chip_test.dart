@@ -4,7 +4,7 @@
 
 import 'dart:ui' show SemanticsFlags, Tristate;
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -14,6 +14,17 @@ import '../../harness/control_contract.dart';
 /// The contract rebuilds its subject many times; a shared callback keeps the
 /// closure out of the const expression that would otherwise be one.
 void _noop() {}
+
+/// Clause 15 for a chip. 11 section 3.3 gives it no compact variant either:
+/// one capsule carrying one label, ellipsised at the bottom of the ladder.
+Future<void> _stillOneChip(WidgetTester tester, double width) async {
+  expect(find.byType(UiChip), findsOneWidget, reason: 'at $width dp');
+  expect(
+    find.byType(UiLabel),
+    findsOneWidget,
+    reason: 'one label and one line of it, at $width dp',
+  );
+}
 
 void main() {
   setUp(() {
@@ -36,6 +47,9 @@ void main() {
       ),
       semanticsLabel: 'Blocked runs',
       hasRole: (SemanticsFlags flags) => flags.isToggled != Tristate.none,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneChip),
     );
   });
 
@@ -50,6 +64,9 @@ void main() {
       ),
       semanticsLabel: 'Saved filters',
       disabledWithReason: true,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneChip),
     );
   });
 
@@ -65,6 +82,9 @@ void main() {
       ),
       semanticsLabel: 'Remove Coleoptera',
       hasRole: (SemanticsFlags flags) => flags.isButton,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneChip),
     );
   });
 
@@ -262,6 +282,125 @@ void main() {
 
     expect(await gap(TextDirection.ltr), greaterThan(0));
     expect(await gap(TextDirection.rtl), lessThan(0));
+  });
+
+  testWidgets('the leading slot draws where the glyph would, in an inline '
+      'box', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: Builder(
+          builder: (BuildContext context) => UiChip(
+            label: 'Uploading',
+            leading: const UiProgress.ring(
+              semanticsLabel: 'Uploading',
+              value: 0.4,
+              size: UiProgressSize.small,
+            ),
+            status: context.ui.color.status.processing,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final UiChipStyle style = UiChipStyle.resolve(
+      UiThemeData.light(),
+      UiChipVariant.tag,
+    );
+    final Size slot = tester.getSize(
+      find
+          .ancestor(
+            of: find.byType(UiProgress),
+            matching: find.byType(SizedBox),
+          )
+          .first,
+    );
+    expect(
+      slot,
+      Size.square(style.leadingSize),
+      reason:
+          'the slot is the inline glyph box, so a chip with a ring and a '
+          'chip with a glyph are the same shape',
+    );
+    expect(
+      tester.getTopLeft(find.byType(UiProgress)).dx,
+      lessThan(tester.getTopLeft(find.text('Uploading')).dx),
+      reason: 'what stands before the label is drawn before it',
+    );
+  });
+
+  testWidgets('a glyph and a leading widget at once is a defect', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        // Built through the theme, so the assertion is reached at run time
+        // rather than evaluated away as a const expression by the analyzer,
+        // which is the other half of the proof that it holds.
+        child: Builder(
+          builder: (BuildContext context) => UiChip(
+            label: 'Coleoptera',
+            icon: UiIcons.record,
+            leading: SizedBox.square(dimension: context.ui.space.iconInline),
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isAssertionError);
+  });
+
+  testWidgets('given less than it needs, the label ellipsises and the whole '
+      'of it is on a tooltip', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(200, 600),
+        child: const SizedBox(
+          width: 90,
+          child: UiChip(label: 'Needs human review'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      tester
+          .renderObject<RenderParagraph>(
+            find.descendant(
+              of: find.byType(UiChip),
+              matching: find.byType(RichText),
+            ),
+          )
+          .didExceedMaxLines,
+      isTrue,
+      reason: 'a label is cut short rather than wrapped (clause 13)',
+    );
+    expect(find.byType(UiTooltip), findsOneWidget);
+  });
+
+  testWidgets('the capsule grows with the type rather than holding 32', (
+    WidgetTester tester,
+  ) async {
+    final Map<double, double> heights = <double, double>{};
+    for (final double scale in <double>[1, 2]) {
+      await tester.pumpWidget(
+        uiHarness(
+          textScaler: TextScaler.linear(scale),
+          size: const Size(600, 600),
+          child: const UiChip(label: 'Coleoptera'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      heights[scale] = tester.getSize(find.byType(UiChip)).height;
+    }
+    expect(
+      heights[1],
+      UiButtonStyle.smallHeight,
+      reason: 'the `sm` row of the size table at scale 1.0',
+    );
+    expect(
+      heights[2],
+      greaterThan(heights[1]!),
+      reason: 'and the scaled line box above it (10 section 2 clause 14)',
+    );
   });
 
   testWidgets('it builds at 200 percent text', (WidgetTester tester) async {

@@ -1,11 +1,23 @@
 // `UiButton` is the reference control of the actions family: four variants,
 // three sizes, two glyph slots and a loading state that has to hold its width.
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../harness/control_contract.dart';
+
+/// The contract rebuilds its subject many times; a shared callback keeps the
+/// closure out of the const expression that would otherwise be one.
+void _noop() {}
+
+/// Clause 15 for a button. 11 section 3.3 gives it no compact variant, so
+/// what a reviewer is given at every width is one button carrying one label.
+Future<void> _stillOneButton(WidgetTester tester, double width) async {
+  expect(find.byType(UiButton), findsOneWidget, reason: 'at $width dp');
+  expect(find.text('Approve record'), findsOneWidget, reason: 'at $width dp');
+}
 
 /// The height of the capsule itself, which is smaller than the hit box in
 /// `pointer` density and at size `sm`.
@@ -33,6 +45,9 @@ void main() {
       (BuildContext context) =>
           UiButton(label: 'Approve record', onPressed: () {}),
       semanticsLabel: 'Approve record',
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneButton),
     );
   });
 
@@ -46,7 +61,117 @@ void main() {
       ),
       semanticsLabel: 'Approve record',
       disabledWithReason: true,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: const FitExpectation(check: _stillOneButton),
     );
+  });
+
+  testWidgets('its intrinsic width is the width it takes when nobody has '
+      'bounded it', (WidgetTester tester) async {
+    late double declared;
+    await tester.pumpWidget(
+      uiHarness(
+        child: Builder(
+          builder: (BuildContext context) {
+            const UiButton button = UiButton(
+              label: 'Open the next record',
+              trailing: UiIcons.next,
+              onPressed: _noop,
+            );
+            declared = button.intrinsicWidth(context);
+            return button;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(UiButton)).width,
+      closeTo(declared, 0.5),
+      reason:
+          'the width a button declares is the width it draws at, or '
+          'UiButtonRow is deciding between a row and a column on a guess',
+    );
+  });
+
+  testWidgets('given less than it needs, the label ellipsises and the whole '
+      'of it is on a tooltip', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(200, 600),
+        child: const SizedBox(
+          width: 140,
+          child: UiButton(label: 'Open the next record', onPressed: _noop),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // Through the `RichText` rather than the `Text`: an overflowing `UiLabel`
+    // publishes its whole string as a semantics label, so the element the
+    // text finder lands on is the annotation above the paragraph.
+    expect(
+      tester
+          .renderObject<RenderParagraph>(
+            find.descendant(
+              of: find.byType(UiButton),
+              matching: find.byType(RichText),
+            ),
+          )
+          .didExceedMaxLines,
+      isTrue,
+      reason: 'the label is cut short rather than wrapped (clause 13)',
+    );
+    expect(
+      find.byType(UiTooltip),
+      findsOneWidget,
+      reason:
+          'nothing is lost to the reader: the whole label is one hover away '
+          '(11 section 3.3, rule 4)',
+    );
+    expect(
+      tester.getSize(find.byType(UiButton)).width,
+      140,
+      reason: 'the button keeps the width the parent gave it',
+    );
+  });
+
+  testWidgets('a height that holds text is derived rather than declared', (
+    WidgetTester tester,
+  ) async {
+    for (final UiSize size in UiSize.values) {
+      late UiThemeData ui;
+      final Map<double, double> heights = <double, double>{};
+      for (final double scale in <double>[1, 2]) {
+        await tester.pumpWidget(
+          uiHarness(
+            textScaler: TextScaler.linear(scale),
+            size: const Size(900, 600),
+            child: Builder(
+              builder: (BuildContext context) {
+                ui = context.ui;
+                return UiButton(label: 'Approve', size: size, onPressed: _noop);
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        heights[scale] = _visual(tester).height;
+      }
+      expect(
+        heights[1],
+        UiButtonStyle.restingHeightOf(ui, size),
+        reason: '${size.name} is the size table at scale 1.0',
+      );
+      expect(
+        heights[2],
+        greaterThan(heights[1]!),
+        reason:
+            '${size.name} at 200 percent text grew with the type rather than '
+            'holding a constant (10 section 2 clause 14)',
+      );
+    }
   });
 
   testWidgets('every variant paints the fill and the text 10 section 4.1 '
@@ -93,8 +218,9 @@ void main() {
     }
   });
 
-  testWidgets('primary inverts with the mode, so the disc is never invisible',
-      (WidgetTester tester) async {
+  testWidgets('primary inverts with the mode, so the disc is never invisible', (
+    WidgetTester tester,
+  ) async {
     final UiButtonStyle light = UiButtonStyle.resolve(
       UiThemeData.light(),
       UiButtonVariant.primary,
@@ -106,8 +232,14 @@ void main() {
       UiSize.md,
     );
     const Set<WidgetState> rest = <WidgetState>{};
-    expect(light.background.resolve(rest), isNot(dark.background.resolve(rest)));
-    expect(light.foreground.resolve(rest), isNot(dark.foreground.resolve(rest)));
+    expect(
+      light.background.resolve(rest),
+      isNot(dark.background.resolve(rest)),
+    );
+    expect(
+      light.foreground.resolve(rest),
+      isNot(dark.foreground.resolve(rest)),
+    );
   });
 
   testWidgets('every disabled variant drops to the disabled tokens', (
