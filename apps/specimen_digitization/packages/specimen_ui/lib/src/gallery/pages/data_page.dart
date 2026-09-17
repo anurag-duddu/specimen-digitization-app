@@ -444,6 +444,20 @@ class _DataPageState extends State<_DataPage> {
             ),
             SizedBox(height: ui.space.s4),
             const GallerySpecimen(
+              label: 'on paper',
+              note: 'for a header or a list item, where glass is forbidden',
+              child: SizedBox(
+                width: 240,
+                child: UiDataTile(
+                  label: 'In this manifest',
+                  value: '312',
+                  unit: 'FILES',
+                  surface: UiDataTileSurface.paper,
+                ),
+              ),
+            ),
+            SizedBox(height: ui.space.s4),
+            const GallerySpecimen(
               label: 'footer and child slot',
               note: 'an absence wraps at a word, it never clips to a number',
               child: SizedBox(

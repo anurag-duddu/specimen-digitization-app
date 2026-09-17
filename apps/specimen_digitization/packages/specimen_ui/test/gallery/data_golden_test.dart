@@ -5,7 +5,7 @@
 // density. A change to any control in the family shows as a diff here before
 // it shows on a screen.
 //
-// Captured at 1180 by 2360 rather than at the shared 1180 by 820. Eight
+// Captured at 1180 by 2460 rather than at the shared 1180 by 820. Eight
 // controls do not fit one window, and the actions slot recorded the cost of
 // pretending they do: its golden reviews the top of its page and leaves three
 // controls below the fold. A taller window is the smaller change, and it
@@ -14,8 +14,9 @@
 // fit section: a row and a tile in each of the four columns 11 section 3.3
 // measures a control in. And again in polish 2, when the row gained the
 // variant that puts its trailing under the title and the 200 dp specimen
-// grew by a line: measured at 2343, taken at 2360, which is the first height
-// with nothing left to scroll.
+// grew by a line, and when the tile gained the paper surface a list header
+// can hold: measured at 2458, taken at 2460, which is the first height with
+// nothing left to scroll.
 //
 // The page is rendered on its own rather than inside the whole gallery, so
 // these four files hold still when the other family slots register theirs.
@@ -28,7 +29,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../harness/control_contract.dart';
 
 /// Tall enough for the whole page, at the width every family golden uses.
-const Size dataGalleryWindow = Size(1180, 2360);
+const Size dataGalleryWindow = Size(1180, 2460);
 
 void main() {
   // The focus ring is drawn only under `FocusHighlightMode.traditional`

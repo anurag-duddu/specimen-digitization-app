@@ -32,6 +32,63 @@ Widget _tile({
 );
 
 void main() {
+  testWidgets('a paper tile draws no frosted pane and reads the same', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: const SizedBox(
+          width: 320,
+          child: UiDataTile(
+            label: 'In this manifest',
+            value: '312',
+            unit: 'FILES',
+            surface: UiDataTileSurface.paper,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      glassPaneCount(),
+      0,
+      reason:
+          'the whole point of the variant: three counts in a list header '
+          'would spend the four pane glass budget on one row of chrome',
+    );
+    expect(find.byType(Surface), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('In this manifest, 312 FILES'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a paper tile may sit inside a scrolling list item', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: ListView.builder(
+          itemCount: 3,
+          itemBuilder: (BuildContext context, int index) => UiDataTile(
+            label: 'Batch $index',
+            value: '$index',
+            surface: UiDataTileSurface.paper,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'GlassSurface asserts inside a sliver list item, and 09 section 3.3 '
+          'is why; a tile that has to live there takes the solid pane',
+    );
+    expect(glassPaneCount(), 0);
+  });
+
   testWidgets('the tile reads as one sentence', (WidgetTester tester) async {
     await tester.pumpWidget(uiHarness(child: _tile()));
     await tester.pumpAndSettle();
