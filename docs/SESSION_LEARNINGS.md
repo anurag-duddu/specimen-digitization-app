@@ -7805,3 +7805,246 @@ rerun against the tree that carries them, with the same results.
   `UiLabel` inside a segment would make `IntrinsicWidth` unmeasurable and take
   the tab strip's compact variant with it, so G1 converting segment labels
   needs a different way to size the track. Worth checking before G1 merges.
+
+## 2026-09-16: Front-end refactor wave 3, slot E5, intake, capture and sources
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3E slot E5 and section
+  3D item D6. Migrate the intake screen, the full-screen capture route, the
+  registered-source list and the source browse pane onto `specimen_ui` 0.3.0,
+  and re-base `UploadItem`, `SourceObjectRow` and `SourceImportSheet` with
+  their public APIs unchanged.
+- Branch and worktree: `fe/intake-sources` at
+  `.claude/worktrees/fe-intake-sources`, cut from `front-end-refactor` at
+  `8e32d29`. No pull request; the integrator merges the slot.
+- Outcome: complete. Eleven owned files hold no Material component, no
+  Material import that is not infrastructure, no Material glyph and no static
+  size. `no_material_components`, `no_material_imports`, `icons_unique` and
+  `no_literal_geometry` each lose every one of this slot's entries. Ten test
+  files migrated to role and label finders; four new tests added.
+- Commits (four, oldest first):
+  - `72fdaaa` `feat(intake): the D6 patterns on specimen_ui`
+  - `764803d` `feat(intake): intake and the capture route on specimen_ui`
+  - `888113c` `feat(sources): the source list and the browse pane on specimen_ui`
+  - `3bf3297` `test(intake): finders by role and label, and four backlogs at zero`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues |
+  | `flutter test` (package) | 0 | 670 passed, unchanged from the wave G head |
+  | `flutter test` (app) | 1 | 1049 passed, 9 skipped, 25 failed. Every failure is a screen golden (24) or a semantics fixture (1), which is the wave policy in section 8 of the build plan. No other test fails. |
+  | `dart format --set-exit-if-changed lib test` | 0 | 228 files, 0 changed |
+  | `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (24 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+  The skip count is 9, unchanged from wave 2: this slot's screens needed no
+  entry in the tap target skip list, because `UiField` publishes one 48 dp
+  node since wave F and none of these screens carries a field at all.
+
+- Backlogs, measured from the tree before and after:
+
+  | Gate | This slot's entries before | After |
+  |---|---|---|
+  | `no_material_components` | 10 files, 25 uses (`capture_screen.dart` 6, `source_screen.dart` 6, `capture_card.dart` 2, `sources_screen.dart` 2, `intake.dart` 2, `source_import_sheet.dart` 2, `source_object_row.dart` 2, `capture_quality.dart` 1, `manifest_panel.dart` 1, `upload_item.dart` 1) | all ten removed |
+  | `no_material_imports` | 7 files | all seven removed |
+  | `icons_unique` | 9 files, 41 glyphs | all nine removed |
+  | `no_literal_geometry` | `capture_quality.dart` 2 | removed |
+
+- Goldens and fixtures: regenerated locally to be read by eye, then reverted
+  with `git checkout --` before the first commit, per section 8. Nothing under
+  `test/golden/images/` or `test/accessibility/fixtures/` is in any commit.
+  **24 of the 121 screen goldens move**, and the set that moves is the set
+  expected: the sixteen `intake` windows (four classes by two modes by two
+  text scales) and the eight `source` windows. Every other family holds byte
+  for byte, including `queue`, `queue-selection`, `filters`, `signin`, `help`,
+  `region-editor`, `diff-text` and the three `workbench` families, which is
+  the other half of the check: nothing this slot touched reaches them.
+  Read by eye at compact, medium, expanded and large in both modes and at
+  both text scales. Two defects were found that way and fixed before the
+  commits: the sensitivity helper line ran into the caveat below it with no
+  gap, and an empty manifest drew three zero tiles over a sentence that said
+  the same thing, so the tiles now appear only once there is a batch to count.
+- The semantics fixture diff, line by line. One file changes, `intake.txt`,
+  and it is the same defect fixed eleven times: the capture card was one
+  merged label holding every sentence on the screen with its controls listed
+  under it, so a reader heard a 40 word paragraph before reaching the first
+  control and could not step through the checklist at all.
+  - Out: `label="Add photographs One photograph per specimen. Applies to
+    photographs you add next. Before you upload, check: Sharp focus Smallest
+    text readable Even exposure No glare Every label inside the frame The
+    server runs its own checks."` with eight controls nested under it. In:
+    eleven nodes, one per line, in reading order, with the controls between
+    the words they belong to.
+  - The sensitivity control is `role=tab selected=...` per option where it was
+    `button checked=... inMutuallyExclusiveGroup`. That is what `UiSegmented`
+    publishes. `selected` and `inMutuallyExclusiveGroup` are not the same
+    claim; see the product defects below.
+  - The confirmation is `checked=isFalse enabled=true tap label="I checked
+    framing and readability"` with the help sentence as its own node, where
+    `CheckboxListTile` merged the two into the control's name.
+  - `liveRegion label="Upload manifest No files selected yet"` becomes
+    `label="Upload manifest"` with a nested `liveRegion label="No files
+    selected yet"`, so a screen reader hears the count when it moves rather
+    than the pane's title every time.
+  - The empty manifest gains `label="No photographs yet Photographs appear
+    here as you choose or take them."`, which is `UiEmptyState`'s merged node.
+- Durable learnings:
+  - **A `GlassSurface` asserts when it is built inside a scrolling list, so
+    `UiDataTile` cannot be used in any list header.** `_assertNotRepeatedInList`
+    walks up to the nearest `SliverMultiBoxAdaptorWidget`, and a `ListView`'s
+    `SliverList` is one. The manifest header is inside the list it heads, at
+    both layouts, so the three count tiles 07 section 5 asks for are a private
+    `_CountTile` drawing `type.label` over `type.displayMedium` on the pane's
+    own `Surface`. Three tiles would also have broken the four pane budget of
+    09 section 3.3 on their own: the shell draws one for the pill or the
+    sidebar and one for the bar once the body scrolls under it.
+  - **A `UiListRow` is a `Pressable` whatever it was given, so a row with no
+    callback announces a disabled button.** That is the wrong fact for a file
+    on its way into a collection and for a photograph that is not a record
+    yet: both are things, not controls the server has withdrawn. Wrapping the
+    row in `Semantics(container: true, label: ..., excludeSemantics: true)`
+    gives one plain node with the same words. The queue never met this because
+    every queue row opens a record.
+  - **An indeterminate `UiProgress` anywhere on screen makes `pumpAndSettle`
+    time out, and `UiButton.loading` draws one.** A batch that a test drives
+    through several settles cannot carry a loading button. The label is the
+    present participle and the control is disabled instead, which is what
+    02 section 4.3 asks for; the measured progress lives where the denominator
+    is, on the row that is sending and in the header's counts.
+  - **A trailing a `UiListRow` cannot measure is bounded to the room left once
+    the title has its minimum,** so a status chip in the slot ellipsises its
+    own word on a narrow row. Both D6 rows take the queue's two layout split
+    instead: the chip sits beside the text above a named width (500 dp for an
+    upload row, 420 dp for a source row, both within-row content decisions
+    rather than window classes) and on a line of its own below it, excluded
+    from semantics because the row's node already carries the state.
+  - **A control inside a `UiListRow` slot has no press and no name of its own.**
+    The remove control is therefore beside the row rather than in its trailing
+    slot, which is the arrangement `SelectableRow` already uses for its
+    checkbox and slot E2 recorded for its saved-set menu.
+  - **`MaterialPageRoute` is infrastructure, not anatomy.** 10 section 1.3
+    keeps the page transitions, and `app_router.dart` already keeps its import
+    for `MaterialPage` for the same reason. The capture route keeps a
+    `show MaterialPageRoute` import with that reason on the line; the
+    `no_material_components` regex does not match it, because the retired term
+    is `Material(` and this is `MaterialPageRoute(`.
+  - **A route pushed on the root navigator does not see a `MediaQuery` the
+    page published.** A 200 percent text test over a modal sets
+    `tester.platformDispatcher.textScaleFactorTestValue` instead.
+  - **`UiToasts.show` walks up from the context it is given.** The browse pane
+    installs a host only where there is not one already, exactly as the queue
+    does, and raises its toast from a `GlobalKey` inside that host; without the
+    key the pane's own context is above the layer it installed and the result
+    is silently dropped.
+  - **`find.bySemanticsLabel` with a `String` is an exact match.** A row that
+    merges its state into one phrase needs a `RegExp` or a new phrase; the
+    former is what keeps the assertion about the state rather than about the
+    whole sentence.
+- Failed approaches:
+  - `UiDataTile` for the three manifest counts. It asserts inside the list and
+    would break the pane budget; see the first learning.
+  - `UiButton.loading` on the upload, the stop and the server check controls.
+    It hangs `pumpAndSettle` in six existing tests that drive a batch.
+  - Putting the status chip in the `UiListRow` trailing slot at every width.
+    It ellipsises the chip's own word on a 360 dp row before the title is
+    anywhere near its minimum.
+- Deviations from the brief and from 10, with why:
+  - **The five pre-upload checks carry the unchecked box glyph, not a
+    `UiCheckbox` each.** The brief reads "the checklist as `UiListRow`s
+    carrying `UiCheckbox`es (retire `CheckboxListTile`)". One confirmation per
+    batch is a product invariant (heuristics audit H5.3, pass criterion 5.3,
+    and the test that asserts the tick clears whenever a file is added), so
+    five tickable checks would be five ways to authorise a batch. The rows are
+    `UiListRow`s and the one `UiCheckbox` is the batch confirmation, which is
+    the `CheckboxListTile` the brief names. The cost is real and recorded: a
+    row is floored at the 48 dp hit box, so the checklist is about 280 dp of
+    card where the v1 lines were about 120.
+  - **The local quality measurements stay three labelled values with a "Not
+    calibrated" chip, not `StatusChip`s.** A status chip carries a status
+    triple, and a colour on an uncalibrated measurement is the interface
+    claiming a verdict the measurement does not carry. 07 section 5 asks for
+    "three short labelled values with a 'Not calibrated' chip" in those words,
+    and the north star's honesty invariant decides it.
+  - **The camera capsule carries the way out and nothing else.** The brief
+    names flash, flip and close. `CaptureCamera` exposes no flash mode and no
+    lens selection, and adding either is a new product capability rather than
+    a migration, which section 1 of the build plan rules out. The capsule
+    carries close; Done sits beside the shutter with the batch counter.
+  - **No shutter confirm from the motion catalog, because 04 has no shutter
+    row.** The shutter is a `Pressable` with `scaleOnPress`, which is the 0.98
+    the control contract allows a capsule, and the confirmation an operator
+    gets is the review step the capture opens. No sound, flash or haptic was
+    invented for it: 04 section 4.7 approves exactly two haptic moments and
+    this is not one of them.
+  - **The manifest header carries both the three numerals and the sentence.**
+    07 section 5 asks for "8 of 12 accepted, 1 skipped" in the header and the
+    slot brief asks for tiles. The tiles are the headline and the sentence
+    names the outcomes with no tile of their own, skipped and interrupted;
+    both sit inside one live node so a reader hears the sentence once.
+  - **`UploadState.tokenKey` and `SourceObjectState.tokenKey` are gone,
+    replaced by `tripleIn(UiThemeData)`.** Neither is a constructor parameter
+    of a D6 pattern and nothing outside these two files read them. A string
+    key resolved through the v1 adapter and a switch on the enum would have
+    been two places for the same choice.
+  - **The file action is the primary and the camera action the secondary**, in
+    that order, which is what the brief names. It reverses the v1 emphasis,
+    where "Take photograph" was the filled control.
+  - **The checksum is truncated to twelve characters with a copy control**,
+    which is 02 section 4.14 and what `SelectableText` was standing in for.
+  - **The commits carry `Co-Authored-By: Claude Opus 5 (1M context)`**, which
+    is what this session's harness states, where the brief names
+    `Claude Fable 5.1`. The integrator may normalise the trailers.
+- Product defects noticed and not fixed:
+  - **One message slot carries both failures and a success.** `intake.dart`'s
+    `_error` holds "The camera or file picker did not open ..." and "Recovered
+    an interrupted photograph ...", so a recovery is reported in the blocked
+    tone. The band cannot pick a tone the state does not carry; splitting the
+    slot is a product change.
+  - **A `UiSegmented` publishes `role=tab` per segment with no `tabBar` above
+    it**, and it publishes `selected` rather than `inMutuallyExclusiveGroup`.
+    The sensitivity control and the source filter both lose the exclusivity
+    claim the Material `SegmentedButton` made. This is the same finding slot
+    E2 recorded for `UiChip.filter`, now on the control 10 section 4.1 names
+    as the replacement for `SegmentedButton` itself.
+  - **`UploadItem` has no retry.** The brief asks for "retry and remove as
+    `UiIconButton`s"; the pattern's constructor carries `onRemove` and nothing
+    else, and an interrupted row is resumed by the batch control rather than
+    per row. Adding one is an API change and a behaviour change.
+  - **A banner caps its message at two lines (finding V-15).** Four of the five
+    strings in the intake band are two short sentences, which is what
+    02 section 4.9 requires of an error, and at 200 percent text in a 420 dp
+    column the second sentence is cut. The whole sentence stays on the
+    semantics node.
+- Package APIs this slot needed and did not have:
+  - **A `UiDataTile` that draws on a `Surface`, or a `UiTileGroup` that is one
+    pane holding several numerals.** The control is a `GlassSurface`, which
+    cannot be built inside a list and costs a pane against the budget; the
+    manifest header draws a private `_CountTile` marked `fe/polish-2` instead.
+  - **A `UiListRow` that is not a control.** Every row that has nothing behind
+    it needs the caller to wrap it in a `Semantics` that drops the row's own
+    node, which is two widgets for what should be a mode.
+  - **A declared "trailing under the title" row variant**, which 11 section 3.3
+    already lists as open. Both D6 rows implement it by hand.
+  - **A `UiButton` that is busy without an indeterminate ring**, or a ring that
+    settles under `pumpAndSettle`. Today a loading button and a full app test
+    that drives it are mutually exclusive.
+- Files changed outside this slot's own list, all four forced and all four
+  minimal: the four gate backlog maps in `test/theme/`, which the brief names;
+  `test/intake_harness.dart` and `test/codec_intake_test.dart`, whose finders
+  are on this slot's controls; and `test/screens/intake_scale_test.dart`,
+  which is new.
+- Remaining follow-ups:
+  - The integrator regenerates the screen goldens and the semantics fixtures
+    once after the wave merges. The expected moved set is the 24 named above
+    plus whatever slots E3 and E4 move; the fixture diff is `intake.txt` as
+    explained above.
+  - `app_router.dart` still keeps its one transparent `Scaffold`, marked
+    `TODO(fe/wave-3)`. Every screen this slot owns now depends on neither a
+    `Material` ancestor nor `ScaffoldMessenger`, so the bridge can go as soon
+    as E3 and E4 land.
+  - One `fe/polish-2` marker added, in `manifest_panel.dart`, for the tile.
+  - No cloud command, no deploy, no dependency added, no SDK change, no screen
+    golden and no semantics fixture committed.
