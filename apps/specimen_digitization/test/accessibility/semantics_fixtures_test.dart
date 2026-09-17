@@ -163,6 +163,7 @@ Future<void> pumpSurface(
   WidgetTester tester,
   Widget child, {
   Size window = dumpWindow,
+  bool settle = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = window;
@@ -174,7 +175,14 @@ Future<void> pumpSurface(
       home: Scaffold(body: SingleChildScrollView(child: child)),
     ),
   );
-  await tester.pumpAndSettle();
+  // A placeholder pulses until it is replaced, so a surface that holds one
+  // never settles; those callers pump two frames instead.
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump();
+  }
 }
 
 void main() {
@@ -456,6 +464,7 @@ void main() {
             SkeletonBlock(),
           ],
         ),
+        settle: false,
       );
       final List<String> spoken = spokenNames(tester);
       expect(
@@ -520,6 +529,7 @@ void main() {
             ),
           ),
         ),
+        settle: false,
       );
       await tester.pump();
       expect(announced, contains('Loading queue'));

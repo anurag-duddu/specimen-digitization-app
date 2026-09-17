@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
@@ -96,9 +97,14 @@ void main() {
     await tester.pump();
     expect(find.byType(UiSkeleton), findsWidgets);
     expect(
-      find.byType(UiProgress),
+      find.descendant(
+        of: find.byType(QueueScreen),
+        matching: find.byType(UiProgress),
+      ),
       findsNothing,
-      reason: 'a first load is placeholders in the shape of the rows',
+      reason:
+          'a first load is placeholders in the shape of the rows; the '
+          'shell above the screen may show its own collection indicator',
     );
     repository.gate!.complete();
     await tester.pumpAndSettle();
