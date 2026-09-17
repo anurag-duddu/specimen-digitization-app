@@ -26,9 +26,15 @@ Widget _page({
   Size size = _window,
 }) => Builder(
   builder: (BuildContext context) => MediaQuery(
-    data: MediaQuery.of(
-      context,
-    ).copyWith(size: size, padding: padding, viewInsets: viewInsets),
+    // The view padding is the padding with the keyboard taken out, which is
+    // what a device reports; both are set so the frame reads what a device
+    // would say.
+    data: MediaQuery.of(context).copyWith(
+      size: size,
+      padding: padding,
+      viewPadding: padding,
+      viewInsets: viewInsets,
+    ),
     child: SizedBox.fromSize(
       size: size,
       child: UiScaffold(
@@ -1442,6 +1448,194 @@ void main() {
       expect(find.text('Reason'), findsOneWidget);
       expect(glassPaneCount(), 1);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the action bar through the bottom inset (polish 3)', () {
+    /// The pane the frame draws the action bar on.
+    Finder pane() => find
+        .ancestor(
+          of: find.text('Approve record'),
+          matching: find.byType(GlassSurface),
+        )
+        .first;
+
+    Finder marker() => find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is PinnedChrome && widget.region == UiPinnedRegion.actionBar,
+    );
+
+    testWidgets('anchors to the window\'s edge when nothing floats under it', (
+      WidgetTester tester,
+    ) async {
+      late double inset;
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            actionBar: const Text('Approve record'),
+            body: Builder(
+              builder: (BuildContext context) {
+                inset = UiScaffold.of(context).bottomInset;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect drawn = tester.getRect(pane());
+      final Rect bar = tester.getRect(find.text('Approve record'));
+      expect(
+        drawn.bottom,
+        frame.bottom,
+        reason: 'the pane\'s fill extends through the inset to the edge',
+      );
+      expect(drawn.left, frame.left);
+      expect(
+        drawn.right,
+        frame.right,
+        reason: 'an anchored bar spans the body',
+      );
+      expect(
+        frame.bottom - bar.bottom,
+        greaterThanOrEqualTo(34),
+        reason: 'the inset is padding inside the pane, below the bar',
+      );
+      expect(
+        inset,
+        greaterThanOrEqualTo(drawn.height),
+        reason: 'the body clears the pane, not only the bar',
+      );
+      expect(
+        PinnedChrome.extentOf(tester.element(marker())),
+        moreOrLessEquals(drawn.height - 34, epsilon: 0.5),
+        reason:
+            'the budget counts the bar and its padding; the system inset is '
+            'the device\'s',
+      );
+    });
+
+    testWidgets('a hidden pill anchors the bar too', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            nav: _pill(),
+            body: const _SlotPublisher(
+              actionBar: Text('Approve record'),
+              navVisible: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(pane()).bottom,
+        tester.getRect(find.byType(UiScaffold)).bottom,
+      );
+    });
+
+    testWidgets('above a pill the bar still floats as a tile', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            nav: _pill(),
+            actionBar: const Text('Approve record'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect pill = tester.getRect(find.byType(UiPillNav));
+      final Rect drawn = tester.getRect(pane());
+      final BuildContext context = tester.element(find.byType(UiPillNav));
+      final double gap = UiScaffoldStyle.resolve(context.ui).gap;
+      // The pill is the lowest chrome and floats by design (10 section 4.4);
+      // the bar keeps the pill's gap under it and its gutters beside it.
+      expect(frame.bottom - pill.bottom, 34 + gap);
+      expect(drawn.bottom, moreOrLessEquals(pill.top - gap, epsilon: 0.5));
+      expect(drawn.left, greaterThan(frame.left));
+      expect(drawn.right, lessThan(frame.right));
+      expect(
+        PinnedChrome.extentOf(tester.element(marker())),
+        moreOrLessEquals(drawn.height, epsilon: 0.5),
+        reason: 'no inset inside a floating tile, so the marker is the pane',
+      );
+    });
+
+    testWidgets('the keyboard lifts the anchored bar and takes the inset', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            viewInsets: const EdgeInsets.only(bottom: 300),
+            actionBar: const Text('Approve record'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect drawn = tester.getRect(pane());
+      expect(
+        frame.bottom - drawn.bottom,
+        300,
+        reason: 'the pane sits on the keyboard\'s edge',
+      );
+      expect(
+        drawn.height,
+        moreOrLessEquals(
+          PinnedChrome.extentOf(tester.element(marker())),
+          epsilon: 0.5,
+        ),
+        reason: 'the keyboard covers the home indicator, so no inset inside',
+      );
+    });
+
+    testWidgets('beside a rail the bar anchors across the body', (
+      WidgetTester tester,
+    ) async {
+      const Size window = Size(900, 700);
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          child: _page(
+            size: window,
+            padding: const EdgeInsets.only(bottom: 20),
+            nav: UiRail(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+            actionBar: const Text('Approve record'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect drawn = tester.getRect(pane());
+      expect(drawn.bottom, frame.bottom);
+      expect(
+        drawn.left,
+        greaterThanOrEqualTo(tester.getRect(find.byType(UiRail)).right),
+      );
+      expect(drawn.right, frame.right);
     });
   });
 }

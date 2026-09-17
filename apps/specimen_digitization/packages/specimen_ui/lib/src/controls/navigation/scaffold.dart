@@ -592,20 +592,62 @@ class _UiScaffoldState extends State<UiScaffold> {
     // Where the one pane goes at compact: the action bar has it wherever
     // there is one, and the navigation keeps its own otherwise.
     final bool navKeepsPane = compact && actionBar == null;
+    final bool pillShown = floats && navShown;
+
+    // The action bar's two forms (polish 3). Above a pill it floats as a
+    // tile, with the pill's own gap under it, because the pill is the lowest
+    // chrome and a capsule floats over the page by design (10 section 4.4).
+    // Where nothing floats under it, inside a record or beside a rail, the
+    // bar is the lowest chrome and anchors to the window's bottom edge: the
+    // pane spans the body's width with its top corners turned, and the
+    // bottom system inset is padding inside the pane below the bar, so the
+    // page's content never shows in a band between the bar and the edge. The
+    // device captures found about 48 dp of the record's evidence scrolling
+    // under the decision bar on a phone with gesture navigation, and the
+    // readings' footer rows under it on a tablet with a home indicator.
+    //
+    // The keyboard covers the home indicator, so when it is up the pane
+    // sits on the keyboard's edge and carries no inset of its own.
+    final bool anchored = actionBar != null && !pillShown;
+    final double insetInside = anchored && keyboard <= safe.bottom
+        ? safe.bottom
+        : 0;
+    // The distance from the window's bottom edge to the floating column.
+    final double chromeBottom = anchored
+        ? bottomSafe - insetInside
+        : bottomSafe + style.gap;
     final List<Widget> floatingChrome = <Widget>[
       if (actionBar != null)
-        PinnedChrome(
-          region: UiPinnedRegion.actionBar,
-          child: floated(
-            GlassSurface(
-              level: GlassLevel.floating,
-              radius: style.actionBarRadius,
-              padding: style.actionBarPadding,
-              child: unfloated(actionBar),
+        floated(
+          GlassSurface(
+            level: GlassLevel.floating,
+            radius: anchored ? null : style.actionBarRadius,
+            corners: anchored
+                ? BorderRadius.vertical(
+                    top: Radius.circular(style.actionBarRadius),
+                  )
+                : null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // The marker measures the bar and its padding, the 64 dp of
+                // 13 section 4.1, and not the system inset the pane extends
+                // through: that inset is the device's, and content could not
+                // have used it either way.
+                PinnedChrome(
+                  region: UiPinnedRegion.actionBar,
+                  child: Padding(
+                    padding: style.actionBarPadding,
+                    child: unfloated(actionBar),
+                  ),
+                ),
+                if (insetInside > 0) SizedBox(height: insetInside),
+              ],
             ),
           ),
         ),
-      if (actionBar != null && floats && navShown) SizedBox(height: style.gap),
+      if (actionBar != null && pillShown) SizedBox(height: style.gap),
       // Hidden rather than removed: a pill taken out of the tree loses the
       // destination it was on and glides in from the first one when the
       // reviewer leaves the record. Offstage keeps the state and takes no
@@ -619,9 +661,12 @@ class _UiScaffoldState extends State<UiScaffold> {
         ),
     ];
 
+    // What the body pads its content by: everything from the window's edge
+    // to the top of whatever the frame floats, inset included, so the last
+    // row clears the pane and not only the bar in it.
     final double bottomInset = floatingChrome.isEmpty
         ? bottomSafe
-        : bottomSafe + style.gap + _floatingHeight;
+        : chromeBottom + _floatingHeight;
 
     // With no overlay layer of its own, the frame installs the one every page
     // wants: a toast host around the body, so `UiToasts.show` finds an
@@ -643,11 +688,13 @@ class _UiScaffoldState extends State<UiScaffold> {
           PositionedDirectional(
             start: 0,
             end: 0,
-            bottom: bottomSafe + style.gap,
+            bottom: chromeBottom,
+            // The body area already clears the side safe areas (see
+            // `belowBar`), so the gutter is the whole of the side padding; an
+            // anchored bar spans the body's width and has none.
             child: Padding(
-              padding: EdgeInsets.only(
-                left: safe.left + style.gutter,
-                right: safe.right + style.gutter,
+              padding: EdgeInsets.symmetric(
+                horizontal: anchored ? 0 : style.gutter,
               ),
               child: _MeasureHeight(
                 onHeight: _floatingMeasured,
