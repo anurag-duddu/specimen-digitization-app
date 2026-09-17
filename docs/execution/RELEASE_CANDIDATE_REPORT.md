@@ -2,27 +2,36 @@
 
 Written 2026-09-17 by wave B slot B1 (`fe/release-ci`). It answers one
 question: what is actually proved about
-[pull request 64](https://github.com/anurag-duddu/specimen-digitization-app/pull/64)
-before anyone merges it, and what is only proved afterwards.
+[pull request 64](https://github.com/anurag-duddu/specimen-digitization-app/pull/64),
+what a pull request can never prove, and what the merge then proved.
+
+Sections 1 to 7 were written while the pull request was open and say what was
+true then. It merged while this was being written; section 8 records what the
+merge did, and section 9 records the production release that followed and
+completed.
 
 Every number below was measured. Where a proof is unavailable this says so and
 names what is missing instead of describing the gap as a pass. Nothing here
-deployed anything, changed a check, a protection, an environment, an IAM
-binding, a pinned action SHA or a smoke assertion. `docs/DEPLOYMENT.md` is the
+deployed anything or changed a check, a protection, an environment, an IAM
+binding, a pinned action SHA or a smoke assertion. The only commands run
+against production were the read only marker recheck and the read only GETs
+`docs/DEPLOYMENT.md` allows, both in section 9. `docs/DEPLOYMENT.md` is the
 contract; this is a reading of it against one candidate.
 
 ## 1. The candidate
 
 | Item | Value |
 |---|---|
-| Pull request | 64, `front-end-refactor` into `main`, open, not a draft |
+| Pull request | 64, `front-end-refactor` into `main` |
 | Head when this slot started | `f3b6363` |
-| Head when this slot finished | `3fa61d7` |
+| Head when it was merged | `3fa61d7` |
 | Size | 234 commits ahead of `main`, 0 behind, 980 files changed |
-| Test merge commit | `2a43cd7` |
+| Test merge commit used by the pull request runs | `2a43cd7` |
+| Merge commit on `main` | `4f9f518` |
 
-The head moved twice while this was being written. Section 3 says exactly which
-measurement belongs to which commit.
+The head moved twice and then the pull request merged, all while this was being
+written. Section 3 says exactly which measurement belongs to which commit, and
+section 8 records what the merge actually did.
 
 ## 2. The required checks, as the repository actually enforces them
 
@@ -318,25 +327,51 @@ macOS gate, after the 121 screen goldens and the 336 package gallery goldens.
 A test that reads rasterised pixels is a macOS test in this repository, and a
 new one should be written that way rather than discovered by a red CI run.
 
-## 8. Merging
+## 8. The merge, which happened
 
-The branch is up to date with `main`, all three protected checks are green on
-`3fa61d7`, and merging is done through GitHub, never by pushing to `main`:
+Pull request 64 merged to `main` as `4f9f518` at 2026-09-17T15:37Z, through
+GitHub, with all three protected checks green on `3fa61d7`. That is the
+correct route and the only production trigger `docs/DEPLOYMENT.md` allows.
 
-```bash
-gh pr checks 64 --watch
-gh pr merge 64 --merge
-```
+**The merge was a squash, and it deleted `front-end-refactor`.** Both facts
+matter to the slots still in flight, and the first one is not obvious from
+looking at `main`.
 
-`docs/DEPLOYMENT.md` step 6 writes this as `gh pr merge --merge
---delete-branch`. Do not add `--delete-branch` yet: it deletes
-`front-end-refactor`, which is the branch every live `fe/*` slot worktree was
-cut from and merges back into. Delete it once every slot has merged and its
-worktree is retired.
+`4f9f518` has exactly one parent, `a9a61af`, which was the tip of `main`
+before the merge. The refactor's 234 commits are not in `main`'s history; their
+content is, collapsed into that one commit. `git merge-base --is-ancestor
+f3b6363 origin/main` returns 1. `front-end-refactor` itself is gone:
+`repos/.../branches/front-end-refactor` answers 404.
 
-After the merge, `docs/DEPLOYMENT.md` section 7 is the procedure that has to be
-followed to completion: watch the `main` run, confirm all six jobs including
-`Deploy Firebase Hosting`, then independently re-run
+The consequence for wave A (`fe/compose-package`, `fe/compose-gates`) and wave
+B (`fe/release-ci`, `fe/release-docs`, `fe/release-client`), each cut from
+`front-end-refactor` and each expecting to merge back into it:
+
+- **Merging a slot branch into `main` is wrong and will conflict.** The merge
+  base is now `a9a61af`, before the refactor, so git replays all 234 commits
+  against content that is already there. Tested read only with `git merge-tree
+  --write-tree origin/main fe/release-ci`: four conflicts, in
+  `.github/workflows/ci-cd.yml`, two of the contrast test files, and
+  `docs/execution/FRONT_END_REFACTOR.md`. None of them is a real disagreement;
+  all four are the squash being re-derived.
+- **Replaying only the slot's own commits is right, and for this slot it is
+  clean.** `git merge-tree --write-tree --merge-base=f3b6363 origin/main
+  fe/release-ci` returns 0. That is the same three way merge a rebase does, so
+
+  ```bash
+  git rebase --onto origin/main f3b6363 fe/release-ci
+  ```
+
+  applies this slot's six commits onto `main` without a conflict. Each other
+  slot should be checked the same way, with its own cut point as the merge
+  base, before anybody reaches for a merge.
+- No work is lost and nothing is orphaned. Only the branch the slots were going
+  to land on is gone, and `docs/SESSION_LEARNINGS.md` is `merge=union`, so the
+  closeouts still combine without conflict however the slots land.
+
+The procedure that follows a merge is `docs/DEPLOYMENT.md` section 7, and it
+runs to completion or the release is incomplete: watch the `main` run, confirm
+all six jobs including `Deploy Firebase Hosting`, then independently re-run
 
 ```bash
 scripts/ci/smoke_hosting.sh \
@@ -349,9 +384,81 @@ and record the merge SHA, the pull request URL, the run URL, the deploy job
 result, the public URL and the smoke result. Until that marker reads the merge
 SHA, the release is incomplete, whatever the workflow says.
 
-## 9. What this report does not prove
+The `main` run for `4f9f518` is [35241427956](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/35241427956).
+Its outcome is in section 9, which is the only part of this report written
+after a production deploy was in flight.
 
-- **The public site.** Nothing here touched `https://specimen-digitization.web.app`. The route smoke serves a local directory on loopback; it says the artifact is well formed, not that anything is deployed.
+## 9. The production release, which completed
+
+Everything above section 8 was written before the merge. This section is what
+happened after it, and it is the only part written while a production deploy
+was in flight. Nothing here deployed anything: the run is CI's, and the two
+checks below are the read only ones `docs/DEPLOYMENT.md` explicitly allows from
+a shell.
+
+Run [35241427956](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/35241427956)
+on `4f9f518`, attempt 1, completed **success** on all six jobs:
+
+| Job | Result |
+|---|---|
+| `Repository checks` | success |
+| `Python tests` | success |
+| `Flutter checks and web build` | success |
+| `Flutter android build` | success |
+| `Flutter ios build` | success |
+| `Deploy Firebase Hosting` | success, all seven steps |
+
+The deploy job downloaded the tested artifact rather than rebuilding, took a
+short lived Google credential through OIDC, ran the guarded Hosting only
+deploy, and passed its own `Verify the public site` step.
+
+**The independent recheck `docs/DEPLOYMENT.md` section 7 asks for**, run from
+this worktree:
+
+```
+scripts/ci/smoke_hosting.sh https://specimen-digitization.web.app   4f9f5187eed314fefb6611c2f71c71888258dd4b 35241427956 1
+Production smoke passed for 4f9f5187eed314fefb6611c2f71c71888258dd4b run 35241427956 attempt 1
+```
+
+Exit 0. The public `deployment.json` reports that exact repository, commit SHA,
+run ID and attempt. By rule 11 the release is complete.
+
+### The gate's assertions, checked against the deployed artifact
+
+The route smoke serves a local build and emulates the Hosting rewrite. Now that
+there is a public site running the same client, both halves can be checked
+against the real thing. Read only GETs, one per path:
+
+| Public path | Result |
+|---|---|
+| `/sign-in` | 200, 2,088 bytes, the application shell |
+| `/help` | 200, 2,088 bytes, the application shell |
+| `/gallery` | 200, 2,088 bytes, the application shell |
+| `/c/smoke-collection/queue/smoke-specimen` | 200, 2,088 bytes, the application shell |
+| `/c/smoke-collection/intake/sources` | 200, 2,088 bytes, the application shell |
+| `/main.dart.js` | 200, 3,272,654 bytes, served as itself |
+
+Real Hosting behaves exactly as the gate emulates it, including the part that
+matters most: a deep link into a record answers with the application rather
+than a 404, and a static file is still a static file.
+
+The deployed `main.dart.js` carries **0 of the 220 gallery only strings and
+exactly 1 occurrence of `/gallery`**, which is the same pair the gate measured
+on the local release build. The gallery is not on the public site, and the one
+surviving occurrence is the router comparison of section 5.2.
+
+The deployed bundle also contains the string `Not stamped by the build`, which
+is finding 7.1 observed in production: the live client's help sheet cannot name
+the build a reviewer is looking at.
+
+The deployed bundle is 117 bytes larger than the one built in this worktree,
+which is what the main push defines account for. They are different builds and
+this report does not claim they are byte identical; the marker, not a byte
+comparison, is what ties the public site to `4f9f518`.
+
+## 10. What this report does not prove
+
+- **Anything about the public site beyond section 9.** The route smoke itself serves a local directory on loopback and says the artifact is well formed, not that anything is deployed. The public checks in section 9 are read only GETs and the marker recheck; they prove the marker, the rewrites and the bundle's contents, and nothing about whether a reviewer can sign in, because there is no configured API yet.
 - **Anything at a head later than `3fa61d7`.** The head moved twice in the two hours this took. A green run is evidence about the commit it ran on and about nothing else, and this slot's own two checks are not in it (section 5.3).
 - **The production FlutterFire configuration.** Never exercised on a pull request. First proved on the merge run.
 - **The live data pilot.** Out of scope for wave B entirely. Its open items are in `docs/execution/CURRENT_RELEASE_CHECKLIST.md`: protected DATA initialisation, runtime authorisation, App Check registration, credential lifecycle, and the pending cost ceiling decision. None is a front end gate, and none of them is changed by this pull request.
