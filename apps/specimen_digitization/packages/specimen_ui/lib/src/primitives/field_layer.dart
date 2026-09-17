@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../foundation/fields.dart';
+import '../foundation/motion.dart';
 import '../foundation/theme.dart';
 
 /// Paints a sky preset behind a screen.
@@ -50,15 +51,39 @@ class FieldLayer extends StatelessWidget {
         fit: StackFit.passthrough,
         children: <Widget>[
           Positioned.fill(
-            child: RepaintBoundary(
-              child: CustomPaint(
-                painter: FieldPainter(
-                  fields: ui.field,
-                  placements: placements,
-                  exclusion: exclusion,
+            // One sky gives way to the next by cross fading, because a route
+            // that moves from the queue to the workbench changes the light
+            // behind the whole window and a hard cut reads as a flash rather
+            // than as a room. `standard`, which is what the detail pane
+            // beside it cross fades at (04 section 4, row 17), and which the
+            // tokens return as zero under reduced motion, so the swap is
+            // instant there with no branch here. The switcher does not
+            // animate its first child, so a screen opens with its own sky
+            // already painted.
+            child: AnimatedSwitcher(
+              duration: ui.motion.standard,
+              switchInCurve: MotionTokens.standardCurve,
+              switchOutCurve: MotionTokens.standardCurve,
+              // Expanded, not the default loose stack. A `CustomPaint` with
+              // no child and no size given is `Size.zero` under a loose
+              // constraint, and it does not clip, so the painter was handed a
+              // zero size, computed a zero radius from it, and filled the
+              // whole window with one field's centre colour.
+              layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
+                fit: StackFit.expand,
+                children: <Widget>[...previous, ?current],
+              ),
+              child: RepaintBoundary(
+                key: ValueKey<SkyPreset>(preset),
+                child: CustomPaint(
+                  painter: FieldPainter(
+                    fields: ui.field,
+                    placements: placements,
+                    exclusion: exclusion,
+                  ),
+                  isComplex: true,
+                  willChange: false,
                 ),
-                isComplex: true,
-                willChange: false,
               ),
             ),
           ),

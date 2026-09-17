@@ -57,6 +57,24 @@ class AppShell extends StatelessWidget {
   /// What the mark says where it leads the navigation.
   static const String markLabel = 'Specimen Digitization';
 
+  /// Which sky the location paints (09 section 3.2).
+  ///
+  /// `sky.work` is the workbench, the region editor inside it, and the large
+  /// record fallback; everything else in the collection, the queue, intake
+  /// and the sources under it, is `sky.home`. A record is the one route with
+  /// a segment after `queue`, which is what `AppRoutes.specimenOf` builds.
+  ///
+  /// This predicate belongs beside `AppRoutes.isEntryLocation` and
+  /// `isGlobalLocation` rather than here; `routes.dart` is not this slot's
+  /// file, so it is written once here and the cleanup slot can move it.
+  static SkyPreset skyOf(Uri location) {
+    final List<String> segments = location.pathSegments;
+    final int queue = segments.indexOf('queue');
+    return queue >= 0 && queue < segments.length - 1
+        ? SkyPreset.work
+        : SkyPreset.home;
+  }
+
   void _select(BuildContext context, WorkspaceDestination next) {
     if (next == destination) return;
     final WorkspaceController controller = WorkspaceScope.read(context);
@@ -112,9 +130,11 @@ class AppShell extends StatelessWidget {
 
     return UiScaffold(
       // The queue, intake and sources routes are the home sky; the record
-      // route is the work sky, and the workbench slot passes the matte's
-      // exclusion rectangle through `UiScaffold.exclusion` when it lands.
-      sky: SkyPreset.home,
+      // route is the work sky (09 section 3.2). The pane that draws the
+      // photograph publishes the matte's clear band through
+      // `UiScaffoldExclusion.of(context)?.publish(rect)`, which the frame
+      // clips its fields out of.
+      sky: skyOf(GoRouterState.of(context).uri),
       topBar: _TopBar(controller: controller, window: window, sidebar: sidebar),
       banner: _Chrome(controller: controller, busy: busy),
       nav: navigation,
