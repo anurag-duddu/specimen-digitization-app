@@ -103,6 +103,31 @@ banner's and a toast's action move under the words. A modal's actions stack
 with the primary on top. The gallery's fit section on each family page shows
 all of it at 480, 360, 280 and 200 dp.
 
+## Composition: how a screen is put together
+
+13 section 3 in one paragraph, and the reason wave A exists. A screen is one
+scroll: a `CustomScrollView` whose slivers are the regions, never a list
+inside a list. `UiCollapsingHeader` pins the thing under review between a
+maximum and a minimum fraction of the viewport, with a `chrome` slot riding
+its lower edge that shrinks to one row at the minimum. `UiStatusStrip` states
+the disposition and what blocks it on one line. `UiDecisionBar` decides, in
+the scaffold's action bar, one row tall. `UiBanner.strip` is the one line
+environment band with the sentence behind a tap. A routed screen fills the
+action bar, hides the navigation pill and asks for the one line band through
+`UiScaffoldSlots.of(context)`, the same way it publishes a
+`UiScaffoldExclusion`.
+
+Two markers say what a widget tree cannot. `PinnedChrome(region:, extent:)`
+marks a region that holds viewport height, and `PrimaryRegion(minExtent:)`
+marks the one region the screen exists to show. `UiScaffold` marks its own top
+bar, banner, action bar and floating navigation, and `UiCollapsingHeader`
+marks the extent it pins, so a screen usually marks only its primary region.
+Both are free: each builds its child and nothing else, so a marker adds one
+element and no render object, and `PinnedChrome.extentOf` and
+`PrimaryRegion.minExtentOf` are the one rule for reading a height off one. The
+composition gates in `apps/specimen_digitization/test/composition/` find them
+by type and sum what they report against the budget in 13 section 2.3.
+
 ## Seeing it
 
 `flutter run -d chrome` and visit `/gallery`. The route is mounted outside

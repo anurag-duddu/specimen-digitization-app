@@ -7,6 +7,9 @@ Wave F slot F2 of the front-end refactor: sections 2, 3.1, 5 and 6 of
 foundation, geometry that derives from type, and the harness the fit clauses
 run in. No control is converted here; wave G does that.
 
+### Composition, wave A slot A1
+- `primitives/composition_markers.dart` is new, and is the whole of what the composition gates read (13 section 5). `PinnedChrome` marks a region that holds viewport height and names which of the five jobs it does through `UiPinnedRegion` (`topBar`, `band`, `header`, `actionBar`, `navigation`); `PrimaryRegion` marks the one region a screen exists to show. Both build their child and nothing else, so a marker is one element and no render object, and the element still resolves to the child's box. `PinnedChrome.extentOf(element)` and `PrimaryRegion.minExtentOf(element)` are the one rule for reading a height off a marker: the extent it declares where there is one, the box under it otherwise, and a `FlutterError` naming the region when it has neither, which is a sliver that forgot to say what it pins. A rail and a sidebar are columns beside the body rather than chrome over it, so they hold no viewport height and are not marked.
+
 ### Testing
 - The package's goldens are compared on macOS only: `PlatformGatedGoldenComparator` in `test/flutter_test_config.dart` renders every golden on other platforms (so layout, overflow and semantics assertions still run) and sets the pixel comparison aside, and refuses `--update-goldens` off macOS, the rule the application's screen goldens already follow. Linux CI had failed all 336 of them by one to eleven percent of pixels.
 
