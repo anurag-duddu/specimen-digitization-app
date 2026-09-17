@@ -99,9 +99,12 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
 /// frame reads them, which is the same seam [UiScaffoldExclusion] already is,
 /// and for the same reason.
 ///
-/// Three asks, each null until a screen makes it, and each winning over what
+/// Four asks, each null until a screen makes it, and each winning over what
 /// the scaffold's caller passed:
 ///
+/// - [setTopBar] replaces the bar across the top. A record names itself and
+///   offers the way out of itself, and neither fact reaches the shell that
+///   built the frame (13 sections 2.4 and 4.1).
 /// - [setActionBar] fills the sticky pane above the navigation. The decision
 ///   bar of 13 section 3.3 is what goes in it.
 /// - [setNavVisible] hides the navigation pill on a screen that is inside a
@@ -140,6 +143,10 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
 /// Null outside a scaffold, which is what a component test pumping one screen
 /// on its own has, so a publisher is one call with no branch.
 class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
+  /// What the page put in the top bar, or null for the caller's own.
+  Widget? get topBar => _topBar;
+  Widget? _topBar;
+
   /// What the page put in the action bar, or null for the caller's own.
   Widget? get actionBar => _actionBar;
   Widget? _actionBar;
@@ -154,9 +161,20 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   bool? get bandCompact => _bandCompact;
   bool? _bandCompact;
 
+  Object? _topBarOwner;
   Object? _actionBarOwner;
   Object? _navOwner;
   Object? _bandOwner;
+
+  /// Puts [bar] across the top of the frame. Null gives the slot back.
+  ///
+  /// [owner] is whoever is asking, as it is for every other slot here.
+  void setTopBar(Widget? bar, {Object? owner}) {
+    _topBarOwner = bar == null ? null : owner;
+    if (bar == _topBar) return;
+    _topBar = bar;
+    _announce();
+  }
 
   /// Puts [bar] in the frame's action bar. Null gives the slot back.
   ///
@@ -192,6 +210,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   /// since is left alone, which is what makes a route change safe: the
   /// screen arriving publishes before the screen leaving is disposed.
   void release(Object owner) {
+    if (identical(_topBarOwner, owner)) setTopBar(null);
     if (identical(_actionBarOwner, owner)) setActionBar(null);
     if (identical(_navOwner, owner)) setNavVisible(null);
     if (identical(_bandOwner, owner)) setBandCompact(null);
@@ -358,6 +377,10 @@ class UiScaffold extends StatefulWidget {
   final Widget? body;
 
   /// The bar across the top. A `UiTopBar` on every page that has one.
+  ///
+  /// A routed screen that names itself replaces it through
+  /// `UiScaffoldSlots.of(context).setTopBar`, and what the screen asks for
+  /// wins over this, exactly as it does for the action bar.
   final Widget? topBar;
 
   /// A full width message under the top bar. The environment banner.
@@ -539,6 +562,7 @@ class _UiScaffoldState extends State<UiScaffold> {
     // screen is the one that knows what the route needs (13 section 3.4).
     final bool navShown = _slots.navVisible ?? widget.navVisible;
     final Widget? actionBar = _slots.actionBar ?? widget.actionBar;
+    final Widget? bar = _slots.topBar ?? widget.topBar;
 
     // Where the one pane goes at compact: the action bar has it wherever
     // there is one, and the navigation keeps its own otherwise.
@@ -629,7 +653,7 @@ class _UiScaffoldState extends State<UiScaffold> {
       padding: EdgeInsets.only(left: safe.left, right: safe.right),
       child: belowBar,
     );
-    if (widget.topBar == null && safe.top > 0) {
+    if (bar == null && safe.top > 0) {
       belowBar = Padding(
         padding: EdgeInsets.only(top: safe.top),
         child: belowBar,
@@ -659,12 +683,9 @@ class _UiScaffoldState extends State<UiScaffold> {
       }
       banner = PinnedChrome(region: UiPinnedRegion.band, child: solid(banner));
     }
-    final Widget? topBar = widget.topBar == null
+    final Widget? topBar = bar == null
         ? null
-        : PinnedChrome(
-            region: UiPinnedRegion.topBar,
-            child: solid(widget.topBar!),
-          );
+        : PinnedChrome(region: UiPinnedRegion.topBar, child: solid(bar));
 
     return _UiScaffoldScope(
       geometry: UiScaffoldGeometry(
