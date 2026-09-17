@@ -9558,3 +9558,192 @@ tree, so there was nothing for a golden to move for and no reason to run
 - No cloud command, no deploy, no dependency added, no SDK change, no Dart
   file touched, and no screen golden or semantics fixture regenerated or
   committed.
+## 2026-09-17: Front-end refactor wave B, slot B1, CI and the deployment path
+
+Task: slot B1 (`fe/release-ci`), `docs/execution/FRONT_END_REFACTOR.md` section
+3I. Make the refactor's gates part of the repository's protected checks and
+verify the deployment path against the new client, without deploying anything.
+Branch `fe/release-ci`, worktree `.claude/worktrees/fe-release-ci`, cut from
+`front-end-refactor` at `f3b6363`, which is pull request 64's head at the cut.
+Sibling slots `fe-compose-package`, `fe-compose-gates`, `fe-release-docs` and
+`fe-release-client` were live; no file of theirs was touched.
+
+Outcome: complete. Two additive checks, one new tested script, the release
+candidate report, and the finding that matters most, which is that the
+refactor reached its final review with its release build unbuilt by CI.
+
+Commits, all on `fe/release-ci`:
+
+- `ebc7db1` ci: formatting is a gate, locally and in the Flutter job
+- `d8339b6` ci: the web release is checked over its routes before it is uploaded
+- `900e405` docs(deploy): what the Flutter job proves, and the release candidate
+
+### Validation
+
+Every gate run one at a time, the tree untouched while each ran, `rc=$?` read
+directly and never off a pipe, with `LANG` and `LC_ALL` exported and the
+placeholder Firebase options in place.
+
+| Gate | rc | Result |
+|---|---|---|
+| `flutter analyze --fatal-infos` (`packages/specimen_ui`) | 0 | No issues found |
+| `flutter test` (`packages/specimen_ui`) | 0 | 685 passed |
+| `flutter analyze --fatal-infos` (application) | 0 | No issues found |
+| `flutter test` (application) | 0 | 1301 passed, 7 skipped |
+| `dart format --output=none --set-exit-if-changed` over the client and the package | 0 | 393 files, 0 changed |
+| `uv run python scripts/ci/check_ui_strings.py --baseline ...` | 0 | 194 files, 0 violations, 0 baselined |
+| `uvx --from pre-commit==4.5.1 pre-commit run --files` (6 files) | 0 | every hook Passed or Skipped |
+| `uvx --from pre-commit==4.5.1 pre-commit run --all-files` | 0 | every hook Passed, `.secrets.baseline` unchanged |
+| `uv run pytest scripts/ci/test_smoke_web_routes.py scripts/ci/test_public_settings.py -q` | 0 | 91 passed, of which 62 are new |
+| `flutter build web --release` | 0 | Built `build/web`, 35,146,003 bytes over 41 files |
+| `uv run python scripts/ci/smoke_web_routes.py` | 0 | 11 locations, 2 static probes, the gallery absent |
+| `python3 ../../scripts/ci/smoke_web_routes.py --require-marker` (the exact CI step) | 0 | same, with a marker in place |
+
+`scripts/ci/verify.sh` was not run whole: it gets reaped on this machine, as
+the 2026-09-17 entries above record, so its gates were run individually and
+`bash -n` was run on the script. The full `uv run pytest -q` suite was not run
+either; the only Python this slot adds is under `scripts/ci/`, and both files
+there were run. No screen golden and no semantics fixture was regenerated or
+committed: this slot touches no Dart at all.
+
+### What CI actually said, which is the point of the slot
+
+Read through the Actions API rather than inferred. Every `CI/CD` run on
+`front-end-refactor`, by the four steps that matter:
+
+| Run | Head | Design system tests | Client tests | Web build | Artifact upload |
+|---|---|---|---|---|---|
+| 35189966241 | `9bbca9a` | cancelled | skipped | skipped | skipped |
+| 35190042166 | `d4830ce` | failure | skipped | skipped | skipped |
+| 35195247198 | `18452a6` | failure | skipped | skipped | skipped |
+| 35237037954 | `50b82a9` | success | failure | skipped | skipped |
+| 35237915721 | `f3b6363` | success | failure | skipped | skipped |
+| 35240271692 | `3fa61d7` | success | success | success | success |
+
+The steps run in order and the job stops at the first failure, so until
+`50b82a9` fixed the package golden comparator the client suite had never run on
+a Linux runner at all, and until `3fa61d7` this branch had never produced a
+tested web artifact. The run at `3fa61d7` completed green on all five jobs
+while this slot was being written, with `Deploy Firebase Hosting` skipped as it
+must be on a pull request.
+
+At `f3b6363` the client suite reported 1160 passed, 20 failed, 128 skipped on
+Linux, and the same suite at the same commit in this worktree reported 1301
+passed, 7 skipped, exit 0. All 20 were pixel sampling contrast assertions in
+`test/verification/dark_mode_windows_test.dart` (9),
+`test/theme/dark_mode_test.dart` (6), `test/accessibility/guidelines_test.dart`
+(3) and `test/accessibility/workbench_guidelines_test.dart` (2). The evidence
+that it was rasterisation and not contrast: the sign in screen reported the
+same three semantics nodes with identical sampled colours in the light run and
+the dark run, lightest `#F0EBF2` and darkest `#F7F398`, which is a rectangle
+holding text and no text pixel in it. The integrator closed it on the
+integration branch in `76b01d8` and `3fa61d7` while this was being written,
+with the macOS gate the goldens already had. This slot owns none of those files
+and changed none of them.
+
+### Durable learnings
+
+- **A green job is not a job that ran.** The Flutter job's steps are ordered
+  and it stops at the first failure, so "the package goldens failed" also meant
+  the client suite, the release build, the deployment stamp and the artifact
+  upload never happened. Reading a run's conclusion tells you it failed;
+  reading `actions/jobs/<id>` and looking at every step's conclusion tells you
+  how much of the job is still unmeasured. Four of this branch's six runs never
+  reached the client suite and none before the sixth ever built the web
+  release.
+- **A test that reads rasterised pixels is a macOS test in this repository.**
+  Three families have now needed the same gate: the 121 screen goldens, the 336
+  package gallery goldens, and now the 20 contrast instruments. Write the next
+  one with the gate rather than discovering it in a red CI run.
+- **The pull request artifact is named for the test merge commit, not the
+  head.** On a `pull_request` event `github.sha` is the ephemeral merge ref, so
+  the uploaded artifact at `3fa61d7` is
+  `flutter-web-2a43cd74...-35240271692-1` where `2a43cd74` is the merge commit.
+  That is a second, independent reason a pull request cannot deploy: the deploy
+  guard requires a marker whose `commitSha`, `runId` and `runAttempt` equal the
+  protected run's own, so even a leaked artifact is unusable. Worth knowing
+  when reading artifact names and wondering why none matches a commit.
+- **`json.JSONDecoder(object_pairs_hook=...)` only works in the constructor.**
+  Assigning `decoder.object_pairs_hook` on a finished decoder is silently
+  ignored, because `__init__` wires the hook into `scan_once`. The duplicate
+  key test caught it; without it the checker would have accepted every
+  duplicated marker field with its last value, which is the exact laundering
+  the deploy guard's streaming `jq` exists to refuse.
+- **A marker string has to be absent as a substring, not as a string.** The
+  first version of the gallery check subtracted equal literals, so
+  `Approve this record` survived as a marker while the client ships
+  `Approve this record?`, and every release build failed for a gallery it did
+  not contain. Two more leaked the same way through Dart's adjacent literal
+  concatenation: `'one ' 'two'` is one string in the bundle and two in the
+  source. Both rules are now in `gallery_markers`, and
+  `test_a_marker_may_not_be_part_of_a_string_the_client_ships` pins all three.
+- **`detect-secrets` reads a 40 character hex test fixture as a secret.** A
+  synthetic commit SHA in a test needs `# pragma: allowlist secret`, the same
+  mechanism `ci-cd.yml` already uses for the workload identity provider path.
+
+### Failed approaches
+
+- **Grepping the release bundle for the gallery route string and expecting
+  nothing.** This slot's brief asked for exactly that and it is not true.
+  `/gallery` appears once in a release `main.dart.js`, inside the compiled
+  `AppRoutes.isGlobalLocation`, which is live code in every build and therefore
+  cannot be tree shaken. What is genuinely absent is the gallery screen: 0 of
+  the 220 gallery only strings are in the release bundle, and 218 are in a
+  profile build of the same source. The gate asserts the screen's absence and
+  allows the one router comparison by name, so a second occurrence fails it.
+  Judged as a release build, the profile bundle fails both halves, which is
+  what makes it a measurement rather than an assumption.
+- **A route sweep that distinguishes builds over HTTP.** It cannot. The
+  Hosting rewrite sends every unmatched path to `index.html`, so `/gallery`
+  answers with the shell in a release build too, and correctly: a stale
+  bookmark should land on the application, not on a 404. The distinction lives
+  in the compiled bundle, not in the response.
+
+### Follow-ups, none of them this slot's files
+
+- **`APP_BUILD` is read by the client and set by nothing.**
+  `lib/src/app/help_screen.dart:252` renders `Build: $appBuild` so a reviewer
+  can name the build when writing to an administrator, and no workflow, script
+  or build step passes `--dart-define=APP_BUILD=...`, so every deployed build
+  says `Not stamped by the build`. `write_deployment_metadata.sh` already has
+  `$GITHUB_SHA` one step later; forwarding it in `build_web.sh` beside the
+  three defines already there would close it.
+- **The client documents and tests an administrator contact form the pipeline
+  refuses.** `administrator_contact.dart` lists `The entomology data team`,
+  `AdministratorContact.fromBuild` parses a bare name, and
+  `test/screens/help_and_contact_test.dart:142` asserts it with
+  `'Your curator'`. `validate_public_settings.py` exits 1 on a bare name,
+  verified by running it. The validator is the stricter of the two so nothing
+  bad reaches the client, but a documented and tested form can never be
+  delivered, and whoever sets the repository variable will meet it as a failed
+  build. Either the doc and the test drop the form or the validator accepts it.
+- **`--delete-branch` on the pull request 64 merge would delete
+  `front-end-refactor`**, which is the branch every live `fe/*` worktree was
+  cut from. The report says to merge without it until every slot has landed.
+
+### For the integrator
+
+- `scripts/ci/verify.sh` and the `Flutter checks and web build` job gained two
+  steps each and nothing else. No check name, branch protection, environment,
+  IAM binding, pinned action SHA or smoke assertion was changed. Branch
+  protection was read back from the API, read only, and is recorded in the
+  report: three required contexts, strict, conversations required,
+  administrators included, zero required approving reviews.
+- **Neither new check has ever run in CI.** They are on this branch only, so
+  the first run that exercises them is the first `CI/CD` run after this merges.
+  The route smoke needs `python3` in the Flutter job, which the Ubuntu runner
+  has, and it adds no action and no pinned SHA.
+- The composition gates land as app tests, so they join `flutter test` with no
+  change here once slot A4 merges.
+- `scripts/ci/check_ui_strings.py` needed no path added: `default_roots`
+  already covers the client and the package, which is the whole of the
+  refactor's Dart.
+- **Commit trailer.** These three commits end
+  `Co-Authored-By: Claude Opus 5 (1M context)`, not the
+  `Claude Fable 5.1` the earlier slots on this branch used. This session's
+  harness instruction names the model actually writing them and a trailer
+  naming a different model would be false in the permanent history. Normalise
+  at the merge if the branch wants one spelling.
+- No cloud command, no `firebase` or `gcloud` command, no deploy, no dependency
+  added, no SDK change, no Dart touched, no screen golden or semantics fixture
+  regenerated or committed, and nothing owned by another slot changed.
