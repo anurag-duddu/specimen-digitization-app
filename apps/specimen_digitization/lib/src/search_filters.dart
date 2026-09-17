@@ -366,137 +366,113 @@ class SearchFiltersState extends State<SearchFilters> {
       // title and the two actions, so this is the only node that can.
       container: true,
       role: SemanticsRole.form,
-      child: ConstrainedBox(
-        // A `UiSheet` lays its padded body out with no height bound: the
-        // pane's outer column takes the drag handle and the body as two
-        // inflexible children, so a scrolling body shrink wraps to its whole
-        // content and the sheet overflows the window. The dialog above 600 is
-        // one column and needs none of this. Bounding the body here is what a
-        // screen can do without changing the control.
-        //
-        // TODO(fe/polish-2): UiSheet should bound its body the way UiDialog
-        // does, and this cap should then come out.
-        constraints: BoxConstraints(
-          maxHeight: isCompactWindow(context)
-              ? MediaQuery.sizeOf(context).height * _sheetHeightShare
-              : double.infinity,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+      // Its groups and its fields are its own nodes, said here rather than
+      // taken from a viewport. A container node absorbs every compatible
+      // descendant below it, so while this body scrolled itself the
+      // scrollable inside the node was the only thing keeping "Status",
+      // "Provenance" and "Dates" out of the form's own label; a body that
+      // lets its frame scroll it has no such boundary and would have
+      // announced the six headings as one phrase.
+      explicitChildNodes: true,
+      // A column, not a scroller. Both modal frames bound this body to what
+      // their chrome leaves and scroll it themselves, so a body that scrolled
+      // as well would be a second scrollable inside the first, with an
+      // unbounded height and a cap this file had to keep in step with a drag
+      // handle, a title and an action row it does not own.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (widget.savedFilters != null)
+            _SavedSets(
+              sets: _saved,
+              loaded: _savedLoaded,
+              onApply: _applySaved,
+              onRename: (SavedFilterSet set) => unawaited(_renameSaved(set)),
+              onDelete: _deleteSaved,
+              onSaveCurrent: () => unawaited(_saveCurrent()),
+            ),
+          const CaveatText(
+            label: 'All filters must match.',
+            why:
+                'A risk range excludes records with no measured risk. '
+                'Risk never determines clearance.',
+          ),
+          _Group(
+            title: 'Status',
             children: <Widget>[
-              if (widget.savedFilters != null)
-                _SavedSets(
-                  sets: _saved,
-                  loaded: _savedLoaded,
-                  onApply: _applySaved,
-                  onRename: (SavedFilterSet set) =>
-                      unawaited(_renameSaved(set)),
-                  onDelete: _deleteSaved,
-                  onSaveCurrent: () => unawaited(_saveCurrent()),
-                ),
-              const CaveatText(
-                label: 'All filters must match.',
-                why:
-                    'A risk range excludes records with no measured risk. '
-                    'Risk never determines clearance.',
-              ),
-              _Group(
-                title: 'Status',
-                children: <Widget>[
-                  for (final String key in <String>[
-                    'stage',
-                    'blocker',
-                    'reason_code',
-                  ])
-                    _field(key),
-                ],
-              ),
-              _Group(
-                title: 'Provenance',
-                children: <Widget>[
-                  _field('uploader_id'),
-                  _field('batch_id'),
-                  _picker('profile_id', _profileIds),
-                  _picker('profile_version', _profileVersions),
-                ],
-              ),
-              _Group(
-                title: 'Dates',
-                children: <Widget>[
-                  _dayField('created_from', 'The first day the filter keeps.'),
-                  _dayField(
-                    'created_before',
-                    'The first day the filter leaves out.',
-                  ),
-                  if (_from.isNotEmpty || _before.isNotEmpty)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: UiButton(
-                        label: 'Any date',
-                        variant: UiButtonVariant.ghost,
-                        onPressed: () => setState(() {
-                          _from = '';
-                          _before = '';
-                          _controllerFor('created_from', '').clear();
-                          _controllerFor('created_before', '').clear();
-                          _errors
-                            ..remove('created_from')
-                            ..remove('created_before');
-                        }),
-                      ),
-                    ),
-                ],
-              ),
-              _Group(
-                title: 'Risk',
-                children: <Widget>[
-                  Padding(
-                    padding: EdgeInsetsDirectional.symmetric(
-                      vertical: ui.space.s2,
-                    ),
-                    child: UiSwitch(
-                      label: 'Include not measured',
-                      value: _includeUnmeasured,
-                      onChanged: (bool value) =>
-                          setState(() => _includeUnmeasured = value),
-                    ),
-                  ),
-                  Text(
-                    'Turn this off to narrow the queue to a risk range.',
-                    style: ui.type.bodySmall.copyWith(
-                      color: ui.color.inkSecondary,
-                    ),
-                  ),
-                  _riskField(
-                    'risk_min',
-                    _riskMin,
-                    (int value) => _riskMin = value,
-                  ),
-                  _riskField(
-                    'risk_max',
-                    _riskMax,
-                    (int value) => _riskMax = value,
-                  ),
-                ],
-              ),
-              _Group(
-                title: 'Identifiers',
-                children: <Widget>[_field('asset_id'), _field('active_run_id')],
-              ),
+              for (final String key in <String>[
+                'stage',
+                'blocker',
+                'reason_code',
+              ])
+                _field(key),
             ],
           ),
-        ),
+          _Group(
+            title: 'Provenance',
+            children: <Widget>[
+              _field('uploader_id'),
+              _field('batch_id'),
+              _picker('profile_id', _profileIds),
+              _picker('profile_version', _profileVersions),
+            ],
+          ),
+          _Group(
+            title: 'Dates',
+            children: <Widget>[
+              _dayField('created_from', 'The first day the filter keeps.'),
+              _dayField(
+                'created_before',
+                'The first day the filter leaves out.',
+              ),
+              if (_from.isNotEmpty || _before.isNotEmpty)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: UiButton(
+                    label: 'Any date',
+                    variant: UiButtonVariant.ghost,
+                    onPressed: () => setState(() {
+                      _from = '';
+                      _before = '';
+                      _controllerFor('created_from', '').clear();
+                      _controllerFor('created_before', '').clear();
+                      _errors
+                        ..remove('created_from')
+                        ..remove('created_before');
+                    }),
+                  ),
+                ),
+            ],
+          ),
+          _Group(
+            title: 'Risk',
+            children: <Widget>[
+              Padding(
+                padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
+                child: UiSwitch(
+                  label: 'Include not measured',
+                  value: _includeUnmeasured,
+                  onChanged: (bool value) =>
+                      setState(() => _includeUnmeasured = value),
+                ),
+              ),
+              Text(
+                'Turn this off to narrow the queue to a risk range.',
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+              _riskField('risk_min', _riskMin, (int value) => _riskMin = value),
+              _riskField('risk_max', _riskMax, (int value) => _riskMax = value),
+            ],
+          ),
+          _Group(
+            title: 'Identifiers',
+            children: <Widget>[_field('asset_id'), _field('active_run_id')],
+          ),
+        ],
       ),
     );
   }
-
-  /// How much of a compact window the sheet's scrolling body may take.
-  ///
-  /// 05 section 3.3 asks for a sheet that grows to near-full height; the drag
-  /// handle, the title and the action row need the rest.
-  static const double _sheetHeightShare = 0.72;
 
   /// A picker when the collection published the choices, a text field with the
   /// plain label when it did not (07 section 4).
@@ -550,8 +526,9 @@ class SearchFiltersState extends State<SearchFilters> {
   /// Material component this file may not reach for, so the two instants are
   /// typed as days and converted here, exactly as they were converted before.
   //
-  // TODO(fe/polish-2): specimen_ui should grow a UiDateField, so a reviewer
-  // picks a day rather than spelling one.
+  // TODO(specimen_ui): a UiDateField, so a reviewer picks a day rather than
+  // spelling one. Not a slot's to build until it has an entry in 10 section 4,
+  // which 10 section 10 asks for before a new component exists.
   Widget _dayField(String key, String help) => Padding(
     padding: EdgeInsetsDirectional.symmetric(vertical: context.ui.space.s2),
     child: UiField(

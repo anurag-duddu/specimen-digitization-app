@@ -156,9 +156,11 @@ void main() {
         const SizedBox(
           width: 480,
           height: 760,
-          child: SearchFilters(
-            initial: <String, String>{'batch_id': 'batch-7'},
-            savedFilters: SavedFilterStore(collection),
+          child: _Frame(
+            child: SearchFilters(
+              initial: <String, String>{'batch_id': 'batch-7'},
+              savedFilters: SavedFilterStore(collection),
+            ),
           ),
         ),
         size: const Size(1000, 900),
@@ -202,9 +204,11 @@ void main() {
         const SizedBox(
           width: 480,
           height: 760,
-          child: SearchFilters(
-            initial: <String, String>{},
-            savedFilters: SavedFilterStore(collection),
+          child: _Frame(
+            child: SearchFilters(
+              initial: <String, String>{},
+              savedFilters: SavedFilterStore(collection),
+            ),
           ),
         ),
         size: const Size(1000, 900),
@@ -232,4 +236,18 @@ void main() {
       });
     });
   });
+}
+
+/// What the modal frame does for the filter body: bounds it and scrolls it.
+///
+/// `UiSheet` and `UiDialog` both hand their body the height their chrome
+/// leaves and scroll it, so a test that pumps the body on its own supplies
+/// the same thing rather than the body carrying a scroller of its own.
+class _Frame extends StatelessWidget {
+  const _Frame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(child: child);
 }
