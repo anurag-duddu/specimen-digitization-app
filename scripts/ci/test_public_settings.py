@@ -66,3 +66,24 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
     assert ("--dart-define=SPECIMEN_API_BASE_URL=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_RECAPTCHA_SITE_KEY=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_ADMIN_CONTACT=" in result.stdout) is live
+
+
+@pytest.mark.parametrize("sha", ["4f9f518", None])
+def test_build_stamps_the_commit_when_ci_provides_one(tmp_path, sha):
+    import os
+    import subprocess
+
+    root = Path(__file__).resolve().parents[2]
+    binary = tmp_path / "flutter"
+    binary.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+    binary.chmod(0o755)
+    env = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}")
+    env.pop("GITHUB_ACTIONS", None)
+    env.pop("GITHUB_SHA", None)
+    if sha is not None:
+        env["GITHUB_SHA"] = sha
+    result = subprocess.run([str(root / "scripts/ci/build_web.sh")], cwd=root / "apps/specimen_digitization",
+                            env=env, text=True, capture_output=True, check=True)
+    stamped = f"--dart-define=APP_BUILD={sha}" in result.stdout
+    assert stamped is (sha is not None)
+    assert "APP_BUILD" not in result.stdout if sha is None else True

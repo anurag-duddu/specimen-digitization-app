@@ -3,6 +3,12 @@ set -euo pipefail
 
 # Called from the Flutter application directory. Public settings only; no OIDC.
 args=(--release)
+# The build stamp the help sheet shows (APP_BUILD, help_screen.dart): the exact
+# commit in CI, the same value the deployment marker carries, so a reviewer
+# can quote the build they are on. A local build stays unstamped and says so.
+if [[ -n "${GITHUB_SHA:-}" ]]; then
+  args+=("--dart-define=APP_BUILD=${GITHUB_SHA}")
+fi
 if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "push" && "${GITHUB_REF:-}" == "refs/heads/main" ]]; then
   python3 ../../scripts/ci/validate_public_settings.py
   if [[ -n "${SPECIMEN_API_BASE_URL:-}" ]]; then
