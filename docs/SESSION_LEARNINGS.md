@@ -6543,3 +6543,203 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `no_stand_ins` gate scans the package only, so neither trips it.
   - `test/ui_finders.dart` is new and shared. Slot E2 will want the same
     finders; if it wrote its own, the integrator should keep one file.
+
+## 2026-09-16: Front-end refactor wave F, slot F1, the field rebuilt inside out
+
+- Task: slot F1 of `design/11-fit-and-scale.md` section 7, which is section 4
+  of that document in full plus the ring shape of `design/09-brand-direction.md`
+  section 3.6 as amended: `FieldCore` paints text only, `UiFieldBox` paints one
+  edge, `FocusRing` follows the shape it rings, a field rings for any focus,
+  the inputs gallery gains its focused and typing states, and the edge count
+  test proves it.
+- Branch and worktree: `fe/fit-fields` at `.claude/worktrees/fe-fit-fields`,
+  cut from `front-end-refactor` at `bd69f80`. Pushed to `origin/fe/fit-fields`
+  at `7899334`. No pull request; the integrator merges the slot.
+- Outcome: complete. Five commits, 27 files, 33 new package tests (519 at the
+  start of the wave, 546 now, one replaced), four inputs goldens regenerated,
+  seven public API changes recorded in the package changelog under 0.3.0.
+- Commits (five, oldest first):
+  - `504aa64` `feat(foundation): the two tokens a field draws its caret and its selection with`
+  - `51c72a9` `feat(inputs): the field rebuilt inside out, one layer to a job`
+  - `f55bca4` `test(inputs): count the edges, the rings and the nodes a focused field has`
+  - `7bb74c1` `feat(gallery): the box in every shape and every focus state`
+  - `7899334` `docs(design): reconcile 10 and the changelog with the field rebuilt inside out`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 1 | 546 passed, 4 failed, and the four are the `foundation-primitives` goldens this slot may not commit. Every other test in the package is green. |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 993 passed, 9 skipped, 72 failed. All 72 are the screen goldens and the two semantics fixtures the wave policy reserves for the integrator. No other failure. |
+  | `check_ui_strings.py` | 0 | 193 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (27 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens and fixtures:
+  - Committed: the four `inputs-{light,dark}-{touch,pointer}.png`. The window
+    moved from 1180 by 1180 to 1180 by 1600, measured against a page that ends
+    at 1550, because the page gained the box section 11 section 4 asks for.
+    Read before committing, all four: the autofocused specimen now carries a
+    ring, which it did not before because a golden presses no key and the ring
+    used to need keyboard focus; every placeholder and every value sits one to
+    two pixels lower, which is `TextLeadingDistribution.even`; the focused
+    edge is the same weight as the resting edge; the new section reads as
+    eight boxes in two shapes with the ring running parallel to the edge.
+  - Left for the integrator: the four
+    `foundation-primitives-{light,dark}-{touch,pointer}.png`. Inspected with
+    `--update-goldens` and then restored with `git checkout`. The diff is 564
+    pixels of 967600, 0.058 percent, entirely inside the rectangle
+    (248, 728) to (415, 783), which is the `FocusRing` superellipse specimen
+    on the primitives page: the ring is an `RSuperellipse` now and runs
+    parallel to the edge through the corner instead of pulling away from it at
+    the ends of the curve. The capsule specimen holds byte for byte, because a
+    stadium ring was already drawn as a rounded rectangle at half the shorter
+    side. Not committed because 11 section 7 has the integrator regenerate the
+    family goldens after merging F1 and F2, and because F2 moves the text
+    style every gallery page draws: two branches that both regenerate a binary
+    revert one another without a conflict.
+  - Application screen goldens: 70 of 121 moved, 38 at text scale 1.0 and 32
+    at 2.0. Regenerated once to read, then restored. The 1.0 diffs are 0.12 to
+    0.5 percent and every bounding box is one text row inside a field, which
+    is the placeholder and the value moving with the even leading. The 2.0
+    diffs are 21 to 29 percent and whole screen, which is the box growing from
+    48 to about 70 dp at that scale and everything below it reflowing: that is
+    11 section 2.2 working, and the reason the intake and workbench screens
+    move most is that their top bar carries a `UiSelect`.
+  - Semantics fixtures: 2 of 8 moved, `queue.txt` and `filters.txt`.
+    Regenerated to read, then restored. Every change is a pair of nodes
+    becoming one: the 48 dp container that carried the words and the 22 dp
+    editor that carried the `tap` merge into a single `textField` node with
+    both. `filters.txt` loses two lines that read `label="2026-09-13"`, which
+    was the date field's placeholder being announced as a label by the
+    decorator that no longer exists. The label of that field is "Created on or
+    after" and always was.
+- Durable learnings:
+  - **`InputDecoration.collapsed` is still an `InputDecorator`.** Collapsing a
+    decoration removes the padding and the floating label, not the widget, and
+    the widget reads `InputDecorationTheme` from the ambient `ThemeData` and
+    paints `enabledBorder` and `focusedBorder` underneath whatever the package
+    draws. `decoration: null` builds no decorator at all. That single argument
+    is the first of the three edges in 11 section 0, and the test that holds it
+    is `find.byType(InputDecorator)` returning nothing, not a colour
+    comparison: a border painted in the same token as ours is invisible in a
+    test that only reads colours.
+  - **A `TextField` with no decorator is one caret taller than its text.** The
+    editor's box is `preferredLineHeight`, 26 dp for `body`, and the paragraph
+    inside it is 22 and vertically centred; a paragraph field is the line box
+    per line with the text at the top. A placeholder aligned to `topStart`
+    therefore sits two pixels above the value it stands in for in a single
+    line field and exactly right in a paragraph. `centerStart` for one line
+    and `topStart` for a paragraph puts them on one baseline, and the test
+    that catches it compares the placeholder's top with the filled editor's.
+  - **`overflow: TextOverflow.ellipsis` with no `maxLines` is a single line.**
+    The paragraph engine takes the ellipsis and the absent line limit together
+    as "one line, cut short", so a `Text` that should wrap does not. A
+    multiline specimen wants `TextOverflow.clip`.
+  - **`MergeSemantics` is how an editor's node becomes the control's node.**
+    Excluding the editor from semantics and publishing our own `textField`
+    node would lose `setText`, `setSelection`, `copy` and `paste`, which are
+    how a braille display and voice control drive a field. Merging keeps all
+    of them and takes the rect of the widget the merge wraps. Two rules come
+    with it: the control's own `Semantics` must not state a `value`, because
+    the editor states the true one and two configurations concatenate; and
+    anything that has to stay a separate node, such as a trailing clear
+    control, has to sit outside the merged subtree rather than inside it,
+    which is why `UiFieldBox` takes the semantics wrapper as an argument and
+    applies it to the box alone.
+  - **A text editor's semantics actions depend on focus.** An unfocused
+    `EditableText` publishes `tap` and `focus` and nothing else; `setText` and
+    `setSelection` appear once it holds focus. A test that asserts them has to
+    focus the field first.
+  - **A stadium ring is an `RRect`, not an `RSuperellipse`.** `StadiumBorder`
+    draws a rounded rectangle at half the shorter side, so a superellipse ring
+    around a capsule would part from it at the ends of the curve, which is the
+    same defect as a circular ring around a superellipse with the roles
+    reversed. The three shapes are three different draw calls and the test
+    asserts each against the recorded canvas.
+  - **Clause 4 of the control contract cannot be true of a field.** The
+    harness pumps, tabs to focus the control under `alwaysTraditional`, then
+    switches to `alwaysTouch`, re-pumps and presses. The re-pump preserves
+    state, so the control is still focused, and a field that rings for any
+    focus still draws one. The clause was amended in place through the
+    `ControlActivation` a control already declares rather than through a new
+    parameter, and the `textEditing` branch is the stronger assertion: an
+    unfocused editor draws no ring, and a pointer tap draws one.
+  - **Count rings by asking each `FocusRing` for its own painter.** Counting
+    `CustomPaint` widgets with a foreground painter finds two in a field: the
+    ring, and the `_ShapeBorderPainter` that `Material(type: transparency)`
+    installs to draw a `BorderSide.none`. The transparent `Material` is not
+    optional, because `TextField` asserts on one.
+- Failed approaches:
+  - Leaving the placeholder aligned to `topStart` in a single line field. Two
+    pixels, and the word moves as the reviewer types the first character.
+  - Asserting the selection contrast over the full composite surface set from
+    09 section 3.7. `ink` on the selection over `glass.flat` over `field.sun`
+    measures 4.19:1 in dark, and the composite is fiction: a selection is
+    painted inside a field box filled with `paper`, and a control is never
+    drawn on glass over a light field. The row is taken over the three opaque
+    surfaces, where the worst case is 4.93:1 over dark `matte`.
+  - Counting ring painters as "every `CustomPaint` with a foreground painter",
+    per the learning above.
+  - Putting the new gallery section before the select, search and text area
+    section. It pushed three controls below the fold of the golden window,
+    which is the thing 10 section 6 already says not to do.
+- Coordination for `fe/fit-foundation` and the integrator:
+  - Two markers under `lib/`, both of the form `fe/fit-foundation:` rather
+    than `TODO(fe/fit-foundation)`. The `no_stand_ins` gate fails on
+    `TODO(fe/` anywhere under the package's `lib/`, and weakening a gate to
+    carry a coordination note is a worse trade than spelling the note
+    differently. Grep for `fe/fit-foundation` to find both:
+    - `lib/src/primitives/field_core.dart`, the line that sets
+      `TextLeadingDistribution.even` on the field's text style. Drop it once
+      `UiType` carries the even distribution on every role.
+    - `lib/src/controls/inputs/field.dart`, `UiInputStyle._minHeight`, which
+      computes `fontSize * height` locally. Replace the three lines with
+      `UiTypeScale.lineHeightOf(ui.type.body, textScaler)` when
+      `foundation/type.dart` exposes it. The expected signature is a role and
+      a `TextScaler` in, the scaled line box in dp out.
+  - `test/harness/control_contract.dart` is edited by this slot in clause 4
+    only, in one `switch` on `ControlActivation` between the keyboard
+    assertion and the restoration of the highlight strategy. 11 section 7
+    gives F2 the harness for clauses 13 to 15, which are added at the end of
+    the file, so the two edits should not touch.
+  - `pubspec.yaml` stays at 0.2.0 and the changelog opens 0.3.0 as unreleased.
+    Bumping the version moves one line of the application's `pubspec.lock`,
+    which `--enforce-lockfile` then requires of the other slot as well.
+- Package API wave G and the other slot will want:
+  - `FocusRing(visible:, child:, radius:, shape:)` with
+    `FocusRingShape.superellipse`, `.stadium` and `.circle`. `capsule: true`
+    is gone; it is `shape: FocusRingShape.stadium`.
+  - `Pressable(..., focusRing: false)` for a control that rings its own edge
+    rather than its hit box. Everything else about `Pressable` is unchanged,
+    and `WidgetState.focused` still reaches the builder only under keyboard
+    focus, so a control that turns the primitive's ring off still gets the
+    condition for free.
+  - `UiInputStyle.resolve(ui, shape, {hasTrailing, textScaler})` and
+    `UiSelectStyle.resolve(ui, {textScaler})`. Both default to
+    `TextScaler.noScaling`, so an untouched call site behaves as before, and
+    both should be passed `MediaQuery.textScalerOf(context)`.
+  - `UiFieldBox(..., semantics: (Widget box) => ...)`, a wrapper applied to
+    the box and never to the trailing action.
+  - `UiColor.selection`, `UiColor.selectionOpacity` and
+    `UiStroke.caretRadius`.
+  - `FieldCore` no longer takes `showFocusRing`, and draws no ring. A control
+    that puts a bare `FieldCore` somewhere without a `UiFieldBox`, which the
+    select's filter row does, shows no focus state at all; it autofocuses, so
+    the caret is the only indication. Worth a look in wave G if the filter row
+    is revisited.
+- Follow-ups:
+  - The four `foundation-primitives` goldens, described above, for the
+    integrator.
+  - `UiTextArea` and the paragraph field still carry the vertical `s3` the box
+    adds for multiline. With the box height now derived from the type, that
+    inset and the derived height are two rules for one measurement at 200
+    percent text; a later polish could fold the paragraph case into
+    `_minHeight` as `lines * lineHeight + 2 * inset`.
+  - `UiField.maxLength` draws a counter under the box and the editor publishes
+    `maxValueLength` and `currentValueLength`, which now merge into the
+    control's node. Nothing reads them twice today, but a screen reader that
+    starts announcing the count would be announcing what the drawn counter
+    already says.
