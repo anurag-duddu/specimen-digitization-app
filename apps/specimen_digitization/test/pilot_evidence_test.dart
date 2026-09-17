@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/operational_panel.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+import 'ui_finders.dart';
 import 'widget_test.dart' show fixture;
 import 'workbench_harness.dart';
 
@@ -35,7 +37,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       ButtonStyleButton button(String label) => buttonWithLabel(tester, label);
-      expect(button('Correct label regions').onPressed, isNull);
+      // The source pane is on the design system, so its control is a
+      // `UiButton` rather than a Material button; the decision bar's two are
+      // still Material and move with slot E4.
+      expect(
+        tester.widget<UiButton>(uiButton('Correct label regions')).onPressed,
+        isNull,
+      );
       expect(button('Approve record').onPressed, isNull);
       expect(button('Confirm label coverage').onPressed, isNotNull);
       expect(find.text('Start new run'), findsNothing);
