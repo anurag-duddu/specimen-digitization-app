@@ -116,26 +116,29 @@ class SourceImportConfirmation extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final String? already = duplicates;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(consequence, style: ui.type.body.copyWith(color: ui.color.ink)),
+    // A column, not a scroller. The modal frame bounds this body to what its
+    // chrome leaves and scrolls it itself, so a body that scrolled as well
+    // would be the second vertical scroll inside the first, which is what 13
+    // section 2.1 gives a screen one of. `SearchFilters` reached the same
+    // answer for the same reason.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(consequence, style: ui.type.body.copyWith(color: ui.color.ink)),
+        SizedBox(height: ui.space.s2),
+        // Stated as its own line rather than folded into the consequence,
+        // because it is the line that answers "what does this cost me",
+        // and a reviewer skimming a confirmation should find it whole.
+        Text(spend, style: ui.type.body.copyWith(color: ui.color.ink)),
+        if (already != null) ...<Widget>[
           SizedBox(height: ui.space.s2),
-          // Stated as its own line rather than folded into the consequence,
-          // because it is the line that answers "what does this cost me",
-          // and a reviewer skimming a confirmation should find it whole.
-          Text(spend, style: ui.type.body.copyWith(color: ui.color.ink)),
-          if (already != null) ...<Widget>[
-            SizedBox(height: ui.space.s2),
-            Text(
-              already,
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-          ],
+          Text(
+            already,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
         ],
-      ),
+      ],
     );
   }
 }
@@ -191,46 +194,45 @@ class SourceImportReport extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final List<SourceImportOutcome> unchanged = progress.unchanged;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
+    // The modal frame scrolls this body, as it does the confirmation's above.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          progress.stoppedReason ?? restUnchanged,
+          style: ui.type.body.copyWith(color: ui.color.ink),
+        ),
+        if (unchanged.isNotEmpty) ...<Widget>[
+          SizedBox(height: ui.space.s4),
           Text(
-            progress.stoppedReason ?? restUnchanged,
-            style: ui.type.body.copyWith(color: ui.color.ink),
+            'Not added',
+            style: ui.type.label.copyWith(color: ui.color.inkSecondary),
           ),
-          if (unchanged.isNotEmpty) ...<Widget>[
-            SizedBox(height: ui.space.s4),
-            Text(
-              'Not added',
-              style: ui.type.label.copyWith(color: ui.color.inkSecondary),
-            ),
-            SizedBox(height: ui.space.s1),
-            for (final SourceImportOutcome row in unchanged)
-              Padding(
-                padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      row.objectName,
-                      style: ui.type.mono.identifier.copyWith(
-                        color: ui.color.ink,
-                      ),
+          SizedBox(height: ui.space.s1),
+          for (final SourceImportOutcome row in unchanged)
+            Padding(
+              padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    row.objectName,
+                    style: ui.type.mono.identifier.copyWith(
+                      color: ui.color.ink,
                     ),
-                    Text(
-                      reasonFor(row.state),
-                      style: ui.type.bodySmall.copyWith(
-                        color: ui.color.inkSecondary,
-                      ),
+                  ),
+                  Text(
+                    reasonFor(row.state),
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-          ],
+            ),
         ],
-      ),
+      ],
     );
   }
 }
