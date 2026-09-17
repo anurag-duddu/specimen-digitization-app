@@ -8048,3 +8048,274 @@ rerun against the tree that carries them, with the same results.
   - One `fe/polish-2` marker added, in `manifest_panel.dart`, for the tile.
   - No cloud command, no deploy, no dependency added, no SDK change, no screen
     golden and no semantics fixture committed.
+## 2026-09-16: Front-end refactor wave 3, slot E3, the workbench's source side
+
+- Task: slot E3 of `docs/execution/FRONT_END_REFACTOR.md` section 3E. Migrate
+  the photograph pane of the record screen, the region editor and the D5
+  patterns onto `specimen_ui`, under the fit rules of
+  `design/11-fit-and-scale.md`.
+- Branch and worktree: `fe/source-pane` at `.claude/worktrees/fe-source-pane`,
+  cut from `front-end-refactor` at `8e32d29`. Pushed to
+  `origin/fe/source-pane`. No pull request; the integrator merges the slot.
+- Outcome: complete. Five commits, fifteen files. All three Material gates are
+  at zero for every file the slot owns, and those files leave the backlog maps
+  rather than shrinking inside them. No screen golden and no semantics fixture
+  is committed.
+- Commits (five, oldest first):
+  - `800aa59` `refactor(d5): the region overlay is a Pressable and the marker is the accent`
+  - `b209387` `refactor(e3): the source pane on the design system`
+  - `20c1580` `refactor(e3): the region editor on the design system`
+  - `f6be487` `test(golden): a dialog golden pictures the pane the app pushes`
+  - `0da3b14` `test(gates): slot E3 leaves the three Material backlogs`
+  - this entry
+- Files: `lib/src/screens/workbench/source_pane.dart`, `lib/src/region_editor.dart`,
+  `lib/src/source_pixels.dart`, `lib/src/widgets/region_overlay.dart`;
+  `test/source_pane_test.dart` (new), `test/region_editor_test.dart`,
+  `test/source_geometry_test.dart`, `test/widgets/region_overlay_test.dart`,
+  `test/pilot_evidence_test.dart`, `test/accessibility/guidelines_test.dart`,
+  `test/golden/golden_harness.dart`, `test/golden/size_classes_golden_test.dart`,
+  and the three gate backlog maps under `test/theme/`.
+  `lib/src/widgets/measured_height.dart` is unchanged: it holds no Material
+  component, no Material import and no static size, so the slot's brief for it
+  ("unchanged unless a token replaces a literal") resolved to nothing to do.
+
+### Validation
+
+Every gate on its own, tree untouched during each, `rc=$?` read directly and
+never off a pipe, locale exported and the placeholder Firebase options in place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues; nothing under `packages/` changed |
+| `flutter test` (package) | 0 | 670 passed, the same count wave G left |
+| `flutter test` (app) | 1 | 1017 passed, 9 skipped, 62 failed: 56 screen goldens, 4 semantics fixtures, 2 in `workbench_layout_test.dart`. Every one is listed below |
+| `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (15 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+| `dart format --set-exit-if-changed` (15 files) | 0 | 0 changed |
+
+Backlog counts, before and after:
+
+| Gate | Before | After |
+|---|---|---|
+| `no_material_components` | `region_editor.dart` 13, `source_pane.dart` 9, `region_overlay.dart` 2 | all three off the map |
+| `no_material_imports` | `source_pane.dart`, `region_overlay.dart` | both off the list |
+| `icons_unique` | `region_editor.dart` 5, `source_pane.dart` 8 | both off the map |
+| `no_literal_geometry` | none of this slot's files were on it | still none |
+
+The three failures that are not a golden or a fixture:
+
+- `workbench_layout_test.dart`, "the chip and the overlay carry the same name
+  and state" and "a digit selects the nth region from the keyboard". Both
+  assert `find.widgetWithText(ChoiceChip, 'Label 2')` against the source pane's
+  region list, which is a `UiCapsuleToggle` now. Slot E4 owns that file and it
+  is live, so the lines are reported rather than edited. The replacement is the
+  finder this slot already added to `source_geometry_test.dart`:
+  `find.byWidgetPredicate((w) => w is Pressable && w.role == PressableRole.toggle && w.semanticsLabel == 'Label 2')`,
+  with `tester.widget<Pressable>(...).selected` in place of
+  `tester.widget<ChoiceChip>(...).selected`. Two call sites, four lines.
+
+### The goldens and the fixtures, inspected and not committed
+
+`flutter test --update-goldens test/golden test/accessibility` was run and the
+result read by eye, then `git checkout --` restored both directories. Fifty six
+of the 121 screen goldens move: 8 `region-editor` and 16 each of
+`workbench-readings`, `workbench-fields` and `workbench-history`, which is one
+per window by theme by text scale for the three workbench panels that contain
+the source pane, plus the editor's four windows by two themes. No other screen
+moves, which is the set expected from a slot that owns the source side.
+
+Four semantics fixtures move, all of them improvements and all of them
+explainable line by line:
+
+- The view controls gain a real `label`. They published a `tooltip` alone
+  before, so a screen reader had nothing to announce for the pane's five most
+  used controls.
+- The region list carries toggle semantics (`selected=true enabled=true tap`)
+  rather than `button`, because it is a `UiCapsuleToggle` in single mode.
+- Each region overlay's hit target gains `button enabled=true`: `Pressable`
+  publishes the role the bare `InkWell` did not.
+- `label="px"` leaves the tree. The unit sits in the field's trailing slot
+  under `ExcludeSemantics`, so it is drawn and not read as a control.
+- The reason's help text moves from a child node onto the field's own `hint`,
+  which is where `UiTextArea` publishes it.
+- The region order controls gain their tooltips and their disabled reasons
+  ("This is already the first label region.").
+- `Correct label regions` loses its wrapper tooltip node: the reason is on the
+  control's own node through `Pressable`.
+- Reading order inside the pane changes once: the photograph now precedes the
+  view controls, because the capsule floats over the matte's lower edge rather
+  than sitting above the image. Evidence first is the right order to read in.
+
+Two real defects were found by looking at the regenerated goldens rather than
+by any test, which is what the common section says that pass is for:
+
+1. `SourceRegionEditControl` had been given its alignment by the source pane's
+   own column, so at the workbench's stacked regime, which is what a 1440 dp
+   window gets once the queue list is beside the record, the workbench's call
+   site drew it centred in a stretched column. The control aligns itself now,
+   so both call sites read the same.
+2. The region editor's dialog golden was drawn entirely in the framework's
+   fallback style, red text under a double yellow underline. `pumpGoldenDialog`
+   opened the surface with Material's `showDialog`, which puts a pane on the
+   root navigator with no surface and no text style; `Dialog` used to supply
+   both and `UiDialog` does not, because the route does. This is 11 section 5's
+   defect, alive in a harness rather than in the product.
+
+### Durable learnings
+
+- **A `Stack` gives a child positioned on one edge an unbounded width.**
+  `RenderStack` tightens a positioned child's width only when both `left` and
+  `right`, or an explicit `width`, are set. A `LayoutBuilder` inside a child
+  pinned to `top` and `end` alone therefore sees `maxWidth == double.infinity`,
+  and every fit policy written against that width silently chooses its widest
+  variant forever. The view controls looked correct in every golden and in
+  every manual read, and the test that pumped the pane at 200 dp is what found
+  it. A control that decides by measuring has to be given both edges.
+- **A guideline suite that pumps a package surface through Material's
+  `showDialog` measures the scrim.** The barrier darkens `paper` to about
+  `#717170`, and the contrast guideline then reports 3.84 for text that
+  measures 19:1 on the surface that ships. The queue slot hit the same thing
+  and left the reason in a comment beside `SearchFilters`; this slot's editor
+  is pumped as a screen for the same reason. The rule underneath: pump a
+  package surface the way the app opens it, or pump it bare, never inside
+  Material chrome that supplies what the package supplies.
+- **`UiDisclosure`'s header is a 44 dp tap target.** `UiDisclosureStyle.resolve`
+  takes its minimum height from `density.rowHeight`, and the header publishes a
+  node with a tap action, so both tap target guidelines fail on any disclosure
+  whose title fits on one line. Every `UiDisclosure` in the product has it. The
+  workaround here is a style override that raises the floor to
+  `space.targetMin`; it is in `region_editor.dart` as
+  `disclosureStyleWithFullTarget` and both of this slot's disclosures use it.
+- **`UiField` publishes one 48 dp node now, and the proof is a suite with no
+  skip.** The region editor's guideline suite passes all four guidelines with
+  four `UiField`s on screen and nothing in the skip list, which closes the wave
+  2 finding for this screen rather than restating it.
+- **The accent over a photograph needs the casing the painter already had.**
+  `RegionBoxPainter` draws a casing on both sides of the stroke, which is what
+  lets `#E8FF47` sit on a pale 1912 label and on a dark pin without either
+  disappearing. 09 section 3.4's wave 1 amendment asks for a 1 dp `ink` casing
+  on the accent; the painter's existing shape is exactly that, so the change
+  was two colours rather than a new drawing.
+- **A `UiButtonRow` is not a toolbar.** It draws its primary last in a row and
+  first in a column, which is right for a save and its way out and wrong for
+  four peer controls: the first draft put "Delete region" at the end of the
+  reading order and gave the one destructive control the primary's weight. The
+  region toolbar is a `Wrap` of `UiIconButton`s in the order it shipped in.
+- **The editor had no `SnackBar` to convert.** The blueprint's "snackbar Undo"
+  is satisfied by the control that names the last change and takes it back,
+  which is on screen for as long as there is something to undo. A toast was
+  written and then removed: it would have been new behaviour, and
+  `UiToasts.show` from inside a modal route finds no `UiToastHost`, so it would
+  have worked on a phone and done nothing on a desktop.
+
+### Failed approaches
+
+- **Publishing the matte's rect to `UiScaffold.exclusion`.** This is the
+  mechanism the package was built for: `FieldLayer` says in its own header that
+  it "clips out the exclusion the source pane asks for", and `UiFields.matteExclusion`
+  exists for it. It cannot be reached from this slot. `exclusion` is a
+  constructor argument of `UiScaffold`, the record route's scaffold is built by
+  `AppShell` in `lib/src/app/shell.dart`, and that file is slot E1's. An
+  `InheritedNotifier` published upward would still need the one line in
+  `AppShell` that reads it. The invariant is held by painting instead: the pane
+  draws an opaque `ground` band of `UiFields.matteExclusion` around the matte,
+  which costs 24 dp of layout per side and holds at every window class under
+  any frame. `shell.dart` gains the line and the pane drops the band the moment
+  the package grows the API below.
+- **`MaterialPageRoute` for the two full window surfaces.** It is the only
+  route `PageTransitionsTheme` reaches, and 10 section 1.3 keeps that theme
+  precisely for per-platform transitions, so keeping the route would have been
+  defensible. It brings `material.dart` with it, and the import gate is per
+  file and does not read a `show` clause, so the slot's exit criterion and the
+  route could not both be met. `uiFullScreenRoute` in `region_editor.dart` is a
+  `PageRouteBuilder` with the emphasized pair `ModalRoutes` uses. The cost is
+  the iOS edge swipe, which a `PageRouteBuilder` does not provide.
+- **`UiField`'s `trailing` for the `px` unit, as an action.** The slot says a
+  trailing "is given its own 48 dp hit box", which is right for a control and
+  wrong for a unit: the unit would have read as a control to a screen reader.
+  `ExcludeSemantics` around it keeps the unit drawn and out of the tree, which
+  is what `suffixText` did before.
+- **`find.byWidgetPredicate((w) => w is Semantics && w.properties.label == label)`
+  for the overlay.** It used to find exactly one node because `ChoiceChip`
+  published its name some other way. Every `Pressable` publishes a `Semantics`
+  with the caller's label, so the region list and the overlay now match the
+  same predicate, which is the whole point of the pairing they are tested for.
+  The overlay is found by where it is (`find.descendant(of: RegionOverlay)`)
+  and the list option by its role.
+
+### Follow-ups and product defects noticed
+
+- Slot E4 or the integrator applies the two-call-site finder change in
+  `workbench_layout_test.dart` described under Validation.
+- `lib/src/app/shell.dart` line 116 already carries the comment that the
+  workbench slot passes the matte's exclusion rectangle "when it lands". It
+  cannot, for the reason above. The one line that closes it is
+  `exclusion: <the matte's rect in the frame's coordinates>` on the shell's
+  `UiScaffold`, which needs the package API listed below. Until then the pane's
+  own band holds the invariant.
+- The shell's `UiScaffold` paints `SkyPreset.home` on every collection route
+  including the record. 09 section 3.2's preset table gives the record the
+  `work` sky, and `grep -rn "SkyPreset.work" lib/` returns nothing: no screen
+  in the product uses it. Worth one line in the shell or one row of the
+  document, whichever is meant.
+- `lib/src/app/app_router.dart` keeps its transparent `Scaffold` marked
+  `TODO(fe/wave-3)`. Neither of this slot's screens needs it any more: no
+  `ScaffoldMessenger`, no assertion on a `Material` ancestor, and the region
+  editor's full window route brings its own `UiScaffold`. The two remaining
+  reasons are slots E4 and E5.
+- The region editor's dialog is capped at `space.dialogMax`, 560, by the
+  package's modal route. 05 section 3.0 assigns this editor `DialogWidths.wide`,
+  640. The `ConstrainedBox` at `DialogWidths.wide` inside `RegionEditor` binds
+  only where a caller renders the editor without the route, which is the
+  guideline, dark mode and golden fixtures. Either the route grows a width or
+  05 changes its number; the two disagree today.
+- A `UiDisclosure`'s header publishes no `enabled` flag, so the fixture line for
+  "Source details" reads `button tap label="Source details"` where an
+  `ExpansionTile` read `enabled=true`. Cosmetic in the fixture, and a screen
+  reader announcing a control with no enabled state is worth one line in the
+  package.
+
+### Package APIs this slot needed and worked around
+
+1. **An exclusion a descendant can publish to its enclosing `UiScaffold`.**
+   `UiScaffold.exclusion` is a constructor argument, and the widget that knows
+   the matte's rect is four layers below the widget that builds the scaffold. A
+   scope the frame listens to, or a `UiScaffold.exclusionOf(context)` a
+   descendant can write, would turn 09 section 2 principle 1 into a paint time
+   clip on the field layer for every screen rather than a gutter each screen
+   pays for in layout. Worked around with `SourceMatte`'s painted band, marked
+   `fe/polish-2` in `source_pane.dart`.
+2. **A `UiPageRoute`.** The package publishes `showUiSheet`, `showUiDialog` and
+   `showUiModal` and no full window route, so the two surfaces in this slot that
+   take the whole screen each carry their own `PageRouteBuilder`. One route in
+   the package would give them one entrance, and could carry the platform's own
+   back gesture, which a bare `PageRouteBuilder` does not. Worked around with
+   `uiFullScreenRoute` in `region_editor.dart`, marked `fe/polish-2`.
+3. **`UiDisclosureStyle.copyWith`, and a header floor at the hit box.** Raising
+   one field meant restating all ten. Worked around with
+   `disclosureStyleWithFullTarget`, marked `fe/polish-2`.
+4. **`UiIcons.merge`.** The registry has no glyph for merging two regions, and
+   reusing `superseded` or `addToBatch` would give one glyph two meanings,
+   which 09 section 7 forbids. "Merge with next" keeps its word while the
+   three controls beside it are icon buttons.
+5. **A `UiToastHost` reachable from inside a modal route.** `UiToasts.show`
+   from a pane `showUiDialog` pushed finds no host, because the host is
+   installed by `UiScaffold` and the route is above it. Not worked around: the
+   editor raises no message.
+
+### For the other wave 3 slots
+
+- `RegionOverlay`, `MeasuredHeight`, `SourcePixels`, `SourceBasisNotice`,
+  `SourceOrientationCaveat`, `SourceRegionEditControl`, `SourceDetails`,
+  `WorkbenchSourcePane`, `SourceViewController`, `showSourceFullScreen`,
+  `showRegionEditor`, `RegionEditor` and `RegionEditorBody` all keep their
+  constructors and their named parameters. `workbench.dart` needs no change.
+- Two new public names are worth knowing before either of you writes your own:
+  `uiFullScreenRoute` and `disclosureStyleWithFullTarget`, both in
+  `lib/src/region_editor.dart` and both marked `fe/polish-2`. The disclosure one
+  in particular applies to every `UiDisclosure` in the product, so slot E4's
+  panels will need it.
+- `SourceMatte` is public in `source_pane.dart`. Anything that draws a
+  photograph belongs inside it rather than beside it.

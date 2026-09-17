@@ -43,15 +43,12 @@ const Set<String> packageMaterialFiles = <String>{
 /// Files that still import `material.dart`. Shrink only.
 ///
 /// Wave 2, slot E1 removed the shell, the entry screens and the D1 patterns
-/// from it. Wave 3, slot E5 removed intake, the sources screens and the D6
-/// patterns.
 const List<String> importBacklog = <String>[
   'lib/src/screens/workbench/decision_bar.dart',
   'lib/src/screens/workbench/evidence_picker.dart',
   'lib/src/screens/workbench/fields_panel.dart',
   'lib/src/screens/workbench/readings_panel.dart',
   'lib/src/screens/workbench/shortcuts.dart',
-  'lib/src/screens/workbench/source_pane.dart',
   'lib/src/screens/workbench/status_strip.dart',
   'lib/src/widgets/adaptive_form.dart',
   'lib/src/widgets/authority_candidate_card.dart',
@@ -60,7 +57,6 @@ const List<String> importBacklog = <String>[
   'lib/src/widgets/field_row.dart',
   'lib/src/widgets/reading_card.dart',
   'lib/src/widgets/reason_sheet.dart',
-  'lib/src/widgets/region_overlay.dart',
   'lib/src/widgets/risk_meter.dart',
 ];
 

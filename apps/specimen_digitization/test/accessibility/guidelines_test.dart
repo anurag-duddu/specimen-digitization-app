@@ -273,11 +273,18 @@ void main() {
     },
   );
 
+  // The editor is the body of a `showUiDialog` pane now, not a Material
+  // dialog of its own, so it is pumped as a screen for the same reason the
+  // filter form above is: `pumpDialog`'s barrier darkens the pane the
+  // package's own modal frame would have painted, and the contrast guideline
+  // then measures a scrim rather than the surface that ships.
   guidelineSuite(
     'RegionEditor',
-    (tester) => pumpDialog(
+    (tester) => pumpScreen(
       tester,
-      const RegionEditor(regions: smallRegions, asset: smallAsset),
+      const Scaffold(
+        body: RegionEditor(regions: smallRegions, asset: smallAsset),
+      ),
     ),
   );
 

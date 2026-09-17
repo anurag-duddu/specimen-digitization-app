@@ -401,6 +401,7 @@ void main() {
             tester,
             window: size,
             brightness: brightness,
+            semanticsLabel: regionEditorTitle,
             dialog: RegionEditor(
               regions: goldenRegions,
               asset: goldenEditableAsset(),
@@ -412,8 +413,9 @@ void main() {
             tester,
             window: size,
             brightness: brightness,
-            child: Scaffold(
-              appBar: AppBar(title: const Text('Correct label regions')),
+            child: UiScaffold(
+              sky: SkyPreset.none,
+              topBar: const UiTopBar(title: regionEditorTitle),
               body: RegionEditorBody(
                 regions: goldenRegions,
                 asset: goldenEditableAsset(),

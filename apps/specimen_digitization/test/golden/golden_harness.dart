@@ -24,8 +24,8 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/theme/icons.dart';
-import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_ui/testing.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
@@ -370,6 +370,7 @@ Future<void> pumpGoldenDialog(
   required Size window,
   required Brightness brightness,
   required Widget dialog,
+  required String semanticsLabel,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = window;
@@ -378,16 +379,26 @@ Future<void> pumpGoldenDialog(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
+      builder: productScope,
       home: Builder(
-        builder: (BuildContext context) => Scaffold(
-          body: TextButton(
-            onPressed: () => unawaited(
-              showDialog<void>(
-                context: context,
-                builder: (BuildContext _) => dialog,
+        builder: (BuildContext context) => UiScaffold(
+          body: Center(
+            child: UiButton(
+              label: 'Open',
+              onPressed: () => unawaited(
+                // The package's own modal route, because that is what the app
+                // pushes. Material's `showDialog` puts the pane on the root
+                // navigator with no surface and no text style of its own, so
+                // the golden pictured the framework fallback, red on a double
+                // yellow underline, rather than the dialog that ships
+                // (11 section 5).
+                showUiDialog<void>(
+                  context: context,
+                  semanticsLabel: semanticsLabel,
+                  builder: (BuildContext _) => dialog,
+                ),
               ),
             ),
-            child: const Text('Open'),
           ),
         ),
       ),
@@ -397,6 +408,25 @@ Future<void> pumpGoldenDialog(
   await tester.pumpAndSettle();
   await settleImages(tester);
 }
+
+/// The scope `main.dart` puts above the router, rebuilt for a harness.
+///
+/// `UiTheme` publishes the product's tokens and its ambient text style, and
+/// the root clamps the text scale to the range the control contract promises
+/// (11 sections 2.1 and 5). A surface pumped without it draws in whatever the
+/// framework falls back to, which is the one thing a golden must never
+/// picture.
+Widget productScope(BuildContext context, Widget? child) =>
+    MediaQuery.withClampedTextScaling(
+      minScaleFactor: 0.85,
+      maxScaleFactor: 2,
+      child: UiTheme(
+        data: Theme.of(context).brightness == Brightness.dark
+            ? UiThemeData.dark()
+            : UiThemeData.light(),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
 
 /// The narrowest window that gets the dialog form of a surface.
 ///
@@ -419,6 +449,7 @@ Future<void> pumpGoldenRoute(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
+      builder: productScope,
       home: child,
     ),
   );

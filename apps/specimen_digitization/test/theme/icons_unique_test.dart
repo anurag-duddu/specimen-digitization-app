@@ -15,8 +15,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 ///
 /// Wave 2, slot E1 took the shell, the entry screens and the D1 patterns off
 /// it: thirty seven glyphs, every one of them now a `UiIcons` entry. Wave 3,
-/// slot E5 took the intake, capture and sources screens and the D6 patterns
-/// off it: forty one more.
 ///
 /// `UiIcons.fromSymbolName` is what a screen agent replaces one with: it maps
 /// the Material name onto a registry key, so the choice of glyph is made once
@@ -27,11 +25,9 @@ const Map<String, int> glyphBacklog = <String, int>{
   'lib/src/large_record.dart': 1,
   'lib/src/operational_panel.dart': 1,
   'lib/src/reading_declarations.dart': 2,
-  'lib/src/region_editor.dart': 5,
   'lib/src/screens/workbench/decision_bar.dart': 3,
   'lib/src/screens/workbench/fields_panel.dart': 2,
   'lib/src/screens/workbench/readings_panel.dart': 3,
-  'lib/src/screens/workbench/source_pane.dart': 8,
   'lib/src/screens/workbench/status_strip.dart': 6,
   'lib/src/theme/icons.dart': 17,
   'lib/src/widgets/authority_candidate_card.dart': 1,
