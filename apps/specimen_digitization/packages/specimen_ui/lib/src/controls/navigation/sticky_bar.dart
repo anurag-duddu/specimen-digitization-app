@@ -10,10 +10,18 @@ import '../../primitives/composition_markers.dart';
 /// page until it meets the header and then sticks under it: the record's
 /// segments, the queue's search and filter row.
 ///
-/// It draws `ground` behind its child so what scrolls beneath does not show
-/// through, which is also the solid surface the scaffold's compact pane
-/// policy asks of every region but the one it floats (13 section 2.2). It
-/// carries the `header` marker so the chrome budget counts it while it is
+/// A sticky bar is chrome only while it is stuck (13 section 3.5). In the
+/// flow of the page it paints nothing and lets the sky through; once it is
+/// pinned, scrolled past the top of the viewport or held under a pinned header
+/// above it, it draws `ground` behind its child so what scrolls beneath does
+/// not show through, which is also the solid surface the scaffold's compact
+/// pane policy asks of every region but the one it floats (13 section 2.2).
+/// The fill appears at the threshold and does not fade in, the way a
+/// collapsing header takes its chrome fill (09 section 11). Polish 3: the
+/// queue's search row, stuck at medium, drew a band of ground across the home
+/// sky while it was still in the flow.
+///
+/// It carries the `header` marker so the chrome budget counts it while it is
 /// stuck, and the extent is the child's own height, which the caller derives
 /// from type (`UiType.controlHeightFor` plus its padding), never a constant.
 class UiStickyBar extends StatelessWidget {
@@ -63,10 +71,23 @@ class _StickyBarDelegate extends SliverPersistentHeaderDelegate {
     BuildContext context,
     double shrinkOffset,
     bool overlapsContent,
-  ) => SizedBox(
-    height: extent,
-    child: ColoredBox(color: ground, child: child),
-  );
+  ) {
+    // Stuck at the top of the viewport once anything has scrolled past it,
+    // and stuck under a pinned header above it once that header's paint
+    // overlaps this sliver, which is the moment the bar's top meets the
+    // header's lower edge.
+    final bool stuck = shrinkOffset > 0 || overlapsContent;
+    // One decoration whatever the state, with no colour while the bar is in
+    // the flow: a fill that came and went as a widget would rebuild the row
+    // inside it at the threshold, and a search field loses its text that way.
+    return SizedBox(
+      height: extent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: stuck ? ground : null),
+        child: child,
+      ),
+    );
+  }
 
   @override
   bool shouldRebuild(_StickyBarDelegate oldDelegate) =>
