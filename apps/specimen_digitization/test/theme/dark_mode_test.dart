@@ -32,6 +32,7 @@ import 'package:specimen_digitization/src/search_filters.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import '../golden/golden_harness.dart';
 
 /// A session that reaches nothing, so the sign-in screen renders its form.
 class _OfflineSession implements SessionAccess {
@@ -110,7 +111,7 @@ void bothThemes(String screen, Widget Function() build, {Size? size}) {
       // now and the panels are pumped bare, and what a contrast guideline
       // needs is words to measure.
       expect(find.byType(Text), findsWidgets);
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await expectGuideline(tester, textContrastGuideline);
       handle.dispose();
     });
   });

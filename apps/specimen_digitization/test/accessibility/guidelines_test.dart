@@ -33,6 +33,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import '../golden/golden_harness.dart';
 
 /// A `SessionAccess` that reaches nothing. `SignInScreen` renders its fixture
 /// form for any session that is not an `EmailLinkAccess`, which is the branch
@@ -199,7 +200,7 @@ void guidelineSuite(
         testWidgets(label, (tester) async {
           final handle = tester.ensureSemantics();
           await pump(tester);
-          await expectLater(tester, meetsGuideline(guideline));
+          await expectGuideline(tester, guideline);
           handle.dispose();
         });
       }

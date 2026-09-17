@@ -474,7 +474,39 @@ const String goldenPlatformSkip =
     'percent';
 
 /// True where a golden comparison is meaningful.
-bool get goldensCompare => Platform.isMacOS;
+bool get goldensCompare =>
+    Platform.isMacOS && Platform.environment['SPECIMEN_GOLDENS'] != 'skip';
+
+/// Why a pixel sampling instrument is skipped off macOS.
+///
+/// The framework's `textContrastGuideline` and the dark mode measurements
+/// read rendered pixels, which the platform rasterises: Linux draws the same
+/// glyphs thinner and the sampler then reads two shades of the background
+/// where macOS reads glyph against ground (verification report v2, "One
+/// instrument was found to be unreliable"). They run where the goldens are
+/// drawn. The token based composite contrast tests carry the contrast proof
+/// on every platform.
+const String pixelInstrumentSkip =
+    'Pixel sampling instruments run on macOS, where the goldens are drawn; '
+    'the composite contrast tests carry the proof on every platform';
+
+/// True where a pixel sampling instrument is meaningful: the same places the
+/// goldens compare. `SPECIMEN_GOLDENS=skip` forces the off macOS path.
+bool get pixelInstrumentsCompare => goldensCompare;
+
+/// Runs [guideline] against [tester], or marks the test skipped when the
+/// guideline samples pixels off macOS. Geometry and semantics guidelines run
+/// everywhere.
+Future<void> expectGuideline(
+  WidgetTester tester,
+  AccessibilityGuideline guideline,
+) async {
+  if (guideline == textContrastGuideline && !pixelInstrumentsCompare) {
+    markTestSkipped(pixelInstrumentSkip);
+    return;
+  }
+  await expectLater(tester, meetsGuideline(guideline));
+}
 
 /// Where a golden for [name] lives.
 ///

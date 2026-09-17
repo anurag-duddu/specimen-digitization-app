@@ -18,6 +18,7 @@ import 'package:specimen_digitization/src/workbench.dart';
 
 import 'guidelines_test.dart' show countSemantics, guidelines;
 import '../ui_finders.dart';
+import '../golden/golden_harness.dart';
 
 /// A record carrying one of everything the workbench renders.
 Specimen workbenchRecord() => Specimen({
@@ -154,7 +155,7 @@ void main() {
         testWidgets('meets the $label guideline', (tester) async {
           final handle = tester.ensureSemantics();
           await pumpWorkbench(tester, window);
-          await expectLater(tester, meetsGuideline(guideline));
+          await expectGuideline(tester, guideline);
           handle.dispose();
         });
       });
@@ -170,7 +171,7 @@ void main() {
       await tester.tap(uiIconButton(RegExp(r'^Edit as written')).first);
       await tester.pumpAndSettle();
       for (final AccessibilityGuideline guideline in guidelines.values) {
-        await expectLater(tester, meetsGuideline(guideline));
+        await expectGuideline(tester, guideline);
       }
       handle.dispose();
     });
@@ -181,7 +182,7 @@ void main() {
       await tester.tap(uiIconButton(shortcutSheetTitle));
       await tester.pumpAndSettle();
       for (final AccessibilityGuideline guideline in guidelines.values) {
-        await expectLater(tester, meetsGuideline(guideline));
+        await expectGuideline(tester, guideline);
       }
       handle.dispose();
     });
