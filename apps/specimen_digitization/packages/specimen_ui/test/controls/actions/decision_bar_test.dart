@@ -1,5 +1,7 @@
 // `UiDecisionBar` and `UiDecisionSwipe` (13 section 3.3).
 
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,22 +11,39 @@ import '../../harness/control_contract.dart';
 
 const String _clear = 'Clear record';
 const String _defer = 'Defer record';
+const String _correct = 'Correct label regions';
 const String _count = '1 of 4';
+const String _first = 'This is the first record in the loaded queue.';
 
 Widget _bar({
   VoidCallback? onPrimary,
   VoidCallback? onSecondary,
+  VoidCallback? onTertiary,
   VoidCallback? onPrevious,
   VoidCallback? onNext,
+  String? previousDisabledReason,
+  String? nextDisabledReason,
   bool withSecondary = true,
+  bool withTertiary = false,
+  String? count = _count,
 }) => UiDecisionBar(
   primary: UiButton(label: _clear, onPressed: onPrimary ?? () {}),
   secondary: withSecondary
       ? UiButton(label: _defer, onPressed: onSecondary ?? () {})
       : null,
-  count: _count,
+  tertiary: <UiButton>[
+    if (withTertiary)
+      UiButton(
+        label: _correct,
+        variant: UiButtonVariant.secondary,
+        onPressed: onTertiary ?? () {},
+      ),
+  ],
+  count: count,
   onPrevious: onPrevious,
   onNext: onNext,
+  previousDisabledReason: previousDisabledReason,
+  nextDisabledReason: nextDisabledReason,
 );
 
 Future<void> _pump(
@@ -145,6 +164,139 @@ void main() {
     await tester.tap(next);
     await tester.pumpAndSettle();
     expect(moved, 1);
+  });
+
+  testWidgets('tertiary actions read before the secondary and the primary', (
+    WidgetTester tester,
+  ) async {
+    await _pump(tester, _bar(withTertiary: true));
+
+    expect(find.text(_correct), findsOneWidget);
+    expect(
+      tester.getRect(find.text(_correct)).left,
+      lessThan(tester.getRect(find.text(_defer)).left),
+      reason: 'the order UiButtonRow reads them in (11 section 3.4)',
+    );
+    expect(
+      tester.getRect(find.text(_defer)).left,
+      lessThan(tester.getRect(find.text(_clear)).left),
+    );
+    expect(
+      find.bySemanticsLabel(UiDecisionBar.defaultOverflowLabel),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the tertiary actions leave the line first, into the menu', (
+    WidgetTester tester,
+  ) async {
+    int corrected = 0;
+    await _pump(
+      tester,
+      _bar(withTertiary: true, onTertiary: () => corrected++),
+      width: 420,
+    );
+
+    expect(
+      find.text(_defer),
+      findsOneWidget,
+      reason: 'the secondary stays beside the primary while the line holds it',
+    );
+    expect(find.text(_correct), findsNothing);
+    final Finder trigger = find.bySemanticsLabel(
+      UiDecisionBar.defaultOverflowLabel,
+    );
+    expect(trigger, findsOneWidget);
+
+    await tester.tap(trigger);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(_correct));
+    await tester.pumpAndSettle();
+    expect(corrected, 1, reason: 'a decision is moved, never dropped');
+
+    await _pump(tester, _bar(withTertiary: true), width: 280);
+    expect(find.text(_defer), findsNothing);
+    expect(find.text(_correct), findsNothing);
+    await tester.tap(find.bySemanticsLabel(UiDecisionBar.defaultOverflowLabel));
+    await tester.pumpAndSettle();
+    expect(find.text(_correct), findsOneWidget);
+    expect(find.text(_defer), findsOneWidget);
+    expect(
+      tester.getRect(find.text(_correct)).top,
+      lessThan(tester.getRect(find.text(_defer)).top),
+      reason: 'the menu keeps the reading order, tertiary before secondary',
+    );
+  });
+
+  testWidgets(
+    'an edge control is drawn only where there is a move or a reason',
+    (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await _pump(tester, _bar(onNext: () {}), width: 700);
+      expect(
+        find.bySemanticsLabel(UiDecisionBar.defaultPreviousLabel),
+        findsNothing,
+        reason:
+            'no move and no reason is a screen with nothing to move between, '
+            'and a disabled control that never says why is not drawn',
+      );
+      expect(
+        find.bySemanticsLabel(UiDecisionBar.defaultNextLabel),
+        findsOneWidget,
+      );
+
+      await _pump(
+        tester,
+        _bar(onNext: () {}, previousDisabledReason: _first),
+        width: 700,
+      );
+      final Finder previous = find.bySemanticsLabel(
+        UiDecisionBar.defaultPreviousLabel,
+      );
+      expect(previous, findsOneWidget);
+      final SemanticsData data = tester
+          .getSemantics(previous)
+          .getSemanticsData();
+      expect(data.flagsCollection.isEnabled, Tristate.isFalse);
+      expect(
+        data.hint,
+        _first,
+        reason: 'the end of the queue says why (03 section 3.6)',
+      );
+      handle.dispose();
+    },
+  );
+
+  testWidgets('a bar carrying only a primary never overflows', (
+    WidgetTester tester,
+  ) async {
+    // Intake's upload action: one long decision with a glyph, at 200 percent
+    // text on a phone. It used to overflow by five pixels, because the bar
+    // measured the label alone and chose an arrangement that did not fit.
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(390, 844),
+        textScaler: const TextScaler.linear(2),
+        child: SizedBox(
+          width: 390,
+          child: UiDecisionBar(
+            primary: UiButton(
+              label: 'Upload 12 photographs to the collection',
+              leading: UiIcons.save,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(UiButton), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(UiButton)).width,
+      lessThanOrEqualTo(390),
+      reason: 'the primary ellipsises (11 section 3.3, rule 4)',
+    );
   });
 
   testWidgets('a compact window draws no edge buttons', (

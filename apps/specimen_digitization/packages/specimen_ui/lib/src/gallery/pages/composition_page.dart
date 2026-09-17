@@ -132,7 +132,7 @@ class _CompositionPage extends StatelessWidget {
                       triple: _cleared,
                       icon: UiIcons.cleared,
                     ),
-                    facts: <String>['Run 42', 'Version 3'],
+                    facts: <Widget>[Text('Run 42'), Text('Version 3')],
                   ),
                 ),
               ),
@@ -537,7 +537,7 @@ class _Strip extends StatelessWidget {
       triple: _needsReview,
       icon: UiIcons.needsReview,
     ),
-    facts: const <String>['Run 42', 'Version 3'],
+    facts: const <Widget>[Text('Run 42'), Text('Version 3')],
     blockers: _blockers,
   );
 }

@@ -69,11 +69,21 @@ class UiDecisionBarStyle {
 /// the two that move between records are the two the reviewer's thumb can do
 /// without.
 ///
-/// **Fit** (11 section 3.3; clause 15). Two arrangements. The secondary sits
-/// beside the primary as a ghost button while the line holds both; below that
-/// it moves into the bar's own overflow menu, carrying the same label, so
-/// nothing a reviewer could do at 1400 dp is unreachable at 360. The count is
-/// a [UiLabel] and ellipsises last.
+/// **Fit** (11 section 3.3; clause 15). Three arrangements, tried in order.
+/// Every action on the line: the [tertiary] actions and then the [secondary]
+/// beside the primary as ghost buttons, the way `UiButtonRow` reads them. Then
+/// the tertiary actions in the bar's own overflow menu with the secondary still
+/// beside the primary. Then the secondary in the menu too, carrying the same
+/// label, so nothing a reviewer could do at 1400 dp is unreachable at 360. The
+/// count is a [UiLabel] and ellipsises first. When no arrangement fits, the
+/// primary ellipsises (rule 4), taking three parts of the line to the count's
+/// one, and a bar carrying only a primary reaches that last resort the same
+/// way: a single long decision at 200 percent text on a phone ellipsises
+/// rather than overflowing (polish 3).
+///
+/// The bar measures its buttons through `UiButton.intrinsicWidth`, which
+/// counts a glyph as well as the label, so the arrangement it chooses is the
+/// one that fits.
 ///
 /// It goes in the scaffold's action bar, which a routed screen fills through
 /// `UiScaffoldSlots.of(context).setActionBar`, so the shell owns the bottom
@@ -96,9 +106,12 @@ class UiDecisionBar extends StatelessWidget {
     super.key,
     required this.primary,
     this.secondary,
+    this.tertiary = const <UiButton>[],
     this.count,
     this.onPrevious,
     this.onNext,
+    this.previousDisabledReason,
+    this.nextDisabledReason,
     this.previousLabel = defaultPreviousLabel,
     this.nextLabel = defaultNextLabel,
     this.overflowLabel = defaultOverflowLabel,
@@ -115,6 +128,14 @@ class UiDecisionBar extends StatelessWidget {
   /// The other decision, beside the primary or in the overflow.
   final UiButton? secondary;
 
+  /// Anything else the screen offers from the bar, in reading order, drawn
+  /// before [secondary] the way `UiButtonRow` draws its tertiary actions
+  /// (11 section 3.4). They are the first to move into the overflow menu.
+  ///
+  /// A record whose approval has a prerequisite offers the save, the
+  /// approval and the confirmation from one bar rather than choosing two.
+  final List<UiButton> tertiary;
+
   /// Where the reviewer is in the run, such as "1 of 4".
   ///
   /// The caller's words: a count in a sentence is product copy.
@@ -125,6 +146,20 @@ class UiDecisionBar extends StatelessWidget {
 
   /// Moves to the record after this one. Null where there is none.
   final VoidCallback? onNext;
+
+  /// Why there is no record before this one, in the reviewer's words, where
+  /// [onPrevious] is null.
+  ///
+  /// The control is then drawn disabled with the reason on its hint and its
+  /// tooltip (03 section 3.6), so the end of a queue says why rather than
+  /// falling silent. With neither a move nor a reason the control is not
+  /// drawn at all: a screen with no queue has nothing to move between, and a
+  /// disabled control that never says why is the defect the reason exists to
+  /// prevent.
+  final String? previousDisabledReason;
+
+  /// Why there is no record after this one, where [onNext] is null.
+  final String? nextDisabledReason;
 
   /// What the previous control is called.
   final String previousLabel;
@@ -160,137 +195,193 @@ class UiDecisionBar extends StatelessWidget {
     final UiDecisionBarStyle paint =
         style ?? UiDecisionBarStyle.resolve(ui, context);
     final bool edges = edgesAt(context);
+    final bool drawPrevious =
+        edges && (onPrevious != null || previousDisabledReason != null);
+    final bool drawNext =
+        edges && (onNext != null || nextDisabledReason != null);
     final UiButton? second = secondary;
+    // Everything beside the primary, in the order a row reads them: the
+    // tertiary actions, then the secondary, then the primary itself.
+    final List<UiButton> beside = <UiButton>[...tertiary, ?second];
 
-    final double fixed = _fixedWidth(context, paint, edges: edges);
-    final double intrinsic =
+    final double fixed = _fixedWidth(
+      context,
+      paint,
+      drawPrevious: drawPrevious,
+      drawNext: drawNext,
+    );
+    double ghostWidth(UiButton action) =>
+        _ghost(action).intrinsicWidth(context) + paint.gap;
+    final double menu = UiDensity.hitBox + paint.gap;
+    final double allDrawn =
         fixed +
-        (second == null
-            ? 0
-            : _buttonWidth(context, ui, second.label, UiButtonVariant.ghost) +
-                  paint.gap);
-    final double overflowed =
-        fixed + (second == null ? 0 : UiDensity.hitBox + paint.gap);
+        beside.fold<double>(
+          0,
+          (double sum, UiButton action) => sum + ghostWidth(action),
+        );
+    final double tertiaryInMenu =
+        fixed + (second == null ? 0 : ghostWidth(second)) + menu;
+    final double allInMenu = fixed + menu;
 
     return SizedBox(
       height: paint.height,
       child: FitBuilder(
         variants: <FitVariant>[
           FitVariant(
-            intrinsicWidth: intrinsic,
-            builder: (BuildContext context, bool _) =>
-                _row(context, paint, edges: edges, overflowed: false),
-          ),
-          // The secondary decision moves into the bar's own menu rather than
-          // being dropped or squeezed: it is a decision, and a decision that
-          // is unreachable at a phone width is a decision the product does
-          // not offer on a phone. Below even that the primary is allowed to
-          // ellipsise, which is the last resort 11 section 3.3 gives every
-          // control and the only thing left to give.
-          FitVariant(
-            intrinsicWidth: overflowed,
+            intrinsicWidth: allDrawn,
             builder: (BuildContext context, bool lastResort) => _row(
               context,
               paint,
-              edges: edges,
-              overflowed: second != null,
+              drawPrevious: drawPrevious,
+              drawNext: drawNext,
+              beside: beside,
+              inMenu: const <UiButton>[],
               squeeze: lastResort,
             ),
           ),
+          // The tertiary actions leave the line first, into the bar's own
+          // menu, and the secondary stays beside the primary while the line
+          // holds the two of them.
+          if (tertiary.isNotEmpty && second != null)
+            FitVariant(
+              intrinsicWidth: tertiaryInMenu,
+              builder: (BuildContext context, bool lastResort) => _row(
+                context,
+                paint,
+                drawPrevious: drawPrevious,
+                drawNext: drawNext,
+                beside: <UiButton>[second],
+                inMenu: tertiary,
+                squeeze: lastResort,
+              ),
+            ),
+          // Every other decision moves into the menu rather than being
+          // dropped or squeezed: it is a decision, and a decision that is
+          // unreachable at a phone width is a decision the product does not
+          // offer on a phone. Below even that the primary is allowed to
+          // ellipsise, which is the last resort 11 section 3.3 gives every
+          // control and the only thing left to give.
+          if (beside.isNotEmpty)
+            FitVariant(
+              intrinsicWidth: allInMenu,
+              builder: (BuildContext context, bool lastResort) => _row(
+                context,
+                paint,
+                drawPrevious: drawPrevious,
+                drawNext: drawNext,
+                beside: const <UiButton>[],
+                inMenu: beside,
+                squeeze: lastResort,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  /// The width of everything on the bar except the secondary's own button.
+  /// The width of everything on the bar except the actions beside the
+  /// primary: the edge controls that are drawn, the count, and the primary
+  /// itself.
   double _fixedWidth(
     BuildContext context,
     UiDecisionBarStyle paint, {
-    required bool edges,
+    required bool drawPrevious,
+    required bool drawNext,
   }) {
-    final UiThemeData ui = context.ui;
     final String? shown = count;
-    return (edges ? 2 * (UiDensity.hitBox + paint.gap) : 0) +
+    return (drawPrevious ? UiDensity.hitBox + paint.gap : 0) +
+        (drawNext ? UiDensity.hitBox + paint.gap : 0) +
         (shown == null
             ? 0
             : measureLabel(context, shown, paint.count).width + paint.gap) +
-        _buttonWidth(context, ui, primary.label, primary.variant);
+        primary.intrinsicWidth(context);
   }
 
-  /// What one of the bar's buttons takes: its label at the live text scale
-  /// plus the padding its own style gives it.
-  ///
-  /// Read from `UiButtonStyle` rather than estimated, because a bar that
-  /// guesses low keeps an arrangement that does not fit and overflows in the
-  /// one case the variants exist to prevent.
-  double _buttonWidth(
-    BuildContext context,
-    UiThemeData ui,
-    String label,
-    UiButtonVariant variant,
-  ) {
-    final UiButtonStyle style = UiButtonStyle.resolve(ui, variant, UiSize.md);
-    return measureLabel(context, label, style.label).width +
-        style.padding.resolve(Directionality.of(context)).horizontal;
-  }
+  /// [action] as the bar draws it beside the primary: the ghost variant, with
+  /// everything else the caller said kept.
+  UiButton _ghost(UiButton action) => UiButton(
+    label: action.label,
+    variant: UiButtonVariant.ghost,
+    size: action.size,
+    onPressed: action.onPressed,
+    disabledReason: action.disabledReason,
+    leading: action.leading,
+    trailing: action.trailing,
+    loading: action.loading,
+    semanticsLabel: action.semanticsLabel,
+  );
+
+  /// [action] as a row of the overflow menu, with the same label, glyph and
+  /// reason.
+  UiMenuItem _menuItem(UiButton action) => UiMenuItem(
+    label: action.label,
+    onSelected: action.onPressed,
+    icon: action.leading,
+    disabledReason: action.disabledReason,
+  );
 
   Widget _row(
     BuildContext context,
     UiDecisionBarStyle paint, {
-    required bool edges,
-    required bool overflowed,
-    bool squeeze = false,
+    required bool drawPrevious,
+    required bool drawNext,
+    required List<UiButton> beside,
+    required List<UiButton> inMenu,
+    required bool squeeze,
   }) {
-    final UiButton? second = secondary;
     final String? shown = count;
+    final Widget countLabel = UiLabel(
+      shown ?? '',
+      style: paint.count.copyWith(color: paint.countColor),
+    );
     return Row(
+      // With no count to hold the line's start, a squeezed row has nothing
+      // to align its decisions against and lets the primary take the line.
+      mainAxisAlignment: shown == null && squeeze
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       children: <Widget>[
-        if (edges) ...<Widget>[
+        if (drawPrevious) ...<Widget>[
           UiIconButton(
             icon: UiIcons.previous,
             semanticsLabel: previousLabel,
             onPressed: onPrevious,
+            disabledReason: previousDisabledReason,
           ),
           SizedBox(width: paint.gap),
         ],
         // The count takes the line the decisions leave and ellipsises first.
         // It says where the reviewer is; the decision is what they came to
         // make, and a bar that shortened "Clear record" to keep "1 of 4"
-        // whole would have its priorities backwards.
-        if (shown == null)
+        // whole would have its priorities backwards. At the last resort the
+        // two share the line three to one, the decision's way.
+        if (shown == null && !squeeze)
           const Spacer()
-        else
-          Expanded(
-            child: UiLabel(
-              shown,
-              style: paint.count.copyWith(color: paint.countColor),
-            ),
-          ),
-        if (second != null && overflowed) ...<Widget>[
+        else if (shown != null && squeeze)
+          Flexible(child: countLabel)
+        else if (shown != null)
+          Expanded(child: countLabel),
+        if (inMenu.isNotEmpty) ...<Widget>[
           UiMenuTrigger(
             semanticsLabel: overflowLabel,
             items: <UiMenuItem>[
-              UiMenuItem(label: second.label, onSelected: second.onPressed),
+              for (final UiButton action in inMenu) _menuItem(action),
             ],
           ),
           SizedBox(width: paint.gap),
         ],
-        if (second != null && !overflowed) ...<Widget>[
-          UiButton(
-            label: second.label,
-            variant: UiButtonVariant.ghost,
-            onPressed: second.onPressed,
-            disabledReason: second.disabledReason,
-          ),
+        for (final UiButton action in beside) ...<Widget>[
+          _ghost(action),
           SizedBox(width: paint.gap),
         ],
-        if (squeeze) Flexible(child: primary) else primary,
-        if (edges) ...<Widget>[
+        if (squeeze) Flexible(flex: 3, child: primary) else primary,
+        if (drawNext) ...<Widget>[
           SizedBox(width: paint.gap),
           UiIconButton(
             icon: UiIcons.next,
             semanticsLabel: nextLabel,
             onPressed: onNext,
+            disabledReason: nextDisabledReason,
           ),
         ],
       ],

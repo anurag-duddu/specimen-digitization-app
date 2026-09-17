@@ -148,14 +148,14 @@ class UiStatusStripStyle {
 ///
 /// It scrolls with the evidence rather than pinning, so it costs the chrome
 /// budget nothing (13 sections 2.3 and 4.1). Everything on it is one line:
-/// the [disposition] slot, the [facts] joined into a single [UiLabel], and
+/// the [disposition] slot, the [facts] set on one line as one paragraph, and
 /// the [blockers] summary, which opens a sheet listing each blocker with the
 /// control that clears it.
 ///
 /// ```dart
 /// UiStatusStrip(
 ///   disposition: StatusChip(status: record.status),
-///   facts: <String>['Run 42', 'Version 3'],
+///   facts: <Widget>[TermText('Run', trailing: ' 42'), Text('Version 3')],
 ///   blockers: UiBlockers(
 ///     summary: '2 things block clearance',
 ///     items: <UiBlocker>[
@@ -173,7 +173,7 @@ class UiStatusStrip extends StatelessWidget {
   const UiStatusStrip({
     super.key,
     this.disposition,
-    this.facts = const <String>[],
+    this.facts = const <Widget>[],
     this.blockers,
     this.onBlockers,
     this.closeLabel = defaultCloseLabel,
@@ -188,10 +188,14 @@ class UiStatusStrip extends StatelessWidget {
 
   /// What made the reading: the run and the version, in that order.
   ///
-  /// Joined onto one line with [UiStatusStripStyle.factSeparator] and drawn
-  /// as one label, so the line ellipsises at its end rather than dropping a
-  /// fact the reviewer was reading.
-  final List<String> facts;
+  /// Slots rather than strings (polish 3), so a fact can be the product's
+  /// own glossary term, opening its definition on the line it is read on, or
+  /// carry a tooltip. Each fact is a label: one line, in the strip's fact
+  /// style unless it sets its own. The facts are set on one line as one
+  /// paragraph, separated by [UiStatusStripStyle.factSeparator], and the
+  /// paragraph ellipsises at its end, so a fact is never dropped ahead of the
+  /// ones before it.
+  final List<Widget> facts;
 
   /// What is holding the decision up, or null where nothing is.
   final UiBlockers? blockers;
@@ -307,10 +311,7 @@ class UiStatusStrip extends StatelessWidget {
                       padding: EdgeInsetsDirectional.only(
                         start: disposition == null ? 0 : paint.gap,
                       ),
-                      child: UiLabel(
-                        facts.join(UiStatusStripStyle.factSeparator),
-                        style: paint.fact.copyWith(color: paint.factColor),
-                      ),
+                      child: _facts(paint),
                     ),
                   ),
               ],
@@ -321,6 +322,54 @@ class UiStatusStrip extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// The facts on one line, as one paragraph.
+///
+/// Inline widgets in a paragraph rather than a row of them: a paragraph with
+/// `maxLines: 1` ellipsises at its end and takes the trailing facts with it,
+/// where a row would overflow or hand each fact an even share whether it
+/// needed one or not (the lesson `UiListRow` and the disposition slot both
+/// learned).
+///
+/// Each fact is its own semantics node. A paragraph merges an inline widget's
+/// semantics into its own unless the widget is a boundary, which would have
+/// read the first glossary term's link into the line's text and left the
+/// second on a node of its own. The separators are drawn and not spoken: a
+/// screen reader moves from one fact to the next as it does between any two
+/// nodes, and a node made of separator glyphs would say nothing.
+extension on UiStatusStrip {
+  Widget _facts(UiStatusStripStyle paint) {
+    final TextStyle style = paint.fact.copyWith(color: paint.factColor);
+    WidgetSpan inline(Widget child) => WidgetSpan(
+      alignment: PlaceholderAlignment.baseline,
+      baseline: TextBaseline.alphabetic,
+      child: child,
+    );
+    return DefaultTextStyle.merge(
+      style: style,
+      child: Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            for (int i = 0; i < facts.length; i++) ...<InlineSpan>[
+              if (i != 0)
+                inline(
+                  const ExcludeSemantics(
+                    child: Text(UiStatusStripStyle.factSeparator),
+                  ),
+                ),
+              inline(Semantics(container: true, child: facts[i])),
+            ],
+          ],
+        ),
+        style: style,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        strutStyle: UiType.strutOf(style),
+      ),
+    );
+  }
 }
 
 /// The blockers summary, and the sheet behind it.
