@@ -36,7 +36,8 @@ one way. A `UiButton` does not know what a specimen is; a `StatusChip` does.
 Material survives only as infrastructure (`MaterialApp.router`, the bridge
 `ThemeData`, `TextField`'s editing behaviour, the page transitions, and
 `MaterialLocalizations` for one overlay string): four files under `lib/` import
-`material.dart` and each of them says on the import line why.
+`material.dart`, and the gate that permits them names each one with its reason
+and fails if a file stops needing the import it was granted.
 
 The design system is documented in
 [`packages/specimen_ui/README.md`](packages/specimen_ui/README.md) and specified
