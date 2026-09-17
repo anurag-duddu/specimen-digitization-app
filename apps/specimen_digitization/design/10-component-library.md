@@ -938,7 +938,7 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `no_color_literals` | `Color(0x` allowed only in `packages/specimen_ui/lib/src/foundation/palette.dart` | none from day one |
 | `no_material_components` | Regex over `lib/**.dart` for the retired widget list in 1.3 followed by `(`, plus `showDialog(`, `showModalBottomSheet(`, `ScaffoldMessenger` | per-file counts, shrink-only, empty at the end |
 | `no_material_imports` | `import 'package:flutter/material.dart'` under `lib/src/screens/`, `lib/src/widgets/`, `lib/src/app/` except `app_router.dart`; in the package, only `primitives/field_core.dart`, `foundation/theme.dart` and `controls/overlays/tooltip.dart` | per-file, shrink-only |
-| `no_literal_geometry` | `BorderRadius.circular(<digits>)`, `Duration(milliseconds: <digits>)`, `EdgeInsets.all(<digits>)`, `SizedBox(height: <digits>)` in app widgets and screens | per-file, shrink-only; introduced in the polish wave |
+| `no_literal_geometry` | Every static size, not the four patterns this row first named; two tests, `apps/specimen_digitization/test/theme/no_literal_geometry_test.dart` over the application's `lib/` and `packages/specimen_ui/test/gates/no_literal_geometry_test.dart` over the package's. Patterns and allowances in the amendment below | application: per-file, shrink-only; package: none, apart from the wave F handoff the integrator empties |
 | `glass_budget` | Counts `BackdropFilter` render objects in every golden window; at most 4, at most 1 inside a modal route | none |
 | `layering` | Import direction inside the package (section 1.1) | none |
 | `icons_unique` | Every `UiIcons` value distinct; no `Symbols.` or `Icons.` under `lib/` | `Symbols.` per-file backlog during the icon migration |
@@ -949,6 +949,36 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `no_stand_ins` | No `TODO(fe/` marker under the package's `lib/` | none |
 | `no_fallback_text_style` | Every gallery page and every overlay pumped under `WidgetsApp`; no `RenderParagraph` carries the framework fallback style or a double underline (11 section 5) | none |
 | `fit_matrix` | The golden matrix of 11 section 3.5: four window classes by three text scales by two modes per family page, plus the Fit page | none |
+
+**Amendment, fit (2026-09-16, 11 sections 1 and 2.2).** `no_literal_geometry`
+is now a census of every static size rather than four sample patterns, and it
+runs as two tests so the design system can hold itself to zero while the
+application burns a backlog down. It fires on a `BorderRadius` or `Radius`
+constructor, on a digit radius given to `Squircle`, `RSuperellipse`,
+`ClipRSuperellipse` or `RoundedSuperellipseBorder` or named `radius`,
+`borderRadius` or `cornerRadius`, on `Duration`, on `EdgeInsets` and
+`EdgeInsetsDirectional`, on `BoxConstraints`, on `Offset` and `Size`, and on a
+number given to `width`, `height`, `minWidth`, `maxWidth`, `minHeight`,
+`maxHeight`, `dimension`, `fontSize` or `letterSpacing`. Each file is read once
+and its comments and its strings' contents are masked before matching, so prose
+never counts and a finding's line number is the line in the file. The allowances
+are values, paths or a named shape, never a comment on a line: the values 0, 1
+and 2, which are the absence of a size, the hairline and the emphasis stroke;
+`lib/src/foundation/*.dart` in the package, where a token is defined, and
+`lib/src/gallery/**`, where a width is the subject rather than a decision;
+`lib/src/models` in the application, where a number came off the network;
+generated files; a number inside brackets, which is a list index; and the
+`paint` method of a `CustomPainter`, where geometry is arithmetic on the size
+the canvas was given. There is no per-line escape hatch, deliberately: a number
+that genuinely must be written down becomes a token in the foundation. One
+number is one finding wherever it was found, so two patterns that reach the same
+digit do not count it twice, and fixing one call clears every finding it
+carried. All ten of the application's `Duration` findings are elapsed time
+rather than motion (seven request timeouts, a poll interval, a search debounce
+and a cooldown), so the resolution there is one named constant in the file that
+owns the policy rather than a motion token; the package's three are interaction
+delays that 10 section 4.3 fixes and `foundation/motion.dart` says belong to
+it.
 
 ## 9. Definition of done for a component
 
