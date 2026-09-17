@@ -38,6 +38,23 @@ list.
 | Large | 1200 to 1599 | Small desktop window, iPad Pro landscape | Extended `NavigationRail` or `NavigationDrawer` |
 | Extra-large | 1600+ | Wide desktop monitor, ultrawide | `NavigationDrawer` |
 
+**Amendment, verification v2 (2026-09-17).** The Navigation column above names
+Material components and the rebuilt client has none. The controls are the
+design system's own, and the breakpoints are unchanged:
+`WindowClass` moved into `foundation/window.dart` in wave F with the same five
+classes. What each class actually draws, measured on the routed application at
+all four windows in `test/verification/fit_matrix_test.dart`:
+
+| Class | Navigation the shell draws | Where |
+|---|---|---|
+| Compact | `UiPillNav`, a floating glass capsule of discs at the foot of the window | `lib/src/app/shell.dart` |
+| Medium | `UiRail`, collapsed: a glyph per destination with its name on a tooltip | the same |
+| Expanded | `UiRail`, extended: the name drawn under the glyph | the same |
+| Large and extra-large | `UiSidebar`, a permanent column with the mark in its header and the account and help controls in its footer | the same |
+
+Extra-large is not a fifth arrangement: it resolves to `large` through
+`Adaptive`, which is 11 section 3.1's "nearest smaller class that is set".
+
 Add a single source of truth and use it everywhere the three ad hoc checks
 above currently live:
 
@@ -159,6 +176,35 @@ any layout that consumes it.
 | Medium | Collapsed `NavigationRail` (icon only, `labelType: NavigationRailLabelType.none`) | Same, plus the collection name shown as text next to the title | Same dropdown as today (`workspace.dart:629`), narrower | Sign-out icon in app bar |
 | Expanded | Extended `NavigationRail` (`labelType: NavigationRailLabelType.all`, current behavior) | Collection dropdown moves out of its own full-width row into the app bar itself | `DropdownButtonFormField` inline in the app bar's `actions`, max width 280 | Replace the bare sign-out icon with a `PopupMenuButton` showing the display name and a "Sign out" item |
 | Large / extra-large | `NavigationDrawer` (Material 3 standard, permanent, not modal: `api.flutter.dev/flutter/material/NavigationDrawer-class.html`) with the collection switcher as the drawer's header | Title only; everything else lives in the drawer header | Drawer header: collection name plus a `DropdownButtonFormField` below it | Drawer header: display name plus "Sign out" as a drawer footer item |
+
+**Amendment, verification v2 (2026-09-17).** The whole table above is written
+in Material component names and in call sites (`workspace.dart:587-600`,
+`workspace.dart:629`, `workspace.dart:1057-1101`) that the refactor retired.
+What ships, and what a device capture shows:
+
+| Class | Navigation | Collection switcher | Account and help |
+|---|---|---|---|
+| Compact | `UiPillNav`, two discs, floating over the body | `UiMenuTrigger` in the top bar, capped at `AppShell.switcherMaxWidth`, 280 dp including padding | Two `UiIconButton`s in the top bar |
+| Medium and expanded | `UiRail`, collapsed then extended | the same | the same |
+| Large and extra-large | `UiSidebar`, permanent | in the sidebar header | in the sidebar footer |
+
+Three things the old table got wrong about the shipped client and one it got
+right. Wrong: the switcher is a menu button rather than a form field, which is
+finding V-9 in 08 closed; the compact window has no sheet from the app bar
+title; there is no drawer anywhere, modal or permanent. Right: exactly two
+destinations, Queue and Intake, at every class.
+
+**The floating capsule costs the body room, and two screens disagree about
+paying it.** `UiScaffold` floats its chrome over the body rather than reserving
+room in it, and publishes the clearance as `UiScaffold.of(context).bottomInset`.
+The record's decision bar reads it
+(`lib/src/screens/workbench/decision_bar.dart:137-141`); the queue's list does
+not (`lib/src/screens/queue/queue_screen.dart:416-424`), so the last row's
+disposition chips sit under the capsule and cannot be scrolled clear. That is
+defect V2-3 in
+[12-verification-report-v2.md](12-verification-report-v2.md). Any screen whose
+body scrolls under the compact navigation owes itself that padding until the
+package grows a way for a routed screen to fill `UiScaffold.actionBar`.
 
 Material's own component guidance splits this the same way: compact windows
 pair a navigation bar with a modal drawer only when there are more
@@ -779,6 +825,38 @@ For the iPad Pro 13" row, also test the app at the narrowest Split View width
 width) to confirm the compact layout in section 3 renders correctly there
 too, since that is the practical minimum width any iPad user can hand the
 app regardless of the device's own screen size.
+
+**Amendment, verification v2 (2026-09-17): what the matrix actually is now.**
+Three instruments cover this section's intent, and they are not the ones it
+describes.
+
+- **The size class goldens**, `test/golden/images/`, 121 PNGs. Eleven screens
+  at 390x844, 768x1024, 1180x820 and 1440x900, in both modes, with intake and
+  the record's three segments also at 200 percent text. `devicePixelRatio` is
+  1 rather than the 2 this section suggests, because the goldens are of layout
+  rather than of pixels and 1 keeps the files small enough to read.
+- **The gallery matrix**, `packages/specimen_ui/test/gallery/goldens/matrix/`,
+  288 PNGs. Twelve family pages by four classes by three text scales by two
+  modes. This is where a control's own fit policy is pictured, which the screen
+  goldens cannot show.
+- **The fit matrix**, `test/verification/fit_matrix_test.dart`, 132 measured
+  cells. Eleven screens by four classes by text scales 1.0, 1.3 and 2.0. It
+  records the arrangement, whether the screen scrolls and whether anything
+  overflowed, and fails on an overflow anywhere. **1.3 exists only here**: no
+  PNG in this repository pictures a screen at 1.3, and 1.3 is the scale an
+  ordinary reviewer with presbyopia runs.
+
+**Boundary tests per breakpoint.** Still the right instruction, and
+`test/widgets/window_class_test.dart` holds the class boundaries. The screens
+are covered at one width per class rather than at both sides of each boundary.
+
+**The device matrix, as of 2026-09-17.** The table above is a list of devices to
+plug into `tester.view.physicalSize`. What exists on a development machine is
+narrower, and the second verification report records the gaps rather than
+substituting for them: there is no Android tablet image, `xcrun simctl` cannot
+rotate a simulator, and so **no capture in this repository is in landscape and
+the `large` window class has no device capture at all**. Both classes are
+covered by goldens and by the fit matrix, and by nothing on a device.
 
 ## Sources
 
