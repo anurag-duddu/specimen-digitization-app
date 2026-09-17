@@ -305,6 +305,10 @@ class _SourcesRoute extends StatelessWidget {
       onOpen: (RegisteredSource source) => GoRouter.of(
         context,
       ).go(AppRoutes.sourceOf(Uri.encodeComponent(scope.key), source.id)),
+      // The way back to the other way photographs arrive (finding V2-4).
+      onUpload: () => GoRouter.of(
+        context,
+      ).go(AppRoutes.intakeOf(Uri.encodeComponent(scope.key))),
     );
   }
 }
@@ -420,11 +424,15 @@ class _NoSourceSupport extends StatelessWidget {
   );
 }
 
-/// The environment band above an entry screen.
+/// The environment band above an entry screen (13 sections 2.3 and 4.6).
 ///
 /// The collection shell draws its own band; these three screens sit outside
 /// it, and the band is what replaced the caveat paragraph they used to carry
 /// (screen blueprints, sections 1.3 and 2).
+///
+/// It takes the strip form on a phone, as the shell's band does, and marks
+/// itself as the band it is, so a screen outside the shell spends its pinned
+/// height where the budget can see it rather than where nothing counts it.
 class _EnvironmentFrame extends StatelessWidget {
   const _EnvironmentFrame({required this.environment, required this.child});
 
@@ -433,14 +441,25 @@ class _EnvironmentFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!EnvironmentBanner.showsFor(environment)) return child;
+    // `showsBand` rather than `showsFor`: a production deployment serving a
+    // bounded pilot carries a band of its own, and an entry screen is where a
+    // reviewer first learns which build they signed in to.
+    if (!EnvironmentBanner.showsBand(environment)) return child;
     return ColoredBox(
       color: context.ui.color.ground,
       child: Column(
         children: <Widget>[
-          SafeArea(
-            bottom: false,
-            child: EnvironmentBanner(environment: environment),
+          PinnedChrome(
+            region: UiPinnedRegion.band,
+            child: SafeArea(
+              bottom: false,
+              child: UiBandForm(
+                form: WindowClass.of(context).isCompact
+                    ? UiBannerForm.strip
+                    : UiBannerForm.full,
+                child: EnvironmentBanner(environment: environment),
+              ),
+            ),
           ),
           Expanded(child: child),
         ],

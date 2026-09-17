@@ -285,6 +285,56 @@ void main() {
     });
   });
 
+  // One source with a live selection: the decision bar the scaffold floats,
+  // the count it carries and the checkbox column a long press opens on a
+  // phone. Nothing in this suite covered this screen with a selection, and it
+  // is the state the seventeen pixel overflow of `source_screen.dart` was
+  // found in: at 200 percent text on a phone the bar welded across the bottom
+  // of the pane's column pushed "Add to queue" past the window's edge.
+  group('source with a selection', () {
+    for (final double scale in <double>[1.0, 2.0]) {
+      forEachWindowAndTheme((
+        String window,
+        Size size,
+        String theme,
+        Brightness brightness,
+      ) {
+        testWidgets(
+          'source selection at $window in $theme at ${scaleTag(scale)}',
+          (WidgetTester tester) async {
+            captureLayoutErrors();
+            await pumpGoldenApp(
+              tester,
+              window: size,
+              brightness: brightness,
+              textScale: scale,
+              location: goldenSourceLocation,
+              repository: GoldenSourceRepository(),
+            );
+            // A compact window has no checkbox column until a long press
+            // opens one, and the long press also selects the row it was on.
+            final Finder boxes = find.descendant(
+              of: find.byType(SelectableRow),
+              matching: find.byType(UiCheckbox),
+            );
+            if (boxes.evaluate().isEmpty) {
+              await tester.longPress(find.byType(SelectableRow).first);
+            } else {
+              await tester.tap(boxes.first);
+            }
+            await tester.pumpAndSettle();
+            expect(find.text('1 photograph selected'), findsOneWidget);
+            final String golden =
+                'source-selection__${window}__${theme}__${scaleTag(scale)}';
+            expectKnownOverflow(tester, golden);
+            expectGlassBudget(tester, window: window);
+            await expectGolden(tester, golden);
+          },
+        );
+      });
+    }
+  });
+
   group('workbench', () {
     for (final WorkbenchSegment segment in WorkbenchSegment.values) {
       for (final double scale in <double>[1.0, 2.0]) {

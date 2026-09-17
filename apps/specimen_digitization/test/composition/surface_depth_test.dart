@@ -72,6 +72,12 @@ const Map<String, num> surfaceDepthBacklog = <String, num>{};
 /// draws solid and builds no filter, and the earlier count of every
 /// `GlassSurface` put the frame's solid top bar, band and header chrome on
 /// the same footing as the one pane that blurs.
+///
+/// Slot A3 closed the shell's half of it in the same wave: at compact the
+/// shell draws the bar's fill solid on `ground` and passes
+/// `scrolledUnder: false`, which is the wave A amendment to 13 section 2.2
+/// read as the gate measures it, so `setup`, `queue`, `intake` and `source`
+/// are down to the pill's one pane by either count.
 const Map<String, num> glassCountBacklog = <String, num>{
   'import-sheet@compact-390x844': 2,
   'record@medium-768x1024': 3,

@@ -23,9 +23,11 @@ import 'live_shapes_harness.dart';
 
 /// How many rows the queue builds for a page of a thousand, today.
 ///
-/// Measured on 2026-09-17 at both windows. Shrink only: see the comment at
-/// the assertion that reads it.
-const int eagerQueueRows = 1000;
+/// Measured on 2026-09-17 at both windows: five at the phone and six at the
+/// tablet, which is what each viewport holds plus the sliver list's own cache
+/// extent. It was a thousand. Shrink only: see the comment at the assertion
+/// that reads it.
+const int eagerQueueRows = 6;
 
 void main() {
   String recordRoute(Specimen record) =>
@@ -279,24 +281,34 @@ void main() {
         // The count is of what was loaded. The list endpoint answers a page and
         // a cursor and never a total, so a queue claiming one would be claiming
         // authority over records it has never seen.
+        // 13 section 4.2 draws it as a numeral with its unit, and the whole
+        // sentence stays on the header's live region, which is where a
+        // screen reader hears what the page is made of.
         expect(
-          visibleText(
-            tester,
-          ).where((String w) => w.contains('1000 records loaded')),
+          visibleText(tester).where((String w) => w == '1000'),
           isNotEmpty,
+        );
+        expect(
+          visibleText(tester).where((String w) => w == 'RECORDS'),
+          isNotEmpty,
+        );
+        expect(
+          tester
+              .getSemantics(find.textContaining('need review'))
+              .label,
+          contains('1000 records loaded'),
         );
 
         // How many of the thousand rows the queue actually built.
         //
         // A ratchet, the mechanism this repository already uses for its
-        // gates: the number may shrink and may never grow. It is a thousand
-        // today, because `lib/src/screens/queue/queue_screen.dart:416` builds
-        // the list with `ListView(children: ...)`, the eager constructor, so
-        // every row a collection holds is built whether or not it is on
-        // screen. 13 section 4.2 rebuilds this screen as one scroll, which is
-        // a `CustomScrollView` with a `SliverList.builder` for the rows; when
-        // slot A3 lands it this number drops to what a window shows, and this
-        // line comes down with it.
+        // gates: the number may shrink and may never grow. It was a thousand,
+        // because the queue built its list with `ListView(children: ...)`,
+        // the eager constructor, so every row a collection held was built
+        // whether or not it was on screen. Slot A3 rebuilt the screen as the
+        // one `CustomScrollView` 13 section 4.2 asks for, with a
+        // `SliverList.builder` for the rows, and the number is now what a
+        // window shows plus the list's cache extent.
         final int built = tester
             .widgetList<QueueRow>(find.byType(QueueRow))
             .length;

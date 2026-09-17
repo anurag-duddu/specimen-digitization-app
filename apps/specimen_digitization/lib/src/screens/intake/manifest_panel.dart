@@ -35,7 +35,7 @@ class IntakeManifest extends StatefulWidget {
     required this.onRemove,
     required this.onServerCheck,
     this.padding,
-    this.nested = false,
+    this.scrollable = true,
   });
 
   /// Every row, in the order the operator chose them.
@@ -59,9 +59,14 @@ class IntakeManifest extends StatefulWidget {
   /// Outer padding, so the compact and two column layouts can differ.
   final EdgeInsetsGeometry? padding;
 
-  /// True when the manifest sits inside another scrollable, which is the
-  /// compact layout. It then shrink wraps and leaves scrolling to its parent.
-  final bool nested;
+  /// True where the manifest scrolls itself, which is the pane beside the
+  /// capture column from 600 dp up.
+  ///
+  /// False on a phone, where 13 section 4.4 makes the whole screen one scroll
+  /// and this is one section of it. It used to be a shrink wrapped `ListView`
+  /// with its physics turned off, which is the pair 13 section 2.1 names:
+  /// both exist only to put a scroll inside a scroll.
+  final bool scrollable;
 
   /// The pane's own title.
   static const String title = 'Upload manifest';
@@ -104,44 +109,50 @@ class _IntakeManifestState extends State<IntakeManifest> {
     };
     _drawn.addAll(entries.map((ManifestEntry e) => e.digest));
 
-    return ListView(
-      padding: widget.padding ?? EdgeInsetsDirectional.all(ui.space.s6),
-      shrinkWrap: widget.nested,
-      primary: widget.nested ? false : null,
-      physics: widget.nested ? const NeverScrollableScrollPhysics() : null,
-      children: <Widget>[
-        _ManifestHeader(
-          entries: entries,
-          busy: widget.busy,
-          stopping: widget.stopping,
-          onStop: widget.onStop,
+    final List<Widget> children = <Widget>[
+      _ManifestHeader(
+        entries: entries,
+        busy: widget.busy,
+        stopping: widget.stopping,
+        onStop: widget.onStop,
+      ),
+      SizedBox(height: ui.space.s4),
+      if (entries.isEmpty)
+        EmptyState(
+          icon: UiIcons.intake.defaultGlyph,
+          title: IntakeManifest.emptyTitle,
+          body: IntakeManifest.emptyBody,
         ),
-        SizedBox(height: ui.space.s4),
-        if (entries.isEmpty)
-          EmptyState(
-            icon: UiIcons.intake.defaultGlyph,
-            title: IntakeManifest.emptyTitle,
-            body: IntakeManifest.emptyBody,
-          ),
-        for (final ManifestEntry entry in entries)
-          Padding(
-            key: ValueKey<String>('manifest-slot-${entry.digest}'),
-            padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
-            // Fade and size, never a slide: the card did not come from
-            // anywhere, the operator made it (motion catalog, row 62).
-            child: _ArrivingCard(
-              arriving: arriving.contains(entry.digest),
-              child: IntakeManifestRow(
-                key: ValueKey<String>(entry.digest),
-                entry: entry,
-                busy: widget.busy,
-                onRemove: () => widget.onRemove(entry),
-                onServerCheck: () => widget.onServerCheck(entry),
-              ),
+      for (final ManifestEntry entry in entries)
+        Padding(
+          key: ValueKey<String>('manifest-slot-${entry.digest}'),
+          padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
+          // Fade and size, never a slide: the card did not come from
+          // anywhere, the operator made it (motion catalog, row 62).
+          child: _ArrivingCard(
+            arriving: arriving.contains(entry.digest),
+            child: IntakeManifestRow(
+              key: ValueKey<String>(entry.digest),
+              entry: entry,
+              busy: widget.busy,
+              onRemove: () => widget.onRemove(entry),
+              onServerCheck: () => widget.onServerCheck(entry),
             ),
           ),
-      ],
-    );
+        ),
+    ];
+    final EdgeInsetsGeometry padding =
+        widget.padding ?? EdgeInsetsDirectional.all(ui.space.s6);
+    return widget.scrollable
+        ? ListView(padding: padding, children: children)
+        : Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: children,
+            ),
+          );
   }
 }
 

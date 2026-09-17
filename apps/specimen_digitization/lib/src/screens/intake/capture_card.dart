@@ -1,9 +1,12 @@
-/// The capture card (07 section 5).
+/// The capture card and the pre-upload checks (07 section 5; 13 section 4.4).
 ///
-/// One pane, one job: choose how photographs arrive, say how sensitive they
-/// are, and confirm that this batch was looked at. The manifest is a separate
-/// pane, so the control an operator presses repeatedly never scrolls away from
-/// the list it fills (05 section 3.4).
+/// Two panes, one job each: how photographs arrive and how sensitive they
+/// are, then what an operator looks at before a batch leaves the device. They
+/// were one card, which laid out 1018 dp tall inside an 844 dp window and put
+/// the manifest a viewport and a half below the fold (13 section 2.5). The
+/// batch's own name and purpose are the page's header above them, and the
+/// upload action is the screen's decision, which 13 section 3.3 puts in the
+/// frame's action bar.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -28,8 +31,17 @@ const List<String> preUploadChecklist = <String>[
 /// (heuristics audit, H5.3).
 const String batchConfirmationLabel = 'I checked framing and readability';
 
-/// Where photographs come from, how they are classified, and the one
-/// confirmation that releases the batch.
+/// The screen's own name, which the page draws above the capture card.
+///
+/// It was the card's title. A heading over a pane that is the only pane on
+/// the screen is the screen's heading (02 section 4.1), and 13 section 4.4
+/// gives intake a batch header of its own.
+const String intakeTitle = 'Add photographs';
+
+/// What the screen is for, in one line under its name.
+const String intakePurpose = 'One photograph per specimen.';
+
+/// Where photographs come from and how they are classified.
 class IntakeCaptureCard extends StatelessWidget {
   const IntakeCaptureCard({
     super.key,
@@ -38,11 +50,6 @@ class IntakeCaptureCard extends StatelessWidget {
     required this.onChooseFiles,
     required this.onTakePhotograph,
     required this.cameraAvailable,
-    required this.confirmed,
-    required this.onConfirmedChanged,
-    required this.onUpload,
-    required this.uploading,
-    required this.pendingCount,
   });
 
   /// The classification that will be applied to photographs added next.
@@ -61,42 +68,13 @@ class IntakeCaptureCard extends StatelessWidget {
   /// control is not rendered at all rather than rendered dead.
   final bool cameraAvailable;
 
-  /// Whether this batch has been confirmed.
-  final bool confirmed;
-
-  /// Called when the confirmation is ticked or cleared.
-  final ValueChanged<bool>? onConfirmedChanged;
-
-  /// Starts the batch. Null when something is missing.
-  final VoidCallback? onUpload;
-
-  /// True while a batch is in flight.
-  final bool uploading;
-
-  /// How many rows this batch would send.
-  final int pendingCount;
-
-  /// The card's own title, which names the screen (02 section 4.1).
-  static const String title = 'Add photographs';
-
-  /// What the checklist is called.
-  static const String checklistTitle = 'Before you upload, check:';
-
-  /// What the one confirmation says under itself.
-  static const String confirmationHelp =
-      'Clears whenever you add a photograph.';
+  /// The screen's own name, kept here so a call site that had the card's
+  /// title keeps compiling and reads the one spelling.
+  static const String title = intakeTitle;
 
   /// What a build with no camera says instead of a control it cannot offer.
   static const String noCameraHelp =
       'Camera capture runs in the Android and iOS apps. Here, choose a file.';
-
-  /// The upload button's word, which names the count it authorises
-  /// (pass criterion 5.2).
-  static String uploadLabel({required bool uploading, required int pending}) {
-    if (uploading) return 'Uploading';
-    if (pending == 1) return 'Upload 1 photograph';
-    return 'Upload $pending photographs';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -108,19 +86,6 @@ class IntakeCaptureCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Semantics(
-            header: true,
-            child: Text(
-              title,
-              style: ui.type.titleLarge.copyWith(color: ui.color.ink),
-            ),
-          ),
-          SizedBox(height: ui.space.s2),
-          Text(
-            'One photograph per specimen.',
-            style: ui.type.body.copyWith(color: ui.color.ink),
-          ),
-          SizedBox(height: ui.space.s4),
           UiButtonRow(
             primary: UiButton(
               key: const ValueKey<String>('intake-choose-files'),
@@ -175,7 +140,62 @@ class IntakeCaptureCard extends StatelessWidget {
             'Applies to photographs you add next.',
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
-          SizedBox(height: ui.space.s4),
+        ],
+      ),
+    );
+  }
+}
+
+/// What an operator looks at before a batch leaves the device, and the one
+/// confirmation that releases it (13 section 4.4).
+///
+/// The two caveats are here rather than beside the controls they qualify:
+/// they are what a reviewer has to know before a batch goes, which is what
+/// this section is, and the capture card is the part of the form a phone has
+/// to show above the fold.
+class IntakeChecks extends StatelessWidget {
+  const IntakeChecks({
+    super.key,
+    required this.confirmed,
+    required this.onConfirmedChanged,
+    this.upload,
+  });
+
+  /// Whether this batch has been confirmed.
+  final bool confirmed;
+
+  /// Called when the confirmation is ticked or cleared.
+  final ValueChanged<bool>? onConfirmedChanged;
+
+  /// The upload action, for a screen with no frame to put it in.
+  ///
+  /// Null inside the application, where 13 section 3.3 puts the decision in
+  /// the scaffold's action bar. A component test, and any host with no
+  /// `UiScaffold` above this screen, draws it here instead, so the one
+  /// control that releases a batch is never unreachable.
+  final Widget? upload;
+
+  /// What the checklist is called.
+  static const String checklistTitle = 'Before you upload, check:';
+
+  /// What the one confirmation says under itself.
+  static const String confirmationHelp =
+      'Clears whenever you add a photograph.';
+
+  /// What the server does after the batch leaves, said once beside the
+  /// confirmation that sends it.
+  static const String serverChecks = 'The server runs its own checks.';
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return Surface(
+      radius: ui.shape.tile,
+      padding: EdgeInsetsDirectional.all(ui.space.s6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
           const CaveatText(
             label: 'Sensitivity cannot be changed after an upload starts.',
             why:
@@ -223,28 +243,27 @@ class IntakeCaptureCard extends StatelessWidget {
             confirmationHelp,
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
-          SizedBox(height: ui.space.s4),
-          UiButtonRow(
-            // The label is the present participle while a batch is in
-            // flight and the control is disabled, which is what 02 section
-            // 4.3 asks for. The measured progress is on the manifest, where
-            // the denominator is.
-            primary: UiButton(
-              key: const ValueKey<String>('intake-upload'),
-              label: uploadLabel(uploading: uploading, pending: pendingCount),
-              leading: UiIcons.cloudUpload,
-              onPressed: onUpload,
-            ),
-          ),
+          if (upload != null) ...<Widget>[
+            SizedBox(height: ui.space.s4),
+            upload!,
+          ],
           SizedBox(height: ui.space.s2),
           Text(
-            'The server runs its own checks.',
+            serverChecks,
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
       ),
     );
   }
+}
+
+/// The upload button's word, which names the count it authorises
+/// (pass criterion 5.2).
+String intakeUploadLabel({required bool uploading, required int pending}) {
+  if (uploading) return 'Uploading';
+  if (pending == 1) return 'Upload 1 photograph';
+  return 'Upload $pending photographs';
 }
 
 /// One line of the pre-upload checklist.

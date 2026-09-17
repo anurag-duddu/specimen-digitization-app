@@ -37,15 +37,12 @@ import 'composition_harness.dart';
 /// Measured on 2026-09-17 against `front-end-refactor` at f3b6363, by the walk
 /// below, at every window, both modes and 1.0, 1.3 and 2.0.
 ///
-/// Two screens, and each one is a sentence in 13 section 0. Intake on a phone
-/// puts the manifest, which is a `ListView`, inside the page's own `ListView`
-/// and turns its physics off to make the nesting lie still
-/// (`intake.dart` `_manifest(nested: true)`, `manifest_panel.dart` lines 109
-/// to 111); slot A3 owns 13 section 4.4, which is one scroll of sections. The
-/// import sheet puts a `SingleChildScrollView` inside the one
-/// `UiDialog.showAdaptive` already wraps its body in
-/// (`source_import_sheet.dart` lines 119 and 194); the sheet's own scroll is
-/// the allowed one and the body's is the second.
+/// The region editor is the defect this gate found rather than predicted:
+/// from the expanded floor up `showRegionEditor` opens a `UiDialog`, whose
+/// body `UiDialog` already wraps in a scroll, and `region_editor.dart` line
+/// 355 wraps the coordinate form in a second. Below that floor it is a full
+/// screen route and there is one scroll, which is why only two of its four
+/// windows are here. Slot A2 owns 13 section 4.3.
 ///
 /// The region editor was the same defect as the import sheet by the same
 /// cause, found by this gate rather than predicted: from the expanded floor up
@@ -55,30 +52,29 @@ import 'composition_harness.dart';
 /// and the editor keeps the one scroll it has always had above its own
 /// footer, which is what 13 section 2.1 grants a surface that owns a scroll.
 ///
+/// Intake and the import sheet left this backlog in slot A3
+/// (`fe/compose-shell`). Intake at compact is now a `CustomScrollView` of
+/// sections and the manifest is one of them rather than a shrink wrapped list
+/// inside the page's list; the import sheet's body is a column, because the
+/// frame that opens it already scrolls what it is given.
+///
 /// The record screen is deliberately not here. 13 section 0 names it as the
 /// screen the defect was found on, and it was; it is one `CustomScrollView`
 /// of slivers now (13 sections 2.1 and 4.1) and the walk below finds no
 /// nesting on it at any window or scale.
-final Set<String> nestedScrollBacklog = <String>{
-  'intake@compact-390x844',
-  'import-sheet@compact-390x844',
-  'import-sheet@medium-768x1024',
-  'import-sheet@expanded-1180x820',
-  'import-sheet@large-1440x900',
-};
+final Set<String> nestedScrollBacklog = <String>{};
 
 /// Per file counts of `shrinkWrap` and `NeverScrollableScrollPhysics` under
 /// `lib/`. Shrink only, and a file at zero leaves the map.
 ///
-/// Three, over two files. Both exist to nest a list, which is what 13 section
-/// 2.1 says of the pair: `help_screen.dart` shrink wraps the shortcut list so
-/// it can sit in a `Flexible` inside the sheet's column, and
-/// `manifest_panel.dart` carries the shrink wrap and the physics that make the
-/// intake nesting above lie still.
-const Map<String, int> shrinkWrapBacklog = <String, int>{
-  'lib/src/app/help_screen.dart': 1,
-  'lib/src/screens/intake/manifest_panel.dart': 2,
-};
+/// Empty, and it is a real zero. It held three, over two files, and both
+/// existed to nest a list, which is what 13 section 2.1 says of the pair:
+/// `help_screen.dart` shrink wrapped the shortcut list so it could sit in a
+/// `Flexible` inside the sheet's column, and `manifest_panel.dart` carried
+/// the shrink wrap and the physics that made intake's nesting lie still. Slot
+/// A3 closed both: the help panel's list is the pane's one scroll in an
+/// `Expanded`, and the manifest is a column wherever its caller scrolls it.
+const Map<String, int> shrinkWrapBacklog = <String, int>{};
 
 // ---------------------------------------------------------------------------
 // The walk.
