@@ -136,6 +136,66 @@ rings per 09 section 3.6 as amended.
 - The inputs gallery page gains the box in every shape at rest, focused and
   focused with a value, and the family golden is captured at 1180 by 1600.
 
+Wave G of the front-end refactor, slot G3: section 3.5 of
+`design/11-fit-and-scale.md`. The gallery shell gets a compact arrangement, a
+Fit page shows every control of the fit table at four column widths, and the
+golden matrix draws every page at four window classes by three text scales by
+two modes.
+
+### Gallery
+- `UiGallery` chooses its arrangement by window class, and is the first
+  consumer of `Adaptive`. Below `medium` the page list is a `UiSelect` above
+  the content and the content takes the whole window but its gutters; from
+  `medium` up the 220 dp sidebar stays, pixel for pixel as before. Reason: a
+  220 dp sidebar beside a 360 dp window leaves 130 dp for the page, which is
+  the column the wrapping labels of 11 section 0 were first seen in. Keyboard
+  navigation between pages works in both: the sidebar's rows are `Pressable`
+  and the select answers `Enter`, `Down`, `Up` and `Escape`.
+- The shell no longer publishes a `DefaultTextStyle` of its own. Reason:
+  `UiTheme` publishes the product's ambient style (11 section 5), and a second
+  publication of the same recipe is a second source for the one thing that
+  document gives one source. Nothing moves: the styles were the same but for
+  `decoration: none`, which the shell never set and never needed.
+- `galleryPages` gains the Fit page, so `/gallery` carries twelve pages. It is
+  listed beside `foundationPages` and `familyPages` rather than inside either,
+  because it belongs to no family: it draws every family's controls. The
+  foundation goldens still pin `foundationPages` and each family golden still
+  renders its own page alone, so no existing gallery golden moves.
+- The Fit page (`gallery/pages/fit_page.dart`) draws one section per row of the
+  fit table in 11 section 3.3, in that order, each at 200, 280, 360 and 480 dp.
+  Narrowest first: the four columns and their gutters come to 1380 dp, no
+  window leaves a page that much, and the end worth losing is the wide one
+  every family page already reviews. Each section states the compact variants
+  the table gives that control, and draws it at rest above and focused below.
+  A focused cell is the control under the `FocusRing` primitive on its own box,
+  because one control on a page can hold primary focus and forty cannot; where
+  the ring belongs to a member the control builds for itself, the section says
+  where it lives rather than drawing a ring the product never draws. The page
+  declares `maxGlassPanes: 13`, which is the top bar, the navigation row and
+  the toast once per column plus the shell's own page list.
+
+### Testing
+- `test/gallery/matrix_golden_test.dart` is new, with 288 goldens under
+  `test/gallery/goldens/matrix/`: every page of `galleryPages` at 360, 700,
+  1000 and 1400 dp, at text scales 1.0, 1.3 and 2.0, in both modes, in pointer
+  density with reduced motion on. Twenty four goldens per page, named
+  `<page>_<class>_<scale>_<mode>.png`. Every window is a fixed 900 dp tall with
+  the page scrolled to the top, because a height that held every specimen at
+  scale 2.0 would be a hundred megabytes of binary nobody reviews, and because
+  each page is already reviewed whole, at its own height, by its family golden.
+  Each page is one test that captures its own twenty four, so the harness is
+  paid for once: the whole matrix renders in about thirty seconds.
+- The matrix carries `overflowBacklog`, a shrink-only record of what still
+  overflows and where, by the file the report names. A control with no fit
+  policy overflows in a 200 dp column, which is the defect the Fit page exists
+  to picture, so the matrix records it rather than refusing to draw it. Five
+  controls and two foundation pages are on the list; anything else, and
+  anything that is not an overflow, fails.
+- `test/gallery/gallery_shell_test.dart` is new: the arrangement at each side
+  of the 600 dp boundary, the content taking the full width below it, the
+  sidebar's start edge above it, and a page opened from the keyboard in both
+  arrangements.
+
 ## 0.2.0
 
 2026-09-16. Wave 1 of the front-end refactor: the five control families of 10

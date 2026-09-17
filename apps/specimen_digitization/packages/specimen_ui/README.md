@@ -75,7 +75,18 @@ control that has to contain text derives its height from
 `flutter run -d chrome` and visit `/gallery`. The route is mounted outside
 release builds and needs no session. The package's golden tests render the
 same pages, so a change to a token shows as a diff on a gallery page before it
-shows on a screen.
+shows on a screen. Narrow the window below 600 dp and the page list becomes a
+select above the content: the shell chooses its arrangement by window class,
+like any other scaffold in the system.
+
+Twelve pages: six foundation, five families, and Fit, which draws every
+control of the fit table in
+[11 section 3.3](../../design/11-fit-and-scale.md) at 200, 280, 360 and 480 dp.
+Two golden sets answer two different questions. A family golden is the taste
+review, one page at one comfortable window. The matrix under
+`test/gallery/goldens/matrix/` is the fit review: every page at the four
+window classes by three text scales by two modes, which is where a label that
+wraps at a phone width or a control that clips at 200 percent text shows up.
 
 ## Adding a component
 
