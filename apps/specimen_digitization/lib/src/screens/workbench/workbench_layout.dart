@@ -125,20 +125,48 @@ const double layoutTextScrollThreshold = 1.4;
 /// it, and the tab strip still says which evidence is showing.
 const double stickySegmentsMaxScale = 1.0;
 
+/// True where the record's decision sits in the top bar rather than in the
+/// frame's action bar (13 section 4.1, the expanded and large table).
+///
+/// From `expanded` up. 13 section 2.3 allows those classes 20 percent of the
+/// viewport, and at 200 percent text the frame's own top bar is 61.25 dp, the
+/// one line band 52 and the action bar 71.6: 184.85 of the 164 an 820 dp
+/// window allows and of the 180 a 900 dp window allows, so no arrangement
+/// that keeps all three holds the budget, and 2.3 says the screen gives a
+/// region up rather than shrinking one. The region given up is the action
+/// bar, whose job moves into the bar the record already publishes: a wide bar
+/// has the width for the two decisions, the count and the two edge buttons
+/// beside the identifier, and the bottom of the window is then the evidence
+/// down to its last row. The band stays a region of its own, because it is the
+/// one that says which data this is (07 section 1.3) and a strip the width of
+/// the window is more visible than a chip in a bar. What remains pinned is
+/// the bar and the band: 100 dp at default type and 113.25 at 200 percent,
+/// which is 0.138 of 820 and 0.126 of 900.
+///
+/// Compact and medium keep the action bar: on a phone and a portrait tablet
+/// the decision belongs under the thumb, and the 28 and 24 percent those
+/// classes allow hold it (27.0 and 22.3 percent measured).
+bool decisionInTopBar(WindowClass window) =>
+    window.isAtLeast(WindowClass.expanded);
+
 /// True while the record's segments may stick under its header.
 ///
-/// Two things spend the budget the bar needs: the reviewer's text size, above
-/// [stickySegmentsMaxScale], and the window class. From `expanded` up 13
-/// section 2.3 allows 20 percent, and the frame's own chrome takes it at
-/// default type: at 1180 by 820 the top bar is 48, the one line band 52 and
-/// the action bar 64, which is 164 of the 164 allowed, and at 1440 by 900 the
-/// same 164 of 180. A 56 dp bar cannot stick in the 0 or the 16 that is left,
-/// so from `expanded` up the segments scroll with the evidence at every text
-/// size. This is the record beside a queue pane and a sidebar at 1440, which
-/// leaves it 799 dp and the stacked regime, as much as the record on its own.
+/// Two things spend the budget the bar needs, and both are weighed: the
+/// reviewer's text size, above [stickySegmentsMaxScale], and the window class.
+/// At compact and medium the frame's bar, band and action bar leave room for
+/// the segments at default type (27.0 and 22.3 percent measured with them
+/// stuck). From `expanded` up the same three regions took the whole of the
+/// 20 percent at default type, 164 of 164 at 1180 by 820, and the segments
+/// could not stick at any size; with the decision in the top bar there
+/// ([decisionInTopBar]) the frame pins 100 dp and a 48 dp bar at pointer
+/// density brings the record at 1440 by 900, where it sits beside a queue
+/// pane and a sidebar in the stacked regime, to 148 of the 180 allowed. The
+/// clause is written against [decisionInTopBar] rather than as a constant so
+/// that a frame that puts the action bar back at a class takes the sticky
+/// segments away from it in the same change.
 bool segmentsStick(TextScaler scaler, WindowClass window) =>
-    window.index <= WindowClass.medium.index &&
-    scaler.scale(layoutTextProbe) <= layoutTextProbe * stickySegmentsMaxScale;
+    scaler.scale(layoutTextProbe) <= layoutTextProbe * stickySegmentsMaxScale &&
+    (window.index <= WindowClass.medium.index || decisionInTopBar(window));
 
 /// True when the reviewer's text is large enough that a pane has to scroll.
 bool paneScrollsAtThisTextScale(TextScaler scaler) =>

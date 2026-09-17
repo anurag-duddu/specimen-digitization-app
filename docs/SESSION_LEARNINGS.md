@@ -10915,3 +10915,228 @@ top bar). The integrator regenerates all of them.
 - `SearchFilters.show(..., dispositions:, dispositionLabel:, disposition:,
   onDisposition:)`, which is how a screen that does not draw its own
   disposition control hands it to the sheet and gets it back.
+
+## 2026-09-17: Front-end refactor polish 3, slot P2, the screens and the documents
+
+- **Task.** Slot P2 of polish 3 (`fe/polish3-screens`): the record's expanded
+  and large variant, so the two `chrome_budget` lines a screen decides can be
+  deleted; the integration note at the two zero extent `PinnedChrome` call
+  sites; 13 amended to say what the screens do after wave A (sections 2.2,
+  3.4, 4.1, 4.2, 4.4 and the section 5 backlog table); the queue's search row
+  decided and measured from medium up; the plan's status paragraph and row;
+  every `fe/polish-3` marker in `lib/` listed with what it waits for. Plus one
+  observation the coordinator sent mid task: the record's bar at 1440 by 900
+  drew seven discs, two of them sharing a glyph.
+- **Branch and worktree.** `fe/polish3-screens`, cut from
+  `front-end-composition` at 4735cfa, in `.claude/worktrees/fe-polish3-screens`.
+  Sibling slot P1 (`fe/polish3-package`) owns the package; nothing under
+  `packages/specimen_ui` was touched, and nothing of P1's was merged.
+- **Outcome.** Complete. The record from `expanded` up gives the action bar
+  back and its decision sits in the top bar beside the identifier; both
+  `chrome_budget` lines are deleted and that backlog is empty. The record's
+  bar keeps refresh as its one disc and puts its six commands behind one
+  overflow trigger at every width; source details takes `UiIcons.info`. The
+  segments stick at default type at every window class again. The queue's
+  search row sticks at medium and scrolls at compact, expanded and large, and
+  only while the queue is the route on top. The four `glass_count` and
+  header marker items are P1's and are left with their notes.
+- **Commits**, oldest first:
+  - `dc4e9cb` feat(record): the decision sits in the top bar from expanded up
+  - `ec1071b` feat(queue): the search row sticks at medium, while the queue is on top
+  - `7d2829c` docs(design): 13 says what the screens do after polish 3
+  - this closeout
+
+### Validation, with numbers
+
+Each gate run on its own, the tree untouched while it ran, `rc=$?` read on
+the next line, `LANG` and `LC_ALL` exported.
+
+| Gate | rc | Result |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues |
+| `flutter test` (package) | 0 | 744 passed |
+| `flutter analyze --fatal-infos` (app), after the last file was written | 0 | no issues |
+| `flutter test --update-goldens` (app, whole suite) | 1 | 1559 passed, 7 skipped, 3 failed; the three were the shrink only ratchet in `test/verification/dark_mode_windows_test.dart` (below), fixed in the same change; that file rerun alone: 58 passed, rc 0 |
+| `flutter test test/composition` | 0 | 179 green inside the whole run; 187 with the throwaway instrument present |
+| targeted: layout, widget, guidelines, queue, workbench scroll and text scale, chrome budget | 0 | 110 passed; `queue_test.dart` alone 13 passed |
+| `dart format` over the nine changed Dart files | 0 | 1 reformatted before commit |
+| `check_ui_strings.py --baseline` | 0 | 200 files, 0 violations, 0 baselined |
+| `pre-commit run --files` (12 files, zsh array) | 0 | every hook Passed or Skipped |
+| em or en dash grep over every changed file | 0 hits | |
+
+**The measurement**, worst over both modes with the composition gates' own
+walk, before and after (share of the viewport; the parts in dp):
+
+| Cell | Before | After |
+|---|---|---|
+| record at expanded, 1.0 and 1.3 | 0.2000: top bar 48, band 52, action bar 64 | 0.1220: top bar 48, band 52 |
+| record at expanded, 2.0 | 0.2254: 61.25, 52, 71.6 | 0.1381: 61.25, 52 |
+| record at large, 1.0 | 0.1822: 48, 52, 64 | 0.1733: 48, 52, segments 56 (stuck, stacked regime) |
+| record at large, 2.0 | 0.2054: 61.25, 52, 71.6 | 0.1258: 61.25, 52 |
+| record at compact and medium | 0.2701 and 0.2227 | unchanged |
+| queue at medium, 1.0, 1.3, 2.0 | 0.1211, 0.1211, 0.1345 | 0.1680, 0.1743, 0.2026 with the row stuck (48, 54.52, 69.75) |
+| queue at expanded and large | 0.1415 and 0.1289 | unchanged; a stuck row at 2.0 would be 0.2335 and 0.212 |
+
+**The golden diff.** Regenerated once with `--update-goldens`, read by eye at
+1440 by 900 and 1180 by 820 at 2.0 (the record: back, the identifier, the
+previous edge button and the count, the two decisions and the next edge
+button, refresh and one trigger; the band a full width strip; no floating bar
+over the evidence), at 390 by 844 at 2.0 (the compact arrangement unchanged
+but for the bar's two discs) and the queue at 768 by 1024 (the row on its
+`ground` band), then reverted with `git checkout -- test/golden/images
+test/accessibility/fixtures`. **57 files moved: 54 screen goldens and 3
+fixtures.** All 48 record cells (readings, fields and history at four windows,
+two modes, two text scales), because the bar's actions changed at every width
+and the decision moved at expanded and large; `queue`, `queue-selection` and
+`filters` at medium in both modes, because the row that now sticks sits
+beneath them; and the three workbench semantics fixtures. The integrator
+regenerates them.
+
+### Backlog lines touched
+
+| Backlog, cell | Before | After | Why |
+|---|---|---|---|
+| `chromeBudgetBacklog` `record@expanded-1180x820` | 0.226 | deleted | measures 0.1381 at worst; the action bar is given back from `expanded` up |
+| `chromeBudgetBacklog` `record@large-1440x900` | 0.206 | deleted | measures 0.1733 at worst, with the segments stuck at default type |
+| `glassCountBacklog` `import-sheet@compact-390x844` | 2 | 2 | P1's frame under a modal; not merged into this base, so left, as the brief foresaw |
+| `glassCountBacklog` `record@medium-768x1024` | 3 | 3 | P1's pane decision at medium; same |
+| `guidelineArtefacts` (`dark_mode_windows_test.dart`) `record readings`, `record fields`, `record history` `at expanded-1180x820` | listed as the decision bar count node | deleted | the count node in the top bar passes the guideline the action bar's pane made it fail; the ratchet demanded the entries out in the same change; the large entries stand (the node is 690 dp wide over the bar and still reads two shades of it) |
+
+### The `fe/polish-3` markers left in `lib/`
+
+None of this slot's tasks resolved one; the two header markers gained the
+integration note task 2 asked for.
+
+| File and line | What it waits for |
+|---|---|
+| `lib/src/screens/workbench/source_pane.dart:567` | P1 task 2: `UiCollapsingHeader(primary: true)` publishing `PrimaryRegion` and no `PinnedChrome`. The call site passes no `primary` (the fold clause needs the photograph's box, not the sliver), so at the merge either it moves to `primary: true` with P1's marker declaring the same minimum (the pinned extent less the chrome row, floored at `sourceImageMinHeight`) and both wrappers come out, or it stays and the zero extent wrapper stays with it |
+| `lib/src/region_editor.dart:515` | P1 task 2, the same contract; this header passes no `primary` and 13 section 5 names no primary region for the editor, so the wrapper comes out only if the call site moves to `primary: true` |
+| `lib/src/workbench.dart:97` | P1 task 5: `UiDecisionBar` taking the reason a previous or next is absent, in place of the callback that announces it |
+| `lib/src/screens/workbench/decision_bar.dart:111` | P1 task 5: `UiDecisionBar` taking tertiary actions the way `UiButtonRow` does |
+| `lib/src/app/shell.dart:33` | P1 task 5: `UiScaffoldSlots` carrying the bar's title and leading, which retires `ShellChrome` |
+| `lib/src/app/shell.dart:498` | not in P1's brief: `UiTopBar` taking the scaffold's compact pane policy itself, so `_SolidBar` goes |
+| `lib/src/intake.dart:766` | not in P1's brief: `UiDecisionBar` declaring a last resort for a bar carrying only a primary |
+
+### Decisions a reader should be able to argue with
+
+1. **The action bar goes, not the band.** The brief named two candidates and
+   the criterion, the band's safety job most visible. A strip the width of the
+   window says which data this is on every screen; a chip in a bar says it
+   only to someone reading the bar. The decision moved instead, into the one
+   slot the bar hands a bounded width, its middle, beside the identifier: the
+   identifier at its own width (bounded only by the middle, through a
+   `LayoutBuilder`, so the label reads its own overflow), the decision bar in
+   what is left, so the name is never cut and the decision degrades by its own
+   ladder. With the fixture's nine character identifier both decisions still
+   draw at 1180 by 820 at 200 percent.
+2. **The variant is per window class.** `decisionInTopBar(window)` is true
+   from `expanded` up and false below, and `segmentsStick` is written against
+   it rather than against a constant, so a frame that puts the action bar back
+   at a class takes the sticky segments away from it in the same change. The
+   window is weighed as 22d5110 and the integration lesson asked: the record
+   at 1440 with the sidebar and the queue pane is 799 dp and stacked, and it
+   was measured there, at 0.1733 with the segments stuck.
+3. **The record's bar builds its own overflow trigger.** 13 section 4.1 gives
+   the bar back, the identifier and refresh and puts the commands in the
+   overflow menu; 13 section 2.4 gives a region one job. `UiTopBar`'s ladder
+   draws every declared action wherever there is width, which is right for a
+   control and wrong for this screen, so the record declares refresh and one
+   `UiMenuTrigger` built from its six `UiTopBarAction`s. The `icons_unique`
+   gate holds the registry to one glyph per name, not a screen to one name per
+   command, which is how classification and source details shared the
+   provenance tree; source details is supporting information (`UiIcons.info`).
+4. **The queue's row sticks at medium only.** 24 percent of a portrait tablet
+   is the most generous absolute budget of the four classes (245.76 dp), and
+   the row fits at every text scale there; the phone gives it up (A3), and the
+   two landscape classes break 20 percent at 200 percent with it stuck. A
+   variant per class, not a text scale switch.
+5. **A covered screen pins nothing.** The queue stays mounted under the record
+   and the gates count every marker in the tree: the record at medium read
+   27.0 percent with the queue's stuck row beneath it. The row sticks only
+   while `ModalRoute.of(context).isCurrent`, the reading the bulk bar already
+   took. Recorded in 13 section 3.4.
+
+### Durable learnings
+
+- **A control's fit ladder is not a screen's arrangement.** `UiTopBar` draws
+  every declared action given the width, as 11 section 3.3 says a control
+  should; a bar that 13 gives three things has to declare three things, and
+  the seventh disc at 1440 was the ladder doing its job on a list nobody had
+  edited. Read the wide golden, not only the phone's.
+- **A slot that hands its child bounded width is the only place for a widget
+  with an `Expanded` in it.** `UiDecisionBar` stretches its count; the bar's
+  action slots lay out at intrinsic width and its middle is `Expanded > Center`,
+  so the middle is where the decision can live. Knowing which slots bound
+  their children saves an afternoon of `RenderFlex` errors.
+- **A marker on a route beneath the current one is counted.** Every gate walks
+  the whole element tree from the root, so a pinned region a covered screen
+  draws is charged to the screen on top. Screens that pin inside their own
+  scroll have to read `isCurrent`, the same as screens that publish into the
+  frame; the gate could read only the current route and measure the same
+  thing without every screen remembering to.
+- **A shrink only ratchet in an unrelated test file is a change's second
+  reviewer.** Moving the count node out of the action bar's pane made three
+  dark mode contrast cells pass a guideline they were recorded as failing for
+  an instrument reason, and `dark_mode_windows_test.dart` refused to stay
+  green until the entries were gone. Run the whole suite, not the files you
+  think you touched.
+- **Measure before and after with the gate's own walk, and print the parts.**
+  A throwaway test importing `composition_harness.dart` and printing every
+  outermost pinned region with its height gave the arithmetic for the
+  amendment tables in one run; the share alone would not have shown that the
+  queue's row was what moved the record at medium.
+
+### Failed approaches
+
+- **Wrapping `UiDecisionBar` as a bar action.** An action slot is an
+  inflexible child of the bar's row and gets an unbounded main axis; the
+  decision bar's `Expanded` count cannot lay out there. A `Flexible` passed as
+  an action would work only by relying on the bar's private row shape, and
+  would split the leftover with the identifier by ratio. The middle slot is
+  the honest place.
+- **Giving the identifier and the decision a flex ratio.** One to two starves
+  a twenty character identifier at 200 percent into an ellipsis while the
+  decision has slack. The identifier at its intrinsic width, bounded only by
+  the middle, and the decision in the rest, is the priority 11 section 3.3
+  gives a label and a ladder.
+- **Claiming the secondary collapses at 1180 by 820 at 200 percent.** The
+  arithmetic said it would with a long identifier; the fixture's identifier is
+  nine characters and the golden showed both decisions drawn. The amendment
+  now says what the picture shows.
+
+### Follow-ups
+
+- **For the integrator, a gate finding.** `chrome_budget` counts a
+  `PinnedChrome` on a route beneath the current one (arithmetic above:
+  276 of 1024, 0.2695, with the queue's 48 dp row under the record at medium).
+  Every screen now pins only while current; a gate that read the current
+  route's markers would not depend on that.
+- **For P1 or the integrator.** `UiStickyBar` draws its `ground` at rest as
+  well as when stuck, so on the queue at medium a band cuts across the home
+  sky before the row has reached the header (visible in the regenerated
+  `queue__medium-768x1024` golden). The delegate could paint the ground only
+  once it overlaps content. The record's segments have the same at compact and
+  medium, less visibly over `sky.work`.
+- **The overflow trigger at a bar's end opens off the window until P1 task 1
+  lands.** The record's bar had that trigger at compact and medium already;
+  it has it at expanded and large now (13 section 4.1). Both slots merge
+  together; if P1's `Popover` fix does not, the menu at 1440 opens partly
+  past the trailing edge.
+- **The region editor's bar draws four discs at width** (save, delete, move
+  earlier, move later) inside its dialog from `expanded` up, and 13 section
+  4.3's "order controls as the top bar's overflow" is written for the compact
+  route, where the ladder already collapses them. Not changed here; the same
+  treatment as the record's bar is a small change if the integrator wants it,
+  with `region_editor_test.dart` reaching the order controls through the menu.
+- **The plan's status paragraph sits under 3H, not 3G.** The brief said 3G;
+  3G is Fit and polish 3 is wave A's closeout, which is 3H. Move it if the
+  brief meant the section as written.
+- **Deletable once P1 is merged and measured**: `glassCountBacklog`
+  `record@medium-768x1024` and `import-sheet@compact-390x844`, the two zero
+  extent `PinnedChrome` wrappers (with the `primary: true` decision above),
+  `ShellChrome` in `shell.dart`, and the `UiDecisionBar` and `UiStatusStrip`
+  call sites marked above.
+- No cloud command, no deploy, no dependency added, no SDK change, no package
+  file touched, no screen golden or fixture committed, no backlog line raised
+  and no budget widened, and nothing owned by another slot changed.

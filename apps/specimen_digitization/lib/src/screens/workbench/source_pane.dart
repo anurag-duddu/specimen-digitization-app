@@ -565,7 +565,17 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   /// at the minimum it pins, and is counted once.
   ///
   /// fe/polish-3: `UiCollapsingHeader` should publish no `PinnedChrome` where
-  /// `primary` is true, and this marker goes with it.
+  /// `primary` is true, and this marker goes with it. Integration note (slot
+  /// P2, 2026-09-17): slot P1 settles it in the pattern, a header built with
+  /// `primary: true` publishes `PrimaryRegion` and no `PinnedChrome`, and a
+  /// header without `primary` keeps its marker. This header passes no
+  /// `primary`, because the rectangle the fold clause reads has to be the
+  /// photograph's box and a `PrimaryRegion` around a sliver has none, so at
+  /// the merge either the call site moves to `primary: true` and P1's marker
+  /// declares the minimum this one does (the pinned extent less the chrome
+  /// row, floored at `sourceImageMinHeight`), and both wrappers come out; or
+  /// it stays as it is and this zero extent wrapper stays with it. Against
+  /// the package at 4735cfa the wrapper is what the gates read, and it stays.
   Widget _header(BuildContext context, UiThemeData ui) {
     final UiCollapsingHeaderStyle style = UiCollapsingHeaderStyle.resolve(
       ui,

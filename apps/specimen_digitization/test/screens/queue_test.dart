@@ -298,4 +298,122 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   });
+
+  group('the search row', () {
+    Future<void> pumpAt(
+      WidgetTester tester,
+      ScriptedRepository repository,
+      Size window, {
+      double textScale = 1.0,
+    }) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = window;
+      addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final TestSession session = TestSession();
+      addTearDown(session.controller.close);
+      await tester.pumpWidget(
+        SpecimenDigitizationApp(session: session, repository: repository),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// The search row inside the bar that sticks, wherever the route is.
+    Finder stuckSearch() => find.ancestor(
+      of: find.byType(UiSearchField, skipOffstage: false),
+      matching: find.byType(UiStickyBar, skipOffstage: false),
+    );
+
+    List<Specimen> page(int count) => <Specimen>[
+      for (int i = 1; i <= count; i++)
+        Specimen(<String, dynamic>{
+          'specimen_id': 'SD-$i',
+          'filename': 'Record $i',
+          'disposition': 'cleared',
+        }),
+    ];
+
+    testWidgets('sticks at medium at every text scale, at its own height', (
+      tester,
+    ) async {
+      // 13 sections 3.5 and 4.2, and the arithmetic on `searchRowSticks`: a
+      // portrait tablet pins 124 dp at default type and 137.75 at 200 percent
+      // of the 245.76 its 24 percent allows, so the row fits at every size.
+      for (final double scale in <double>[1.0, 1.3, 2.0]) {
+        await pumpAt(
+          tester,
+          ScriptedRepository()..results = page(30),
+          const Size(768, 1024),
+          textScale: scale,
+        );
+        expect(stuckSearch(), findsOneWidget, reason: 'at x$scale');
+        // The extent is the row's own height and nothing around it: a sticky
+        // bar shorter than its row clips the field, and one taller spends
+        // budget on air.
+        final UiStickyBar bar = tester.widget<UiStickyBar>(stuckSearch());
+        expect(
+          bar.extent,
+          closeTo(tester.getSize(find.byType(UiSearchField)).height, 0.5),
+          reason: 'the extent is the row at x$scale',
+        );
+        // Scrolled to the end, the row is still on screen, at the top of
+        // the list, which is what stuck means.
+        final ScrollableState state = tester.state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byType(CustomScrollView).first,
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        state.position.jumpTo(state.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(find.byType(UiSearchField)).top,
+          closeTo(tester.getRect(find.byType(CustomScrollView).first).top, 0.5),
+          reason: 'the row is stuck under the header at x$scale',
+        );
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('scrolls at compact and from expanded up', (tester) async {
+      // Compact is slot A3's decision: 185.75 of 236.3 already pinned at 200
+      // percent on a phone, and the row is 69.75. Expanded and large are 20
+      // percent of a landscape window, 191.5 of 164 and 191 of 180 at 200
+      // percent with the row stuck, and a variant is chosen per class.
+      for (final Size window in <Size>[
+        const Size(390, 844),
+        const Size(1180, 820),
+        const Size(1440, 900),
+      ]) {
+        await pumpAt(tester, ScriptedRepository()..results = page(3), window);
+        expect(find.byType(UiSearchField), findsOneWidget, reason: '$window');
+        expect(stuckSearch(), findsNothing, reason: '$window');
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('pins nothing under a record pushed over it', (tester) async {
+      await pumpAt(
+        tester,
+        ScriptedRepository()..results = page(1),
+        const Size(768, 1024),
+      );
+      expect(stuckSearch(), findsOneWidget);
+      await tester.tap(find.text('Record 1'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WorkbenchScreen), findsOneWidget);
+      // The queue stays mounted beneath the record, and a region a covered
+      // screen pins is height the reader never sees and height the record's
+      // own chrome budget would be charged for.
+      expect(
+        stuckSearch(),
+        findsNothing,
+        reason: 'a covered screen holds no viewport height',
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
 }

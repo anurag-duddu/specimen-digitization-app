@@ -6,6 +6,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +26,27 @@ import '../../workspace.dart';
 
 /// The width of the list pane in the list detail layout (05 section 3.2).
 const double queueListPaneWidth = 360;
+
+/// True where the queue's search row sticks under the header rather than
+/// scrolling with the page (13 sections 2.3, 3.5 and 4.2).
+///
+/// At medium only, and the arithmetic decides it. A stuck row is pinned
+/// chrome, and a row holding a text control is 48 dp at default type and
+/// 69.75 at 200 percent. At 390 by 844 the frame already pins 172 dp at
+/// default type and 185.75 at 200 percent (top bar, one line band, pill) of
+/// the 236.3 the phone's 28 percent allows, so the row fits at default type
+/// and not at 200 percent, and 13 section 2.3 says a screen over the budget
+/// gives a region up rather than shrinking it: the row a reviewer uses once
+/// scrolls on a phone (slot A3's decision). At 768 by 1024 the frame pins 124
+/// dp at default type and 137.75 at 200 percent (top bar, full band, no pill)
+/// of the 245.76 that 24 percent allows, so the row fits at every size:
+/// 172 and 207.5, 0.168 and 0.203. From `expanded` up the budget is 20
+/// percent of a landscape window: at 1180 by 820 the frame pins 116 dp at
+/// default type and 129.75 at 200 percent of 164, and the row at 200 percent
+/// is 61.75, which is 191.5 and 0.234; at 1440 by 900 it is 191 of 180 and
+/// 0.212. A variant is chosen per class and not per text size, so those two
+/// classes scroll the row.
+bool searchRowSticks(WindowClass window) => window == WindowClass.medium;
 
 /// How many placeholder rows stand in for the first page.
 const int queueSkeletonRows = 5;
@@ -506,18 +528,7 @@ class _QueuePaneState extends State<QueuePane> {
             child: _QueueHeader(controller: controller),
           ),
         ),
-        SliverPadding(
-          padding: sides,
-          sliver: SliverToBoxAdapter(
-            child: _SearchRow(
-              controller: _search,
-              focusNode: _searchFocus,
-              onChanged: controller.search,
-              filterCount: _activeFilterCount(controller, compact: compact),
-              onFilters: () => unawaited(_openFilters()),
-            ),
-          ),
-        ),
+        _searchBar(context, controller, sides, compact: compact),
         // Six dispositions one tap away wherever there is room for them. On a
         // phone they are in the filter sheet instead, with the chosen one on
         // an active filter chip: 13 section 4.2 gives the queue at compact a
@@ -590,6 +601,54 @@ class _QueuePaneState extends State<QueuePane> {
     return _pullToRefresh
         ? _PullToRefresh(onRefresh: controller.refresh, child: list)
         : list;
+  }
+
+  /// The search row, stuck under the header where the chrome budget holds it
+  /// (13 sections 3.5 and 4.2).
+  ///
+  /// `UiStickyBar` pins the row once the page has scrolled it up to the
+  /// header, and it is pinned chrome while it is stuck, so [searchRowSticks]
+  /// weighs the window class. It sticks only while this pane is the route on
+  /// top: the record is pushed over the queue and the queue stays mounted
+  /// beneath it, and a region a covered screen pins is height the reader
+  /// never sees and height the record's own budget would be charged for, the
+  /// same reason [_current] keeps a selection's bar out of the record. The
+  /// bar's extent is the row's own height and nothing around it: the field is
+  /// the taller of its two controls, and its box is `UiInputStyle`'s at the
+  /// live text scale, floored at the hit box a pointer density field keeps
+  /// (11 section 2.2). The gutter is inside the bar, so the ground it draws
+  /// reaches the window's edges.
+  Widget _searchBar(
+    BuildContext context,
+    WorkspaceController controller,
+    EdgeInsetsGeometry sides, {
+    required bool compact,
+  }) {
+    final UiThemeData ui = context.ui;
+    final Widget row = Padding(
+      padding: sides,
+      child: _SearchRow(
+        controller: _search,
+        focusNode: _searchFocus,
+        onChanged: controller.search,
+        filterCount: _activeFilterCount(controller, compact: compact),
+        onFilters: () => unawaited(_openFilters()),
+      ),
+    );
+    if (!_current || !searchRowSticks(WindowClass.of(context))) {
+      return SliverToBoxAdapter(child: row);
+    }
+    return UiStickyBar(
+      extent: math.max(
+        UiDensity.hitBox,
+        UiInputStyle.resolve(
+          ui,
+          UiFieldShape.capsule,
+          textScaler: MediaQuery.textScalerOf(context),
+        ).minHeight,
+      ),
+      child: row,
+    );
   }
 
   /// What the filter control's badge counts.

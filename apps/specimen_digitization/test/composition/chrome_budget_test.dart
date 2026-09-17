@@ -45,20 +45,20 @@ double chromeBudgetFor(String window) => switch (windowClassOf(window)) {
 /// Measured on 2026-09-17 against `front-end-refactor` at f3b6363, at every
 /// window, both modes and 1.0, 1.3 and 2.0; the number is the worst of the six.
 ///
-/// **Two left, measured against `fe/compose-record` on 2026-09-17.** The
-/// record at compact and at medium composed to 27.0 and 22.3 percent and
-/// those two lines are gone. The two that remain are one sentence, and it is
-/// not about this screen: at 200 percent text the frame's own top bar is 61
-/// dp, the one line environment band 52 and the action bar 72, which is 185
-/// of a 820 dp window where 13 section 2.3 allows 164, and of a 900 dp window
-/// where it allows 180. Every screen from the expanded class up that carries
-/// a band and a decision bar is over this budget at that text scale, whatever
-/// else it does, so the number below is what a record spends and the clause
-/// is what has to answer for it.
-const Map<String, num> chromeBudgetBacklog = <String, num>{
-  'record@expanded-1180x820': 0.226,
-  'record@large-1440x900': 0.206,
-};
+/// **Empty, and it is a real zero (polish 3, 2026-09-17).** The last two
+/// lines were the record at expanded and large, and they were one sentence
+/// about the frame rather than about the screen: at 200 percent text the
+/// frame's own top bar is 61.25 dp, the one line environment band 52 and the
+/// action bar 71.6, which is 184.85 of the 164 an 820 dp window allows and of
+/// the 180 a 900 dp window allows, so no arrangement that kept all three held
+/// the budget. 13 section 2.3 says a screen over the budget gives a region up,
+/// and the record gives up the action bar from `expanded` up: its decision
+/// sits in the top bar beside the identifier (13 section 4.1, the expanded
+/// and large table), and what remains pinned is the bar and the band, 100 dp
+/// at default type and 113.25 at 200 percent, which is 0.138 of 820 and 0.126
+/// of 900, and 0.173 of 900 with the segments stuck at default type in the
+/// stacked regime the record takes beside the queue pane and the sidebar.
+const Map<String, num> chromeBudgetBacklog = <String, num>{};
 
 // ---------------------------------------------------------------------------
 // The measurement.
