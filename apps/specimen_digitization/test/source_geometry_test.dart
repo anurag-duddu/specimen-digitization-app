@@ -14,7 +14,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import 'ui_finders.dart';
 import 'workbench_harness.dart';
-import 'package:specimen_digitization/src/widgets/selectable_evidence.dart';
 
 void main() {
   final bytes = File(

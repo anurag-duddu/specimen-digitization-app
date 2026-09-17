@@ -8,7 +8,6 @@
 // superseded by a later one, never removed. So the count has to be right, and
 // a count that moved under the reviewer while they read it would not be.
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,7 +20,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession, fixture;
 import '../ui_finders.dart';
-import 'package:specimen_digitization/src/widgets/reason_sheet.dart';
 
 /// One bulk call, as the repository received it.
 typedef BulkCall = ({
