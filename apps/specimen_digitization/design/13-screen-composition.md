@@ -212,6 +212,54 @@ The size class goldens pick up every change, and the fit matrix stays as it
 is. Screen goldens and fixtures are regenerated once per wave by the
 integrator, as before.
 
+**The allowances, as built (2026-09-17, slot A4).** Every gate runs one test
+per cell, and a cell is one screen at one window; both modes and all three text
+scales are swept inside it and the worst reading is what the cell reports. Mode
+and scale are deliberately not part of a cell's name: a composition defect is a
+property of an arrangement, an arrangement is chosen by the window class, and a
+screen that broke the contract in dark and not in light would be a finding
+about the theme. `above_the_fold` runs at compact only, because the clause is
+about a phone and a window with room to spare has no fold to be below. The
+matrix is the eight routed locations, plus the import sheet and the region
+editor, which are surfaces a screen opens over itself and compose in their own
+right; `verify` is behind a redirect the fixture session does not reach, as the
+fit matrix of 12 also recorded.
+
+Three counting decisions the clauses do not settle on their own. A rail and a
+sidebar are not chrome: they are laid out beside the body, so they spend width,
+and the budget in section 2.3 is a share of the height. Glass is counted as
+`GlassSurface` rather than as `BackdropFilter`, which is what `glass_budget`
+counts, because section 2.2 is about depth rather than cost and a pane whose
+sigma the quality setting has turned off is still a pane a reader sees. And
+every gate sweeps each screen's scroll views to their end before it reads the
+tree, because a `ListView` builds only the rows its viewport holds: intake's
+manifest is the third child of the page's list on a phone and is not in the
+tree at all until the page is scrolled to it.
+
+The backlogs the gates start with, each one a line a wave A slot deletes as it
+fixes the screen, and each one checked in both directions so a line cannot
+outlive what it allows:
+
+| Gate | Cells | What they are |
+|---|---|---|
+| `no_nested_scrollables` | 7 | Intake at compact nests the manifest list in the page's list. The import sheet at all four windows, and the region editor at expanded and large, put a `SingleChildScrollView` inside the one `UiDialog` and `UiSheet` already wrap a body in. Two files under `lib/` still write `shrinkWrap` or `NeverScrollableScrollPhysics`, three occurrences. |
+| `surface_depth` | 1 depth, 7 panes | The record at compact stacks two surfaces where compact allows one. On panes, six of the seven are one sentence: `UiTopBar` fills with `glass.flat` the moment the body scrolls under it and the pill is already a pane, so every compact screen that scrolls has two. The record at compact has four and at medium three. |
+| `chrome_budget` | 4 | The record screen at all four windows: 54 percent of the viewport at compact against 28, 28 against 24 at medium, 32 against 20 at expanded, 29 against 20 at large. |
+| `above_the_fold` | 3 | The record's photograph shows 168 dp of the 338 that 40 percent of a phone asks for. Intake's capture card is 1018 dp tall inside 844. The queue holds the fold at 1.0 and 1.3 and loses it at 2.0. |
+| `one_job` | 3 | The "Back to queue" row on the record at compact, medium and expanded. No pinned region repeats another's words today, and that clause starts at zero. |
+
+Two of those were found by the gates rather than predicted by section 0: the
+region editor's nested scroll above the expanded floor, and the second glass
+pane every compact screen gains on its first scroll, which `glass_budget` never
+saw because it counts at rest.
+
+The `PinnedChrome` and `PrimaryRegion` markers are read by name, and their
+`extent` and `minExtent` through a dynamic call, so the gates measure a screen
+that has moved to the markers and a screen that has not without waiting for
+either. Where any marker is mounted, only markers are counted; where none is,
+the gates measure the widgets that draw the five regions section 2.3 names. The
+integrator replaces the three readers with an import once A1 is merged.
+
 ## 6. Work breakdown
 
 Team A, composition. A1 first, then A2 to A4 in parallel from its merge.
