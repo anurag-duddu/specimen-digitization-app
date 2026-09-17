@@ -7123,3 +7123,62 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     `UiDataTileStyle.numeralSteps`, `UiListRow.contentMaxLines`,
     `UiDisclosureStyle.summaryMaxLines`, `UiTopBarStyle.heightIn`,
     `keptActions` and `overflowLabel`.
+
+### 2026-09-16: Addendum to the slot G2 closeout above, the gallery matrix findings
+
+The coordinator relayed slot G3's findings from the merged gallery matrix
+while this slot was finishing. Each one, and what closed it. Two more commits,
+`dfd3fd8` and `28d7931`; the package is at 625 tests and every gate above was
+rerun against the tree that carries them, with the same results.
+
+- **`UiTopBar` broke its title one character per line at 200 and 280 dp and
+  grew to about 500 dp tall. Closed.** The title is a `UiLabel` and the
+  actions collapse, both already in `5f9d71f`. Measured on the final tree with
+  a leading, a 27 character title and four commands: the bar is 56 dp and
+  reports no overflow at 480, 360, 280 and 200 dp.
+- **`UiToast` broke one character per line at 200 dp. Closed**, in `07e86e1`.
+  The message is content and wraps to two lines at 200, 280 and 360 and one at
+  480; the action's own label is one line at all four; no overflow at any of
+  them.
+- **`UiBanner` ellipsised its message at 200 dp. Closed as far as two rules
+  allow, and the residue is named.** The sentence now wraps: two lines at 200,
+  280 and 360, one at 480, where before it was one line and an ellipsis at
+  every width. It still ellipsises at 200 dp, because two lines is the band's
+  cap, which is finding V-15 carried by 10 section 4.3 and not repealed by 11.
+  The whole sentence is on the semantics node either way. Raising
+  `UiBannerStyle.maxLines` to three would fit that sentence at 200 dp and
+  would still pass the V-15 height assertion at 200 percent text on a phone
+  (three lines measure about 125 dp against a 168 dp ceiling), but no document
+  asks for three, and `EnvironmentBanner.maxLines` reads the same constant.
+  That is the integrator's call, not this slot's.
+- **`UiPillNav`, six overflows. Closed** in `dfd3fd8`. Five 48 dp discs need
+  240 dp and a disc's hit box never shrinks, so the capsule scrolls through
+  the same `EdgeFadedRow` the tab strip uses, with the current destination
+  scrolled into view. The scroller moved into `primitives/edge_fade.dart` for
+  it: two controls needed it, a private class cannot cross two files in Dart,
+  and a second copy is what the stand-in gate exists to prevent. The brief
+  lists the three control directories rather than `primitives/`, so this is a
+  deviation, recorded here; the file is new, so it cannot conflict with a
+  sibling slot, and it is exported from the top barrel.
+- **`UiListRow` 108, `UiModalActions` 72, `UiToast` 32, `UiDataTile` 2: all
+  measured clean.** Each was pumped at 480, 360, 280 and 200 dp with the
+  framework's error handler diverted, in the specimen the gallery draws, and
+  none reported a layout error. `matrix_golden_test.dart` does not exist on
+  this branch, which was cut before G3 merged, so its `overflowBacklog` lines
+  for `UiListRow`, `UiModalActions`, `UiToast`, `UiDataTile` and `UiPillNav`
+  are the integrator's to delete after this slot merges.
+- **`UiButtonRow` in `controls/actions/button_row.dart` is not adopted here**,
+  as instructed: this slot merges nothing, so the adapter stays marked
+  `fe/fit-actions` in `controls/overlays/sheet.dart` and the integrator swaps
+  it. It was built to 11 section 3.4's shape, so the swap is a rename.
+- **`IntrinsicWidth` and `IntrinsicHeight` over a `UiLabel`.** Neither
+  `UiListRow` nor `UiDataTile` has one, and neither does anything else in the
+  three families: the only one under the package's `lib/` is in
+  `controls/actions/segmented.dart`, which is slot G1's file, and the only one
+  in the application is `lib/src/evidence_panel.dart`, which wraps v1 Material
+  text and no control of this package. **The segmented one is load bearing for
+  two slots at once**: it is what gives the track its width, and `UiTabs` puts
+  that track inside a scroller precisely so it keeps that intrinsic width. A
+  `UiLabel` inside a segment would make `IntrinsicWidth` unmeasurable and take
+  the tab strip's compact variant with it, so G1 converting segment labels
+  needs a different way to size the track. Worth checking before G1 merges.
