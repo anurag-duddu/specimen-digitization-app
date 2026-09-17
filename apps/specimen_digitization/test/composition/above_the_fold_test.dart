@@ -20,6 +20,7 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'composition_harness.dart';
@@ -71,12 +72,12 @@ const String compactWindow = 'compact-390x844';
   double viewport,
 ) {
   final Iterable<Element> markers = compositionElements().where(
-    (Element element) => isMarker(element, primaryRegionMarker),
+    (Element element) => element.widget is PrimaryRegion,
   );
   if (markers.isNotEmpty) {
     final Rect? box = rectOf(markers.first);
     if (box == null) return null;
-    return (box: box, needed: markerMinExtent(markers.first) ?? box.height);
+    return (box: box, needed: primaryMinExtent(markers.first) ?? box.height);
   }
   final Finder? finder = screen.primary?.call();
   if (finder == null) return null;

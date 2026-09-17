@@ -66,13 +66,12 @@ final Set<String> backRowBacklog = <String>{
 /// repetition.
 List<String> pinnedStringsNow() {
   final List<Element> elements = compositionElements();
-  final bool markers = pinnedMarkersPresent(elements);
   final List<String> found = <String>[];
   for (final Element element in elements) {
     final String? text = textOf(element.widget);
     if (text == null || text.trim().isEmpty) continue;
     if (rectOf(element) == null) continue;
-    if (!isInPinnedRegion(element, markersPresent: markers)) continue;
+    if (!isInPinnedRegion(element)) continue;
     found.add(text);
   }
   return found;
@@ -135,12 +134,11 @@ bool holdsOnlyABackAction(Element slot) {
 /// control is exactly the "Back to queue" row of 13 section 0.
 List<String> backRowsNow() {
   final List<Element> elements = compositionElements();
-  final bool markers = pinnedMarkersPresent(elements);
   final List<String> found = <String>[];
   for (final Element element in elements) {
     if (!isBackAction(element.widget)) continue;
     if (rectOf(element) == null) continue;
-    if (isInPinnedRegion(element, markersPresent: markers)) continue;
+    if (isInPinnedRegion(element)) continue;
     // The band this control occupies. A row of the page is one child of a
     // column, because a column lays its children out as horizontal bands, so
     // the finding is a control whose nearest enclosing `Flex` runs vertically

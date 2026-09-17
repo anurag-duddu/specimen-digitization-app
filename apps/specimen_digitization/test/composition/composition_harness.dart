@@ -292,92 +292,61 @@ List<Element> compositionElements() {
   return found;
 }
 
-/// The widgets the shell and the screens pin today.
+/// The widgets the shell and the screens pin today, where no marker wraps
+/// them.
 ///
-/// The fallback for the `PinnedChrome` marker slot A1 lands: 13 section 2.3
-/// names the top bar, the environment band, a pinned header at its collapsed
-/// height, the decision bar and the navigation pill, and these are the widgets
-/// that draw those five today. A rail and a sidebar are deliberately absent:
-/// they are laid out beside the body rather than above it, so they spend width
-/// and the budget is a share of the height.
+/// 13 section 2.3 names the top bar, the environment band, a pinned header at
+/// its collapsed height, the decision bar and the navigation pill, and these
+/// are the widgets that draw those five today. A rail and a sidebar are
+/// deliberately absent: they are laid out beside the body rather than above
+/// it, so they spend width and the budget is a share of the height.
+///
+/// A region a screen has wrapped in the `PinnedChrome` marker is measured
+/// through the marker, and a region no screen has marked yet is measured
+/// through this list, in the same tree at the same time. Reading only the
+/// markers the moment one is mounted anywhere counts the shell's regions and
+/// forgets the screen's own: the first run after the scaffold took the marker
+/// measured the record screen at a quarter of the phone with its decision bar
+/// uncounted, and the ratchet asked for the backlog line to be deleted.
 bool isPinnedChromeWidget(Widget widget) =>
     widget is UiTopBar ||
     widget is UiPillNav ||
     widget is EnvironmentBanner ||
     widget is WorkbenchDecisionBar;
 
-/// The name of the marker slot A1 publishes for a pinned region.
-///
-/// Matched by name, and read through `dynamic`, rather than through the class
-/// on purpose. This slot is cut from the same head as `fe/compose-package` and
-/// cannot import a class that branch has not merged yet, and a gate that waits
-/// for a sibling is a gate that measures nothing in the meantime. The moment a
-/// screen wraps a region in the marker, every gate here reads the marker
-/// instead of the widget list above, with no change to this file.
-///
-/// `fe/compose-package` at b04e6ec publishes
-/// `PinnedChrome({region, child, extent})` with
-/// `static double extentOf(Element)`, and `PrimaryRegion({child, minExtent})`
-/// with `static double minExtentOf(Element)`. [markerExtent] and
-/// [markerMinExtent] below are those two rules written out. The integrator
-/// replaces the three of them with the import once A1 is merged, and nothing
-/// else here moves.
-const String pinnedChromeMarker = 'PinnedChrome';
+/// True where [element] is a pinned region: the marker, or a widget the list
+/// above names.
+bool isPinnedRegion(Element element) =>
+    element.widget is PinnedChrome || isPinnedChromeWidget(element.widget);
 
-/// The name of the marker slot A1 publishes for a screen's primary region.
-const String primaryRegionMarker = 'PrimaryRegion';
-
-/// True where [element] is an instance of the marker named [marker].
-bool isMarker(Element element, String marker) =>
-    element.widget.runtimeType.toString() == marker;
-
-/// The value of the named `double?` field [name] on [widget], or null.
+/// The height the pinned region at [element] contributes.
 ///
-/// Read dynamically for the reason above. A marker whose field has been
-/// renamed reads as undeclared rather than as a crash, and the measurement
-/// falls back to the box under it, which is the same answer for every marker
-/// that has one.
-double? _declaredDouble(Widget widget, String name) {
-  final dynamic target = widget;
-  try {
-    final dynamic value = switch (name) {
-      'extent' => target.extent,
-      'minExtent' => target.minExtent,
-      _ => null,
-    };
-    return value is double ? value : null;
-  } on NoSuchMethodError {
-    return null;
-  }
+/// `PinnedChrome.extentOf` without the throw: the extent a marker declares,
+/// or the height of the box under it. A sliver has no box, which is why a
+/// marker may declare one; a region with neither is a region that cannot be
+/// measured, and the gate says so rather than counting it as nothing.
+double? pinnedExtent(Element element) {
+  final Widget widget = element.widget;
+  if (widget is PinnedChrome && widget.extent != null) return widget.extent;
+  return rectOf(element)?.height;
 }
-
-/// The height the `PinnedChrome` marker at [element] contributes.
-///
-/// `PinnedChrome.extentOf`: the extent the marker declares, or the height of
-/// the box under it. A sliver has no box, which is why a marker may declare
-/// one; a marker with neither is a marker that cannot be measured, and the
-/// gate says so rather than counting it as nothing.
-double? markerExtent(Element element) =>
-    _declaredDouble(element.widget, 'extent') ?? rectOf(element)?.height;
 
 /// The height the `PrimaryRegion` marker at [element] has to be shown in.
 ///
-/// `PrimaryRegion.minExtentOf`: the minimum the marker declares, or the height
-/// of the box under it.
-double? markerMinExtent(Element element) =>
-    _declaredDouble(element.widget, 'minExtent') ?? rectOf(element)?.height;
-
-/// Which pinned region the marker at [element] says it is, for a failure to
-/// name it.
-String markerRegionName(Element element) {
-  final dynamic target = element.widget;
-  try {
-    final dynamic region = target.region;
-    final dynamic name = region.name;
-    return name is String ? name : pinnedChromeMarker;
-  } on NoSuchMethodError {
-    return pinnedChromeMarker;
+/// `PrimaryRegion.minExtentOf` without the throw: the minimum the marker
+/// declares, or the height of the box under it.
+double? primaryMinExtent(Element element) {
+  final Widget widget = element.widget;
+  if (widget is PrimaryRegion && widget.minExtent != null) {
+    return widget.minExtent;
   }
+  return rectOf(element)?.height;
+}
+
+/// Which pinned region [element] is, for a failure to name it.
+String pinnedRegionName(Element element) {
+  final Widget widget = element.widget;
+  return widget is PinnedChrome ? widget.region.name : '${widget.runtimeType}';
 }
 
 /// The rectangle [element] occupies in the window, or null where it has none.
@@ -406,18 +375,11 @@ bool hasAncestor(Element element, bool Function(Widget widget) test) {
   return found;
 }
 
-/// True where [element] sits inside a pinned region.
-///
-/// Reads the marker where one is in the tree and the widget list where none
-/// is, so a screen that has moved to slot A1's marker and a screen that has
-/// not are both measured.
-bool isInPinnedRegion(Element element, {required bool markersPresent}) {
+/// True where [element] sits inside a pinned region, marked or not.
+bool isInPinnedRegion(Element element) {
   bool found = false;
   element.visitAncestorElements((Element parent) {
-    final bool pinned = markersPresent
-        ? isMarker(parent, pinnedChromeMarker)
-        : isPinnedChromeWidget(parent.widget);
-    if (pinned) {
+    if (isPinnedRegion(parent)) {
       found = true;
       return false;
     }
@@ -425,10 +387,6 @@ bool isInPinnedRegion(Element element, {required bool markersPresent}) {
   });
   return found;
 }
-
-/// True where any `PinnedChrome` marker is mounted.
-bool pinnedMarkersPresent(List<Element> elements) =>
-    elements.any((Element element) => isMarker(element, pinnedChromeMarker));
 
 // ---------------------------------------------------------------------------
 // Scrolling.

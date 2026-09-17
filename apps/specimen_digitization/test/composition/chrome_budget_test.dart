@@ -70,25 +70,10 @@ const Map<String, num> chromeBudgetBacklog = <String, num>{
 ///
 /// A region inside a region is counted once, at the outer one, so a marker
 /// wrapped around a bar that is itself a pinned widget does not pay twice.
-List<Element> pinnedRegionsIn(List<Element> elements, {required bool markers}) {
-  bool pinned(Element element) => markers
-      ? isMarker(element, pinnedChromeMarker)
-      : isPinnedChromeWidget(element.widget);
-  final List<Element> found = <Element>[];
-  for (final Element element in elements) {
-    if (!pinned(element)) continue;
-    bool nested = false;
-    element.visitAncestorElements((Element parent) {
-      if (pinned(parent)) {
-        nested = true;
-        return false;
-      }
-      return true;
-    });
-    if (!nested) found.add(element);
-  }
-  return found;
-}
+List<Element> pinnedRegionsIn(List<Element> elements) => <Element>[
+  for (final Element element in elements)
+    if (isPinnedRegion(element) && !isInPinnedRegion(element)) element,
+];
 
 /// What the chrome is on one screen: its share of the viewport, the regions
 /// that make it up, and any region that could not be measured.
@@ -98,26 +83,22 @@ List<Element> pinnedRegionsIn(List<Element> elements, {required bool markers}) {
 /// cell whether or not the cell fails, because an `expect` reason is an
 /// argument rather than a callback.
 ///
-/// A region is measured the way `PinnedChrome.extentOf` measures it where the
-/// screen carries markers, so a sliver that declares the height it pins is
-/// counted at that height rather than at the height it happens to be drawn at.
-/// Where no marker is in the tree it is the height of the widget's own box,
-/// and a widget with no box is not chrome.
+/// A region is measured the way `PinnedChrome.extentOf` measures it: the
+/// extent a marker declares, so a sliver that declares the height it pins is
+/// counted at that height rather than at the height it happens to be drawn at,
+/// or else the height of the region's own box. A marked region and a region no
+/// screen has marked yet are counted in the same walk, so a screen that has
+/// moved some of its chrome to the marker still pays for the rest.
 ({double share, String parts, List<String> problems}) chromeNow(
   double viewport,
 ) {
   final List<Element> elements = compositionElements();
-  final bool markers = pinnedMarkersPresent(elements);
   double total = 0;
   final List<String> parts = <String>[];
   final List<String> problems = <String>[];
-  for (final Element element in pinnedRegionsIn(elements, markers: markers)) {
-    final double? height = markers
-        ? markerExtent(element)
-        : rectOf(element)?.height;
-    final String name = markers
-        ? markerRegionName(element)
-        : '${element.widget.runtimeType}';
+  for (final Element element in pinnedRegionsIn(elements)) {
+    final double? height = pinnedExtent(element);
+    final String name = pinnedRegionName(element);
     if (height == null) {
       problems.add(
         '$name has no box to measure and declares no extent, so the budget '
