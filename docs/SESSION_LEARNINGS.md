@@ -6906,3 +6906,234 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
     control's node. Nothing reads them twice today, but a screen reader that
     starts announcing the count would be announcing what the drawn counter
     already says.
+## 2026-09-16: Front-end refactor wave G, slot G4, the static geometry gate
+
+- Task: slot G4 of `design/11-fit-and-scale.md`, delivered beside the two wave
+  F slots. Turn the `no_literal_geometry` row of 10 section 8 from four sample
+  patterns over the application into a census of every static size over both
+  trees, so 11 section 1 ("type from the scale, space from a token,
+  arrangement by window class, fit by constraints") is enforced by a test
+  rather than by review. Census the application, write the backlog wave 3 burns
+  down, hold the package to zero, and amend the gate's row.
+- Branch and worktree: `fe/fit-gates` at `.claude/worktrees/fe-fit-gates`, cut
+  from `front-end-refactor` at `bd69f80`. Pushed to `origin/fe/fit-gates`. No
+  pull request; the integrator merges the slot.
+- Outcome: complete. Two gates, one design amendment, four commits, three files.
+  Nothing under any `lib/` changed, so no screen golden, no semantics fixture
+  and no package gallery golden moves. The application census is twenty six
+  numbers over nine files; the package census is five, all of them inside files
+  wave F owns, so they are recorded for the integrator rather than edited here.
+- Commits (four, oldest first):
+  - `a39e3d5` `test(gates): count every static size in the design system and allow none`
+  - `594adf5` `test(theme): count every static size in the application against a backlog`
+  - `0a8316f` `docs(design): 10 section 8 records what the geometry gate now counts`
+  - this entry
+- Files: `packages/specimen_ui/test/gates/no_literal_geometry_test.dart` (new,
+  the directory is new too), `test/theme/no_literal_geometry_test.dart` (new),
+  and one row plus one amendment paragraph in `design/10-component-library.md`
+  section 8. No `scripts/` helper was needed.
+
+### Validation
+
+Every gate run on its own with the tree untouched, `rc=$?` read directly and
+never off a pipe, with the locale exported and the placeholder Firebase options
+in place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+| `flutter test` (package) | 0 | 531 passed, 527 before this slot, so the four are the new gate's |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter test` (app) | 0 | 1068 passed and 9 skipped, 1065 and 9 before this slot |
+| `check_ui_strings.py` | 0 | 193 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (3 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+Two numbers in section 13's status log are stale against this head: it records
+1062 passed and 7 skipped for the application at `31ffbff`, and 513 package
+tests. Measured at `bd69f80` before this slot: 1065 and 9 in the application,
+527 in the package.
+
+Goldens: `flutter test --update-goldens test/golden test/accessibility` ran once
+at `bd69f80` and moved zero of the 121 screen goldens and zero semantics
+fixtures, which is what a slot that changes no `lib/` file should move; the tree
+was restored with `git checkout --` on both directories immediately afterwards.
+The package's family gallery goldens were not touched or regenerated.
+
+Runtime: the new package gate is about one second of test time and the new
+application gate about one second, both well inside the ten the brief allows.
+Each file is read once, masked once and matched with compiled expressions.
+
+### The census
+
+Application, twenty six numbers over nine files. This is the `geometryBacklog`
+map, shrink only, keys relative to the application root:
+
+| File | Count |
+|---|---|
+| `lib/src/api_repository.dart` | 7 |
+| `lib/src/review_context.dart` | 6 |
+| `lib/src/capture_quality.dart` | 2 |
+| `lib/src/reading_alignment.dart` | 2 |
+| `lib/src/reading_declarations.dart` | 2 |
+| `lib/src/risk_assessment.dart` | 2 |
+| `lib/src/widgets/previews.dart` | 2 |
+| `lib/src/workspace.dart` | 2 |
+| `lib/src/magic_link.dart` | 1 |
+
+Nine files is the whole list, not the ten largest. Patterns that fired:
+`duration` 10, `dimension` 8 (a number given to `width`, `height` or a
+constraint bound), `insets` 8. `radius`, `constraints`, `point` and `type` fired
+nowhere in the application, because waves 0 to 2 already moved the screens they
+rewrote onto `ui.shape`, `ui.space` and `ui.type`. The brief expected "many";
+what is left is the wave 3 files and almost nothing else.
+
+Ten of the twenty six are elapsed time rather than motion: seven
+`Duration(seconds: 30)` request timeouts in `api_repository.dart`, the queue
+poll interval and the search debounce in `workspace.dart`, and the email link
+cooldown in `magic_link.dart`. The gate is right to count them, because the
+same thirty seconds is typed out seven times in one file, but the resolution
+is one named constant where the policy lives rather than a motion token. The
+other sixteen have a token already: `EdgeInsets.all(16)` where `ui.space.s4`
+exists, a 560 dp dialog where `DialogWidths` exists, a bare
+`SizedBox(height: 12)` between two rows.
+
+Package, five numbers over three files, all inside files 11 section 7 gives to
+wave F, so all five are in `waveFHandoff` for the integrator:
+
+| File | Count | What |
+|---|---|---|
+| `lib/src/controls/overlays/tooltip.dart` | 2 | `hoverDelay` 400 ms, `touchDuration` 1500 ms |
+| `lib/src/controls/overlays/toast.dart` | 1 | `showDuration` six seconds |
+| `lib/src/primitives/modal_routes.dart` | 2 | the sheet and dialog entrance offsets, 0.08 and 0.02 |
+
+Every one of the five wants a name rather than a deletion. The three delays are
+fixed by 10 section 4.3 and are already named where they are written;
+`foundation/motion.dart` says in its own header that it is the one file in the
+product allowed to hold a duration literal, so they belong beside the motion
+tokens as delays rather than as durations. `hoverDelay` in particular must not
+be collapsed by the reduced motion policy, which is why it is not a motion token
+today. The two offsets are fractions of the pane, which is what 11 section 1
+asks for, but unnamed; `UiToastStyle.entranceRise` is the pattern to follow.
+
+**The five control families carry zero.** Actions, inputs, navigation, data and
+the non-frame parts of overlays hold no static size at all. That is the wave 1
+result measured rather than asserted.
+
+What the allowances carry today, measured: `lib/src/gallery/**` 55 numbers over
+eight pages, `lib/src/foundation/*.dart` 12 (eight in `motion.dart`, four in
+`fields.dart`), the `paint` method of a `CustomPainter` zero in both trees
+across seven painters, `lib/src/models` zero, generated files zero. The last
+three are inert today and are kept because they are the allowances 10 section 8
+now names and because the first one matters the moment a painter does
+arithmetic on the size it was handed.
+
+### Durable learnings
+
+- **A raw string does not interpolate, and a regex built that way compiles and
+  matches nothing.** `RegExp(r'\b(?:width|height)\s*:\s*($_number)')` is a
+  perfectly valid expression that looks for an end anchor followed by the
+  letters `_number`, so it silently found zero of the eight it should have
+  found, and the first census under-reported by eight. Nothing warns. Build a
+  composed expression from a normal string with doubled backslashes:
+  `RegExp('\\b(?:$names)\\s*:\\s*($_number)')`. Concatenating raw strings with
+  `+` also works and is what the first fix did, but the package's
+  `prefer_interpolation_to_compose_strings` lint rejects it at
+  `--fatal-infos`, so the normal string is the only form that passes both.
+- **Mask prose, do not strip it.** The three sibling gates do
+  `source.replaceAll(RegExp(r'//.*'), '')`, which throws every offset away, so a
+  finding cannot carry a line number, and which cuts a line at a `//` inside a
+  string such as a URL. Replacing each comment and each string with spaces of
+  the same length, newlines kept, costs one pass, keeps every line number
+  exact, and lets a balanced-parenthesis scan run over the masked text without
+  a parenthesis inside a string ever confusing it. The masker needs the whole
+  small state machine (line and nesting block comments, single, double and
+  triple quotes, raw strings, escapes, and `${...}` interpolation that can
+  itself contain a quoted string), and `'${m['k']}'` is the case that breaks a
+  naive one: without interpolation handling the masker ends the string at the
+  quote before `k` and everything after it is out of phase.
+- **Token names carry digits.** `s4`, `space12`, `shape.inner`. A number pattern
+  without a lookbehind excluding identifier characters reports 115 `EdgeInsets`
+  offenders in the application where there are 8. The lookbehind is
+  `(?<![A-Za-z0-9_$.])` and Dart's regular expressions support it.
+- **Count a literal's position, not a construct.** Findings are collected into a
+  map keyed by the offset of the number, so two rules that reach the same digit
+  claim it once, the count is monotone, and fixing one call clears every finding
+  that call carried. Counting constructs instead needs an overlap pass.
+- **A whole-call span is safe only where every argument is a number.**
+  `BorderRadius`, `Duration`, `EdgeInsets`, `BoxConstraints`, `Offset` and
+  `Size` qualify. `Squircle.clip(radius: r, child: subtree)` does not: a span
+  there swallows the child and counts `maxLines: 3` as a radius. Those are
+  matched as a named argument and as a first positional argument instead.
+- **A list index reads as a size.** `Offset(bbox[2] / width, bbox[3] / height)`
+  in `screens/workbench/source_geometry.dart` was the only false positive in
+  either tree. A number that sits between a `[` and a `]` is an index, and
+  saying so in one named check removed it without weakening anything else.
+- **`Duration` is two different things in this product.** In the package it is
+  motion, and `foundation/motion.dart` already claims sole ownership of the
+  literal. In the application it is elapsed time and there is no motion
+  `Duration` under `lib/` at all. One pattern catches both, and the gate is
+  useful for both, but the resolutions are opposite and the census has to say
+  which is which or a wave 3 agent will reach for `ui.motion` to fix an HTTP
+  timeout.
+- **The gate catches a number written into a call, not a named constant.**
+  `static const double entranceRise = 8;` in a style class does not fire, and
+  `static const Duration showDuration = Duration(seconds: 6);` does, because the
+  second is a call. That asymmetry is worth knowing: a G slot that needs a fit
+  threshold can name it in the control's style class and pass, which is the
+  right answer for a measurement that belongs to one control, while a
+  measurement that belongs to the system still has to go to the foundation
+  under 10 section 2 clause 11, which is review rather than gate.
+
+### Failed approaches
+
+- **One shared scanner, three ways, all rejected.** Putting it in
+  `packages/specimen_ui/lib/src/testing/` beside `glass_budget.dart` would make
+  it importable by both, but it puts `dart:io` into the package's shipped
+  `lib/`, which breaks a web compile of anything that touches `testing.dart`
+  and makes `layering` reason about a file that is not a widget. Putting it in
+  `apps/specimen_digitization/scripts/` is what the brief offers, but the
+  package test cannot import across the package boundary, so it solves half the
+  problem. A relative import from the application's test into the package's
+  test directory is legal Dart and a known way to get two copies of one library.
+  The two files therefore carry the same scanner on purpose, each says so in its
+  header, and the eight behaviour assertions in each are identical so a change
+  to one that is not made in the other fails visibly.
+- **`Offset(<digits>, <digits>)` as written in the brief** misses
+  `Size(constraints.maxWidth, 40)`, which is exactly the shape worth catching.
+  Replaced by the whole-call span plus the index allowance, which catches both
+  and still produces no false positive.
+- **No `CHANGELOG.md` entry, deliberately.** The slot adds no public API and no
+  token, so the common brief's rule does not apply; opening a 0.3.0 section for
+  a test-only change would also collide with two live wave F slots in the one
+  file the merge protocol already expects to conflict. The record for a gate
+  lives in 10 section 8, which this slot amended.
+
+### Follow-ups
+
+- The integrator empties `waveFHandoff` in the package gate when wave F merges,
+  by taking the five numbers above into the foundation. Until then the map is
+  shrink only and the package gate is green.
+- Wave 3 burns the nine application files down. The `duration` entries and the
+  geometry entries want different fixes; the backlog map's doc comment and the
+  10 section 8 amendment both say which.
+- `lib/src/models/` does not exist; the wire type allowance is the prefix
+  `lib/src/models`, which covers today's `lib/src/models.dart` and a future
+  directory. It is inert at present.
+- The commits are signed `Claude Opus 5 (1M context)` rather than the line the
+  brief names, because that is the model that wrote them, which is what slot E1
+  did before this one for the same reason.
+
+### For the other slots
+
+Nothing is added to the package's public API, so there is nothing for wave G to
+import. What the wave F and wave G slots need to know is the rule itself: from
+this merge on, a number written into a `BorderRadius`, `Radius`, `Duration`,
+`EdgeInsets`, `EdgeInsetsDirectional`, `BoxConstraints`, `Offset` or `Size`
+call, into a digit radius on `Squircle` or a superellipse, or into `width`,
+`height`, `minWidth`, `maxWidth`, `minHeight`, `maxHeight`, `dimension`,
+`fontSize` or `letterSpacing`, fails the package gate unless it is 0, 1 or 2, it
+is in `foundation/` or `gallery/`, or it is inside a `CustomPainter.paint`. The
+fit variants of 11 section 3.3 are the place this will bite: a threshold width
+is a measurement, and it goes in the control's style class or in the foundation
+before it goes in a `SizedBox`.
