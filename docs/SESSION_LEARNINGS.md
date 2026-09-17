@@ -8856,3 +8856,235 @@ by any test, which is what the common section says that pass is for:
   ancestor, none uses `ScaffoldMessenger`, and every message is a `UiToast`.
 - No cloud command, no deploy, no dependency added, no SDK change, no screen
   golden and no semantics fixture committed.
+
+## 2026-09-17: Front-end refactor, cleanup (H1), the Material retirement finished
+
+- Task: slot H1 of `docs/execution/FRONT_END_REFACTOR.md` section 3, to the
+  brief in `scratchpad/briefs/h1-cleanup.md` and the wave F common section.
+  Definition of done items 1, 2 and 3 of section 2, the second half of E6, and
+  the three adapters polish 2 left for this slot.
+- Branch and worktree: `fe/cleanup` at `.claude/worktrees/fe-cleanup`, cut from
+  `front-end-refactor` at `cbe78eb`, which carries waves F, G, 3 and polish 2.
+  Pushed to `origin/fe/cleanup`; the head is the commit carrying this entry.
+  No pull request; the integrator merges the slot.
+- Outcome: complete. Eight files deleted under `lib/`, thirty eight changed in
+  all, 429 insertions against 2131 deletions. No Material glyph, no Material
+  component and no v1 adapter is left anywhere under `lib/`; four files import
+  `material.dart` and each is the bridge or a page transition. No screen golden
+  and no semantics fixture moves.
+- Commits (five, oldest first):
+  - `ce54b56` `refactor(icons): the last Material glyphs leave the application`
+  - `12b6974` `refactor(theme): the bridge keeps only what infrastructure reads`
+  - `baf0ca5` `refactor(router): the last Scaffold leaves the application`
+  - `6e6fc54` `refactor(widgets): the three adapters polish 2 left retire onto the package`
+  - `d9c643a` `docs(widgets): the two markers that outlived their slot say what is true now`
+  - this entry
+
+### Validation
+
+Every gate on its own, tree untouched during each, `rc=$?` read directly and
+never off a pipe, locale exported and the placeholder Firebase options in
+place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | two dependencies removed, no version moved: 16 deleted lines in `pubspec.lock` and nothing else |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues; nothing under `packages/` changed |
+| `flutter test` (package) | 0 | 684 passed, the count polish 2 left |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter test` (app) | 0 | 1097 passed, 7 skipped, 0 failed, including all 121 screen goldens and all 8 semantics fixtures |
+| `dart format --set-exit-if-changed lib test` | 0 | 224 files, 0 changed |
+| `check_ui_strings.py` | 0 | 194 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (31 files: the 30 changed files that still exist, plus this one) | 0 | 13 hooks passed, 4 had no file of that kind |
+| `flutter build web --release` | 0 | 25 seconds; `main.dart.js` 3,272,384 bytes, assets 4.2 MB, canvaskit 26.2 MB |
+| `scripts/ci/build_mobile.sh android` | 0 | 69 seconds; credential free debug APK, 163,930,510 bytes |
+
+The app suite passes whole for the first time in the refactor. Every wave
+since wave 0 handed back with the screen goldens or the fixtures failing,
+because each moved some; this one moves none.
+
+### Backlogs, measured before and after
+
+| Gate | Before | After |
+|---|---|---|
+| `icons_unique` | `lib/src/theme/icons.dart`, 17 glyphs | empty, and the gate allows nothing |
+| `no_material_components` | `lib/src/app/app_router.dart`, 1 | empty, and the scan now covers `lib/src/theme/` as well |
+| `no_material_imports` | backlog empty over three directories | backlog empty over the whole of `lib/`, with four files named as infrastructure |
+| `no_literal_geometry` | 12 numbers over 4 files | 10 over 3, and the 10 are elapsed times rather than sizes |
+
+Both Material gates are widened rather than merely emptied, because an empty
+backlog over a partial tree is a weaker claim than an empty backlog over the
+whole one. `no_material_components` dropped its `lib/src/theme/` exclusion,
+which existed while that directory configured the widgets it now has none of.
+`no_material_imports` scanned `lib/src/screens/`, `lib/src/widgets/` and
+`lib/src/app/` and therefore never looked at `lib/main.dart`, `lib/src/theme/`,
+`lib/src/capture/` or any file directly under `lib/src/`: `workspace.dart` had
+been carrying a `material.dart` import it used nothing from, and nothing would
+have caught a new one there. It scans all of `lib/` now, with four files named
+and a reason on each, and a fifth test that checks the two route builders take
+`MaterialPage` and `MaterialPageRoute` through a `show` clause rather than the
+whole library behind the same reason.
+
+### The goldens and the fixtures, inspected and not committed
+
+`flutter test --update-goldens test/golden test/accessibility` was run and
+`git status` read: **zero of the 121 screen goldens move and zero of the 8
+semantics fixtures move.** Then `git checkout --` on both directories, per
+section 8, though there was nothing to restore. Nothing under
+`test/golden/images/` or `test/accessibility/fixtures/` is in any commit.
+
+Two of this slot's changes could have moved a golden and did not, and the
+reason matters to whoever reads the next capture:
+
+1. **The disclosure header's floor now follows density.** The two adapters
+   pinned `minHeight` to 48 in both densities. The package default is
+   `density.rowHeight`, which is 56 in touch and 44 in pointer, and the 48 dp
+   hit box is `Pressable`'s own with the difference as transparent slop. A
+   header whose title fits one line and carries no summary is 37 dp of content,
+   so it sits on that floor and changes height: 8 dp taller on a touch window,
+   4 dp shorter on a pointer one. None of the 121 golden windows pictures one;
+   the two title only disclosures in the product are the status strip's
+   blockers, which only draw when there are blockers, and the source pane's
+   "Source details". A desktop device capture will show the 4 dp.
+2. **The manifest's three counts became `UiDataTile`s on a paper surface**,
+   which is a pane and a hairline where the private `_CountTile` was a bare
+   column. The intake goldens do not move because the tiles only draw once
+   there is a batch to count, which slot E5 made true, and no golden pumps a
+   batch. This is worth a device capture.
+
+The tap target guidelines are the proof the disclosure change is safe:
+`workbench_guidelines_test.dart` pumps at 1000 and 1440 dp wide, which is
+pointer density, so every disclosure header in it sits at the 44 dp visual
+with the 48 dp hit box, and all four guidelines pass with no skip.
+
+### Durable learnings
+
+- **A backlog map is a claim about a scan, not about a tree.** Two of the four
+  gates were reporting zero over a subset of `lib/`. `no_material_imports`
+  named three directories, which is how an unused `material.dart` import
+  survived in `workspace.dart` through five waves whose whole subject was
+  removing them. When a gate reaches zero, widen it before believing it.
+- **`UiThemeData.toThemeData()` is the bridge.** Everything the v1
+  `component_themes.dart` set for fifteen Material widgets is either unread
+  (nothing builds those widgets) or already derived in the package. What the
+  application still has to add is two things: a `TextSelectionThemeData`,
+  because the drag handles are drawn by the Material selection controls above
+  `FieldCore`'s editor and read them from the theme rather than from
+  `DefaultSelectionStyle`; and the `PageTransitionsTheme`, which only reaches
+  `MaterialPage` and `MaterialPageRoute`.
+- **`uses-material-design: true` costs 7,736 bytes, not 1.6 MB.** The web
+  build tree-shakes `MaterialIcons-Regular.otf` from 1,645,184 bytes to 7,736,
+  which is the handful of glyphs the framework's own code paths reach
+  statically. Turning the flag off would save 7.7 KB and risk a blank box in a
+  selection control that no gate pumps, so it stays and the pubspec says why.
+  `material_symbols_icons` and `cupertino_icons` both go: neither is named
+  anywhere under `lib/` or `test/`, and removing them moved no other version
+  in the lockfile.
+- **A gate that allows a file needs a test that the allowance is still
+  needed.** `no_material_imports` now asserts that each of the four named
+  infrastructure importers still imports it, so a file that stops comes off
+  the list instead of keeping a permission that outlived its reason. The same
+  shape as the "the backlog only lists files that still hold one" test every
+  other gate in `test/theme/` already had.
+- **`StatusPresentation.fill01` was dead for a whole wave.** It is the
+  Material Symbols fill axis, three call sites produced it, and nothing has
+  read it since Phosphor arrived: an `IconSpec` carries its own weight. Dead
+  data on a public type reads as a requirement to the next author, which is
+  why it went with the glyphs rather than after them.
+- **The v1 contrast gate was two gates in one file.** Half of it measures the
+  bridge `ColorScheme`, which is the only place the bridge is measured and
+  which nothing else covers. The other half measured `SpecimenColors`, which
+  was re-exported `ProductPalette` and is covered role for role by the
+  package's `contrast_composite_test.dart` over a strictly larger surface set.
+  Deleting the adapter therefore did not mean deleting an assertion: the
+  product half now reads `UiColor` and every assertion it had is still there.
+
+### Failed approaches
+
+- **Leaving `lib/src/theme/` out of the component gate's scan.** The first
+  draft kept the exclusion with a note saying the bridge names Material types
+  by construction. It does not name any of the 42 retired widgets, so the
+  exclusion was a claim nobody had rechecked. Dropping it and running the gate
+  is a two line change and a stronger statement.
+- **Keeping a `TooltipThemeData` on the bridge.** The brief's list of what the
+  bridge keeps reads "page transitions, tooltip and material localizations",
+  and the first reading put a Material `TooltipThemeData` back. Nothing draws
+  a Material `Tooltip`: `grep` finds none under `lib/` or in the package, and
+  `UiTooltip` draws its own pane. The clause is about the package tooltip's
+  need for `MaterialLocalizations`, which `MaterialApp` supplies and which is
+  why `controls/overlays/tooltip.dart` is one of the three package files
+  allowed to import `material.dart`. Recorded rather than guessed at twice.
+
+### Deviations from the brief, with why
+
+- **The commit trailer names Claude Opus 5 (1M context).** The common section
+  asks for a different model's line; this session's own attribution
+  instruction is the one followed, as slots E1, E4, F2, G1 and polish 2 also
+  recorded. The integrator may normalise the trailers.
+- **`cupertino_icons` was removed as well as `material_symbols_icons`.** The
+  brief names one; the slot section says "and anything else unused", and a
+  Cupertino icon font nothing references is exactly that.
+- **`specimenPageTransitions` moved from `main.dart` to `app_theme.dart`.**
+  The brief speaks of "the bridge `ThemeData` in `main.dart`", which was in
+  two files: `AppTheme` built it and `main.dart` added the transitions with a
+  `copyWith`. It is one file now and `main.dart` reads `AppTheme.light()`
+  directly. `test/motion/page_transitions_test.dart` imports the new home.
+- **`StatusPresentation.fill01` is gone**, which is an application API change
+  the brief did not list. See the learning above. Three producers and one test
+  line moved with it.
+- **The source pane's painted exclusion band is not converted.** Polish 2
+  closed the package half and left the pane to this slot. It is a layout
+  change rather than a Material retirement: it gives back 24 dp per side on
+  every workbench window, needs the matte's rect measured in the frame's
+  coordinates, and would move roughly 48 screen goldens while the verification
+  slot is capturing. The marker is retargeted to say the API exists and what
+  is left to do. Named again under follow-ups.
+
+### Product and system defects noticed, not fixed
+
+- **The product has two full window entrances.** `uiFullScreenRoute` in
+  `region_editor.dart` is a `PageRouteBuilder` the editor and the source
+  pane's full window view share, and the capture route pushes a
+  `MaterialPageRoute`. The second keeps the platform's own back gesture, which
+  a bare `PageRouteBuilder` has no answer for, and that is why they are not
+  already one. A `UiPageRoute` in the package closes it; until then the import
+  gate names `capture_screen.dart` with that reason.
+- **The `no_material_components` regex would not catch a Material widget
+  written with a named constructor**, for example `Card.filled(`. It matches
+  `Name(` only. Every one of the 208 the refactor retired was a plain
+  constructor, so nothing slipped, but the gate is now the only thing standing
+  between the tree and a return.
+- **`lib/src/capture/` is a screens directory that is not under
+  `lib/src/screens/`.** Three gates were written against directory prefixes
+  and two of them missed it. The import gate no longer does; the other two
+  scan `lib/` whole already.
+
+### Package APIs this slot needed and did not have
+
+- **A `UiPageRoute`.** Stated by slot E3 and still open. It is the one thing
+  keeping a `material.dart` import in a screen file rather than in the bridge.
+- Nothing else. The three adapters this slot retired all had their package
+  answer in place, which is what polish 2 was for.
+
+### Remaining follow-ups
+
+- The integrator regenerates the screen goldens and the semantics fixtures
+  once after the wave merges, as always. The expected moved set for this slot
+  is empty, which is itself the check: any movement is a finding.
+- `SourceMatte`'s painted band onto `UiScaffoldExclusion.of(context)?.publish`,
+  as described above. Worth doing with the device captures rather than before
+  them.
+- `AppShell.skyOf(Uri)` belongs beside `isEntryLocation` and `isGlobalLocation`
+  in `lib/src/app/routes.dart`. Polish 2 left it in `shell.dart` for this slot
+  to move, and `shell.dart` is the one application file this slot's brief
+  excludes, so it is still there.
+- `TODO(specimen_ui)` in `search_filters.dart` and `queue_screen.dart`, both
+  asking for a component 10 section 4 does not list yet. Unchanged.
+- The `no_literal_geometry` backlog is ten elapsed times over three files and
+  will not shrink further without a decision about where a request timeout
+  lives. Each is already a named constant in the file that owns the policy,
+  which is what the amendment to 10 section 8 asks for; the gate counts the
+  `Duration(...)` anyway. Either the gate learns to read a top level `const
+  Duration` declaration, or the map keeps three entries for good.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed.

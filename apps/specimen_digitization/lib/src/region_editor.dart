@@ -423,7 +423,6 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                     // when a coordinate it holds is wrong.
                     UiDisclosure(
                       key: ValueKey<String>('region-details-$_detailsVersion'),
-                      style: disclosureStyleWithFullTarget(context),
                       initiallyExpanded: _detailsOpen,
                       onExpansionChanged: (bool open) => _detailsOpen = open,
                       title: RegionEditorBody.coordinatesTitle,
@@ -763,8 +762,13 @@ const double coordinateFieldWidth = 140;
 /// entrance is therefore the system's own: the emphasized pair `ModalRoutes`
 /// uses, which collapses to nothing under reduced motion because the duration
 /// does.
-/// fe/polish-2: a `UiPageRoute` in the package, so a screen pushing a full
-/// window surface gets one entrance rather than each writing its own.
+/// Open: a `UiPageRoute` in the package, so a screen pushing a full window
+/// surface gets one entrance rather than each writing its own. Two are
+/// written today. This one, which the editor and the source pane's full
+/// window view share, and the `MaterialPageRoute` the capture route keeps
+/// because it is the only route a `PageTransitionsTheme` reaches, and with it
+/// the platform's own back gesture, which a bare `PageRouteBuilder` has no
+/// answer for.
 PageRoute<T> uiFullScreenRoute<T>(
   BuildContext context, {
   required WidgetBuilder builder,
@@ -811,33 +815,6 @@ PageRoute<T> uiFullScreenRoute<T>(
 /// The same rise `ModalRoutes` gives a sheet, so the two entrances read as
 /// one system.
 const double fullScreenEntranceRise = 0.08;
-
-/// A disclosure whose header is a full tap target.
-///
-/// `UiDisclosureStyle.resolve` takes the header's minimum height from
-/// `density.rowHeight`, which is 44 in pointer density, and the header
-/// publishes a node with a tap action. Both Android and iOS tap target
-/// guidelines then fail on every disclosure in the product wherever its title
-/// fits on one line. The floor is raised here rather than the row shortened,
-/// because the row is what a reviewer presses.
-/// fe/polish-2: `UiDisclosure` should take its header's minimum height from
-/// the hit box rather than the row height, the way every other control does.
-UiDisclosureStyle disclosureStyleWithFullTarget(BuildContext context) {
-  final UiThemeData ui = context.ui;
-  final UiDisclosureStyle base = UiDisclosureStyle.resolve(ui);
-  return UiDisclosureStyle(
-    title: base.title,
-    summary: base.summary,
-    titleColor: base.titleColor,
-    summaryColor: base.summaryColor,
-    caretColor: base.caretColor,
-    padding: base.padding,
-    bodyPadding: base.bodyPadding,
-    gap: base.gap,
-    minHeight: math.max(base.minHeight, ui.space.targetMin),
-    radius: base.radius,
-  );
-}
 
 /// One coordinate, as a field the reviewer can type a whole pixel into.
 ///

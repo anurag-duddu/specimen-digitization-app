@@ -94,7 +94,6 @@ void main() {
               fill: base.fill,
               onFill: base.onFill,
               icon: base.icon,
-              fill01: base.fill01,
               label: 'Uploading',
               semanticsLabel: 'Upload: uploading',
               progress: 0.5,

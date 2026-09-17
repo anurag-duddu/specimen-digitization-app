@@ -252,7 +252,6 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
       );
     }
     return UiDisclosure(
-      style: fullTargetDisclosure(ui),
       title: summary,
       onExpansionChanged: (bool open) => _blockersOpen = open,
       initiallyExpanded: _blockersOpen,

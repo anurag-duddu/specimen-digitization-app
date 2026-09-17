@@ -46,23 +46,25 @@ const String modelsPrefix = 'lib/src/models';
 
 /// Per-file counts on 2026-09-16, when the gate was written. Shrink only.
 ///
-/// Twenty six numbers over nine files when the gate was written. Wave 3 burns
+/// Twenty six numbers over nine files when the gate was written. Wave 3 burnt
 /// them down file by file: a file that reaches zero comes out of the map, and
 /// a file that gains a number fails the gate. Slot E5 cleared
 /// `capture_quality.dart`, whose two were a preview box height and a padding;
 /// the box is now the thumbnail's own aspect ratio and the padding is the
-/// disclosure's.
+/// disclosure's. The cleanup slot cleared `previews.dart`, whose two were the
+/// gaps between specimens on the preview page and are `s4` and `s6` now.
 ///
-/// Ten of the twenty six are elapsed time rather than motion, and they are all
-/// of `api_repository.dart`, `workspace.dart` and `magic_link.dart`: seven
-/// request timeouts, a poll interval, a search debounce and a cooldown. The
-/// resolution there is one named constant in the file that owns the policy,
-/// not a motion token (the amendment to 10 section 8 says so too). The other
-/// sixteen are paddings, widths and heights that have a token already.
+/// The ten that are left are not sizes at all. They are elapsed time: seven
+/// request timeouts in `api_repository.dart`, a poll interval and a search
+/// debounce in `workspace.dart`, and a resend cooldown in `magic_link.dart`.
+/// Each is already a named constant in the file that owns the policy, which
+/// is the resolution the amendment to 10 section 8 gives them; this gate
+/// counts a `Duration(...)` wherever it is written, so they stay on the map
+/// and it stops shrinking here. A motion token would be the wrong home: none
+/// of the ten is a duration a reviewer sees.
 const Map<String, int> geometryBacklog = <String, int>{
   'lib/src/api_repository.dart': 7,
   'lib/src/magic_link.dart': 1,
-  'lib/src/widgets/previews.dart': 2,
   'lib/src/workspace.dart': 2,
 };
 

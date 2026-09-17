@@ -8,11 +8,11 @@
 library;
 
 import 'package:flutter/foundation.dart';
-// The one Material import left in the application: `MaterialPage` is what
-// gives a pushed route the platform's own transition (05 section 5), and
-// `10` section 1.3 keeps the page transitions as infrastructure. The
-// `no_material_imports` gate names this file as its one exception.
-import 'package:flutter/material.dart' show MaterialPage, Scaffold;
+// Infrastructure, not anatomy: `MaterialPage` is what gives a pushed route the
+// platform's own transition (05 section 5), and 10 section 1.3 keeps the page
+// transitions for exactly that. Nothing Material is built here; the
+// `no_material_imports` gate names this file and what it is allowed to take.
+import 'package:flutter/material.dart' show MaterialPage;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/gallery.dart';
@@ -184,30 +184,19 @@ GoRouter buildAppRouter({
         builder: (BuildContext context, GoRouterState state, Widget child) {
           final String routeKey = AppRoutes.collectionKeyIn(state.uri) ?? '';
           final bool intake = state.uri.pathSegments.contains('intake');
-          // The queue, the workbench, intake and sources still build Material
-          // components. Every one of them asserts without a `Material`
-          // ancestor, and the three that raise a snackbar need a `Scaffold`
-          // registered with the messenger; the shell's own `Scaffold` was
-          // both until this wave replaced it with `UiScaffold`. The bridge
-          // wraps the whole collection subtree, because the list detail pane
-          // at large is built by `CollectionWorkspace` rather than routed
-          // into it, and it draws nothing a reviewer can see: `UiScaffold`
-          // paints the ground and the sky over it, and the keyboard inset is
-          // the frame's to handle rather than this one's. It lives here
-          // because this file is already the one exception the import gate
-          // names.
-          // TODO(fe/wave-3): remove once E3 to E5 land and the
-          // `no_material_components` backlog is empty.
-          return Scaffold(
-            backgroundColor: context.ui.color.ground,
-            resizeToAvoidBottomInset: false,
-            body: CollectionWorkspace(
-              routeKey: routeKey,
-              destination: intake
-                  ? WorkspaceDestination.intake
-                  : WorkspaceDestination.queue,
-              child: child,
-            ),
+          // No frame here. A transparent `Scaffold` stood over this subtree
+          // while the queue, the workbench, intake and sources still built
+          // Material components that assert on a `Material` ancestor and
+          // raised snackbars through a messenger a `Scaffold` registers.
+          // Wave 3 took the last of both, so the only frame left is the
+          // `UiScaffold` the shell builds inside `CollectionWorkspace`, which
+          // paints the ground and the sky and owns the keyboard inset.
+          return CollectionWorkspace(
+            routeKey: routeKey,
+            destination: intake
+                ? WorkspaceDestination.intake
+                : WorkspaceDestination.queue,
+            child: child,
           );
         },
         routes: <RouteBase>[

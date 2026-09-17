@@ -12,8 +12,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 
 import '../app/routing_test.dart' show pumpApp, systemBack;

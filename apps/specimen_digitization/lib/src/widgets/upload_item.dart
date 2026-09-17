@@ -107,7 +107,6 @@ enum UploadState {
       fill: triple.fill,
       onFill: triple.onFill,
       icon: iconSpec.resolve(),
-      fill01: isSettled ? 1 : 0,
       label: label,
       semanticsLabel: semanticsLabel,
       progress: this == UploadState.uploading ? progress : null,

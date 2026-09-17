@@ -209,22 +209,29 @@ class _ManifestHeader extends StatelessWidget {
                 // zeroes over a sentence that says the same is the interface
                 // stating an absence three times.
                 if (entries.isNotEmpty) ...<Widget>[
+                  // Paper, not glass: 09 section 3.3 forbids a frosted pane
+                  // inside a scrolling list, and this header is inside the
+                  // list it heads. Three frosted tiles would also spend the
+                  // whole four pane budget on one row of chrome.
                   Wrap(
-                    spacing: ui.space.s6,
-                    runSpacing: ui.space.s4,
+                    spacing: ui.space.s3,
+                    runSpacing: ui.space.s3,
                     children: <Widget>[
-                      _CountTile(
+                      UiDataTile(
                         label: 'Accepted',
-                        value: _count(UploadState.accepted),
+                        value: '${_count(UploadState.accepted)}',
                         footer: 'of ${entries.length}',
+                        surface: UiDataTileSurface.paper,
                       ),
-                      _CountTile(
+                      UiDataTile(
                         label: 'Already in collection',
-                        value: _count(UploadState.duplicate),
+                        value: '${_count(UploadState.duplicate)}',
+                        surface: UiDataTileSurface.paper,
                       ),
-                      _CountTile(
+                      UiDataTile(
                         label: 'Failed',
-                        value: _count(UploadState.failed),
+                        value: '${_count(UploadState.failed)}',
+                        surface: UiDataTileSurface.paper,
                       ),
                     ],
                   ),
@@ -303,49 +310,6 @@ class _ManifestHeader extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// One counted outcome in the manifest header.
-///
-// fe/polish-2: `UiDataTile` is the control this draws, and it cannot be used
-// here: it is a `GlassSurface`, which asserts in debug when it is built inside
-// a scrolling list, and three of them plus the shell's bar and navigation
-// would break the four pane budget of 09 section 3.3. The package needs a
-// tile that draws on a `Surface`, or a `UiTileGroup` that is one pane holding
-// several numerals.
-class _CountTile extends StatelessWidget {
-  const _CountTile({required this.label, required this.value, this.footer});
-
-  final String label;
-  final int value;
-  final String? footer;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final String? under = footer;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          label,
-          style: ui.type.label.copyWith(color: ui.color.inkSecondary),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        Text(
-          '$value',
-          style: ui.type.displayMedium.copyWith(color: ui.color.ink),
-        ),
-        if (under != null)
-          Text(
-            under,
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkTertiary),
-          ),
-      ],
     );
   }
 }

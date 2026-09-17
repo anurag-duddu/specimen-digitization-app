@@ -10,7 +10,6 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
-import 'disclosure_target.dart';
 import 'diff_text.dart';
 import 'term_text.dart';
 
@@ -177,7 +176,6 @@ class ReadingCard extends StatelessWidget {
             if (execution != null) ...<Widget>[
               SizedBox(height: ui.space.s3),
               UiDisclosure(
-                style: fullTargetDisclosure(ui),
                 title: executionTitle,
                 semanticsLabel: '$executionTitle, $modelName',
                 child: execution,

@@ -34,14 +34,16 @@ Widget _surface(Widget child) => Builder(
 /// Every status the client renders, light.
 @Preview(name: 'Status chips', group: 'Atoms', theme: previewThemes)
 Widget statusChips() => _surface(
-  SingleChildScrollView(
-    child: Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: <Widget>[
-        for (final SpecimenStatus status in SpecimenStatus.values)
-          StatusChip(status),
-      ],
+  Builder(
+    builder: (BuildContext context) => SingleChildScrollView(
+      child: Wrap(
+        spacing: context.ui.space.s2,
+        runSpacing: context.ui.space.s2,
+        children: <Widget>[
+          for (final SpecimenStatus status in SpecimenStatus.values)
+            StatusChip(status),
+        ],
+      ),
     ),
   ),
 );
@@ -65,14 +67,16 @@ Widget caveat() => _surface(
 /// Loading placeholders.
 @Preview(name: 'Skeletons', group: 'Atoms', theme: previewThemes)
 Widget skeletons() => _surface(
-  const Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      SkeletonBlock(),
-      SizedBox(height: 16),
-      SkeletonRow(),
-      LoadingAnnouncement(thing: 'queue', visible: true),
-    ],
+  Builder(
+    builder: (BuildContext context) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const SkeletonBlock(),
+        SizedBox(height: context.ui.space.s4),
+        const SkeletonRow(),
+        const LoadingAnnouncement(thing: 'queue', visible: true),
+      ],
+    ),
   ),
 );
 
@@ -133,21 +137,23 @@ Widget queueRow() => _surface(
 /// The risk meter, measured and unmeasured.
 @Preview(name: 'Risk meter', group: 'Organisms', theme: previewThemes)
 Widget riskMeter() => _surface(
-  Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      RiskMeter(
-        composite: 62,
-        components: const <String>['Reading disagreement, weight 0.4'],
-        calibrated: false,
-      ),
-      const SizedBox(height: 24),
-      RiskMeter(
-        composite: null,
-        components: const <String>[],
-        status: 'unmeasured',
-      ),
-    ],
+  Builder(
+    builder: (BuildContext context) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        RiskMeter(
+          composite: 62,
+          components: const <String>['Reading disagreement, weight 0.4'],
+          calibrated: false,
+        ),
+        SizedBox(height: context.ui.space.s6),
+        RiskMeter(
+          composite: null,
+          components: const <String>[],
+          status: 'unmeasured',
+        ),
+      ],
+    ),
   ),
 );
 

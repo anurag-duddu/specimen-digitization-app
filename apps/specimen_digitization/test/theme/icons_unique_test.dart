@@ -1,9 +1,10 @@
 // The icon gate (10 section 8, `icons_unique`).
 //
 // Two parts. One meaning gets one glyph, so no two registry entries may draw
-// the same one: that half has no backlog and never will. And no screen may
-// name a Material glyph, which is a backlog because 161 uses across 43 files
-// move in waves 2 and 3.
+// the same one. And no file under `lib/` may name a Material glyph, which was
+// a backlog of 161 uses across 43 files when the refactor started and is now
+// nothing at all: the cleanup slot took the last 17 with the adapter that
+// held them, and `material_symbols_icons` left the pubspec with them.
 
 import 'dart:io';
 
@@ -13,15 +14,15 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 /// Every `Symbols.` and `Icons.` use still under `lib/`. Shrink only.
 ///
-/// Wave 2, slot E1 took the shell, the entry screens and the D1 patterns off
-/// it: thirty seven glyphs, every one of them now a `UiIcons` entry. Wave 3,
+/// Empty since the cleanup slot: waves 2 and 3 took every screen, pattern and
+/// route off Material Symbols, and `lib/src/theme/icons.dart`, which held the
+/// last seventeen behind the v1 `SpecimenIconography` adapter, is gone. The
+/// gate now allows nothing, so a glyph named anywhere under `lib/` fails.
 ///
-/// `UiIcons.fromSymbolName` is what a screen agent replaces one with: it maps
+/// `UiIcons.fromSymbolName` is what a call site was replaced with: it maps
 /// the Material name onto a registry key, so the choice of glyph is made once
 /// in the registry rather than per call site.
-const Map<String, int> glyphBacklog = <String, int>{
-  'lib/src/theme/icons.dart': 17,
-};
+const Map<String, int> glyphBacklog = <String, int>{};
 
 final RegExp _materialGlyph = RegExp(r'\b(?:Symbols|Icons)\.[a-zA-Z_0-9]+');
 

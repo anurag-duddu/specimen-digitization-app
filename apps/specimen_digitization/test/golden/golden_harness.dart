@@ -23,7 +23,6 @@ import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
-import 'package:specimen_digitization/src/theme/icons.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_ui/testing.dart';
@@ -609,7 +608,7 @@ Future<void> pumpGoldenComponent(
               child: ColoredBox(
                 color: Theme.of(context).colorScheme.surface,
                 child: Padding(
-                  padding: EdgeInsets.all(context.space.space4),
+                  padding: EdgeInsets.all(context.ui.space.s4),
                   child: SizedBox(width: measure, child: child),
                 ),
               ),
