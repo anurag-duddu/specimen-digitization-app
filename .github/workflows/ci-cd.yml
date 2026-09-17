@@ -90,6 +90,18 @@ jobs:
       - name: Install locked Flutter dependencies
         run: flutter pub get --enforce-lockfile
 
+      - name: Install design system dependencies
+        working-directory: apps/specimen_digitization/packages/specimen_ui
+        run: flutter pub get
+
+      - name: Analyze the design system
+        working-directory: apps/specimen_digitization/packages/specimen_ui
+        run: flutter analyze --fatal-infos
+
+      - name: Run design system tests
+        working-directory: apps/specimen_digitization/packages/specimen_ui
+        run: flutter test
+
       - name: Analyze Flutter code
         run: flutter analyze --fatal-infos
 

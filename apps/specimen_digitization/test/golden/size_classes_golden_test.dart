@@ -14,13 +14,16 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'golden_harness.dart';
+import '../ui_finders.dart';
 
 /// Runs [body] once per window and theme.
 void forEachWindowAndTheme(
@@ -131,6 +134,7 @@ void main() {
           brightness: brightness,
           signedIn: false,
         );
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'signin__${window}__$theme');
       });
     });
@@ -150,6 +154,7 @@ void main() {
           brightness: brightness,
           location: goldenQueueLocation,
         );
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'queue__${window}__$theme');
       });
     });
@@ -178,16 +183,25 @@ void main() {
         );
         // A compact window has no column until a long press opens one, which
         // is the adaptation this golden exists to show alongside the wider
-        // ones.
-        if (find.byType(Checkbox).evaluate().isEmpty) {
+        // ones. The long press also selects the row it was on
+        // (`queue_screen.dart`, `onLongPress`), so the selection already
+        // exists there; tapping a checkbox afterwards would undo it and leave
+        // the bar with nothing to show.
+        final Finder rowBoxes = find.descendant(
+          of: find.byType(SelectableRow),
+          matching: find.byType(UiCheckbox),
+        );
+        if (rowBoxes.evaluate().isEmpty) {
           await tester.longPress(find.text('Pinned beetle 1'));
           await tester.pumpAndSettle();
+        } else {
+          await tester.tap(rowBoxes.first);
+          await tester.pumpAndSettle();
         }
-        await tester.tap(find.byType(Checkbox).first);
-        await tester.pumpAndSettle();
         await tester.tap(find.text(SelectionBar.selectAllLabel));
         await tester.pumpAndSettle();
         expect(find.text('4 records selected'), findsOneWidget);
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'queue-selection__${window}__$theme');
       });
     });
@@ -210,9 +224,10 @@ void main() {
         // The filter surface is a bottom sheet on a compact window and a
         // constrained dialog above it, which is the adaptation this golden
         // exists to show.
-        await tester.tap(find.widgetWithText(OutlinedButton, 'Filters'));
+        await tester.tap(find.text('Filters'));
         await tester.pumpAndSettle();
         expect(find.text('Filter the queue'), findsOneWidget);
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'filters__${window}__$theme');
       });
     });
@@ -236,6 +251,7 @@ void main() {
             textScale: scale,
             location: goldenIntakeLocation,
           );
+          expectGlassBudget(tester, window: window);
           await expectGolden(
             tester,
             'intake__${window}__${theme}__${scaleTag(scale)}',
@@ -263,6 +279,7 @@ void main() {
         // The checkbox column is open from medium up and revealed by a long
         // press below it, which is the adaptation this golden exists to show.
         expect(find.text('microscopic-slides'), findsOneWidget);
+        expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'source__${window}__$theme');
       });
     });
@@ -300,12 +317,10 @@ void main() {
               // capture of a scrolled pane. The shortcut moves the segment
               // without moving anything else, and it is the same binding the
               // keyboard walkthrough proves.
-              final Finder tab = find
-                  .descendant(
-                    of: find.byType(SegmentedButton<WorkbenchSegment>),
-                    matching: find.text(segment.label),
-                  )
-                  .first;
+              final Finder tab = find.descendant(
+                of: uiTabs(evidenceTabsLabel),
+                matching: find.text(segment.label),
+              );
               if (tab.evaluate().isNotEmpty) {
                 await tester.sendKeyEvent(switch (segment) {
                   WorkbenchSegment.readings => LogicalKeyboardKey.keyR,
@@ -316,11 +331,10 @@ void main() {
                 await settleImages(tester);
                 expect(
                   tester
-                      .widget<SegmentedButton<WorkbenchSegment>>(
-                        find.byType(SegmentedButton<WorkbenchSegment>),
-                      )
-                      .selected,
-                  <WorkbenchSegment>{segment},
+                      .widget<UiTabs>(uiTabs(evidenceTabsLabel))
+                      .selected
+                      .value,
+                  segment.index,
                   reason: 'the golden is of the wrong segment',
                 );
               }
@@ -341,9 +355,9 @@ void main() {
               await tester.pumpAndSettle();
 
               // A golden of the record must be a golden of the record, not of
-              // a dialog a stray tap opened over it.
+              // a modal a stray tap opened over it.
               expect(
-                find.byType(Dialog),
+                find.byType(Scrim),
                 findsNothing,
                 reason: 'the segment tap must not open a route',
               );
@@ -351,6 +365,7 @@ void main() {
                   'workbench-$name'
                   '__${window}__${theme}__${scaleTag(scale)}';
               expectKnownOverflow(tester, golden);
+              expectGlassBudget(tester, window: window);
               await expectGolden(tester, golden);
             },
           );
@@ -385,6 +400,7 @@ void main() {
             tester,
             window: size,
             brightness: brightness,
+            semanticsLabel: regionEditorTitle,
             dialog: RegionEditor(
               regions: goldenRegions,
               asset: goldenEditableAsset(),
@@ -396,8 +412,9 @@ void main() {
             tester,
             window: size,
             brightness: brightness,
-            child: Scaffold(
-              appBar: AppBar(title: const Text('Correct label regions')),
+            child: UiScaffold(
+              sky: SkyPreset.none,
+              topBar: const UiTopBar(title: regionEditorTitle),
               body: RegionEditorBody(
                 regions: goldenRegions,
                 asset: goldenEditableAsset(),
@@ -406,6 +423,7 @@ void main() {
           );
           expect(find.byType(RegionEditorBody), findsOneWidget);
         }
+        expectGlassBudget(tester, window: window);
         await expectGoldenFinder(
           tester,
           find.byType(MaterialApp),
@@ -425,6 +443,7 @@ void main() {
         brightness: Brightness.light,
         location: AppRoutes.help,
       );
+      expectGlassBudget(tester, window: 'compact-390x844');
       await expectGolden(tester, 'help__compact-390x844__light');
     });
   });

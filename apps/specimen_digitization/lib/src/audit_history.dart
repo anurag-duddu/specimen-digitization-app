@@ -9,14 +9,12 @@
 /// model.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'large_record.dart';
 import 'models.dart';
 import 'screens/workbench/moments.dart';
-import 'theme/icons.dart';
-import 'theme/motion.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -139,7 +137,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
 
   /// One decision, as a timeline entry.
   Widget _event(Json event, int sequence) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final Object? before = event['before'];
     final int? reference =
         before is Map &&
@@ -153,24 +151,28 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
       textOf(event['actor'], 'Not recorded'),
     );
 
+    final bool machine = event['actor_id'] == null;
     return Semantics(
       container: true,
       child: Padding(
-        padding: EdgeInsets.only(bottom: context.space.space3),
+        padding: EdgeInsetsDirectional.only(bottom: ui.space.s3),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Padding(
-              padding: EdgeInsets.only(top: context.space.space1),
-              child: Icon(
-                event['actor_id'] == null
-                    ? SpecimenIconography.processing
-                    : SpecimenIconography.humanDecision,
-                size: context.sizes.iconInline,
-                color: context.tokens.evidenceHumanContent,
+              padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+              child: UiIcon(
+                // Slate for a machine event and green for a reviewer's, which
+                // is the evidence family 09 section 3.5 gives each: the
+                // glyph already said which, and now the colour agrees.
+                machine ? UiIcons.processing : UiIcons.reviewer,
+                size: UiIconSize.inline,
+                color: machine
+                    ? ui.color.status.model.content
+                    : ui.color.status.human.content,
               ),
             ),
-            SizedBox(width: context.space.space2),
+            SizedBox(width: ui.space.s2),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,27 +180,35 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
                 children: <Widget>[
                   Text(
                     '$sequence · ${auditActionLabel(event)}',
-                    style: theme.textTheme.titleSmall,
+                    style: ui.type.label,
                   ),
                   Text(
                     '$actor · ${citedInstant(event['created_at'])}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
                     ),
                   ),
                   if (reason.isNotEmpty && reason != 'Not recorded')
-                    Text('Reason: $reason'),
+                    Text('Reason: $reason', style: ui.type.body),
                   if (event['revision'] != null)
                     Text(
                       'Version ${event['revision']}',
-                      style: theme.textTheme.bodySmall,
+                      style: ui.type.mono.identifier.copyWith(
+                        color: ui.color.inkSecondary,
+                      ),
                     ),
                   if (reference != null &&
                       reference > 0 &&
                       reference <= widget.specimen.revision)
                     Align(
                       alignment: AlignmentDirectional.centerStart,
-                      child: TextButton.icon(
+                      child: UiButton(
+                        label: 'Open version $reference',
+                        variant: UiButtonVariant.ghost,
+                        leading: UiIcons.history,
+                        disabledReason: widget.loadRevision == null
+                            ? unavailableReason
+                            : null,
                         onPressed: widget.loadRevision == null
                             ? null
                             : () => _open(
@@ -208,11 +218,12 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
                                   (before as Map)['run_sha256'],
                                 ),
                               ),
-                        icon: const Icon(Symbols.history),
-                        label: Text('Open version $reference'),
                       ),
                     ),
-                  EvidenceDrawer(payload: event),
+                  EvidenceDrawer(
+                    payload: event,
+                    section: auditActionLabel(event),
+                  ),
                 ],
               ),
             ),
@@ -222,41 +233,54 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     );
   }
 
-  Widget _card(String title, List<Widget> children) => Card(
-    child: Padding(
-      padding: EdgeInsets.all(context.space.space4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          SizedBox(height: context.space.space2),
-          ...children,
-        ],
+  Widget _card(String title, List<Widget> children) {
+    final UiThemeData ui = context.ui;
+    return Padding(
+      padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
+      child: Surface(
+        radius: ui.shape.tile,
+        hairline: true,
+        padding: EdgeInsetsDirectional.all(ui.space.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Semantics(
+              container: true,
+              header: true,
+              child: Text(title, style: ui.type.title),
+            ),
+            SizedBox(height: ui.space.s2),
+            ...children,
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _historicalRecord(Specimen record) =>
       _card('Version ${record.revision} · read only', <Widget>[
-        const Text('This is a past version. It is read only.'),
-        SizedBox(height: context.space.space1),
+        Text(
+          'This is a past version. It is read only.',
+          style: context.ui.type.body,
+        ),
+        SizedBox(height: context.ui.space.s1),
         Text(
           'Your current review is on version ${widget.specimen.revision}. '
           'This version: ${record.status}.',
-          style: Theme.of(context).textTheme.bodySmall,
+          style: _line,
         ),
         Text(
           'Profile ${record.profile} · Record '
           '${textOf(record.data['record_version_id'])}',
-          style: Theme.of(context).textTheme.bodySmall,
+          style: _line,
         ),
         if (record.data['history_through_revision'] != null)
           Text(
             'Earlier history through version '
             '${record.data['history_through_revision']} is in the version '
             'browser below.',
-            style: Theme.of(context).textTheme.bodySmall,
+            style: _line,
           ),
         if (record.data['artifact_receipt'] is Map)
           LargeRecordEvidence(
@@ -295,15 +319,16 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
             payload: record.data,
           ),
         ],
-        SizedBox(height: context.space.space3),
+        SizedBox(height: context.ui.space.s3),
         Text(
           'Audit events · version ${record.revision}',
-          style: Theme.of(context).textTheme.titleSmall,
+          style: context.ui.type.label,
         ),
         if (record.audit.isEmpty)
-          const Text(
+          Text(
             'No events in this version. Open earlier versions to see more '
             'history.',
+            style: context.ui.type.body,
           ),
         ...record.audit.indexed.map(
           ((int, Json) entry) => _event(
@@ -313,13 +338,15 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         ),
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: TextButton(
+          child: UiButton(
+            label: closeVersionLabel,
+            variant: UiButtonVariant.ghost,
+            leading: UiIcons.close,
             onPressed: () => setState(() {
               _historical = null;
               _requestedRevision = null;
               ++_generation;
             }),
-            child: const Text('Close past version'),
           ),
         ),
       ]);
@@ -337,9 +364,27 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     return '$action · $actor';
   }
 
+  /// The style every secondary line in this panel is set in.
+  TextStyle get _line =>
+      context.ui.type.bodySmall.copyWith(color: context.ui.color.inkSecondary);
+
+  /// The controls this panel names, fixed so the panel and its tests agree.
+  static const String closeVersionLabel = 'Close past version';
+  static const String retryVersionLabel = 'Retry loading version';
+  static const String browseLabel = 'Browse record versions';
+  static const String loadMoreLabel = 'Load more versions';
+  static const String loadingLabel = 'Loading versions';
+  static const String retryPageLabel = 'Retry history page';
+  static const String openVersionLabel = 'Open';
+
+  /// Why a control is unavailable on a connection that cannot reach history.
+  static const String unavailableReason =
+      'Past versions cannot be loaded on this connection.';
+
   @override
   Widget build(BuildContext context) {
-    final MotionTokens motion = context.motion;
+    final UiThemeData ui = context.ui;
+    final MotionTokens motion = ui.motion;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -347,7 +392,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         _card('Current decision history', <Widget>[
           Text(
             'Current review version ${widget.specimen.revision}',
-            style: Theme.of(context).textTheme.bodySmall,
+            style: _line,
           ),
           if (widget.specimen.data['history_through_revision'] != null)
             Text(
@@ -355,11 +400,14 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
               '${widget.specimen.data['history_through_revision']} is kept in '
               'record history. Browse versions below for the complete earlier '
               'record.',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: _line,
             ),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s2),
           if (widget.specimen.audit.isEmpty)
-            const Text('No audit events in the current snapshot.'),
+            Text(
+              'No audit events in the current snapshot.',
+              style: ui.type.body,
+            ),
           ...widget.specimen.audit.indexed.map(
             ((int, Json) entry) => _event(
               entry.$2,
@@ -373,16 +421,26 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
           Semantics(
             liveRegion: true,
             child: Padding(
-              padding: EdgeInsets.all(context.space.space4),
-              child: Text('Loading version $_requestedRevision'),
+              padding: EdgeInsetsDirectional.all(ui.space.s4),
+              child: Text(
+                'Loading version $_requestedRevision',
+                style: ui.type.body,
+              ),
             ),
           ),
         if (_recordError != null)
           _card('Past version unavailable', <Widget>[
-            Semantics(liveRegion: true, child: Text(_recordError!)),
+            Semantics(
+              liveRegion: true,
+              child: Text(_recordError!, style: ui.type.body),
+            ),
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
+              child: UiButton(
+                label: retryVersionLabel,
+                variant: UiButtonVariant.ghost,
+                leading: UiIcons.retry,
+                disabledReason: unavailableReason,
                 onPressed: _requestedRevision == null
                     ? null
                     : () => _open(
@@ -390,7 +448,6 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
                         runId: _runId,
                         runSha256: _runSha256,
                       ),
-                child: const Text('Retry loading version'),
               ),
             ),
           ]),
@@ -411,49 +468,54 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
             'History goes up to your current review version '
             '${widget.specimen.revision}. Opening a version rechecks your '
             'access.',
-            style: Theme.of(context).textTheme.bodySmall,
+            style: _line,
           ),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s2),
           if (widget.loadPage == null || widget.loadRevision == null)
-            const Text('Past versions cannot be loaded on this connection.'),
+            Text(unavailableReason, style: ui.type.body),
           ..._revisions.map(
-            (Json item) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Version ${item['revision']}'),
-              subtitle: Text(
-                <String>[
-                  citedInstant(item['created_at']),
-                  _revisionSummary(item),
-                ].join(' · '),
+            (Json item) => UiListRow(
+              title: 'Version ${item['revision']}',
+              subtitle: <String>[
+                citedInstant(item['created_at']),
+                _revisionSummary(item),
+              ].join(' · '),
+              trailing: const UiRowTrailing(
+                label: openVersionLabel,
+                icon: UiIcons.next,
               ),
-              trailing: const Icon(Symbols.chevron_right),
-              onTap: () => _open(item['revision'] as int),
+              disabledReason: unavailableReason,
+              onPressed: widget.loadRevision == null
+                  ? null
+                  : () => _open(item['revision'] as int),
             ),
           ),
           if (_pageError != null)
-            Semantics(liveRegion: true, child: Text(_pageError!)),
+            Semantics(
+              liveRegion: true,
+              child: Text(_pageError!, style: ui.type.body),
+            ),
           if (_started && _cursor == null)
             Text(
               'All versions through this snapshot are listed.',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: _line,
             ),
           if (!_started || _cursor != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: OutlinedButton.icon(
-                onPressed: _loadingPage || widget.loadPage == null
-                    ? null
-                    : _more,
-                icon: const Icon(Symbols.history),
-                label: Text(
-                  _loadingPage
-                      ? 'Loading versions'
-                      : _pageError != null
-                      ? 'Retry history page'
-                      : _started
-                      ? 'Load more versions'
-                      : 'Browse record versions',
-                ),
+              child: UiButton(
+                label: _loadingPage
+                    ? loadingLabel
+                    : _pageError != null
+                    ? retryPageLabel
+                    : _started
+                    ? loadMoreLabel
+                    : browseLabel,
+                variant: UiButtonVariant.secondary,
+                leading: UiIcons.history,
+                loading: _loadingPage,
+                disabledReason: unavailableReason,
+                onPressed: widget.loadPage == null ? null : _more,
               ),
             ),
         ]),

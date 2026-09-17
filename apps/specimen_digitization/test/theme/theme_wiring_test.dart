@@ -1,53 +1,43 @@
-// The theme is only useful if a widget can actually reach it: Material 3 on,
-// both brightnesses built, and every product extension registered.
+// The bridge is only useful if the infrastructure under `MaterialApp` can
+// reach the tokens: Material 3 on, both brightnesses built, every Material
+// role derived from a v2 token rather than from a generated seed, and nothing
+// else on it at all.
+//
+// The v1 version of this file checked that four product `ThemeExtension`s and
+// fifteen component themes were registered. They are gone: no call site reads
+// `Theme.of` for a token any more, so the test that would have caught a
+// missing extension is replaced by the one that catches a returning component
+// theme.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
-import 'package:specimen_digitization/src/theme/motion.dart';
-import 'package:specimen_digitization/src/theme/semantic_colors.dart';
-import 'package:specimen_digitization/src/theme/spacing.dart';
-import 'package:specimen_digitization/src/theme/tokens.dart';
-import 'package:specimen_digitization/src/theme/typography.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 void main() {
-  final Map<String, ThemeData> themes = <String, ThemeData>{
-    'light': AppTheme.light(),
-    'dark': AppTheme.dark(),
-  };
+  final Map<String, (ThemeData, UiThemeData)> themes =
+      <String, (ThemeData, UiThemeData)>{
+        'light': (AppTheme.light(), UiThemeData.light()),
+        'dark': (AppTheme.dark(), UiThemeData.dark()),
+      };
 
-  themes.forEach((String name, ThemeData theme) {
+  themes.forEach((String name, (ThemeData, UiThemeData) pair) {
+    final ThemeData theme = pair.$1;
+    final UiThemeData ui = pair.$2;
+
     group('$name theme', () {
       test('uses Material 3', () {
         expect(theme.useMaterial3, isTrue);
       });
 
-      test('carries every product extension', () {
+      test('the ink ripple is gone from the theme itself', () {
         expect(
-          theme.extension<SpecimenColors>(),
-          isNotNull,
-          reason: 'product colors',
-        );
-        expect(
-          theme.extension<SpecimenTypography>(),
-          isNotNull,
-          reason: 'monospace roles',
-        );
-        expect(
-          theme.extension<SpecimenSpacing>(),
-          isNotNull,
-          reason: 'spacing grid',
-        );
-        expect(theme.extension<SpecimenSizing>(), isNotNull, reason: 'sizing');
-        expect(
-          theme.extension<SpecimenShape>(),
-          isNotNull,
-          reason: 'radii and strokes',
-        );
-        expect(
-          theme.extension<MotionTokens>(),
-          isNotNull,
-          reason: 'motion tokens',
+          theme.splashFactory,
+          NoSplash.splashFactory,
+          reason:
+              '09 section 11 rejects the ink ripple outright, and switching '
+              'it off in the theme removes it from the editing infrastructure '
+              'the package still builds on',
         );
       });
 
@@ -56,43 +46,122 @@ void main() {
       });
 
       test('switches M3 surface tint off', () {
-        expect(theme.colorScheme.surfaceTint, ThemePolicy.noSurfaceTint);
-        expect(theme.appBarTheme.surfaceTintColor, ThemePolicy.noSurfaceTint);
-        expect(theme.cardTheme.surfaceTintColor, ThemePolicy.noSurfaceTint);
-        expect(theme.dialogTheme.surfaceTintColor, ThemePolicy.noSurfaceTint);
-        expect(
-          theme.bottomSheetTheme.surfaceTintColor,
-          ThemePolicy.noSurfaceTint,
-        );
-      });
-
-      test('the app bar does not float', () {
-        expect(theme.appBarTheme.elevation, 0);
-        expect(theme.appBarTheme.scrolledUnderElevation, 0);
+        expect(theme.colorScheme.surfaceTint, GroundPalette.transparent);
       });
 
       test('the scaffold ground is the surface role', () {
         expect(theme.scaffoldBackgroundColor, theme.colorScheme.surface);
       });
+
+      test('the selection colours are the tokens', () {
+        // The caret and the highlight are published from inside the field as
+        // well; the drag handles are drawn by the Material selection controls
+        // above the editor and read them from here (11 section 4).
+        expect(theme.textSelectionTheme.cursorColor, ui.color.ink);
+        expect(theme.textSelectionTheme.selectionColor, ui.color.selection);
+        expect(theme.textSelectionTheme.selectionHandleColor, ui.color.ink);
+      });
+
+      test('the page transitions are on the theme', () {
+        expect(theme.pageTransitionsTheme, specimenPageTransitions);
+      });
+
+      test('no component theme shapes a control', () {
+        // The retirement, held by a test rather than by review. Every entry
+        // here was a `specimen*Theme` in `lib/src/theme/component_themes.dart`
+        // until the last Material widget left the screens; each is now
+        // whatever `UiThemeData.toThemeData` leaves it, which is the
+        // framework's own. A component theme that comes back fails here.
+        final ThemeData base = ui.toThemeData();
+        expect(theme.appBarTheme, base.appBarTheme);
+        expect(theme.cardTheme, base.cardTheme);
+        expect(theme.inputDecorationTheme, base.inputDecorationTheme);
+        expect(theme.filledButtonTheme, base.filledButtonTheme);
+        expect(theme.outlinedButtonTheme, base.outlinedButtonTheme);
+        expect(theme.textButtonTheme, base.textButtonTheme);
+        expect(theme.iconButtonTheme, base.iconButtonTheme);
+        expect(theme.chipTheme, base.chipTheme);
+        expect(theme.dialogTheme, base.dialogTheme);
+        expect(theme.bottomSheetTheme, base.bottomSheetTheme);
+        expect(theme.menuTheme, base.menuTheme);
+        expect(theme.dividerTheme, base.dividerTheme);
+        expect(theme.iconTheme, base.iconTheme);
+        expect(theme.snackBarTheme, base.snackBarTheme);
+        expect(theme.tooltipTheme, base.tooltipTheme);
+        expect(theme.navigationRailTheme, base.navigationRailTheme);
+      });
+
+      test('no product ThemeExtension is registered', () {
+        // `SpecimenColors`, `SpecimenTypography`, `SpecimenSpacing`,
+        // `SpecimenSizing` and `SpecimenShape` were the v1 way to a token.
+        // `context.ui` is the only way now, and an extension on the bridge
+        // would be a second source for the same value.
+        expect(theme.extensions, isEmpty);
+      });
     });
   });
 
-  test('the two themes are pinned to the design system palettes', () {
-    expect(AppTheme.light().colorScheme.primary, LightPalette.primary);
-    expect(AppTheme.light().colorScheme.surface, LightPalette.surface);
-    expect(AppTheme.light().colorScheme.onSurface, LightPalette.onSurface);
-    expect(AppTheme.dark().colorScheme.primary, DarkPalette.primary);
-    expect(AppTheme.dark().colorScheme.surface, DarkPalette.surface);
-    expect(AppTheme.dark().colorScheme.onSurface, DarkPalette.onSurface);
+  test('the Material roles are derived from the v2 colour roles', () {
+    // 09 section 3.1 names three surfaces, not a six-step ramp: the window is
+    // `ground`, everything solid on it is `paper`, and the photograph sits on
+    // `matte`. `toColorScheme` maps those onto the slots the infrastructure
+    // widgets read; nothing is generated from a seed any more.
+    final ColorScheme light = AppTheme.light().colorScheme;
+    expect(light.surface, UiColor.light.ground);
+    expect(light.onSurface, UiColor.light.ink);
+    expect(light.onSurfaceVariant, UiColor.light.inkSecondary);
+    expect(light.surfaceContainer, UiColor.light.paper);
+    expect(light.outline, UiColor.light.boundary);
+    expect(light.outlineVariant, UiColor.light.hairline);
+    expect(light.error, UiColor.light.status.blocked.content);
+
+    final ColorScheme dark = AppTheme.dark().colorScheme;
+    expect(dark.surface, UiColor.dark.ground);
+    expect(dark.onSurface, UiColor.dark.ink);
+    expect(dark.surfaceContainerHighest, UiColor.dark.matte);
+    expect(dark.outline, UiColor.dark.boundary);
+  });
+
+  test('the ground is the window background in both modes', () {
+    expect(AppTheme.light().scaffoldBackgroundColor, UiColor.light.ground);
+    expect(AppTheme.dark().scaffoldBackgroundColor, UiColor.dark.ground);
   });
 
   test('the type scale matches the design system', () {
     final TextTheme text = AppTheme.light().textTheme;
-    expect(text.bodyLarge?.fontSize, TypeScale.bodyLargeSize);
-    expect(text.bodyLarge?.height, 26 / TypeScale.bodyLargeSize);
-    expect(text.bodyMedium?.fontSize, TypeScale.bodyMediumSize);
-    expect(text.titleLarge?.fontWeight, FontWeight.w600);
-    expect(text.labelSmall?.fontSize, TypeScale.labelSmallSize);
+    // 09 section 4.3 derives the Material slots from the product scale, never
+    // the other way round. Compared field by field because `ThemeData` colours
+    // the text theme on the way through, so the styles are not identical.
+    void expectSameShape(TextStyle? slot, TextStyle role, String name) {
+      expect(slot?.fontFamily, role.fontFamily, reason: '$name family');
+      expect(slot?.fontSize, role.fontSize, reason: '$name size');
+      expect(slot?.fontWeight, role.fontWeight, reason: '$name weight');
+      expect(slot?.height, role.height, reason: '$name line height');
+      expect(slot?.letterSpacing, role.letterSpacing, reason: '$name tracking');
+    }
+
+    expectSameShape(text.bodyLarge, UiType.standard.bodyLarge, 'bodyLarge');
+    expectSameShape(text.bodyMedium, UiType.standard.body, 'bodyMedium');
+    expectSameShape(text.labelSmall, UiType.standard.labelSmall, 'labelSmall');
+    expectSameShape(text.titleLarge, UiType.standard.titleLarge, 'titleLarge');
+    expectSameShape(
+      text.displayLarge,
+      UiType.standard.displayLarge,
+      'displayLarge',
+    );
+  });
+
+  test('every text role carries the packaged Geist family', () {
+    final TextTheme text = AppTheme.light().textTheme;
+    for (final TextStyle? style in <TextStyle?>[
+      text.displayLarge,
+      text.headlineLarge,
+      text.titleMedium,
+      text.bodyMedium,
+      text.labelSmall,
+    ]) {
+      expect(style?.fontFamily, UiFonts.sansFamily);
+    }
   });
 
   test('reduced motion collapses a decorative duration to zero', () {
@@ -107,26 +176,32 @@ void main() {
     );
   });
 
-  testWidgets('a widget can read the tokens through the theme', (
+  testWidgets('a widget reads the tokens through context.ui', (
     WidgetTester tester,
   ) async {
-    late SpecimenColors seen;
-    late SpecimenSpacing space;
+    late UiThemeData ui;
     await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: Builder(
-          builder: (BuildContext context) {
-            seen = Theme.of(context).extension<SpecimenColors>()!;
-            space = Theme.of(context).extension<SpecimenSpacing>()!;
-            return const SizedBox.shrink();
-          },
+      UiTheme(
+        data: UiThemeData.light(),
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: Builder(
+            builder: (BuildContext context) {
+              ui = context.ui;
+              return const SizedBox.shrink();
+            },
+          ),
         ),
       ),
     );
-    expect(seen.clearedContent, ProductPalette.greenContentLight);
-    expect(space.space4, SpaceScale.space4);
+    expect(ui.color.ground, UiColor.light.ground);
+    expect(
+      ui.color.status.cleared.content,
+      UiColor.light.status.cleared.content,
+    );
+    expect(ui.space.s4, UiSpace.standard.s4);
+    expect(ui.type.displayHero.fontSize, 64);
+    expect(ui.shape.tile, 20);
+    expect(ui.icons.cleared.defaultGlyph, UiIcons.cleared.filled);
   });
 }

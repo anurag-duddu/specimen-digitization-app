@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'email_link_browser.dart';
 import 'app/auth_layout.dart';
 import 'magic_link.dart';
-import 'theme/icons.dart';
-import 'theme/motion.dart';
 import 'widgets/motion_reveal.dart';
 import 'widgets/caveat_text.dart';
 
@@ -47,7 +46,14 @@ class _EmailLinkEntryState extends State<EmailLinkEntry> {
 
   @override
   Widget build(BuildContext context) => !controller.initialized
-      ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+      ? const UiScaffold(
+          body: Center(
+            child: UiProgress.ring(
+              semanticsLabel: 'Opening the sign-in link',
+              size: UiProgressSize.large,
+            ),
+          ),
+        )
       : widget.builder(context, controller);
 }
 
@@ -64,8 +70,8 @@ class MagicLinkSignInScreen extends StatefulWidget {
 }
 
 class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
-  final _form = GlobalKey<FormState>();
   final _email = TextEditingController();
+  String? _emailError;
   late final MagicLinkController controller;
   Timer? _timer;
   String? _lastRemembered;
@@ -112,11 +118,12 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
   }
 
   void _submit() {
-    if (!controller.initialized ||
-        controller.busy ||
-        !_form.currentState!.validate()) {
-      return;
-    }
+    if (!controller.initialized || controller.busy) return;
+    final String? error = normalizedStaffEmail(_email.text) == null
+        ? staffEmailMessage
+        : null;
+    setState(() => _emailError = error);
+    if (error != null) return;
     unawaited(
       controller.handlingLink
           ? controller.complete(_email.text)
@@ -139,97 +146,90 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final confirm = controller.handlingLink;
-    final cooldown = controller.cooldownSeconds;
-    final disabled =
+    final UiThemeData ui = context.ui;
+    final bool confirm = controller.handlingLink;
+    final int cooldown = controller.cooldownSeconds;
+    final bool disabled =
         !controller.initialized ||
         controller.busy ||
         (!confirm && cooldown > 0);
-    return Scaffold(
-      body: Form(
-        key: _form,
-        child: AutofillGroup(
-          child: AuthLayout(
-            title: confirm
-                ? 'Confirm your email'
-                : controller.sent
-                ? 'Check your email'
-                : 'Sign in to your collection',
-            purpose: confirm
-                ? 'Enter the fieldmuseum.org address that received this link.'
-                : 'Use your fieldmuseum.org email to get a sign-in link. '
-                      'No password needed.',
-            children: <Widget>[
-              TextFormField(
-                controller: _email,
-                enabled: !controller.busy,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                autofillHints: const [AutofillHints.email],
-                decoration: const InputDecoration(labelText: 'Email address'),
-                validator: (value) => normalizedStaffEmail(value ?? '') == null
-                    ? staffEmailMessage
-                    : null,
-                onFieldSubmitted: (_) {
-                  if (!disabled) _submit();
-                },
+    return UiScaffold(
+      body: AutofillGroup(
+        child: AuthLayout(
+          title: confirm
+              ? 'Confirm your email'
+              : controller.sent
+              ? 'Check your email'
+              : 'Sign in to your collection',
+          purpose: confirm
+              ? 'Enter the fieldmuseum.org address that received this link.'
+              : 'Use your fieldmuseum.org email to get a sign-in link. '
+                    'No password needed.',
+          children: <Widget>[
+            UiField(
+              label: 'Email address',
+              controller: _email,
+              enabled: !controller.busy,
+              errorText: _emailError,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              onSubmitted: (_) {
+                if (!disabled) _submit();
+              },
+            ),
+            // The announcement is what tells a screen reader user; the
+            // reveal only keeps the column from snapping (04 section 4,
+            // row 5).
+            MotionReveal(
+              visible: controller.message != null,
+              child: Padding(
+                padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s4),
+                child: UiBanner(message: controller.message ?? ''),
               ),
-              // The announcement is what tells a screen reader user; the
-              // reveal only keeps the column from snapping (catalog row 5).
-              MotionReveal(
-                visible: controller.message != null,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: context.space.space4),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(controller.message ?? ''),
+            ),
+            SizedBox(height: ui.space.s6),
+            UiButton(
+              label: _submitLabel(controller, confirm: confirm),
+              size: UiSize.lg,
+              loading: controller.busy,
+              onPressed: disabled ? null : _submit,
+              disabledReason: !confirm && cooldown > 0
+                  ? 'You can request another link in ${cooldown}s.'
+                  : null,
+            ),
+            // A number changing once a second is a fact, not a transition,
+            // so nothing here animates (04 section 4, row 6).
+            if (!confirm && cooldown > 0)
+              Padding(
+                padding: EdgeInsetsDirectional.only(top: ui.space.s3),
+                child: Text(
+                  'You can request another link in ${cooldown}s.',
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
                   ),
                 ),
               ),
-              SizedBox(height: context.space.space6),
-              FilledButton(
-                onPressed: disabled ? null : _submit,
-                // The label cross-fades and the button keeps its width: a
-                // primary action that resizes while the request is out is a
-                // button the operator has to find again (catalog row 4).
-                child: AnimatedSwitcher(
-                  duration: context.motion.quick,
-                  switchInCurve: MotionTokens.standardCurve,
-                  child: Text(
-                    _submitLabel(controller, confirm: confirm),
-                    key: ValueKey<String>(
-                      _submitLabel(controller, confirm: confirm),
-                    ),
-                  ),
-                ),
-              ),
-              // A number changing once a second is a fact, not a transition,
-              // so nothing here animates (catalog row 6).
-              if (!confirm && cooldown > 0)
-                Padding(
-                  padding: EdgeInsets.only(top: context.space.space3),
-                  child: Text('You can request another link in ${cooldown}s.'),
-                ),
-              if (controller.sent || confirm || controller.message != null)
-                TextButton(
+            if (controller.sent || confirm || controller.message != null)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: UiButton(
+                  label: confirm ? 'Cancel sign-in' : 'Use a different email',
+                  variant: UiButtonVariant.ghost,
                   onPressed: controller.busy
                       ? null
                       : () => unawaited(controller.changeEmail()),
-                  child: Text(
-                    confirm ? 'Cancel sign-in' : 'Use a different email',
-                  ),
                 ),
-              SizedBox(height: context.space.space4),
-              const CaveatText(
-                label:
-                    'First time? Signing in with your verified staff email '
-                    'creates your account.',
-                why:
-                    'Collection access is separate and is granted by your '
-                    'collection administrator.',
               ),
-            ],
-          ),
+            SizedBox(height: ui.space.s4),
+            const CaveatText(
+              label:
+                  'First time? Signing in with your verified staff email '
+                  'creates your account.',
+              why:
+                  'Collection access is separate and is granted by your '
+                  'collection administrator.',
+            ),
+          ],
         ),
       ),
     );

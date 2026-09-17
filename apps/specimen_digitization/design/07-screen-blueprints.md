@@ -42,6 +42,21 @@ bar on medium and wider windows and into a sheet from the app bar title on
 compact. Navigation component per window class follows section 2 of the
 responsive spec: bottom bar, collapsed rail, extended rail, permanent drawer.
 
+**Amendment, verification v2 (2026-09-17).** The four controls are the design
+system's own and none of them is a bottom bar or a drawer: a floating
+`UiPillNav` capsule below 600, a collapsed `UiRail` to 839, an extended
+`UiRail` to 1199, and a permanent `UiSidebar` from 1200. See the amendment to
+section 2 of 05 for what each one carries. Two consequences for a blueprint:
+
+- **The compact navigation floats over the body.** A screen whose body scrolls
+  has to reserve `UiScaffold.of(context).bottomInset` at its foot or its last
+  line sits under the capsule. The record's decision bar does; the queue's list
+  does not, which is defect V2-3.
+- **The switcher is a menu button, not a form field**, capped at 280 dp
+  including its padding, and there is no sheet from the app bar title on
+  compact. That is finding V-9 in 08 closed, and it changes what this section
+  says the compact window does.
+
 ### 1.3 The environment banner
 
 The synthetic banner (`workspace.dart:1040-1049`) is correct in intent and wrong
@@ -50,6 +65,22 @@ becomes a 28 dp `EnvironmentBanner` strip under the app bar using the
 `environment.synthetic` token, sentence case, with the copy from the writing
 guidelines. It is never shown in production builds, so its cost is paid only by
 developers and testers.
+
+**Amendment, verification v2 (2026-09-17).** The strip is `UiBanner` in its
+`synthetic` tone now, and it is one line that truncates with the whole sentence
+on its tooltip and on its semantics node, opening to a second line through its
+own disclosure. Two lines is the cap at every text scale, which is finding
+V-15 in 08.
+
+**It is also where the worst defect in the second report lives.** On the entry
+screens the band is drawn above the screen's `UiScaffold` rather than inside
+it, and `FieldPainter` clips to its own bounds only when it has an exclusion
+rectangle, so the sky's fields paint over the band. Its tokens measure 9.31:1
+in light and 8.21:1 in dark; on sign in it renders between 3.31:1 and 5.91:1 in
+light and between 4.23:1 and 4.40:1 in dark. Six of the eight cells are below
+the WCAG 2.2 AA floor. That is V2-1 in
+[12-verification-report-v2.md](12-verification-report-v2.md), with the two
+files and the two lines that own it.
 
 ## 2. Sign in and verification
 
@@ -382,6 +413,26 @@ Every blueprint above ships in light and dark from the token table. The
 photograph stays as captured in both modes; the letterbox behind it uses
 `surface-container-lowest` in light and `surface-container-highest` in dark so
 label paper reads as paper, not as a glowing rectangle.
+
+**Amendment, verification v2 (2026-09-17).** The letterbox is `matte` now, one
+of the three opaque grounds of 09 section 3.1, and it is fixed in both modes so
+1912 label paper reads as paper. Measured at every window class in dark, in
+`test/verification/dark_mode_windows_test.dart`:
+
+- **Glass over the darkest field reads.** `ink` on `glass.flat` over `matte`
+  is 14.71:1, and the opaque fallback `GlassQuality.off` paints is 15.67:1, so
+  the pane a slow device gets is no worse than the pane it replaces.
+- **The pane budget is not close to spent.** The maximum on any screen at any
+  window class is three of the four 09 section 3.3 allows, on the record, and
+  no screen shows two modals.
+- **The accent has exactly one use per screen**, counted off the rendered
+  pixels rather than asserted: the product mark. The current destination is an
+  ink disc rather than an accent fill, which is 09 section 3.1's rule kept.
+- **Two pairs do not clear AA, and both are the same gap.** Every contrast
+  table in 03 and 09 is taken over the three opaque surfaces, and the sky
+  composites on top of all three. `ink.tertiary` clears 5.70:1 over `matte` and
+  3.29:1 over the sun field's centre. A blueprint that puts quiet text over a
+  lit part of the sky needs a ratio nobody has taken yet. V2-1 and V2-2.
 
 ## 13. Sources
 

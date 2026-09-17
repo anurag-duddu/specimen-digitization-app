@@ -1,9 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import 'models.dart';
 import 'review_context.dart';
 import 'vocabulary.dart';
 import 'widgets/caveat_text.dart';
 import 'widgets/evidence_drawer.dart';
+import 'widgets/selectable_evidence.dart';
 
 /// Offsets describe the unchanged original text. Never normalize before slicing.
 String exactUtf16Span(String source, int start, int end) {
@@ -32,7 +35,8 @@ class ReadingAlignmentView extends StatelessWidget {
   });
   final Json alignment;
   final String? leftText, rightText;
-  Widget _span(String side, Json span) {
+  Widget _span(BuildContext context, String side, Json span) {
+    final UiThemeData ui = context.ui;
     final start = objectOf(span['start']);
     final end = objectOf(span['end']);
     final source = side == 'Left' ? leftText : rightText;
@@ -55,9 +59,10 @@ class ReadingAlignmentView extends StatelessWidget {
         children: [
           Text(
             '$side · Line ${start['line']} · UTF-16 [${start['utf16_codeunit']}, ${end['utf16_codeunit']})',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
-          SelectionArea(
-            child: Text(text, style: const TextStyle(fontFamily: 'monospace')),
+          SelectableEvidence(
+            child: Text(text, style: ui.type.mono.literalDense),
           ),
         ],
       ),
@@ -66,6 +71,7 @@ class ReadingAlignmentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
     final status = textOf(alignment['status']);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -78,25 +84,31 @@ class ReadingAlignmentView extends StatelessWidget {
               : status == 'disagreement'
               ? 'Differences between retained readings'
               : 'Comparison state not recognized',
-          style: Theme.of(context).textTheme.titleSmall,
+          style: ui.type.label,
         ),
         for (final reason in alignment['reasons'] as List? ?? [])
           Text(vocabularyLabel(reason.toString())),
         if (status == 'disagreement')
           for (final alternative in objects(alignment['alternatives']))
-            Card.outlined(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
+            Padding(
+              padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+              child: Surface(
+                radius: ui.shape.tile,
+                boundary: true,
+                padding: EdgeInsetsDirectional.all(ui.space.s3),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(vocabularyLabel(textOf(alternative['operation']))),
+                    Text(
+                      vocabularyLabel(textOf(alternative['operation'])),
+                      style: ui.type.label,
+                    ),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _span('Left', objectOf(alternative['left'])),
-                        const SizedBox(width: 12),
-                        _span('Right', objectOf(alternative['right'])),
+                        _span(context, 'Left', objectOf(alternative['left'])),
+                        SizedBox(width: ui.space.s3),
+                        _span(context, 'Right', objectOf(alternative['right'])),
                       ],
                     ),
                   ],
@@ -129,6 +141,7 @@ class ReadingMetadataView extends StatelessWidget {
     children: [
       Text(
         'Language: ${vocabularyLabel(textOf(metadata['language_state'], 'unknown'))} · Script: ${vocabularyLabel(textOf(metadata['script_state'], 'unknown'))}',
+        style: context.ui.type.body,
       ),
       for (final declaration in objects(metadata['declarations']))
         Text(

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+import 'ui_finders.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:specimen_digitization/main.dart';
@@ -127,23 +129,23 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: TestRepository()),
       );
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Email address'),
+        find.widgetWithText(UiField, 'Email address'),
         'arbitrary@example.test',
       );
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Fixture token'),
+        find.widgetWithText(UiField, 'Fixture token'),
         'wrong-token',
       );
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
-      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.ensureVisible(uiButton('Sign in'));
+      await tester.tap(uiButton('Sign in'));
       await tester.pumpAndSettle();
       expect(find.textContaining('rejected the fixture token'), findsOneWidget);
       expect(find.textContaining('Test data only.'), findsOneWidget);
       expect(find.text('Collection queue'), findsNothing);
       expect(session.signedIn, false);
       offline = true;
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
-      await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+      await tester.ensureVisible(uiButton('Sign in'));
+      await tester.tap(uiButton('Sign in'));
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(find.textContaining('Test data only.'), findsOneWidget);
@@ -205,12 +207,12 @@ void main() {
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
       expect(find.text('Queue'), findsWidgets);
-      expect(find.text('Intake'), findsOneWidget);
+      expect(uiDestination('Intake'), findsOneWidget);
       repo.dataFailure = const ApiFailure(
         'Connection interrupted',
         code: 'network',
       );
-      await tester.tap(find.byTooltip('Refresh collection'));
+      await tester.tap(uiIconButton('Refresh collection'));
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(

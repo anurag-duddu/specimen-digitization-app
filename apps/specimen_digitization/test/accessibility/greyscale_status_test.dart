@@ -64,8 +64,9 @@ Future<Uint8List> greyscaleChip(
     final RenderRepaintBoundary render =
         boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final ui.Image image = await render.toImage();
-    final ByteData pixels =
-        (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    final ByteData pixels = (await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!;
     grey = Uint8List(pixels.lengthInBytes ~/ 4);
     for (int i = 0; i < grey.length; i++) {
       final int red = pixels.getUint8(i * 4);

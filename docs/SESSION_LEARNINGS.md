@@ -4581,3 +4581,4793 @@ no deployment evidence. Nothing in that entry is withdrawn; this adds what
 - Both guarded planes failed closed on that same push, as they must while no release inputs are installed: `runtime-release.yml` run 34911548853 and `data-release.yml` run 34911548829 each ended `failure` at their admission job with every downstream job `skipped`. Adding a packet *generator* to the repository changed nothing about whether a packet is *accepted*.
 
 - Durable learning: a closeout entry written before its PR is opened will always be missing the PR number, the workflow run and the deployment evidence — the four facts `docs/DEPLOYMENT.md` asks for. Either append the entry after the PR exists, or plan on a correction like this one. The `merge=union` driver from PR #55 makes the second option cheap, since appending never conflicts.
+
+## 2026-09-16: Front-end refactor plan, the `specimen_ui` design system
+
+- Task: Claude Code session; plan the brand refactor that replaces the Material 3 presentation layer with an owned component library. Planning only, at the product owner's request; nothing built, no agent launched.
+- Branch/worktree: `front-end-refactor` (cut from `main` at `f05d496`, `--no-track`) at `.claude/worktrees/front-end-refactor`. The session's original worktree `interesting-mirzakhani-e0cadf` was removed by something outside the session mid-conversation; the branch was recreated from `origin/main` and no work was lost because nothing had been written yet.
+- Outcome: `design/09-brand-direction.md`, `design/10-component-library.md` and `docs/execution/FRONT_END_REFACTOR.md` written; `design/README.md`, `design/00-north-star.md` and `design/03-design-system.md` cross-referenced. Awaiting approval of the plan before wave 0.
+- Commits/PRs: this commit on `front-end-refactor`; no PR yet.
+- Validation: `flutter pub get --enforce-lockfile` and `flutter analyze --fatal-infos` clean at the cut point; pre-commit hooks on the changed files. `verify.sh` not run: no code changed. `Not confirmed`: nothing else.
+- Durable learnings:
+  - **The v1 rebuild's fonts never shipped.** `bundledProductFonts = false` in `lib/src/theme/typography.dart`, no `assets/`, no `fonts:` in `pubspec.yaml`; every capture in `design/screenshots/rebuild/` is the platform sans. The app's goldens therefore rendered in the platform sans too. Any golden diff after fonts land is total and expected once.
+  - **No shadcn-style Flutter library resolves at a current version on Dart 3.10.4 / Flutter 3.38.5** (pub.dev API, 2026-09-16): `forui` latest needs Flutter 3.47 (0.17.0 resolves), `shadcn_ui` needs 3.41 (0.53.6), `naked_ui` 1.0 and `liquid_glass_renderer` need Dart 3.11 (nothing resolves), `remix` only at 0.0.4. `phosphor_flutter` 2.1.0, `flutter_launcher_icons` 0.14.4, `flutter_native_splash` 2.4.8, `flutter_svg` 2.3.0, `skeletonizer` 3.0.0 and `google_fonts` 8.2.1 resolve. `forui` 0.26 depends on `material_ui` and `cupertino_ui`, which suggests Material is leaving the SDK as a package from 3.47; building on `widgets.dart` is the durable choice.
+  - **The SDK already ships the headless layer**: `RoundedSuperellipseBorder`, `ClipRSuperellipse`, `RSuperellipse`, `RawMenuAnchor`, `RawRadio`, `WidgetStatesController`, `OverlayPortal`, `FocusableActionDetector`, `showGeneralDialog`, `RawDialogRoute`, `TapRegion`, `RawAutocomplete` are all present in `/opt/homebrew/share/flutter` 3.38.5. No package is needed for squircles or popovers.
+  - **Geist on this machine** is version 1.200 variable (`wght` 100 to 900) with `tnum`, `pnum`, `frac` and `ss01` to `ss09` in Sans; Mono has no `tnum` (monospaced) and no `zero` feature, so the zero must be checked by rendering before JetBrains Mono is retired. The files carry no license name record; bundle the OFL text from the `geist-font` release.
+  - **An isolated desktop session whose worktree disappears cannot be moved.** `change_directory` refuses ("runs in an isolated worktree"), `EnterWorktree` refuses from a non-repository cwd. `request_directory` grants access and absolute paths work; `git -C` and `git show origin/main:<path>` read everything needed without a checkout.
+  - **`git rev-parse --short HEAD origin/main` with two revisions fails with "Needed a single revision"**; use `git log --oneline -1 <rev>` per revision.
+- Failed approaches: the Python `urllib` pub.dev lookup failed on macOS system Python with a certificate error; `curl` piped into Python worked.
+- Remaining follow-ups: approval of the plan; wave 0 (`fe/foundation`) as specified in `docs/execution/FRONT_END_REFACTOR.md` section 5.
+
+## 2026-09-16: Front-end refactor wave 0, the `specimen_ui` foundation and primitives
+
+- Task: build wave 0 of the front-end refactor, items A1 to A13 and B1 to B8 of
+  `docs/execution/FRONT_END_REFACTOR.md`: the `specimen_ui` package, its tokens,
+  its primitives, its gates, its gallery, and the application wiring that puts
+  every screen on them without changing a screen.
+- Branch/worktree: `fe/foundation` at `.claude/worktrees/fe-foundation`, cut
+  from `front-end-refactor` at `13876d3`.
+- Outcome: complete. The design system exists as an in-repo package, the
+  application runs on it, ten gates hold the line, and the gallery is mounted
+  at `/gallery`. No screen and no pattern changed beyond what the theme
+  adapters required, and the adapters keep every public API the screens use.
+- Commits (14, oldest first): `7a2342d` package skeleton and the path
+  dependency; `59dec94` Geist bundled and the type scale; `7c2b766` colour,
+  fields and glass; `c91ec73` shape, space, density and motion; `baa4b4a` the
+  icon registry on Phosphor; `ea6b794` `UiThemeData` and `context.ui`;
+  `c205833` the primitives; `fceed6f` the application wiring and the adapters;
+  `0212f31` the gates, the control contract and the primitive tests; `f4965cb`
+  the gallery and the `/gallery` route; `83cbd08` CI; `3886fb8` the amendments
+  to 09 and 10; `e81bf65` the golden regeneration; `f307413` a low entropy
+  fixture. No pull request yet.
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | `google_fonts` absent from `pubspec.lock` |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 111 passed |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed |
+  | `flutter build web --release` | 0 | built |
+  | `check_ui_strings.py` | 0 | 149 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (245 files) | 0 | 14 hooks passed |
+
+- Backlogs, computed from the tree rather than guessed. Every one is a
+  starting number for waves 1 to 3; none existed before this wave.
+
+  | Gate | Before | After | Note |
+  |---|---|---|---|
+  | `no_color_literals` | 0 in `lib/` | 0 | scope widened to the package; only `palette.dart` may hold one |
+  | `no_material_components` | not measured | 208 uses over 50 files | appendix B says 203; see below |
+  | `no_material_imports` | not measured | 43 files | screens, widgets and app, minus `app_router.dart` |
+  | `icons_unique` | not measured | 161 glyphs over 43 files | plus zero duplicate registry entries |
+  | `no_dashes` | not measured | 0 | Dart strings and `design/*.md` |
+  | `contrast_composite` | not measured | 0 failing pairs | after six token corrections |
+  | `layering` | not measured | 0 | three files may import `material.dart` |
+  | `fonts_bundled` | not measured | 0 | both faces bundled, `google_fonts` gone |
+  | `glass_budget` | not measured | 0 over budget | called at every window of the size-class goldens |
+
+- Goldens: all 121 screen goldens under `test/golden/images/` moved, which is
+  the whole set and exactly what was expected: the faces were never bundled
+  before, so every one rendered in Ahem, the test placeholder that draws each
+  glyph as a filled box. Zero semantics fixtures under
+  `test/accessibility/fixtures/` changed, which is the other half of the
+  check. 24 new gallery goldens under the package.
+- Durable learnings:
+  - **The v1 goldens were not "the platform sans", they were Ahem.** The plan
+    predicted a total diff after fonts land and was right, but for a stronger
+    reason: `flutter test` renders every glyph as a box when no font is
+    loaded, so 121 PNGs were evidence of layout only. They are now evidence of
+    type as well.
+  - **Creating the test binding installs an `HttpOverrides` that answers every
+    request with a mock 400** (`flutter_test/src/_binding_io.dart`). A
+    `flutter_test_config.dart` that calls `TestWidgetsFlutterBinding.ensureInitialized()`
+    to load a font therefore breaks every test that does real loopback HTTP:
+    36 of them here, all reporting "The request did not complete". The fix is
+    to restore whatever override was in place before the binding was created.
+    Any later wave that adds a global test configuration hits this.
+  - **A package font resolves under a prefixed family name, and so does a
+    dependency's.** `TextStyle(fontFamily: 'Geist', package: 'specimen_ui')`
+    is `packages/specimen_ui/Geist`, and `PhosphorIconData` sets `fontPackage`,
+    so its family is `packages/phosphor_flutter/PhosphorRegular`. A
+    `FontLoader` registered under the bare name loads a face nothing then asks
+    for, and every glyph renders as a box with no error.
+  - **`Durations` and `Easing` are declared in `material.dart`,** so a
+    foundation file that may not import it cannot reference them. The values
+    are written out in `foundation/motion.dart` and a test that does import
+    Material asserts each one still equals its Material constant. That pin is
+    stronger than the reference it replaces: it fails loudly if the token
+    database moves.
+  - **`TextField` needs two pieces of Material infrastructure**, not one: a
+    `Material` ancestor and `MaterialLocalizations`. 10 section 1.3 already
+    keeps both; what was not obvious is that a package test harness built on
+    `WidgetsApp` has to supply the localizations delegate itself.
+  - **`textContrastGuideline` samples the mode of the dark pixels in a `Text`
+    widget's inflated paint bounds.** A heading stretched across a pane
+    reports the whole row as its bounds, so the mode is an anti-aliased edge
+    shade rather than the ink the glyph is set in. A 17:1 heading measured
+    3.44:1 that way. Shrink wrapping the heading fixed it, and the same trap
+    waits for any later wave that stretches a short label.
+  - **09's own `boundary` value could not meet 09's own rule.** `#C6C8C3`
+    measures 1.40:1 and the rule is 3:1. No value that light can carry a 3:1
+    edge on white, which is worth knowing before anyone proposes a lighter
+    one again.
+  - **`.gitignore` blanket ignores `data/`** for museum collection data, which
+    silently swallowed `controls/data/`, the data control family named in 10
+    section 1.2. The file now carries one negation for that path.
+- Failed approaches:
+  - Counting keyboard activations by attaching to the semantics node. The
+    callback belongs to the caller, so the contract now asserts that the
+    focused control consumed the key, which is what breaks when a control
+    forgets its activation shortcuts.
+  - `addTearDown(semantics.dispose)` in the control contract. `flutter_test`
+    verifies that no `SemanticsHandle` is live when the test body returns,
+    which is before tear downs run.
+  - A harness built from `Shortcuts` and `Actions` by hand. Nothing ever held
+    focus, so Tab traversed from nowhere; a `WidgetsApp` with a route gives
+    the focus scope a real application has.
+- Remaining follow-ups, every deviation from 09 and 10 and why:
+  - **Six colour tokens differ from 09 section 3.1.** `ink.tertiary`,
+    `boundary` and `disabled.outline`, in both modes, failed the composite
+    rule 09 section 3.7 sets. Each moved along its own hue to the first value
+    clearing its floor with a two percent margin. 09 is amended with the table
+    of what each measured.
+  - **`UiButton.primary` inverts with the mode.** 10 section 4.1 reads as
+    though the disc stays dark in dark mode; `paper` on `ground` in dark
+    measures 1.08:1, which is an invisible control. 10 is amended.
+  - **The state layer is `ink` in both modes.** 10 section 2 clause 6 names
+    `paper` for dark, and `paper` in dark is darker than `ground`, so it would
+    hide a control rather than lift it. 10 is amended.
+  - **`mono.literal` is 15 and `mono.literalDense` is 13.** 09 section 4.2
+    says the monospace roles "keep their v1 sizes" and then prints different
+    numbers from v1's 16 and 14. The printed numbers won, because token values
+    in 09 are taken verbatim.
+  - **`MotionTokens` is no longer a `ThemeExtension`.** It cannot be one
+    without importing `material.dart` into the foundation. Every call site
+    keeps working because `MotionTokens.of(context)` never needed the theme:
+    it only ever folded in the live reduced-motion state.
+  - **The registry has 81 specs, not the 79 keys appendix A counts.** The
+    difference is `unknown`, `riskLow`, `riskMedium` and `riskHigh`, which 09
+    section 7 names and appendix A does not list, less `mark`, which is an
+    asset rather than a glyph and so has a key but no spec. No glyph in
+    appendix A or 09 section 7 is missing from `phosphor_flutter` 2.1.0, so
+    there are no substitutions.
+  - **`no_material_components` totals 208 where appendix B totals 203.** The
+    five are one per `ScaffoldMessenger.of(context).showSnackBar(SnackBar(...))`
+    site: appendix B counted each as one use, and the gate counts the
+    messenger and the bar separately because `ScaffoldMessenger` is its own
+    term in the regex. The sites are in `queue_screen.dart`,
+    `source_screen.dart`, `evidence_drawer.dart` and `workbench.dart` twice.
+  - **Two call sites changed outside the theme layer.** The filter sheet's
+    group headings moved from `titleSmall` to `titleMedium` and are aligned
+    rather than stretched, because the Material bridge now puts the
+    field-label role in `titleSmall` and because a stretched heading fails
+    `textContrastGuideline`. The compact queue-selection golden stopped
+    tapping a checkbox after the long press that already selected the row.
+    Both were forced by this wave, not chosen.
+  - **The fields gallery page states a pane budget of ten.** Three presets
+    times three levels is what that page exists to show. Every other page is
+    held to the four in 09 section 3.3.
+  - **`apps/specimen_digitization/CLAUDE.md` does not exist**, although the
+    agent brief and the plan's section 11 both name it as required reading.
+    The repository root `CLAUDE.md` is the one that governs. A later wave
+    should either write the app-level file or correct the brief template.
+  - **The application's screen goldens still draw `Symbols.` glyphs as
+    boxes.** Material Symbols is not loaded in tests and was not before this
+    wave either. The Phosphor faces are loaded now, so the first screen that
+    moves to `UiIcons` shows a glyph rather than a box, and the diff that
+    lands with the icon sweep is about the icon rather than about the harness.
+  - **Wave 1 owns the rest of the actions family.** `UiButton` ships with
+    `primary`, `secondary` and `ghost` at size `md` only, marked experimental,
+    because the primitives gallery needs something real to press. Slot C1
+    completes it per 10 section 4.1.
+
+## 2026-09-16: Front-end refactor wave 1, slot C1, the actions family
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3C slot C1. Build the
+  actions family of `specimen_ui` per `design/10-component-library.md`
+  section 4.1: complete the experimental `UiButton` and add `UiIconButton`,
+  `UiCapsuleToggle`, `UiChip`, `UiSegmented`, `UiBadge` and `UiKeyCap`, with
+  their style objects, behaviour tests, control contract runs, a gallery page
+  and four family goldens.
+- Branch and worktree: `fe/actions`, cut from `front-end-refactor` at
+  `715edea`, in `.claude/worktrees/fe-actions`. Pushed to `origin/fe/actions`
+  at `33b7e56`. No pull request yet; the integrator merges the slot.
+- Outcome: complete. Seven controls, 78 new tests, one gallery page, four new
+  goldens, two additive foundation changes listed first below.
+- Commits (five, oldest first):
+  - `bdb0fbc` `foundation: a state layer colour for filled controls in actions`
+  - `afd8a66` `feat(actions): the seven controls of 10 section 4.1`
+  - `05570cd` `test(actions): behaviour tests and the control contract for the family`
+  - `cc00dc7` `feat(actions): the gallery page and its four goldens`
+  - `33b7e56` `docs(actions): the changelog entry for the family`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 189 passed, up from 111 at the end of wave 0 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 156 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (30 files) | 0 | 11 hooks passed, 6 had no files |
+
+- Goldens: four added, `actions-{light,dark}-{touch,pointer}.png` at 1180 by
+  820. Four moved that this slot does not own,
+  `foundation-primitives-{light,dark}-{touch,pointer}.png`, and the reason is
+  in the deviations below. Zero app screen goldens and zero semantics
+  fixtures were regenerated, which is the wave policy.
+- Two foundation changes, listed first so the integrator can reconcile them
+  with the sibling families:
+  - **`StateLayer` and `Pressable` take an optional state layer colour**
+    (`bdb0fbc`). 10 section 2 clause 6 names one overlay, and the wave 0
+    amendment made it `ink` in both modes. That is right over every light
+    fill and invisible over an `ink` one: `ink` at 12 percent over an `ink`
+    button is the same colour, so `UiButton.primary` had no visible hover and
+    no visible press. The default is unchanged and the two opacities still
+    live in one place; what a control can now state is which way its own
+    surface should move. `UiSegmented` uses it for the segment sitting on its
+    ink thumb, and `UiPillNav`'s current disc will want it.
+  - **The gallery shell gained `familyPages` and `galleryPages`** (`cc00dc7`).
+    The brief said to register the page in the shell's page list, and the only
+    list was `foundationPages`, which the twenty four foundation goldens draw
+    in their sidebar. Adding to it would have moved all twenty four, and then
+    moved them again for each of the four sibling families. The foundation
+    golden test now names `foundationPages` explicitly and all twenty four
+    hold byte for byte. A family registers one line in `familyPages`.
+- Cross-family stand-ins, both to be replaced by their owners:
+  - `_LoadingArc` in `button.dart`, a private `CustomPaint` ring, marked
+    `// TODO(fe/data): replace with UiProgress.ring when it merges`. It
+    rotates and pulses its opacity under reduced motion, which is what
+    10 section 4.5 specifies for `UiProgress.ring`, so the replacement is a
+    swap rather than a redesign.
+  - `UiIconButton` takes `tooltip`, defaults it to `semanticsLabel` and sets
+    `Semantics(tooltip:)`, marked
+    `// TODO(fe/overlays): wrap in UiTooltip when it merges`. There is no
+    visible tooltip until slot C3 lands; the semantics one is live now.
+- Durable learnings:
+  - **A `const` constructor whose assert reads `List.length` cannot be used
+    in a `const` expression.** `UiSegmented` asserted its two to five segment
+    range in its constructor, and every `const UiSegmented(...)` became a
+    compile error reading "the property 'length' can't be accessed in a
+    constant expression". The check moved into `build`, where it still fails
+    loudly in debug. Any later control that validates a collection argument
+    hits this.
+  - **`Center(widthFactor: 1)` without `heightFactor` takes the whole
+    height.** `UiBadge` and `UiKeyCap` were 600 dp tall inside the test
+    harness before both factors were set. The symptom is a control that is
+    correct in a bounded row and absurd anywhere loose, which is a widget test
+    away from being shipped.
+  - **An inset thumb and a full width segment do not share a centre.** The
+    `UiSegmented` thumb sits 4 dp inside its track, so at the ends its centre
+    is offset from the segment's by exactly the inset, and the label sat 2.7
+    dp off the thumb. Padding the segment row by the same inset makes the two
+    centres one point at every index. The arithmetic is `inset * (1 - (2k+1)/n)`
+    for segment `k` of `n`, which is zero only in the middle.
+  - **`Pressable` drops the semantics of its own content**, by design, so a
+    control with a second target inside it cannot nest one pressable in
+    another. `UiChip.input` makes the capsule a painted background in a stack
+    and puts the label and the remove glyph side by side in the row above it;
+    that is also what lets the remove glyph keep a 48 dp target inside a 32 dp
+    capsule.
+  - **A golden presses no key, so no focus ring is ever drawn in one.** The
+    ring is gated on `FocusHighlightMode.traditional` per 10 section 2 clause
+    4, and the test binding starts in `touch`. A golden that wants to show a
+    focused control has to state
+    `FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional`.
+    The foundation primitives golden has a focused specimen that has never
+    drawn its ring for this reason.
+  - **A repeating animation makes `pumpAndSettle` time out**, which matters
+    because every gallery golden calls it. The loading specimen is wrapped in
+    `TickerMode(enabled: false)`: a muted ticker stops scheduling frames, so
+    the page settles and the ring is captured at a fixed angle. Any family
+    with a spinner, a shimmer or a pulse on its page needs the same.
+  - **The package `test/gallery/failures/` directory is not gitignored.**
+    `apps/specimen_digitization/.gitignore` ignores `test/golden/failures/`
+    only, so a failed package golden leaves four PNGs per case as untracked
+    files that are easy to commit by accident. Removed by hand here; see the
+    follow-ups.
+- Failed approaches:
+  - Reserving the remove glyph's width in `UiChip.input` with a second,
+    invisible copy of the chip body laid out beside it. It worked and was
+    unreadable, and it put a duplicate of the label in the layout. The stack
+    with a painted background is both shorter and honest.
+  - Bottom aligning the gallery specimens with `WrapCrossAlignment.end` so
+    controls of different heights would share a baseline. A specimen with a
+    note under it is taller than one without, so the controls came out ragged
+    instead. Top alignment, which is what the foundation pages use, reads
+    correctly.
+- Every deviation from 10 section 4.1, with why:
+  - **`UiBadge` and `UiKeyCap` do not call `expectControlContract`.** Neither
+    is interactive: no role, nothing to focus, no hit box, and the contract's
+    first assertion is a 48 dp target. The contract's own preamble scopes it
+    to "every interactive component". They are tested for what does apply:
+    a label that stands alone, tabular figures, growth rather than clipping at
+    200 percent text, RTL, and no ticker in either motion mode.
+  - **A loading button refuses activation while keeping its enabled paint.**
+    10 says the ring takes the leading slot and the width holds; it does not
+    say whether the control is still pressable. It is not, because a reviewer
+    must not be able to send one decision twice, and 02 section 4.3 says a
+    loading state disables the button. The paint stays the enabled one,
+    because busy is not forbidden and draining the fill would read as the
+    server having withdrawn the action.
+  - **"Keeps the width" is the leading slot's width, not the button's.** The
+    slot is a fixed 20 dp box in both states, so a button with a leading glyph
+    is exactly as wide while loading. A button with no leading glyph gains the
+    slot, which is unavoidable, and its label is changing to the present
+    participle at the same moment anyway.
+  - **A single-selection `UiCapsuleToggle` clears when its chosen option is
+    chosen again.** 10 says "single or multiple selection" and stops. Filter
+    rows are the use, and a reviewer who can reach a filter must be able to
+    reach no filter without a second control.
+  - **`UiSegmented`'s track is `paper` with a `hairline` stroke.** 10 names
+    the thumb and the labels and not the track. `hairline` is the separating
+    role, which is what a track is, and it matches `UiChip.tag`.
+  - **`UiChip` takes an optional status triple.** Not in section 4.1, but
+    section 5 says `StatusChip` is "`UiChip.tag` with a status triple", so the
+    slot has to exist for the D1 pattern to re-base on it. A triple fills with
+    `status.fill` and writes in `status.onFill`.
+  - **`UiButtonStyle.overlay` is a `Color`, not a `WidgetStateProperty`.**
+    10 section 1.5 sketches it as a property. The part that varies by state is
+    the opacity, and that lives in `StateLayer` where the contract's two
+    numbers are written once; the colour is per variant.
+  - **`UiButton` gained `statesController`.** `Pressable` has taken one since
+    wave 0, and the gallery is the caller that needs it: hover and press
+    cannot be shown in a golden otherwise. `ButtonStyleButton` exposes the
+    same thing for the same reason.
+  - **The loading ring draws no track.** 10 section 4.5 gives
+    `UiProgress.ring` a `hairline` track. Inside a button the ring is drawn in
+    the button's own foreground, and `hairline` is a colour chosen against
+    `paper`, not against an `ink` fill. The arc alone reads as a spinner, and
+    slot C5 owns the real ring.
+  - **The actions gallery page is taller than the golden window**, so the
+    golden reviews its top. Seven controls in every variant, size and state
+    come to roughly three windows of content at 1180 by 820. Two columns and a
+    tighter section than `GallerySection` bring four of the seven controls and
+    every button state into the frame; `UiSegmented`, `UiBadge` and `UiKeyCap`
+    are below the fold. The foundation icons page is cut off at the same
+    window for the same reason. The whole page is reviewable at `/gallery`.
+- Follow-ups:
+  - Add `test/gallery/failures/` to `apps/specimen_digitization/.gitignore`.
+    Not this slot's file, and a one line change the integrator can make once
+    for all five families.
+  - The gallery golden window, or `GallerySection`'s spacing, is the real fix
+    for the fold above. A 1180 by 1600 window for family pages would put every
+    control of every family in its own golden; that is a change to the shared
+    harness and belongs to whoever owns it next.
+  - `UiProgress.ring` (slot C5) and `UiTooltip` (slot C3) replace the two
+    stand-ins named above.
+  - The `no_material_components` backlog is untouched by this slot: it adds
+    controls to the package and changes no application call site. The sweep
+    that spends the backlog is waves 2 and 3.
+## 2026-09-16: Front-end refactor wave 1 slot C3, the `specimen_ui` overlays family
+
+- Task: build slot C3 of `docs/execution/FRONT_END_REFACTOR.md` section 3C, the
+  overlays family of `specimen_ui`: `UiPopoverMenu`, `UiTooltip`, `UiToast`,
+  `UiBanner`, `UiDisclosure`, `UiTabs` with `UiTabView`, `UiSheet` and
+  `UiDialog`, per 10 section 4.3, with behaviour tests, control contract runs,
+  a gallery page and the family goldens.
+- Branch/worktree: `fe/overlays` at `.claude/worktrees/fe-overlays`, cut from
+  `front-end-refactor` at `715edea`.
+- Outcome: complete. Eight controls plus `UiMenuTrigger`, `UiModalActions`,
+  `UiToastHost` and `UiToasts` ship with style objects, density, the control
+  contract and the retired Material widget named in each class doc. Four
+  additive primitive changes were needed and are in their own commits. Nothing
+  under `apps/specimen_digitization/lib/` changed and no application golden or
+  semantics fixture moved.
+- Commits (7, oldest first): `7a08e6f` a paper, passive popover; `93587cc`
+  non uniform pane corners; `7d474be` Escape and focus return from a modal,
+  the three additive primitive changes this slot needed and the first thing to
+  read in review; `6f5e4b5` the eight controls; `199ddb6` the gallery page and
+  the new `familyPages` list; `5d1f135` the tests and the eight goldens; and
+  the changelog and this closeout. No pull request; the integrator merges
+  `fe/overlays` into `front-end-refactor`.
+## 2026-09-16: Front-end refactor wave 1 slot C2, the `specimen_ui` inputs family
+
+- Task: build the inputs family of `specimen_ui` per
+  `apps/specimen_digitization/design/10-component-library.md` section 4.2 and
+  item C2 of `docs/execution/FRONT_END_REFACTOR.md` section 3C: `UiField`,
+  `UiTextArea`, `UiSearchField`, `UiSelect<T>`, `UiSwitch`, `UiCheckbox`,
+  `UiRadio<T>`, with their style objects, behaviour tests, control contract
+  runs, a gallery page and the family golden.
+- Branch/worktree: `fe/inputs` at `.claude/worktrees/fe-inputs`, cut from
+  `front-end-refactor` at `715edea`.
+- Outcome: complete. Seven controls, 69 new tests, four family goldens, one
+  gallery page registered in the shell, and three additive foundation changes
+  that the family could not be built correctly without.
+- Commits (7, oldest first): `b1f665f` `FieldCore.excludeFromSemantics`;
+  `a80f077` `ControlActivation` in the control contract; `46100ef` the
+  foundation golden pinned to its own page list; `64c819b` the seven controls;
+  `c9b8cae` the behaviour tests and the contract runs; `34e3168` the gallery
+  page and the family golden; `e5db05e` a repair to two of this session's own
+  tests. No pull request; the integrator merges the slot.
+## 2026-09-16: Front-end refactor wave 1, slot C4, the navigation family
+
+- Task: build slot C4 of `docs/execution/FRONT_END_REFACTOR.md`, the navigation
+  family of `specimen_ui` per 10 section 4.4: `UiPillNav`, `UiRail`,
+  `UiSidebar`, `UiTopBar` and `UiScaffold`, their gallery page and goldens,
+  plus one measured tuning task on the light fields of 09 section 3.2.
+- Branch/worktree: `fe/navigation` at `.claude/worktrees/fe-navigation`, cut
+  from `front-end-refactor` at `715edea`.
+- Outcome: complete. Five controls and one destination model, 78 new tests
+  (67 for the family, including `expectControlContract` on every destination
+  of every navigation, 7 for the field geometry and 4 goldens), a gallery page,
+  and a field geometry that was measured at four real windows and changed.
+- Commits (5, oldest first): `6030404` the five controls and their tests;
+  `4899bc3` the field geometry measured at real windows; `0677d97` the state
+  layer colour taken verbatim from `fe/actions`; `9ee044a` the current disc's
+  press and the sidebar's scroll; `7eae534` the gallery page, the family
+  golden and the changelog. No pull request.
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 196 passed, up from 111 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed |
+  | `check_ui_strings.py` | 0 | 158 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (26 files) | 0 | every hook passed |
+
+- Tests added: 85, in eight files under `test/controls/overlays/` plus the
+  family golden test. Every interactive trigger calls `expectControlContract`:
+  `UiMenuTrigger`, the control a `UiTooltip` wraps, a `UiToast` action, a
+  `UiBanner` dismiss control, a `UiBanner` disclosure control, `UiDisclosure`,
+  a `UiTabs` tab, a `UiSheet` primary action and a `UiDialog` primary action.
+  Reduced motion, 200 percent text and right to left are exercised per control.
+- Goldens: eight new files under `test/gallery/goldens/`,
+  `overlays-{light,dark}-{touch,pointer}.png` at 1180 by 820 and
+  `overlays-{sheet,dialog}-{light,dark}.png` with the modal open. No existing
+  golden moved. Every window is inside the glass budget: the page draws two
+  panes, the page list and the open modal make four at the ceiling.
+- Durable learnings:
+  - **Seven `SemanticsRole` values throw on the first frame that publishes
+    them.** `tooltip`, `dragHandle`, `spinButton`, `comboBox`, `loadingSpinner`,
+    `progressBar` and `hotKey` map to `_unimplemented` in
+    `_DebugSemanticsRoleChecks` (Flutter 3.38.5, `semantics.dart`), so setting
+    one raises "Missing checks for role SemanticsRole.x" from the scheduler.
+    The roles that are safe today are `tab`, `tabBar`, `tabPanel`, `menu`,
+    `menuBar`, `menuItem`, `menuItemCheckbox`, `menuItemRadio`, `dialog`,
+    `alertDialog`, `alert`, `status`, `table`, `row`, `cell`, `columnHeader`,
+    `radioGroup`, `list`, `listItem`, `form`, `complementary`, `contentInfo`,
+    `main`, `navigation`, `region` and `none`. The data family will hit this at
+    `progressBar` and `loadingSpinner`; the `tooltip` property on
+    `SemanticsProperties` is the substitute that carries the same meaning.
+  - **`SemanticsRole.tabBar` requires every child node to carry
+    `SemanticsRole.tab`.** A strip that publishes a label node or a decorative
+    node between the bar and its tabs fails the check rather than degrading.
+  - **`AnimatedSize` cannot take `Duration.zero`.** Its controller notifies
+    synchronously inside `RenderAnimatedSize.performLayout`, and the framework
+    asserts "A RenderAnimatedSize was mutated in its own performLayout
+    implementation". A reduced-motion collapse has to leave the widget out of
+    the tree, not zero its duration. Every other implicitly animated widget in
+    this family takes zero without complaint.
+  - **`expectControlContract` taps the control it is given.** Clause 4 starts a
+    touch gesture on it and lifts, which is a tap, and `pumpWidget` reuses the
+    `State` between clauses because the widget type and key match. A control
+    whose semantics label changes with its own state therefore fails clause 8
+    with "found 0 widgets". Keeping one name and moving the `expanded` flag is
+    both the WAI-ARIA disclosure pattern and what makes the contract pass.
+  - **`uiHarness` publishes `UiTheme` inside `home`, which is below the
+    navigator.** A route pushed over the page finds no scope and falls back to
+    `UiTheme._fallback(Theme.of(context).brightness)`, which in a `WidgetsApp`
+    is always light. The first dark mode sheet and dialog goldens came out with
+    a light pane and an inverted primary button, which looked like a token
+    defect and was a harness one. The application is wired the other way,
+    `UiTheme` around `MaterialApp.router`, so the goldens here lift the theme
+    the same way rather than the harness being changed under three live slots.
+  - **`RawDialogRoute` with `barrierDismissible: false` listens for nothing.**
+    `ModalRoutes` passes false so it can draw its own `Scrim`, which also means
+    Escape reached no handler and clause 3 of the control contract was not true
+    of any modal in the product. The route now binds `DismissIntent` itself.
+  - **A modal route restores the focus scope, not the control.** After a sheet
+    closed, primary focus was the page's `FocusScopeNode` rather than the
+    button that opened it. `ModalRoutes` now captures the primary focus before
+    the push and asks for it back on completion, which is what `Popover`
+    already did.
+  - **`MaterialLocalizations.modalBarrierDismissLabel` is the localised
+    "dismiss"** that 10 section 1.3 keeps Material around for in
+    `controls/overlays/tooltip.dart`. Reached through
+    `Localizations.of<MaterialLocalizations>` rather than `MaterialLocalizations.of`,
+    so a harness with no delegate gets no tooltip hint instead of an exception.
+  - **`tester.binding.rootPipelineOwner.semanticsOwner` is null** and
+    `tester.binding.pipelineOwner` is deprecated, so a test that wants every
+    node of a role should read the role off the `Semantics` widgets instead of
+    walking the semantics tree from the binding.
+  - **An info banner on `paper` over a `paper` pane is invisible.** 09 has no
+    informational status triple, and the first golden showed a line of text
+    with no band. The tone now carries a `hairline` edge on the top and the
+    bottom, which is 09 section 3.1's own answer: structure comes from tone.
+- Failed approaches:
+  - `SemanticsRole.tooltip` on the tooltip pane, per the learning above.
+  - `Semantics(tooltip: message)` around the control a tooltip describes, which
+    is what Flutter's own `Tooltip` does. `Pressable` publishes a container
+    node, so the annotation above it has no boundary to merge with and its
+    string lands on the page node instead. The pane carries the property now.
+  - A show label and a hide label on the banner's disclosure control.
+  - `galleryGoldenName` for the family goldens: it spells
+    `<family>-<page>-<mode>-<density>` and the brief names the files
+    `overlays-<mode>-<density>`.
+  - Registering the page in `foundationPages`: the sidebar renders every page
+    in the list, so one more row moves all 24 foundation goldens, which this
+    slot does not own.
+- Remaining follow-ups:
+  - **The integrator joins the two page lists.** `familyPages` is new and
+    `UiGallery` still defaults to `foundationPages`, so `/gallery` in the
+    application shows the foundation pages only. Joining them is one line and
+    moves all 24 foundation goldens once, which is a wave-level regeneration
+    rather than a slot's.
+  - **`uiHarness` should publish `UiTheme` above the navigator.** Changing it
+    now would move every other slot's goldens, so it is left for the merge.
+  - **`UiTabs` defaults its strip to `UiSegmented` at `lg` when slot C1
+    merges.** Marked `TODO(fe/actions)` in `tabs.dart`.
+  - **Menu items may move to `UiListRow` when slot C5 merges** if the shortcut
+    column and the destructive tint fit that row's slots. They are a private
+    `_MenuItem` today because both are menu specific.
+- Deviations from 10 section 4.3, and why:
+  - **`UiSheet.show` and `UiDialog.show` rather than `showUiSheet` and
+    `showUiDialog` wrappers.** The primitives already own those two names and
+    the top barrel exports them, so a second pair would be a collision. The
+    primitives keep their names and their signatures.
+  - **`UiDialog.showAdaptive` exists.** 05 section 3.7 asks for one call that
+    picks a sheet on a compact window and a dialog above it, which the
+    primitive `showUiModal` does for a bare pane and nothing did for the
+    chrome.
+  - **`UiModalActions` is public and is not in section 4.3.** The action row is
+    identical in both modals and a private class cannot cross two files in
+    Dart, which the one-public-class-per-file rule in section 11 requires.
+  - **`UiPopoverMenu.semanticsLabel` is optional.** The pane's role announces it
+    as a menu and its items are visible text, so a label repeating the trigger's
+    is read twice. `UiMenuTrigger` leaves it null.
+  - **`UiBanner` has seven tones rather than three variants.** Section 4.3 asks
+    for `info`, a status and `synthetic`; one enum whose members name the five
+    statuses is what lets the fill, the text colour and the glyph be chosen
+    together in `resolve`.
+  - **`UiBanner` caps itself at two lines and truncates.** Carried from finding
+    V-15, where the environment band wrapped to eleven lines at 200 percent text
+    and took half the window. The full sentence stays on the semantics node.
+  - **`UiBanner`'s strip minimum is `space.s6` rather than the control
+    height,** so a plain band is 40 tall and a band with a control is 64. The
+    48 dp hit box is never shrunk; the band around it is.
+  - **The `info` tone carries a hairline edge,** per the learning above.
+  - **`UiTabs`' default strip is a private capsule strip on `Pressable`,** with
+    the `TODO(fe/actions)` the brief asks for. Menu items are a private
+    `_MenuItem` rather than a `UiListRow`, which is menu specific rather than a
+    stand-in.
+  - **`UiTabView` cross fades at `medium` rather than `standard`.** The brief
+    names `medium` with the standard curve; 04 section 2.4 puts a panel content
+    swap at `standard`. The brief won because it is the later document.
+  - **A toast with an action never expires.** Section 4.3 says auto-dismiss
+    after six seconds unless it has an action, which leaves an action toast on
+    screen until the reviewer acts. `UiToasts.dismiss` is the shell's way out.
+  - **`UiSheet`'s drag handle closes the sheet on a downward flick.** Section
+    4.3 names the handle and not the gesture. Dragging is never the only way
+    out, which is what SC 2.5.7 requires: the scrim and Escape both close a
+    dismissible sheet, so the handle carries no semantics of its own.
+
+### 2026-09-16: Correction to the slot C3 overlays closeout above, after the integrator's update
+
+- Task: the integrator's mid-slot update for `fe/overlays`, which lands three
+  changes on top of the entry above. It does not supersede it; every gate
+  result there was rerun and held.
+- Branch/worktree: unchanged, `fe/overlays` at `.claude/worktrees/fe-overlays`.
+- What changed:
+  - **The gallery shell now carries three lists, not two.** `fe/actions` had
+    already solved the problem the entry above records as a follow-up, and
+    solved it better: `foundationPages`, `familyPages` and
+    `galleryPages = [...foundationPages, ...familyPages]`, with the shell
+    defaulting to `galleryPages` so a family page actually reaches `/gallery`,
+    and `test/gallery/foundation_golden_test.dart` passing `foundationPages`
+    explicitly so those twenty four goldens hold byte for byte however many
+    families register. Written by hand here rather than cherry picked, so the
+    merge sees identical text. The page constant is `overlaysPage`, matching
+    `actionsPage`, rather than the `overlaysGalleryPage` the entry above named.
+    Follow-up one in that entry is therefore closed, not outstanding.
+  - **`StateLayer.colour` and `Pressable.stateLayerColour` taken verbatim from
+    `fe/actions` `bdb0fbc`**, in their own commit, and used by the current tab
+    of the strip. That slot found the defect this one would have shipped: `ink`
+    at 12 percent over an `ink` fill is the same colour, so a filled control
+    has no visible hover or press at all. Worth carrying forward as a rule
+    rather than as a fix, because every family has at least one filled control.
+  - **The family page golden is captured at 1180 by 1000.** Measured rather
+    than guessed: the page is 922 logical pixels of content at touch density
+    and 909 at pointer, inside a 788 pixel viewport at the standard window, so
+    a golden at 1180 by 820 reviewed the banners and truncated everything
+    below them. The two modal goldens keep 1180 by 820, because a sheet and a
+    dialog are judged against the window they are drawn over rather than
+    against the page behind them.
+- Validation after the three changes, each gate run on its own with the tree
+  untouched: package `flutter analyze --fatal-infos` 0; package `flutter test`
+  0, 196 passed; `foundation_golden_test.dart` on its own 0, 24 passed with no
+  golden byte moved; app `flutter analyze --fatal-infos` 0; app `flutter test`
+  0, 1062 passed and 7 skipped; `check_ui_strings.py` 0, 158 files and 0
+  violations; `pre-commit run --files` 0.
+- Durable learnings:
+  - **A shell whose sidebar lists its own pages makes every page a golden
+    dependency of every other page.** Two slots reached the same finding
+    independently, which is the signal that the shape was wrong rather than
+    the use of it. Pinning the list at each golden's call site, rather than
+    keeping families out of the default, is what lets the gallery show
+    everything and the goldens still hold still.
+  - **`test/gallery/failures/` is not gitignored inside the package.**
+    `flutter test` writes it on any golden mismatch. Nothing under it was
+    committed here; a `.gitignore` entry would stop the next slot having to
+    remember.
+- Deviation closed: the entry above records `overlaysGalleryPage` and a
+  `familyPages` list that the shell did not default to. Both are superseded by
+  the names and the structure in this correction.
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 182 passed, up from 111 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 157 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` | 0 | 30 files, 11 hooks ran and passed, 6 had no file of that kind |
+
+- Goldens: four added, `test/gallery/goldens/inputs-{light,dark}-{touch,pointer}.png`
+  at 1180 by 1180, which is the gallery's width and a height that holds the
+  whole page. Zero foundation goldens moved, which is the point of `46100ef`
+  and of the integrator's instruction. Zero application screen goldens and
+  zero semantics fixtures touched. Nothing under `test/gallery/failures/` was
+  ever committed.
+- Backlogs: `no_material_components`, `no_material_imports` and `icons_unique`
+  are unchanged. The family adds no Material usage anywhere and no call site
+  moved onto it yet; slots D and E spend the backlog.
+- Durable learnings:
+  - **The control contract's clause 3 cannot pass for a text field, and must
+    not.** While an editor holds focus, `DefaultTextEditingShortcuts` maps
+    `Space` to `DoNothingAndStopPropagationTextIntent`, whose action is
+    `DoNothingAction(consumesKey: false)`; that returns
+    `KeyEventResult.skipRemainingHandlers`, so the key reaches the platform
+    and nothing above the editor ever sees it. `Actions.maybeFind<ActivateIntent>`
+    from a focused `FieldCore` returns null and both keys report unhandled.
+    Making them handled would mean a `Shortcuts` above the field swallowing
+    the space bar, which makes the field impossible to type in. The contract
+    now takes `ControlActivation.textEditing` and asserts the mirror: what
+    took focus is an `EditableText`, and neither key was consumed above it.
+    That is a stronger gate than the clause it replaces, because the defect it
+    catches is a real one an overlay or a screen slot can introduce.
+  - **Two `Semantics` configurations that set the same flag cannot merge.**
+    `SemanticsConfiguration.isCompatibleWith` refuses when the flag bits
+    overlap, when both carry a value, or when both carry the same action, and
+    an incompatible pair becomes two nodes instead of one. `UiRadio` wrapped
+    `RawRadio` in a labelled node and also set `enabled`, which `RawRadio`
+    already sets: the result was our node with the words and their node with
+    the exclusive group, and the control contract reported "no role flag".
+    Dropping our `enabled` merged them. The general rule for wrapping an SDK
+    control: state only what it does not.
+  - **A label drawn inside a control is read again after the node's label.**
+    Labels concatenate rather than conflict, so a `Pressable` with
+    `excludeFromSemantics: true` and a `Text` in its builder produces
+    "Coverage confirmed Coverage confirmed" and `find.bySemanticsLabel` finds
+    nothing. `Pressable` handles this for itself with `excludeSemantics: true`;
+    anything that publishes its own node has to exclude its own content.
+  - **A family page in the gallery's default list moves every foundation
+    golden.** The shell draws one row per page, so registering a page changes
+    the sidebar in all 24 foundation captures. The fix belongs to the golden,
+    not to the registration: `UiGallery(pages: foundationPages)` pins the
+    foundation golden to the slot that owns it. The other three family slots
+    would each have hit this; it is fixed once for all of them.
+  - **A 48 dp action cannot be laid out inside a 40 dp field.** In pointer
+    density the field is 40 tall and its hit box is 48. Putting the clear
+    control in the row overflows; putting it in a `Positioned.directional`
+    with `top: 0, bottom: 0` inside the hit area gives it a real 48 by 48 box
+    using exactly the slop the field already pads itself with. Tested in both
+    densities.
+  - **`UiFieldStyle` was already taken.** `foundation/fields.dart` owns that
+    name for the light fields of 09 section 3.2. The word "field" means two
+    unrelated things in this system, a gradient and a text input, and 10
+    section 11's naming rule collides on it. The family's style is
+    `UiInputStyle`.
+  - **No control in this package reports `hovered` in a test until the test
+    says the window has a pointer.** `FocusableActionDetector` gates the hover
+    highlight on `FocusManager.instance.highlightMode`, which a test binding
+    starts at `touch` because `defaultTargetPlatform` is Android, and a
+    synthesised mouse move did not flip it. A hover test has to set
+    `FocusHighlightStrategy.alwaysTraditional` and put it back, exactly as the
+    control contract already does for the focus ring. Without it a hover
+    assertion either passes vacuously or fails for the wrong reason.
+  - **`addPointer` twice in one test trips an assertion inside
+    `MouseTracker`** (`(event is PointerAddedEvent) == (lastEvent is
+    PointerRemovedEvent)`). Create one gesture for the test and move it.
+  - **`flutter_test` reuses widget state across `pumpWidget` calls in one
+    test.** Two `pumpWidget`s of structurally identical trees update the
+    element tree rather than rebuilding it, so a `UiSelect` left open by the
+    contract's clause 4 was still open at clause 8, and a test that opened a
+    short list and then pumped a long one toggled it shut instead of opening
+    it. Split such a test in two rather than trusting a fresh pump.
+- Integration, after the coordinator's update mid slot:
+  - **The `familyPages` split was reached independently by the actions slot**
+    (`cc00dc7` on `fe/actions`) and by this one, with the same reasoning and
+    the same three names. This branch now carries the actions wording for
+    `foundationPages`, `familyPages`, `galleryPages` and for the foundation
+    golden's pinned page list verbatim, so `gallery_shell.dart` differs from
+    `fe/actions` by exactly one import line and one list entry, and
+    `foundation_golden_test.dart` is byte identical. The merge is a one line
+    add.
+  - **`pressable.dart` and `state_layer.dart` are copied verbatim from
+    `bdb0fbc`** on `fe/actions`, in a commit of their own, so identical
+    content merges cleanly. The inputs family needs the optional state layer
+    colour for the same reason the actions family found it: a checked box and
+    an on switch track fill with `ink`, and `ink` at 12 percent over `ink` is
+    the same colour.
+  - The three foundation commits this slot made on its own (`b1f665f`,
+    `a80f077`, `46100ef`) stand. `46100ef` is now redundant with the actions
+    pin and resolves to identical content.
+
+- Failed approaches:
+  - **A single state layer colour for a control with a filled part and a
+    labelled part.** Passing `paper` to `Pressable.stateLayerColour` makes the
+    filled element answer a hover and the label beside it stop answering;
+    passing `ink` does the reverse. The row keeps the shared `ink` layer and
+    the filled element carries a second `paper` one of its own, which is the
+    only arrangement where both halves respond.
+  - Letting `FieldCore` publish the field's semantics node. Its node covers
+    the editor only, which is smaller than the 48 dp hit box the contract
+    measures, and it carries no value and no hint. The node has to be the
+    wrapper's.
+  - `ExcludeSemantics(child: Flexible(...))` inside a `Row`. `Flexible` has to
+    be the direct child of the `Flex`; the wrapper goes inside it.
+  - Asserting a disabled control by watching a local variable. Nothing in the
+    tree could write it, so the test passed against a control that toggled
+    itself. Repaired in `e5db05e` to read the drawn state and the node.
+- Remaining follow-ups, and every deviation from 10 section 4.2 with why:
+  - **`UiInputStyle`, not `UiFieldStyle`**, for the name collision above. A
+    later pass could rename the token type instead; that is a foundation
+    decision, not a family one.
+  - **One style object serves four controls.** 10 section 1.5 asks for a style
+    per control. `UiField`, `UiTextArea`, `UiSearchField` and the trigger of
+    `UiSelect` resolve one `UiInputStyle`, because 10 section 4.2 defines the
+    last three as the first one with a change, and two style objects would be
+    two places for the edge to drift. `UiSelectStyle` holds that style plus
+    the list's own tokens.
+  - **`UiFieldFrame` and `UiFieldBox` are public.** 10 section 11 asks for one
+    public class per file. The frame and the box are the anatomy 4.2
+    describes, and they are public because `UiSelect` lives in another file
+    and has to draw the same box. The alternative was 60 lines of duplicated
+    chrome and a select that drifts away from a field.
+  - **The switch's thumb is `ink.secondary` when off and `paper` when on.**
+    10 section 4.2 gives the track's colours and not the thumb's. A thumb that
+    is `ink` in both states reads as "on" while the switch is off, so it
+    follows the track: dark knob on the light track, light knob on the dark
+    one.
+  - **The select's popover carries no semantics label.** The trigger has just
+    announced the label, the selected option and `expanded`; a pane repeating
+    the label is a second thing to listen past on the way to the options. It
+    also made two nodes answer to the same label, which no finder can tell
+    apart.
+  - **`Escape` in a search field clears, and a second `Escape` unfocuses.**
+    10 section 4.2 says "clears then unfocuses" without saying whether that is
+    one keystroke or two. Two: a reviewer who has typed a query wants it gone
+    before they want the field gone, and losing both to one keystroke costs a
+    retype. The key is consumed either way.
+  - **An indeterminate checkbox moves to checked, and never back to mixed.**
+    Mixed is a fact about a group, not a state a reviewer can ask for.
+    `onChanged` is therefore `ValueChanged<bool>`, not `ValueChanged<bool?>`.
+  - **`StateLayer` is used outside `Pressable`, in `UiRadio`.** Its own
+    documentation says "used only inside `Pressable`", but `RawRadio` owns the
+    focus node and the gestures for a radio and a second `Pressable` around it
+    would put two stops in the Tab order. Clause 6 still wants the press
+    feedback, so the layer goes in `RawRadio`'s builder.
+  - **`UiSelect`'s option rows are a private `_OptionRow` on `Pressable`,**
+    marked `// TODO(fe/data): replace with UiListRow when it merges`. Height
+    from `density.rowHeight`, as 10 section 4.5 specifies for the row it
+    stands in for.
+  - **The family golden is captured at 1180 by 1180, not the shell's 820.**
+    Seven controls in every state do not fit one window, and a golden that
+    reviews the top of a page is not reviewing the three controls below the
+    fold. The width is the gallery's; only the height moves. Directed by the
+    integrator after the actions slot hit the same wall.
+  - **`UiField` carries six `bool` properties**, of which two are visual
+    (`showLabel`, `obscureText`); the rest are behaviour (`enabled`,
+    `readOnly`, `autofocus`, `autocorrect`) and keep the names the SDK uses.
+    10 section 11 caps the visual ones at two, which this meets.
+  - No cloud command, no deploy, no dependency added, no SDK change, and no
+    file outside the slot's ownership other than the three additive foundation
+    changes listed above.
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 189 passed, up from 111 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, 0 failed |
+  | `check_ui_strings.py` | 0 | 158 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (54 files) | 0 | 11 hooks passed, 6 skipped for want of a matching file |
+
+- Goldens: 4 new under `test/gallery/goldens/navigation-<mode>-<density>.png`,
+  captured at 1180 by 940. All 24 foundation goldens moved exactly once, in
+  `4899bc3`, and hold byte for byte across every commit after it. Zero app
+  screen goldens and zero semantics fixtures moved, which is the check that
+  says the field change reached no screen: none paints a sky yet.
+- Durable learnings:
+  - **The light fields were measured for the first time and were wrong twice
+    over.** Bound to the window's shorter side, `sky.home` on a 390 by 844
+    phone put its half intensity point 7 percent of the way down the window.
+    And `Curves.easeOutQuad` is a spot with a soft edge: a quarter of the
+    centre alpha by 29 percent of the radius. Longer side plus a Gaussian
+    moves the sun field's half intensity radius from 63, 124, 132 and 145 dp
+    to 191, 231, 267 and 325 dp at 390 by 844, 768 by 1024, 1180 by 820 and
+    1440 by 900, and the share of the window carrying any field from 47, 69,
+    67 and 62 percent to 99, 89, 93 and 95 percent. The lesson is narrower
+    than the fix: a geometry rule written as a fraction of a window cannot be
+    reviewed on a 220 dp specimen tile, which is where the wave 0 golden
+    showed it.
+  - **A Gaussian needs more gradient stops than a quadratic.** The engine
+    draws a straight line between stops, so the stop count is a bound on how
+    far the drawn gradient sits from the curve. On the sun field, which has
+    the widest channel span in the table, 16 stops leave 0.57 of one 8 bit
+    level, 24 is the first count under half a level and 32 holds 0.13. The
+    number is computable from the curve and the span, so it does not need an
+    eye.
+  - **A `Semantics(tooltip:)` folds into a `Pressable`'s own node under
+    `MergeSemantics`,** role and all: `SemanticsConfiguration.absorb` takes a
+    child's role when the parent has none. That is what lets a control carry a
+    tooltip without publishing a second node beside the tab, and it is how
+    `UiPillNav` gives an undrawn label to a pointer reviewer before
+    `UiTooltip` exists.
+  - **`TextPainter` in a style resolver is how a vertical control obeys clause
+    7.** An extended rail cannot wrap "Sources", so a fixed 72 dp column
+    either clips it or overflows at 200 percent text. Measuring the widest
+    label at the live text scale and taking the column's width from it is the
+    vertical reading of "heights grow, widths wrap", and it keeps every item
+    the same height, which is what the gliding disc needs.
+  - **A frame that publishes an inset has to measure what it floats.** The
+    action bar's height belongs to the caller, so `UiScaffold` reports its own
+    height through a `RenderProxyBox` and a post frame callback rather than
+    guessing. It settles because the measured column does not depend on the
+    inset, and the one frame of lag is the one `Scaffold` documents for
+    `ScaffoldGeometry`.
+  - **zsh does not word split an unquoted parameter,** so
+    `pre-commit run --files $FILES` runs against nothing and reports "no files
+    to check" with exit 0. That is a gate passing because it checked nothing.
+    Read the file list into an array (`FILES=("${(@f)$(cat list)}")`) and pass
+    `"${FILES[@]}"`.
+  - **`widgets.dart` exports neither `semantics.dart` nor `scheduler.dart` nor
+    most of `rendering.dart`,** so `SemanticsRole`, `SchedulerBinding` and
+    `RenderProxyBox` each need their own import with a `show` clause. It
+    exports one name from `rendering.dart` and two from `foundation.dart`.
+- Failed approaches:
+  - Asserting that a sidebar row grows at 200 percent text. It does not:
+    `type.title` at 34 px fits inside the 56 dp touch row, so the row height
+    is a floor that has not been reached yet. The assertion that means
+    something is that the row is at least as tall as its own text, plus a
+    second at 300 percent where the floor is genuinely passed.
+  - Comparing a top bar's title against an absolute offset to prove it clears
+    a notch. The harness centres the control, so a bar that grows by 44 moves
+    up by 22 and its title moves down by 22. Measure the title against the
+    bar's own top instead.
+  - Scoping the foundation golden test with a hand written set of six page
+    ids. It works, but it is not what `fe/actions` had already done, and two
+    branches solving the same problem differently is a merge conflict rather
+    than a merge. Replaced with that branch's `familyPages` split, copied
+    exactly.
+- Remaining follow-ups, every deviation from 10 section 4.4 and why:
+  - **Arrow keys follow the control's own axis.** 10 section 4.4 says the rail
+    carries "the same semantics and keys" as the pill, which reads as `Left`
+    and `Right`. The pill has those; the rail and the sidebar move with `Up`
+    and `Down` and deliberately leave the cross axis keys alone. A vertical
+    group that swallowed `Right` would trap a keyboard reviewer inside the
+    rail instead of letting them move into the content, and the WAI-ARIA tabs
+    pattern makes the orientation's own pair the required one.
+  - **The rail carries no glass.** 10 gives the sidebar `glass.flat` and names
+    nothing for the rail, so it is a transparent column of discs over the sky.
+    That also leaves the window's four pane budget for the top bar, the action
+    bar and the body.
+  - **The rail widens past 72 dp when a label needs it,** in its extended form
+    only, for the reason in the learnings above. Its collapsed form is always
+    72.
+  - **72 dp is composed as `space.targetMin + space.s6`,** a 48 dp hit box with
+    12 dp of gutter, rather than read from `space.rail`, which is the v1 rail
+    at 80 and still belongs to the screens that have not moved.
+  - **The sidebar's current row carries no 6 percent `ink` fill.** 10 section
+    4.5 gives a selected `UiListRow` one, and there is no token for that value.
+    The row is marked three other ways instead: the 3 dp leading bar, the
+    `fill` glyph and `ink` rather than `ink.secondary`. A later wave that adds
+    the token should add the fill here too.
+  - **The sidebar's destinations scroll** between the header and the footer.
+    10 does not mention it; a 280 dp pane with five destinations at 200 percent
+    text is taller than the window it is meant for, and it overflowed.
+  - **The top bar's glass fill does not fade in.** 09 section 11 rejects glass
+    that animates its opacity, so the fill appears at the threshold.
+  - **The top bar owns the top and side safe areas** and the scaffold removes
+    that padding from everything below it, so the pane reaches the window's
+    edges while its content clears a notch.
+  - **The top bar's `center` slot is centred in the space the title and the
+    actions leave,** not in the window. Centring it in the window lets it sit
+    on top of a long title, and a collection name is not worth covering a page
+    title with.
+  - **The top bar spans the full width above the side navigation** rather than
+    beside it. 10 lists the slots in that order and the brief says the nav
+    sits beside the body; nothing settles which wins, and a title strip that
+    spans the window is the one that keeps the banner full width too.
+  - **`UiScaffold` publishes an inset that includes the action bar,** not only
+    the pill 10 section 4.4 names, because a body padded for the pill alone
+    hides its last row under the action bar.
+  - **Overlays paint over the body and under both the action bar and the
+    navigation,** which are one bottom column. 10 says "beneath the
+    navigation" and says nothing about the action bar. A toast host clears
+    both with the published inset.
+  - **The pill is 64 dp tall**, `space.s2` of padding around a 48 dp disc
+    slot. Four is the least that keeps the focus ring inside the capsule's own
+    clip, and eight leaves the ring a clear 4 dp.
+  - **The disc's glyph cross fades its `fill` form in over the glide.** 09
+    section 8 names only the disc's slide. Swapping the weight at the end
+    pops, and a glyph that turns `ink` the moment the disc leaves it is wrong
+    for the 250 ms the disc is still over it. Colour and opacity may run
+    alongside the one authored move (04 section 5.2).
+  - **`UiTopBar.title` is a `String`, not a `Widget?` slot.** 10 section 11
+    asks for slots as `Widget?`; a title is copy, and the bar sets `type.title`
+    on it the way `UiButton` sets `type.label` on its label.
+  - **Three files 10 section 1.2 does not list.** `nav_destination.dart` holds
+    the one destination model all three navigations take;
+    `nav_disc.dart` and `nav_group.dart` hold the disc the pill and the rail
+    share and the roving focus all three need. The last two are not exported
+    from the family barrel.
+  - **`UiScaffold.of` returns a value rather than throwing** when there is no
+    frame above, the way `UiTheme` falls back, because a component test that
+    pumps one control on its own is the normal case for it.
+  - **Two files were edited outside the slot's stated ownership.**
+    `test/gallery/foundation_golden_test.dart` now pins `pages:
+    foundationPages`, on the integrator's instruction and copied from
+    `fe/actions` cc00dc7, so the 24 foundation goldens hold still as families
+    land. `lib/src/primitives/pressable.dart` and
+    `lib/src/primitives/state_layer.dart` were taken verbatim from
+    `fe/actions` bdb0fbc for the same reason: `ink` at 12 percent over an
+    `ink` disc is invisible. A new test file,
+    `test/foundation/field_geometry_test.dart`, pins the field profile the
+    tuning task landed on.
+  - **All 24 foundation goldens moved, not only the fields page.** The
+    integrator's note expected the fields page alone. The gallery shell paints
+    `sky.home` behind every page, so a field geometry change reaches all of
+    them: the type page alone measured 19.20 percent of pixels differing. They
+    moved once, in `4899bc3`, and no other branch touches them.
+  - **Cross family stand-ins, none of them waited on.** Sidebar destinations
+    are a private `_SidebarRow` on `Pressable` marked `TODO(fe/data)` for
+    `UiListRow`; the pill discs carry their label as `Semantics(tooltip:)`
+    marked `TODO(fe/overlays)` for `UiTooltip`; `UiScaffold.overlays` is
+    marked `TODO(fe/overlays)` for `UiToastHost`; the collection switcher is a
+    `UiSidebar.header` or `UiTopBar.center` slot the shell fills with a
+    `UiSelect` when the inputs family lands.
+  - **The family page is registered in `familyPages`.** The brief asked for
+    the fourth family slot in an ordered list; `familyPages` holds one entry
+    on this branch and the integrator orders actions, inputs, overlays,
+    navigation, data as the four branches merge.
+
+## 2026-09-16: Front-end refactor wave 1, slot C5, the data family
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3C slot C5. Build the
+  data family of `specimen_ui` per `design/10-component-library.md`
+  section 4.5: `UiListRow`, `UiProgress`, `UiSkeleton`, `UiEmptyState`,
+  `UiDataTile`, `UiArcIndicator`, `UiAvatar` and `UiHairline`, with their
+  style objects, behaviour tests, control contract runs, a gallery page and
+  four family goldens, plus the one permitted edit outside the family: the
+  `_LoadingArc` stand-in in `controls/actions/button.dart`.
+- Branch and worktree: `fe/data`, cut from `front-end-refactor` at `9642b8d`,
+  in `.claude/worktrees/fe-data`. Pushed to `origin/fe/data` at `30d836b`. No
+  pull request; the integrator merges the slot.
+- Outcome: complete. Eight controls, 78 new tests, one gallery page, four new
+  goldens, the actions stand-in replaced with the real control and the four
+  actions goldens holding byte for byte.
+- Commits (six, oldest first):
+  - `60aee81` `chore: keep the data family's tests out of the collection data ignore`
+  - `49c5afc` `feat(data): the eight controls of 10 section 4.5`
+  - `8439c92` `test(data): behaviour tests and the control contract for the family`
+  - `08f550b` `feat(data): the gallery page and its four goldens`
+  - `822d045` `actions: take UiProgress.ring for the loading state`
+  - `30d836b` `docs(data): the changelog entry for the family`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 271 passed, up from 189 at the end of slot C1 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 165 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (26 files) | 0 | 11 hooks passed, 6 had no files |
+
+- Goldens: four added, `data-{light,dark}-{touch,pointer}.png` at 1180 by
+  1900. Zero other goldens moved, including the four actions goldens the ring
+  swap could have moved and the twenty four foundation goldens. Zero app
+  screen goldens and zero semantics fixtures were regenerated, which is the
+  wave policy.
+- One change outside the family, listed first so the integrator can reconcile
+  it: **`.gitignore` gained a second negation** (`60aee81`). Wave 0 found that
+  the blanket `data/` rule for museum collection data swallowed
+  `lib/src/controls/data/` and added one negation for it. The same rule
+  swallows `test/controls/data/`, so no test file for this family could be
+  added at all. Both sides of the family are now named. No foundation or
+  primitive file changed.
+- Durable learnings:
+  - **`TweenAnimationBuilder` reads `tween.begin` on the first build only**,
+    and `tween.end` on every build after it. Passing `Tween(begin: value, end:
+    value)` every time is therefore exactly "draw the first value where it is,
+    and animate to every later one", which is what 04 section 5.5 asks of a
+    progress indicator opened on a half finished run. No controller of one's
+    own is needed for it, and none should be written.
+  - **A monotonic control needs a documented escape hatch, and its own tests
+    are the first caller to need it.** `UiProgress` holds a reported value
+    below the highest one seen, per 04 section 5.5. A loop in its test that
+    pumped 0.2 after 1.0 got 1.0, which is the rule working. The way out is
+    the one the class documents: a genuinely new attempt is a new indicator
+    with its own `Key`, exactly as a retry gets its own row.
+  - **`AnimatedSwitcher` calls `transitionBuilder` once per value, before
+    that value is known to be leaving.** Comparing the child's key with the
+    current value inside the builder therefore always reports "arriving".
+    The direction has to be read from `animation.status` inside the builder,
+    where a leaving value is running in reverse. That is what lets both
+    numerals of a tick travel the same way rather than passing each other.
+  - **`DecoratedBox` sizes to its child, so a track drawn that way is as wide
+    as its fill.** The progress bar's track was silently the width of the
+    filled part until a `Stack(fit: StackFit.expand)` made both the track and
+    the `FractionallySizedBox` span the bar. The symptom is invisible at 100
+    percent and at every width a test happens to measure from the fill.
+  - **A `FractionallySizedBox` reports its parent's width under tight
+    constraints**, because it sizes itself with `constraints.constrain(child
+    size)`. Measuring the factor means measuring the box's child, not the
+    box. Two tests measured the wrong thing and passed for the wrong reason
+    before this surfaced.
+  - **`find.semantics.byPredicate` replaces the deprecated
+    `tester.binding.pipelineOwner.semanticsOwner`** for counting or listing
+    semantics nodes, and `flutter analyze --fatal-infos` is what catches the
+    deprecation.
+  - **`Semantics(container: true)` around a column of `Text` merges them into
+    one node** whose label is the children joined with a newline. So
+    `find.bySemanticsLabel('No matches')` finds nothing for an empty state
+    whose body follows the title; the node's label is both strings. Worth
+    knowing before writing a finder for any composed block.
+  - **`CheckedState` is `none`, `isTrue`, `isFalse`, `mixed`**, and it lives
+    in `dart:ui`, not in `package:flutter/semantics.dart`. A test that reads a
+    checkbox's state imports it from there.
+  - **A slow tap is a tap.** `tester.longPress` on a row with no long press
+    handler fires `onPressed`, because `TapGestureRecognizer` has no upper
+    bound on how long a press may last. That is the right behaviour for a row
+    in a list with no selection, and it is worth asserting rather than
+    asserting the opposite.
+- Failed approaches:
+  - Reading the indeterminate ring's angle and opacity out of its painter's
+    `toString`. A private `CustomPainter` prints its type and nothing else.
+    The rule moved into `UiProgressPhase`, a small public value type with one
+    factory, and the test asserts the rule directly. The reduced-motion
+    substitution is now a named thing rather than a branch inside a builder,
+    which is the better shape anyway.
+  - Drawing the arc marker's triangle outside the arc, pointing inward. It
+    reaches past the box the gauge was given and overlaps whatever sits under
+    it in a column. The tip sits on the arc and the base falls away inside it
+    instead.
+- Every deviation from 10 section 4.5, with why:
+  - **`UiSkeleton` blocks are the state layer, not `paper` at 60 percent.**
+    10 section 4.5 says `paper` at 0.6. A loading list sits on a `paper` list
+    body (09 section 3.3), where `paper` on `paper` is nothing at all; over
+    `ground` in light it measures about 1.02 to 1. The first data golden drew
+    four placeholders nobody could see. The block is now
+    `ui.color.stateLayer(ui.color.hoverOpacity)`, which is the same "move the
+    surface toward its opposite" correction wave 0 made to the state layer
+    itself, for the same reason, and it is visible on `paper`, on `ground`
+    and under a field in both modes. 10 needs the amendment.
+  - **`UiArcIndicator`'s marker carries a 1 dp `ink` casing.** 09 section 3.4
+    gives the accent this job and the accent measures near 1 to 1 on `paper`.
+    A marker that is the only thing saying where the value is has to be
+    visible on the surfaces it is drawn over. 09 section 3.6 already casings
+    a region stroke over a photograph for the same reason; this is that rule
+    applied to the one other graphic that carries a value.
+  - **A null value renders rather than asserting.** 10 section 4.5 says the
+    gauge "asserts on a missing value and renders the unmeasured glyph
+    instead of a marker", which cannot both happen: an assertion in debug
+    stops the frame. It renders. Unmeasured is a first class state in this
+    product, not a programming error.
+  - **The word "Unmeasured" is set in `type.label`, not in `unit`.** 10 puts
+    the minimum and maximum labels in `unit`; the word is not a unit, and
+    `unit` is the one upper case role in the product (09 section 4.2).
+  - **The minimum and maximum labels are dropped when there is no value.** A
+    scale beside no value is a scale for nothing.
+  - **`UiListRow`'s height is `density.rowHeight` floored at the hit box.**
+    09 section 6 gives the pointer row 44, and 10 section 2 clause 2 sets a
+    48 dp hit box in both densities. A full width row has nowhere to put the
+    4 dp of transparent slop above and below without overlapping the rows it
+    tiles against, so the floor wins in `pointer` and the touch row is
+    unchanged at 56.
+  - **A row has no corners of its own.** 10 names no radius for it. It tiles
+    against its neighbours and the pane around it owns the shape, so
+    `radius.none` is the token, which is also what makes the 3 dp leading bar
+    a rectangle rather than a shape that has to follow a curve.
+  - **The leading edge invariant is about the slot's box, not about a null
+    slot.** "present, hidden or disabled" are three states of a leading
+    child; a row with no leading child has no slot and starts its text at the
+    padding. The slot is a fixed 40 dp square whenever there is one, so a
+    24 glyph, a 40 thumbnail, an invisible child and a disabled control all
+    leave the title's edge in one place. The gallery shows the invisible case
+    beside the other two, because a list that mixes a slot with no slot is
+    the ragged thing the invariant exists to prevent.
+  - **`UiProgress` enforces monotonicity and the "already complete is drawn
+    already complete" rule.** 04 section 5.5 states both as product rules and
+    names an application call site that broke the first. The control is the
+    one place they can be written once. The cost is the `Key` a new attempt
+    needs, which is documented on the class.
+  - **An indeterminate indicator draws no track.** 10 gives `UiProgress.ring`
+    a `hairline` track. A track is a scale, and an indeterminate indicator
+    has none to draw one against. This is also the reason slot C1 gave for
+    its stand-in drawing none, so the swap keeps that behaviour rather than
+    adding a track to a button.
+  - **`UiDataTile`'s value is a string and is allowed to wrap.** The tile does
+    not decide how a measurement is written, and "Not measured" at
+    `display.large` is wider than one tile line. Clipping it leaves a tile
+    reading "Not", which is worse than one that is two lines tall
+    (02 section 4.14).
+  - **`UiDataTile` publishes one node and merges its child's.** 10 asks for
+    one node reading label, value and unit as a sentence. A `child` that
+    carries a value of its own therefore states it in the tile's
+    `semanticsLabel`; the gallery's unmeasured tile does exactly that.
+  - **The data gallery golden is 1180 by 1900.** The shared window is 1180 by
+    820 and eight controls do not fit it. The C1 closeout recorded the cost
+    of pretending otherwise and named a taller window as the fix; this golden
+    takes it for itself, so no other family's files move.
+  - **`UiEmptyState.action` is typed `UiButton?`, not `Widget?`.** 10 section
+    11 asks for slots as `Widget?`; 10 section 4.5 says "at most one
+    `UiButton`". A type states the rule better than a comment does, and this
+    is the one slot in the family with a rule that narrow.
+- Follow-ups:
+  - 10 section 4.5 needs the `UiSkeleton` fill amendment, and 09 section 3.4
+    a sentence about the marker casing. Both are recorded above rather than
+    edited into the documents here, because a design decision is proposed in
+    the pull request that carries the golden diff (10 section 10) and this
+    slot has no pull request of its own.
+  - `test/gallery/failures/` is still not in `apps/specimen_digitization/.gitignore`.
+    The C1 closeout raised it as a one line change for the integrator to make
+    once for all five families; it is still outstanding. No failures directory
+    was produced or committed by this slot.
+  - `UiListRow` is what `QueueRow`, `SourceObjectRow`, `UploadItem` and the
+    `UiPopoverMenu` items re-base onto (10 sections 4.3 and 5). The menu case
+    is the reason the row has an `sm` size and nothing else uses it yet.
+  - `UiArcIndicator` and `UiDataTile` are what `RiskMeter` re-bases onto. The
+    gallery's unmeasured tile is the shape that pattern takes.
+  - The `no_material_components` backlog is untouched by this slot: it adds
+    controls to the package and changes no application call site.
+
+## 2026-09-16: Front-end refactor wave 1, integration polish, `specimen_ui` 0.2.0
+
+- Task: the integration-polish slot run after all five control families
+  merged. Swap the six cross-family stand-ins for the real controls, fix the
+  package test harness, reconcile `design/10-component-library.md` section 4
+  with what shipped, and cut the package's 0.2.0.
+- Branch and worktree: `fe/polish` at `.claude/worktrees/fe-polish`, cut from
+  `front-end-refactor` at `d76c779`. Pushed to `origin/fe/polish` at
+  `5d44c35`. No pull request; the integrator merges the slot.
+- Outcome: complete. `grep -rn 'TODO(fe/' lib` returned six when the slot
+  opened and returns nothing now, with a gate to keep it that way. The
+  harness publishes its tokens above the navigator and a proof test pins it.
+  10 sections 1.2, 2, 4, 6, 8 and 9 and 09 section 3.4 are amended. The
+  package is at 0.2.0.
+- Commits (ten, oldest first):
+  - `24ba64d` `feat(inputs): the select's options become UiListRow`
+  - `d73eb23` `feat(navigation): the sidebar's destinations become UiListRow`
+  - `07b32c0` `feat(navigation, actions): the real tooltip on every wordless control`
+  - `c27894e` `feat(overlays): the tab strip becomes UiSegmented at lg`
+  - `09c8729` `feat(navigation): a scaffold installs a toast host by default`
+  - `03f8b31` `test(foundation): a gate against a stand-in outliving its wave`
+  - `6e5556c` `test(harness): publish the tokens above the navigator, not inside home`
+  - `81151d9` `docs(design): reconcile 10 with what the five families shipped`
+  - `7f325db` `release: specimen_ui 0.2.0`
+  - `5d44c35` `test(harness): name the route future the proof test leaves open`
+### 2026-09-16 - Front-end refactor slot E6 (assets): the mark, the launcher icons, the splash, the web shell and `UiMark`
+
+- Task and slot: E6 of `docs/execution/FRONT_END_REFACTOR.md` section 3E, the
+  asset half. The `Symbols.` to `UiIcons` sweep, the other half of E6, is
+  untouched and still owed.
+- Branch and worktree: `fe/brand-assets` in `.claude/worktrees/fe-brand-assets`,
+  cut from `front-end-refactor` at `d76c779`. Pushed to `origin/fe/brand-assets`
+  at `0291f4f`. No pull request; the integrator merges the slot.
+- Outcome: complete. Seven commits, 109 files, 8 new package tests and 2 new
+  goldens, two dev dependencies. Nothing under `apps/specimen_digitization/lib/`
+  changed, and the app suite is unchanged at 1062 passed and 7 skipped.
+- Commits (seven, oldest first):
+  - `004e597` `feat(brand): the pin as a vector source and one reproducible generator`
+  - `c86ecf6` `feat(brand): launcher icons on Android, iOS and web`
+  - `df1273c` `feat(brand): the splash on Android and iOS`
+  - `1049b81` `feat(brand): the web shell takes the mark and the ground`
+  - `5c57849` `feat(brand): UiMark, the mark as a widget`
+  - `69aa8d7` `docs(brand): the measured values and how to regenerate`
+  - `0291f4f` `chore(brand): the Podfile.lock the iOS build resolves to`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | one lockfile line moved, the path dependency's version; no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 519 passed, up from 505 at the end of wave 1 |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 0 |
+  | `check_ui_strings.py` | 0 | 191 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (40 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens: twelve moved, none added, none deleted. The four
+  `navigation-{light,dark}-{touch,pointer}.png` by 1.4 to 1.6 percent of
+  pixels, and the eight `overlays-*` by 1.0 to 1.9 percent. Both isolated
+  diffs were read before regenerating: the navigation diff is the three
+  sidebar destination rows and nothing else on the page, and the overlays
+  diff is the tab strip and the one line of pane text under it. The twenty
+  four foundation goldens, the four actions goldens, the four inputs goldens
+  and the four data goldens hold byte for byte. Zero application screen
+  goldens and zero semantics fixtures were touched, which is the wave policy.
+- Files changed outside the package, all three deliberate: `design/09` and
+  `design/10`, which this slot owns, and one line of
+  `apps/specimen_digitization/pubspec.lock`, the version the app records for
+  the path dependency, without which `--enforce-lockfile` fails on the
+  version bump the brief asked for. Nothing under the application's `lib/`.
+
+### The six swaps
+
+| Stand-in | Now | Goldens |
+|---|---|---|
+| `_OptionRow` in `inputs/select.dart` | `UiListRow` at `sm`, selection-free mode | none moved |
+| `_SidebarRow` in `navigation/sidebar.dart` | `UiListRow` in a new `tab` mode | four navigation |
+| `Semantics(tooltip:)` on `navigation/nav_disc.dart` | `UiTooltip` around it, both kept | none moved |
+| `Semantics(tooltip:)` on `actions/icon_button.dart` | `UiTooltip`, `UiTooltip.reason` when disabled | none moved |
+| `_CapsuleStrip` in `overlays/tabs.dart` | `UiSegmented` at `lg` | eight overlays |
+| `UiScaffold.overlays` marked for a toast host | installs a `UiToastHost` by default | none moved |
+
+- Durable learnings:
+  - **`MergeSemantics` goes above `UiTooltip`, never below it.** Wrapping the
+    control in `UiTooltip` and putting `MergeSemantics(Semantics(tooltip:))`
+    inside it makes forty two navigation tests fail at once with
+    `'node.parent?._dirty != true': is not true` from
+    `SemanticsOwner.sendSemanticsUpdate`. A merged node whose subtree sits
+    inside an `OverlayPortal` is what trips it. The other order costs nothing
+    and works.
+  - **`Shortcuts` publishes a semantics node by default.** It builds a
+    `Focus` with `includeSemantics` defaulting to true, so a control that
+    wraps its arrow keys in one publishes an empty `focusable` node between
+    itself and its children. Harmless until the parent is a
+    `SemanticsRole.tabBar`, whose every child node has to be a tab: the SDK
+    then fails the whole frame with "Children of TabBar must have the tab
+    role" rather than degrading. `FocusTraversalGroup` already passes
+    `includeSemantics: false`; `Shortcuts` has to be told.
+  - **A disabled `Pressable` reports no hover.** `FocusableActionDetector`
+    gates `onShowHoverHighlight` on `widget.enabled`, so
+    `Pressable.onDisabledReason` fires on a press and a long press and never
+    on a pointer resting on the control. The reason still reaches a reviewer
+    through the semantics hint and through either gesture, but a desktop
+    reviewer who only hovers a forbidden button sees nothing. Recorded as a
+    follow-up rather than fixed, because the brief pins the carrier as the
+    overlays slot built it.
+  - **A layer widget's `Stack` wants `StackFit.passthrough`, not the default
+    loose fit.** `UiToastHost` is "a page, with toasts over it", and a loose
+    stack hands a tight caller's child loose constraints and aligns it top
+    start, which silently shrinks a page that shrink wraps. `GlassSurface`
+    already had this right; the toast host did not, and nothing caught it
+    because its only caller until now passed a `SizedBox.expand`.
+  - **A harness defect reads as a token defect.** `uiHarness` published
+    `UiTheme` inside `home`, below the navigator, so every modal in a package
+    test fell back to `UiTheme._fallback(Theme.of(context).brightness)`, which
+    in a `WidgetsApp` is always light. The overlays slot saw a light pane in a
+    dark golden and correctly diagnosed the harness, but had to work around it
+    because three sibling slots were live. Moving it costs nothing once the
+    siblings have merged, and no golden moved: the hand-lifted theme and the
+    harness one resolve to the same tokens.
+  - **`MediaQuery` has to move with `Density` and `UiTheme`.** `Density.of`
+    and `MotionTokens.of` both read it, so lifting the theme above the app and
+    leaving the media query in `home` would give a route the right tokens at
+    the wrong density. `Directionality` is the opposite case and stays inside
+    `home`: `WidgetsApp` builds a `Localizations` that publishes its own from
+    the locale, so one lifted above the app is shadowed for everything the app
+    builds.
+  - **`dart format` on a file is a merge conflict waiting to happen in this
+    tree.** Running it on `list_row.dart` reflowed eighty lines of a method
+    this slot never touched. The C4 closeout records the same hazard from the
+    other side. Format only the lines you wrote, by hand.
+  - **`flutter analyze` has to be rerun after the last file is added.** Two
+    `unawaited_futures` infos in a test file written after the previous
+    analyze run survived to the gate stage, where `--fatal-infos` caught them.
+    Cheap to fix and cheaper to avoid: the gate order in section 7 of the
+    build plan exists for this.
+- Failed approaches:
+  - Wrapping the nav disc as `UiTooltip(child: MergeSemantics(...))`, per the
+    learning above.
+  - Asserting the icon button's disabled reason by hovering it. The reason is
+    reported on a press and a long press only.
+  - `explicitChildNodes: true` on the tab bar without silencing the segmented
+    control's `Shortcuts`. The intermediate node is what the SDK rejects, and
+    dropping `explicitChildNodes` would have hidden the tabs rather than fixed
+    the tree.
+- Specification amendments, and the closeout each came from:
+
+  | Document | Amendment | From |
+  |---|---|---|
+  | 10 status line, 1.2 | Built at 0.2.0; the layout lists `lib/testing.dart`, `lib/src/testing/`, the reduced motion probe, the three navigation files and the new tests | this slot |
+  | 10 section 2 preamble | The contract is scoped to interactive controls, and nine of thirty are not | C1 (`UiBadge`, `UiKeyCap`), C5 by inspection |
+  | 10 section 2 preamble | The harness publishes its tokens above the navigator | C3, this slot |
+  | 10 section 2 clause 3 | Arrow keys follow the control's own axis | C4 |
+  | 10 section 2 clause 3 | `ControlActivation`, and why a text editor is the mirror case | C2 |
+  | 10 section 2 clause 5 | Seven `SemanticsRole` values throw in this SDK; `tabBar` requires every child to be a tab | C3, C4, this slot |
+  | 10 section 4.1 `UiButton` | Loading refuses activation and keeps its enabled paint; "keeps width" is the leading slot's; the ring draws no track; `overlay` is a `Color`; `statesController` | C1, C5 |
+  | 10 section 4.1 `UiIconButton` | The tooltip is a real `UiTooltip` and a disabled button draws its reason | this slot |
+  | 10 section 4.1 `UiCapsuleToggle` | Single selection clears on a second tap | C1 |
+  | 10 section 4.1 `UiChip` | The optional status triple, and the stacked capsule for `input` | C1 |
+  | 10 section 4.1 `UiSegmented` | The track is `paper` with a `hairline` stroke; the thumb inset arithmetic; the range asserted in `build`; `includeSemantics: false` | C1, this slot |
+  | 10 section 4.1 `UiBadge`, `UiKeyCap` | Not interactive, so no contract run | C1 |
+  | 10 section 4.2 `UiField` | `UiInputStyle`; one style for four controls; `UiFieldFrame` and `UiFieldBox` public; the clear control's own box; six bools, two visual | C2 |
+  | 10 section 4.2 `UiSearchField` | `Escape` clears, a second `Escape` unfocuses | C2 |
+  | 10 section 4.2 `UiSelect` | Option rows are `UiListRow` at `sm`; the list height resolves from the floored row; the popover carries no label | C2, this slot |
+  | 10 section 4.2 `UiSwitch` | The thumb follows the track, and the filled part carries its own layer | C2 |
+  | 10 section 4.2 `UiCheckbox` | Indeterminate moves to checked and never back | C2 |
+  | 10 section 4.2 `UiRadio` | `UiRadioGroup`; `StateLayer` inside `RawRadio`; state only what the SDK does not | C2 |
+  | 10 section 4.3 `UiPopoverMenu` | Items are the menu's own row, not `UiListRow`; `semanticsLabel` optional | C3 |
+  | 10 section 4.3 `UiTooltip` | The property not the role; the pane carries it; `MergeSemantics` above, never below | C3, C4, this slot |
+  | 10 section 4.3 `UiToast` | An action toast never expires; the scaffold installs the host | C3, this slot |
+  | 10 section 4.3 `UiBanner` | Seven tones; the `info` hairline; two lines; the `space.s6` strip | C3 |
+  | 10 section 4.3 `UiTabs` | Shipped as a `UiSegmented` at `lg`: no glyph, 2 to 5 tabs, manual activation, the `strip` escape hatch; `UiTabView` at `medium` | C3, this slot |
+  | 10 section 4.3 `UiSheet`, `UiDialog` | `.show` rather than `showUiSheet`; `showAdaptive`; `UiModalActions`; the drag flick | C3 |
+  | 10 section 4.4 `UiPillNav` | 64 dp; the glyph cross fade; the label now a real tooltip | C4, this slot |
+  | 10 section 4.4 `UiRail` | No glass; it widens for a label; 72 as `targetMin + s6` | C4 |
+  | 10 section 4.4 `UiSidebar` | Destinations are `UiListRow` in `tab` mode, current marked four ways; the destinations scroll | C4, this slot |
+  | 10 section 4.4 `UiTopBar` | Full width above the side navigation; `title` a `String`; no fade; safe areas; the `center` slot | C4 |
+  | 10 section 4.4 `UiScaffold` | The default toast host; the inset includes the action bar; overlays under the chrome; `of` returns a value; three unlisted files | C4, this slot |
+  | 10 section 4.5 `UiListRow` | Floored at 48 in pointer; `radius.none`; the fixed leading slot; the third `tab` mode | C5, this slot |
+  | 10 section 4.5 `UiProgress` | The role throws; no track when indeterminate; monotonicity and the first value | C5 |
+  | 10 section 4.5 `UiSkeleton` | The block is the state layer, not `paper` at 0.6 | C5 |
+  | 10 section 4.5 `UiEmptyState` | The action slot is typed `UiButton?` | C5 |
+  | 10 section 4.5 `UiDataTile` | The value is a `String` and may wrap; it merges its child's node | C5 |
+  | 10 section 4.5 `UiArcIndicator` | It renders rather than asserting; the 1 dp `ink` casing; "Unmeasured" in `type.label`; the labels dropped | C5 |
+  | 10 section 6 | Family golden windows at the height each page needs, the two modal windows, the three page lists, `TickerMode` and the focus highlight | C1, C2, C3, C4, C5 |
+  | 10 section 8 | The `no_stand_ins` gate | this slot |
+  | 10 section 9 | Clause 3 scoped and given `ControlActivation`; new clause 10, no stand-in left behind | C1, C2, this slot |
+  | 09 section 3.4 | The accent takes a 1 dp `ink` casing where it is the only thing carrying a value | C5 |
+
+- Where the specification was judged right and the code was left alone:
+  - **`UiPopoverMenu`'s items are not `UiListRow`, and 10 section 4.3 says
+    they should be.** The shortcut column fits the row's trailing slot, but
+    the destructive tint does not: `UiListRow` has no tone, and giving it one
+    for a single caller is the configuration property 5 of section 0 trades
+    away. The specification is right about the direction and the code is right
+    about today, so section 4.3 records what shipped and names the condition
+    under which it changes. The select's option list did move onto the row, so
+    the two lists differ, which is the reason to close this rather than let it
+    settle.
+  - **`UiSelectStyle.optionLabel` and `optionFill` and the four row members of
+    `UiSidebarStyle` are deprecated rather than removed.** 10 section 10 asks
+    for a `@Deprecated` shim for one wave with the replacement named, and that
+    is what they carry, even though nothing outside the package has ever
+    constructed either style.
+- Follow-ups:
+  - **A disabled control reports no reason on hover.** See the learning above.
+    Making `Pressable` carry its own `MouseRegion` while disabled is a
+    primitive change, and the brief for this slot pins the carrier as built.
+    Worth doing before the desktop review in wave 4.
+  - **`UiPopoverMenu`'s items, per the note above.** A `tone` on `UiListRow`
+    would let the menu and the select share one row.
+  - **`no_literal_geometry` is still not introduced.** 10 section 8 says it
+    arrives "in the polish wave" with a shrink-only backlog. It targets
+    application widgets and screens, which this slot does not own and which
+    waves 2 and 3 are still rewriting, so it belongs to F5 in
+    `docs/execution/FRONT_END_REFACTOR.md` rather than here.
+  - **`apps/specimen_digitization/.gitignore` still has no
+    `test/gallery/failures/` entry.** The C1 and C5 closeouts both raised it.
+    This slot added the entry to the package's own `.gitignore`, which is the
+    file it owns and the directory's actual parent, so the follow-up is closed
+    for the package; the application's file is unchanged.
+  - **`apps/specimen_digitization/CLAUDE.md` still does not exist**, although
+    the agent brief template names it as required reading. Raised by wave 0
+    and still open.
+  - The screen slots of waves 2 and 3 are what spend the
+    `no_material_components`, `no_material_imports` and `icons_unique`
+    backlogs. This slot changes no application call site and leaves all three
+    where wave 1 left them.
+  | `flutter pub get --enforce-lockfile` (app) | 0 | the lockfile carries both new dev dependencies |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 513 passed, up from 505 at the end of wave 1. 505 plus the 8 added here is 513, which is the cross check that nothing was lost |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1062 passed, 7 skipped, unchanged from wave 1 |
+  | `flutter build web --release` | 0 | `build/web` carries the favicon, the five icons and the manifest |
+  | `scripts/ci/build_mobile.sh android` | 0 | `assembleDebug` in 51.4s with `JAVA_HOME` on the Android Studio JBR 17.0.11. The APK carries `res/mipmap-anydpi-v26/ic_launcher.xml`, five `ic_launcher_foreground.png`, five `ic_launcher.png`, and twenty splash drawables across both modes and both Android generations |
+  | `check_ui_strings.py` | 0 | 192 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (108 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+  | `scripts/ci/build_mobile.sh ios` (optional) | 0 | Xcode 26.6, `pod install` then an `ios-release` device build without codesigning, 73.3s. `assetutil` on the built `Assets.car` lists `AppIcon`, `LaunchImage` and `LaunchBackground` |
+
+- The mark's final geometry, stated once at 24 dp and scaled everywhere else.
+  The disc fills the box. The pin is 16 dp tall, a 2 dp stroke with a 5 dp
+  head, ending in a round cap. Optical centring is the **whole pin** nudged up
+  1 dp, so its box runs from y 3 to y 19 in the 24 dp square: 9 dp above the
+  geometric centre and 7 dp below it. The head's centre is at y 5.5 and the
+  shaft's end at y 18, the cap carrying it to 19. Three files draw this and
+  have to move together: `assets/brand/pin.svg`, `tool/brand/render_mark.py`
+  and `packages/specimen_ui/lib/src/foundation/mark.dart`.
+- Files generated, per platform:
+  - **Android, 44.** Five `mipmap-*/ic_launcher.png` (48 to 192 px),
+    `mipmap-anydpi-v26/ic_launcher.xml`, five `drawable-*/ic_launcher_foreground.png`
+    (108 to 432 px), `values/colors.xml` carrying the accent background; five
+    `splash.png` and five `android12splash.png` with their night counterparts,
+    four `background.png`, four `launch_background.xml`, and `values`,
+    `values-night`, `values-v31` and `values-night-v31` styles.
+  - **iOS, 34.** Twenty one `AppIcon.appiconset` PNGs with their `Contents.json`
+    (the package adds the legacy 50, 57 and 72 point entries), the six
+    `LaunchImage` and `LaunchImageDark` renders, the two `LaunchBackground`
+    colour swatches with their `Contents.json`, `LaunchScreen.storyboard` and
+    `Info.plist`.
+  - **Web, 8.** `favicon.png` at 64, `Icon-192`, `Icon-512`, both
+    `Icon-maskable-*`, `apple-touch-icon-180.png`, `index.html`, `manifest.json`.
+  - **Sources, 9 plus 1.** `assets/brand/` holds `pin.svg`, seven PNGs and a
+    README; `tool/brand/render_mark.py` renders all of them.
+  - **Package, 6.** `mark.dart`, one export line in `specimen_ui.dart`, two test
+    files, two goldens.
+- Dependencies and the lockfile: `flutter_launcher_icons: 0.14.4` and
+  `flutter_native_splash: 2.4.7` as dev dependencies, both pinned exactly
+  because they write platform files. `pubspec.lock` gains those two plus
+  `archive`, `checked_yaml`, `cli_util`, `image`, `json_annotation`, `path`,
+  `posix`, `universal_io` and `xml` as transitives.
+- Decisions made rather than asked, each forced by a measurement:
+  - **`flutter_native_splash` is 2.4.7, not the 2.4.8 that 09 section 9 names.**
+    2.4.8 depends on `meta` ^1.18.0 and every `flutter_test` from Flutter 3.38.5
+    depends on `meta` 1.17.0, so it does not resolve; pub names 2.4.7 as the
+    last one that does. 09 section 9 is amended.
+  - **"Optically centred" is the whole pin, not the head.** 09 reads "the head
+    sits 1 dp above geometric centre", which cannot be literal: a 5 dp head
+    whose centre is 1 dp above the middle cannot also carry a 16 dp pin below
+    it. The reading that satisfies every other number is the pin's box centred
+    1 dp high.
+  - **The pin is 44 percent of the icon a mask shows, not of the source
+    canvas.** An Android adaptive foreground's canvas shows its central 66
+    percent and a web maskable icon's its central 80 percent, so the pin is 44
+    percent of those frames, 29.0 and 35.2 percent of their canvases. Drawn
+    against the canvas instead, the same pin reads at 67 and 55 percent of the
+    masked icon and the three platforms disagree with each other.
+  - **A seventh raster, `splash-mark-android12-1024.png`.** The brief named six.
+    Android 12 and later clip the splash icon to a circle and mask a third of
+    the foreground away, which `flutter_native_splash`'s own README states as
+    art fitting inside a circle two thirds of the source's width. The mark's
+    head reaches three quarters of the disc's radius, so the full bleed source
+    comes back with a flattened head and a cut tip. Rendered and masked both
+    ways before choosing.
+  - **`adaptive_icon_foreground_inset: 0`.** The package's default is 16, which
+    would have inset an already safe zone sized foreground a second time and
+    landed the pin at 30 percent of the visible icon.
+  - **`orientation` in `web/manifest.json` moved from `portrait-primary` to
+    `any`.** Beyond the brief, but the file was being rewritten and a portrait
+    lock contradicts 00 and 05 and both native platforms, neither of which
+    locks orientation.
+  - **`web/index.html` paints ground dark under `prefers-color-scheme: dark`
+    and carries a second `theme-color` for it.** The brief named the light
+    value. The web splash is this page, and the native splash has a
+    `color_dark`; a dark mode reviewer should not get the light flash the
+    change exists to remove.
+- Durable learnings:
+  - **`flutter_launcher_icons` rewrites every line containing `ASSETCATALOG`
+    inside the `XCBuildConfiguration` section, not the one it means.** This
+    project already had `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` in all
+    three configurations, so the only lines the package touched were two
+    `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` booleans,
+    which it set to `AppIcon`. `project.pbxproj` is left at `HEAD`. Check that
+    file after every run of this package.
+  - **`flutter_launcher_icons` resizes one source into all four web files**, so
+    the maskable icons come out byte identical to the plain ones and the
+    favicon comes out 16 px square. Both are wrong for what they are: a
+    maskable icon must be full bleed in the brand colour, and the favicon must
+    be the disc rather than the icon. The renderer therefore runs a second time
+    after the package, which is why `assets/brand/README.md` documents a four
+    command regeneration order.
+  - **Both platform generators treat their source as the 4x asset**
+    (`width * pixelDensity ~/ 4` in `android.dart` and `ios.dart`), so a 1024 px
+    splash source draws at 256 dp on the legacy Android splash and 256 pt on
+    iOS. That happens to agree with Android 12's own 240 dp icon, which is the
+    check that the number is right rather than an accident.
+  - **An n = 5 superellipse inscribed in a 1024 square is Apple's icon mask to
+    within a pixel.** Measured at 45 degrees, the curve passes 446 px from the
+    centre and Apple's mask 445 px, so the `ground` filling the icon's corners
+    is removed by the platform mask instead of surviving as a sliver. That is
+    what lets one opaque file serve iOS and the unmasked legacy Android
+    launcher.
+  - **`RenderRepaintBoundary.toImage()` never completes when awaited under the
+    test's own clock.** The rasteriser runs on a real frame, so the capture has
+    to sit inside `tester.runAsync`, which is the route `matchesGoldenFile`
+    takes internally. Awaited directly, the test hangs silently rather than
+    failing: it sat at `+3` for three minutes before it was killed.
+  - **`SemanticsNode` is not exported by `widgets.dart`.** Read the data off
+    `tester.getSemantics(...).getSemanticsData()` rather than naming the type,
+    which is what the rest of this package already does.
+  - **A golden proves the picture did not move; it cannot state the rule.** The
+    mark's geometry cases sample the rendered pixels and assert 16 dp of pin, 9
+    dp above the centre and 7 below, a 5 dp head and a 2 dp shaft. Without the
+    optical rise the first of those reads 8 dp, which a golden would have shown
+    as a diff nobody could name.
+  - **The monochrome mark measures 1.08:1 against either ground.** `paper` on
+    `ground` is almost nothing in both modes, which is by design in 09's
+    surface ramp but means `UiMark.mono` needs a surface of its own. On
+    `ground` only its `ink` pin is visible. The accent variant measures 16.80:1
+    inside itself and 1.03:1 against `ground` light, so it too is a pin on a
+    field rather than a disc with an edge.
+  - **`flutter_native_splash` reaches the iOS release bundle even though
+    Flutter flags it `dev_dependency: true`.**
+    `flutter_native_splash.framework` is in `Runner.app/Frameworks` after an
+    `ios-release` build. Nothing in the application calls it. Getting it out
+    means Podfile surgery or a newer Flutter, neither of which belonged in this
+    slot.
+- Failed approaches:
+  - Reading 09's "the head sits 1 dp above geometric centre" literally. Placing
+    the head's centre there leaves the tip 12.5 dp below the centre on a disc of
+    radius 12, so the pin leaves its own disc. The sentence is about the pin.
+  - Giving the Android adaptive foreground a pin at 66 percent of the canvas,
+    which is the other reading of "the pin occupies the central 66 percent". A
+    launcher mask shows roughly that same 66 percent, so the pin would have
+    filled the visible icon edge to edge while iOS showed 44 percent.
+  - Using the full bleed splash source for `android_12`. Masked at two thirds
+    it returns a flattened head and a cut tip; the rendered comparison of both
+    sources under the mask is what settled it.
+- Follow-ups:
+  - The `Symbols.` to `UiIcons` sweep and the `material_symbols_icons` removal,
+    the rest of E6, are untouched. The `icons_unique` backlog is unchanged by
+    this slot.
+  - `apps/specimen_digitization/.gitignore` still does not carry
+    `test/gallery/failures/`, raised first by slot C1 and again by C5. The root
+    `.gitignore` gained `test/foundation/failures/` here, beside the existing
+    gallery line, because this slot adds the first goldens outside
+    `test/gallery/`.
+  - `flutter_native_splash.framework` in the iOS release bundle, above.
+  - `ios/Runner/Info.plist` is committed with one extra level of indentation
+    throughout, added by `flutter_native_splash` alongside `UIStatusBarHidden`.
+    The file is valid and reverting it would mean the committed file is not
+    what the generator produces. The same applies to a trailing space the
+    generator writes into `values-v31/styles.xml` and its night counterpart,
+    which the repository's own `trailing-whitespace` hook strips on every
+    commit.
+  - `UiMark` is exported but nothing mounts it yet. 09 section 9 names the
+    environment banner and the help screen as the monochrome variant's homes;
+    those are slots E1 and E5, already merged, so a later pass owes the call
+    sites.
+  - No cloud provisioning, deployment, IAM change or paid inference was
+    performed by this session.
+
+## 2026-09-16: Front-end refactor wave 2, slot E2, the queue
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3E slot E2 and section
+  3D item D2. Migrate the queue, its filters, its saved filter sets and its
+  bulk selection onto `specimen_ui` 0.2.0, and re-base `QueueRow`,
+  `SelectionBar` and `Thumbnail` with their public APIs unchanged.
+- Branch and worktree: `fe/queue` at `.claude/worktrees/fe-queue`, cut from
+  `front-end-refactor` at `731bef5`. No pull request; the integrator merges
+  the slot.
+- Outcome: complete. Six owned files hold no Material component, no Material
+  import and no Material glyph; `no_material_components`,
+  `no_material_imports` and `icons_unique` each lose every one of this slot's
+  entries. Twelve test files migrated to role and label finders. Three
+  defects found and fixed on the way that were not in the brief: a keyboard
+  cursor that could no longer open a record, a row that overflowed the 360 dp
+  list pane at 200 percent text, and every modal in the application rendering
+  its text with the framework's fallback underline.
+- Commits (three, oldest first):
+  - `b8a2da3` `feat(queue): the D2 patterns on specimen_ui`
+  - `a69adef` `feat(queue): the queue, its filters and its saved sets on specimen_ui`
+  - `aa2c599` `test(queue): finders by role and label, and three backlogs at zero`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 519 passed, unchanged from the 0.2.0 release |
+  | `flutter test` (app) | 1 | 980 passed, 9 skipped, 82 failed. Every failure is a screen golden (80) or a semantics fixture (2), which is the wave policy in section 8 of the build plan. No other test fails. |
+  | `check_ui_strings.py` | 0 | 192 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (25 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+  The app's skip count moves from 7 to 9: the two new skips are the tap
+  target guidelines on `SearchFilters`, recorded below.
+
+- Backlogs, measured from the tree before and after:
+
+  | Gate | This slot's entries before | After |
+  |---|---|---|
+  | `no_material_components` | `queue_screen.dart` 6, `search_filters.dart` 11, `queue_row.dart` 2, `selection_bar.dart` 5 | all four removed |
+  | `no_material_imports` | all six owned files | all six removed |
+  | `icons_unique` | 14 glyphs over six files | all six removed |
+
+- Goldens and fixtures: regenerated locally to be read by eye, then reverted
+  with `git checkout --` before the first commit, per section 8. Nothing under
+  `test/golden/images/` or `test/accessibility/fixtures/` is in any commit.
+  80 of the 121 screen goldens move, and the set that moves is the set
+  expected:
+
+  | Family | Files | Why |
+  |---|---|---|
+  | `queue` | 8 | the screen this slot rebuilt |
+  | `queue-selection` | 8 | the selection bar and the checkbox column |
+  | `filters` | 8 | the filter sheet and dialog |
+  | `source` | 8 | the browse screen shares `SelectableRow` and `SelectionBar` |
+  | `workbench-fields`, `workbench-history`, `workbench-readings` | 16 each | two reasons at different widths: below large the workbench route shell draws the "Back to queue" control, which is now a `UiButton.ghost` with a Phosphor glyph; at large the queue list sits beside the record and every change above reaches it |
+
+  `intake`, `signin`, `help`, `region-editor` and `diff-text` hold byte for
+  byte, which is the other half of the check: nothing this slot touched
+  reaches them.
+
+- The semantics fixture diff, line by line. Two files change.
+
+  `queue.txt`:
+  - One node becomes three. The title, the summary and the age of the last
+    answer were one node carrying `liveRegion`, so a screen reader heard
+    "Queue ... Updated 3 s ago" every time the count moved, and heard it
+    again every second because the age is part of the label and the age ticks.
+    The live region is now the summary alone; the title is a header node and
+    the age is its own.
+  - The search field is two nodes where it was one, and its help text moves
+    from a child label to the field's `hint`. The second node is the editor's
+    own, which is the `UiField` defect recorded below; the hint is what
+    02 section 4.11 asks for.
+  - The six dispositions lose `button`, `checked` and
+    `inMutuallyExclusiveGroup` and gain `selected` plus `toggled`, which the
+    dump does not print. A `UiChip.filter` is a toggle; the Material
+    `SegmentedButton` it replaces published an exclusive group. This is a real
+    loss and is in the follow-ups.
+  - The row's node and the checkbox's node are siblings where the row was a
+    child of the checkbox, and the row no longer says `selected=false`.
+    `Pressable` reports `selected` only when it is true for a button, so a
+    plain row does not announce "not selected".
+
+  `filters.txt`:
+  - `label="Filter the queue"` and the `Clear all` and `Apply` buttons leave
+    the dump. They are the modal's chrome now rather than the form's own
+    widgets, and the fixture pumps the form alone. `role=form` is kept
+    deliberately, on the body, because the body is the only node that can
+    carry it once the title moved.
+  - Every field is two nodes for the same `UiField` reason.
+  - The date fields are typed days with a hint each, where they were one
+    button reading "Created: Any date". The risk range is two disabled
+    numeric fields carrying their values and the reason they are disabled,
+    where it was a slider reading `value="0%"` and `value="100%"`.
+  - "Include not measured" and its helper sentence are two nodes where
+    `SwitchListTile` merged them into one label.
+
+- Durable learnings:
+  - **A control inside a `UiListRow` slot has no semantics and no press of
+    its own.** The row is one `Pressable` with `excludeSemantics: true`, so a
+    menu in its trailing slot is invisible to a screen reader and opens the
+    row when pressed. The saved filter sets put the menu beside the row
+    instead, which is the same arrangement `SelectableRow` already uses for
+    its checkbox, and for the same reason.
+  - **`QueueRow`'s semantics node is the `UiListRow` it composes.** Three
+    tests read it off `find.byType(QueueRow)` and started resolving to the
+    page node, because the pattern's own root is a `LayoutBuilder` and a
+    finder walks up to the nearest node. A test that wants a pattern's node
+    has to descend to the control that publishes it.
+  - **A screen's keyboard map and a focused control's activation collide, and
+    the cursor has to own the focus.** `Enter` opened a record only while
+    nothing between the search field and the list was focusable. A wrapping
+    row of chips is focusable, `Pressable` consumes `Enter`, and the record
+    stopped opening. Moving focus onto the row the cursor lands on fixes it at
+    the root: the row's own activation is what `Enter` reaches, the focus ring
+    is where the cursor is, and the list hold the queue already takes on a
+    focused row starts working for `J` and `K` as well as for `Tab`.
+  - **The trailing slot of a `UiListRow` is laid out at its natural width.**
+    There is no `Flexible` around it, so a trailing column that is wider than
+    the row overflows rather than shrinking. A 220 dp cap that looked generous
+    overflowed a 360 dp list pane by exactly 51 dp once the checkbox column
+    was open, and a share of the row truncated a status chip at ordinary text
+    size. What works is the old two-layout split: the status, the risk and
+    the age sit beside the text when the row is at least 500 dp wide and on a
+    line of their own below it when it is not.
+  - **A modal route in this application has no `DefaultTextStyle`.**
+    `ModalRoutes` pushes on the root navigator, where the only ancestors are
+    `WidgetsApp`'s; a `Material` is what normally publishes the text style, and
+    a `RawDialogRoute` has none above it. Every `Text` in a `UiSheet` or a
+    `UiDialog` therefore inherited the framework's fallback decoration and
+    drew a yellow underline, including the title and the action row the
+    package draws. The package's own gallery goldens do not show it because
+    the gallery is not pushed as a route. Two screens' worth of goldens were
+    regenerated with the defect in them before it was spotted, which is the
+    argument for looking at a golden rather than counting it.
+  - **`UiSheet` does not bound its body.** The pane's outer column takes the
+    drag handle and the padded body as two inflexible children, so the inner
+    column's `Flexible` gets infinite space and a scrolling body shrink wraps
+    to its whole content. The filter sheet overflowed a phone by 1044 dp.
+    `UiDialog` is one column and is correct.
+  - **`SemanticsRole` is not exported by `widgets.dart`.** It needs
+    `import 'package:flutter/semantics.dart' show SemanticsRole;`, the same
+    way `SchedulerBinding` and `RenderProxyBox` did for slot C4.
+  - **`UiField.onClear` is not the only way a cleared search reports itself.**
+    `UiField._clear` calls `onChanged('')` as well, so a queue that debounces
+    its search on `onChanged` needs nothing extra when the reviewer presses
+    the clear control.
+- Failed approaches:
+  - Capping the row's trailing column at a share of the row's width. It
+    survives 200 percent text and truncates the status chip at ordinary text
+    size in a 360 dp pane, which 02 section 7 calls a defect rather than an
+    ellipsis case. The share is kept as a ceiling on the wide layout only.
+  - Putting the saved set's menu in the row's trailing slot, per the learning
+    above.
+  - Raising the queue's toast through the pane's own `BuildContext`.
+    `UiToasts.show` walks up from the context it is given and the pane's
+    context is above the layer it installs, so the toast reached no host and
+    was silently dropped. A `GlobalKey` on the body is the context to raise it
+    from.
+- Deviations from the brief and from 10, with why:
+  - **The disposition filter is `UiChip.filter` in a `Wrap`, not
+    `UiCapsuleToggle`.** Six options exceed a segmented track either way. A
+    single selection capsule toggle clears when its chosen option is chosen
+    again, and this filter already has a cleared state of its own called
+    "All", so the control and the product would have had two spellings for one
+    thing. Wrapping also keeps every option reachable, where the horizontal
+    scroll it replaces hid two of the six on a phone.
+  - **List detail still starts at large, not at medium.** The brief says
+    medium and cites 05 section 3.2, which says 1200 and says why: the
+    workbench needs 840 of its own beside a 360 dp list. 07 section 3 agrees,
+    the paging test is written to it, and the goldens are cut at it.
+  - **`SelectionBar` draws at `radius.tile`, not as a capsule.** A stadium's
+    radius is half its height and the bar wraps to three lines in a 360 dp
+    pane, which put the first and last control outside the curve. 09 section 5
+    picks the shape from the geometry; a three line pane is not a capsule.
+  - **`showProductModal` stands in for `UiDialog.showAdaptive`**, for the
+    `DefaultTextStyle` reason above. It builds the same two panes through the
+    same primitives and is marked `TODO(fe/polish-2)`.
+  - **The filter sheet's body caps its own height** on a compact window, for
+    the `UiSheet` reason above. Marked the same way.
+  - **Dates are two typed days and risk is two typed bounds.**
+    `showDateRangePicker` and `RangeSlider` are Material components this file
+    may not import and the design system has neither. The wire keys, the UTC
+    conversion and the "Include not measured" switch are unchanged, and
+    `created_before` is now literal rather than the picker's inclusive end
+    plus a day, which is what its label already said.
+  - **A saved set can be renamed.** The brief asks for a menu with rename and
+    delete. Rename is a save under the new name and a remove of the old one,
+    both existing store operations, so no wire or storage format changed.
+  - **`SelectionAction.icon` stays an `IconData`.** The source browse screen
+    constructs one with a glyph of its own and belongs to another slot.
+  - **The commits carry `Co-Authored-By: Claude Opus 5 (1M context)`**, which
+    is what this session's harness states, where every other commit on this
+    branch carries `Claude Fable 5.1`, which is what the brief states. The
+    integrator may normalise the trailers; nothing else depends on them.
+- Product defects noticed and not fixed:
+  - **The status chip says "Needs human review" where 02 section 4.13
+    specifies the chip label "Needs review".** The long form is 18 characters
+    against a 12 character target and is the single reason the queue's
+    trailing column needs as much width as it does. `status_chip.dart` and
+    `theme/icons.dart` belong to slot E1.
+  - **A single selection filter row reads as six independent toggles.**
+    `UiChip.filter` publishes `toggle` with no way to say the group is
+    exclusive, and `UiCapsuleToggle` publishes the same. Before this slot the
+    Material `SegmentedButton` published `inMutuallyExclusiveGroup`.
+  - **The queue's cursor does not scroll its row into view.** `J` past the
+    fold moves the ring off screen. True before this slot as well; the row now
+    holds focus, so `Scrollable.ensureVisible` is one line away whenever
+    someone wants it.
+- Package APIs this slot needed and did not have, in the order they cost the
+  most:
+  - **A `UiField` whose editor is the size of the control.** `FieldCore`
+    builds its `TextField` with `InputDecoration.collapsed`, which removes the
+    padded tap target Material's own decoration adds, and `UiFieldBox` puts
+    the 48 dp box outside the `TextField`. The editor publishes a node 22 dp
+    tall inside a control whose real hit area is 48, so every screen with a
+    field fails `androidTapTargetGuideline` and `iOSTapTargetGuideline`. Two
+    guideline tests on `SearchFilters` carry the finding in the skip list
+    `test/accessibility/guidelines_test.dart` already provides for exactly
+    this. Slots E1, E4 and E5 will each meet it.
+  - **A `DefaultTextStyle` published by `ModalRoutes`**, so a pane pushed on
+    the root navigator draws in the product's type rather than the
+    framework's fallback.
+  - **A `UiSheet` that bounds its body** the way `UiDialog` does.
+  - **A date control**, `UiDateField` or a range of two, and a
+    **`UiRangeSlider`**, so the filter sheet can pick rather than spell.
+  - **A `tone` or a role on `UiChip.filter`**, so a single selection row can
+    say it is exclusive.
+  - **A refresh control.** Pull to refresh on the two touch platforms is a
+    private `_PullToRefresh` in `queue_screen.dart`, marked
+    `TODO(fe/polish-2)`, because `RefreshIndicator` is Material and the system
+    has nothing that replaces it.
+- Files changed outside this slot's own list, all four forced and all four
+  minimal: `lib/src/workspace.dart` (the queue pane's divider is a
+  `UiHairline`, which the brief names and which lives in that file rather than
+  in the route shell); `test/golden/size_classes_golden_test.dart` and
+  `test/screens/source_screen_test.dart` and
+  `test/accessibility/semantics_tree_test.dart` and
+  `test/accessibility/semantics_fixtures_test.dart` (finders on this slot's
+  patterns); `test/accessibility/guidelines_test.dart` (the skip list above);
+  and one line added to `lib/src/widgets/widgets.dart` to export the new
+  `product_modal.dart`.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed.
+
+## 2026-09-16: Front-end refactor wave 2, slot E1, the shell and the entry screens
+
+- Task: build plan slot E1 with its D1 patterns: put the application shell, the
+  entry screens and the twelve shared patterns of
+  `docs/execution/FRONT_END_REFACTOR.md` section 3 on `specimen_ui` 0.2.0.
+- Branch/worktree: `fe/shell` at `.claude/worktrees/fe-shell`, cut from
+  `front-end-refactor` at `731bef5`.
+- Outcome: complete. Every file this slot owns is free of Material components
+  and of Material imports, every glyph in them comes from `UiIcons`, and the
+  application suite is green apart from the screen goldens and the semantics
+  fixtures, which this slot regenerates to look at and does not commit.
+- Commits/PRs: `9747daa`, `3cfae72`, `46c2744`, `d5cd46f` on `fe/shell`,
+  pushed to origin. No pull request; the integrator merges the slot.
+- Validation, each gate run on its own with the tree untouched and its own exit
+  code read directly:
+  - `flutter pub get --enforce-lockfile`: 0.
+  - `flutter analyze --fatal-infos` in the application: 0, no issues.
+  - `flutter analyze --fatal-infos` in `packages/specimen_ui`: 0, no issues.
+  - `flutter test` in `packages/specimen_ui`: 0, 519 tests.
+  - `flutter test` in the application: 1, as the brief expects. 947 passed, 7
+    skipped, 118 failed, and every failure is one of the two sets this slot may
+    not commit: 111 in `test/golden/size_classes_golden_test.dart` and 7 in
+    `test/accessibility/semantics_fixtures_test.dart`. Nothing else fails.
+    The baseline at the cut point was 1062 passed and 7 skipped; the suite has
+    three more tests than it did, all in `test/app/shell_test.dart`.
+  - `scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt`:
+    0, 192 files scanned, 0 violations, 0 baselined.
+  - `pre-commit run --files <the 50 changed files>`: 0.
+- Gate backlogs, before and after:
+  - `no_material_components`: this slot's share was 52 uses over 13 files.
+    Twelve files leave the map and `lib/src/app/app_router.dart` goes from two
+    to one. The one that stays is deliberate and is explained below.
+  - `no_material_imports`: fifteen files leave the map, which is every file of
+    this slot that was in it.
+  - `icons_unique`: ten files leave the map, which is all 37 glyphs this slot
+    owned, the number build plan appendix B gives for E1.
+- Screen goldens: regenerated once to look at, inspected by eye, then reverted
+  with `git checkout --` before committing, per the wave 2 brief. **111 of the
+  121 screen goldens moved.** The ten that did not are the eight `diff-text`
+  component goldens and the two compact `region-editor` ones, which are the
+  only windows in the set that render no shell. Sign in, the queue at compact
+  in dark, the queue at large in light and the help sheet were read by eye: the
+  sky, the mark, the pill, the rail, the sidebar, the bands and the entry
+  column all render as 07 and 09 describe them. The Material Symbols glyphs of
+  the screens this slot does not own still render as empty boxes, exactly as
+  they did before this slot, because the application's golden harness loads
+  Geist and Phosphor and not the Material Symbols face; every glyph this slot
+  migrated now draws.
+- Semantics fixture diff, the same shape in all five fixtures, six lines out
+  and nine in. Line by line:
+  - Out, from the head: `label="Test environment. ..."`, the whole sentence on
+    one node. In: `liveRegion label="Test environment. Not approved museum
+    records."` and `button tap label="Show what a test environment means"`. The
+    v1 band put the full statement on one label and excluded everything under
+    it, which also excluded its own disclosure: the statement was readable and
+    the control that opens the rest was not reachable at all. The headline is
+    announced once, the control is a named target, and the second clause is a
+    node of its own once it is opened.
+  - Out: `selected=true tap label="Queue Tab 1 of 2"` and its Intake pair,
+    which is what Material's `NavigationRail` publishes. In: `role=tabBar` with
+    two `role=tab` children labelled `Queue` and `Intake`, which is what the
+    design system's navigation publishes and what `SemanticsRole.tabBar`
+    requires of its children.
+  - Out, from the tail: `label="Specimen Digitization"`, the old app bar title,
+    which was painted last. In: the same label at the head, because the frame
+    paints the bar first.
+  - Out: `button tap label="Authorized collection, Synthetic Insects. Switch
+    collection"`. In: the same label with `value="Synthetic Insects"` beside
+    it, because the switcher is a `UiSelect` and a select has a value.
+  - Out: `button enabled=true tap tooltip="Refresh collection"`, a node with a
+    tooltip and no label. In: the same node carrying both a label and a
+    tooltip, which is guideline 4.16's rule.
+  - Out: `tap label="Synthetic reviewer" tooltip="Account menu"`, which was not
+    announced as a button and put the account's name where the control's name
+    belongs. In: `button enabled=true tap label="Account menu, signed in as
+    Synthetic reviewer"`.
+  - Out: `button enabled=true tap tooltip="Help and shortcuts"`. Help is one
+    entry inside the account menu now, which is the app bar overflow 07 section
+    10 asks for, so it is reachable rather than absent; the semantics tree test
+    opens the menu and asserts it.
+- Durable learnings:
+  - **Removing the shell's `Scaffold` removes the `Material` every unmigrated
+    screen asserts on, and the `ScaffoldMessenger` host every snackbar needs.**
+    246 tests failed on the first full run for one of those two reasons. The
+    bridge is one transparent `Scaffold` in `app_router.dart`, which is already
+    the file the import gate names as its exception, marked `TODO(fe/wave-3)`.
+    It wraps `CollectionWorkspace` rather than the routed child, because the
+    list detail pane at large is built by `CollectionWorkspace` itself and a
+    bridge around the child alone leaves that pane without an ancestor.
+  - **`WidgetsApp` publishes a `DefaultTextStyle` with a double yellow
+    underline, and `Material` is what used to replace it.** The first render of
+    the sign-in screen had a yellow rule under the product name, the title, the
+    purpose line and the caveat: every `Text` that sets a style still inherits
+    the ambient decoration. The application publishes its own ambient style
+    from the tokens in `main.dart`, under `UiTheme` and above the router. Any
+    slot that takes a screen off `Scaffold` needs this to already be there.
+  - **`UiSkeleton` pulses, and a repeating animation makes `pumpAndSettle` time
+    out.** The placeholder tests pump inside a stopped `TickerMode`, which is
+    the device the package's own gallery goldens use. No other test in the
+    suite settles while placeholders are on screen, which is why only
+    `test/widgets/skeleton_test.dart` had to change; a later slot that adds one
+    will meet this.
+  - **An unsettled ballistic scroll swallows the next tap.** A toggle then
+    reads as a control that will not open: the account menu needed two presses
+    after a `scrollUntilVisible` and one after a `pumpAndSettle`.
+  - **`find.byTooltip` matches Material's `Tooltip` and nothing else, and
+    `find.bySemanticsLabel` throws without a semantics handle.** Every
+    icon-only control in the design system publishes its name on itself, so
+    `test/ui_finders.dart` matches the control: `uiIconButton`,
+    `uiMenuTrigger`, `uiControl`, `uiTooltipped`, `uiDestination`, `uiButton`.
+  - **`textContrastGuideline` samples the node's rect, and a control at
+    `pointer` density publishes a 48 dp hit box around a 40 dp visual.** On a
+    sky the 8 dp of transparent slop is sampled as the background and a primary
+    button reports 3.90:1 that a reader never sees. The entry screens' primary
+    action is `UiSize.lg` instead, which is 56 dp of visual in both densities
+    and is what 07 section 2 asks for on a low frequency, low density screen;
+    the guideline passes on its own terms rather than being skipped.
+  - **A modal pumped on nothing captures half transparent pixels**, and a
+    contrast guideline measuring one measures nothing. The help panel is given
+    the opaque surface a route would be.
+- Failed approaches:
+  - Wrapping only the routed child in a transparent `Material` fixed the
+    pushed screens and left the large window's queue pane asserting, because
+    that pane is not routed.
+  - A transparent `Material` fixed the assertions and not the snackbars:
+    `ScaffoldMessenger` counts `Scaffold`s, not `Material`s.
+  - Keeping the v1 environment band's one node with everything under it
+    excluded made its own disclosure unreachable, which the rewritten test
+    caught rather than the eye.
+- Product defects noticed and not fixed:
+  - `_BannerControl` in `packages/specimen_ui` publishes `button` and `onTap`
+    without `enabled`, so the environment band's disclosure reads as a button
+    with no enabled state. Visible in the fixture diff as
+    `button tap label="Show what a test environment means"`.
+  - The queue row at a 360 dp list pane still overlaps its own checkbox at
+    large windows. It is unchanged by this slot, is visible in the queue golden
+    before and after, and belongs to slot E2.
+- Package APIs this slot needed and worked around:
+  - **`UiBanner` needs an action slot**, a label and a callback. 07 section 11
+    requires every failure class to name its own recovery, and the control has
+    a dismiss and a disclosure and nothing else. The shell composes the action
+    beside the strip on the band's own resolved style, marked
+    `TODO(fe/polish-2)` in `lib/src/app/shell.dart`.
+  - **`UiChip` needs a leading widget slot**, so a determinate ring can stand
+    where its glyph does. `StatusChip` draws that one case itself from
+    `UiChipStyle.resolve`, marked `TODO(fe/polish-2)` in
+    `lib/src/widgets/status_chip.dart`.
+  - `UiListRow` has no tone, so `ReduceMotionSetting` puts its `UiSwitch` in
+    the row's trailing slot and the row itself is not a control. That is the
+    follow-up the polish slot already recorded.
+- Decisions taken where the documents left a choice, recorded rather than
+  asked:
+  - **Help is in the account menu below large and a top bar action at large.**
+    The brief asks for "help on windows where the menu is not used", and 10
+    section 4.4 gives the sidebar the account and help at its bottom. The
+    sidebar's footer carries the account and signing out, so the bar carries
+    help on its own there; everywhere else the account menu carries the
+    signed-in address, help and signing out, which is the app bar overflow of
+    07 section 10.
+  - **The switcher is a `UiSelect` at every window class**, in the bar's centre
+    from medium up, in the bar on compact, and in the sidebar's header at
+    large. 07 section 1.2 asks for it to be reachable everywhere and one
+    control reached the same way in three places is one thing to learn.
+  - **`StatusChip.dense` and `StatusChip.decisive` are carried and no longer
+    read.** A `UiChip` is one size in both densities and has no state
+    transition of its own; the parameters stay because a pattern keeps its API
+    through this refactor and its consumers are other slots' screens.
+  - **`SelectableText` is replaced by a named copy control** in
+    `administrator_contact.dart` and on the help screen. It is a Material
+    component with no `widgets.dart` equivalent, and a 48 dp control that names
+    itself is reachable where a drag is not.
+  - The commits are signed `Claude Opus 5 (1M context)` rather than the line
+    the brief names, because that is the model that wrote them.
+- Remaining follow-ups:
+  - The integrator regenerates the screen goldens and the semantics fixtures
+    once after the wave merges. The expected moved set is the 111 named above
+    plus whatever slot E2 moves; the fixture diff is the one explained above.
+  - `app_router.dart` keeps one `Scaffold` until E3 to E5 land. Removing it is
+    the last step of `no_material_components` and it is marked in the file.
+  - Two `TODO(fe/polish-2)` markers under `lib/`, both recorded above. The
+    `no_stand_ins` gate scans the package only, so neither trips it.
+  - `test/ui_finders.dart` is new and shared. Slot E2 will want the same
+    finders; if it wrote its own, the integrator should keep one file.
+
+## 2026-09-16: Front-end refactor wave F, slot F2, the `specimen_ui` foundation of fit and scale
+
+- Task: `design/11-fit-and-scale.md` sections 2, 3.1, 5 and 6, plus the
+  application root clamp. One text style source, window classes in the package
+  foundation, geometry that derives from type, the label and fit primitives
+  wave G converts controls onto, and the three control contract clauses 11
+  section 6 adds. No control is converted here.
+- Branch/worktree: `fe/fit-foundation` at `.claude/worktrees/fe-fit-foundation`,
+  cut from `front-end-refactor` at `bd69f80`. Pushed to
+  `origin/fe/fit-foundation` at `63ebef3`. No pull request; the integrator
+  merges the slot with F1.
+- Outcome: complete. Every item of the slot brief is built and tested. The
+  package is at 0.3.0 unreleased.
+- Commits (seven, oldest first):
+  - `343bbca` `feat(foundation): window classes and Adaptive move into the package`
+  - `4e40063` `feat(foundation): even leading, and the geometry that derives from type`
+  - `f796c32` `feat(primitives): a one line label, and the builder that chooses a variant`
+  - `07ea031` `feat(foundation): one text style source, published with the tokens`
+  - `758573b` `test(harness): clauses 13 to 15, and a harness that no longer hides the fallback`
+  - `d727443` `feat(app): clamp the text scale at the root, and drop both text style patches`
+  - `63ebef3` `docs(specimen_ui): the 0.3.0 entry, and a README that names the new seams`
+- Validation, each gate run on its own against the committed tree, the tree
+  untouched while it ran, and its own exit code read directly:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 1 | 533 passed, 48 failed. Every failure is a gallery golden pixel diff; zero failures outside `test/gallery/` |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1048 passed, 9 skipped, 17 failed. Every failure is in `test/golden/size_classes_golden_test.dart`; zero failures outside `test/golden/` and `test/accessibility/` |
+  | `check_ui_strings.py` | 0 | 196 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (23 files) | 0 | 11 hooks passed, the rest had no file of that kind |
+
+- Goldens, inspected once and committed nowhere.
+  - **Package gallery goldens: 48 of 48 moved**, which is the whole set, and
+    is what `TextLeadingDistribution.even` on every role predicts. The two
+    goldens under `test/foundation/goldens/` are the mark and did not move,
+    which is the other half of the check: they draw no text. Regenerated once
+    with `--update-goldens` (581 tests green), read by eye on the type page in
+    light, then reverted with `git checkout --`. The diff is glyphs sitting a
+    little lower inside their line boxes, largest on the display roles (the
+    type page is 4.53 percent of pixels, the actions page 0.07 percent).
+    Nothing reflows and nothing is clipped. **The integrator regenerates these
+    after F1 and F2 merge.**
+  - **Application screen goldens: 17 of 121 moved**, and **zero of the
+    semantics fixtures**. The 17 are the eight `signin` windows, the eight
+    `filters` windows and the one `help` window. Regenerated once to look at,
+    then reverted. The reason only 17 moved is worth knowing and is under
+    learnings below.
+- Durable learnings:
+  - **Material text was already centred in its line box; ours was not.**
+    `Typography.englishLike2021` sets `leadingDistribution: even` on every
+    style, and `Theme` merges the product roles onto that geometry, so any
+    `Text` drawn under a `Material` resolved to `even` whatever the role said.
+    Text this package draws reads `context.ui.type.*` directly and had no
+    leading distribution at all, so it fell to the engine default,
+    `proportional`. That is why "the text sits high" was a `specimen_ui`
+    symptom and never a Material one, and why exactly the windows whose words
+    are drawn outside a `Material` are the ones whose goldens moved.
+  - **The yellow double underline is `MaterialApp`'s, not `WidgetsApp`'s.**
+    `_errorTextStyle` is private to `material/app.dart` and reaches the tree
+    as `WidgetsApp.textStyle`, wrapped around the app's `builder` output. So
+    a `UiTheme` inside `MaterialApp.builder` does shadow it, which is what the
+    application's `_Text` was doing, and a bare `WidgetsApp` host has no
+    fallback at all. A gate that pumps under a plain `WidgetsApp` therefore
+    proves nothing: `no_fallback_text_style` installs a reconstruction of the
+    fallback on purpose, and was checked by deleting the publication and
+    watching eleven pages fail.
+  - **`WidgetController.allRenderObjects` returns duplicates.** It maps every
+    element to its nearest render object, so each widget between a `Text` and
+    its paragraph reports the same paragraph again. Anything walking it for
+    render objects needs `.toSet()`, or a `.single` throws "Too many
+    elements" on one `Text`.
+  - **`RenderParagraph` does not expose its line metrics.**
+    `computeLineMetrics` is on `TextPainter` and the paragraph's painter is
+    private. Counting distinct box tops from
+    `getBoxesForSelection(0, length)` is the public way to ask how many lines
+    something laid out, and it is what clause 13 uses.
+  - **A control whose height is a constant is caught by clause 7, not by
+    clause 14.** Clause 7 already fails on a 200 percent overflow, so it fires
+    first. What clause 14 adds beyond it is the scales below 2.0, the hit box
+    at each of them, and truncation: a label the growing text clips is
+    `didExceedMaxLines` rather than an overflow, and nothing reported it
+    before. The harness test proves clause 14 with that defect for exactly
+    that reason.
+  - **A box that simply lets its child paint outside itself reports nothing.**
+    Only a flex reports an overflow, so a specimen built to fail an overflow
+    check has to put the text in a `Column`. A `Center` in a short `SizedBox`
+    silently paints over its neighbours, which is the quieter version of the
+    same defect and one no gate here catches.
+  - **`StrutStyle.fromTextStyle` takes the package prefixed family as is.**
+    `TextStyle(fontFamily: 'Geist', package: 'specimen_ui')` stores
+    `packages/specimen_ui/Geist`, so passing `package:` again to the strut
+    would prefix it twice.
+- Failed approaches:
+  - Putting `controlHeightFor(UiThemeData, ...)` in `foundation/type.dart` as
+    the brief spells it. `type.dart` would have to import `theme.dart`, which
+    imports `material.dart` and is itself composed of the type scale. The
+    helper takes a `UiDensity` instead, from `density.dart`, which has no such
+    cycle. Call sites read `UiType.controlHeightFor(ui.density, style,
+    context)`.
+  - Reaching an overflowing tooltip trigger through `find.byType(SizedBox)`.
+    An empty `SizedBox` hit tests nothing and `UiTooltip` reveals on a press
+    of its child, so the gate's tooltip trigger is painted and keyed.
+  - Asserting clause 13's failure names 200 dp. It names the first width at
+    which the string wrapped, which for a sentence is 360.
+- Remaining follow-ups, and every deviation from the brief:
+  - **`Adaptive.of` returns `T?`.** Every class is optional, as the brief
+    says, so resolution can run off the bottom. Set `compact` and it never
+    returns null, because every class resolves down to it; that is the
+    documented idiom rather than a second non-null accessor.
+  - **The gate lives at `test/foundation/no_fallback_text_style_test.dart`,
+    not `test/gates/`.** The brief allowed either; the other five gate tests
+    are in `test/foundation/`, so there is still one place to look.
+  - **`lib/src/workspace.dart` lost one import line.** It reached
+    `WindowClass` through the patterns barrel, and `specimen_ui` now exports
+    the class directly, so `flutter analyze --fatal-infos` failed on an
+    unnecessary import. One deletion, forced by this slot, in a file no wave F
+    slot owns.
+  - **`showProductModal` is now a forwarder.** With the text style published
+    it does exactly what `UiDialog.showAdaptive` does, so it calls it. Its
+    three call sites (`search_filters.dart` twice, `selection_bar.dart`) are
+    not this slot's files; a later wave can retire the wrapper and call the
+    package directly, which is what its `TODO(fe/polish-2)` asked for.
+  - **`compactWindowMax` is `WindowClass.mediumMin`.** The primitive restated
+    600 while the classes lived in the application. The public constant keeps
+    its name and its value.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, and it is the model that did the work.
+  - **The gallery shell publishes a `DefaultTextStyle` of its own**
+    (`gallery_shell.dart`, wave G slot G3's file). It is now redundant, since
+    `UiTheme` publishes the same thing, and it is why the gate pumps pages
+    rather than the shell. G3 can delete it.
+  - **Nothing turns clauses 13 to 15 on yet.** They are off by default and
+    every family's tests stay as they were. G1, G2 and G3 enable them per
+    control as they do the fit pass.
+- What the other slot and wave G will need from this package:
+  - `WindowClass` and `Adaptive<T>` from `foundation/window.dart`, exported
+    from the top barrel. `Adaptive.all` covers a call site that takes an
+    `Adaptive` where the value does not vary.
+  - `UiType.lineHeightOf(style, context)`, `UiType.unscaledLineHeightOf`,
+    `UiType.strutOf(style)`, `UiType.insetFor(density, style)` and
+    `UiType.controlHeightFor(density, style, context)`. **F1 computes a line
+    height locally behind a `// TODO(fe/fit-foundation)` marker; it is
+    `fontSize` times `height` at the current scaler, which is exactly
+    `lineHeightOf`, so the swap is one line per site.**
+  - `UiThemeData.defaultTextStyle`, the one recipe for the ambient style. Any
+    new overlay frame publishes that, not a copy of it.
+  - `UiLabel(text, style:, textAlign:, tooltip:)` from `primitives/label.dart`.
+    The `tooltip` slot is
+    `(context, message, label) => UiTooltip(message: message, child: label)`
+    at a call site in the controls layer.
+  - `measureLabel(context, text, style)` and
+    `FitBuilder(variants: [FitVariant(intrinsicWidth:, builder:)])` from
+    `primitives/fit.dart`. Variants are tried widest first; the last is built
+    with `lastResort` true when none fits.
+  - `expectControlContract(..., labelsNeverWrap:, wrappingContent:,
+    geometryFromType:, fit:)` with `FitExpectation` and `fitWidths` from
+    `test/harness/control_contract.dart`.
+  - `UiTheme`'s constructor is no longer `const`. No call site in the
+    repository used it as one.
+## 2026-09-16: Front-end refactor wave F, slot F1, the field rebuilt inside out
+
+- Task: slot F1 of `design/11-fit-and-scale.md` section 7, which is section 4
+  of that document in full plus the ring shape of `design/09-brand-direction.md`
+  section 3.6 as amended: `FieldCore` paints text only, `UiFieldBox` paints one
+  edge, `FocusRing` follows the shape it rings, a field rings for any focus,
+  the inputs gallery gains its focused and typing states, and the edge count
+  test proves it.
+- Branch and worktree: `fe/fit-fields` at `.claude/worktrees/fe-fit-fields`,
+  cut from `front-end-refactor` at `bd69f80`. Pushed to `origin/fe/fit-fields`
+  at `7899334`. No pull request; the integrator merges the slot.
+- Outcome: complete. Five commits, 27 files, 33 new package tests (519 at the
+  start of the wave, 546 now, one replaced), four inputs goldens regenerated,
+  seven public API changes recorded in the package changelog under 0.3.0.
+- Commits (five, oldest first):
+  - `504aa64` `feat(foundation): the two tokens a field draws its caret and its selection with`
+  - `51c72a9` `feat(inputs): the field rebuilt inside out, one layer to a job`
+  - `f55bca4` `test(inputs): count the edges, the rings and the nodes a focused field has`
+  - `7bb74c1` `feat(gallery): the box in every shape and every focus state`
+  - `7899334` `docs(design): reconcile 10 and the changelog with the field rebuilt inside out`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 1 | 546 passed, 4 failed, and the four are the `foundation-primitives` goldens this slot may not commit. Every other test in the package is green. |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 993 passed, 9 skipped, 72 failed. All 72 are the screen goldens and the two semantics fixtures the wave policy reserves for the integrator. No other failure. |
+  | `check_ui_strings.py` | 0 | 193 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (27 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens and fixtures:
+  - Committed: the four `inputs-{light,dark}-{touch,pointer}.png`. The window
+    moved from 1180 by 1180 to 1180 by 1600, measured against a page that ends
+    at 1550, because the page gained the box section 11 section 4 asks for.
+    Read before committing, all four: the autofocused specimen now carries a
+    ring, which it did not before because a golden presses no key and the ring
+    used to need keyboard focus; every placeholder and every value sits one to
+    two pixels lower, which is `TextLeadingDistribution.even`; the focused
+    edge is the same weight as the resting edge; the new section reads as
+    eight boxes in two shapes with the ring running parallel to the edge.
+  - Left for the integrator: the four
+    `foundation-primitives-{light,dark}-{touch,pointer}.png`. Inspected with
+    `--update-goldens` and then restored with `git checkout`. The diff is 564
+    pixels of 967600, 0.058 percent, entirely inside the rectangle
+    (248, 728) to (415, 783), which is the `FocusRing` superellipse specimen
+    on the primitives page: the ring is an `RSuperellipse` now and runs
+    parallel to the edge through the corner instead of pulling away from it at
+    the ends of the curve. The capsule specimen holds byte for byte, because a
+    stadium ring was already drawn as a rounded rectangle at half the shorter
+    side. Not committed because 11 section 7 has the integrator regenerate the
+    family goldens after merging F1 and F2, and because F2 moves the text
+    style every gallery page draws: two branches that both regenerate a binary
+    revert one another without a conflict.
+  - Application screen goldens: 70 of 121 moved, 38 at text scale 1.0 and 32
+    at 2.0. Regenerated once to read, then restored. The 1.0 diffs are 0.12 to
+    0.5 percent and every bounding box is one text row inside a field, which
+    is the placeholder and the value moving with the even leading. The 2.0
+    diffs are 21 to 29 percent and whole screen, which is the box growing from
+    48 to about 70 dp at that scale and everything below it reflowing: that is
+    11 section 2.2 working, and the reason the intake and workbench screens
+    move most is that their top bar carries a `UiSelect`.
+  - Semantics fixtures: 2 of 8 moved, `queue.txt` and `filters.txt`.
+    Regenerated to read, then restored. Every change is a pair of nodes
+    becoming one: the 48 dp container that carried the words and the 22 dp
+    editor that carried the `tap` merge into a single `textField` node with
+    both. `filters.txt` loses two lines that read `label="2026-09-13"`, which
+    was the date field's placeholder being announced as a label by the
+    decorator that no longer exists. The label of that field is "Created on or
+    after" and always was.
+- Durable learnings:
+  - **`InputDecoration.collapsed` is still an `InputDecorator`.** Collapsing a
+    decoration removes the padding and the floating label, not the widget, and
+    the widget reads `InputDecorationTheme` from the ambient `ThemeData` and
+    paints `enabledBorder` and `focusedBorder` underneath whatever the package
+    draws. `decoration: null` builds no decorator at all. That single argument
+    is the first of the three edges in 11 section 0, and the test that holds it
+    is `find.byType(InputDecorator)` returning nothing, not a colour
+    comparison: a border painted in the same token as ours is invisible in a
+    test that only reads colours.
+  - **A `TextField` with no decorator is one caret taller than its text.** The
+    editor's box is `preferredLineHeight`, 26 dp for `body`, and the paragraph
+    inside it is 22 and vertically centred; a paragraph field is the line box
+    per line with the text at the top. A placeholder aligned to `topStart`
+    therefore sits two pixels above the value it stands in for in a single
+    line field and exactly right in a paragraph. `centerStart` for one line
+    and `topStart` for a paragraph puts them on one baseline, and the test
+    that catches it compares the placeholder's top with the filled editor's.
+  - **`overflow: TextOverflow.ellipsis` with no `maxLines` is a single line.**
+    The paragraph engine takes the ellipsis and the absent line limit together
+    as "one line, cut short", so a `Text` that should wrap does not. A
+    multiline specimen wants `TextOverflow.clip`.
+  - **`MergeSemantics` is how an editor's node becomes the control's node.**
+    Excluding the editor from semantics and publishing our own `textField`
+    node would lose `setText`, `setSelection`, `copy` and `paste`, which are
+    how a braille display and voice control drive a field. Merging keeps all
+    of them and takes the rect of the widget the merge wraps. Two rules come
+    with it: the control's own `Semantics` must not state a `value`, because
+    the editor states the true one and two configurations concatenate; and
+    anything that has to stay a separate node, such as a trailing clear
+    control, has to sit outside the merged subtree rather than inside it,
+    which is why `UiFieldBox` takes the semantics wrapper as an argument and
+    applies it to the box alone.
+  - **A text editor's semantics actions depend on focus.** An unfocused
+    `EditableText` publishes `tap` and `focus` and nothing else; `setText` and
+    `setSelection` appear once it holds focus. A test that asserts them has to
+    focus the field first.
+  - **A stadium ring is an `RRect`, not an `RSuperellipse`.** `StadiumBorder`
+    draws a rounded rectangle at half the shorter side, so a superellipse ring
+    around a capsule would part from it at the ends of the curve, which is the
+    same defect as a circular ring around a superellipse with the roles
+    reversed. The three shapes are three different draw calls and the test
+    asserts each against the recorded canvas.
+  - **Clause 4 of the control contract cannot be true of a field.** The
+    harness pumps, tabs to focus the control under `alwaysTraditional`, then
+    switches to `alwaysTouch`, re-pumps and presses. The re-pump preserves
+    state, so the control is still focused, and a field that rings for any
+    focus still draws one. The clause was amended in place through the
+    `ControlActivation` a control already declares rather than through a new
+    parameter, and the `textEditing` branch is the stronger assertion: an
+    unfocused editor draws no ring, and a pointer tap draws one.
+  - **Count rings by asking each `FocusRing` for its own painter.** Counting
+    `CustomPaint` widgets with a foreground painter finds two in a field: the
+    ring, and the `_ShapeBorderPainter` that `Material(type: transparency)`
+    installs to draw a `BorderSide.none`. The transparent `Material` is not
+    optional, because `TextField` asserts on one.
+- Failed approaches:
+  - Leaving the placeholder aligned to `topStart` in a single line field. Two
+    pixels, and the word moves as the reviewer types the first character.
+  - Asserting the selection contrast over the full composite surface set from
+    09 section 3.7. `ink` on the selection over `glass.flat` over `field.sun`
+    measures 4.19:1 in dark, and the composite is fiction: a selection is
+    painted inside a field box filled with `paper`, and a control is never
+    drawn on glass over a light field. The row is taken over the three opaque
+    surfaces, where the worst case is 4.93:1 over dark `matte`.
+  - Counting ring painters as "every `CustomPaint` with a foreground painter",
+    per the learning above.
+  - Putting the new gallery section before the select, search and text area
+    section. It pushed three controls below the fold of the golden window,
+    which is the thing 10 section 6 already says not to do.
+- Coordination for `fe/fit-foundation` and the integrator:
+  - Two markers under `lib/`, both of the form `fe/fit-foundation:` rather
+    than `TODO(fe/fit-foundation)`. The `no_stand_ins` gate fails on
+    `TODO(fe/` anywhere under the package's `lib/`, and weakening a gate to
+    carry a coordination note is a worse trade than spelling the note
+    differently. Grep for `fe/fit-foundation` to find both:
+    - `lib/src/primitives/field_core.dart`, the line that sets
+      `TextLeadingDistribution.even` on the field's text style. Drop it once
+      `UiType` carries the even distribution on every role.
+    - `lib/src/controls/inputs/field.dart`, `UiInputStyle._minHeight`, which
+      computes `fontSize * height` locally. Replace the three lines with
+      `UiTypeScale.lineHeightOf(ui.type.body, textScaler)` when
+      `foundation/type.dart` exposes it. The expected signature is a role and
+      a `TextScaler` in, the scaled line box in dp out.
+  - `test/harness/control_contract.dart` is edited by this slot in clause 4
+    only, in one `switch` on `ControlActivation` between the keyboard
+    assertion and the restoration of the highlight strategy. 11 section 7
+    gives F2 the harness for clauses 13 to 15, which are added at the end of
+    the file, so the two edits should not touch.
+  - `pubspec.yaml` stays at 0.2.0 and the changelog opens 0.3.0 as unreleased.
+    Bumping the version moves one line of the application's `pubspec.lock`,
+    which `--enforce-lockfile` then requires of the other slot as well.
+- Package API wave G and the other slot will want:
+  - `FocusRing(visible:, child:, radius:, shape:)` with
+    `FocusRingShape.superellipse`, `.stadium` and `.circle`. `capsule: true`
+    is gone; it is `shape: FocusRingShape.stadium`.
+  - `Pressable(..., focusRing: false)` for a control that rings its own edge
+    rather than its hit box. Everything else about `Pressable` is unchanged,
+    and `WidgetState.focused` still reaches the builder only under keyboard
+    focus, so a control that turns the primitive's ring off still gets the
+    condition for free.
+  - `UiInputStyle.resolve(ui, shape, {hasTrailing, textScaler})` and
+    `UiSelectStyle.resolve(ui, {textScaler})`. Both default to
+    `TextScaler.noScaling`, so an untouched call site behaves as before, and
+    both should be passed `MediaQuery.textScalerOf(context)`.
+  - `UiFieldBox(..., semantics: (Widget box) => ...)`, a wrapper applied to
+    the box and never to the trailing action.
+  - `UiColor.selection`, `UiColor.selectionOpacity` and
+    `UiStroke.caretRadius`.
+  - `FieldCore` no longer takes `showFocusRing`, and draws no ring. A control
+    that puts a bare `FieldCore` somewhere without a `UiFieldBox`, which the
+    select's filter row does, shows no focus state at all; it autofocuses, so
+    the caret is the only indication. Worth a look in wave G if the filter row
+    is revisited.
+- Follow-ups:
+  - The four `foundation-primitives` goldens, described above, for the
+    integrator.
+  - `UiTextArea` and the paragraph field still carry the vertical `s3` the box
+    adds for multiline. With the box height now derived from the type, that
+    inset and the derived height are two rules for one measurement at 200
+    percent text; a later polish could fold the paragraph case into
+    `_minHeight` as `lines * lineHeight + 2 * inset`.
+  - `UiField.maxLength` draws a counter under the box and the editor publishes
+    `maxValueLength` and `currentValueLength`, which now merge into the
+    control's node. Nothing reads them twice today, but a screen reader that
+    starts announcing the count would be announcing what the drawn counter
+    already says.
+## 2026-09-16: Front-end refactor wave G, slot G4, the static geometry gate
+
+- Task: slot G4 of `design/11-fit-and-scale.md`, delivered beside the two wave
+  F slots. Turn the `no_literal_geometry` row of 10 section 8 from four sample
+  patterns over the application into a census of every static size over both
+  trees, so 11 section 1 ("type from the scale, space from a token,
+  arrangement by window class, fit by constraints") is enforced by a test
+  rather than by review. Census the application, write the backlog wave 3 burns
+  down, hold the package to zero, and amend the gate's row.
+- Branch and worktree: `fe/fit-gates` at `.claude/worktrees/fe-fit-gates`, cut
+  from `front-end-refactor` at `bd69f80`. Pushed to `origin/fe/fit-gates`. No
+  pull request; the integrator merges the slot.
+- Outcome: complete. Two gates, one design amendment, four commits, three files.
+  Nothing under any `lib/` changed, so no screen golden, no semantics fixture
+  and no package gallery golden moves. The application census is twenty six
+  numbers over nine files; the package census is five, all of them inside files
+  wave F owns, so they are recorded for the integrator rather than edited here.
+- Commits (four, oldest first):
+  - `a39e3d5` `test(gates): count every static size in the design system and allow none`
+  - `594adf5` `test(theme): count every static size in the application against a backlog`
+  - `0a8316f` `docs(design): 10 section 8 records what the geometry gate now counts`
+  - this entry
+- Files: `packages/specimen_ui/test/gates/no_literal_geometry_test.dart` (new,
+  the directory is new too), `test/theme/no_literal_geometry_test.dart` (new),
+  and one row plus one amendment paragraph in `design/10-component-library.md`
+  section 8. No `scripts/` helper was needed.
+
+### Validation
+
+Every gate run on its own with the tree untouched, `rc=$?` read directly and
+never off a pipe, with the locale exported and the placeholder Firebase options
+in place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+| `flutter test` (package) | 0 | 531 passed, 527 before this slot, so the four are the new gate's |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter test` (app) | 0 | 1068 passed and 9 skipped, 1065 and 9 before this slot |
+| `check_ui_strings.py` | 0 | 193 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (3 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+Two numbers in section 13's status log are stale against this head: it records
+1062 passed and 7 skipped for the application at `31ffbff`, and 513 package
+tests. Measured at `bd69f80` before this slot: 1065 and 9 in the application,
+527 in the package.
+
+Goldens: `flutter test --update-goldens test/golden test/accessibility` ran once
+at `bd69f80` and moved zero of the 121 screen goldens and zero semantics
+fixtures, which is what a slot that changes no `lib/` file should move; the tree
+was restored with `git checkout --` on both directories immediately afterwards.
+The package's family gallery goldens were not touched or regenerated.
+
+Runtime: the new package gate is about one second of test time and the new
+application gate about one second, both well inside the ten the brief allows.
+Each file is read once, masked once and matched with compiled expressions.
+
+### The census
+
+Application, twenty six numbers over nine files. This is the `geometryBacklog`
+map, shrink only, keys relative to the application root:
+
+| File | Count |
+|---|---|
+| `lib/src/api_repository.dart` | 7 |
+| `lib/src/review_context.dart` | 6 |
+| `lib/src/capture_quality.dart` | 2 |
+| `lib/src/reading_alignment.dart` | 2 |
+| `lib/src/reading_declarations.dart` | 2 |
+| `lib/src/risk_assessment.dart` | 2 |
+| `lib/src/widgets/previews.dart` | 2 |
+| `lib/src/workspace.dart` | 2 |
+| `lib/src/magic_link.dart` | 1 |
+
+Nine files is the whole list, not the ten largest. Patterns that fired:
+`duration` 10, `dimension` 8 (a number given to `width`, `height` or a
+constraint bound), `insets` 8. `radius`, `constraints`, `point` and `type` fired
+nowhere in the application, because waves 0 to 2 already moved the screens they
+rewrote onto `ui.shape`, `ui.space` and `ui.type`. The brief expected "many";
+what is left is the wave 3 files and almost nothing else.
+
+Ten of the twenty six are elapsed time rather than motion: seven
+`Duration(seconds: 30)` request timeouts in `api_repository.dart`, the queue
+poll interval and the search debounce in `workspace.dart`, and the email link
+cooldown in `magic_link.dart`. The gate is right to count them, because the
+same thirty seconds is typed out seven times in one file, but the resolution
+is one named constant where the policy lives rather than a motion token. The
+other sixteen have a token already: `EdgeInsets.all(16)` where `ui.space.s4`
+exists, a 560 dp dialog where `DialogWidths` exists, a bare
+`SizedBox(height: 12)` between two rows.
+
+Package, five numbers over three files, all inside files 11 section 7 gives to
+wave F, so all five are in `waveFHandoff` for the integrator:
+
+| File | Count | What |
+|---|---|---|
+| `lib/src/controls/overlays/tooltip.dart` | 2 | `hoverDelay` 400 ms, `touchDuration` 1500 ms |
+| `lib/src/controls/overlays/toast.dart` | 1 | `showDuration` six seconds |
+| `lib/src/primitives/modal_routes.dart` | 2 | the sheet and dialog entrance offsets, 0.08 and 0.02 |
+
+Every one of the five wants a name rather than a deletion. The three delays are
+fixed by 10 section 4.3 and are already named where they are written;
+`foundation/motion.dart` says in its own header that it is the one file in the
+product allowed to hold a duration literal, so they belong beside the motion
+tokens as delays rather than as durations. `hoverDelay` in particular must not
+be collapsed by the reduced motion policy, which is why it is not a motion token
+today. The two offsets are fractions of the pane, which is what 11 section 1
+asks for, but unnamed; `UiToastStyle.entranceRise` is the pattern to follow.
+
+**The five control families carry zero.** Actions, inputs, navigation, data and
+the non-frame parts of overlays hold no static size at all. That is the wave 1
+result measured rather than asserted.
+
+What the allowances carry today, measured: `lib/src/gallery/**` 55 numbers over
+eight pages, `lib/src/foundation/*.dart` 12 (eight in `motion.dart`, four in
+`fields.dart`), the `paint` method of a `CustomPainter` zero in both trees
+across seven painters, `lib/src/models` zero, generated files zero. The last
+three are inert today and are kept because they are the allowances 10 section 8
+now names and because the first one matters the moment a painter does
+arithmetic on the size it was handed.
+
+### Durable learnings
+
+- **A raw string does not interpolate, and a regex built that way compiles and
+  matches nothing.** `RegExp(r'\b(?:width|height)\s*:\s*($_number)')` is a
+  perfectly valid expression that looks for an end anchor followed by the
+  letters `_number`, so it silently found zero of the eight it should have
+  found, and the first census under-reported by eight. Nothing warns. Build a
+  composed expression from a normal string with doubled backslashes:
+  `RegExp('\\b(?:$names)\\s*:\\s*($_number)')`. Concatenating raw strings with
+  `+` also works and is what the first fix did, but the package's
+  `prefer_interpolation_to_compose_strings` lint rejects it at
+  `--fatal-infos`, so the normal string is the only form that passes both.
+- **Mask prose, do not strip it.** The three sibling gates do
+  `source.replaceAll(RegExp(r'//.*'), '')`, which throws every offset away, so a
+  finding cannot carry a line number, and which cuts a line at a `//` inside a
+  string such as a URL. Replacing each comment and each string with spaces of
+  the same length, newlines kept, costs one pass, keeps every line number
+  exact, and lets a balanced-parenthesis scan run over the masked text without
+  a parenthesis inside a string ever confusing it. The masker needs the whole
+  small state machine (line and nesting block comments, single, double and
+  triple quotes, raw strings, escapes, and `${...}` interpolation that can
+  itself contain a quoted string), and `'${m['k']}'` is the case that breaks a
+  naive one: without interpolation handling the masker ends the string at the
+  quote before `k` and everything after it is out of phase.
+- **Token names carry digits.** `s4`, `space12`, `shape.inner`. A number pattern
+  without a lookbehind excluding identifier characters reports 115 `EdgeInsets`
+  offenders in the application where there are 8. The lookbehind is
+  `(?<![A-Za-z0-9_$.])` and Dart's regular expressions support it.
+- **Count a literal's position, not a construct.** Findings are collected into a
+  map keyed by the offset of the number, so two rules that reach the same digit
+  claim it once, the count is monotone, and fixing one call clears every finding
+  that call carried. Counting constructs instead needs an overlap pass.
+- **A whole-call span is safe only where every argument is a number.**
+  `BorderRadius`, `Duration`, `EdgeInsets`, `BoxConstraints`, `Offset` and
+  `Size` qualify. `Squircle.clip(radius: r, child: subtree)` does not: a span
+  there swallows the child and counts `maxLines: 3` as a radius. Those are
+  matched as a named argument and as a first positional argument instead.
+- **A list index reads as a size.** `Offset(bbox[2] / width, bbox[3] / height)`
+  in `screens/workbench/source_geometry.dart` was the only false positive in
+  either tree. A number that sits between a `[` and a `]` is an index, and
+  saying so in one named check removed it without weakening anything else.
+- **`Duration` is two different things in this product.** In the package it is
+  motion, and `foundation/motion.dart` already claims sole ownership of the
+  literal. In the application it is elapsed time and there is no motion
+  `Duration` under `lib/` at all. One pattern catches both, and the gate is
+  useful for both, but the resolutions are opposite and the census has to say
+  which is which or a wave 3 agent will reach for `ui.motion` to fix an HTTP
+  timeout.
+- **The gate catches a number written into a call, not a named constant.**
+  `static const double entranceRise = 8;` in a style class does not fire, and
+  `static const Duration showDuration = Duration(seconds: 6);` does, because the
+  second is a call. That asymmetry is worth knowing: a G slot that needs a fit
+  threshold can name it in the control's style class and pass, which is the
+  right answer for a measurement that belongs to one control, while a
+  measurement that belongs to the system still has to go to the foundation
+  under 10 section 2 clause 11, which is review rather than gate.
+
+### Failed approaches
+
+- **One shared scanner, three ways, all rejected.** Putting it in
+  `packages/specimen_ui/lib/src/testing/` beside `glass_budget.dart` would make
+  it importable by both, but it puts `dart:io` into the package's shipped
+  `lib/`, which breaks a web compile of anything that touches `testing.dart`
+  and makes `layering` reason about a file that is not a widget. Putting it in
+  `apps/specimen_digitization/scripts/` is what the brief offers, but the
+  package test cannot import across the package boundary, so it solves half the
+  problem. A relative import from the application's test into the package's
+  test directory is legal Dart and a known way to get two copies of one library.
+  The two files therefore carry the same scanner on purpose, each says so in its
+  header, and the eight behaviour assertions in each are identical so a change
+  to one that is not made in the other fails visibly.
+- **`Offset(<digits>, <digits>)` as written in the brief** misses
+  `Size(constraints.maxWidth, 40)`, which is exactly the shape worth catching.
+  Replaced by the whole-call span plus the index allowance, which catches both
+  and still produces no false positive.
+- **No `CHANGELOG.md` entry, deliberately.** The slot adds no public API and no
+  token, so the common brief's rule does not apply; opening a 0.3.0 section for
+  a test-only change would also collide with two live wave F slots in the one
+  file the merge protocol already expects to conflict. The record for a gate
+  lives in 10 section 8, which this slot amended.
+
+### Follow-ups
+
+- The integrator empties `waveFHandoff` in the package gate when wave F merges,
+  by taking the five numbers above into the foundation. Until then the map is
+  shrink only and the package gate is green.
+- Wave 3 burns the nine application files down. The `duration` entries and the
+  geometry entries want different fixes; the backlog map's doc comment and the
+  10 section 8 amendment both say which.
+- `lib/src/models/` does not exist; the wire type allowance is the prefix
+  `lib/src/models`, which covers today's `lib/src/models.dart` and a future
+  directory. It is inert at present.
+- The commits are signed `Claude Opus 5 (1M context)` rather than the line the
+  brief names, because that is the model that wrote them, which is what slot E1
+  did before this one for the same reason.
+
+### For the other slots
+
+Nothing is added to the package's public API, so there is nothing for wave G to
+import. What the wave F and wave G slots need to know is the rule itself: from
+this merge on, a number written into a `BorderRadius`, `Radius`, `Duration`,
+`EdgeInsets`, `EdgeInsetsDirectional`, `BoxConstraints`, `Offset` or `Size`
+call, into a digit radius on `Squircle` or a superellipse, or into `width`,
+`height`, `minWidth`, `maxWidth`, `minHeight`, `maxHeight`, `dimension`,
+`fontSize` or `letterSpacing`, fails the package gate unless it is 0, 1 or 2, it
+is in `foundation/` or `gallery/`, or it is inside a `CustomPainter.paint`. The
+fit variants of 11 section 3.3 are the place this will bite: a threshold width
+is a measurement, and it goes in the control's style class or in the foundation
+before it goes in a `SizedBox`.
+## 2026-09-16: Front-end refactor wave G, slot G1, the actions family fits
+
+- Task: the `UiSegmented`, `UiButton`, `UiChip`, `UiCapsuleToggle`, `UiBadge`
+  and `UiKeyCap` rows of the fit table in `design/11-fit-and-scale.md` section
+  3.3, `UiButtonRow` from section 3.4, and control contract clauses 13 to 15
+  turned on for the actions family.
+- Branch and worktree: `fe/fit-actions` at `.claude/worktrees/fe-fit-actions`,
+  cut from `front-end-refactor` at `a301748`, which already carried the
+  merged wave F. Pushed to `origin/fe/fit-actions`: the last content commit is
+  `3818b68` and the branch head is the commit carrying this entry. No pull
+  request; the integrator merges the slot with G2 and G3.
+- Outcome: complete. Seven commits, 27 files, 21 new package tests (604 at the
+  head this was cut from, 625 now, none replaced), four actions goldens
+  regenerated and committed, the public API recorded under 0.3.0.
+- Commits (seven, oldest first):
+  - `0154ab7` `feat(foundation): a height derived from a size, not only from a density row`
+  - `a05d736` `feat(actions): one line labels, derived heights, and the chip's leading slot`
+  - `06b1bf1` `feat(actions): the segmented control's fit ladder, from words to a select`
+  - `733e626` `feat(actions): UiButtonRow, the one arrangement every screen needs`
+  - `20f8503` `test(actions): clauses 13 to 15 on, and the ladder asserted rung by rung`
+  - `7e540e3` `feat(gallery): the Fit block on the actions page, and the family reviewed whole`
+  - `3818b68` `docs(design): reconcile 10, 11 and the package with the actions fit pass`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and `rc=$?` read directly rather than off a pipe:
+## 2026-09-16: Front-end refactor wave G, slot G2, the surfaces fitted
+
+- Task: the eight rows of `design/11-fit-and-scale.md` section 3.3 that belong
+  to the overlays, navigation and data families (top bar, tabs, tile, row,
+  dialog, sheet, banner, toast), plus contract clauses 13 to 15 turned on for
+  all three families and a fit section on each of their gallery pages. No
+  control outside those three families was touched.
+- Branch and worktree: `fe/fit-surfaces` at `.claude/worktrees/fe-fit-surfaces`,
+  cut from `front-end-refactor` at `a301748`, which already carries the merged
+  wave F. Pushed to `origin/fe/fit-surfaces` at `82ca595`. No pull request;
+  the integrator merges the slot with G1 and G3.
+- Outcome: complete. Five commits, 55 files, 18 new package tests (604 before,
+  622 now), 16 family goldens regenerated and committed, 23 public API changes
+  recorded in the package changelog under 0.3.0, eight entries in 10 section 4
+  amended in the same change that moved them.
+- Commits (five, oldest first):
+  - `99b4992` `feat(data): the row gives up its trailing word, the tile steps its numeral down`
+  - `5f9d71f` `feat(navigation): the bar ellipsises its title, then collapses its commands`
+  - `07e86e1` `feat(overlays): the sheet bounds its body, the strip scrolls, the action moves`
+  - `0d52972` `test(gallery): each family page shows its fit at 480, 360, 280 and 200 dp`
+  - `82ca595` `docs(design): reconcile 10 and the changelog with the three families fitted`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and its own exit code read directly, never off a
+  pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 625 passed, 0 failed, the four actions goldens included |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1033 passed, 9 skipped, 32 failed. All 32 are screen goldens in `test/golden/size_classes_golden_test.dart` at text scale 2.0, which the wave policy reserves for the integrator. Zero failures outside `test/golden/`, zero fixtures. |
+  | `check_ui_strings.py` | 0 | 197 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (27 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens and fixtures:
+  - Committed: the four `actions-{light,dark}-{touch,pointer}.png`. The window
+    moved from 1180 by 820 to 1180 by 2540, measured against a page that ends
+    at 2492. The whole file is a diff, because the window grew: 10 section 6
+    already recorded the actions page as the one family taller than its window
+    and the page ended at 1616 before this slot, so more than half the family
+    was below the fold and unreviewed. Read before committing, all four. What
+    the new area shows: every control that was previously cut off, the
+    segmented section moved into the wide column where its five segment `lg`
+    track finally draws its words whole, and the Fit block, where the named
+    glyph track takes words at 480, glyphs at 360 and 280 and a select at 200,
+    the unnamed track takes words at 480, 360 and 280 and ellipsises at 200,
+    the button holds its own width and ellipsises at 200 under the page's one
+    focus ring, the entered value chip keeps its remove target and gives way
+    at 200, and `UiButtonRow` is a line at 480 and 360 and a column at 280 and
+    200. The one specimen that is gone is the `focused` button in the
+    `UiButton, states` row: a page has one primary focus and it is spent on
+    the narrow column now, and the ring at a comfortable width is still pinned
+    by `foundation-primitives`, whose focused specimen is a `UiButton`.
+  - Application screen goldens: **32 of 121 moved, and zero of the eight
+    semantics fixtures.** The 32 are `intake`, `workbench-readings`,
+    `workbench-fields` and `workbench-history`, eight each, which is four
+    window classes by two modes, and every one of them is at text scale 2.0.
+    Nothing at 1.0 or in any other screen moved, which is the check this slot
+    wanted: heights that derive from the type are the density number at scale
+    1.0 exactly. Regenerated once with `--update-goldens` to read, then
+    restored with `git checkout --`. The diff is a vertical shift of
+    everything under the first control that holds text, largest on the
+    workbench, whose tab strip is a `UiSegmented`. Left for the integrator.
+- Durable learnings:
+  - **A `LayoutBuilder` cannot live under an intrinsic pass, and `UiLabel` is
+    a `LayoutBuilder`.** `RenderConstrainedLayoutBuilder` throws on
+    `computeMaxIntrinsicWidth` outside a debug intrinsics check, so the moment
+    a label became a `UiLabel` the `IntrinsicWidth` that sized the segmented
+    track had to go. That is a better outcome than the workaround: the track
+    now declares its width from `measureLabel` instead of asking the framework
+    to measure the same thing a second time, which is what 11 section 0 means
+    by one width policy per control. Worth knowing before wave 3: a control
+    with a label can no longer be put inside `IntrinsicWidth` or
+    `IntrinsicHeight`. The only one in the tree is `evidence_panel.dart`, and
+    no control of this family is inside it.
+  - **A tooltip that wraps a label steals nothing; a tooltip that wraps a
+    pressable would.** `UiTooltip`'s gesture detector is
+    `HitTestBehavior.deferToChild` over a `Text`, and a `RenderParagraph` does
+    not hit test itself, so the detector never enters the arena. Put the same
+    tooltip inside a `Pressable`'s builder around something that does hit test
+    and the inner recogniser wins the sweep, because hit testing adds the
+    deepest entry first: the control would stop activating on a tap. The rule
+    this family settled on is that a control that is pressed wraps itself from
+    outside its `Pressable`, and a control that is not (`UiBadge`,
+    `UiKeyCap`) uses `UiLabel`'s own tooltip slot.
+  - **`SizedBox` is the whole width policy, because `enforce` clamps both
+    ways.** A variant that declares `SizedBox(width: w)` is `w` wide under a
+    loose parent, the parent's width under a tight one, and the parent's width
+    under a loose parent narrower than `w`. Those are exactly the three
+    behaviours 11 section 3.3 asks for, including the last resort, and none of
+    them needs a branch in the control.
+  - **A `UiButton` under a tight width fills the box and centres its capsule.**
+    `Pressable` shrink wraps its visual in a `Center(widthFactor: 1)`, so a
+    button given a tight 280 publishes a 280 wide widget whose capsule is its
+    own width in the middle of it. That is why `UiButtonRow` stacks its
+    actions centred rather than stretched, and why a test that reads a
+    stacked button's width has to read the capsule rather than the widget.
+  - **`tester.renderObject<RenderParagraph>(find.text(...))` stops working the
+    moment a label overflows.** An overflowing `UiLabel` publishes its whole
+    string as a `semanticsLabel`, so `Text` wraps itself in a `Semantics` and
+    the element the text finder lands on is the annotation. Go through
+    `find.byType(RichText)` instead.
+  - **A const assert is evaluated by the analyzer, not at run time.** The
+    assertion that a chip carries a glyph or a leading widget and not both
+    fails `flutter analyze` as `const_eval_throws_exception` when the specimen
+    is a const expression, so a test for it has to build the widget through
+    something non const, which reaches the assert where `tester.takeException`
+    can see it.
+  - **`dart format` is not clean on this tree.** Twelve of the thirty one
+    files under `lib/src/controls/inputs`, `overlays` and `primitives` change
+    under the pinned Dart 3.10.4 formatter, and twelve of the seventeen files
+    this slot touched would have changed at `HEAD`. Running it therefore mixes
+    formatting churn into a slot's diff and into any merge. This slot ran it
+    once, reverted the three files where the change was formatting only
+    (`icon_button.dart`, `badge_test.dart`, `key_cap_test.dart`) and kept it
+    where the file was being rewritten anyway. There is no `dart format` hook
+    in `.pre-commit-config.yaml`, so nothing is gating this either way; a
+    later slot should decide whether the tree is formatted or not, rather than
+    each slot deciding for its own files.
+- Failed approaches:
+  - Putting `controlHeightFor`'s size shaped sibling in each control. Three
+    controls needed `max(a size, the scaled line box plus twice the inset)`
+    with a different size each, and writing the formula three times is the
+    seam 11 section 0 names. `UiType.insetAround` and `UiType.heightAround`
+    are one formula with the number handed in, and the density forms call
+    them.
+  - Giving `UiSegmented` an unconditional select rung. `UiTabs` builds a
+    `UiSegmented` inside `SemanticsRole.tabBar` with `explicitChildNodes`, and
+    the SDK's own check fails on a child of a tab bar that is not a tab. The
+    rung is now conditional on the track carrying a `label`, which a tab strip
+    does not give it, and 11 section 3.3 is amended to say so.
+  - Showing every Fit specimen focused as well as at rest. A page has one
+    primary focus; `autofocus` on a second control is granted to whichever
+    asks first, which makes a specimen labelled `focused` a lie in a golden.
+    The page spends its one focus where the new information is.
+  - Stretching a stacked action to the column width. `Pressable` shrink wraps,
+    so the capsule centres itself inside the stretched box and the box is
+    invisible; and a capsule that did fill a phone's width would stop reading
+    as the disc of 09 section 1. The column centres instead, and 11 section
+    3.4 is amended.
+- Remaining follow-ups, and every deviation from the brief:
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slot F2 also recorded.
+  - **`UiSegmented` gained `label` rather than a required name.** Making it
+    required would have been a breaking change to `tabs.dart`, which is slot
+    G2's file, and a tab strip has no name to give.
+  - **The actions page's `focused` button specimen is gone**, as described
+    under goldens above.
+  - **The segmented section moved column on the actions page.** Not asked for,
+    but the specimen it moved was drawing its own last resort in a 345 dp
+    column, which reviews the fit policy rather than the control.
+  - **`UiCapsuleToggle` is in the fit pass although 11 section 3.3's table
+    does not list it.** It is in the family, it arranges labels, and clause 15
+    applies to it; its declared arrangement is the `Wrap` it already had, and
+    each option now ellipsises with a tooltip rather than wrapping.
+  - For a later polish: `StatusChip`'s `_MeasuredChip` in
+    `lib/src/widgets/status_chip.dart` and its `TODO(fe/polish-2)` can now be
+    retired onto `UiChip.leading`, which is the slot it asked for. That file
+    belongs to no wave G slot.
+  - For a later polish: the workbench and intake screens at 200 percent text
+    still show a pattern label wrapping inside a capsule
+    (`Confirm label coverage`). It is an L4 widget rather than a control, so
+    it is wave 3's to re-base; the screen goldens at 2.0 picture it.
+- What the other wave G slots and the integrator will want:
+  - `UiButtonRow(primary:, secondary:, tertiary:)` from the actions barrel.
+    G2's `UiDialog` and `UiSheet` adopt it for their actions; it takes
+    `UiButton`s, aligns the line to the end with the primary last, and stacks
+    with the primary on top when the line does not fit or the window is
+    compact.
+  - `UiButton.intrinsicWidth(context)`, and `UiButtonStyle.restingHeightOf`
+    and `UiButtonStyle.labelStyleOf`, for a control that sizes itself beside a
+    button.
+  - `UiType.insetAround(restingHeight, style)`,
+    `UiType.heightAround(restingHeight, style, context)` and
+    `UiType.heightAroundAt(restingHeight, style, scaler)` in the foundation,
+    for any height that holds text and is not the density row. G2's tile, row,
+    banner and toast heights are the obvious callers.
+  - `UiSegment.icon` and `UiSegmented.label`, and the ladder they unlock.
+    `UiTabs` compiles unchanged and behaves as it did; if G2 wants a tab strip
+    that collapses, the decision to make is what a tab bar's node becomes
+    when it does, not whether the rung exists.
+  - `UiChip.leading` and `UiChipStyle.leadingSize`.
+  - `UiButtonStyle.resolve`, `UiSegmentedStyle.resolve`,
+    `UiChipStyle.resolve`, `UiBadgeStyle.resolve`,
+    `UiCapsuleToggleStyle.resolve` and `UiKeyCapStyle.resolve` all take a
+    `TextScaler` named `textScaler`, defaulting to `TextScaler.noScaling`.
+  - The actions family golden window is 1180 by 2540, in
+    `test/gallery/actions_golden_test.dart`. G3's golden matrix pictures these
+    controls, so it is regenerated after this slot and G2 land, as
+    11 section 7 says.
+
+## 2026-09-16: Front-end refactor wave G, slot G3, the gallery matrix
+
+- Task: section 3.5 of `design/11-fit-and-scale.md`. The gallery shell gets a
+  compact arrangement, a Fit page draws every control of the fit table in 11
+  section 3.3 at four column widths, and a golden matrix draws every page at
+  four window classes by three text scales by two modes. No control is
+  converted here; G1 and G2 do that, and the matrix pictures whatever the
+  controls do today.
+- Branch and worktree: `fe/fit-gallery` at `.claude/worktrees/fe-fit-gallery`,
+  cut from `front-end-refactor` at `a301748`, which already carries the merged
+  wave F. Pushed to `origin/fe/fit-gallery` at `7bfa7d9`. No pull request; the
+  integrator merges the slot with G1 and G2.
+- Outcome: complete. Four commits, 296 files (288 of them goldens), three new
+  files under the package, 20 new tests, every gate green.
+- Commits (four, oldest first):
+  - `3a42591` `feat(gallery): the Fit page, one section per row of the fit table`
+  - `afcd869` `feat(gallery): the page list is a select below medium, and one text style`
+  - `42259dc` `test(gallery): the golden matrix, four classes by three scales by two modes`
+  - `7bfa7d9` `docs(specimen_ui): the 0.3.0 entry for the compact shell, the Fit page and the matrix`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and `rc=$?` read directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, `pubspec.lock` unchanged |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 624 passed, 0 failed, 42 s |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1066 passed, 9 skipped, 0 failed, 41 s |
+  | `check_ui_strings.py` | 0 | 197 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (296 files) | 0 | 11 hooks passed, 6 had no file of that kind |
+
+- Goldens.
+  - **Committed: 288 new matrix goldens** under
+    `packages/specimen_ui/test/gallery/goldens/matrix/`, 52 MB, largest 393 KB
+    against the 1 MB pre-commit ceiling. Twelve pages times four window
+    classes (360, 700, 1000, 1400 dp) times three text scales (1.0, 1.3, 2.0)
+    times two modes, named `<page>_<class>_<scale>_<mode>.png`. Pointer
+    density, reduced motion on, the fonts `flutter_test_config.dart` loads.
+    A full verifying run is 28.6 s wall, against the three minute budget.
+  - **Moved: none.** No existing gallery golden moves. The foundation goldens
+    pin `foundationPages`, each family golden renders its own page alone, and
+    the sidebar arrangement is unchanged pixel for pixel at 1180.
+  - **Application screen goldens and semantics fixtures: none touched and none
+    regenerated.** The app suite is green without them, which is the check
+    that this slot changed nothing a screen draws.
+  - **The integrator regenerates the matrix after G1 and G2 merge**, per 11
+    section 7: those slots change the controls it pictures, and the Fit page
+    collapses from about 4100 dp tall to something near a third of that once
+    the top bar and the toast stop breaking their words one letter to a line.
+- What the goldens show, read by eye at eight of the 288:
+  - `fit_large_1.0_light`: the four columns read left to right as a control
+    recovering as it is given room. `UiSegmented` at 200 dp breaks every
+    segment into single letters, which is the checkpoint 1 defect exactly;
+    at 280 it breaks two labels; at 360 it breaks one; at 480 it is correct.
+    `UiButton` wraps to two lines at 200 and is correct from 280. The focus
+    rings run concentric with the capsules, which is F1's ring shape working.
+  - `fit_large_1.0_light`, further down: `UiTopBar` is the worst thing in the
+    wave. At 200 and 280 dp the title breaks one character to a line and the
+    bar grows to about 500 dp tall, which is most of why the page is 4100 dp
+    tall at scale 1.0. `UiToast` does the same at 200. `UiListRow` and
+    `UiModalActions` draw the black and yellow overflow stripes at 200 and
+    280. `UiDataTile` holds at every width at scale 1.0 and overflows at 2.0.
+    `UiBanner` ellipsises its message at 200, which is its own small defect:
+    11 section 3.3 has banner text wrap, because a sentence is content.
+    `UiField` is correct at every width: the box stretches, the label and the
+    footer wrap.
+  - `fit_compact_1.0_light`: the shell's compact arrangement, the select above
+    the content, the content the full width of the window but its gutters.
+  - `actions_compact_2.0_light`: the family page at a phone width and 200
+    percent text. "Approve record" wraps inside its capsule, "Save correction"
+    breaks between letters, "secondary" breaks as "second ary". Slot G1.
+  - `data_compact_1.0_light`: the page's two column layout leaves each row
+    about 160 dp, and every `UiListRow` draws the overflow stripes with its
+    title ellipsised to "SP...". Slot G2.
+  - `shape_compact_1.0_dark`: the foundation shape page overflows by 3 dp at
+    360, because its stroke rows are a `Row` of a 160 dp swatch and a label.
+    Dark mode is correct everywhere it was read.
+- Durable learnings:
+  - **A `RenderFlex` names the widget at fault once and then stays quiet.**
+    `debugOverflowIndicator` reports an overflow on the first layout that
+    overflows and not again until the amount changes, so a golden loop that
+    reuses its tree records the defect against whichever window happened to be
+    pumped first. The first run of the matrix attributed every overflow to the
+    dark half of each pair for exactly that reason. Unmounting between
+    captures (`pumpWidget(const SizedBox.shrink())`) makes the record a
+    property of the page. It cost 6 s across 288 captures.
+  - **A repeat report also loses the creator chain.** The first report of an
+    overflow carries "The relevant error-causing widget was: Row:file:///...";
+    the ones after it carry only the message. Anything that attributes an
+    overflow to a file has to key on the message and keep the first
+    attribution, or it will see a report it cannot name. The package matrix
+    never hit this because it unmounts between captures; the application's
+    gallery route test did, and records the message instead.
+  - **A page inside a horizontal `SingleChildScrollView` is the only way to
+    draw a 480 dp specimen in a 360 dp window.** A `SizedBox(width: 480)`
+    under a bounded parent is clamped to the parent, so a `Wrap` of fixed
+    width cells silently draws the wrong widths. The scroll view hands its
+    child unbounded width, so 480 is 480 and the window clips it.
+  - **A gallery page is a specimen sheet and states its own glass budget.**
+    The Fit page draws the top bar, the navigation row and the toast once per
+    column, and each is a frosted pane: twelve, plus the shell's page list
+    where the sidebar is drawn. `maxGlassPanes: 13` says so out loud, which is
+    what 10 section 6 asks of a sheet that exceeds the window budget on
+    purpose.
+  - **`Adaptive.of` with `compact` set never returns null**, so the shell
+    resolves its arrangement with `_sidebarArrangement.of(context)!` and a
+    line of comment. A `?? true` there would be a fallback that cannot happen.
+  - **Only one control on a page can hold primary focus.**
+    `FocusableActionDetector` raises the ring from `hasPrimaryFocus` alone, and
+    a forced `WidgetStatesController` gives the control's own paint but not
+    the primitive's ring. A page of forty specimens cannot act focus out, so
+    the Fit page draws the ring with `FocusRing` on the same box the control's
+    own ring wraps, which for a control whose root is a `Pressable` is the
+    identical picture.
+- Failed approaches:
+  - Drawing the four columns widest first, as the table lists the widths. The
+    row is 1380 dp and the content pane at the `large` window is about 1116,
+    so the 200 dp column, the only one where a compact variant has to fire,
+    was off screen in all 24 of the Fit page's goldens.
+  - Keying the overflow backlog by golden. It produced 54 lines that were an
+    artifact of the loop's order (see the learning above), and every one of
+    them would churn the moment a scale or a window changed. By file it is
+    seven lines that name the slot that owns each one.
+  - `find.text(page.title).last` to pick an option out of the gallery's page
+    select in the application test. The title is on screen four times at that
+    point (the trigger, the page heading, the option, the page body) and the
+    last is not the option. Filtering the list and pressing `Enter`, which is
+    `UiSelect`'s own documented interaction, is both shorter and exact.
+  - Lengthening the Fit page's button and chip labels was not vanity: at
+    "Approve this record" and "Needs human review" both controls fit all four
+    columns, and a specimen whose label happens to fit every width is evidence
+    of nothing.
+- Deviations from the brief, each deliberate:
+  - **One file outside the slot was edited:
+    `packages/specimen_ui/test/foundation/no_fallback_text_style_test.dart`,
+    which is F2's.** That gate walks every page of `galleryPages`, the Fit
+    page is now one of them, and a layout overflow reported during its pump
+    fails the test. The gate is about the style a paragraph inherits, not
+    about layout, so it now runs its page walk with overflow reports set
+    aside and hands every other report straight back to the framework. Nothing
+    it asserts is weakened. The alternative was a red package suite or a Fit
+    page that does not picture the defect it exists for. F2 is merged and no
+    live slot owns that file, so the edit should not conflict.
+  - **`test/gallery/gallery_shell_test.dart` is a new file the slot brief does
+    not list.** The compact arrangement and its keyboard were otherwise
+    proved only by a golden, and a golden cannot say that `Enter` opened the
+    page. Six tests, all in the slot's own area.
+  - **The matrix window is a fixed 900 dp**, which the brief offers as one of
+    two choices. The other, a height that shows the whole page, would make the
+    data page about 3800 dp at scale 2.0 and the Fit page about 8000, which is
+    a multi megabyte binary per golden and over the 1 MB pre-commit ceiling.
+  - **The matrix shows each page alone in the shell's page list**, the way a
+    family golden does, so registering a page moves that page's 24 files and
+    nobody else's. The shell's two arrangements are still pictured, and
+    `gallery_shell_test.dart` is what proves the list itself.
+  - **`extraLarge` is not a column of the matrix.** Nothing in the system
+    declares an arrangement at 1600 that it does not already have at 1200, so
+    a fifth column would be a fifth more goldens for none of the evidence.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slot F2 did before it.
+- Follow-ups, with the slot that owns each:
+  - **G1 and G2, from `overflowBacklog` in
+    `test/gallery/matrix_golden_test.dart`.** `controls/data/list_row.dart`
+    (108 reports), `controls/overlays/sheet.dart`, which is `UiModalActions`
+    (72), `controls/overlays/toast.dart` (32),
+    `controls/navigation/pill_nav.dart` (6) and `controls/data/data_tile.dart`
+    (2). Each line is deleted when the control gets its fit policy, and the
+    matrix fails if one is left standing after it stops overflowing.
+  - **Nobody's slot yet: two foundation gallery pages cannot be drawn at a
+    phone width.** `gallery/pages/shape_page.dart:68` lays a 160 dp stroke
+    swatch beside its label in a `Row` and overflows by 3 dp at 360;
+    `gallery/pages/type_page.dart:64` puts the 64 dp hero numeral beside its
+    unit and overflows above scale 1.0. Both want a `Wrap`. They are recorded
+    in `overflowBacklog` and in `knownNarrowOverflows` in the application's
+    `test/app/gallery_route_test.dart`. Neither is a control and neither was
+    written to be drawn this narrow, because until this slot the gallery was
+    never opened there.
+  - **`UiBanner` ellipsises its message at 200 dp.** 11 section 3.3 has
+    banner text wrap, because a sentence is content rather than a label. Slot
+    G2, and it is visible on the Fit page's ninth section.
+  - **The comment at the top of `no_fallback_text_style_test.dart`'s page loop
+    still says the pages are pumped outside `UiGallery` "because the shell
+    publishes a text style of its own".** It no longer does. One stale
+    sentence in a file this slot only minimally edited; the integrator or a
+    later polish can delete it, and the gate could then pump the shell itself.
+  - **The Fit page's focused row covers four of its ten sections.** The other
+    six draw their ring on a member the control builds for itself and cannot
+    be reached from outside it. Two of those, `UiSegmented` and `UiTabs`,
+    would be reachable if the segment took a builder; nothing needs that yet,
+    and a ring drawn around the whole track would be a picture the product
+    never draws.
+- Package API wave G and the integrator will want:
+  - `galleryPages` is now `foundationPages` plus `familyPages` plus `fitPage`,
+    twelve pages. `fitPage` and `fitColumns` live in
+    `lib/src/gallery/pages/fit_page.dart` and are reached through
+    `galleryPages` rather than exported, the way every family page is.
+  - `UiGallery` is unchanged in its constructor and its `pages` parameter. It
+    now reads `MediaQuery.sizeOf` through `WindowClass`, so a host that pumps
+    it has to publish a `MediaQuery`, which `uiHarness` already does.
+  - `matrixClasses`, `matrixScales`, `matrixWindowHeight`, `matrixDensity`,
+    `matrixGoldenName` and `overflowBacklog` are the matrix's own constants,
+    in `test/gallery/matrix_golden_test.dart`, for whoever regenerates it.
+  | `flutter test` (package) | 0 | 622 passed, 0 failed, including all 48 gallery goldens |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 983 passed, 9 skipped, 82 failed. All 82 are `test/golden/size_classes_golden_test.dart`, the screen goldens the wave policy reserves for the integrator. Zero failures anywhere else, and zero semantics fixtures |
+  | `check_ui_strings.py` | 0 | 196 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (55 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+- Goldens and fixtures:
+  - **Committed: 16 of 16 family goldens for the three families**, the four
+    page goldens each for overlays, navigation and data plus the four
+    `overlays-{sheet,dialog}-{light,dark}` modal windows. Every one read by
+    eye before committing, old beside new. Nothing else in
+    `test/gallery/goldens/` moved: actions, inputs and the six foundation
+    pages are byte for byte, which is the check that this slot stayed inside
+    its three families.
+    - The three page windows grew, each measured against its own page with a
+      throwaway test rather than guessed: overlays 1000 to 1540, navigation
+      940 to 1220, data 1900 to 2280. A window change moves the sky, whose
+      radius is a fraction of the window's longer side, so the whole page
+      diffs at low magnitude: on `overlays-light-touch` 24.4 percent of pixels
+      differ at all, 3.4 percent differ by more than 32 of 255, and the first
+      row with a structural change is 332. The same shape holds for the other
+      two (navigation 17.5 and 0.9 percent, first structural row 369; data
+      23.1 and 1.6 percent, first structural row 1048).
+    - What actually changed, read on the light touch pages. Overlays: the
+      dismissible info band wraps to two lines instead of ellipsising at one,
+      which is the band's sentence becoming content; the new fit section reads
+      as four columns, with the banner and the capsule keeping their action
+      beside the words at 480 and 360 and moving it underneath at 280 and 200,
+      and the tab strip full at 480 through 280 and scrolling with a faded
+      trailing edge at 200. Navigation: the fit section reads four commands on
+      the bar at 480, two and an overflow trigger at 360, and the trigger
+      alone at 280 and 200, with the title ellipsising further at each step.
+      Data: the "Risk" tile's "Not measured" is one line at a smaller display
+      role instead of two lines at `display.large`, and the fit section reads
+      the trailing word present at 480 and 360 and gone at 280 and 200, the
+      subtitle wrapping as the column narrows, and the tile stepping down
+      twice.
+    - The two modal goldens moved only in the page behind the pane. Their
+      diffs are 0.38 and 1.29 percent, bounded to the banner region at
+      (744, 332) to (1068, 362) and (685, 311) to (1068, 421); the sheet pane
+      and the dialog pane are unchanged, which is the evidence that bounding
+      the sheet's body and constraining the action row's height changed
+      nothing about a modal that already fitted.
+  - **Left for the integrator: 82 of 121 application screen goldens, and zero
+    of the eight semantics fixtures.** Regenerated once with `--update-goldens`
+    to read, then restored with `git checkout --`, per the wave policy. The 82
+    are every `queue`, `queue-selection`, `filters`, `source`, `intake`,
+    `workbench-fields`, `workbench-readings` and `workbench-history` window
+    plus the two compact `signin` windows. Two causes, both intended: the
+    environment band's sentence now wraps to a second line instead of
+    ellipsising (0.9 percent of a compact window, one text row), and on the
+    large windows the top bar's two actions moved from the middle of the bar
+    to its trailing edge, which is the `Spacer` defect below. The intake and
+    workbench diffs are 0.02 to 0.03 percent and are the rail's destination
+    labels moving a pixel under `UiLabel`'s strut.
+- Durable learnings:
+  - **A `Spacer` beside a `Flexible` title takes half the bar.** Flex
+    allocation divides the free space by flex factor before a loose child is
+    allowed to take less than its share, so `UiTopBar`'s title was capped at
+    half the bar however much room the actions left. It was invisible while
+    the title was a wrapping `Text` and became a truncation the moment it was
+    a `UiLabel`, which is how clause 14 found it. With no centre slot the
+    title is now an `Expanded` and there is no `Spacer`; with one, the two
+    divide what is left, which is what 10 section 4.4 asks for anyway.
+  - **A `Column` gives an inflexible child an unbounded main axis.** That is
+    the whole of the wave 2 sheet defect: the pane's outer column held the
+    drag handle and the padded body as two inflexible children, so the
+    `Flexible` inside the padded body was flexible against infinity and a
+    scrolling body shrink wrapped to its entire content. One `Flexible` around
+    the padded block fixes it, and it is a better fix than arithmetic over the
+    chrome, because the layout already knows what the safe area took.
+  - **Adding or removing a widget above a `Scrollable` throws away its
+    `ScrollPosition`.** The tab strip's edge fades were built by wrapping the
+    scroller in a `ShaderMask` only when there was something to fade. The
+    first frame has no clients, so the mask appeared on the second, the
+    scroller's element was re-inflated one level deeper, and the animation
+    bringing the chosen tab into view was cancelled part way. The mask is now
+    always in the tree and opaque at both ends when there is nothing to fade.
+  - **`LinearGradient.createShader` needs a `TextDirection` for a
+    directional alignment**, and a `ShaderMask`'s callback runs during paint
+    where `Directionality.of` is not reachable. Read it in `build` and close
+    over it.
+  - **`RenderFittedBox` reports its child's unscaled baseline.** It does not
+    override `computeDistanceToActualBaseline`, so a `FittedBox` around a
+    scaled numeral hands the row above it a baseline from before the scale,
+    and a unit aligned to it floats above the digits. Scale the numeral and
+    its unit together and the baseline stays inside the box.
+  - **A `ValueNotifier` listener runs before the rebuild it causes.** Reading
+    `maxScrollExtent` there measures the old viewport. A post frame callback
+    is the place to scroll something into view.
+  - **A specimen sheet that shows one control per fit column draws four of
+    that control.** Two gallery pages had to state their own frosted pane
+    count, which 10 section 6 already allows and the fields page already did.
+    A product window is unaffected: `UiToastHost` shows one capsule at a time.
+  - **A 480 dp specimen inside a 370 dp column is a specimen of 370 dp.** The
+    data page's fit section was written into the measures column, which is two
+    fifths of the page, and every specimen silently came out at the column's
+    width with the wrong label under it. It is visible only by eye, which is
+    the argument for reading a golden rather than counting it.
+- Failed approaches:
+  - Bounding the sheet's body by `MediaQuery.sizeOf(context).height` minus a
+    chrome height computed from `lineHeightOf` and `controlHeightFor`. It is
+    the brief's wording and it is a second rule for one measurement: the pane
+    sits inside a `SafeArea`, so the window's height is not the height the
+    route left, and the action row's real height is `UiButton`'s rather than
+    the derived one. The `Flexible` is exact and the derived numbers stay on
+    `UiModalStyle.actionHeight`, which is what gives the strip its minimum.
+  - Reaching into `UiSegmented` to scroll a chosen tab's own box into view.
+    The boxes belong to slot G1's control and a strip that measured one would
+    be a second copy of that layout. The offset is the reviewer's position
+    along the row, which for the 2 to 5 tabs a strip carries puts the first at
+    the start, the last at the end and the rest in the middle.
+  - Enabling clause 13 on the dialog and the sheet without naming the button's
+    label as content. `UiButton` still wraps at 200 dp, which is slot G1's row
+    of the table; the two entries carry the marker to delete.
+  - A `maxGlassPanes` left at the default on the overlays and data pages, and
+    a `Size(1180, 2720)` data window measured before the fit section was moved
+    out of the measures column. Both were caught by running the gate rather
+    than by reasoning about it.
+- Deviations from the brief, decided rather than asked:
+  - **The `UiButtonRow` adapter is marked `fe/fit-actions:` rather than
+    `TODO(fe/fit-actions)`.** The `no_stand_ins` gate fails on `TODO(fe/`
+    anywhere under the package's `lib/`, and weakening a gate to carry a
+    coordination note is the worse trade. Slot F1 made the same call for the
+    same reason and recorded it; this follows that precedent. Grep
+    `fe/fit-actions` in `controls/overlays/sheet.dart`.
+  - **The adapter is `UiModalActions` itself rather than a new private
+    class.** The overlays family already had the public class both modals draw
+    their actions with, and a private adapter beside it would have been the
+    second implementation the gate exists to prevent. It is now exactly the
+    shape 11 section 3.4 gives `UiButtonRow`.
+  - **`UiTopBarAction` and `UiRowTrailing` are widgets the parent reads rather
+    than value classes in a second slot.** A second slot for one position is
+    configuration; a declared type in the slot that is already there is
+    composition, and `UiEmptyState.action` typed `UiButton?` is the precedent.
+    It also keeps both call site types unchanged, so no file outside this slot
+    had to move.
+  - **`UiSpace.labelMin` is new**, `targetMin * 2`. 11 section 3.3 rule 3
+    needs a threshold and the grid had none. Every control that switches to a
+    compact variant switches at this width.
+  - **One application test moved**,
+    `test/widgets/environment_banner_test.dart`, whose finding V-15 group
+    asserted `maxLines == 1` on the band's closed sentence. The band's cap is
+    on the band, not on the line, and the height assertion beside it is
+    unchanged and still passes. It is a file no wave G slot owns, and the
+    change was forced by this slot.
+  - **`fitColumns` is declared three times**, once per family page. The file
+    that would hold it once is the gallery shell, which slot G3 owns this
+    wave. G3 or the integrator can fold the three into one.
+  - **The commit trailer names Claude Opus 5 (1M context)**, the session's own
+    attribution instruction and the model that did the work.
+- Product observations, not fixed here:
+  - A row title with no spaces breaks mid word at 200 dp: "SPEC-2026-0041"
+    becomes "SPEC-202" over "6-0041". That is what 11 section 3.3 asks for,
+    the title being content with two lines, and it is better than a clipped
+    identifier, but a later pass could give a row title a soft wrap opportunity
+    at its hyphens.
+  - `UiTabs` at 200 dp scrolls, and a reviewer on a touch device reaches the
+    third tab by dragging. The strip is still the segmented control's keyboard
+    pattern, so arrow keys reach it without a drag.
+- What the other wave G slots and the integrator will need:
+  - **G1**: `UiModalActions` in `controls/overlays/sheet.dart` is
+    `UiButtonRow` built to 11 section 3.4. When the real class lands, this one
+    becomes a forwarder or goes, its two call sites in `UiSheet` and
+    `UiDialog` move with it, and the two `wrappingContent` entries naming a
+    button label in `dialog_test.dart` and `sheet_test.dart` come out. Nothing
+    in `controls/actions/` was touched by this slot; `UiTabs` reads
+    `UiSegmentedStyle.resolve(ui, UiSize.lg)` for the segment padding, the
+    minimum segment width and the track inset, so a change to any of those
+    moves the strip's fit with it and needs no edit here.
+  - **G3**: the three family pages each declare `const List<double>
+    fitColumns`; the Fit page can take one of them into the shell and the
+    three can then import it. The overlays page is `maxGlassPanes: 7` and the
+    data page `maxGlassPanes: 8`, so a matrix golden over those pages has to
+    pass the page's own number rather than the default four. The three family
+    golden windows are 1540, 1220 and 2280 tall.
+  - **The application**: `lib/src/app/shell.dart` passes two `UiIconButton`s
+    in `UiTopBar.actions`, so its bar keeps both drawn and never collapses.
+    Swapping them for `UiTopBarAction` is two constructor names and gives the
+    compact shell the overflow menu; the file belongs to wave 2's slot E1.
+    `_BandWithAction` in the same file, marked `TODO(fe/polish-2)`, is now
+    `UiBanner(actionLabel:, onAction:)` and can go.
+  - **Package API added**: `UiTopBarAction`, `UiRowTrailing`,
+    `UiSpace.labelMin`, `UiSheet.scrollBody`, `UiBanner.actionLabel` and
+    `onAction`, `UiModalActions.tertiary`, `UiModalStyle.actionHeight`,
+    `UiDataTileStyle.numeralSteps`, `UiListRow.contentMaxLines`,
+    `UiDisclosureStyle.summaryMaxLines`, `UiTopBarStyle.heightIn`,
+    `keptActions` and `overflowLabel`.
+
+### 2026-09-16: Addendum to the slot G2 closeout above, the gallery matrix findings
+
+The coordinator relayed slot G3's findings from the merged gallery matrix
+while this slot was finishing. Each one, and what closed it. Two more commits,
+`dfd3fd8` and `28d7931`; the package is at 625 tests and every gate above was
+rerun against the tree that carries them, with the same results.
+
+- **`UiTopBar` broke its title one character per line at 200 and 280 dp and
+  grew to about 500 dp tall. Closed.** The title is a `UiLabel` and the
+  actions collapse, both already in `5f9d71f`. Measured on the final tree with
+  a leading, a 27 character title and four commands: the bar is 56 dp and
+  reports no overflow at 480, 360, 280 and 200 dp.
+- **`UiToast` broke one character per line at 200 dp. Closed**, in `07e86e1`.
+  The message is content and wraps to two lines at 200, 280 and 360 and one at
+  480; the action's own label is one line at all four; no overflow at any of
+  them.
+- **`UiBanner` ellipsised its message at 200 dp. Closed as far as two rules
+  allow, and the residue is named.** The sentence now wraps: two lines at 200,
+  280 and 360, one at 480, where before it was one line and an ellipsis at
+  every width. It still ellipsises at 200 dp, because two lines is the band's
+  cap, which is finding V-15 carried by 10 section 4.3 and not repealed by 11.
+  The whole sentence is on the semantics node either way. Raising
+  `UiBannerStyle.maxLines` to three would fit that sentence at 200 dp and
+  would still pass the V-15 height assertion at 200 percent text on a phone
+  (three lines measure about 125 dp against a 168 dp ceiling), but no document
+  asks for three, and `EnvironmentBanner.maxLines` reads the same constant.
+  That is the integrator's call, not this slot's.
+- **`UiPillNav`, six overflows. Closed** in `dfd3fd8`. Five 48 dp discs need
+  240 dp and a disc's hit box never shrinks, so the capsule scrolls through
+  the same `EdgeFadedRow` the tab strip uses, with the current destination
+  scrolled into view. The scroller moved into `primitives/edge_fade.dart` for
+  it: two controls needed it, a private class cannot cross two files in Dart,
+  and a second copy is what the stand-in gate exists to prevent. The brief
+  lists the three control directories rather than `primitives/`, so this is a
+  deviation, recorded here; the file is new, so it cannot conflict with a
+  sibling slot, and it is exported from the top barrel.
+- **`UiListRow` 108, `UiModalActions` 72, `UiToast` 32, `UiDataTile` 2: all
+  measured clean.** Each was pumped at 480, 360, 280 and 200 dp with the
+  framework's error handler diverted, in the specimen the gallery draws, and
+  none reported a layout error. `matrix_golden_test.dart` does not exist on
+  this branch, which was cut before G3 merged, so its `overflowBacklog` lines
+  for `UiListRow`, `UiModalActions`, `UiToast`, `UiDataTile` and `UiPillNav`
+  are the integrator's to delete after this slot merges.
+- **`UiButtonRow` in `controls/actions/button_row.dart` is not adopted here**,
+  as instructed: this slot merges nothing, so the adapter stays marked
+  `fe/fit-actions` in `controls/overlays/sheet.dart` and the integrator swaps
+  it. It was built to 11 section 3.4's shape, so the swap is a rename.
+- **`IntrinsicWidth` and `IntrinsicHeight` over a `UiLabel`.** Neither
+  `UiListRow` nor `UiDataTile` has one, and neither does anything else in the
+  three families: the only one under the package's `lib/` is in
+  `controls/actions/segmented.dart`, which is slot G1's file, and the only one
+  in the application is `lib/src/evidence_panel.dart`, which wraps v1 Material
+  text and no control of this package. **The segmented one is load bearing for
+  two slots at once**: it is what gives the track its width, and `UiTabs` puts
+  that track inside a scroller precisely so it keeps that intrinsic width. A
+  `UiLabel` inside a segment would make `IntrinsicWidth` unmeasurable and take
+  the tab strip's compact variant with it, so G1 converting segment labels
+  needs a different way to size the track. Worth checking before G1 merges.
+
+## 2026-09-16: Front-end refactor wave 3, slot E5, intake, capture and sources
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3E slot E5 and section
+  3D item D6. Migrate the intake screen, the full-screen capture route, the
+  registered-source list and the source browse pane onto `specimen_ui` 0.3.0,
+  and re-base `UploadItem`, `SourceObjectRow` and `SourceImportSheet` with
+  their public APIs unchanged.
+- Branch and worktree: `fe/intake-sources` at
+  `.claude/worktrees/fe-intake-sources`, cut from `front-end-refactor` at
+  `8e32d29`. No pull request; the integrator merges the slot.
+- Outcome: complete. Eleven owned files hold no Material component, no
+  Material import that is not infrastructure, no Material glyph and no static
+  size. `no_material_components`, `no_material_imports`, `icons_unique` and
+  `no_literal_geometry` each lose every one of this slot's entries. Ten test
+  files migrated to role and label finders; four new tests added.
+- Commits (four, oldest first):
+  - `72fdaaa` `feat(intake): the D6 patterns on specimen_ui`
+  - `764803d` `feat(intake): intake and the capture route on specimen_ui`
+  - `888113c` `feat(sources): the source list and the browse pane on specimen_ui`
+  - `3bf3297` `test(intake): finders by role and label, and four backlogs at zero`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  captured directly, never off a pipe:
+## 2026-09-17: Front-end refactor wave 3, slot E4, the workbench's record side
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3E slot E4 with its D3
+  and D4 patterns, to the brief in `scratchpad/briefs/e4-workbench-panels.md`
+  and the wave 3 common section. Put the record's readings, fields, history,
+  status, decisions, evidence and operational panels on `specimen_ui` 0.3.0,
+  under the fit rules of `design/11-fit-and-scale.md`.
+- Branch and worktree: `fe/workbench-panels` at
+  `.claude/worktrees/fe-workbench-panels`, cut from `front-end-refactor` at
+  `8e32d29`. Pushed to `origin/fe/workbench-panels`; the head is the commit
+  carrying this entry. No pull request; the integrator merges the slot.
+- Outcome: complete. Twenty four files under `lib/` hold no Material
+  component, no Material import, no Material glyph and no static geometry
+  literal; all four gate backlogs lose every one of this slot's entries.
+  Thirty one test files migrated to role and label finders. Two new patterns
+  (`SelectableEvidence`, `fullTargetDisclosure`) and one new test file.
+- Commits (three, oldest first):
+  - `0dc7a26` `feat(workbench): the D3 and D4 patterns on specimen_ui`
+  - `53a0f72` `feat(workbench): the record's panels on specimen_ui`
+  - `e78ea81` `test(workbench): finders by role and label, and four backlogs at zero`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  read directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues |
+  | `flutter test` (package) | 0 | 670 passed, unchanged from the wave G head |
+  | `flutter test` (app) | 1 | 1049 passed, 9 skipped, 25 failed. Every failure is a screen golden (24) or a semantics fixture (1), which is the wave policy in section 8 of the build plan. No other test fails. |
+  | `dart format --set-exit-if-changed lib test` | 0 | 228 files, 0 changed |
+  | `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (24 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+  The skip count is 9, unchanged from wave 2: this slot's screens needed no
+  entry in the tap target skip list, because `UiField` publishes one 48 dp
+  node since wave F and none of these screens carries a field at all.
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues, `lib/` and `test/` |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues; nothing under `packages/` changed |
+  | `flutter test` (package) | 0 | 670 passed, unchanged from the cut point |
+  | `flutter test` (app) | 1 | 999 passed, 7 skipped, 78 failed. 72 are screen goldens and 4 are semantics fixtures, which are the integrator's per section 8. The other 2 are the region selection assertions in `workbench_layout_test.dart`, written to the source pane's `UiCapsuleToggle` at the coordinator's instruction and green once slot E3 merges. No other test fails. |
+  | `check_ui_strings.py` | 0 | 202 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (64 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+  The skip count stays at 7: this slot adds none and removes the two the
+  queue slot added, because wave F closed the `UiField` finding they carried
+  (checked by running `guidelines_test.dart` with the skips removed: 25
+  passed).
+
+- Backlogs, measured from the tree before and after:
+
+  | Gate | This slot's entries before | After |
+  |---|---|---|
+  | `no_material_components` | 10 files, 25 uses (`capture_screen.dart` 6, `source_screen.dart` 6, `capture_card.dart` 2, `sources_screen.dart` 2, `intake.dart` 2, `source_import_sheet.dart` 2, `source_object_row.dart` 2, `capture_quality.dart` 1, `manifest_panel.dart` 1, `upload_item.dart` 1) | all ten removed |
+  | `no_material_imports` | 7 files | all seven removed |
+  | `icons_unique` | 9 files, 41 glyphs | all nine removed |
+  | `no_literal_geometry` | `capture_quality.dart` 2 | removed |
+  | `no_material_components` | 20 files, 83 uses | all 20 removed |
+  | `no_material_imports` | 14 files | all 14 removed |
+  | `icons_unique` | 15 files, 39 glyphs | all 15 removed |
+  | `no_literal_geometry` | 4 files, 12 numbers | all 4 removed |
+
+- Goldens and fixtures: regenerated locally to be read by eye, then reverted
+  with `git checkout --` before the first commit, per section 8. Nothing under
+  `test/golden/images/` or `test/accessibility/fixtures/` is in any commit.
+  **24 of the 121 screen goldens move**, and the set that moves is the set
+  expected: the sixteen `intake` windows (four classes by two modes by two
+  text scales) and the eight `source` windows. Every other family holds byte
+  for byte, including `queue`, `queue-selection`, `filters`, `signin`, `help`,
+  `region-editor`, `diff-text` and the three `workbench` families, which is
+  the other half of the check: nothing this slot touched reaches them.
+  Read by eye at compact, medium, expanded and large in both modes and at
+  both text scales. Two defects were found that way and fixed before the
+  commits: the sensitivity helper line ran into the caveat below it with no
+  gap, and an empty manifest drew three zero tiles over a sentence that said
+  the same thing, so the tiles now appear only once there is a batch to count.
+- The semantics fixture diff, line by line. One file changes, `intake.txt`,
+  and it is the same defect fixed eleven times: the capture card was one
+  merged label holding every sentence on the screen with its controls listed
+  under it, so a reader heard a 40 word paragraph before reaching the first
+  control and could not step through the checklist at all.
+  - Out: `label="Add photographs One photograph per specimen. Applies to
+    photographs you add next. Before you upload, check: Sharp focus Smallest
+    text readable Even exposure No glare Every label inside the frame The
+    server runs its own checks."` with eight controls nested under it. In:
+    eleven nodes, one per line, in reading order, with the controls between
+    the words they belong to.
+  - The sensitivity control is `role=tab selected=...` per option where it was
+    `button checked=... inMutuallyExclusiveGroup`. That is what `UiSegmented`
+    publishes. `selected` and `inMutuallyExclusiveGroup` are not the same
+    claim; see the product defects below.
+  - The confirmation is `checked=isFalse enabled=true tap label="I checked
+    framing and readability"` with the help sentence as its own node, where
+    `CheckboxListTile` merged the two into the control's name.
+  - `liveRegion label="Upload manifest No files selected yet"` becomes
+    `label="Upload manifest"` with a nested `liveRegion label="No files
+    selected yet"`, so a screen reader hears the count when it moves rather
+    than the pane's title every time.
+  - The empty manifest gains `label="No photographs yet Photographs appear
+    here as you choose or take them."`, which is `UiEmptyState`'s merged node.
+- Durable learnings:
+  - **A `GlassSurface` asserts when it is built inside a scrolling list, so
+    `UiDataTile` cannot be used in any list header.** `_assertNotRepeatedInList`
+    walks up to the nearest `SliverMultiBoxAdaptorWidget`, and a `ListView`'s
+    `SliverList` is one. The manifest header is inside the list it heads, at
+    both layouts, so the three count tiles 07 section 5 asks for are a private
+    `_CountTile` drawing `type.label` over `type.displayMedium` on the pane's
+    own `Surface`. Three tiles would also have broken the four pane budget of
+    09 section 3.3 on their own: the shell draws one for the pill or the
+    sidebar and one for the bar once the body scrolls under it.
+  - **A `UiListRow` is a `Pressable` whatever it was given, so a row with no
+    callback announces a disabled button.** That is the wrong fact for a file
+    on its way into a collection and for a photograph that is not a record
+    yet: both are things, not controls the server has withdrawn. Wrapping the
+    row in `Semantics(container: true, label: ..., excludeSemantics: true)`
+    gives one plain node with the same words. The queue never met this because
+    every queue row opens a record.
+  - **An indeterminate `UiProgress` anywhere on screen makes `pumpAndSettle`
+    time out, and `UiButton.loading` draws one.** A batch that a test drives
+    through several settles cannot carry a loading button. The label is the
+    present participle and the control is disabled instead, which is what
+    02 section 4.3 asks for; the measured progress lives where the denominator
+    is, on the row that is sending and in the header's counts.
+  - **A trailing a `UiListRow` cannot measure is bounded to the room left once
+    the title has its minimum,** so a status chip in the slot ellipsises its
+    own word on a narrow row. Both D6 rows take the queue's two layout split
+    instead: the chip sits beside the text above a named width (500 dp for an
+    upload row, 420 dp for a source row, both within-row content decisions
+    rather than window classes) and on a line of its own below it, excluded
+    from semantics because the row's node already carries the state.
+  - **A control inside a `UiListRow` slot has no press and no name of its own.**
+    The remove control is therefore beside the row rather than in its trailing
+    slot, which is the arrangement `SelectableRow` already uses for its
+    checkbox and slot E2 recorded for its saved-set menu.
+  - **`MaterialPageRoute` is infrastructure, not anatomy.** 10 section 1.3
+    keeps the page transitions, and `app_router.dart` already keeps its import
+    for `MaterialPage` for the same reason. The capture route keeps a
+    `show MaterialPageRoute` import with that reason on the line; the
+    `no_material_components` regex does not match it, because the retired term
+    is `Material(` and this is `MaterialPageRoute(`.
+  - **A route pushed on the root navigator does not see a `MediaQuery` the
+    page published.** A 200 percent text test over a modal sets
+    `tester.platformDispatcher.textScaleFactorTestValue` instead.
+  - **`UiToasts.show` walks up from the context it is given.** The browse pane
+    installs a host only where there is not one already, exactly as the queue
+    does, and raises its toast from a `GlobalKey` inside that host; without the
+    key the pane's own context is above the layer it installed and the result
+    is silently dropped.
+  - **`find.bySemanticsLabel` with a `String` is an exact match.** A row that
+    merges its state into one phrase needs a `RegExp` or a new phrase; the
+    former is what keeps the assertion about the state rather than about the
+    whole sentence.
+- Failed approaches:
+  - `UiDataTile` for the three manifest counts. It asserts inside the list and
+    would break the pane budget; see the first learning.
+  - `UiButton.loading` on the upload, the stop and the server check controls.
+    It hangs `pumpAndSettle` in six existing tests that drive a batch.
+  - Putting the status chip in the `UiListRow` trailing slot at every width.
+    It ellipsises the chip's own word on a 360 dp row before the title is
+    anywhere near its minimum.
+- Deviations from the brief and from 10, with why:
+  - **The five pre-upload checks carry the unchecked box glyph, not a
+    `UiCheckbox` each.** The brief reads "the checklist as `UiListRow`s
+    carrying `UiCheckbox`es (retire `CheckboxListTile`)". One confirmation per
+    batch is a product invariant (heuristics audit H5.3, pass criterion 5.3,
+    and the test that asserts the tick clears whenever a file is added), so
+    five tickable checks would be five ways to authorise a batch. The rows are
+    `UiListRow`s and the one `UiCheckbox` is the batch confirmation, which is
+    the `CheckboxListTile` the brief names. The cost is real and recorded: a
+    row is floored at the 48 dp hit box, so the checklist is about 280 dp of
+    card where the v1 lines were about 120.
+  - **The local quality measurements stay three labelled values with a "Not
+    calibrated" chip, not `StatusChip`s.** A status chip carries a status
+    triple, and a colour on an uncalibrated measurement is the interface
+    claiming a verdict the measurement does not carry. 07 section 5 asks for
+    "three short labelled values with a 'Not calibrated' chip" in those words,
+    and the north star's honesty invariant decides it.
+  - **The camera capsule carries the way out and nothing else.** The brief
+    names flash, flip and close. `CaptureCamera` exposes no flash mode and no
+    lens selection, and adding either is a new product capability rather than
+    a migration, which section 1 of the build plan rules out. The capsule
+    carries close; Done sits beside the shutter with the batch counter.
+  - **No shutter confirm from the motion catalog, because 04 has no shutter
+    row.** The shutter is a `Pressable` with `scaleOnPress`, which is the 0.98
+    the control contract allows a capsule, and the confirmation an operator
+    gets is the review step the capture opens. No sound, flash or haptic was
+    invented for it: 04 section 4.7 approves exactly two haptic moments and
+    this is not one of them.
+  - **The manifest header carries both the three numerals and the sentence.**
+    07 section 5 asks for "8 of 12 accepted, 1 skipped" in the header and the
+    slot brief asks for tiles. The tiles are the headline and the sentence
+    names the outcomes with no tile of their own, skipped and interrupted;
+    both sit inside one live node so a reader hears the sentence once.
+  - **`UploadState.tokenKey` and `SourceObjectState.tokenKey` are gone,
+    replaced by `tripleIn(UiThemeData)`.** Neither is a constructor parameter
+    of a D6 pattern and nothing outside these two files read them. A string
+    key resolved through the v1 adapter and a switch on the enum would have
+    been two places for the same choice.
+  - **The file action is the primary and the camera action the secondary**, in
+    that order, which is what the brief names. It reverses the v1 emphasis,
+    where "Take photograph" was the filled control.
+  - **The checksum is truncated to twelve characters with a copy control**,
+    which is 02 section 4.14 and what `SelectableText` was standing in for.
+  - **The commits carry `Co-Authored-By: Claude Opus 5 (1M context)`**, which
+    is what this session's harness states, where the brief names
+    `Claude Fable 5.1`. The integrator may normalise the trailers.
+- Product defects noticed and not fixed:
+  - **One message slot carries both failures and a success.** `intake.dart`'s
+    `_error` holds "The camera or file picker did not open ..." and "Recovered
+    an interrupted photograph ...", so a recovery is reported in the blocked
+    tone. The band cannot pick a tone the state does not carry; splitting the
+    slot is a product change.
+  - **A `UiSegmented` publishes `role=tab` per segment with no `tabBar` above
+    it**, and it publishes `selected` rather than `inMutuallyExclusiveGroup`.
+    The sensitivity control and the source filter both lose the exclusivity
+    claim the Material `SegmentedButton` made. This is the same finding slot
+    E2 recorded for `UiChip.filter`, now on the control 10 section 4.1 names
+    as the replacement for `SegmentedButton` itself.
+  - **`UploadItem` has no retry.** The brief asks for "retry and remove as
+    `UiIconButton`s"; the pattern's constructor carries `onRemove` and nothing
+    else, and an interrupted row is resumed by the batch control rather than
+    per row. Adding one is an API change and a behaviour change.
+  - **A banner caps its message at two lines (finding V-15).** Four of the five
+    strings in the intake band are two short sentences, which is what
+    02 section 4.9 requires of an error, and at 200 percent text in a 420 dp
+    column the second sentence is cut. The whole sentence stays on the
+    semantics node.
+- Package APIs this slot needed and did not have:
+  - **A `UiDataTile` that draws on a `Surface`, or a `UiTileGroup` that is one
+    pane holding several numerals.** The control is a `GlassSurface`, which
+    cannot be built inside a list and costs a pane against the budget; the
+    manifest header draws a private `_CountTile` marked `fe/polish-2` instead.
+  - **A `UiListRow` that is not a control.** Every row that has nothing behind
+    it needs the caller to wrap it in a `Semantics` that drops the row's own
+    node, which is two widgets for what should be a mode.
+  - **A declared "trailing under the title" row variant**, which 11 section 3.3
+    already lists as open. Both D6 rows implement it by hand.
+  - **A `UiButton` that is busy without an indeterminate ring**, or a ring that
+    settles under `pumpAndSettle`. Today a loading button and a full app test
+    that drives it are mutually exclusive.
+- Files changed outside this slot's own list, all four forced and all four
+  minimal: the four gate backlog maps in `test/theme/`, which the brief names;
+  `test/intake_harness.dart` and `test/codec_intake_test.dart`, whose finders
+  are on this slot's controls; and `test/screens/intake_scale_test.dart`,
+  which is new.
+- Remaining follow-ups:
+  - The integrator regenerates the screen goldens and the semantics fixtures
+    once after the wave merges. The expected moved set is the 24 named above
+    plus whatever slots E3 and E4 move; the fixture diff is `intake.txt` as
+    explained above.
+  - `app_router.dart` still keeps its one transparent `Scaffold`, marked
+    `TODO(fe/wave-3)`. Every screen this slot owns now depends on neither a
+    `Material` ancestor nor `ScaffoldMessenger`, so the bridge can go as soon
+    as E3 and E4 land.
+  - One `fe/polish-2` marker added, in `manifest_panel.dart`, for the tile.
+  - No cloud command, no deploy, no dependency added, no SDK change, no screen
+    golden and no semantics fixture committed.
+## 2026-09-16: Front-end refactor wave 3, slot E3, the workbench's source side
+
+- Task: slot E3 of `docs/execution/FRONT_END_REFACTOR.md` section 3E. Migrate
+  the photograph pane of the record screen, the region editor and the D5
+  patterns onto `specimen_ui`, under the fit rules of
+  `design/11-fit-and-scale.md`.
+- Branch and worktree: `fe/source-pane` at `.claude/worktrees/fe-source-pane`,
+  cut from `front-end-refactor` at `8e32d29`. Pushed to
+  `origin/fe/source-pane`. No pull request; the integrator merges the slot.
+- Outcome: complete. Five commits, fifteen files. All three Material gates are
+  at zero for every file the slot owns, and those files leave the backlog maps
+  rather than shrinking inside them. No screen golden and no semantics fixture
+  is committed.
+- Commits (five, oldest first):
+  - `800aa59` `refactor(d5): the region overlay is a Pressable and the marker is the accent`
+  - `b209387` `refactor(e3): the source pane on the design system`
+  - `20c1580` `refactor(e3): the region editor on the design system`
+  - `f6be487` `test(golden): a dialog golden pictures the pane the app pushes`
+  - `0da3b14` `test(gates): slot E3 leaves the three Material backlogs`
+  - this entry
+- Files: `lib/src/screens/workbench/source_pane.dart`, `lib/src/region_editor.dart`,
+  `lib/src/source_pixels.dart`, `lib/src/widgets/region_overlay.dart`;
+  `test/source_pane_test.dart` (new), `test/region_editor_test.dart`,
+  `test/source_geometry_test.dart`, `test/widgets/region_overlay_test.dart`,
+  `test/pilot_evidence_test.dart`, `test/accessibility/guidelines_test.dart`,
+  `test/golden/golden_harness.dart`, `test/golden/size_classes_golden_test.dart`,
+  and the three gate backlog maps under `test/theme/`.
+  `lib/src/widgets/measured_height.dart` is unchanged: it holds no Material
+  component, no Material import and no static size, so the slot's brief for it
+  ("unchanged unless a token replaces a literal") resolved to nothing to do.
+
+### Validation
+
+Every gate on its own, tree untouched during each, `rc=$?` read directly and
+never off a pipe, locale exported and the placeholder Firebase options in place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues; nothing under `packages/` changed |
+| `flutter test` (package) | 0 | 670 passed, the same count wave G left |
+| `flutter test` (app) | 1 | 1017 passed, 9 skipped, 62 failed: 56 screen goldens, 4 semantics fixtures, 2 in `workbench_layout_test.dart`. Every one is listed below |
+| `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (15 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+| `dart format --set-exit-if-changed` (15 files) | 0 | 0 changed |
+
+Backlog counts, before and after:
+
+| Gate | Before | After |
+|---|---|---|
+| `no_material_components` | `region_editor.dart` 13, `source_pane.dart` 9, `region_overlay.dart` 2 | all three off the map |
+| `no_material_imports` | `source_pane.dart`, `region_overlay.dart` | both off the list |
+| `icons_unique` | `region_editor.dart` 5, `source_pane.dart` 8 | both off the map |
+| `no_literal_geometry` | none of this slot's files were on it | still none |
+
+The three failures that are not a golden or a fixture:
+
+- `workbench_layout_test.dart`, "the chip and the overlay carry the same name
+  and state" and "a digit selects the nth region from the keyboard". Both
+  assert `find.widgetWithText(ChoiceChip, 'Label 2')` against the source pane's
+  region list, which is a `UiCapsuleToggle` now. Slot E4 owns that file and it
+  is live, so the lines are reported rather than edited. The replacement is the
+  finder this slot already added to `source_geometry_test.dart`:
+  `find.byWidgetPredicate((w) => w is Pressable && w.role == PressableRole.toggle && w.semanticsLabel == 'Label 2')`,
+  with `tester.widget<Pressable>(...).selected` in place of
+  `tester.widget<ChoiceChip>(...).selected`. Two call sites, four lines.
+
+### The goldens and the fixtures, inspected and not committed
+
+`flutter test --update-goldens test/golden test/accessibility` was run and the
+result read by eye, then `git checkout --` restored both directories. Fifty six
+of the 121 screen goldens move: 8 `region-editor` and 16 each of
+`workbench-readings`, `workbench-fields` and `workbench-history`, which is one
+per window by theme by text scale for the three workbench panels that contain
+the source pane, plus the editor's four windows by two themes. No other screen
+moves, which is the set expected from a slot that owns the source side.
+
+Four semantics fixtures move, all of them improvements and all of them
+explainable line by line:
+
+- The view controls gain a real `label`. They published a `tooltip` alone
+  before, so a screen reader had nothing to announce for the pane's five most
+  used controls.
+- The region list carries toggle semantics (`selected=true enabled=true tap`)
+  rather than `button`, because it is a `UiCapsuleToggle` in single mode.
+- Each region overlay's hit target gains `button enabled=true`: `Pressable`
+  publishes the role the bare `InkWell` did not.
+- `label="px"` leaves the tree. The unit sits in the field's trailing slot
+  under `ExcludeSemantics`, so it is drawn and not read as a control.
+- The reason's help text moves from a child node onto the field's own `hint`,
+  which is where `UiTextArea` publishes it.
+- The region order controls gain their tooltips and their disabled reasons
+  ("This is already the first label region.").
+- `Correct label regions` loses its wrapper tooltip node: the reason is on the
+  control's own node through `Pressable`.
+- Reading order inside the pane changes once: the photograph now precedes the
+  view controls, because the capsule floats over the matte's lower edge rather
+  than sitting above the image. Evidence first is the right order to read in.
+
+Two real defects were found by looking at the regenerated goldens rather than
+by any test, which is what the common section says that pass is for:
+
+1. `SourceRegionEditControl` had been given its alignment by the source pane's
+   own column, so at the workbench's stacked regime, which is what a 1440 dp
+   window gets once the queue list is beside the record, the workbench's call
+   site drew it centred in a stretched column. The control aligns itself now,
+   so both call sites read the same.
+2. The region editor's dialog golden was drawn entirely in the framework's
+   fallback style, red text under a double yellow underline. `pumpGoldenDialog`
+   opened the surface with Material's `showDialog`, which puts a pane on the
+   root navigator with no surface and no text style; `Dialog` used to supply
+   both and `UiDialog` does not, because the route does. This is 11 section 5's
+   defect, alive in a harness rather than in the product.
+
+### Durable learnings
+
+- **A `Stack` gives a child positioned on one edge an unbounded width.**
+  `RenderStack` tightens a positioned child's width only when both `left` and
+  `right`, or an explicit `width`, are set. A `LayoutBuilder` inside a child
+  pinned to `top` and `end` alone therefore sees `maxWidth == double.infinity`,
+  and every fit policy written against that width silently chooses its widest
+  variant forever. The view controls looked correct in every golden and in
+  every manual read, and the test that pumped the pane at 200 dp is what found
+  it. A control that decides by measuring has to be given both edges.
+- **A guideline suite that pumps a package surface through Material's
+  `showDialog` measures the scrim.** The barrier darkens `paper` to about
+  `#717170`, and the contrast guideline then reports 3.84 for text that
+  measures 19:1 on the surface that ships. The queue slot hit the same thing
+  and left the reason in a comment beside `SearchFilters`; this slot's editor
+  is pumped as a screen for the same reason. The rule underneath: pump a
+  package surface the way the app opens it, or pump it bare, never inside
+  Material chrome that supplies what the package supplies.
+- **`UiDisclosure`'s header is a 44 dp tap target.** `UiDisclosureStyle.resolve`
+  takes its minimum height from `density.rowHeight`, and the header publishes a
+  node with a tap action, so both tap target guidelines fail on any disclosure
+  whose title fits on one line. Every `UiDisclosure` in the product has it. The
+  workaround here is a style override that raises the floor to
+  `space.targetMin`; it is in `region_editor.dart` as
+  `disclosureStyleWithFullTarget` and both of this slot's disclosures use it.
+- **`UiField` publishes one 48 dp node now, and the proof is a suite with no
+  skip.** The region editor's guideline suite passes all four guidelines with
+  four `UiField`s on screen and nothing in the skip list, which closes the wave
+  2 finding for this screen rather than restating it.
+- **The accent over a photograph needs the casing the painter already had.**
+  `RegionBoxPainter` draws a casing on both sides of the stroke, which is what
+  lets `#E8FF47` sit on a pale 1912 label and on a dark pin without either
+  disappearing. 09 section 3.4's wave 1 amendment asks for a 1 dp `ink` casing
+  on the accent; the painter's existing shape is exactly that, so the change
+  was two colours rather than a new drawing.
+- **A `UiButtonRow` is not a toolbar.** It draws its primary last in a row and
+  first in a column, which is right for a save and its way out and wrong for
+  four peer controls: the first draft put "Delete region" at the end of the
+  reading order and gave the one destructive control the primary's weight. The
+  region toolbar is a `Wrap` of `UiIconButton`s in the order it shipped in.
+- **The editor had no `SnackBar` to convert.** The blueprint's "snackbar Undo"
+  is satisfied by the control that names the last change and takes it back,
+  which is on screen for as long as there is something to undo. A toast was
+  written and then removed: it would have been new behaviour, and
+  `UiToasts.show` from inside a modal route finds no `UiToastHost`, so it would
+  have worked on a phone and done nothing on a desktop.
+
+### Failed approaches
+
+- **Publishing the matte's rect to `UiScaffold.exclusion`.** This is the
+  mechanism the package was built for: `FieldLayer` says in its own header that
+  it "clips out the exclusion the source pane asks for", and `UiFields.matteExclusion`
+  exists for it. It cannot be reached from this slot. `exclusion` is a
+  constructor argument of `UiScaffold`, the record route's scaffold is built by
+  `AppShell` in `lib/src/app/shell.dart`, and that file is slot E1's. An
+  `InheritedNotifier` published upward would still need the one line in
+  `AppShell` that reads it. The invariant is held by painting instead: the pane
+  draws an opaque `ground` band of `UiFields.matteExclusion` around the matte,
+  which costs 24 dp of layout per side and holds at every window class under
+  any frame. `shell.dart` gains the line and the pane drops the band the moment
+  the package grows the API below.
+- **`MaterialPageRoute` for the two full window surfaces.** It is the only
+  route `PageTransitionsTheme` reaches, and 10 section 1.3 keeps that theme
+  precisely for per-platform transitions, so keeping the route would have been
+  defensible. It brings `material.dart` with it, and the import gate is per
+  file and does not read a `show` clause, so the slot's exit criterion and the
+  route could not both be met. `uiFullScreenRoute` in `region_editor.dart` is a
+  `PageRouteBuilder` with the emphasized pair `ModalRoutes` uses. The cost is
+  the iOS edge swipe, which a `PageRouteBuilder` does not provide.
+- **`UiField`'s `trailing` for the `px` unit, as an action.** The slot says a
+  trailing "is given its own 48 dp hit box", which is right for a control and
+  wrong for a unit: the unit would have read as a control to a screen reader.
+  `ExcludeSemantics` around it keeps the unit drawn and out of the tree, which
+  is what `suffixText` did before.
+- **`find.byWidgetPredicate((w) => w is Semantics && w.properties.label == label)`
+  for the overlay.** It used to find exactly one node because `ChoiceChip`
+  published its name some other way. Every `Pressable` publishes a `Semantics`
+  with the caller's label, so the region list and the overlay now match the
+  same predicate, which is the whole point of the pairing they are tested for.
+  The overlay is found by where it is (`find.descendant(of: RegionOverlay)`)
+  and the list option by its role.
+
+### Follow-ups and product defects noticed
+
+- Slot E4 or the integrator applies the two-call-site finder change in
+  `workbench_layout_test.dart` described under Validation.
+- `lib/src/app/shell.dart` line 116 already carries the comment that the
+  workbench slot passes the matte's exclusion rectangle "when it lands". It
+  cannot, for the reason above. The one line that closes it is
+  `exclusion: <the matte's rect in the frame's coordinates>` on the shell's
+  `UiScaffold`, which needs the package API listed below. Until then the pane's
+  own band holds the invariant.
+- The shell's `UiScaffold` paints `SkyPreset.home` on every collection route
+  including the record. 09 section 3.2's preset table gives the record the
+  `work` sky, and `grep -rn "SkyPreset.work" lib/` returns nothing: no screen
+  in the product uses it. Worth one line in the shell or one row of the
+  document, whichever is meant.
+- `lib/src/app/app_router.dart` keeps its transparent `Scaffold` marked
+  `TODO(fe/wave-3)`. Neither of this slot's screens needs it any more: no
+  `ScaffoldMessenger`, no assertion on a `Material` ancestor, and the region
+  editor's full window route brings its own `UiScaffold`. The two remaining
+  reasons are slots E4 and E5.
+- The region editor's dialog is capped at `space.dialogMax`, 560, by the
+  package's modal route. 05 section 3.0 assigns this editor `DialogWidths.wide`,
+  640. The `ConstrainedBox` at `DialogWidths.wide` inside `RegionEditor` binds
+  only where a caller renders the editor without the route, which is the
+  guideline, dark mode and golden fixtures. Either the route grows a width or
+  05 changes its number; the two disagree today.
+- A `UiDisclosure`'s header publishes no `enabled` flag, so the fixture line for
+  "Source details" reads `button tap label="Source details"` where an
+  `ExpansionTile` read `enabled=true`. Cosmetic in the fixture, and a screen
+  reader announcing a control with no enabled state is worth one line in the
+  package.
+
+### Package APIs this slot needed and worked around
+
+1. **An exclusion a descendant can publish to its enclosing `UiScaffold`.**
+   `UiScaffold.exclusion` is a constructor argument, and the widget that knows
+   the matte's rect is four layers below the widget that builds the scaffold. A
+   scope the frame listens to, or a `UiScaffold.exclusionOf(context)` a
+   descendant can write, would turn 09 section 2 principle 1 into a paint time
+   clip on the field layer for every screen rather than a gutter each screen
+   pays for in layout. Worked around with `SourceMatte`'s painted band, marked
+   `fe/polish-2` in `source_pane.dart`.
+2. **A `UiPageRoute`.** The package publishes `showUiSheet`, `showUiDialog` and
+   `showUiModal` and no full window route, so the two surfaces in this slot that
+   take the whole screen each carry their own `PageRouteBuilder`. One route in
+   the package would give them one entrance, and could carry the platform's own
+   back gesture, which a bare `PageRouteBuilder` does not. Worked around with
+   `uiFullScreenRoute` in `region_editor.dart`, marked `fe/polish-2`.
+3. **`UiDisclosureStyle.copyWith`, and a header floor at the hit box.** Raising
+   one field meant restating all ten. Worked around with
+   `disclosureStyleWithFullTarget`, marked `fe/polish-2`.
+4. **`UiIcons.merge`.** The registry has no glyph for merging two regions, and
+   reusing `superseded` or `addToBatch` would give one glyph two meanings,
+   which 09 section 7 forbids. "Merge with next" keeps its word while the
+   three controls beside it are icon buttons.
+5. **A `UiToastHost` reachable from inside a modal route.** `UiToasts.show`
+   from a pane `showUiDialog` pushed finds no host, because the host is
+   installed by `UiScaffold` and the route is above it. Not worked around: the
+   editor raises no message.
+
+### For the other wave 3 slots
+
+- `RegionOverlay`, `MeasuredHeight`, `SourcePixels`, `SourceBasisNotice`,
+  `SourceOrientationCaveat`, `SourceRegionEditControl`, `SourceDetails`,
+  `WorkbenchSourcePane`, `SourceViewController`, `showSourceFullScreen`,
+  `showRegionEditor`, `RegionEditor` and `RegionEditorBody` all keep their
+  constructors and their named parameters. `workbench.dart` needs no change.
+- Two new public names are worth knowing before either of you writes your own:
+  `uiFullScreenRoute` and `disclosureStyleWithFullTarget`, both in
+  `lib/src/region_editor.dart` and both marked `fe/polish-2`. The disclosure one
+  in particular applies to every `UiDisclosure` in the product, so slot E4's
+  panels will need it.
+- `SourceMatte` is public in `source_pane.dart`. Anything that draws a
+  photograph belongs inside it rather than beside it.
+## 2026-09-16: Front-end refactor, polish 2, the package and shell defects closed
+
+- Task: slot H2 (`fe/polish-2`). The package and shell defects waves 2, F, G
+  and 3 recorded in this file's closeouts and in
+  `docs/execution/FRONT_END_REFACTOR.md` section 13: a disabled `Pressable`'s
+  hover, `UiListRow`'s tone, the shell's double loading announcement, the two
+  private adapters the package now has slots for, the gallery's "Needs human
+  review" copy, and the row's declared trailing-under-title variant, which
+  wave G's integration left open.
+- Branch and worktree: `fe/polish-2` at `.claude/worktrees/fe-polish-2`, cut
+  from `front-end-refactor` at `8e32d29`, which carries waves F and G. Pushed
+  to `origin/fe/polish-2` at the commit carrying this entry. No pull request;
+  the integrator merges the slot.
+- Outcome: complete. Every defect the brief listed is closed, and so are the
+  five the coordinator relayed from the intake and source pane slots while
+  this slot was running. The two `TODO(fe/polish-2)` markers left under
+  `lib/` are retargeted rather than left stale, because both ask for a control
+  the design system has no entry for. Sixteen commits, 123 files: 27 Dart
+  files, 92 package goldens and four documents. Package tests 670 before, 684
+  now.
+- Commits (nine, oldest first):
+  - `600ec4b` `fix(primitives): a disabled control tells a pointer why, and is never hovered`
+  - `476e5df` `fix(data): the row's tone follows its state, and its trailing has a line of its own`
+  - `62766dd` `feat(overlays): the dialog scrolls its body, as the sheet does`
+  - `5cb8e87` `fix(gallery): the chip reads "Needs review", as 02 section 4.13 spells it`
+  - `0850199` `fix(shell): one announcement, a band that carries its own action, declared bar commands`
+  - `65888b2` `fix(queue): the loading announcement speaks for every collection`
+  - `7baa2cc` `refactor(widgets): the status chip takes UiChip's leading slot`
+  - `61c4c0a` `refactor(app): the filter body is a body, and its frame scrolls it`
+  - `694ee4a` `docs(design): reconcile 10, 11 and the changelog with polish 2`
+  - `00ec462` `fix(data): a row with nothing to do stops calling itself a disabled button`
+  - `e9e2a4f` `feat(data): a tile a list header can hold`
+  - `f2c5a12` `fix(overlays): the disclosure keeps a 48 dp hit box in both densities`
+  - `58ff9a9` `feat(navigation): a page can ask the frame to keep a rectangle clear`
+  - `f7a875b` `feat(app): the record route paints the work sky, and one sky fades into the next`
+  - `541dead` `docs(design): reconcile 10 and the changelog with the four slot findings`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and `rc=$?` read directly rather than off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, no lockfile line moved, package still 0.2.0 with 0.3.0 open |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 684 passed, 0 failed, the 92 regenerated goldens included |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 1 | 1021 passed, 9 skipped, 48 failed. All 48 are the workbench screen goldens the work sky moves, which the wave policy reserves for the integrator. Zero failures outside `test/golden/`, zero fixtures. |
+  | `check_ui_strings.py` | 0 | 200 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (123 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+  | `dart format --set-exit-if-changed` (27 files) | 0 | 0 changed |
+
+- Goldens and fixtures:
+  - Committed: **92 package goldens**, 20 family and 72 matrix. Family: four
+    `data`, four `actions`, eight `overlays` (including the sheet and dialog
+    windows) and four `foundation-type`. Matrix: 24 `type`, 24 `overlays`,
+    20 `data` and 4 `actions`. Every one was read before it was
+    committed, and each moved region was measured with an image difference
+    rather than judged by eye alone: `foundation-type` (244, 153) to
+    (1100, 804), the display specimen's copy at every role; `actions`
+    (983, 642) to (1083, 674), one chip; `overlays` (402, 305) to (638, 316),
+    one line of banner text, and `overlays-dialog` the same line plus the
+    blur that carries it under the pane, which is why a copy change moves a
+    dialog golden at all. `data` carries the row's tone and its new variant,
+    described below.
+  - The `data` family window is 1180 by 2360 rather than 2280. Measured: the
+    page needs 2343 with the taller 200 dp row on it, and 2360 is the first
+    height with nothing left to scroll. 10 section 6 amended in the same
+    change.
+  - **Application screen goldens: 48 of 121 moved, and 0 of the 8 semantics
+    fixtures.** Regenerated once with `--update-goldens` to read, then
+    restored with `git checkout --`; left for the integrator. The 48 are
+    `workbench-fields`, `workbench-history` and `workbench-readings`, sixteen
+    each, which is four window classes by two modes by two text scales, and
+    every one of them is the sky: the record route now paints `sky.work`, one
+    violet field from the top right at 60 percent of its alpha, where it
+    painted the home sky's three. Read at
+    `workbench-readings expanded light 1.0` before the revert. Nothing else
+    moved, which is the check that matters: the row, the tile, the
+    disclosure, the scaffold hook and the filter body changed no screen.
+    Before the sky change this slot moved **zero** screen goldens and zero
+    fixtures, which is the number the first thirteen commits are worth.
+- The five defects the coordinator relayed mid pass, and what closed each:
+  - **A `UiListRow` with no `onPressed` announced a disabled button** (intake
+    slot). **Closed.** A row with nothing to do and no reason it cannot be
+    done publishes a plain node with the row's words and no role, no focus and
+    no state layer; a row the server forbids keeps its `Pressable`, because
+    there is a control and it is off. The intake screens' own
+    `Semantics(excludeSemantics: true)` wrappers are left in place, as
+    instructed, and can go with the file.
+  - **`UiDataTile` could not sit in a list header** (intake slot). **Closed.**
+    `UiDataTile.surface` is `glass` or `paper`: the same shape, the same
+    tokens and the same one sentence, painted rather than blurred. The
+    manifest's private `_CountTile` and its `fe/polish-2` marker live in a
+    file cut after this branch was, so whoever next owns
+    `lib/src/sources.dart` or `lib/src/screens/sources/source_screen.dart`
+    retires it onto `UiDataTileSurface.paper`.
+  - **`UiDisclosure` published a 44 dp tap target** (source pane slot).
+    **Closed.** The header takes `Pressable`'s own 48 dp floor and keeps its
+    density height as the visual, so the slop is transparent and inside the
+    control's own box. `disclosureStyleWithFullTarget` in
+    `lib/src/region_editor.dart` can be retired by the cleanup slot.
+  - **`UiScaffold.exclusion` was unreachable from a screen** (source pane
+    slot). **Closed, and without the shell in the path.**
+    `UiScaffoldExclusion.of(context)?.publish(rect)` is answered by the
+    enclosing scaffold itself rather than by the application's shell, so the
+    hook works in any host and the cleanup slot only has to point the pane at
+    it. A deviation from the brief's sketch, which had the shell listening and
+    passing the rect in; recorded because it is one fewer moving part, not
+    because the sketch was wrong.
+  - **No screen used `SkyPreset.work`** (source pane slot). **Closed.** The
+    shell reads the location and paints `sky.work` on the record route, which
+    is the one route with a segment after `queue`, and `FieldLayer` cross
+    fades one preset into the next at `motion.standard`, zero under reduced
+    motion. 48 workbench screen goldens move, described above.
+  - **`UiButton.loading` hangs `pumpAndSettle`** (intake slot, offered rather
+    than asked for). **Declined, with the reason.** Making an indeterminate
+    indicator static under `disableAnimations` is not a defect fix: 04 section
+    2.5 lists indeterminate progress indicators under "what keeps its motion,
+    because the motion is the information", and 10 section 4.5 declares the
+    reduced motion form as an opacity pulse rather than nothing. The
+    repeating pulse is what `pumpAndSettle` cannot settle, and this system
+    already has the answer for it in 10 section 6: wrap the specimen under
+    test in `TickerMode(enabled: false)`, which is what every gallery golden
+    does, or pump rather than settle, which is what wave 2's fixture harness
+    does. Changing the control would need 04 and 10 amended first and would
+    move goldens in three families.
+- Durable learnings:
+  - **`AnimatedSwitcher`'s default layout is a loose `Stack`, and a
+    `CustomPaint` under a loose constraint is `Size.zero` and does not clip.**
+    Wrapping the field painter in a switcher without a `StackFit.expand`
+    layout builder handed it a zero size; it computed a zero radius from that,
+    and painted one field's centre colour across the whole window. It cost 110
+    app test failures and two minutes, and the tell was a text contrast
+    guideline reporting 1.02 against a full strength `sun` yellow rather than
+    a golden diff.
+  - **A `Semantics(container: true)` node absorbs every compatible descendant
+    below it, and a scrollable is what usually stops it.** The filter form's
+    group headings ("Status", "Provenance", "Dates") were separate nodes only
+    because a `SingleChildScrollView` sat inside the form's own node. Move the
+    scroller outside, as letting the modal frame scroll the body does, and the
+    form announces the six headings as one phrase in its own label. The fix is
+    to say `explicitChildNodes: true` on the form rather than to depend on a
+    viewport being in the right place; the checked-in fixture then holds byte
+    for byte. Worth knowing for wave 3: any pattern that wraps a column of
+    headings in a container node has this shape.
+  - **`FocusableActionDetector` reports a hover only while it is enabled**
+    (`shouldShowHoverHighlight` is `_hovering && target.enabled &&
+    _canShowHighlight`), and clears a hover lost to a disable in a post frame
+    callback. So a disabled control gets no hover callback at all, which is
+    why `Pressable`'s reason never reached a pointer, and a control turned off
+    under the pointer carries `{hovered, disabled}` for exactly one frame,
+    which is why every builder was handed a pair with no defined resolution.
+    Both were measured with a probe before either was changed: the probe
+    printed `{WidgetState.hovered, WidgetState.disabled}` on the disabling
+    frame and `{WidgetState.disabled}` one frame later.
+  - **The state layer hid the second half of that defect.**
+    `StateLayer.opacityFor` tests `disabled` first and returns 0, and every
+    control's own resolver tests `disabled` first too, so the contradictory
+    frame painted nothing wrong anywhere in the package today. It was still
+    worth closing at the source: the next resolver written the other way round
+    would have had a defect nobody could reproduce twice.
+  - **`find.byIcon` lands on the SDK's `Icon`, not on `UiIcon`.** `UiIcon`
+    builds one; a test reading a glyph's colour reads `tester.widget<Icon>`.
+  - **A gallery matrix golden is 900 dp tall, so a page's lower half is not
+    in it.** The Fit page's `UiListRow` section is below that fold, so the new
+    variant is pictured by the data family golden and not by the matrix. A
+    variant that only the Fit page shows is a variant no golden reviews.
+  - **The family golden windows are measured, and three of them still end a
+    little above their page.** Measured on this tree by reading
+    `ScrollableState.position.maxScrollExtent` at each declared window:
+    `actions` 32, `overlays` 56, `data` 62 (34 of it before this slot).
+    The shell gives its content 24 dp of scroll padding and each section 32 dp
+    of bottom padding, so 32 to 56 is the trailing padding rather than a
+    specimen. `data` was the one where real content had fallen below the fold,
+    so `data` is the one that moved.
+- Failed approaches:
+  - Making the filter form a plain column and leaving its semantics to the
+    frame. It compiles, it lays out, the app suite is green apart from two
+    tests, and it quietly merges six headings into one label. The fixture
+    caught it, which is what the fixture is for.
+  - Removing the form's height cap without removing its scroller. That leaves
+    the sheet scrolling a scroller, which is the thing `UiSheet.scrollBody`'s
+    own documentation tells a caller to avoid, and leaves the cap's arithmetic
+    in a file that does not own the chrome it was sized against.
+  - Reading a `UiIcon`'s colour through `tester.widget<UiIcon>`, per the
+    learning above.
+- Remaining follow-ups, and every deviation from the brief:
+  - **The sky predicate lives in `shell.dart`, not in `AppRoutes`.** It
+    belongs beside `isEntryLocation` and `isGlobalLocation`; `routes.dart` is
+    not this slot's file, so `AppShell.skyOf(Uri)` is written once in the
+    shell for the cleanup slot to move.
+  - **A non-interactive `UiListRow` still excludes its children's
+    semantics.** That is the same trade the control path makes, and it means
+    `ReduceMotionSetting` in `lib/src/app/help_screen.dart`, which puts a
+    `UiSwitch` in a row's trailing slot, publishes no node for the switch. It
+    published none before this slot either, so nothing regressed; the row
+    simply stopped calling itself a button around it. The remedy is in that
+    file, which is not this slot's: a control beside a label is a `Row`, not a
+    `UiListRow`.
+  - **`UiListRow` subtracts its own padding and the bar gutter twice.**
+    `_fitted` runs inside `Padding(style.padding)` and `Padding(barWidth)`, so
+    the width its `LayoutBuilder` sees is already net of both, and `chrome`
+    adds them again: the row switches variants some 27 dp earlier than it
+    needs to. Inherited from wave G's integration and deliberately left alone,
+    because it is conservative (a row switches early, never late), because the
+    contract test's width table is calibrated to it, and because three wave 3
+    slots are building against this control right now. A later pass that fixes
+    it re-derives `matcher(width)` in `list_row_test.dart` in the same change.
+  - **The row does not tint a slot the caller filled.** A leading glyph or a
+    chip in `trailing` states its own colours, so a disabled row's leading is
+    still full `ink` in the data golden. Publishing the resolved tone as a
+    `DefaultTextStyle` around the row's content would reach a `UiIcon` given
+    no colour of its own; it would also reach any uncoloured `Text` a caller
+    puts in a slot, which is a wider blast radius than this defect asked for.
+  - **`UiListRow` still has no `destructive` tone**, which is the other half
+    of the wave 1.5 follow-up: `UiPopoverMenu` keeps its private rows because
+    a menu item needs a tint and a shortcut slot as well as a state resolved
+    colour, and the brief scoped this slot's "tone" to the colours.
+  - **`UiDialog.scrollBody` is a package change the brief did not list.** The
+    `TODO(fe/polish-2)` in `search_filters.dart` names `UiSheet`, which
+    already had the slot; the dialog half of the same adaptive modal did not,
+    so retiring the adapter needed it. It is also the dialog's own fit at 200
+    percent text. Recorded in 10 section 4.3 and in the changelog.
+  - **Two `TODO(fe/polish-2)` markers are retargeted rather than closed.**
+    `search_filters.dart` asks for a `UiDateField` and `queue_screen.dart` for
+    a `UiRefreshControl`. Neither exists, neither is an adapter for a slot
+    wave G added, and 10 section 10 requires a new component to be proposed as
+    an entry in 10 section 4 before it is built. Both now read
+    `TODO(specimen_ui)` and say so.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slots F2, G1 and E1 also recorded.
+  - **`test/saved_filters_test.dart` gained a two line `_Frame`.** It pumps
+    the filter body on its own, which the product never does, so it now
+    supplies the scroller both modal frames supply. A file this slot's change
+    broke, which the brief covers.
+  - The banner's two line cap (V-15) is untouched. Wave G's addendum measured
+    that three lines would fit at 200 percent text on a phone and left the
+    call to the integrator because no document asks for three; nothing this
+    slot found changes that, and raising `UiBannerStyle.maxLines` moves
+    `EnvironmentBanner` with it.
+- What wave 3 and the integrator will want:
+  - `UiListRowStyle` is a different shape: `title` and `subtitle` are type
+    roles with no colour, and `titleColor`, `subtitleColor`, `trailingColor`
+    and `bar` are `WidgetStateProperty<Color>`. A call site that read
+    `style.title` for a colour reads `style.titleColor.resolve(states)`.
+    `stackGap` and `trailingMin` are new.
+  - `UiRowTrailing` takes `color`. A row passes its own; anything else keeps
+    the resting colour.
+  - `UiDialog(scrollBody:)`, `UiDialog.show(scrollBody:)` and
+    `UiDialog.showAdaptive(scrollBody:)`, all defaulting to true. Pass false
+    for a body that is already a scrollable.
+  - `Pressable.onDisabledReason` now fires on hover. A control that passes it
+    a callback and draws nothing will draw on hover where it did not before;
+    `UiIconButton` is the only one in the package.
+  - The data family golden window is `Size(1180, 2360)` in
+    `test/gallery/data_golden_test.dart`.
+  - `showProductModal` in `lib/src/widgets/product_modal.dart` does not
+    forward `scrollBody`. No call site needs it today, since every body it
+    opens wants the default; the cleanup slot that owns that file can forward
+    it when one does.
+  - `UiDataTileSurface.paper` and `UiDataTile(surface:)`, for the manifest's
+    three counts and anything else in a list header.
+  - `UiScaffoldExclusion.of(context)?.publish(rect)`, for the source pane's
+    matte band. Null outside a scaffold; what a page publishes wins over what
+    the shell passed.
+  - `UiDisclosure`'s header is 48 dp tall in pointer density where it was 44,
+    so a column of them is 4 dp taller per header than it was.
+  - `AppShell.skyOf(Uri)`, until `AppRoutes` takes it.
+  72 of the 121 screen goldens move, and the set that moves is the set
+  expected:
+
+  | Family | Files | Why |
+  |---|---|---|
+  | `workbench-readings`, `workbench-fields`, `workbench-history` | 16 each | the record side this slot rebuilt |
+  | `queue`, `queue-selection` | 8 each | the queue row draws `RiskMeter(compact: true)`, whose bar is a `UiProgress` now |
+  | `filters` | 8 | the filter sheet is captured over the queue behind it |
+
+  `intake`, `signin`, `help`, `source`, `region-editor` and `diff-text` hold
+  byte for byte, which is the other half of the check: `DiffText`'s painter
+  and marker rules did not change, so its component sheet needs no
+  regeneration.
+
+- Two things the goldens caught that no test did, both fixed before the
+  commits:
+  - **The decision bar sat under the navigation on a phone.** `UiScaffold`
+    floats its own chrome over the body rather than reserving room in it, so
+    the pill navigation and this bar occupied the same band. The bar reads
+    `UiScaffold.of(context).bottomInset`, which is the clearance the scaffold
+    asks for and already carries the display's safe area, and falls back to
+    `MediaQuery.paddingOf` where there is no scaffold, such as a component
+    test. This is the argument for looking at a golden rather than counting
+    one: nothing overflowed and every guideline passed.
+  - **A record's loose prose became the tab panel's own name.**
+    `UiTabView` publishes `SemanticsRole.tabPanel` on a container, and text
+    inside a container with no node of its own merges into it, so the fields
+    panel announced as "Record fields As written, read as and standardized are
+    recorded separately. U.S.A. United States". Every heading and every layer
+    value is its own node now.
+
+- The semantics fixture diff, file by file. Four files change.
+
+  `workbench-readings.txt`, `workbench-fields.txt`, `workbench-history.txt`:
+  - Out: `button enabled=true tap tooltip="Copy the specimen identifier"`, a
+    node with a tooltip and no label, three times. In: the same node carrying
+    both a label and a tooltip, which is guideline 4.16's rule. Every icon
+    button on the record side gains a name this way.
+  - Out: `role=tab button checked=isTrue enabled=true inMutuallyExclusiveGroup`
+    on each segment, which is what Material's `SegmentedButton` published and
+    what a screen reader reads as a radio button (finding V-3). In:
+    `role=tab selected=true enabled=true`, under
+    `role=tabBar label="Evidence panels"`.
+  - In: `role=tabPanel`, the panel node `UiTabView` publishes.
+  - Out: a wrapper `tooltip=` node above every disabled control, with the
+    reason on the wrapper and the control a child of it. In: the reason on the
+    control's own node as `hint=`, which is where `Pressable` puts a
+    `disabledReason` and what a reader focusing the control hears.
+  - Fields: out, one node per field carrying the row's summary and then every
+    drawn string after it, with the edit controls as tooltips beneath. In, one
+    button node per field carrying the summary and the state
+    (`"Country, required. As written: U.S.A. ... Field: supported"`), a
+    `Values` disclosure beside it, and each layer as its own label with a
+    named edit control. The row is a control now: pressing it opens the
+    correction at the verbatim layer.
+  - Readings: the difference rows and the section heading are separate nodes
+    again after the tab panel fix, and each evidence drawer names its section
+    (`"Technical detail, Label 1: the readings differ"`).
+
+  `reason-sheet.txt`:
+  - Out: `button selected=false ... label="Label read and confirmed" tooltip="Use this reason"`.
+    In: `enabled=true tap label="Use this reason: Label read and confirmed"`.
+    A recent reason is a `UiChip.filter`, the only pressable chip the system
+    has; it publishes a toggle rather than a button, which is in the
+    follow-ups.
+  - The field's help text moves from a child label to the field's `hint`,
+    which is what 02 section 4.11 asks for.
+  - The primary's disabled reason moves from a wrapper onto the button.
+
+- Durable learnings:
+  - **A modal's action slots take a button built once, so a primary whose
+    enabled state depends on the form cannot use them.**
+    `UiModalActionBuilder` runs inside the route's `pageBuilder`, not inside
+    the form's `setState`. Every form in this slot therefore puts its actions
+    at the foot of its own scrolling body through `UiButtonRow`, which is one
+    anatomy for all of them and is what the reason sheet already did. The cost
+    is that a short window has to scroll to reach them, and two tests now say
+    so out loud.
+  - **A sheet and a dialog scroll differently, so one call cannot serve both.**
+    `UiSheet` wraps its body in a scroll view and `UiDialog` hands its body
+    the height it has. `UiDialog.showAdaptive` picks the form but not the
+    scrolling, so a body that scrolls itself is nested inside the sheet's
+    scroller and given an unbounded main axis. `showAdaptiveModal` in
+    `adaptive_form.dart` is `showAdaptive` with `scrollBody: false`, and the
+    body owns the one scroll view.
+  - **The scrim of a modal is a control and needs a name.** `Scrim` publishes
+    `button` and `onTap` with `label: dismissLabel`, which is null unless the
+    call site passes one, and an unlabelled tappable fails
+    `labeledTapTargetGuideline`. Every modal in this slot passes
+    `modalDismissLabel`.
+  - **`SelectionArea` is Material.** It reaches for
+    `materialTextSelectionControls` and the Material context menu.
+    `SelectableRegion` with `emptyTextSelectionControls` is the
+    `widgets.dart` control underneath it: pointer selection and the copy
+    shortcut work, and every evidence surface in this product already carries
+    a named copy control for touch.
+  - **`textContrastGuideline` cannot read a control that straddles a scroll
+    fold.** It samples the node's rect, which the viewport clips, and the
+    visible band of a half scrolled button is the background it is drawn on.
+    The evidence drawer's trigger landed there at expanded and reported
+    1.27:1 against two shades of the page. The guideline windows in
+    `workbench_guidelines_test.dart` are taller than the record for that
+    reason, with the regime still chosen by width; compact keeps its own
+    height, because its stacked layout divides it between the photograph and
+    the evidence.
+  - **`uiControl` matches a control and the `Pressable` inside it.** Two hits,
+    and `tap()` refuses an ambiguous finder. `uiIconButton` is the finder for
+    an icon button; `uiControl` is for the cases where the class is not the
+    point.
+  - **`uiField` cannot match a `UiTextArea` and its inner `UiField` at once**,
+    for the same reason: the area builds the box with the same label. The
+    finder matches the box, which is what `enterText` needs, and `uiTextArea`
+    is how a test reaches the area's own widget.
+  - **A pattern whose root is a plain `Column` has no semantics node**, so
+    `tester.getSemantics(find.byType(FieldRow))` walks up to the screen and
+    two rows answer with the same label. A test that wants a pattern's node
+    descends to the control that publishes it, which is the rule slot E2
+    recorded for `QueueRow` and which applies to every D pattern.
+  - **A `ValueNotifier` a control owns cannot be corrected during a build.**
+    `UiTabs` writes the chosen index into the notifier the screen holds; a
+    window that crosses into the three pane layout takes History out of the
+    strip, and assigning the clamped index inside `build` marks the
+    `ValueListenableBuilder` dirty in the same frame. The correction is a post
+    frame callback, so the frame that crosses draws the clamped tab and the
+    next one draws the right one.
+- Failed approaches:
+  - Wrapping the risk tile in `TermAffordance` so "Risk" keeps its glossary
+    link. The affordance excludes its subtree's semantics, which would have
+    erased the tile's value, its arc and its components. The compact meter
+    keeps the term, which is where a reviewer first meets the word.
+  - Reading the decision bar's rect off the `SafeArea` it used to wrap
+    itself in. The bar owns its clearance now, so the test reads the bar.
+- Deviations from the brief and from 10, with why:
+  - **The decision bar is not in `UiScaffold.actionBar`.** The shell owns the
+    scaffold and publishes no way for a routed screen to fill that slot, and
+    `shell.dart` belongs to another slot. The bar is drawn in the workbench
+    with the same recipe the scaffold uses, `glass.floating` at `shape.tile`,
+    and it is in flow at the foot of the evidence pane on a two or three pane
+    layout, which is what 05 section 3.5 asks for and what the scaffold's own
+    slot could not have done.
+  - **`RiskMeter`'s expanded form loses the risk band colour.**
+    `UiArcIndicator` draws its marker in the accent and takes no status
+    colour. The number, the components and the "Not measured" word carry the
+    state; the queue row's bar keeps the band, because `UiProgress` takes a
+    colour.
+  - **"Risk" loses its glossary link in the record.** `UiDataTile.label` is a
+    string, not a slot, so there is nowhere to hang the affordance.
+  - **The field row's three layers are behind a `UiDisclosure`**, open from
+    medium up and closed at compact. 10 section 5 asks for the disclosure and
+    07 section 6.4 asks for the layers to read at a glance; the window class
+    is what reconciles them.
+  - **The status chip is the field row's trailing from medium up and a line of
+    its own at compact.** The open "trailing under the title" variant is why:
+    a trailing the row cannot measure is bounded to the room left after the
+    title's minimum, and at 360 dp that is not enough for "Processing
+    blocked".
+  - **The evidence panel's phase stepper drops its `IntrinsicHeight`.** The
+    connector is positioned against the row in a `Stack` instead, because the
+    step holds a control that carries a `UiLabel` and a `UiLabel` has no
+    intrinsic dimension to give (11 section 3.3).
+  - **`showAdaptiveForm` gains an optional `semanticsLabel`.** The route needs
+    a name and the old Material routes took the localised "Dialog". It
+    defaults to `adaptiveFormLabel` for the two call sites in other slots.
+  - **`FieldRow` gains an optional `editBlockedReason`.** The reason belongs
+    on the row's own node rather than on a `Semantics(hint:)` wrapper, which
+    is where a screen reader finds it.
+  - **The panel switch is `UiTabView`'s cross fade**, not the directional
+    slide of motion catalog row 41. The package owns the transition now.
+  - **The commits carry `Co-Authored-By: Claude Opus 5 (1M context)`**, which
+    is what this session's harness states, where the brief names
+    `Claude Fable 5.1`. Slots E1, E2 and G4 did the same for the same reason;
+    the integrator may normalise the trailers.
+- Product defects noticed and not fixed:
+  - **The source pane's view controls draw as tofu boxes in every workbench
+    golden.** They are Material Symbols glyphs in `source_pane.dart`, which is
+    slot E3's file, and they are in the goldens at the cut point too.
+  - **A reviewer on a phone reaches a form's primary action by scrolling.**
+    Every form in this slot, and the reason sheet before it, puts its actions
+    at the foot of its own body. See the first durable learning for why.
+- Package APIs this slot needed and did not have, in the order they cost the
+  most:
+  - **A way for a routed screen to fill `UiScaffold.actionBar`.** An inherited
+    slot, or a portal, so the screen that owns the decision does not have to
+    redraw the scaffold's own chrome. Until then a screen also has to pad
+    itself by `bottomInset`, because the scaffold floats its chrome over the
+    body rather than reserving room in it.
+  - **`UiButton` should draw its `disabledReason`.** `UiIconButton` does,
+    through `UiTooltip.reason`, and the blueprint asks for the reason on both.
+    `UiButtonRow` takes `UiButton` instances, so a call site cannot wrap one
+    in a tooltip either. The reason reaches a screen reader and a press; it
+    does not reach a pointer on hover.
+  - **`UiDisclosure` needs a hit box and an enabled state.** Its style takes
+    `minHeight` from the density row height, which is 44 dp at pointer
+    density, so both tap target guidelines fail on a trigger whose title fits
+    one line; `fullTargetDisclosure` in `lib/src/widgets/disclosure_target.dart`
+    is the three line workaround, marked `fe/polish-2`. It also publishes
+    `button` and `onTap` without `enabled`, which is the same shape as the
+    `_BannerControl` defect slot E1 recorded.
+  - **An action chip.** `UiChip.filter` is the only pressable chip and it
+    publishes a toggle, so a chip that fills a field and a chip that opens the
+    pending corrections both read as switches.
+  - **`Surface` needs a selected or emphasis edge.** It takes a hairline or a
+    boundary and nothing wider, so the two evidence cards draw their selected
+    stroke themselves through `EvidenceSurface` in `reading_card.dart`.
+  - **`UiArcIndicator` needs a status colour**, so a risk band is the same
+    colour in the record as it is in the queue.
+  - **`UiDataTile` needs a label slot**, so a domain term on a tile can carry
+    its own definition (pass criterion 10.2).
+  - **`ModalRoutes` should lift its pane above the software keyboard.** Its
+    `SafeArea` reads the display's padding, not `viewInsets`, so a form with a
+    field is typed into from behind the keyboard. `showAdaptiveForm` adds the
+    inset at the call site.
+  - **`UiDialog.showAdaptive` should take `scrollBody`**, which would retire
+    `showAdaptiveModal`.
+  - **`SelectionArea` has no `widgets.dart` equivalent in the package.**
+    `SelectableEvidence` is the one decision written down once; a
+    `UiSelectableText` would retire it.
+- Files changed outside this slot's own list, all forced and all minimal:
+  `test/ui_finders.dart` (the shared finders slot E1 started),
+  `test/workbench_harness.dart`, `test/accessibility/guidelines_test.dart`
+  (the now empty skip list), `test/accessibility/semantics_tree_test.dart`,
+  `test/accessibility/semantics_fixtures_test.dart`,
+  `test/golden/size_classes_golden_test.dart`, `test/screens/queue_bulk_test.dart`,
+  `test/screens/status_timing_test.dart`, `test/source_geometry_test.dart`,
+  `test/widgets/source_import_sheet_test.dart` and
+  `test/widgets/term_text_test.dart` (finders on this slot's patterns), and two
+  lines added to `lib/src/widgets/widgets.dart` to export the two new files.
+- For the integrator: the shell's bridge `Scaffold` in `app_router.dart` is
+  not needed by anything this slot owns. No file here asserts on a `Material`
+  ancestor, none uses `ScaffoldMessenger`, and every message is a `UiToast`.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed.
+
+## 2026-09-17: Front-end refactor, cleanup (H1), the Material retirement finished
+
+- Task: slot H1 of `docs/execution/FRONT_END_REFACTOR.md` section 3, to the
+  brief in `scratchpad/briefs/h1-cleanup.md` and the wave F common section.
+  Definition of done items 1, 2 and 3 of section 2, the second half of E6, and
+  the three adapters polish 2 left for this slot.
+- Branch and worktree: `fe/cleanup` at `.claude/worktrees/fe-cleanup`, cut from
+  `front-end-refactor` at `cbe78eb`, which carries waves F, G, 3 and polish 2.
+  Pushed to `origin/fe/cleanup`; the head is the commit carrying this entry.
+  No pull request; the integrator merges the slot.
+- Outcome: complete. Eight files deleted under `lib/`, thirty eight changed in
+  all, 429 insertions against 2131 deletions. No Material glyph, no Material
+  component and no v1 adapter is left anywhere under `lib/`; four files import
+  `material.dart` and each is the bridge or a page transition. No screen golden
+  and no semantics fixture moves.
+- Commits (five, oldest first):
+  - `ce54b56` `refactor(icons): the last Material glyphs leave the application`
+  - `12b6974` `refactor(theme): the bridge keeps only what infrastructure reads`
+  - `baf0ca5` `refactor(router): the last Scaffold leaves the application`
+  - `6e6fc54` `refactor(widgets): the three adapters polish 2 left retire onto the package`
+  - `d9c643a` `docs(widgets): the two markers that outlived their slot say what is true now`
+  - this entry
+
+### Validation
+
+Every gate on its own, tree untouched during each, `rc=$?` read directly and
+never off a pipe, locale exported and the placeholder Firebase options in
+place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | two dependencies removed, no version moved: 16 deleted lines in `pubspec.lock` and nothing else |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues; nothing under `packages/` changed |
+| `flutter test` (package) | 0 | 684 passed, the count polish 2 left |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter test` (app) | 0 | 1097 passed, 7 skipped, 0 failed, including all 121 screen goldens and all 8 semantics fixtures |
+| `dart format --set-exit-if-changed lib test` | 0 | 224 files, 0 changed |
+| `check_ui_strings.py` | 0 | 194 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (31 files: the 30 changed files that still exist, plus this one) | 0 | 13 hooks passed, 4 had no file of that kind |
+| `flutter build web --release` | 0 | 25 seconds; `main.dart.js` 3,272,384 bytes, assets 4.2 MB, canvaskit 26.2 MB |
+| `scripts/ci/build_mobile.sh android` | 0 | 69 seconds; credential free debug APK, 163,930,510 bytes |
+
+The app suite passes whole for the first time in the refactor. Every wave
+since wave 0 handed back with the screen goldens or the fixtures failing,
+because each moved some; this one moves none.
+
+### Backlogs, measured before and after
+
+| Gate | Before | After |
+|---|---|---|
+| `icons_unique` | `lib/src/theme/icons.dart`, 17 glyphs | empty, and the gate allows nothing |
+| `no_material_components` | `lib/src/app/app_router.dart`, 1 | empty, and the scan now covers `lib/src/theme/` as well |
+| `no_material_imports` | backlog empty over three directories | backlog empty over the whole of `lib/`, with four files named as infrastructure |
+| `no_literal_geometry` | 12 numbers over 4 files | 10 over 3, and the 10 are elapsed times rather than sizes |
+
+Both Material gates are widened rather than merely emptied, because an empty
+backlog over a partial tree is a weaker claim than an empty backlog over the
+whole one. `no_material_components` dropped its `lib/src/theme/` exclusion,
+which existed while that directory configured the widgets it now has none of.
+`no_material_imports` scanned `lib/src/screens/`, `lib/src/widgets/` and
+`lib/src/app/` and therefore never looked at `lib/main.dart`, `lib/src/theme/`,
+`lib/src/capture/` or any file directly under `lib/src/`: `workspace.dart` had
+been carrying a `material.dart` import it used nothing from, and nothing would
+have caught a new one there. It scans all of `lib/` now, with four files named
+and a reason on each, and a fifth test that checks the two route builders take
+`MaterialPage` and `MaterialPageRoute` through a `show` clause rather than the
+whole library behind the same reason.
+
+### The goldens and the fixtures, inspected and not committed
+
+`flutter test --update-goldens test/golden test/accessibility` was run and
+`git status` read: **zero of the 121 screen goldens move and zero of the 8
+semantics fixtures move.** Then `git checkout --` on both directories, per
+section 8, though there was nothing to restore. Nothing under
+`test/golden/images/` or `test/accessibility/fixtures/` is in any commit.
+
+Two of this slot's changes could have moved a golden and did not, and the
+reason matters to whoever reads the next capture:
+
+1. **The disclosure header's floor now follows density.** The two adapters
+   pinned `minHeight` to 48 in both densities. The package default is
+   `density.rowHeight`, which is 56 in touch and 44 in pointer, and the 48 dp
+   hit box is `Pressable`'s own with the difference as transparent slop. A
+   header whose title fits one line and carries no summary is 37 dp of content,
+   so it sits on that floor and changes height: 8 dp taller on a touch window,
+   4 dp shorter on a pointer one. None of the 121 golden windows pictures one;
+   the two title only disclosures in the product are the status strip's
+   blockers, which only draw when there are blockers, and the source pane's
+   "Source details". A desktop device capture will show the 4 dp.
+2. **The manifest's three counts became `UiDataTile`s on a paper surface**,
+   which is a pane and a hairline where the private `_CountTile` was a bare
+   column. The intake goldens do not move because the tiles only draw once
+   there is a batch to count, which slot E5 made true, and no golden pumps a
+   batch. This is worth a device capture.
+
+The tap target guidelines are the proof the disclosure change is safe:
+`workbench_guidelines_test.dart` pumps at 1000 and 1440 dp wide, which is
+pointer density, so every disclosure header in it sits at the 44 dp visual
+with the 48 dp hit box, and all four guidelines pass with no skip.
+
+### Durable learnings
+
+- **A backlog map is a claim about a scan, not about a tree.** Two of the four
+  gates were reporting zero over a subset of `lib/`. `no_material_imports`
+  named three directories, which is how an unused `material.dart` import
+  survived in `workspace.dart` through five waves whose whole subject was
+  removing them. When a gate reaches zero, widen it before believing it.
+- **`UiThemeData.toThemeData()` is the bridge.** Everything the v1
+  `component_themes.dart` set for fifteen Material widgets is either unread
+  (nothing builds those widgets) or already derived in the package. What the
+  application still has to add is two things: a `TextSelectionThemeData`,
+  because the drag handles are drawn by the Material selection controls above
+  `FieldCore`'s editor and read them from the theme rather than from
+  `DefaultSelectionStyle`; and the `PageTransitionsTheme`, which only reaches
+  `MaterialPage` and `MaterialPageRoute`.
+- **`uses-material-design: true` costs 7,736 bytes, not 1.6 MB.** The web
+  build tree-shakes `MaterialIcons-Regular.otf` from 1,645,184 bytes to 7,736,
+  which is the handful of glyphs the framework's own code paths reach
+  statically. Turning the flag off would save 7.7 KB and risk a blank box in a
+  selection control that no gate pumps, so it stays and the pubspec says why.
+  `material_symbols_icons` and `cupertino_icons` both go: neither is named
+  anywhere under `lib/` or `test/`, and removing them moved no other version
+  in the lockfile.
+- **A gate that allows a file needs a test that the allowance is still
+  needed.** `no_material_imports` now asserts that each of the four named
+  infrastructure importers still imports it, so a file that stops comes off
+  the list instead of keeping a permission that outlived its reason. The same
+  shape as the "the backlog only lists files that still hold one" test every
+  other gate in `test/theme/` already had.
+- **`StatusPresentation.fill01` was dead for a whole wave.** It is the
+  Material Symbols fill axis, three call sites produced it, and nothing has
+  read it since Phosphor arrived: an `IconSpec` carries its own weight. Dead
+  data on a public type reads as a requirement to the next author, which is
+  why it went with the glyphs rather than after them.
+- **The v1 contrast gate was two gates in one file.** Half of it measures the
+  bridge `ColorScheme`, which is the only place the bridge is measured and
+  which nothing else covers. The other half measured `SpecimenColors`, which
+  was re-exported `ProductPalette` and is covered role for role by the
+  package's `contrast_composite_test.dart` over a strictly larger surface set.
+  Deleting the adapter therefore did not mean deleting an assertion: the
+  product half now reads `UiColor` and every assertion it had is still there.
+
+### Failed approaches
+
+- **Leaving `lib/src/theme/` out of the component gate's scan.** The first
+  draft kept the exclusion with a note saying the bridge names Material types
+  by construction. It does not name any of the 42 retired widgets, so the
+  exclusion was a claim nobody had rechecked. Dropping it and running the gate
+  is a two line change and a stronger statement.
+- **Keeping a `TooltipThemeData` on the bridge.** The brief's list of what the
+  bridge keeps reads "page transitions, tooltip and material localizations",
+  and the first reading put a Material `TooltipThemeData` back. Nothing draws
+  a Material `Tooltip`: `grep` finds none under `lib/` or in the package, and
+  `UiTooltip` draws its own pane. The clause is about the package tooltip's
+  need for `MaterialLocalizations`, which `MaterialApp` supplies and which is
+  why `controls/overlays/tooltip.dart` is one of the three package files
+  allowed to import `material.dart`. Recorded rather than guessed at twice.
+
+### Deviations from the brief, with why
+
+- **The commit trailer names Claude Opus 5 (1M context).** The common section
+  asks for a different model's line; this session's own attribution
+  instruction is the one followed, as slots E1, E4, F2, G1 and polish 2 also
+  recorded. The integrator may normalise the trailers.
+- **`cupertino_icons` was removed as well as `material_symbols_icons`.** The
+  brief names one; the slot section says "and anything else unused", and a
+  Cupertino icon font nothing references is exactly that.
+- **`specimenPageTransitions` moved from `main.dart` to `app_theme.dart`.**
+  The brief speaks of "the bridge `ThemeData` in `main.dart`", which was in
+  two files: `AppTheme` built it and `main.dart` added the transitions with a
+  `copyWith`. It is one file now and `main.dart` reads `AppTheme.light()`
+  directly. `test/motion/page_transitions_test.dart` imports the new home.
+- **`StatusPresentation.fill01` is gone**, which is an application API change
+  the brief did not list. See the learning above. Three producers and one test
+  line moved with it.
+- **The source pane's painted exclusion band is not converted.** Polish 2
+  closed the package half and left the pane to this slot. It is a layout
+  change rather than a Material retirement: it gives back 24 dp per side on
+  every workbench window, needs the matte's rect measured in the frame's
+  coordinates, and would move roughly 48 screen goldens while the verification
+  slot is capturing. The marker is retargeted to say the API exists and what
+  is left to do. Named again under follow-ups.
+
+### Product and system defects noticed, not fixed
+
+- **The product has two full window entrances.** `uiFullScreenRoute` in
+  `region_editor.dart` is a `PageRouteBuilder` the editor and the source
+  pane's full window view share, and the capture route pushes a
+  `MaterialPageRoute`. The second keeps the platform's own back gesture, which
+  a bare `PageRouteBuilder` has no answer for, and that is why they are not
+  already one. A `UiPageRoute` in the package closes it; until then the import
+  gate names `capture_screen.dart` with that reason.
+- **The `no_material_components` regex would not catch a Material widget
+  written with a named constructor**, for example `Card.filled(`. It matches
+  `Name(` only. Every one of the 208 the refactor retired was a plain
+  constructor, so nothing slipped, but the gate is now the only thing standing
+  between the tree and a return.
+- **`lib/src/capture/` is a screens directory that is not under
+  `lib/src/screens/`.** Three gates were written against directory prefixes
+  and two of them missed it. The import gate no longer does; the other two
+  scan `lib/` whole already.
+
+### Package APIs this slot needed and did not have
+
+- **A `UiPageRoute`.** Stated by slot E3 and still open. It is the one thing
+  keeping a `material.dart` import in a screen file rather than in the bridge.
+- Nothing else. The three adapters this slot retired all had their package
+  answer in place, which is what polish 2 was for.
+
+### Remaining follow-ups
+
+- The integrator regenerates the screen goldens and the semantics fixtures
+  once after the wave merges, as always. The expected moved set for this slot
+  is empty, which is itself the check: any movement is a finding.
+- `SourceMatte`'s painted band onto `UiScaffoldExclusion.of(context)?.publish`,
+  as described above. Worth doing with the device captures rather than before
+  them.
+- `AppShell.skyOf(Uri)` belongs beside `isEntryLocation` and `isGlobalLocation`
+  in `lib/src/app/routes.dart`. Polish 2 left it in `shell.dart` for this slot
+  to move, and `shell.dart` is the one application file this slot's brief
+  excludes, so it is still there.
+- `TODO(specimen_ui)` in `search_filters.dart` and `queue_screen.dart`, both
+  asking for a component 10 section 4 does not list yet. Unchanged.
+- The `no_literal_geometry` backlog is ten elapsed times over three files and
+  will not shrink further without a decision about where a request timeout
+  lives. Each is already a named constant in the file that owns the policy,
+  which is what the amendment to 10 section 8 asks for; the gate counts the
+  `Duration(...)` anyway. Either the gate learns to read a top level `const
+  Duration` declaration, or the map keeps three entries for good.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed.
+## 2026-09-17: Front-end refactor wave H, slot H3, the second verification report
+
+Task: slot H3 (`fe/verification`), items F2, F3 and F4 of
+`docs/execution/FRONT_END_REFACTOR.md` section 3F and definition of done items
+7 and 9. Branch `fe/verification`, worktree
+`.claude/worktrees/fe-verification`, cut from `front-end-refactor` at
+`cbe78eb`, which is every wave merged: 0, 1, 2, F, G, wave 3 and polish 2.
+Sibling slot `fe-cleanup` live on the application's `lib/` and `test/theme/`;
+nothing under either was touched.
+
+Outcome: complete. The report is
+`apps/specimen_digitization/design/12-verification-report-v2.md`. **Six new
+defects, two at severity 2**, each with its file and its line, none of them
+fixed here because this slot owns the report rather than the code.
+
+Commits, all on `fe/verification`:
+
+- `dbb7eda` test(verification): the instruments the second report measures with
+- `1045cd6` docs(design): device captures of the client the refactor built
+- `83b0ebc` docs(design): the second verification report, and the deltas it forces
+
+### Validation
+
+Every gate run one at a time with the tree untouched, `rc=$?` read directly,
+`LANG` and `LC_ALL` exported:
+
+| Gate | rc | Result |
+|---|---|---|
+| `flutter analyze --fatal-infos` (`packages/specimen_ui`) | 0 | No issues found |
+| `flutter test` (`packages/specimen_ui`) | 0 | 684 passed, 0 failed |
+| `flutter analyze --fatal-infos` (application) | 0 | No issues found |
+| `flutter test` (application) | 0 | 1296 passed, 7 skipped, 0 failed |
+| `uv run python scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt` | 0 | 202 files, 0 violations |
+| `uvx --from pre-commit==4.5.1 pre-commit run --files ...` (54 files) | 0 | every hook Passed or Skipped |
+| `dart format --set-exit-if-changed` over the seven Dart files | 0 | 0 changed |
+| `flutter build web --release` | 0 | Built `build/web` |
+
+The application suite was 1092 at the cut and is 1296: this slot's three test
+files add 204 assertions. **No screen golden and no semantics fixture moved**,
+and none was regenerated: this slot adds tests and documents and changes one
+doc comment in the package, so there was nothing for a golden to move for.
+
+### The six defects, in one line each
+
+Full write-ups, with the measured numbers and the suggested owner, are in
+section "Defects, ranked" of the report.
+
+- **V2-1, severity 2.** The sky field paints over the environment band on every
+  entry screen. `FieldPainter.paint` in
+  `packages/specimen_ui/lib/src/primitives/field_layer.dart` clips to its own
+  bounds only inside `if (clip != null)`, so the unbounded `drawCircle` calls
+  paint over whatever the enclosing column drew first, and the enclosing
+  `Stack` pushes no clip because a `Positioned.fill` child produces no visual
+  overflow for it to detect. `_EnvironmentFrame` at
+  `lib/src/app/app_router.dart:439-461` is what exposes the band to it. The
+  band's tokens measure 9.31:1 in light and 8.21:1 in dark; on sign in it
+  renders 4.63, 5.91, 3.64 and 3.31 in light and 4.33, 4.40, 4.34 and 4.23 in
+  dark at the four window classes. Six of eight below AA, worst 3.31:1. For
+  scale, finding V-8 in 08 was 2.26:1 to 2.39:1.
+- **V2-2, severity 3.** `ink.tertiary` clears 6.70:1 over `ground`, 6.21:1 over
+  `paper` and 5.70:1 over `matte`, which is every surface 03 and 09 take a ratio
+  over, and 3.29:1 over the sun field's centre. The queue's freshness line at
+  `lib/src/screens/queue/queue_screen.dart:769` measures 3.87:1 where it
+  actually sits.
+- **V2-3, severity 2.** The last queue row's disposition chips sit under the
+  floating pill navigation on a phone and cannot be scrolled clear.
+  `lib/src/screens/queue/queue_screen.dart:416-424` never reads
+  `UiScaffold.of(context).bottomInset`; `decision_bar.dart:137-141` does, and is
+  the only site in `lib/` that does.
+- **V2-4, severity 3.** `lib/src/screens/sources/sources_screen.dart` draws no
+  page heading: the reviewer lands on one row under the band with no statement
+  of where they are.
+- **V2-5, severity 4.** `lib/src/widgets/field_row.dart:19` declares
+  `enum FieldLayer`, which collides with `package:specimen_ui`'s `FieldLayer`
+  widget. Any file importing both must alias one, which is how it was found.
+- **V2-6, severity 3.** A route push and a destination change still travel
+  **451 ms** under the iOS reduced motion signal.
+  `lib/main.dart:277-286` names `CupertinoPageTransitionsBuilder` with no
+  reduced motion branch and `lib/src/app/app_router.dart:233`, `:218` and
+  `:266` take the platform page. On the Android signal the same two run 23 ms,
+  which is Flutter's own five percent of 450 and is what 04 section 2.5
+  expects.
+
+### The measurements, with their numbers
+
+**Fit, 132 cells.** Eleven screens by four window classes by text scales 1.0,
+1.3 and 2.0, light. **123 intended, 9 squeezed, 0 overflow.** The nine are sign
+in at six cells, the queue at two and the source at one, every one of them a
+screen that fits at 1.0 and scrolls once the type grows. The navigation
+arrangement is the declared one in every cell.
+
+**Reduced motion, 14 transitions.** Seven crossings under each of the two
+signals. **Ten collapse, four travel**, and the four are the same two
+transitions counted twice. Residuals measured a millisecond at a time rather
+than described: 23 ms on the Android signal, 451 ms on the iOS signal.
+
+**Dark, 40 screen cells plus 18 more.** Glass over the darkest field is
+14.71:1 and the `GlassQuality.off` fallback is 15.67:1, so the pane a slow
+device gets is no worse than the one it replaces. The pane budget's worst case
+is three of four, on the record. **The accent measures exactly one mark per
+screen at all 40 cells**, counted off the rendered pixels rather than asserted:
+the product mark. Seventeen contrast failures, ten of them the instrument.
+
+**Glass, three surfaces.** At the budget maximum over a ground that changes
+every frame: the web spent nothing measurable (0 of 699 frames over 16.7 ms at
+full); the iPad simulator spent 2.31 ms of raster at full against 0.52 ms with
+the blur off; the Android emulator spent 15.77 ms at full and 16.00 ms with the
+blur off, which is its own rasterizer rather than the blur.
+**`GlassQuality.full` stays the default on every platform** and `glass.dart` is
+unchanged except for the doc line its own comment asked for.
+
+**Web smoke.** Every route walked twice, on the release build and on the
+profile capture build. **One console error, and it is the server**: the service
+worker fails to register in this browsing context, while
+`flutter_service_worker.js` answers 200 from both servers. No Dart exception,
+no assertion, no asset 404, no layout error on any route.
+
+**Device captures, 43.** An Android phone, an iPad Pro 13 inch and a desktop
+browser, both modes.
+
+### Durable learnings
+
+**`textContrastGuideline` cannot be trusted on a node whose rectangle is much
+wider than its glyphs, or over a gradient ground.** It takes the most frequent
+colour on each side of a luminance threshold across the whole rectangle, so
+both frequencies land on the background and it reports a ratio between two
+shades of the same thing. It reported 0.66:1 for a top bar title that measures
+11.22:1 and 1.06:1 for a disclosure header that measures 17.10:1. Ten of the
+seventeen failures in the dark sweep were that. Slot E4 recorded the same
+weakness as a control straddling a scroll fold and slot E3 as a package surface
+measured through Material's scrim. Three sightings is a property of the
+instrument, not three coincidences: read the pixels before you write the
+defect. `measurePair` in `test/verification/verification_harness.dart` is the
+method, and it is eleven lines.
+
+**A `CustomPaint` with no clip paints outside its own box, and a `Stack` will
+not stop it.** `RenderStack` pushes a clip only when it detects visual overflow
+from a positioned child, and a `Positioned.fill` child is exactly in bounds, so
+nothing is detected and nothing is clipped. The painter inside is then free to
+draw anywhere. That is V2-1, and slot F2 predicted the class of it in its own
+closeout: "a box that simply lets its child paint outside itself reports
+nothing ... one no gate here catches". It still is.
+
+**A contrast table over the opaque surfaces is not a contrast table.** 09 added
+a painted sky between the ground and the content, and every ratio in 03 and 09
+is still taken over `ground`, `paper` and `matte`. Two of the six defects are
+that one gap, and a third of the way through the sweep it was clear that the
+question "which surface is this pair on" no longer has three answers. A pair
+over a field needs its own row, and the composite is computable from the tokens
+in four lines.
+
+**One instrument that makes a device tell you the number beats three that make
+you infer it.** The glass measurement failed four ways from the outside:
+synthetic `wheel`, `pointer` and `resize` events do not reach the Flutter web
+engine's input path, and the automation surface throttles `requestAnimationFrame`
+between tool calls, so no forced re-raster could be timed. Putting
+`SchedulerBinding.addTimingsCallback` inside a target that draws its own
+results on screen took twenty minutes and produced the same three numbers on
+the web, an iOS simulator and an Android emulator, readable from a screenshot.
+
+**The emulator cannot answer a rendering question.** The Android emulator's
+raster phase was 15.77 ms at full glass and 16.00 ms with the blur off. It
+does not discriminate, so it must not be used to choose, and saying that is
+more useful than reporting its number as if it meant something.
+
+**A device capture needs data, and the data can come from the slot's own
+target.** The application's `main()` needs Firebase and a production API or a
+synthetic API on loopback. `test/verification/capture_app.dart` composes the
+shipped `SpecimenDigitizationApp` with the size class goldens' own fixture, so
+a simulator shows the queue and the record rather than the setup screen, and
+every pixel a capture shows is still the product's. It is 500 lines and it
+turned "no device evidence" into 43 captures.
+
+**`detect-secrets` reads a base64 image as 317 secrets.** The first version of
+the capture target carried `synthetic-wide-label.png` as base64, because a test
+fixture is not in the asset bundle and `pubspec.yaml` belongs to no slot. The
+replacement paints the label at startup with a `PictureRecorder`: same seven
+lines, same cream, same 1000 by 520, no blob, and the two label regions still
+fall on real words. Ten captures were retaken so the committed target and the
+committed captures agree.
+
+### Failed approaches
+
+**Timing a web frame from outside the page.** Four attempts, all dead ends,
+recorded so nobody repeats them: a synthetic `WheelEvent` on `flt-glass-pane`
+(which is 0 by 0 and not the input target), the same on `flutter-view` (the
+engine does not accept a synthesised wheel), `window.dispatchEvent(new
+Event('resize'))` (Flutter ignores a resize to the same size), and setting
+`flutter-view`'s CSS width a pixel either way each frame (the canvas never
+changed size). The frame cadence was 8.3 ms throughout, which is this display's
+own 120 Hz and says nothing about the raster. The in-app probe replaced all
+four.
+
+**Rotating the iOS simulator.** `xcrun simctl` has no rotate verb.
+`osascript` driving the Simulator's own Device menu hangs on a macOS
+accessibility grant this session cannot ask for. Recorded as a gap rather than
+worked around, so no capture in this repository is in landscape and the `large`
+window class has no device capture at all.
+
+**Profile mode on the iOS simulator.** Refused: "Profilemode is not supported
+by iPad Pro 13-inch (M5)". The iPad captures are debug builds, which changes
+nothing a capture shows and does change a frame timing, so the glass table says
+which build each row came from.
+
+**Believing the first scroll.** The intake screen looked like it had the same
+bottom inset defect as the queue, and two swipes were not enough to prove it
+either way. Six swipes to the true end of each list separated them: intake
+clears the capsule, the queue does not. One of the two is in the report.
+
+### Follow-ups and deviations
+
+1. **The commit trailer names `Claude Opus 5 (1M context)`** where the slot
+   brief names a different model's line, as slots F2, G1, G2, G3, G4, E1, E4,
+   E5 and polish 2 all recorded. The integrator may normalise the trailers.
+2. **No `CHANGELOG.md` entry, deliberately.** The only change under the
+   package's `lib/` is a doc comment on `GlassQuality`, which is not a public
+   API change. The measurement it records is in the report.
+3. **`capture_app.dart` and `glass_probe.dart` are targets, not tests.**
+   Neither matches `*_test.dart`, so `flutter test` does not run them and
+   `flutter analyze` does. They are run with
+   `flutter run -t test/verification/<file> -d <device>`, or built and
+   installed, which is what the report's captures and glass table came from.
+4. **Two gitignored Firebase placeholders were created locally** and are not
+   committed: `ios/Runner/GoogleService-Info.plist` and
+   `android/app/google-services.json`. The Xcode project lists the plist as a
+   resource and the Gradle `google-services` plugin requires the json, so
+   neither platform builds without them, and neither is in the repository
+   because both are gitignored. They carry placeholder values in the shape
+   `firebase_options.ci.dart` uses. The iOS one has to carry a
+   well formed `GOOGLE_APP_ID`: the Firebase iOS SDK calls `[FIRApp configure]`
+   at plugin registration and throws on a malformed one before any Dart runs,
+   so `1:000000000000:ios:ci-placeholder` crashes the app on launch and
+   `1:123456789012:ios:abcdef0123456789abcdef` does not. Worth a `.ci` pair
+   beside `firebase_options.ci.dart` so the next agent that wants a device does
+   not spend twenty minutes on it.
+5. **The fit matrix covers eleven screens, not every location.** `verify` and
+   `setup` are behind a redirect the fixture session does not reach, so neither
+   is in the matrix or in the captures. V2-1 applies to both by construction,
+   since they share `_EnvironmentFrame` with sign in, and the report says so
+   rather than implying they were looked at.
+6. **The Usability row of the bar is "Not re-measured".** The 58 pass criteria
+   of 01 were re-audited against the v1 client in 08 and are not re-audited
+   here. Most are carried by tests that are still green, and four of this pass's
+   six defects are ones a heuristic audit would have caught, which is the
+   argument for doing it.
+7. **`no_dashes` holds.** No em dash or en dash in the report, the amendments
+   or the six Dart files.
+
+### For the integrator, and for whoever picks the defects up
+
+- **V2-1's package half is the one worth doing first**, because it stops a
+  class rather than an instance: move the `clipRect` in `FieldPainter.paint`
+  out of its `if`. The application half, passing the band through
+  `UiScaffold.banner` on the entry screens, closes this instance and makes the
+  entry screens the same anatomy the collection screens already use.
+- **V2-2 and V2-1 share a root**, and it is a document: 09 section 3.2 does not
+  say what a text pair is allowed to be over a field. Closing the rule and
+  taking the composite in `theme/contrast_test.dart` closes both classes.
+- **V2-3 has a package half too.** Slot E4 asked for "a way for a routed screen
+  to fill `UiScaffold.actionBar`" and noted that until then a screen has to pad
+  itself by `bottomInset`. Two screens have now been caught by that, one fixed
+  and one not.
+- **The four items this report carries from the wave closeouts** are named in
+  its last section: `UiBannerStyle.maxLines` 2 against 3, the two unowned
+  gallery foundation page overflows, the region editor's 560 against 05's 640,
+  and the bridge `Scaffold` in `app_router.dart` that slots E3, E4 and E5 each
+  said nothing they own needs.
+- **`design/00-north-star.md` points at `11-verification-report-v2.md`** in its
+  2026-09-16 refactor note. 11 is fit and scale; the report is 12. One stale
+  cross reference, in a file no slot owns.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed, and nothing under the application's
+  `lib/` or `test/theme/` touched.

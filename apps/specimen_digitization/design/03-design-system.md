@@ -1,5 +1,8 @@
 # Design system: Specimen Digitization
 
+> **Partly superseded on 2026-09-16.** Sections 2 (brand direction), 3 (colour), 4 (typography), 5.3 (shape), 6 (iconography), 7 (atomic inventory) and 8 (Flutter implementation plan) are replaced by [09-brand-direction.md](09-brand-direction.md) and [10-component-library.md](10-component-library.md). They remain here as the record of the v1 rebuild that shipped to `main`. Sections 1, 5.1, 5.2, 5.4 to 5.9 and 9 still apply, read together with 09 section 12.
+
+
 Owner: design systems. Applies to every widget in `apps/specimen_digitization/lib/`.
 
 Every contrast ratio in this document was computed from the hex values printed here using the

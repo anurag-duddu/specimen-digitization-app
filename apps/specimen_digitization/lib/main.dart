@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import 'firebase_options.dart';
 import 'src/api_repository.dart';
 import 'src/app/app_router.dart';
@@ -19,7 +21,6 @@ import 'src/magic_link.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
 import 'src/theme/app_theme.dart';
-import 'src/theme/motion.dart';
 import 'src/theme/motion_preference.dart';
 import 'src/workspace.dart';
 
@@ -208,25 +209,38 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
     final Widget app = MaterialApp.router(
       title: 'Specimen Digitization',
       debugShowCheckedModeBanner: false,
-      theme: _lightTheme,
-      darkTheme: _darkTheme,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
       routerConfig: _router,
-      builder: (BuildContext context, Widget? child) => ExpansionTileTheme(
-        // `ExpansionTile` animates at Material's own 200 ms on a linear
-        // curve. The duration is already the `standard` token; the curve is
-        // not, and the reduced-motion collapse is ours to apply because a
-        // theme built once at startup cannot read an accessibility feature
-        // (motion catalog, row 43).
-        data: ExpansionTileThemeData(
-          expansionAnimationStyle: AnimationStyle(
-            duration: MotionTokens.of(context).standard,
-            curve: MotionTokens.standardCurve,
-            reverseCurve: MotionTokens.standardCurve,
+      // `UiTheme` and the density probe sit here rather than above
+      // `MaterialApp`, because this is the highest point in the tree where
+      // the resolved brightness is known: `themeMode` follows the platform,
+      // and a scope above the app would have to guess. Everything a reviewer
+      // can see, including every overlay and route, is below this builder,
+      // and so is the product's ambient text style: `UiTheme` publishes it
+      // with its tokens now, so the application no longer wraps the router in
+      // a `DefaultTextStyle` of its own (11 section 5).
+      builder: (BuildContext context, Widget? child) =>
+          MediaQuery.withClampedTextScaling(
+            // The one place the text scale is clamped (11 section 2.1). The
+            // control contract promises 200 percent and promises nothing
+            // above it, and nothing below 85 percent is worth reading, so the
+            // root says so once and no control reads or clamps the scaler
+            // itself. On the web the browser's own preference never reaches
+            // Flutter, so the scale here is 1.0 until the reviewer's stored
+            // setting becomes a product feature.
+            minScaleFactor: 0.85,
+            maxScaleFactor: 2,
+            child: Density(
+              child: UiTheme(
+                data: Theme.of(context).brightness == Brightness.dark
+                    ? _darkTokens
+                    : _lightTokens,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
           ),
-        ),
-        child: child ?? const SizedBox.shrink(),
-      ),
     );
     // One scope above the router, because an accessibility feature change and
     // a browser media query change both arrive outside the widget tree and
@@ -240,26 +254,10 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   }
 }
 
-/// The page transitions the motion document specifies (section 6.1).
-///
-/// The mobile entries restate Flutter's own defaults so a future SDK change is
-/// a visible diff; the desktop and web entries move off the zoom transition
-/// onto the Material 3 forward transition.
-const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
-  builders: <TargetPlatform, PageTransitionsBuilder>{
-    TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-    TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-    TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-    TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
-  },
-);
+/// The tokens, built once. `UiTheme.of` folds the live density and the live
+/// reduced-motion state into these on every read, so the stored value carries
+/// only what does not change while the window is open.
+final UiThemeData _lightTokens = UiThemeData.light();
 
-final ThemeData _lightTheme = AppTheme.light().copyWith(
-  pageTransitionsTheme: specimenPageTransitions,
-);
-
-final ThemeData _darkTheme = AppTheme.dark().copyWith(
-  pageTransitionsTheme: specimenPageTransitions,
-);
+/// The dark tokens.
+final UiThemeData _darkTokens = UiThemeData.dark();

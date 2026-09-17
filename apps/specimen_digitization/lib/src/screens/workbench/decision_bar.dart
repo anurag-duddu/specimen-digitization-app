@@ -2,15 +2,22 @@
 ///
 /// The two actions the reviewer is here for never scroll away, and neither is
 /// ever a silent no-op: when the server does not permit one, the button
-/// carries the reason as a tooltip and as a semantic hint rather than a bare
-/// disabled state (accessibility, 2.2 finding 3; pass criterion 5.6).
+/// carries the reason on its own semantics node rather than a bare disabled
+/// state (accessibility, 2.2 finding 3; pass criterion 5.6).
+///
+/// The bar is `glass.floating` where it floats, which is above the navigation
+/// on a stacked layout, and `paper` where it is in flow at the foot of the
+/// evidence pane on a two or three pane layout (09 section 3.3; responsive
+/// 3.5). It is the scaffold's action bar in everything but the slot: the
+/// shell owns the `UiScaffold` and publishes no way for a routed screen to
+/// fill `actionBar`, which is recorded in the slot closeout.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'dart:math' as math;
 
-import '../../theme/icons.dart';
-import '../../widgets/widgets.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import 'pending_changes.dart';
 
 /// The pinned bar at the foot of the evidence pane.
@@ -90,90 +97,112 @@ class WorkbenchDecisionBar extends StatelessWidget {
   /// The approval label.
   static const String approveLabel = 'Approve record';
 
+  /// The two queue steps, named once.
+  static const String nextLabel = 'Next specimen';
+
+  /// The step backwards.
+  static const String previousLabel = 'Previous specimen';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final List<Widget> actions = <Widget>[
-      if (pendingCount > 0)
-        FilledButton.icon(
-          onPressed: busy ? null : onSavePending,
-          icon: InFlightGlyph(busy: busy, resting: Symbols.save),
-          label: Text('Save ${pendingChangesLabel(pendingCount)}'),
-        ),
-      _Decision(
-        label: coverageLabel,
-        reason: coverageBlockedReason,
-        onPressed: onConfirmCoverage,
-        filled: false,
-        busy: busy,
-      ),
-      _Decision(
+    final UiThemeData ui = context.ui;
+    final UiButtonRow actions = UiButtonRow(
+      primary: UiButton(
         label: approveLabel,
-        reason: approveBlockedReason,
-        onPressed: onApprove,
-        filled: true,
-        busy: busy,
+        loading: busy,
+        disabledReason: approveBlockedReason,
+        onPressed: approveBlockedReason == null ? onApprove : null,
       ),
-    ];
+      secondary: UiButton(
+        label: coverageLabel,
+        variant: UiButtonVariant.secondary,
+        loading: busy,
+        disabledReason: coverageBlockedReason,
+        onPressed: coverageBlockedReason == null ? onConfirmCoverage : null,
+      ),
+      tertiary: <UiButton>[
+        if (pendingCount > 0)
+          UiButton(
+            label: 'Save ${pendingChangesLabel(pendingCount)}',
+            variant: UiButtonVariant.ghost,
+            leading: UiIcons.save,
+            loading: busy,
+            onPressed: onSavePending,
+          ),
+      ],
+    );
 
-    return Material(
-      color: theme.colorScheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: context.space.space4,
-            vertical: context.space.space2,
-          ),
-          child: Row(
-            children: <Widget>[
-              if (onPrevious != null || previousBlockedReason != null)
-                _Step(
-                  label: 'Previous specimen',
-                  reason: previousBlockedReason,
-                  onPressed: onPrevious,
-                  icon: Symbols.chevron_left,
-                ),
-              if (positionLabel != null)
-                Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: context.space.space1,
-                  ),
-                  child: Text(
-                    positionLabel!,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: Wrap(
-                  alignment: compact ? WrapAlignment.center : WrapAlignment.end,
-                  spacing: context.space.space2,
-                  runSpacing: context.space.space2,
-                  children: actions,
-                ),
+    // The scaffold floats its own chrome over the body rather than reserving
+    // room in it, so at compact the navigation pill sits exactly where this
+    // bar does. `bottomInset` is the clearance it asks for, and it already
+    // carries the display's own safe area; the `max` is for a host with no
+    // scaffold, such as a component test.
+    final double clearance = math.max(
+      UiScaffold.of(context).bottomInset,
+      MediaQuery.paddingOf(context).bottom,
+    );
+
+    final Widget bar = Padding(
+      padding: EdgeInsetsDirectional.symmetric(
+        horizontal: ui.space.s4,
+        vertical: ui.space.s2,
+      ),
+      child: Row(
+        children: <Widget>[
+          if (onPrevious != null || previousBlockedReason != null)
+            _Step(
+              label: WorkbenchDecisionBar.previousLabel,
+              reason: previousBlockedReason,
+              onPressed: onPrevious,
+              icon: UiIcons.previous,
+            ),
+          if (positionLabel != null)
+            Padding(
+              padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s1),
+              child: Text(
+                positionLabel!,
+                style: ui.type.label.copyWith(color: ui.color.inkSecondary),
               ),
-              if (onNext != null || nextBlockedReason != null)
-                _Step(
-                  label: 'Next specimen',
-                  reason: nextBlockedReason,
-                  onPressed: onNext,
-                  icon: Symbols.chevron_right,
-                ),
-            ],
-          ),
-        ),
+            ),
+          Expanded(child: actions),
+          if (onNext != null || nextBlockedReason != null)
+            _Step(
+              label: WorkbenchDecisionBar.nextLabel,
+              reason: nextBlockedReason,
+              onPressed: onNext,
+              icon: UiIcons.next,
+            ),
+        ],
       ),
     );
+
+    final Widget surface = compact
+        ? GlassSurface(
+            level: GlassLevel.floating,
+            // A tile rather than a capsule, which is the shape the scaffold
+            // gives its own action bar: the row stacks to three buttons on a
+            // phone and a capsule around three lines reads as a pill that
+            // grew (10 section 4.4).
+            radius: ui.shape.tile,
+            child: bar,
+          )
+        : Surface(radius: ui.shape.tile, hairline: true, child: bar);
+
+    return clearance == 0
+        ? surface
+        : Padding(
+            padding: EdgeInsets.only(bottom: clearance),
+            child: surface,
+          );
   }
 }
 
 /// One step along the queue, drawn even when it is unavailable.
 ///
-/// `MergeSemantics` puts the reason on the button's own node, the same way
-/// the decision buttons do: a control that is dimmed and silent about why is
-/// the silent no-op pass criterion 5.6 forbids.
+/// `UiIconButton` takes the reason itself: it publishes it as the control's
+/// semantic hint and draws it on hover and on long press through
+/// `UiTooltip.reason`, which is what a dimmed control with nothing to say
+/// would otherwise cost (pass criterion 5.6, finding V-2).
 class _Step extends StatelessWidget {
   const _Step({
     required this.label,
@@ -185,77 +214,14 @@ class _Step extends StatelessWidget {
   final String label;
   final String? reason;
   final VoidCallback? onPressed;
-  final IconData icon;
+  final IconSpec icon;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: reason ?? label,
-    child: MergeSemantics(
-      child: Semantics(
-        label: label,
-        hint: reason ?? '',
-        // Repeated here because a merge boundary keeps its own flags.
-        enabled: onPressed != null,
-        child: IconButton(
-          tooltip: null,
-          onPressed: onPressed,
-          icon: Icon(icon),
-        ),
-      ),
-    ),
+  Widget build(BuildContext context) => UiIconButton(
+    icon: icon,
+    semanticsLabel: label,
+    tooltip: label,
+    disabledReason: reason,
+    onPressed: onPressed,
   );
-}
-
-class _Decision extends StatelessWidget {
-  const _Decision({
-    required this.label,
-    required this.reason,
-    required this.onPressed,
-    required this.filled,
-    required this.busy,
-  });
-
-  final String label;
-  final String? reason;
-  final VoidCallback onPressed;
-  final bool filled;
-  final bool busy;
-
-  @override
-  Widget build(BuildContext context) {
-    final VoidCallback? action = reason == null && !busy ? onPressed : null;
-    // The label stays; the indicator arrives beside it. Swapping the label
-    // out would change the button's width, and a decision bar that resizes
-    // while the request is out is a decision bar the reviewer has to find
-    // again (motion catalog, row 49).
-    final Widget content = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        InFlightGlyph(busy: busy, resting: null),
-        // Flexible, because a `Row` hands a non-flex child unbounded main
-        // axis constraints, and a decision label is long.
-        Flexible(child: Text(label)),
-      ],
-    );
-    // `MergeSemantics` is what puts the reason on the button's own node.
-    // Without it the hint sits on a parent node and the disabled button is a
-    // separate child, so a screen reader focusing the control hears its name
-    // and that it is dimmed, and never the sentence saying why
-    // (accessibility, section 3.2 and the section 4.2 VoiceOver script,
-    // step 4).
-    return Tooltip(
-      message: reason ?? label,
-      child: MergeSemantics(
-        child: Semantics(
-          hint: reason ?? '',
-          // Repeated here because a merge boundary keeps its own flags: a
-          // node that does not say it is disabled is read as if it were live.
-          enabled: action != null,
-          child: filled
-              ? FilledButton.tonal(onPressed: action, child: content)
-              : OutlinedButton(onPressed: action, child: content),
-        ),
-      ),
-    );
-  }
 }

@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
@@ -32,6 +33,8 @@ import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../golden/golden_harness.dart';
+import '../ui_finders.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 
 /// Where the checked-in dumps live.
 const String fixtureDirectory = 'test/accessibility/fixtures';
@@ -162,6 +165,7 @@ Future<void> pumpSurface(
   WidgetTester tester,
   Widget child, {
   Size window = dumpWindow,
+  bool settle = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = window;
@@ -173,7 +177,14 @@ Future<void> pumpSurface(
       home: Scaffold(body: SingleChildScrollView(child: child)),
     ),
   );
-  await tester.pumpAndSettle();
+  // A placeholder pulses until it is replaced, so a surface that holds one
+  // never settles; those callers pump two frames instead.
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump();
+  }
 }
 
 void main() {
@@ -202,12 +213,10 @@ void main() {
           brightness: Brightness.light,
           location: goldenSpecimenLocation,
         );
-        final Finder tab = find
-            .descendant(
-              of: find.byType(SegmentedButton<WorkbenchSegment>),
-              matching: find.text(segment.label),
-            )
-            .first;
+        final Finder tab = find.descendant(
+          of: uiTabs(evidenceTabsLabel),
+          matching: find.text(segment.label),
+        );
         await tester.ensureVisible(tab);
         await tester.pumpAndSettle();
         await tester.tap(tab);
@@ -324,15 +333,17 @@ void main() {
         location: goldenSpecimenLocation,
       );
 
-      final Finder selector = find.byType(SegmentedButton<WorkbenchSegment>);
+      final Finder selector = uiTabs(evidenceTabsLabel);
       expect(selector, findsOneWidget);
       final Map<String, bool> states = <String, bool>{};
       void walk(SemanticsNode node) {
         final SemanticsData data = node.getSemanticsData();
-        if (data.flagsCollection.isChecked != CheckedState.none &&
-            data.label.isNotEmpty) {
+        // A tab publishes `selected`, which is what `SemanticsRole.tab` asks
+        // of its children, where the Material control it replaces published
+        // `checked` and read as a radio button (finding V-3).
+        if (data.role == SemanticsRole.tab && data.label.isNotEmpty) {
           states[data.label] =
-              data.flagsCollection.isChecked == CheckedState.isTrue;
+              data.flagsCollection.isSelected == Tristate.isTrue;
         }
         node.visitChildren((SemanticsNode child) {
           walk(child);
@@ -374,7 +385,8 @@ void main() {
         });
       }
 
-      walk(tester.getSemantics(find.byType(SegmentedButton<WorkbenchSegment>)));
+      walk(tester.getSemantics(uiTabs(evidenceTabsLabel)));
+      expect(roles, contains(SemanticsRole.tabBar));
       expect(roles, contains(SemanticsRole.tab));
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
@@ -455,6 +467,7 @@ void main() {
             SkeletonBlock(),
           ],
         ),
+        settle: false,
       );
       final List<String> spoken = spokenNames(tester);
       expect(
@@ -519,6 +532,7 @@ void main() {
             ),
           ),
         ),
+        settle: false,
       );
       await tester.pump();
       expect(announced, contains('Loading queue'));
@@ -602,15 +616,21 @@ void main() {
         brightness: Brightness.light,
         location: goldenQueueLocation,
       );
+      // The row's one merged node is the `UiListRow` it composes.
       final SemanticsData row = tester
-          .getSemantics(find.byType(QueueRow).first)
+          .getSemantics(
+            find.descendant(
+              of: find.byType(QueueRow).first,
+              matching: find.byType(UiListRow),
+            ),
+          )
           .getSemanticsData();
       expect(row.flagsCollection.isButton, isTrue);
       expect(row.hasAction(SemanticsAction.tap), isTrue);
       expect(row.label, contains('Pinned beetle, Chicago 1912'));
       // And the label carries the state and the reason too, so two rows in
       // the same queue are told apart without opening either.
-      expect(row.label, contains('needs human review'));
+      expect(row.label, contains('needs review'));
       expect(row.label, contains('human approval required'));
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
@@ -635,14 +655,16 @@ void main() {
           ],
         ),
       );
-      final String first = tester
-          .getSemantics(find.byType(FieldRow).first)
+      // The row is the node: the pattern's own root is a column with no
+      // semantics of its own, so a finder on it walks up to the screen.
+      String rowLabel(Finder row) => tester
+          .getSemantics(
+            find.descendant(of: row, matching: find.byType(UiListRow)),
+          )
           .getSemanticsData()
           .label;
-      final String second = tester
-          .getSemantics(find.byType(FieldRow).last)
-          .getSemanticsData()
-          .label;
+      final String first = rowLabel(find.byType(FieldRow).first);
+      final String second = rowLabel(find.byType(FieldRow).last);
       expect(first, contains('Country'));
       expect(second, contains('Collectors'));
       expect(first, isNot(second));

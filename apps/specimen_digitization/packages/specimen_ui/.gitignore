@@ -1,0 +1,4 @@
+# `flutter test` writes one directory of PNGs per failed golden here. They are
+# review artifacts, never content: the C1 and C5 closeouts both raised them as
+# a file easy to commit by accident.
+test/gallery/failures/

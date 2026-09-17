@@ -1,15 +1,14 @@
-/// Loading placeholders (design system, 7.2; motion, 2.5; accessibility, 3.1).
+/// Loading placeholders (10 sections 4.5 and 5; 04 section 2.5; 06 section 3).
 ///
-/// Tonal blocks, no shimmer. A shimmer is a repeating animation, and repeating
-/// animations are not auto shortened by Flutter's reduced motion handling, so
-/// the only safe sweep is no sweep. Placeholders are hidden from the semantics
-/// tree and paired with exactly one live "Loading" node.
+/// Tonal blocks on `UiSkeleton`, no shimmer. A shimmer is a sweep across the
+/// content, and a sweep is decoration; what is left is a slow opacity pulse
+/// that stops outright under reduced motion. Placeholders are hidden from the
+/// semantics tree and paired with exactly one live "Loading" node.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
-
-import '../theme/icons.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// One tonal bar. The building block of [SkeletonRow] and [SkeletonBlock].
 class SkeletonBar extends StatelessWidget {
@@ -18,24 +17,12 @@ class SkeletonBar extends StatelessWidget {
   /// Fraction of the available width, 0 to 1.
   final double widthFactor;
 
-  /// Bar height. Defaults to the inline icon size, which is the height of a
-  /// `bodyMedium` line with its leading.
+  /// Bar height. Defaults to one line of body text with its leading.
   final double? height;
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: AlignmentDirectional.centerStart,
-    child: FractionallySizedBox(
-      widthFactor: widthFactor,
-      child: Container(
-        height: height ?? context.sizes.iconInline,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(context.shape.radiusXs),
-        ),
-      ),
-    ),
-  );
+  Widget build(BuildContext context) =>
+      UiSkeleton.line(widthFactor: widthFactor, height: height);
 }
 
 /// Three bars at 60, 40 and 80 percent width, standing in for one row of
@@ -47,18 +34,21 @@ class SkeletonRow extends StatelessWidget {
   static const List<double> widthFactors = <double>[0.6, 0.4, 0.8];
 
   @override
-  Widget build(BuildContext context) => ExcludeSemantics(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        for (int i = 0; i < widthFactors.length; i++) ...<Widget>[
-          if (i > 0) SizedBox(height: context.space.space1),
-          SkeletonBar(widthFactor: widthFactors[i]),
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return ExcludeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          for (int i = 0; i < widthFactors.length; i++) ...<Widget>[
+            if (i > 0) SizedBox(height: ui.space.s1),
+            SkeletonBar(widthFactor: widthFactors[i]),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 /// A single rectangle standing in for a block of content, such as a thumbnail
@@ -73,16 +63,15 @@ class SkeletonBlock extends StatelessWidget {
   final double? height;
 
   @override
-  Widget build(BuildContext context) => ExcludeSemantics(
-    child: Container(
-      width: width,
-      height: height ?? context.sizes.rowExpanded,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(context.shape.radiusSm),
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: width,
+        child: UiSkeleton.line(height: height ?? ui.space.rowExpanded),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// The one live node that says something is loading.
@@ -98,6 +87,12 @@ class SkeletonBlock extends StatelessWidget {
 /// screen to host it is exactly what `sendAnnouncement` is for. It is not
 /// given a one-pixel box instead: a node a screen reader can focus and nobody
 /// can see is worse than the announcement.
+///
+/// It says its phrase once per element, so a screen that can start a second
+/// load of the same thing gives this a `Key` naming what is being loaded: a
+/// collection, a record, a page. Without one the second load reuses the
+/// element and passes in silence, because [message] has not changed and
+/// nothing else on a screen of placeholders is in the semantics tree at all.
 class LoadingAnnouncement extends StatefulWidget {
   const LoadingAnnouncement({
     super.key,
@@ -111,7 +106,7 @@ class LoadingAnnouncement extends StatefulWidget {
   final String thing;
 
   /// When true the label is also drawn, for a wait longer than three seconds
-  /// (UX writing, section 4.7). Placeholders alone carry a shorter wait.
+  /// (02 section 4.7). Placeholders alone carry a shorter wait.
   final bool visible;
 
   /// The exact phrase this widget exposes.
@@ -151,16 +146,15 @@ class _LoadingAnnouncementState extends State<LoadingAnnouncement> {
   @override
   Widget build(BuildContext context) {
     if (!widget.visible) return const SizedBox.shrink();
+    final UiThemeData ui = context.ui;
     return Semantics(
       liveRegion: true,
       label: widget.message,
       excludeSemantics: true,
       child: Text(
         // The ellipsis character, never three periods.
-        '${widget.message}\u2026',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        '${widget.message}…',
+        style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
       ),
     );
   }

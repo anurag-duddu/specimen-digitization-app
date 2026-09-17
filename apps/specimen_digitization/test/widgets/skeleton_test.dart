@@ -1,4 +1,11 @@
-// Placeholders: no shimmer, no semantics, one live "Loading" node.
+// Placeholders: no shimmer, a pulse that stops under reduced motion, no
+// semantics, one live "Loading" node.
+//
+// `UiSkeleton` pulses, and a repeating animation never settles, so every test
+// that has to settle pumps its placeholders inside a `TickerMode` that is off.
+// That is the same device the package's own gallery goldens use, and it is
+// what lets a settled assertion be about the placeholder rather than about the
+// pulse.
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -7,13 +14,16 @@ import 'package:specimen_digitization/src/widgets/skeleton.dart';
 
 import 'harness.dart';
 
+/// [child] with its tickers stopped, so a settle can finish.
+Widget still(Widget child) => TickerMode(enabled: false, child: child);
+
 void main() {
   testWidgets('a skeleton row draws three bars at 60, 40 and 80 percent', (
     WidgetTester tester,
   ) async {
     await pumpComponent(
       tester,
-      const SizedBox(width: 200, child: SkeletonRow()),
+      still(const SizedBox(width: 200, child: SkeletonRow())),
     );
     final Iterable<SkeletonBar> bars = tester.widgetList<SkeletonBar>(
       find.byType(SkeletonBar),
@@ -30,7 +40,7 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpComponent(
       tester,
-      const Column(children: <Widget>[SkeletonRow(), SkeletonBlock()]),
+      still(const Column(children: <Widget>[SkeletonRow(), SkeletonBlock()])),
     );
     expect(
       find.bySemanticsLabel(RegExp('.+')),
@@ -40,16 +50,39 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('no placeholder starts a repeating animation', (
+  testWidgets('a placeholder pulses, and stops under reduced motion', (
     WidgetTester tester,
   ) async {
-    await pumpComponent(
-      tester,
-      const Column(children: <Widget>[SkeletonRow(), SkeletonBlock()]),
+    // The v1 placeholder was a flat block, because a shimmer is a sweep and a
+    // sweep is decoration. `UiSkeleton` keeps that and adds the one motion
+    // 10 section 4.5 does ask for: a slow opacity pulse, which stops outright
+    // under reduced motion rather than running at zero duration.
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: const SkeletonRow())),
     );
-    // A pending frame after settling means something is still animating, and
-    // a shimmer would never settle at all.
-    expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pump();
+    expect(
+      tester.binding.hasScheduledFrame,
+      isTrue,
+      reason: 'the placeholder pulses while the wait is on',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (BuildContext context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: const Scaffold(body: SkeletonRow()),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.binding.hasScheduledFrame,
+      isFalse,
+      reason: 'reduced motion stops the pulse rather than shortening it',
+    );
   });
 
   testWidgets('the loading announcement is a live region, spoken once', (
@@ -85,12 +118,14 @@ void main() {
       Builder(
         builder: (BuildContext context) => MediaQuery(
           data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
-          child: const Column(
-            children: <Widget>[
-              SkeletonRow(),
-              SkeletonRow(),
-              LoadingAnnouncement(thing: 'queue'),
-            ],
+          child: still(
+            const Column(
+              children: <Widget>[
+                SkeletonRow(),
+                SkeletonRow(),
+                LoadingAnnouncement(thing: 'queue'),
+              ],
+            ),
           ),
         ),
       ),
@@ -118,7 +153,7 @@ void main() {
     for (final ThemeData theme in productThemes.values) {
       await pumpComponent(
         tester,
-        const SizedBox(width: 300, child: SkeletonRow()),
+        still(const SizedBox(width: 300, child: SkeletonRow())),
         theme: theme,
       );
       await expectAccessible(tester);

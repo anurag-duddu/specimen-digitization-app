@@ -8,7 +8,6 @@
 // superseded by a later one, never removed. So the count has to be right, and
 // a count that moved under the reviewer while they read it would not be.
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,8 +16,10 @@ import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession, fixture;
+import '../ui_finders.dart';
 
 /// One bulk call, as the repository received it.
 typedef BulkCall = ({
@@ -127,13 +128,22 @@ Future<void> pumpQueue(
   await tester.pumpAndSettle();
 }
 
+/// The checkboxes in the list.
+///
+/// Scoped to the rows, because the bar carries a select all of its own once a
+/// selection is live and it is not one of the records.
+final Finder rowBoxes = find.descendant(
+  of: find.byType(SelectableRow),
+  matching: find.byType(UiCheckbox),
+);
+
 /// Picks the row whose record is named [title].
 Future<void> pick(WidgetTester tester, String title) async {
   final Finder row = find.ancestor(
     of: find.text(title),
     matching: find.byType(SelectableRow),
   );
-  await tester.tap(find.descendant(of: row, matching: find.byType(Checkbox)));
+  await tester.tap(find.descendant(of: row, matching: find.byType(UiCheckbox)));
   await tester.pumpAndSettle();
 }
 
@@ -143,9 +153,9 @@ Future<void> confirm(
   String action, {
   String reason = 'Reviewed together at the copy stand',
 }) async {
-  await tester.enterText(find.byType(TextField).last, reason);
+  await tester.enterText(uiField(ReasonForm.reasonLabel), reason);
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(FilledButton, action));
+  await tester.tap(uiButton(action));
   await tester.pumpAndSettle();
 }
 
@@ -157,7 +167,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpQueue(tester, BulkRepository(queue(4)));
-      expect(find.byType(Checkbox), findsNWidgets(4));
+      expect(rowBoxes, findsNWidgets(4));
       expect(
         find.textContaining('selected'),
         findsNothing,
@@ -168,15 +178,11 @@ void main() {
     testWidgets('a narrow window reveals the column on a long press', (
       WidgetTester tester,
     ) async {
-      await pumpQueue(
-        tester,
-        BulkRepository(queue(3)),
-        window: narrowQueue,
-      );
-      expect(find.byType(Checkbox), findsNothing);
+      await pumpQueue(tester, BulkRepository(queue(3)), window: narrowQueue);
+      expect(rowBoxes, findsNothing);
       await tester.longPress(find.text('Pinned beetle 2'));
       await tester.pumpAndSettle();
-      expect(find.byType(Checkbox), findsNWidgets(3));
+      expect(rowBoxes, findsNWidgets(3));
       expect(find.text('1 record selected'), findsOneWidget);
     });
 
@@ -243,10 +249,7 @@ void main() {
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
       expect(find.text('Approve 3 records?'), findsOneWidget);
-      expect(
-        find.widgetWithText(FilledButton, 'Approve 3 records'),
-        findsOneWidget,
-      );
+      expect(uiButton('Approve 3 records'), findsOneWidget);
       expect(
         repository.calls,
         isEmpty,
@@ -274,11 +277,7 @@ void main() {
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'Approve 1 record'),
-            )
-            .onPressed,
+        tester.widget<UiButton>(uiButton('Approve 1 record')).onPressed,
         isNull,
       );
       expect(repository.calls, isEmpty);
@@ -293,7 +292,7 @@ void main() {
       await pick(tester, 'Pinned beetle 2');
       await tester.tap(find.text('Approve'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.tap(uiButton('Cancel'));
       await tester.pumpAndSettle();
       expect(repository.calls, isEmpty);
       expect(find.text('2 records selected'), findsOneWidget);
@@ -305,10 +304,7 @@ void main() {
       await pick(tester, 'Pinned beetle 3');
       await tester.tap(find.text('Confirm coverage'));
       await tester.pumpAndSettle();
-      expect(
-        find.text('Confirm label coverage on 2 records?'),
-        findsOneWidget,
-      );
+      expect(find.text('Confirm label coverage on 2 records?'), findsOneWidget);
     });
   });
 
@@ -427,7 +423,8 @@ void main() {
       expect(
         repository.calls[0].key,
         repository.calls[1].key,
-        reason: 'an uncertain answer retried under a new key records the '
+        reason:
+            'an uncertain answer retried under a new key records the '
             'decision twice',
       );
     });
@@ -452,7 +449,8 @@ void main() {
       expect(
         find.text('4 records selected'),
         findsOneWidget,
-        reason: 'the count a reviewer is about to confirm must not change '
+        reason:
+            'the count a reviewer is about to confirm must not change '
             'between reading it and confirming it',
       );
     });

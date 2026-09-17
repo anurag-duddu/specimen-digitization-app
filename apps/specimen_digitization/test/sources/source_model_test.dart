@@ -91,9 +91,7 @@ void main() {
 
   group('import progress', () {
     test('folds several requests into one running total', () {
-      SourceImportProgress progress = const SourceImportProgress(
-        requested: 4,
-      );
+      SourceImportProgress progress = const SourceImportProgress(requested: 4);
       progress = progress.add(
         SourceImportResult(<String, dynamic>{
           'requested': 2,
@@ -132,9 +130,10 @@ void main() {
     test('that stopped keeps what already landed', () {
       // The server names the objects it created before refusing rather than
       // concealing them, and so does the report.
-      final SourceImportProgress progress =
-          const SourceImportProgress(requested: 100, imported: 50)
-              .stoppedBy('This source changed.');
+      final SourceImportProgress progress = const SourceImportProgress(
+        requested: 100,
+        imported: 50,
+      ).stoppedBy('This source changed.');
       expect(progress.imported, 50);
       expect(progress.complete, isFalse);
       expect(progress.stoppedReason, 'This source changed.');

@@ -7,9 +7,16 @@
 /// screen, keeping the location it was trying to reach.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+// Infrastructure, not anatomy: `MaterialPage` is what gives a pushed route the
+// platform's own transition (05 section 5), and 10 section 1.3 keeps the page
+// transitions for exactly that. Nothing Material is built here; the
+// `no_material_imports` gate names this file and what it is allowed to take.
+import 'package:flutter/material.dart' show MaterialPage;
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:specimen_ui/gallery.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../auth.dart';
 import '../email_verification.dart';
@@ -22,7 +29,6 @@ import '../screens/sources/source_controller.dart';
 import '../screens/sources/source_screen.dart';
 import '../screens/sources/sources_screen.dart';
 import '../sources.dart';
-import '../theme/motion.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'help_screen.dart';
@@ -51,6 +57,10 @@ GoRouter buildAppRouter({
   String? redirect(BuildContext context, GoRouterState state) {
     final String location = state.uri.path;
     final bool entry = AppRoutes.isEntryLocation(location);
+
+    // The gallery is a review surface for the design system. It reads no
+    // collection data and needs no session, so it sits above every redirect.
+    if (!kReleaseMode && location == AppRoutes.gallery) return null;
 
     void remember() {
       if (!entry && location != '/') {
@@ -164,10 +174,23 @@ GoRouter buildAppRouter({
         pageBuilder: (BuildContext context, GoRouterState state) =>
             helpPage(context),
       ),
+      if (!kReleaseMode)
+        GoRoute(
+          path: AppRoutes.gallery,
+          builder: (BuildContext context, GoRouterState state) =>
+              const UiGallery(),
+        ),
       ShellRoute(
         builder: (BuildContext context, GoRouterState state, Widget child) {
           final String routeKey = AppRoutes.collectionKeyIn(state.uri) ?? '';
           final bool intake = state.uri.pathSegments.contains('intake');
+          // No frame here. A transparent `Scaffold` stood over this subtree
+          // while the queue, the workbench, intake and sources still built
+          // Material components that assert on a `Material` ancestor and
+          // raised snackbars through a messenger a `Scaffold` registers.
+          // Wave 3 took the last of both, so the only frame left is the
+          // `UiScaffold` the shell builds inside `CollectionWorkspace`, which
+          // paints the ground and the sky and owns the keyboard inset.
           return CollectionWorkspace(
             routeKey: routeKey,
             destination: intake
@@ -201,7 +224,7 @@ GoRouter buildAppRouter({
                       child: screen,
                     );
                   }
-                  final MotionTokens motion = MotionTokens.of(context);
+                  final MotionTokens motion = context.ui.motion;
                   return CustomTransitionPage<void>(
                     key: state.pageKey,
                     transitionDuration: motion.standard,
@@ -242,8 +265,7 @@ GoRouter buildAppRouter({
                     builder: (BuildContext context, GoRouterState state) =>
                         _SourceRoute(
                           sourceId:
-                              state.pathParameters[AppRoutes
-                                  .sourceParameter] ??
+                              state.pathParameters[AppRoutes.sourceParameter] ??
                               '',
                         ),
                   ),
@@ -367,8 +389,8 @@ class _SourceRouteState extends State<_SourceRoute> {
                 .where((RegisteredSource s) => s.id == widget.sourceId)
                 .firstOrNull;
             if (found == null) {
-              return const EmptyState(
-                icon: Symbols.inventory_2,
+              return EmptyState(
+                icon: UiIcons.queue.defaultGlyph,
                 title: 'Source not found',
                 body: 'This source is not registered to the open collection.',
               );
@@ -391,8 +413,8 @@ class _NoSourceSupport extends StatelessWidget {
   const _NoSourceSupport();
 
   @override
-  Widget build(BuildContext context) => const EmptyState(
-    icon: Symbols.inventory_2,
+  Widget build(BuildContext context) => EmptyState(
+    icon: UiIcons.queue.defaultGlyph,
     title: 'Sources not available',
     body: 'This build reads uploads only. Add photographs from Intake.',
   );
@@ -412,8 +434,8 @@ class _EnvironmentFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!EnvironmentBanner.showsFor(environment)) return child;
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
+    return ColoredBox(
+      color: context.ui.color.ground,
       child: Column(
         children: <Widget>[
           SafeArea(
@@ -446,7 +468,7 @@ class _LeaveVerificationState extends State<_LeaveVerification> {
   }
 
   @override
-  Widget build(BuildContext context) => const Scaffold(
+  Widget build(BuildContext context) => const UiScaffold(
     body: Center(
       child: LoadingAnnouncement(thing: 'your collection', visible: true),
     ),

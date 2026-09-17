@@ -8,10 +8,10 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'audit_history.dart';
 import 'evidence_panel.dart';
@@ -29,7 +29,6 @@ import 'screens/workbench/shortcuts.dart';
 import 'screens/workbench/source_pane.dart';
 import 'screens/workbench/status_strip.dart';
 import 'screens/workbench/workbench_layout.dart';
-import 'theme/icons.dart';
 import 'theme/motion.dart';
 import 'operational_panel.dart';
 import 'widgets/widgets.dart';
@@ -41,6 +40,40 @@ import 'widgets/widgets.dart';
 /// both scroll views too, and a test that addresses the wrong one proves
 /// nothing about whether the pane a reviewer reads actually scrolls.
 const Key evidenceScrollKey = ValueKey<String>('workbench-evidence-scroll');
+
+/// The two header controls that name themselves.
+const String copyIdentifierLabel = 'Copy the specimen identifier';
+
+/// The control that reloads the record.
+const String refreshLabel = 'Refresh this record';
+
+/// What the toast says once the identifier is on the clipboard.
+const String copiedMessage = 'Specimen identifier copied';
+
+/// What the screen says when collection access has not been answered.
+const String noCollectionMessage =
+    'Collection configuration is unavailable. Refresh collection access.';
+
+/// The two occasional actions of the fields panel, named once.
+const String classificationLabel = 'Correct classification';
+
+/// The control that asks the server to process the record again.
+const String retryLabel = 'Retry processing';
+
+/// What the evidence strip calls itself to a screen reader.
+const String evidenceTabsLabel = 'Evidence panels';
+
+/// The stacked layout's own source header, and its two controls.
+const String sourceHeading = 'Source photograph';
+
+/// The control that opens the photograph over the record.
+const String fullScreenLabel = 'Open the photograph full screen';
+
+/// The control that brings the photograph back.
+const String showSourceLabel = 'Show the photograph';
+
+/// The control that puts it away.
+const String collapseSourceLabel = 'Collapse the photograph';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -142,13 +175,18 @@ class ReviewWorkbench extends StatefulWidget {
 class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   WorkbenchSegment _segment = WorkbenchSegment.readings;
 
-  /// Which way the last segment change moved along the chip row.
+  /// Which tab the strip is on, as the index into [WorkbenchSegment.values].
   ///
-  /// Forward, meaning left to right in the chip row on LTR, sends the
-  /// incoming panel in from the leading side and the outgoing one out the
-  /// other way. Read from the chip order, never hard-coded, and mirrored
-  /// under RTL by `Directionality` (motion catalog, row 41; choreography 5.3).
-  bool _segmentForward = true;
+  /// `UiTabs` owns the selection and writes into this, so the strip and the
+  /// panel below it cannot disagree. The index into the visible list is the
+  /// same number as the index into the enum, because the only list the regime
+  /// shortens drops the last entry (`WorkbenchSegment.forRegime`).
+  final ValueNotifier<int> _tab = ValueNotifier<int>(0);
+
+  /// How the record is arranged this frame, so a shortcut and a blocker can
+  /// tell whether History is a tab or a pane of its own.
+  WorkbenchRegime _regime = WorkbenchRegime.stacked;
+
   String? _region;
   bool _sourceCollapsed = false;
   List<PendingFieldChange> _pending = <PendingFieldChange>[];
@@ -167,8 +205,29 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   @override
   void initState() {
     super.initState();
+    _tab.addListener(_tabChanged);
     unawaited(_loadRecentReasons());
   }
+
+  /// The tab strip moved. The panel follows it, and the reviewer feels the
+  /// selection tick the catalog gives this one change (row 41).
+  void _tabChanged() {
+    final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(_regime);
+    final WorkbenchSegment next =
+        segments[_tab.value.clamp(0, segments.length - 1)];
+    if (next == _visibleSegment) return;
+    setState(() {
+      _segment = next;
+      SpecimenHaptics.selectionChanged();
+    });
+  }
+
+  /// The segment actually on screen, which is Readings wherever the regime
+  /// has taken History out of the strip and made it a pane.
+  WorkbenchSegment get _visibleSegment =>
+      WorkbenchSegment.forRegime(_regime).contains(_segment)
+      ? _segment
+      : WorkbenchSegment.readings;
 
   List<String> get _serverActions =>
       (widget.specimen.data['available_actions'] as List? ?? <Object?>[])
@@ -270,6 +329,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   @override
   void dispose() {
+    _tab
+      ..removeListener(_tabChanged)
+      ..dispose();
     _view.dispose();
     _evidenceScroll.dispose();
     super.dispose();
@@ -310,7 +372,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     if (target == null) return;
     Scrollable.ensureVisible(
       target,
-      duration: context.motion.standard,
+      duration: context.ui.motion.standard,
       curve: MotionTokens.standardCurve,
       alignment: 0.1,
     );
@@ -599,20 +661,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         )
         .firstOrNull;
     if (scope == null) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Collection configuration is unavailable. Refresh collection '
-            'access.',
-          ),
-        ),
-      );
+      UiToasts.show(context, message: noCollectionMessage, icon: UiIcons.error);
       return;
     }
-    final Json? result = await showDialog<Json>(
-      context: context,
-      builder: (_) =>
-          ClassificationDialog(specimen: widget.specimen, scope: scope),
+    final Json? result = await showClassificationForm(
+      context,
+      specimen: widget.specimen,
+      scope: scope,
     );
     if (result != null && mounted) await _send(result);
   }
@@ -674,50 +729,61 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   Future<void> _copyIdentifier(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: widget.specimen.id));
     if (!context.mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('Specimen identifier copied')),
-    );
+    UiToasts.show(context, message: copiedMessage, icon: UiIcons.copy);
   }
 
-  Widget _header(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: context.space.space2),
-    child: Row(
-      children: <Widget>[
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                widget.specimen.title,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              // Plain text, not selectable: a selectable paragraph exposes a
-              // long press action, which makes a 20 dp line a tap target the
-              // guideline rightly refuses. The copy control beside it is the
-              // 48 dp way to take the identifier.
-              Text(widget.specimen.id, style: context.mono.identifier),
-            ],
+  Widget _header(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return Padding(
+      padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Semantics(
+                  container: true,
+                  header: true,
+                  child: Text(widget.specimen.title, style: ui.type.titleLarge),
+                ),
+                // Plain text, not selectable: a selectable paragraph exposes
+                // a long press action, which makes a 20 dp line a tap target
+                // the guideline rightly refuses. The copy control beside it
+                // is the 48 dp way to take the identifier.
+                Text(
+                  widget.specimen.id,
+                  style: ui.type.mono.identifier.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        IconButton(
-          onPressed: () => _copyIdentifier(context),
-          tooltip: 'Copy the specimen identifier',
-          icon: const Icon(Symbols.content_copy),
-        ),
-        IconButton(
-          onPressed: widget.busy ? null : _refresh,
-          tooltip: 'Refresh this record',
-          icon: const Icon(Symbols.refresh),
-        ),
-        IconButton(
-          onPressed: () => showShortcutSheet(context),
-          tooltip: 'Keyboard shortcuts',
-          icon: const Icon(Symbols.keyboard),
-        ),
-      ],
-    ),
-  );
+          UiIconButton(
+            icon: UiIcons.copy,
+            semanticsLabel: copyIdentifierLabel,
+            tooltip: copyIdentifierLabel,
+            onPressed: () => _copyIdentifier(context),
+          ),
+          UiIconButton(
+            icon: UiIcons.reload,
+            semanticsLabel: refreshLabel,
+            tooltip: refreshLabel,
+            disabledReason: 'Wait for the save that is in flight to finish',
+            onPressed: widget.busy ? null : _refresh,
+          ),
+          UiIconButton(
+            icon: UiIcons.keyboard,
+            semanticsLabel: shortcutSheetTitle,
+            tooltip: shortcutSheetTitle,
+            onPressed: () => showShortcutSheet(context),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _sourcePane(
     BuildContext context, {
@@ -742,15 +808,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     ),
   );
 
-  /// Moves to [next], remembering which way along the chip row it went.
+  /// Moves to [next], and takes the tab strip with it.
   ///
-  /// Call inside `setState`; it assigns, it does not schedule a rebuild.
+  /// Call inside `setState`; it assigns, it does not schedule a rebuild. The
+  /// notifier's own listener sees the two already agree and does nothing.
   void _moveSegment(WorkbenchSegment next) {
-    _segmentForward = next.index >= _segment.index;
     _segment = next;
+    final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(_regime);
+    _tab.value = segments.contains(next) ? next.index : 0;
   }
 
-  Widget _segmentContent(BuildContext context) => switch (_segment) {
+  Widget _segmentContent(
+    BuildContext context,
+    WorkbenchSegment segment,
+  ) => switch (segment) {
     WorkbenchSegment.readings => WorkbenchReadings(
       key: const ValueKey<String>('readings'),
       specimen: widget.specimen,
@@ -790,7 +861,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           },
           fieldBlockedReason: blockedReason('field'),
         ),
-        SizedBox(height: context.space.space6),
+        SizedBox(height: context.ui.space.s6),
         if (widget.loadArtifact != null)
           EvidencePanel(
             key: ValueKey<String>(
@@ -801,61 +872,34 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             onChange: _send,
             canReview: blockedReason('authority_resolution') == null,
           ),
-        SizedBox(height: context.space.space6),
+        SizedBox(height: context.ui.space.s6),
         ReviewContext(specimen: widget.specimen),
-        SizedBox(height: context.space.space4),
-        Wrap(
-          spacing: context.space.space2,
-          runSpacing: context.space.space2,
-          children: <Widget>[
-            _reasoned(
-              blockedReason('classification'),
-              OutlinedButton.icon(
-                onPressed: blockedReason('classification') != null
-                    ? null
-                    : _classification,
-                icon: const Icon(Symbols.account_tree),
-                label: const Text('Correct classification'),
-              ),
-            ),
-            _reasoned(
-              _retryBlockedReason,
-              OutlinedButton.icon(
-                onPressed: _retryBlockedReason != null ? null : _retry,
-                icon: const Icon(Symbols.replay),
-                label: const Text('Retry processing'),
-              ),
-            ),
-          ],
+        SizedBox(height: context.ui.space.s4),
+        // The two occasional actions. Each carries the server's reason on its
+        // own node when the server forbids it, so neither is ever a dimmed
+        // control with nothing to say (pass criterion 5.6).
+        UiButtonRow(
+          primary: UiButton(
+            label: retryLabel,
+            variant: UiButtonVariant.secondary,
+            leading: UiIcons.retry,
+            disabledReason: _retryBlockedReason,
+            onPressed: _retryBlockedReason != null ? null : _retry,
+          ),
+          secondary: UiButton(
+            label: classificationLabel,
+            variant: UiButtonVariant.secondary,
+            leading: UiIcons.provenance,
+            disabledReason: blockedReason('classification'),
+            onPressed: blockedReason('classification') != null
+                ? null
+                : _classification,
+          ),
         ),
       ],
     ),
     WorkbenchSegment.history => _history(const ValueKey<String>('history')),
   };
-
-  /// A control, plus the reason it cannot be used.
-  ///
-  /// `MergeSemantics` is what makes the reason audible. Without it the hint
-  /// lands on a node of its own and the disabled button becomes a separate
-  /// child node beneath it, so a screen reader focusing the control hears
-  /// "Approve record, dimmed" and never the sentence saying why
-  /// (accessibility, section 3.2 and the section 4.2 VoiceOver script,
-  /// step 4).
-  ///
-  /// The enabled state is repeated on the merged node rather than left to the
-  /// button underneath it, because a merge boundary keeps its own flags and a
-  /// node that does not say it is disabled is read, and checked, as if it
-  /// were live.
-  Widget _reasoned(String? reason, Widget child) => Tooltip(
-    message: reason ?? '',
-    child: MergeSemantics(
-      child: Semantics(
-        hint: reason ?? '',
-        enabled: reason == null,
-        child: child,
-      ),
-    ),
-  );
 
   Widget _history(Key key) => AuditHistoryPanel(
     key: key,
@@ -913,11 +957,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     bool scrollable = true,
     Widget? leading,
   }) {
+    final UiThemeData ui = context.ui;
     final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(regime);
-    final WorkbenchSegment selected = segments.contains(_segment)
-        ? _segment
-        : WorkbenchSegment.readings;
-    final MotionTokens motion = context.motion;
+    _regime = regime;
+    // A window that crosses into the three pane layout takes History out of
+    // the strip. The strip cannot be corrected inside a build, so the frame
+    // that crosses draws the clamped tab and the next one draws the right
+    // one.
+    if (_tab.value >= segments.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _tab.value >= segments.length) _tab.value = 0;
+      });
+    }
 
     final Widget content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -944,7 +995,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 ? const <String, dynamic>{}
                 : widget.specimen.assets.first,
           ),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s2),
         ],
         WorkbenchStatusStrip(
           specimen: widget.specimen,
@@ -959,87 +1010,47 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           conflictVersion: _conflictVersion,
           onRefresh: _refresh,
         ),
-        SizedBox(height: context.space.space3),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            // The roles are what VoiceOver and TalkBack read as "tab, 1 of 3,
-            // selected", and what a rotor jumps between. Without them
-            // Material's own `checked` and `inMutuallyExclusiveGroup` are read
-            // as a radio button, which is finding V-3 and accessibility
-            // section 4.2 step 6.
-            child: Semantics(
-              role: SemanticsRole.tabBar,
-              explicitChildNodes: true,
-              child: SegmentedButton<WorkbenchSegment>(
-                segments: <ButtonSegment<WorkbenchSegment>>[
-                  for (final WorkbenchSegment s in segments)
-                    ButtonSegment<WorkbenchSegment>(
-                      value: s,
-                      label: Semantics(
-                        role: SemanticsRole.tab,
-                        child: Text(s.label),
-                      ),
-                    ),
-                ],
-                selected: <WorkbenchSegment>{selected},
-                showSelectedIcon: false,
-                onSelectionChanged: (Set<WorkbenchSegment> next) =>
-                    setState(() {
-                      _moveSegment(next.first);
-                      SpecimenHaptics.selectionChanged();
-                    }),
-              ),
-            ),
-          ),
+        SizedBox(height: ui.space.s3),
+        // `UiTabs` publishes the tab bar role and its children publish the
+        // tab role, which is what VoiceOver and TalkBack read as "tab, 1 of
+        // 3, selected" and what a rotor jumps between (finding V-3,
+        // accessibility section 4.2 step 6). Below `medium` the strip scrolls
+        // with fading edges rather than breaking its labels.
+        UiTabs(
+          semanticsLabel: evidenceTabsLabel,
+          selected: _tab,
+          tabs: <UiTab>[
+            for (final WorkbenchSegment s in segments) UiTab(label: s.label),
+          ],
         ),
-        SizedBox(height: context.space.space4),
-        // A 30 px slide beside a stationary photograph, so the image
-        // does not read as having moved (motion catalog row 41).
-        AnimatedSwitcher(
-          duration: motion.reduced ? motion.quick : motion.standard,
-          switchInCurve: MotionTokens.standardCurve,
-          layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
-            alignment: AlignmentDirectional.topStart,
-            children: <Widget>[...previous, ?current],
-          ),
-          transitionBuilder: (Widget child, Animation<double> value) =>
-              FadeTransition(
-                opacity: value,
-                child: motion.reduced
-                    ? child
-                    : SlideTransition(
-                        position: Tween<Offset>(
-                          begin: Offset(_panelOffset(context), 0),
-                          end: Offset.zero,
-                        ).animate(value),
-                        child: child,
-                      ),
-              ),
-          child: _segmentContent(context),
+        SizedBox(height: ui.space.s4),
+        UiTabView(
+          selected: _tab,
+          children: <Widget>[
+            for (final WorkbenchSegment s in segments)
+              _segmentContent(context, s),
+          ],
         ),
         // The decision bar is pinned below this pane and a phone puts
         // a gesture bar below that. The content ends clear of both,
         // so the last row is reachable rather than sitting under
         // them.
         SizedBox(
-          height:
-              context.space.space8 + MediaQuery.viewPaddingOf(context).bottom,
+          height: ui.space.s8 + MediaQuery.viewPaddingOf(context).bottom,
         ),
       ],
     );
 
     if (!scrollable) {
       return Padding(
-        padding: EdgeInsets.symmetric(horizontal: context.space.space4),
+        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
         child: content,
       );
     }
     return SingleChildScrollView(
       key: evidenceScrollKey,
       controller: _evidenceScroll,
-      padding: EdgeInsets.symmetric(horizontal: context.space.space4),
+      padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
       child: content,
     );
   }
@@ -1096,7 +1107,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     // taller than that on its own.
     final bool pinBar = available - bar >= evidencePaneHardMinHeight;
     final double fixed =
-        bar + title + (_sourceCollapsed ? 0 : pane!) + context.space.space2;
+        bar + title + (_sourceCollapsed ? 0 : pane!) + context.ui.space.s2;
     final double free = available - fixed;
     if (_sourceCollapsed) {
       return (
@@ -1149,31 +1160,32 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Text(
-              'Source photograph',
-              style: Theme.of(context).textTheme.titleSmall,
+            child: Semantics(
+              container: true,
+              header: true,
+              child: Text(sourceHeading, style: context.ui.type.label),
             ),
           ),
           if (band <= 0)
-            IconButton(
-              tooltip: 'Open the photograph full screen',
+            UiIconButton(
+              icon: UiIcons.enterFullscreen,
+              semanticsLabel: fullScreenLabel,
+              tooltip: fullScreenLabel,
               onPressed: () => showSourceFullScreen(
                 context,
                 specimen: widget.specimen,
                 selectedRegionId: _region,
                 onSelectRegion: _selectRegion,
               ),
-              icon: const Icon(Symbols.open_in_full),
             ),
-          IconButton(
-            tooltip: _sourceCollapsed
-                ? 'Show the photograph'
-                : 'Collapse the photograph',
+          UiIconButton(
+            icon: _sourceCollapsed ? UiIcons.expand : UiIcons.collapse,
+            semanticsLabel: _sourceCollapsed
+                ? showSourceLabel
+                : collapseSourceLabel,
+            tooltip: _sourceCollapsed ? showSourceLabel : collapseSourceLabel,
             onPressed: () =>
                 setState(() => _sourceCollapsed = !_sourceCollapsed),
-            icon: Icon(
-              _sourceCollapsed ? Symbols.expand_more : Symbols.expand_less,
-            ),
           ),
         ],
       ),
@@ -1212,7 +1224,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     );
 
     return Padding(
-      padding: EdgeInsets.all(context.space.space4),
+      padding: EdgeInsets.all(context.ui.space.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -1227,7 +1239,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                         flex: 3,
                         child: SingleChildScrollView(child: evidence),
                       ),
-                      SizedBox(width: context.space.space4),
+                      SizedBox(width: context.ui.space.s4),
                       Expanded(
                         flex: 2,
                         child: SingleChildScrollView(child: side),
@@ -1373,8 +1385,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     if (regime.isStacked) {
       return Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: context.space.space4,
-        ).copyWith(top: context.space.space4),
+          horizontal: context.ui.space.s4,
+        ).copyWith(top: context.ui.space.s4),
         // The photograph's share is measured against the height this pane was
         // actually given, not against the window. On a phone the two differ by
         // the app bar, the navigation bar, the environment band and the system
@@ -1407,7 +1419,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   children: <Widget>[
                     header,
                     ..._stackedSource(context, plan.band),
-                    SizedBox(height: context.space.space2),
+                    SizedBox(height: context.ui.space.s2),
                     _evidenceContent(context, regime, scrollable: false),
                     if (!plan.pinBar) bar,
                   ],
@@ -1428,7 +1440,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 ..._stackedSource(context, plan.band),
-                SizedBox(height: context.space.space2),
+                SizedBox(height: context.ui.space.s2),
                 Expanded(
                   child: _evidenceContent(context, regime, leading: header),
                 ),
@@ -1441,7 +1453,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     }
 
     return Padding(
-      padding: EdgeInsets.all(context.space.space4),
+      padding: EdgeInsets.all(context.ui.space.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -1451,13 +1463,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 Expanded(flex: regime.sourceFlex, child: _sourcePane(context)),
-                SizedBox(width: context.space.space4),
+                SizedBox(width: context.ui.space.s4),
                 Expanded(
                   flex: regime.evidenceFlex,
                   child: _evidencePane(context, regime),
                 ),
                 if (regime == WorkbenchRegime.threePane) ...<Widget>[
-                  SizedBox(width: context.space.space4),
+                  SizedBox(width: context.ui.space.s4),
                   SizedBox(
                     width: historyPaneWidth,
                     child: Semantics(
@@ -1475,19 +1487,5 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         ],
       ),
     );
-  }
-
-  static const double _panelSlide = 0.06;
-
-  /// The incoming panel's starting offset, as a fraction of its own width.
-  ///
-  /// Capped at a fraction rather than a full width because the panel sits
-  /// beside a stationary photograph: a large horizontal slide next to a still
-  /// image produces induced motion, and the photograph appears to drift the
-  /// other way (choreography 5.4).
-  double _panelOffset(BuildContext context) {
-    final bool rtl = Directionality.of(context) == TextDirection.rtl;
-    final bool fromEnd = _segmentForward != rtl;
-    return fromEnd ? _panelSlide : -_panelSlide;
   }
 }

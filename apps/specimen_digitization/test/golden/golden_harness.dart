@@ -23,9 +23,9 @@ import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
-import 'package:specimen_digitization/src/theme/icons.dart';
-import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_ui/testing.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
 
@@ -369,6 +369,7 @@ Future<void> pumpGoldenDialog(
   required Size window,
   required Brightness brightness,
   required Widget dialog,
+  required String semanticsLabel,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = window;
@@ -377,16 +378,26 @@ Future<void> pumpGoldenDialog(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
+      builder: productScope,
       home: Builder(
-        builder: (BuildContext context) => Scaffold(
-          body: TextButton(
-            onPressed: () => unawaited(
-              showDialog<void>(
-                context: context,
-                builder: (BuildContext _) => dialog,
+        builder: (BuildContext context) => UiScaffold(
+          body: Center(
+            child: UiButton(
+              label: 'Open',
+              onPressed: () => unawaited(
+                // The package's own modal route, because that is what the app
+                // pushes. Material's `showDialog` puts the pane on the root
+                // navigator with no surface and no text style of its own, so
+                // the golden pictured the framework fallback, red on a double
+                // yellow underline, rather than the dialog that ships
+                // (11 section 5).
+                showUiDialog<void>(
+                  context: context,
+                  semanticsLabel: semanticsLabel,
+                  builder: (BuildContext _) => dialog,
+                ),
               ),
             ),
-            child: const Text('Open'),
           ),
         ),
       ),
@@ -396,6 +407,25 @@ Future<void> pumpGoldenDialog(
   await tester.pumpAndSettle();
   await settleImages(tester);
 }
+
+/// The scope `main.dart` puts above the router, rebuilt for a harness.
+///
+/// `UiTheme` publishes the product's tokens and its ambient text style, and
+/// the root clamps the text scale to the range the control contract promises
+/// (11 sections 2.1 and 5). A surface pumped without it draws in whatever the
+/// framework falls back to, which is the one thing a golden must never
+/// picture.
+Widget productScope(BuildContext context, Widget? child) =>
+    MediaQuery.withClampedTextScaling(
+      minScaleFactor: 0.85,
+      maxScaleFactor: 2,
+      child: UiTheme(
+        data: Theme.of(context).brightness == Brightness.dark
+            ? UiThemeData.dark()
+            : UiThemeData.light(),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
 
 /// The narrowest window that gets the dialog form of a surface.
 ///
@@ -418,6 +448,7 @@ Future<void> pumpGoldenRoute(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: brightness == Brightness.dark ? AppTheme.dark() : AppTheme.light(),
+      builder: productScope,
       home: child,
     ),
   );
@@ -443,7 +474,39 @@ const String goldenPlatformSkip =
     'percent';
 
 /// True where a golden comparison is meaningful.
-bool get goldensCompare => Platform.isMacOS;
+bool get goldensCompare =>
+    Platform.isMacOS && Platform.environment['SPECIMEN_GOLDENS'] != 'skip';
+
+/// Why a pixel sampling instrument is skipped off macOS.
+///
+/// The framework's `textContrastGuideline` and the dark mode measurements
+/// read rendered pixels, which the platform rasterises: Linux draws the same
+/// glyphs thinner and the sampler then reads two shades of the background
+/// where macOS reads glyph against ground (verification report v2, "One
+/// instrument was found to be unreliable"). They run where the goldens are
+/// drawn. The token based composite contrast tests carry the contrast proof
+/// on every platform.
+const String pixelInstrumentSkip =
+    'Pixel sampling instruments run on macOS, where the goldens are drawn; '
+    'the composite contrast tests carry the proof on every platform';
+
+/// True where a pixel sampling instrument is meaningful: the same places the
+/// goldens compare. `SPECIMEN_GOLDENS=skip` forces the off macOS path.
+bool get pixelInstrumentsCompare => goldensCompare;
+
+/// Runs [guideline] against [tester], or marks the test skipped when the
+/// guideline samples pixels off macOS. Geometry and semantics guidelines run
+/// everywhere.
+Future<void> expectGuideline(
+  WidgetTester tester,
+  AccessibilityGuideline guideline,
+) async {
+  if (guideline == textContrastGuideline && !pixelInstrumentsCompare) {
+    markTestSkipped(pixelInstrumentSkip);
+    return;
+  }
+  await expectLater(tester, meetsGuideline(guideline));
+}
 
 /// Where a golden for [name] lives.
 ///
@@ -577,7 +640,7 @@ Future<void> pumpGoldenComponent(
               child: ColoredBox(
                 color: Theme.of(context).colorScheme.surface,
                 child: Padding(
-                  padding: EdgeInsets.all(context.space.space4),
+                  padding: EdgeInsets.all(context.ui.space.s4),
                   child: SizedBox(width: measure, child: child),
                 ),
               ),
@@ -612,7 +675,11 @@ class GoldenSourceRepository extends GoldenRepository
       specimenId: goldenSpecimenId,
     ),
     _row('field_notes_1946.tiff', mediaType: 'image/tiff'),
-    _row('catalogue.pdf', state: 'unsupported_media_type', mediaType: 'application/pdf'),
+    _row(
+      'catalogue.pdf',
+      state: 'unsupported_media_type',
+      mediaType: 'application/pdf',
+    ),
   ];
 
   static SourceObject _row(
@@ -677,4 +744,39 @@ class GoldenSourceRepository extends GoldenRepository
     'duplicates': 0,
     'items': <Map<String, dynamic>>[],
   });
+}
+
+/// The glass budget for one window (09 section 3.3; 10 section 8,
+/// `glass_budget`).
+///
+/// A frosted pane costs a save layer, so the budget is a design rule the
+/// size-class goldens hold: at most four panes per window and at most one
+/// modal. The counting lives in `package:specimen_ui/testing.dart`, which
+/// imports no `flutter_test`, so this assertion can be built here and in the
+/// package's own harness from the same numbers.
+void expectGlassBudget(
+  WidgetTester tester, {
+  int maxPanes = 4,
+  int maxModal = 1,
+  String? window,
+}) {
+  final int panes = glassPaneCount();
+  final int modals = modalGlassPaneCount();
+  final String where = window == null ? '' : ' at $window';
+  expect(
+    panes,
+    lessThanOrEqualTo(maxPanes),
+    reason:
+        'there are $panes frosted panes on screen$where and the budget is '
+        '$maxPanes. Every pane is a save layer; a list whose rows are glass '
+        'is the expensive way to fail this.',
+  );
+  expect(
+    modals,
+    lessThanOrEqualTo(maxModal),
+    reason:
+        'there are $modals modal panes on screen$where and the budget is '
+        '$maxModal. Two modals at once is a question the reviewer cannot '
+        'answer.',
+  );
 }

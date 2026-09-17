@@ -7,10 +7,10 @@
 /// them, named in human terms.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
-import '../../theme/icons.dart';
 import '../../vocabulary.dart';
 
 /// One identifier the record already holds, with a name a reviewer reads.
@@ -96,50 +96,63 @@ class EvidencePicker extends StatelessWidget {
   /// True when the current state cannot be saved without evidence.
   final bool required;
 
+  /// The heading, in both its forms.
+  static const String heading = 'Evidence';
+
+  /// The heading when the state cannot be saved without one.
+  static const String requiredHeading = 'Evidence on this record (required)';
+
+  /// What the picker says when the record offers nothing to cite.
+  static const String emptyMessage =
+      'This record carries no evidence to cite yet.';
+
+  /// The error under an empty required picker.
+  static const String missingMessage =
+      'Choose the evidence that supports this value.';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Text(
-          required ? 'Evidence on this record (required)' : 'Evidence',
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          required ? requiredHeading : heading,
+          style: ui.type.label.copyWith(color: ui.color.inkSecondary),
         ),
-        SizedBox(height: context.space.space1),
+        SizedBox(height: ui.space.s1),
         if (choices.isEmpty)
-          Text(
-            'This record carries no evidence to cite yet.',
-            style: theme.textTheme.bodySmall,
-          )
+          Text(emptyMessage, style: ui.type.bodySmall)
         else
           Wrap(
-            spacing: context.space.space2,
-            runSpacing: context.space.space2,
+            spacing: ui.space.s2,
+            runSpacing: ui.space.s2,
             children: <Widget>[
               for (final EvidenceChoice choice in choices)
-                FilterChip(
-                  label: Text(choice.label),
+                UiChip(
+                  label: choice.label,
+                  variant: UiChipVariant.filter,
                   selected: selected.contains(choice.id),
-                  onSelected: (bool on) => onChanged(
-                    <String>{...selected, if (on) choice.id}
-                      ..removeWhere((String id) => !on && id == choice.id),
-                  ),
+                  onPressed: () {
+                    final bool on = !selected.contains(choice.id);
+                    onChanged(
+                      <String>{...selected, if (on) choice.id}
+                        ..removeWhere((String id) => !on && id == choice.id),
+                    );
+                  },
                 ),
             ],
           ),
         if (required && selected.isEmpty)
           Padding(
-            padding: EdgeInsets.only(top: context.space.space1),
+            padding: EdgeInsetsDirectional.only(top: ui.space.s1),
             child: Semantics(
               liveRegion: true,
               child: Text(
-                'Choose the evidence that supports this value.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
+                missingMessage,
+                style: ui.type.bodySmall.copyWith(
+                  color: ui.color.status.blocked.content,
                 ),
               ),
             ),

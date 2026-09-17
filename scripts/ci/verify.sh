@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 flutter_root="$repo_root/apps/specimen_digitization"
+design_system_root="$flutter_root/packages/specimen_ui"
 firebase_options="$flutter_root/lib/firebase_options.dart"
 ci_firebase_options="$flutter_root/lib/firebase_options.ci.dart"
 created_ci_options=0
@@ -55,6 +56,15 @@ uv sync --frozen
 uv run pytest -q
 uv run python scripts/ci/check_ui_strings.py \
   --baseline scripts/ci/ui_strings_baseline.txt
+
+# The design system package is analyzed and tested on its own, because its
+# gates are the ones that fail first: a token that loses contrast or a
+# primitive that breaks the control contract should not need a screen test to
+# surface it.
+cd "$design_system_root"
+flutter pub get
+flutter analyze --fatal-infos
+flutter test
 
 cd "$flutter_root"
 flutter pub get --enforce-lockfile

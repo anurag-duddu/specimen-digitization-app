@@ -15,6 +15,8 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/reason_codes.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
+import 'ui_finders.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
@@ -231,21 +233,18 @@ void main() {
       WidgetTester tester,
     ) async {
       await pumpSheet(tester, configured: const <String>['Label illegible']);
-      final Finder confirm = find.widgetWithText(
-        FilledButton,
-        'Approve record',
-      );
-      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-      await tester.tap(find.widgetWithText(ActionChip, 'Label illegible'));
+      final Finder confirm = uiButton('Approve record');
+      expect(tester.widget<UiButton>(confirm).onPressed, isNull);
+      await tester.tap(uiChip('Label illegible'));
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<TextField>(find.widgetWithText(TextField, 'Reason'))
+            .widget<UiField>(uiField(ReasonForm.reasonLabel))
             .controller
             ?.text,
         'Label illegible',
       );
-      expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+      expect(tester.widget<UiButton>(confirm).onPressed, isNotNull);
     });
 
     testWidgets('a group with nothing in it promises nothing', (

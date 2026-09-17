@@ -8,13 +8,13 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'app/shell.dart';
 import 'auth.dart';
 import 'models.dart';
 import 'screens/queue/queue_screen.dart';
-import 'widgets/widgets.dart';
 
 /// How often the queue asks the server for the current page.
 const Duration queuePollInterval = Duration(seconds: 20);
@@ -1069,7 +1069,9 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 const SizedBox(width: queueListPaneWidth, child: QueuePane()),
-                const VerticalDivider(width: 1),
+                // The pane divider is a hairline: decorative separation
+                // between two panes, never a boundary (09 section 3.1).
+                const UiHairline.vertical(),
                 Expanded(child: widget.child),
               ],
             )

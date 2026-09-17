@@ -1303,9 +1303,14 @@ class ApiSpecimenRepository
   }
 
   @override
-  Future<List<RegisteredSource>> sources(CollectionScope scope) async => objects(
-    (await request('GET', '${_root(scope)}/sources'))['items'],
-  ).map(RegisteredSource.new).where((RegisteredSource source) => source.collectionId == scope.collectionId).toList();
+  Future<List<RegisteredSource>> sources(CollectionScope scope) async =>
+      objects((await request('GET', '${_root(scope)}/sources'))['items'])
+          .map(RegisteredSource.new)
+          .where(
+            (RegisteredSource source) =>
+                source.collectionId == scope.collectionId,
+          )
+          .toList();
 
   @override
   Future<SourceObjectPage> sourceObjectPage(

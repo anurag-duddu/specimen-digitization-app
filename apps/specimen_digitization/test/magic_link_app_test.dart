@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/auth.dart';
@@ -76,16 +77,10 @@ void main() {
       expect(find.text('Confirm your email'), findsOneWidget);
       expect(session.completed, isEmpty);
       expect(
-        tester
-            .widget<TextFormField>(find.byType(TextFormField))
-            .controller!
-            .text,
+        tester.widget<UiField>(find.byType(UiField)).controller!.text,
         isEmpty,
       );
-      await tester.enterText(
-        find.byType(TextFormField),
-        'STAFF@FIELDMUSEUM.ORG',
-      );
+      await tester.enterText(find.byType(UiField), 'STAFF@FIELDMUSEUM.ORG');
       await tester.tap(find.text('Confirm and sign in'));
       await tester.pump();
       expect(find.text('Signing in…'), findsOneWidget);
@@ -151,38 +146,32 @@ void main() {
           home: MagicLinkSignInScreen(access: access, controller: controller),
         ),
       );
-      await tester.enterText(
-        find.byType(TextFormField),
-        'staff@fieldmuseum.org',
-      );
+      await tester.enterText(find.byType(UiField), 'staff@fieldmuseum.org');
       await tester.tap(find.text('Send sign-in link'));
       await tester.pump();
       expect(find.text('Sending link…'), findsOneWidget);
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
         isNull,
       );
       access.sendWait!.complete();
       await tester.pumpAndSettle();
       expect(find.text('Resend sign-in link'), findsOneWidget);
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
         isNull,
       );
       expect(find.text('You can request another link in 60s.'), findsOneWidget);
       now = now.add(const Duration(seconds: 61));
       await tester.pump(const Duration(seconds: 1));
       expect(
-        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        tester.widget<UiButton>(find.byType(UiButton).first).onPressed,
         isNotNull,
       );
       await tester.tap(find.text('Use a different email'));
       await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<TextFormField>(find.byType(TextFormField))
-            .controller!
-            .text,
+        tester.widget<UiField>(find.byType(UiField)).controller!.text,
         isEmpty,
       );
       expect(storage.value.email, isNull);

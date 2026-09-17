@@ -1,17 +1,16 @@
-/// One record in the queue (design system, 7.3 `QueueRow`).
+/// One record in the queue (10 section 5, `QueueRow`).
 ///
 /// Keyed by the record's own identifier, so a background poll that reorders
 /// the list does not move focus or scroll position. Relative age is allowed
 /// here and only here, and it is always paired with the absolute time in the
-/// accessibility label (UX writing, section 4.14).
+/// accessibility label (02 section 4.14).
 library;
 
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
 import 'risk_meter.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
@@ -55,6 +54,10 @@ String absoluteTime(DateTime moment) =>
     '${_two(moment.hour)}:${_two(moment.minute)} ${moment.timeZoneName}';
 
 /// A queue row: thumbnail, identifier, reason, status, risk and age.
+///
+/// Built on `UiListRow`, so the whole row is one press target, one merged
+/// semantics node and one leading slot whose width never moves with its
+/// content.
 class QueueRow extends StatelessWidget {
   const QueueRow({
     super.key,
@@ -70,6 +73,7 @@ class QueueRow extends StatelessWidget {
     this.now,
     this.selected = false,
     this.onOpen,
+    this.focusNode,
   });
 
   /// The record's identifier. Also the row's identity for focus and scroll.
@@ -109,6 +113,31 @@ class QueueRow extends StatelessWidget {
   /// Opens the record.
   final VoidCallback? onOpen;
 
+  /// The node the list moves keyboard focus to when its cursor lands here.
+  ///
+  /// A row that holds focus is the row `Enter` opens, so the queue's cursor
+  /// and the focus ring are the same thing rather than two claims about where
+  /// the reviewer is.
+  final FocusNode? focusNode;
+
+  /// The row width at which the status, the risk and the age fit beside the
+  /// identifier rather than under it.
+  ///
+  /// A within-row content decision, not a window size class: the same row is
+  /// drawn across a 1440 dp window and inside a 360 dp list pane beside a
+  /// record, and what decides the layout is how much width this row was
+  /// given. 05 section 1 names this kind of number rather than folding it
+  /// into the breakpoint scale, which is what the constant is for.
+  static const double _metaBesideTextMin = 500;
+
+  /// The share of a wide row the trailing column may take.
+  ///
+  /// The trailing slot of a `UiListRow` is laid out at its natural width, so
+  /// at 200 percent text it would otherwise push the identifier out of the
+  /// row. Half is wider than the status chip needs at ordinary text size, so
+  /// the cap only bites where something has to give.
+  static const double _metaWidthShare = 0.5;
+
   String _semanticsLabel() {
     final StringBuffer buffer = StringBuffer()
       ..write(title)
@@ -125,211 +154,107 @@ class QueueRow extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final DateTime? updated = updatedAt;
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) =>
+        _row(context, constraints.maxWidth),
+  );
 
-    // One node for the row: the label and the tap action merged, with the
-    // row's own text nodes dropped so the reader is not walked through the
-    // identifier, the reason, the chip and the age as four separate stops.
-    return MergeSemantics(
-      child: Semantics(
-        // A row a reviewer opens is a button, and it says so: without the
-        // role a screen reader and a browser's accessibility tree announce a
-        // label with no way to act on it, which is what a reviewer on the web
-        // found when the queue would not open a record.
-        button: true,
-        enabled: onOpen != null,
-        selected: selected,
-        label: _semanticsLabel(),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onOpen,
-            borderRadius: BorderRadius.circular(context.shape.radiusSm),
-            focusColor: theme.colorScheme.primary.withValues(
-              alpha: _focusFillOpacity,
-            ),
-            child: ExcludeSemantics(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: selected ? theme.colorScheme.primaryContainer : null,
-                  borderRadius: BorderRadius.circular(context.shape.radiusSm),
-                  // A 3dp leading bar marks the open record. When there is no
-                  // bar the padding below makes up the width, so selecting a row
-                  // never shifts its content sideways.
-                  border: selected
-                      ? BorderDirectional(
-                          start: BorderSide(
-                            color: theme.colorScheme.primary,
-                            width: context.shape.strokeStrong,
-                          ),
-                        )
-                      : null,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: context.sizes.targetMin,
-                  ),
-                  child: Padding(
-                    padding: EdgeInsetsDirectional.fromSTEB(
-                      selected
-                          ? context.space.space2
-                          : context.space.space2 + context.shape.strokeStrong,
-                      context.space.space2,
-                      context.space.space2,
-                      context.space.space2,
-                    ),
-                    child: LayoutBuilder(
-                      builder:
-                          (BuildContext context, BoxConstraints constraints) {
-                            final bool compact =
-                                constraints.maxWidth < _compactBreakpoint;
-                            return compact
-                                ? _compactBody(context, theme, updated)
-                                : _wideBody(context, theme, updated);
-                          },
-                    ),
-                  ),
-                ),
+  Widget _row(BuildContext context, double available) {
+    final UiThemeData ui = context.ui;
+    final bool beside = !available.isFinite || available >= _metaBesideTextMin;
+
+    // The label carries every fact the row draws, because the row is one
+    // merged node: a reader is not walked through the identifier, the reason,
+    // the chip and the age as four separate stops (02 section 4.16).
+    final Widget row = UiListRow(
+      title: title,
+      subtitle: reason,
+      semanticsLabel: _semanticsLabel(),
+      selected: selected,
+      onPressed: onOpen,
+      focusNode: focusNode,
+      leading: SpecimenThumbnail(bytes: thumbnail),
+      trailing: beside
+          ? ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: available.isFinite
+                    ? available * _metaWidthShare
+                    : double.infinity,
               ),
+              child: _meta(ui, stacked: false),
+            )
+          : null,
+    );
+    if (beside) return row;
+
+    // A narrow row keeps the identifier and the reason readable and moves the
+    // status, the risk and the age to a line of their own. The detector
+    // carries the tap to that line so the whole block opens the record; the
+    // row above it keeps the focus, the state layer and the one semantics
+    // node, and the line itself says nothing a reader has not already heard.
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      excludeFromSemantics: true,
+      onTap: onOpen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          row,
+          ExcludeSemantics(
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(
+                start:
+                    ui.shape.stroke.bar +
+                    ui.space.s3 +
+                    UiListRowStyle.leadingExtent +
+                    ui.space.s3,
+                end: ui.space.s3,
+                bottom: ui.space.s2,
+              ),
+              child: _meta(ui, stacked: true),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  /// Below this content width the status chip and risk meter drop to a
-  /// second line, so they never compete with the title and reason for a
-  /// narrow list-detail pane (design system, section 7.3, `QueueRow`).
-  static const double _compactBreakpoint = 500;
-
-  /// The identifier over the reason, both clipped so neither can push the
-  /// row wider than the space it is given.
-  Widget _titleAndReason(BuildContext context, ThemeData theme) {
+  /// The status, the risk and the age, stacked beside the text or flowing
+  /// under it.
+  Widget _meta(UiThemeData ui, {required bool stacked}) {
+    final DateTime? updated = updatedAt;
+    final List<Widget> parts = <Widget>[
+      StatusChip(status, dense: true),
+      RiskMeter(
+        composite: riskComposite,
+        components: riskComponents,
+        calibrated: riskCalibrated,
+        compact: true,
+      ),
+      if (updated != null)
+        Text(
+          relativeAge(updated, now: now),
+          style: ui.type.bodySmall.copyWith(color: ui.color.inkTertiary),
+        ),
+    ];
+    if (stacked) {
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: ui.space.s2,
+        runSpacing: ui.space.s1,
+        children: parts,
+      );
+    }
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(
-          title,
-          style: context.mono.identifier,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        Text(
-          reason,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-  }
-
-  Widget _ageText(ThemeData theme) => Text(
-    relativeAge(updatedAt!, now: now),
-    style: theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    ),
-  );
-
-  Widget _chevron(BuildContext context, ThemeData theme) => Icon(
-    Symbols.chevron_right,
-    size: context.sizes.iconInline,
-    color: theme.colorScheme.onSurfaceVariant,
-  );
-
-  Widget _riskMeter() => RiskMeter(
-    composite: riskComposite,
-    components: riskComponents,
-    calibrated: riskCalibrated,
-    compact: true,
-  );
-
-  /// 500dp and up: thumbnail, title and reason, then the chip, meter and
-  /// age in one trailing column, all on a single line.
-  Widget _wideBody(BuildContext context, ThemeData theme, DateTime? updated) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        SpecimenThumbnail(bytes: thumbnail),
-        SizedBox(width: context.space.space3),
-        Expanded(child: _titleAndReason(context, theme)),
-        SizedBox(width: context.space.space2),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _metaMaxWidth),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              StatusChip(status, dense: true),
-              SizedBox(height: context.space.space1),
-              _riskMeter(),
-            ],
-          ),
-        ),
-        if (updated != null) ...<Widget>[
-          SizedBox(width: context.space.space2),
-          _ageText(theme),
+        for (int index = 0; index < parts.length; index++) ...<Widget>[
+          if (index > 0) SizedBox(height: ui.space.s1),
+          parts[index],
         ],
-        _chevron(context, theme),
       ],
     );
   }
-
-  /// Under 500dp: the thumbnail, title and reason keep the first line to
-  /// themselves, with the chevron; the status chip, risk meter and age move
-  /// to a second line that wraps rather than overflows, so a 320dp pane
-  /// never clips.
-  Widget _compactBody(
-    BuildContext context,
-    ThemeData theme,
-    DateTime? updated,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: <Widget>[
-            SpecimenThumbnail(bytes: thumbnail),
-            SizedBox(width: context.space.space3),
-            Expanded(child: _titleAndReason(context, theme)),
-            SizedBox(width: context.space.space2),
-            _chevron(context, theme),
-          ],
-        ),
-        SizedBox(height: context.space.space1),
-        Padding(
-          padding: EdgeInsetsDirectional.only(
-            start: context.sizes.iconDisplay + context.space.space3,
-          ),
-          child: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: context.space.space2,
-            runSpacing: context.space.space1,
-            children: <Widget>[
-              StatusChip(status, dense: true),
-              _riskMeter(),
-              if (updated != null) _ageText(theme),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// The trailing chip and meter column never grows past this, in either
-  /// layout, so a long status label or an uncalibrated caveat wraps inside
-  /// the meter instead of pushing the title out of the row.
-  static const double _metaMaxWidth = 220;
-
-  /// The focus fill behind a keyboard focused row. Low enough to keep the
-  /// text legible, high enough to find at a glance.
-  static const double _focusFillOpacity = 0.12;
 }

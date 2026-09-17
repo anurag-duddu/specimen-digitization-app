@@ -109,10 +109,7 @@ void main() {
     WidgetTester tester,
   ) async {
     // Adding it would be refused, so the affordance is not offered.
-    expect(
-      SourceObjectState.unsupportedMediaType.selectable,
-      isFalse,
-    );
+    expect(SourceObjectState.unsupportedMediaType.selectable, isFalse);
     // Already a record is selectable: re-importing is a no op that reads no
     // bytes, which is what makes a select all safe to run twice.
     expect(SourceObjectState.imported.selectable, isTrue);
@@ -130,9 +127,7 @@ void main() {
 
     // A reader paging a thousand photographs hears one stop per photograph.
     expect(
-      find.bySemanticsLabel(
-        RegExp('a.jpg, Photograph: in the queue, JPEG'),
-      ),
+      find.bySemanticsLabel(RegExp('a.jpg, Photograph: in the queue, JPEG')),
       findsOneWidget,
     );
     handle.dispose();

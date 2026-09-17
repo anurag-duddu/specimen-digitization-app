@@ -1,5 +1,5 @@
 /// A label region drawn over the specimen photograph
-/// (design system, 7.3 `RegionOverlay`; accessibility, 3.1 and 3.2).
+/// (09 sections 3.4 and 3.6; 07 section 6.2; 06 sections 3.1 and 3.2).
 ///
 /// The stroke is drawn with a casing on the outside, because a line over an
 /// arbitrary photograph has to survive whatever pixel is behind it. The hit
@@ -8,9 +8,8 @@
 /// is the same "Label N" the region list shows, never the raw region id.
 library;
 
-import 'package:flutter/material.dart';
-
-import '../theme/icons.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// One region box, its number tab, and its hit target.
 ///
@@ -44,8 +43,7 @@ class RegionOverlay extends StatelessWidget {
   /// paints is multiplied by this. Stroke widths, the number tab and the
   /// minimum hit box are therefore divided by it, which is what keeps a 2dp
   /// outline 2dp on the glass at 12x instead of a 24dp band over the label
-  /// the reviewer is trying to read (motion and microinteractions, catalog
-  /// row 38 and section 6.4).
+  /// the reviewer is trying to read (04 catalog row 38 and section 6.4).
   final double viewerScale;
 
   /// The name shown on the tab and spoken by the overlay. Computed once, and
@@ -54,15 +52,24 @@ class RegionOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    // 48dp: the app's own minimum target, which is stricter than the 44
-    // logical pixels the accessibility document requires for this overlay.
-    final double minTarget = context.sizes.targetMin / viewerScale;
+    final UiThemeData ui = context.ui;
+    // The selected region is the one accent on this screen: 09 section 3.4
+    // names "the active region marker over the photograph" as an accent use,
+    // and the same section's wave 1 amendment gives the accent a 1 dp `ink`
+    // casing wherever it is the only thing saying where a value is. The
+    // painter already casings both sides of the stroke, which is what carries
+    // it over a pale label as well as a dark pin.
+    final Color stroke = selected
+        ? ui.color.accent
+        : ui.color.status.regionOverlayStroke;
+    final Color casing = selected
+        ? ui.color.ink
+        : ui.color.status.regionOverlayCasing;
+    final double minTarget = ui.space.targetMin / viewerScale;
     final double hitWidth = rect.width < minTarget ? minTarget : rect.width;
     final double hitHeight = rect.height < minTarget ? minTarget : rect.height;
     final Offset center = rect.center;
-    final double tabGap =
-        (context.sizes.iconInline + context.space.space1) / viewerScale;
+    final double tabGap = (ui.space.iconInline + ui.space.s1) / viewerScale;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -72,18 +79,14 @@ class RegionOverlay extends StatelessWidget {
             child: CustomPaint(
               painter: RegionBoxPainter(
                 rect: rect,
-                stroke: selected
-                    ? context.tokens.regionSelectedCore
-                    : context.tokens.regionOverlayStroke,
-                casing: selected
-                    ? context.tokens.regionSelectedCasing
-                    : context.tokens.regionOverlayCasing,
+                stroke: stroke,
+                casing: casing,
                 strokeWidth:
                     (selected
-                        ? context.shape.strokeStrong
-                        : context.shape.strokeEmphasis) /
+                        ? ui.shape.stroke.bar
+                        : ui.shape.stroke.emphasis) /
                     viewerScale,
-                casingWidth: context.shape.strokeHairline / viewerScale,
+                casingWidth: ui.shape.stroke.hairline / viewerScale,
               ),
             ),
           ),
@@ -99,7 +102,7 @@ class RegionOverlay extends StatelessWidget {
             child: Transform.scale(
               scale: 1 / viewerScale,
               alignment: AlignmentDirectional.bottomStart,
-              child: _NumberTab(index: index, selected: selected),
+              child: _NumberTab(index: index, fill: stroke, content: casing),
             ),
           ),
         ),
@@ -108,37 +111,18 @@ class RegionOverlay extends StatelessWidget {
           top: center.dy - hitHeight / 2,
           width: hitWidth,
           height: hitHeight,
-          child: MergeSemantics(
-            child: Semantics(
-              label: label,
-              selected: selected,
-              child: Material(
-                type: MaterialType.transparency,
-                child: InkWell(
-                  onTap: onTap,
-                  // The focus ring has to clear 3:1 against an arbitrary
-                  // photograph, so it is the reserved focus token, not the
-                  // default Material tint.
-                  focusColor: context.tokens.focusRing.withValues(
-                    alpha: _focusFillOpacity,
-                  ),
-                  overlayColor: WidgetStatePropertyAll<Color>(
-                    theme.colorScheme.onSurface.withValues(
-                      alpha: _pressedOpacity,
-                    ),
-                  ),
-                  child: const SizedBox.expand(),
-                ),
-              ),
-            ),
+          child: Pressable(
+            semanticsLabel: label,
+            selected: selected,
+            onPressed: onTap,
+            radius: ui.shape.inner,
+            builder: (BuildContext context, Set<WidgetState> states) =>
+                const SizedBox.expand(),
           ),
         ),
       ],
     );
   }
-
-  static const double _focusFillOpacity = 0.32;
-  static const double _pressedOpacity = 0.1;
 }
 
 /// Draws one region box: a stroke with a casing on each side of it.
@@ -185,34 +169,37 @@ class RegionBoxPainter extends CustomPainter {
 }
 
 /// The region's number, in a tab that reads over any photograph.
+///
+/// The tab inverts the box it belongs to, so the two carry one pair of
+/// colours between them and a reader never has to match a tab to a stroke by
+/// hue alone.
 class _NumberTab extends StatelessWidget {
-  const _NumberTab({required this.index, required this.selected});
+  const _NumberTab({
+    required this.index,
+    required this.fill,
+    required this.content,
+  });
 
   final int index;
-  final bool selected;
+  final Color fill;
+  final Color content;
 
   @override
   Widget build(BuildContext context) {
-    final Color fill = selected
-        ? context.tokens.regionSelectedCore
-        : context.tokens.regionOverlayCasing;
-    final Color content = selected
-        ? context.tokens.regionSelectedCasing
-        : context.tokens.regionOverlayStroke;
-
+    final UiThemeData ui = context.ui;
     return DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: fill,
-        borderRadius: BorderRadius.circular(context.shape.radiusXs),
-        border: Border.all(color: content, width: context.shape.strokeHairline),
+        shape: Squircle.border(
+          ui.shape.inner,
+          side: BorderSide(color: content, width: ui.shape.stroke.hairline),
+        ),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: context.space.space1),
-        child: Text(
+        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s1),
+        child: UiLabel(
           '$index',
-          style: Theme.of(
-            context,
-          ).textTheme.labelSmall?.copyWith(color: content),
+          style: ui.type.labelSmall.copyWith(color: content),
         ),
       ),
     );

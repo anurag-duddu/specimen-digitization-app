@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/sources/source_controller.dart';
 import 'package:specimen_digitization/src/screens/sources/source_screen.dart';
@@ -14,6 +15,7 @@ import 'package:specimen_digitization/src/screens/sources/sources_screen.dart';
 import 'package:specimen_digitization/src/sources.dart';
 
 import '../sources/source_fixtures.dart';
+import '../ui_finders.dart';
 import '../widgets/harness.dart';
 
 Future<SourceBrowseController> pumpBrowse(
@@ -45,7 +47,7 @@ Future<SourceBrowseController> pumpBrowse(
 /// The checkbox on the row naming [name].
 Finder checkboxFor(String name) => find.descendant(
   of: find.byKey(ValueKey<String>('source-row-microscopic-slides/$name')),
-  matching: find.byType(Checkbox),
+  matching: find.byType(UiCheckbox),
 );
 
 void main() {
@@ -134,13 +136,10 @@ void main() {
       // Drawn and disabled, not absent: a reader hearing nothing at all
       // could not tell an unavailable row from one they missed.
       expect(
-        tester.widget<Checkbox>(checkboxFor('a.jpg')).onChanged,
+        tester.widget<UiCheckbox>(checkboxFor('a.jpg')).onChanged,
         isNotNull,
       );
-      expect(
-        tester.widget<Checkbox>(checkboxFor('b.pdf')).onChanged,
-        isNull,
-      );
+      expect(tester.widget<UiCheckbox>(checkboxFor('b.pdf')).onChanged, isNull);
     });
 
     testWidgets('an unavailable row stays aligned with the rest', (
@@ -288,10 +287,7 @@ void main() {
       expect(repository.imports, <List<String>>[
         <String>['microscopic-slides/subject_105526321.jpg'],
       ]);
-      expect(
-        find.text('1 photograph added to the queue'),
-        findsOneWidget,
-      );
+      expect(find.text('1 photograph added to the queue'), findsOneWidget);
     });
 
     testWidgets('opens a report when something did not land', (
@@ -387,11 +383,10 @@ void main() {
       await controller.loadMore();
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('listed again'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('Dismiss'));
+      expect(find.textContaining('listed again'), findsOneWidget);
+      // The band's dismiss draws a glyph, so the control is reached by the
+      // name it publishes rather than by a word on screen.
+      await tester.tap(uiControl(sourceRefreshedDismissLabel));
       await tester.pumpAndSettle();
       expect(find.textContaining('listed again'), findsNothing);
     });

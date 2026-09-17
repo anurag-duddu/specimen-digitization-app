@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
@@ -22,6 +23,7 @@ import 'package:specimen_digitization/src/workbench.dart';
 import 'golden/golden_harness.dart';
 import 'widget_test.dart' show TestRepository, fixture;
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
 
 /// A repository that records every call the batch makes.
 class RecordingRepository extends TestRepository {
@@ -289,7 +291,7 @@ void main() {
     for (int i = 0; i < 5; i++) {
       await scrollAndTap(
         tester,
-        find.byTooltip(RegExp(r'^Edit as written')).at(i),
+        uiIconButton(RegExp(r'^Edit as written')).at(i),
       );
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
@@ -299,14 +301,14 @@ void main() {
     await tester.tap(find.text('Save 5 pending changes').last);
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
+      uiField('Reason'),
       'Nothing on the label supports these fields',
     );
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Save 5 pending changes'),
+        matching: uiButton('Save 5 pending changes'),
       ),
     );
     await tester.pumpAndSettle();
@@ -374,11 +376,18 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      expect(find.byType(Checkbox), findsNWidgets(6));
+      expect(
+        find.descendant(
+          of: find.byType(SelectableRow),
+          matching: find.byType(UiCheckbox),
+        ),
+        findsNWidgets(6),
+      );
       expect(
         find.textContaining('Select all matching'),
         findsNothing,
-        reason: 'the list API answers a page, never a total, so no control '
+        reason:
+            'the list API answers a page, never a total, so no control '
             'may claim the whole filter',
       );
       await tester.pumpWidget(const SizedBox());
@@ -394,7 +403,14 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      await tester.tap(find.byType(Checkbox).first);
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(SelectableRow),
+              matching: find.byType(UiCheckbox),
+            )
+            .first,
+      );
       await tester.pumpAndSettle();
       expect(find.text('1 record selected'), findsOneWidget);
       // The two record level decisions, and only those. A field correction or
@@ -411,7 +427,8 @@ void main() {
         expect(
           find.textContaining(absent),
           findsNothing,
-          reason: 'the queue offers "$absent" across records, which the '
+          reason:
+              'the queue offers "$absent" across records, which the '
               'decisions endpoint does not take',
         );
       }

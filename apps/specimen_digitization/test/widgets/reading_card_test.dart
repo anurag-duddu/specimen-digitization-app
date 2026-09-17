@@ -63,6 +63,12 @@ void main() {
         ),
       ),
     );
+    // The execution facts are behind a disclosure, closed until a reviewer
+    // asks: they are provenance, not the reading (blueprint 6.3).
+    expect(find.text(ReadingCard.executionTitle), findsOneWidget);
+    expect(find.text('Latency: 1.4 seconds'), findsNothing);
+    await tester.tap(find.text(ReadingCard.executionTitle));
+    await tester.pumpAndSettle();
     expect(find.text('Latency: 1.4 seconds'), findsOneWidget);
     expect(find.text('Support this reading'), findsOneWidget);
   });

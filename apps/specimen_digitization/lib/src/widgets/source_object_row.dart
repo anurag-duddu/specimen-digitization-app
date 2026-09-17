@@ -1,14 +1,16 @@
-/// One photograph in a source listing (screen blueprints, section 13).
+/// One photograph in a source listing (07 section 13).
 ///
-/// The same anatomy as `UploadItem` and `QueueRow`: a leading image, an
-/// identifier, one line of measurements and a `StatusChip`. A reviewer who has
-/// learned the intake list has already learned this row.
+/// The same anatomy as `UploadItem` and `QueueRow`: a `UiListRow` with a
+/// leading image, the file name, one line of measurements and a `StatusChip`.
+/// A reviewer who has learned the intake list has already learned this row.
 ///
 /// Selection lives outside the row, in `SelectableRow`, exactly as it does in
 /// the queue. The body opens only where there is something to open, which is
 /// an object that has already become a specimen. An object that has not been
 /// imported has nothing behind it, so its body carries no tap and announces no
-/// button.
+/// button: the row is then one plain node carrying the same words rather than
+/// a disabled button, because a photograph that is not a record is not a
+/// control the server has withdrawn.
 ///
 /// The image is a placeholder, and that is a decision rather than an omission.
 /// An object that has not been imported has no asset, so `GET
@@ -18,11 +20,10 @@
 /// list draws for a file it cannot preview.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../sources.dart';
-import '../theme/icons.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
 import 'thumbnail.dart';
@@ -30,13 +31,13 @@ import 'upload_item.dart';
 
 /// The chip presentation for one row state.
 extension SourceObjectStatePresentation on SourceObjectState {
-  /// The product token triple this state draws from.
-  String get tokenKey => switch (this) {
+  /// The status triple this state draws from.
+  UiStatusTriple tripleIn(UiThemeData ui) => switch (this) {
     // Quiet: the ordinary state of most rows, carrying no outcome yet.
-    SourceObjectState.available => 'disposition.deferred',
+    SourceObjectState.available => ui.color.status.deferred,
     // Settled: this object is already a record.
-    SourceObjectState.imported => 'disposition.cleared',
-    SourceObjectState.unsupportedMediaType => 'state.blocked',
+    SourceObjectState.imported => ui.color.status.cleared,
+    SourceObjectState.unsupportedMediaType => ui.color.status.blocked,
   };
 
   /// The visible chip word.
@@ -46,10 +47,11 @@ extension SourceObjectStatePresentation on SourceObjectState {
     SourceObjectState.unsupportedMediaType => 'Unsupported format',
   };
 
-  IconData get icon => switch (this) {
-    SourceObjectState.available => Symbols.schedule,
-    SourceObjectState.imported => Symbols.check_circle,
-    SourceObjectState.unsupportedMediaType => Symbols.block,
+  /// The registry entry this state draws.
+  IconSpec get iconSpec => switch (this) {
+    SourceObjectState.available => UiIcons.time,
+    SourceObjectState.imported => UiIcons.cleared,
+    SourceObjectState.unsupportedMediaType => UiIcons.blocked,
   };
 
   /// A complete phrase for assistive technology.
@@ -133,6 +135,16 @@ class SourceObjectRow extends StatelessWidget {
   /// the queue, because there is nothing behind it to open.
   final VoidCallback? onOpen;
 
+  /// Below this content width the chip drops under the name, so it never
+  /// competes with the identifier for a narrow window.
+  ///
+  /// A within-row content decision rather than a window size class: the same
+  /// row is drawn beside a checkbox column and without one (05 section 1).
+  static const double _chipBesideNameMin = 420;
+
+  /// The share of a wide row the chip may take before its own label is cut.
+  static const double _chipWidthShare = 0.4;
+
   String _semanticsLabel() => <String>[
     object.displayName,
     object.state.semanticsLabel,
@@ -143,130 +155,100 @@ class SourceObjectRow extends StatelessWidget {
   ].join(', ');
 
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) =>
+        _row(context, constraints.maxWidth),
+  );
 
-    // One node per row. A reader paging a thousand objects should hear one
-    // stop per object, not four.
-    return MergeSemantics(
-      child: Semantics(
-        button: onOpen != null,
-        label: _semanticsLabel(),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onOpen,
-            borderRadius: BorderRadius.circular(context.shape.radiusSm),
-            focusColor: theme.colorScheme.primary.withValues(
-              alpha: _focusFillOpacity,
-            ),
-            child: ExcludeSemantics(
-              child: ConstrainedBox(
-                // Every row is at least one target tall, so the checkbox
-                // beside it is never a cramped gesture in a list of a
-                // thousand.
-                constraints: BoxConstraints(minHeight: context.sizes.targetMin),
-                child: Padding(
-                  padding: EdgeInsets.all(context.space.space2),
-                  child: LayoutBuilder(
-                    builder:
-                        (BuildContext context, BoxConstraints constraints) =>
-                            constraints.maxWidth < _compactBreakpoint
-                            ? _compactBody(context, theme)
-                            : _wideBody(context, theme),
-                  ),
-                ),
+  Widget _row(BuildContext context, double available) {
+    final UiThemeData ui = context.ui;
+    final String line = sourceMeasurements(
+      mediaType: object.mediaType,
+      sizeBytes: object.sizeBytes,
+    );
+    final bool beside = !available.isFinite || available >= _chipBesideNameMin;
+    final Widget chip = StatusChip.presented(
+      object.state.presentation(context),
+      dense: true,
+    );
+
+    // One node per row. A reader paging a thousand objects hears one stop per
+    // object, not four, so the label carries every fact the slots draw.
+    final Widget row = UiListRow(
+      title: object.displayName,
+      subtitle: line,
+      semanticsLabel: _semanticsLabel(),
+      leading: const SpecimenThumbnail(),
+      onPressed: onOpen,
+      trailing: beside
+          ? ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: available.isFinite
+                    ? available * _chipWidthShare
+                    : double.infinity,
               ),
+              child: chip,
+            )
+          : null,
+    );
+
+    // A row with nothing behind it announces no button. `UiListRow` is a
+    // `Pressable` whatever it was given, so a row with no callback would
+    // otherwise read as a button the server had withdrawn, which is a
+    // different fact from a photograph that is simply not a record yet.
+    final Widget body = onOpen == null
+        ? Semantics(
+            container: true,
+            label: _semanticsLabel(),
+            excludeSemantics: true,
+            child: row,
+          )
+        : row;
+
+    if (beside) return body;
+
+    // A narrow row keeps the identifier and the measurements readable and
+    // moves the state to a line of its own. The word is already on the row's
+    // node, so the line says nothing a reader has not heard.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        body,
+        ExcludeSemantics(
+          child: Padding(
+            padding: EdgeInsetsDirectional.only(
+              start:
+                  ui.shape.stroke.bar +
+                  ui.space.s3 +
+                  UiListRowStyle.leadingExtent +
+                  ui.space.s3,
+              end: ui.space.s3,
+              bottom: ui.space.s2,
+            ),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: chip,
             ),
           ),
         ),
-      ),
+      ],
     );
   }
-
-  /// Below this content width the chip drops under the name, so it never
-  /// competes with the identifier for a narrow window.
-  static const double _compactBreakpoint = 420;
-
-  Widget _name(BuildContext context) => Text(
-    object.displayName,
-    style: context.mono.identifier,
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-  );
-
-  Widget _measurements(BuildContext context, ThemeData theme) => Text(
-    sourceMeasurements(
-      mediaType: object.mediaType,
-      sizeBytes: object.sizeBytes,
-    ),
-    style: theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    ),
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-  );
-
-  Widget _chip(BuildContext context) =>
-      StatusChip.presented(object.state.presentation(context), dense: true);
-
-  Widget _wideBody(BuildContext context, ThemeData theme) => Row(
-    children: <Widget>[
-      const SpecimenThumbnail(),
-      SizedBox(width: context.space.space3),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            _name(context),
-            SizedBox(height: context.space.space1),
-            _measurements(context, theme),
-          ],
-        ),
-      ),
-      SizedBox(width: context.space.space2),
-      _chip(context),
-    ],
-  );
-
-  Widget _compactBody(BuildContext context, ThemeData theme) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      const SpecimenThumbnail(),
-      SizedBox(width: context.space.space3),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            _name(context),
-            SizedBox(height: context.space.space1),
-            _measurements(context, theme),
-            SizedBox(height: context.space.space1),
-            _chip(context),
-          ],
-        ),
-      ),
-    ],
-  );
 }
 
 /// The presentation for one row state, resolved against the token layer.
 extension on SourceObjectState {
   StatusPresentation presentation(BuildContext context) {
-    final DispositionStyle style = context.dispositionStyle(tokenKey);
+    final UiStatusTriple triple = tripleIn(context.ui);
     return StatusPresentation(
-      content: style.content,
-      fill: style.fill,
-      onFill: style.onFill,
-      icon: icon,
-      fill01: style.fill01,
+      content: triple.content,
+      fill: triple.fill,
+      onFill: triple.onFill,
+      icon: iconSpec.resolve(),
       label: label,
       semanticsLabel: semanticsLabel,
+      spec: iconSpec,
     );
   }
 }
-
-/// The focus wash, matching `QueueRow`.
-const double _focusFillOpacity = 0.12;

@@ -1,16 +1,25 @@
-/// One file in the intake list (design system, 7.3 `UploadItem`).
+/// One file in the intake list (10 section 5, `UploadItem`).
 ///
-/// The state chip is the same component the queue uses, so a state is learned
-/// once. A failed transfer is operational, not evidentiary, so it stays in the
-/// list with a reason and a way out rather than vanishing.
+/// A `UiListRow`: a 40 dp thumbnail, the file name, one line of measurements,
+/// and the state beside it. The state chip is the same component the queue
+/// uses, so a state is learned once, and it carries the quiet progress ring
+/// of the north star while bytes are moving. A failed transfer is operational,
+/// not evidentiary, so it stays in the list with a reason and a way out
+/// rather than vanishing.
+///
+/// The row is not a control: nothing opens behind a file on its way into a
+/// collection. It publishes one node carrying every fact it draws, and the
+/// remove control sits beside the row with a node of its own, which is the
+/// arrangement `SelectableRow` already uses for its checkbox and for the same
+/// reason: a `UiListRow` is one `Pressable` and drops the semantics of
+/// whatever is in its slots.
 library;
 
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
 import 'thumbnail.dart';
@@ -18,67 +27,90 @@ import 'thumbnail.dart';
 /// The states one file passes through on its way into a collection.
 enum UploadState {
   /// Chosen, not yet examined.
-  ready('disposition.deferred', 'Ready'),
+  ready('Ready'),
 
   /// Local quality checks are running.
-  checking('state.processing', 'Checking'),
+  checking('Checking'),
 
   /// Bytes are moving. Carries a determinate fraction.
-  uploading('state.processing', 'Uploading'),
+  uploading('Uploading'),
 
   /// The server took it.
-  accepted('disposition.cleared', 'Accepted'),
+  accepted('Accepted'),
 
   /// The collection already holds these pixels.
-  duplicate('disposition.deferred', 'Already in collection'),
+  duplicate('Already in collection'),
 
   /// The transfer stopped part way and can be resumed.
-  interrupted('disposition.needsReview', 'Interrupted'),
+  interrupted('Interrupted'),
 
   /// The reviewer took it out of this batch.
-  skipped('disposition.deferred', 'Skipped'),
+  skipped('Skipped'),
 
   /// The server refused it.
-  failed('state.blocked', 'Failed');
+  failed('Failed');
 
-  const UploadState(this.tokenKey, this.label);
-
-  /// The product token triple this state draws from.
-  final String tokenKey;
+  const UploadState(this.label);
 
   /// The visible chip word.
   final String label;
 
-  /// The glyph.
-  IconData get icon => switch (this) {
-    UploadState.ready => Symbols.schedule,
-    UploadState.checking => Symbols.autorenew,
-    UploadState.uploading => Symbols.autorenew,
-    UploadState.accepted => Symbols.check_circle,
-    UploadState.duplicate => Symbols.content_copy,
-    UploadState.interrupted => Symbols.pause_circle,
-    UploadState.skipped => Symbols.hide_source,
-    UploadState.failed => Symbols.block,
+  /// The registry entry this state draws.
+  ///
+  /// One meaning, one glyph, chosen once in `UiIcons` rather than per call
+  /// site (09 section 7).
+  IconSpec get iconSpec => switch (this) {
+    UploadState.ready => UiIcons.time,
+    UploadState.checking => UiIcons.processing,
+    UploadState.uploading => UiIcons.processing,
+    UploadState.accepted => UiIcons.cleared,
+    UploadState.duplicate => UiIcons.copy,
+    UploadState.interrupted => UiIcons.deferred,
+    UploadState.skipped => UiIcons.unmeasured,
+    UploadState.failed => UiIcons.blocked,
+  };
+
+  /// The status triple this state draws from.
+  ///
+  /// Read straight off the token layer rather than through a string key, so
+  /// the colours and the glyph are chosen in one place and cannot drift.
+  UiStatusTriple tripleIn(UiThemeData ui) => switch (this) {
+    UploadState.ready => ui.color.status.deferred,
+    UploadState.checking => ui.color.status.processing,
+    UploadState.uploading => ui.color.status.processing,
+    UploadState.accepted => ui.color.status.cleared,
+    UploadState.duplicate => ui.color.status.deferred,
+    UploadState.interrupted => ui.color.status.needsReview,
+    UploadState.skipped => ui.color.status.deferred,
+    UploadState.failed => ui.color.status.blocked,
+  };
+
+  /// True for a state a reviewer has settled on rather than one in motion.
+  ///
+  /// A settled disposition is drawn filled (09 section 7).
+  bool get isSettled => switch (this) {
+    UploadState.checking || UploadState.uploading => false,
+    _ => true,
   };
 
   /// A complete phrase for assistive technology.
   String get semanticsLabel => 'Upload: ${label.toLowerCase()}';
 
-  /// Resolves the color triple and pairs it with the glyph and the word.
+  /// Resolves the colour triple and pairs it with the glyph and the word.
   ///
   /// [progress] is drawn as a determinate ring in place of the glyph. It is a
   /// measurement, so it keeps its motion under reduced motion.
   StatusPresentation presentation(BuildContext context, {double? progress}) {
-    final DispositionStyle style = context.dispositionStyle(tokenKey);
+    final UiStatusTriple triple = tripleIn(context.ui);
     return StatusPresentation(
-      content: style.content,
-      fill: style.fill,
-      onFill: style.onFill,
-      icon: icon,
-      fill01: style.fill01,
+      content: triple.content,
+      fill: triple.fill,
+      onFill: triple.onFill,
+      icon: iconSpec.resolve(),
       label: label,
       semanticsLabel: semanticsLabel,
       progress: this == UploadState.uploading ? progress : null,
+      spec: iconSpec,
     );
   }
 }
@@ -147,6 +179,24 @@ class UploadItem extends StatelessWidget {
   /// camera card.
   static const int bytesPerMegabyte = 1000000;
 
+  /// The row width at which the state fits beside the file name rather than
+  /// under it.
+  ///
+  /// A within-row content decision, not a window size class: the same row is
+  /// drawn in a 420 dp capture column and across a 1440 dp manifest, and what
+  /// decides the layout is the width this row was given (05 section 1). The
+  /// same number and the same reason as `QueueRow`, because the two rows have
+  /// the same anatomy.
+  static const double _stateBesideNameMin = 500;
+
+  /// The share of a wide row the state may take.
+  ///
+  /// A `UiListRow` bounds a trailing it cannot measure to the room left once
+  /// the title has its minimum, which is generous at ordinary text size; this
+  /// keeps a long status word from taking half the row before that bound
+  /// bites.
+  static const double _stateWidthShare = 0.4;
+
   /// The size and dimensions line, with abstentions for what was not
   /// measured (UX writing, section 4.14).
   static String measurements({int? sizeBytes, int? width, int? height}) {
@@ -159,85 +209,136 @@ class UploadItem extends StatelessWidget {
     return '$size, $pixels';
   }
 
+  /// Everything the row draws, as one phrase.
+  ///
+  /// The row is one merged node, so a reader hears the file, its state, its
+  /// measurements and the reason as one stop rather than four
+  /// (02 section 4.16).
+  String _semanticsLabel(String line) {
+    final StringBuffer buffer = StringBuffer()
+      ..write(name)
+      ..write(', ')
+      ..write(state.semanticsLabel)
+      ..write(', ')
+      ..write(line);
+    final String? why = reason;
+    if (why != null) buffer.write(', $why');
+    return buffer.toString();
+  }
+
   @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) =>
+        _item(context, constraints.maxWidth),
+  );
+
+  Widget _item(BuildContext context, double available) {
+    final UiThemeData ui = context.ui;
     final String? blocked = removeBlockedReason;
     final String line = measurements(
       sizeBytes: sizeBytes,
       width: pixelWidth,
       height: pixelHeight,
     );
+    final bool beside = !available.isFinite || available >= _stateBesideNameMin;
+    final Widget chip = StatusChip.presented(
+      state.presentation(context, progress: progress),
+      dense: true,
+    );
 
-    return Semantics(
+    // The row itself publishes no button: a file on its way into a collection
+    // has nothing behind it to open. The label carries every fact the row
+    // draws and the slots' own semantics are dropped, which is one stop per
+    // file for a reader working through a batch of two hundred.
+    final Widget row = Semantics(
       container: true,
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: context.space.space2),
-        child: Row(
+      label: _semanticsLabel(line),
+      excludeSemantics: true,
+      child: UiListRow(
+        title: name,
+        subtitle: line,
+        leading: SpecimenThumbnail(bytes: thumbnail),
+        trailing: beside
+            ? ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: available.isFinite
+                      ? available * _stateWidthShare
+                      : double.infinity,
+                ),
+                child: chip,
+              )
+            : null,
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            SpecimenThumbnail(bytes: thumbnail),
-            SizedBox(width: context.space.space3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    name,
-                    style: context.mono.identifier,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: context.space.space1),
-                  Text(
-                    line,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  SizedBox(height: context.space.space1),
-                  StatusChip.presented(
-                    state.presentation(context, progress: progress),
-                    dense: true,
-                  ),
-                  if (reason != null) ...<Widget>[
-                    SizedBox(height: context.space.space1),
-                    Text(
-                      reason!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  if (details != null) ...<Widget>[
-                    SizedBox(height: context.space.space3),
-                    details!,
-                  ],
-                ],
-              ),
-            ),
+            Expanded(child: row),
+            // Beside the row rather than in its trailing slot, because a
+            // `UiListRow` is one `Pressable` and a control inside it has
+            // neither a press nor a name of its own.
             if (onRemove != null || blocked != null)
-              Semantics(
-                hint: blocked ?? '',
-                child: IconButton(
-                  onPressed: onRemove,
-                  icon: const Icon(Symbols.close),
-                  iconSize: context.sizes.iconAction,
-                  // A disabled control names why, rather than leaving the
-                  // reviewer to guess at a greyed out button.
-                  tooltip: blocked == null
-                      ? removeLabel
-                      : '$removeLabel. $blocked',
-                  constraints: BoxConstraints(
-                    minWidth: context.sizes.targetMin,
-                    minHeight: context.sizes.targetMin,
-                  ),
-                ),
+              UiIconButton(
+                icon: UiIcons.close,
+                semanticsLabel: removeLabel,
+                onPressed: onRemove,
+                // A disabled control names why, rather than leaving the
+                // reviewer to guess at a greyed out button.
+                disabledReason: blocked,
               ),
           ],
         ),
-      ),
+        // A narrow row keeps the file name and its measurements readable and
+        // moves the state to a line of its own. The words are already on the
+        // row's node, so the line says nothing a reader has not heard.
+        if (!beside)
+          ExcludeSemantics(
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: _textInset(ui),
+                bottom: ui.space.s1,
+              ),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: chip,
+              ),
+            ),
+          ),
+        if (reason != null)
+          ExcludeSemantics(
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: _textInset(ui),
+                bottom: ui.space.s1,
+              ),
+              child: Text(
+                reason!,
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+            ),
+          ),
+        if (details != null)
+          Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: _textInset(ui),
+              top: ui.space.s2,
+            ),
+            child: details!,
+          ),
+      ],
     );
   }
+
+  /// Where the row's own text starts, so a line under the row lines up with
+  /// the file name rather than with the thumbnail.
+  double _textInset(UiThemeData ui) =>
+      ui.shape.stroke.bar +
+      ui.space.s3 +
+      UiListRowStyle.leadingExtent +
+      ui.space.s3;
 }

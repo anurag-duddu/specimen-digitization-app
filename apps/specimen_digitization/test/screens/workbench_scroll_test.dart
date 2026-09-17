@@ -17,6 +17,7 @@ import 'package:specimen_digitization/src/workbench.dart';
 
 import '../app/routing_test.dart' show pumpApp;
 import '../workbench_harness.dart';
+import '../ui_finders.dart';
 
 void main() {
   final Uint8List labelBytes = File(
@@ -228,13 +229,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Collapse the photograph'));
+    await tester.tap(uiIconButton('Collapse the photograph'));
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsNothing);
     // With the photograph put away there is still a way to the pixels.
-    expect(find.byTooltip('Open the photograph full screen'), findsOneWidget);
+    expect(uiIconButton('Open the photograph full screen'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Show the photograph'));
+    await tester.tap(uiIconButton('Show the photograph'));
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsOneWidget);
     await tester.pumpWidget(const SizedBox());

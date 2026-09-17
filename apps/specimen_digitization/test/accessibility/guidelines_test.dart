@@ -8,14 +8,13 @@
 // CaptureQualityView.
 //
 // A guideline that a screen fails is marked `skip:` with the finding it belongs
-// to, never weakened, so the skip list doubles as the remediation backlog. As
-// of this commit the list is empty: all five screens pass all four guidelines.
-// That is a real result, not an empty harness. Material's default
-// `MaterialTapTargetSize.padded` already lifts the 36 dp-tall text buttons to a
-// 48 dp tap target, every icon-only control here already carries a tooltip, and
-// the seeded scheme clears 4.5:1. The `renders an inspectable semantics tree`
-// test in each group is what keeps that claim honest: it fails if a screen ever
-// stops producing nodes for the guidelines to inspect.
+// to, never weakened, so the skip list doubles as the remediation backlog. The
+// list is empty: wave F rebuilt `UiField` so its editor and its box are one
+// 48 dp node, which closed the two entries `SearchFilters` carried. That is a
+// real result, not an empty harness: every icon-only control here carries a
+// label, and the token table clears 4.5:1. The `renders an inspectable
+// semantics tree` test in each group is what keeps that claim honest: it fails
+// if a screen ever stops producing nodes for the guidelines to inspect.
 //
 // https://api.flutter.dev/flutter/flutter_test/AccessibilityGuideline-class.html
 
@@ -34,6 +33,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import '../golden/golden_harness.dart';
 
 /// A `SessionAccess` that reaches nothing. `SignInScreen` renders its fixture
 /// form for any session that is not an `EmailLinkAccess`, which is the branch
@@ -200,7 +200,7 @@ void guidelineSuite(
         testWidgets(label, (tester) async {
           final handle = tester.ensureSemantics();
           await pump(tester);
-          await expectLater(tester, meetsGuideline(guideline));
+          await expectGuideline(tester, guideline);
           handle.dispose();
         });
       }
@@ -238,8 +238,8 @@ void main() {
     );
   });
 
-  // The filter form is the child of `showAdaptiveForm` now, not a dialog of
-  // its own, so it is pumped as a screen.
+  // The filter form is the body of `UiDialog.showAdaptive` now, not a dialog
+  // of its own, so it is pumped as a screen.
   guidelineSuite(
     'SearchFilters',
     (tester) => pumpScreen(
@@ -250,11 +250,18 @@ void main() {
     ),
   );
 
+  // The editor is the body of a `showUiDialog` pane now, not a Material
+  // dialog of its own, so it is pumped as a screen for the same reason the
+  // filter form above is: `pumpDialog`'s barrier darkens the pane the
+  // package's own modal frame would have painted, and the contrast guideline
+  // then measures a scrim rather than the surface that ships.
   guidelineSuite(
     'RegionEditor',
-    (tester) => pumpDialog(
+    (tester) => pumpScreen(
       tester,
-      const RegionEditor(regions: smallRegions, asset: smallAsset),
+      const Scaffold(
+        body: RegionEditor(regions: smallRegions, asset: smallAsset),
+      ),
     ),
   );
 

@@ -22,6 +22,23 @@ import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
+
+/// The source pane's region chip named [name].
+///
+/// The pane draws its region list as a `UiCapsuleToggle`, whose one control
+/// per option is a `Pressable` in the toggle role, so the chip is reached by
+/// the name it publishes rather than by a Material type
+/// (the source pane slot proved this form in `test/source_geometry_test.dart`).
+Finder regionChip(String name) => find.byWidgetPredicate(
+  (Widget widget) =>
+      widget is Pressable &&
+      widget.role == PressableRole.toggle &&
+      widget.semanticsLabel == name,
+  description: 'region chip "$name"',
+);
 
 void main() {
   final bytes = File(
@@ -141,10 +158,10 @@ void main() {
       expect(tester.getTopLeft(find.byType(InteractiveViewer)), before);
 
       // The photograph can be collapsed and brought back.
-      await tester.tap(find.byTooltip('Collapse the photograph'));
+      await tester.tap(uiIconButton('Collapse the photograph'));
       await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsNothing);
-      await tester.tap(find.byTooltip('Show the photograph'));
+      await tester.tap(uiIconButton('Show the photograph'));
       await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsOneWidget);
     });
@@ -172,7 +189,7 @@ void main() {
       // History has left the selector.
       expect(
         find.descendant(
-          of: find.byType(SegmentedButton<WorkbenchSegment>),
+          of: uiTabs(evidenceTabsLabel),
           matching: find.text('History'),
         ),
         findsNothing,
@@ -188,14 +205,10 @@ void main() {
         useWindow(tester, window);
         await tester.pumpWidget(host(record()));
         await tester.pumpAndSettle();
-        final bar = tester.getRect(
-          find
-              .ancestor(
-                of: find.text('Approve record'),
-                matching: find.byType(SafeArea),
-              )
-              .first,
-        );
+        // The bar is its own widget now, and it clears the navigation the
+        // scaffold floats over the body rather than wrapping a `SafeArea` of
+        // its own.
+        final bar = tester.getRect(find.byType(WorkbenchDecisionBar));
         expect(
           bar.bottom,
           closeTo(window.height, 32),
@@ -290,10 +303,10 @@ void main() {
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
       for (final name in ['Label 1', 'Label 2']) {
-        expect(find.widgetWithText(ChoiceChip, name), findsOneWidget);
+        expect(regionChip(name), findsOneWidget);
         expect(find.bySemanticsLabel(name), findsWidgets);
       }
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Label 2'));
+      await tester.tap(regionChip('Label 2'));
       await tester.pumpAndSettle();
       expect(
         tester
@@ -314,12 +327,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Label 2'))
-            .selected,
-        isTrue,
-      );
+      expect(tester.widget<Pressable>(regionChip('Label 2')).selected, isTrue);
     });
 
     testWidgets('J and K move between specimens only when the host offers it', (
@@ -337,14 +345,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(next, 1);
       expect(previous, 1);
-      expect(find.byTooltip('Next specimen'), findsOneWidget);
-      expect(find.byTooltip('Previous specimen'), findsOneWidget);
+      expect(uiIconButton('Next specimen'), findsOneWidget);
+      expect(uiIconButton('Previous specimen'), findsOneWidget);
 
       // Without the callbacks there is no control and no shortcut, because a
       // control that does nothing is worse than no control.
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Next specimen'), findsNothing);
+      expect(uiIconButton('Next specimen'), findsNothing);
     });
 
     testWidgets('the shortcut list is one keystroke away', (tester) async {

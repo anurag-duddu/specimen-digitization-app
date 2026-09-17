@@ -15,10 +15,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
-import 'package:specimen_digitization/src/theme/motion_preference.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
@@ -51,58 +51,60 @@ class HeldPageRepository extends GoldenRepository {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
-  testWidgets('a deep link to a record leaves the queue pane loading, not empty', (
-    WidgetTester tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    // A large window, where the list and the record are on screen together
-    // and the defect was visible.
-    tester.view.physicalSize = const Size(1440, 900);
-    addTearDown(tester.view.reset);
+  testWidgets(
+    'a deep link to a record leaves the queue pane loading, not empty',
+    (WidgetTester tester) async {
+      tester.view.devicePixelRatio = 1;
+      // A large window, where the list and the record are on screen together
+      // and the defect was visible.
+      tester.view.physicalSize = const Size(1440, 900);
+      addTearDown(tester.view.reset);
 
-    final HeldPageRepository repository = HeldPageRepository();
-    final TestSession session = TestSession();
-    addTearDown(session.controller.close);
+      final HeldPageRepository repository = HeldPageRepository();
+      final TestSession session = TestSession();
+      addTearDown(session.controller.close);
 
-    await tester.pumpWidget(
-      SpecimenDigitizationApp(
-        session: session,
-        repository: repository,
-        initialLocation: goldenSpecimenLocation,
-        motionPreferences: MemoryMotionPreferenceStore(),
-      ),
-    );
-    // Frames enough for the router to mount the workbench and for its
-    // `openSpecimen` microtask to run, while the page is still out.
-    for (int i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 16));
-    }
+      await tester.pumpWidget(
+        SpecimenDigitizationApp(
+          session: session,
+          repository: repository,
+          initialLocation: goldenSpecimenLocation,
+          motionPreferences: MemoryMotionPreferenceStore(),
+        ),
+      );
+      // Frames enough for the router to mount the workbench and for its
+      // `openSpecimen` microtask to run, while the page is still out.
+      for (int i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
 
-    expect(
-      find.text('No specimens yet'),
-      findsNothing,
-      reason: 'the pane claimed the collection was empty while it was loading',
-    );
-    expect(
-      find.byType(SkeletonRow),
-      findsWidgets,
-      reason: 'a list that has never been answered shows placeholders',
-    );
+      expect(
+        find.text('No specimens yet'),
+        findsNothing,
+        reason:
+            'the pane claimed the collection was empty while it was loading',
+      );
+      expect(
+        find.byType(UiSkeleton),
+        findsWidgets,
+        reason: 'a list that has never been answered shows placeholders',
+      );
 
-    repository.gate.complete();
-    await tester.pumpAndSettle();
+      repository.gate.complete();
+      await tester.pumpAndSettle();
 
-    expect(find.byType(QueueRow), findsOneWidget);
-    expect(find.text('No specimens yet'), findsNothing);
-    expect(
-      repository.pageRequests,
-      1,
-      reason:
-          'the fix must not turn one page request into two '
-          '(test/app/request_budget_test.dart)',
-    );
-    await tester.pumpWidget(const SizedBox());
-  });
+      expect(find.byType(QueueRow), findsOneWidget);
+      expect(find.text('No specimens yet'), findsNothing);
+      expect(
+        repository.pageRequests,
+        1,
+        reason:
+            'the fix must not turn one page request into two '
+            '(test/app/request_budget_test.dart)',
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('the record and the list load on separate counters', (
     WidgetTester tester,

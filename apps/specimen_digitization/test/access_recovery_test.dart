@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/app/shell.dart';
+import 'ui_finders.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'widget_test.dart' show TestRepository, TestSession;
@@ -44,7 +46,7 @@ void main() {
       const ApiFailure('Evidence access denied.', status: 403),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Authorized collection'), findsNothing);
+    expect(find.byType(AppShell), findsNothing);
     expect(
       find.textContaining('Collection access could not be verified'),
       findsOneWidget,
@@ -64,9 +66,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Queue'), findsWidgets);
       repo.revoked = true;
-      await tester.tap(find.byTooltip('Refresh collection'));
+      await tester.tap(uiIconButton('Refresh collection'));
       await tester.pumpAndSettle();
-      expect(find.text('Authorized collection'), findsNothing);
+      expect(find.byType(AppShell), findsNothing);
       expect(
         find.textContaining('Collection access could not be verified'),
         findsOneWidget,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/specimen_status.dart';
 import 'package:specimen_digitization/src/widgets/status_chip.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
 
@@ -41,12 +42,12 @@ void main() {
     // vocabulary prefix criterion 4.16 asks for is still the head of it.
     expect(
       find.bySemanticsLabel(
-        'Queue: needs human review, term, double tap for definition',
+        'Queue: needs review, term, double tap for definition',
       ),
       findsOneWidget,
     );
     // The visible word is not a second node.
-    expect(find.bySemanticsLabel('Needs human review'), findsNothing);
+    expect(find.bySemanticsLabel('Needs review'), findsNothing);
     handle.dispose();
   });
 
@@ -93,7 +94,6 @@ void main() {
               fill: base.fill,
               onFill: base.onFill,
               icon: base.icon,
-              fill01: base.fill01,
               label: 'Uploading',
               semanticsLabel: 'Upload: uploading',
               progress: 0.5,
@@ -102,7 +102,8 @@ void main() {
         },
       ),
     );
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final UiProgress ring = tester.widget<UiProgress>(find.byType(UiProgress));
+    expect(ring.value, 0.5);
     expect(find.byType(Icon), findsNothing);
   });
 

@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/saved_filters.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'widgets/harness.dart';
 
@@ -45,28 +46,31 @@ void main() {
       expect(sets.single.count, 2);
     });
 
-    test('reusing a name replaces that set rather than adding a second', () async {
-      const SavedFilterStore store = SavedFilterStore(collection);
-      await store.save(
-        const SavedFilterSet(
-          name: 'Mine',
-          filters: <String, String>{'uploader_id': 'a'},
-        ),
-      );
-      final List<SavedFilterSet> sets = await store.save(
-        const SavedFilterSet(
-          name: 'Mine',
-          filters: <String, String>{'uploader_id': 'b'},
-        ),
-      );
-      expect(sets, hasLength(1));
-      expect(sets.single.filters['uploader_id'], 'b');
-    });
+    test(
+      'reusing a name replaces that set rather than adding a second',
+      () async {
+        const SavedFilterStore store = SavedFilterStore(collection);
+        await store.save(
+          const SavedFilterSet(
+            name: 'Mine',
+            filters: <String, String>{'uploader_id': 'a'},
+          ),
+        );
+        final List<SavedFilterSet> sets = await store.save(
+          const SavedFilterSet(
+            name: 'Mine',
+            filters: <String, String>{'uploader_id': 'b'},
+          ),
+        );
+        expect(sets, hasLength(1));
+        expect(sets.single.filters['uploader_id'], 'b');
+      },
+    );
 
     test('sets belong to one collection', () async {
-      await const SavedFilterStore(collection).save(
-        const SavedFilterSet(name: 'Mine', filters: <String, String>{}),
-      );
+      await const SavedFilterStore(
+        collection,
+      ).save(const SavedFilterSet(name: 'Mine', filters: <String, String>{}));
       expect(await const SavedFilterStore('org/plants').load(), isEmpty);
     });
 
@@ -90,6 +94,21 @@ void main() {
     });
   });
 
+  /// The menu that renames or deletes the set called [name].
+  Finder menuFor(String name) => find.byWidgetPredicate(
+    (Widget widget) =>
+        widget is UiMenuTrigger &&
+        widget.semanticsLabel == 'Manage the $name filter set',
+  );
+
+  /// The one editor inside the name prompt.
+  Finder nameField(WidgetTester tester) => find.descendant(
+    of: find.byWidgetPredicate(
+      (Widget widget) => widget is UiField && widget.label == 'Filter set name',
+    ),
+    matching: find.byType(EditableText),
+  );
+
   group('the filter form', () {
     testWidgets('lists the saved sets at the top and applies one in one tap', (
       WidgetTester tester,
@@ -105,21 +124,13 @@ void main() {
       await pumpComponent(
         tester,
         Builder(
-          builder: (BuildContext context) => TextButton(
-            onPressed: () async => applied = await showDialog<Map<String, String>>(
-              context: context,
-              builder: (BuildContext dialogContext) => Dialog(
-                child: SizedBox(
-                  width: 480,
-                  height: 700,
-                  child: SearchFilters(
-                    initial: const <String, String>{},
-                    savedFilters: const SavedFilterStore(collection),
-                  ),
-                ),
-              ),
+          builder: (BuildContext context) => UiButton(
+            label: 'Open',
+            onPressed: () async => applied = await SearchFilters.show(
+              context,
+              initial: const <String, String>{},
+              savedFilters: const SavedFilterStore(collection),
             ),
-            child: const Text('Open'),
           ),
         ),
         size: const Size(1000, 900),
@@ -127,14 +138,14 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
+      expect(find.text(searchFiltersTitle), findsOneWidget);
       expect(find.text('Saved filter sets'), findsOneWidget);
-      expect(find.text('Blocked this week (1)'), findsOneWidget);
+      expect(find.text('Blocked this week'), findsOneWidget);
+      expect(find.text('1 filter'), findsOneWidget);
 
-      await tester.tap(find.text('Blocked this week (1)'));
+      await tester.tap(find.text('Blocked this week'));
       await tester.pumpAndSettle();
-      expect(applied, <String, String>{
-        'blocker': 'external_outcome_unknown',
-      });
+      expect(applied, <String, String>{'blocker': 'external_outcome_unknown'});
     });
 
     testWidgets('names and saves the filters on screen, and deletes a set', (
@@ -145,9 +156,11 @@ void main() {
         const SizedBox(
           width: 480,
           height: 760,
-          child: SearchFilters(
-            initial: <String, String>{'batch_id': 'batch-7'},
-            savedFilters: SavedFilterStore(collection),
+          child: _Frame(
+            child: SearchFilters(
+              initial: <String, String>{'batch_id': 'batch-7'},
+              savedFilters: SavedFilterStore(collection),
+            ),
           ),
         ),
         size: const Size(1000, 900),
@@ -157,23 +170,84 @@ void main() {
 
       await tester.tap(find.text('Save these filters'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, 'Batch seven');
+      await tester.enterText(nameField(tester), 'Batch seven');
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save the filter set'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Batch seven (1)'), findsOneWidget);
+      expect(find.text('Batch seven'), findsOneWidget);
+      expect(find.text('1 filter'), findsOneWidget);
       expect(
         (await const SavedFilterStore(collection).load()).single.filters,
         <String, String>{'batch_id': 'batch-7'},
       );
 
-      await tester.tap(
-        find.byTooltip('Delete the Batch seven filter set'),
-      );
+      await tester.tap(menuFor('Batch seven'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
       expect(find.text('None saved on this device yet.'), findsOneWidget);
       expect(await const SavedFilterStore(collection).load(), isEmpty);
     });
+
+    testWidgets('a set renames in place, keeping its filters', (
+      WidgetTester tester,
+    ) async {
+      await const SavedFilterStore(collection).save(
+        const SavedFilterSet(
+          name: 'Blocked this week',
+          filters: <String, String>{'blocker': 'external_outcome_unknown'},
+        ),
+      );
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 480,
+          height: 760,
+          child: _Frame(
+            child: SearchFilters(
+              initial: <String, String>{},
+              savedFilters: SavedFilterStore(collection),
+            ),
+          ),
+        ),
+        size: const Size(1000, 900),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(menuFor('Blocked this week'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rename'));
+      await tester.pumpAndSettle();
+      await tester.enterText(nameField(tester), 'Blocked, week 37');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save the filter set'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Blocked, week 37'), findsOneWidget);
+      expect(find.text('Blocked this week'), findsNothing);
+      final List<SavedFilterSet> stored = await const SavedFilterStore(
+        collection,
+      ).load();
+      expect(stored, hasLength(1));
+      expect(stored.single.name, 'Blocked, week 37');
+      expect(stored.single.filters, <String, String>{
+        'blocker': 'external_outcome_unknown',
+      });
+    });
   });
+}
+
+/// What the modal frame does for the filter body: bounds it and scrolls it.
+///
+/// `UiSheet` and `UiDialog` both hand their body the height their chrome
+/// leaves and scroll it, so a test that pumps the body on its own supplies
+/// the same thing rather than the body carrying a scroller of its own.
+class _Frame extends StatelessWidget {
+  const _Frame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(child: child);
 }

@@ -20,9 +20,10 @@ library;
 
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
+import 'selectable_evidence.dart';
 
 /// How one run compares with the other reading.
 enum DiffRunKind {
@@ -113,7 +114,8 @@ class DiffOutcome {
 
   /// The runs that make up the literal, in order. Concatenating their text
   /// reproduces the literal exactly.
-  Iterable<DiffRun> get literalRuns => runs.where((DiffRun run) => run.inLiteral);
+  Iterable<DiffRun> get literalRuns =>
+      runs.where((DiffRun run) => run.inLiteral);
 
   /// True when the literal and the reference are identical.
   bool get identical => editRegions == 0;
@@ -415,10 +417,10 @@ class DiffText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final TextStyle literalStyle = dense
-        ? context.mono.literalDense
-        : context.mono.literal;
+        ? ui.type.mono.literalDense
+        : ui.type.mono.literal;
     final DiffOutcome outcome = compare(text, reference);
     final bool plain =
         reference == null || text.runes.length > plainFallbackRunes;
@@ -437,24 +439,22 @@ class DiffText extends StatelessWidget {
           ExcludeSemantics(
             child: Text(
               outcome.summary,
-              style: theme.textTheme.labelMedium?.copyWith(
+              style: ui.type.label.copyWith(
                 color: outcome.identical
-                    ? theme.colorScheme.onSurfaceVariant
-                    : context.tokens.diffChangedContent,
+                    ? ui.color.inkSecondary
+                    : ui.color.status.diffChangedContent,
               ),
             ),
           ),
-          SizedBox(height: context.space.space1),
+          SizedBox(height: ui.space.s1),
         ],
         if (plain && reference != null)
           Padding(
-            padding: EdgeInsets.only(bottom: context.space.space1),
+            padding: EdgeInsets.only(bottom: ui.space.s1),
             child: Text(
               'Too long to mark position by position. The comparison above '
               'still holds.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
           ),
         // The runs merge into one silent string for a screen reader, so
@@ -463,7 +463,7 @@ class DiffText extends StatelessWidget {
           container: true,
           label: spoken,
           excludeSemantics: true,
-          child: SelectionArea(
+          child: SelectableEvidence(
             child: plain
                 ? Text(text, style: literalStyle)
                 : Text.rich(
@@ -488,24 +488,26 @@ class DiffText extends StatelessWidget {
     );
   }
 
-  TextStyle? _styleFor(BuildContext context, DiffRunKind kind) =>
-      switch (kind) {
-        // Removed runs are filtered out above and never reach this.
-        DiffRunKind.unchanged || DiffRunKind.removed => null,
-        DiffRunKind.changed => TextStyle(
-          decoration: TextDecoration.underline,
-          decorationColor: context.tokens.diffChangedContent,
-          decorationThickness: context.shape.strokeEmphasis,
-          fontWeight: FontWeight.w700,
-          backgroundColor: context.tokens.diffChangedFill,
-        ),
-        DiffRunKind.added => TextStyle(
-          decoration: TextDecoration.underline,
-          decorationStyle: TextDecorationStyle.double,
-          decorationColor: context.tokens.diffAddedContent,
-          decorationThickness: context.shape.strokeEmphasis,
-          fontWeight: FontWeight.w700,
-          backgroundColor: context.tokens.diffAddedFill,
-        ),
-      };
+  TextStyle? _styleFor(BuildContext context, DiffRunKind kind) {
+    final UiThemeData ui = context.ui;
+    return switch (kind) {
+      // Removed runs are filtered out above and never reach this.
+      DiffRunKind.unchanged || DiffRunKind.removed => null,
+      DiffRunKind.changed => TextStyle(
+        decoration: TextDecoration.underline,
+        decorationColor: ui.color.status.diffChangedContent,
+        decorationThickness: ui.shape.stroke.emphasis,
+        fontWeight: FontWeight.w700,
+        backgroundColor: ui.color.status.diffChangedFill,
+      ),
+      DiffRunKind.added => TextStyle(
+        decoration: TextDecoration.underline,
+        decorationStyle: TextDecorationStyle.double,
+        decorationColor: ui.color.status.diffAddedContent,
+        decorationThickness: ui.shape.stroke.emphasis,
+        fontWeight: FontWeight.w700,
+        backgroundColor: ui.color.status.diffAddedFill,
+      ),
+    };
+  }
 }

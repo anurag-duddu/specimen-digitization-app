@@ -22,10 +22,7 @@ List<Row> page(int from, int to) => <Row>[
   for (int i = from; i <= to; i++) Row('r$i'),
 ];
 
-PagedSelection<Row> selectionOf(
-  List<Row> loaded, {
-  bool moreToLoad = false,
-}) {
+PagedSelection<Row> selectionOf(List<Row> loaded, {bool moreToLoad = false}) {
   final PagedSelection<Row> selection = PagedSelection<Row>(
     identify: (Row row) => row.id,
   );
@@ -60,10 +57,12 @@ void main() {
       final PagedSelection<Row> selection = selectionOf(loaded);
       selection.toggle(loaded[1]);
       selection.selectRange(loaded[4]);
-      expect(
-        selection.items.map((Row row) => row.id).toList(),
-        <String>['r2', 'r3', 'r4', 'r5'],
-      );
+      expect(selection.items.map((Row row) => row.id).toList(), <String>[
+        'r2',
+        'r3',
+        'r4',
+        'r5',
+      ]);
     });
 
     test('a range runs in either direction', () {
@@ -71,10 +70,12 @@ void main() {
       final PagedSelection<Row> selection = selectionOf(loaded);
       selection.toggle(loaded[4]);
       selection.selectRange(loaded[1]);
-      expect(
-        selection.items.map((Row row) => row.id).toList(),
-        <String>['r2', 'r3', 'r4', 'r5'],
-      );
+      expect(selection.items.map((Row row) => row.id).toList(), <String>[
+        'r2',
+        'r3',
+        'r4',
+        'r5',
+      ]);
     });
 
     test('a range with nothing to extend from picks one row', () {
@@ -89,10 +90,10 @@ void main() {
       final PagedSelection<Row> selection = selectionOf(loaded);
       selection.toggle(loaded[3]);
       selection.toggle(loaded[0]);
-      expect(
-        selection.items.map((Row row) => row.id).toList(),
-        <String>['r1', 'r4'],
-      );
+      expect(selection.items.map((Row row) => row.id).toList(), <String>[
+        'r1',
+        'r4',
+      ]);
     });
 
     test('clearing empties the selection and leaves selection', () {
@@ -143,7 +144,8 @@ void main() {
       expect(
         selection.allLoadedSelected,
         isFalse,
-        reason: 'a select all could not have reached a page that had not '
+        reason:
+            'a select all could not have reached a page that had not '
             'arrived, so the control comes back',
       );
       expect(selection.moreToLoad, isFalse);
@@ -165,7 +167,8 @@ void main() {
       expect(
         selection.items.map((Row row) => row.id).toList(),
         <String>['r1', 'r3'],
-        reason: 'a count that includes records the reviewer can no longer see '
+        reason:
+            'a count that includes records the reviewer can no longer see '
             'is not a count a confirmation can be built on',
       );
     });
@@ -189,7 +192,8 @@ void main() {
       expect(
         selection.items.map((Row row) => row.id).toList(),
         <String>['r4'],
-        reason: 'with the anchor gone a range picks one row, never a range '
+        reason:
+            'with the anchor gone a range picks one row, never a range '
             'measured from a record that is no longer there',
       );
     });
@@ -215,7 +219,8 @@ void main() {
       expect(
         notices,
         0,
-        reason: 'a twenty second poll that answered the same records must not '
+        reason:
+            'a twenty second poll that answered the same records must not '
             'rebuild the bar',
       );
     });

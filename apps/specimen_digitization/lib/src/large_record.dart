@@ -12,11 +12,10 @@ library;
 
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
-import 'theme/icons.dart';
 import 'widgets/widgets.dart';
 
 class LargeRecordEvidence extends StatefulWidget {
@@ -43,8 +42,28 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
   /// scale reflows inside it rather than clipping.
   static const double pageHeight = 320;
 
-  /// Above this many sections a dropdown replaces the segmented control.
+  /// Above this many sections a select replaces the segmented track.
+  ///
+  /// `UiSegmented` takes between two and five segments; four is the count
+  /// this pane has room for beside its label at a medium window.
   static const int segmentedSectionLimit = 4;
+
+  /// The controls this pane names, fixed so the pane and its tests agree.
+  static const String loadLabel = 'Load complete evidence';
+  static const String loadingLabel = 'Loading complete evidence';
+  static const String previousPageLabel = 'Previous text page';
+  static const String nextPageLabel = 'Next text page';
+  static const String sectionLabel = 'Evidence section';
+
+  /// What the pane says on a connection that cannot reach the evidence.
+  static const String unavailableBody =
+      'The complete evidence cannot be loaded on this connection. Open this '
+      'record again when the connection is restored.';
+
+  /// What it says when the evidence is there to be loaded.
+  static const String loadableBody =
+      'The complete evidence is verified before it is shown. Load it to read '
+      'the record.';
 
   Future<void> _load() async {
     setState(() {
@@ -106,7 +125,10 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
+    final TextStyle line = ui.type.bodySmall.copyWith(
+      color: ui.color.inkSecondary,
+    );
     final Map<dynamic, dynamic> receipt =
         widget.specimen.data['artifact_receipt'] as Map;
     final int pages = (_text.length / pageSize).ceil().clamp(1, _maxPages);
@@ -119,9 +141,13 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(
-          'Large record · Version ${widget.specimen.revision}',
-          style: theme.textTheme.titleLarge,
+        Semantics(
+          container: true,
+          header: true,
+          child: Text(
+            'Large record · Version ${widget.specimen.revision}',
+            style: ui.type.titleLarge,
+          ),
         ),
         if (widget.specimen.data['mutation_saved'] == true ||
             receipt['mutation_committed'] == true)
@@ -130,9 +156,10 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
             child: Text(
               'Your action was saved on version '
               '${widget.specimen.revision}. Do not repeat it.',
+              style: ui.type.body,
             ),
           ),
-        SizedBox(height: context.space.space2),
+        SizedBox(height: ui.space.s2),
         const CaveatText(
           label: 'This record is too large for the normal view.',
           why:
@@ -141,41 +168,43 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
         ),
         Text(
           'Evidence file ${receipt['artifact_size_bytes']} bytes',
-          style: theme.textTheme.bodySmall,
+          style: line,
         ),
-        SelectableText(
+        Text(
           'Checksum (SHA-256) ${receipt['artifact_sha256']}',
-          style: context.mono.identifier,
+          style: ui.type.mono.digest.copyWith(color: ui.color.inkSecondary),
         ),
         if (widget.specimen.data['artifact_summary_error'] != null)
           Semantics(
             liveRegion: true,
             child: Text(
               widget.specimen.data['artifact_summary_error'].toString(),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
+              style: ui.type.bodySmall.copyWith(
+                color: ui.color.status.blocked.content,
               ),
             ),
           ),
-        SizedBox(height: context.space.space3),
+        SizedBox(height: ui.space.s3),
         if (_artifact == null)
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: OutlinedButton.icon(
-              onPressed: _loading || widget.load == null ? null : _load,
-              icon: _loading
-                  ? SizedBox.square(
-                      dimension: context.sizes.iconInline,
-                      child: CircularProgressIndicator(
-                        strokeWidth: context.shape.strokeEmphasis,
-                        semanticsLabel: 'Loading the complete evidence',
-                      ),
-                    )
-                  : const Icon(Symbols.download),
-              label: Text(
-                _loading
-                    ? 'Loading complete evidence'
-                    : 'Load complete evidence',
+          // Nothing is loaded yet, so the pane is an empty state with the one
+          // action that fills it (blueprint 9).
+          EmptyState(
+            icon: UiIcons.record.defaultGlyph,
+            title: 'The evidence file is not loaded',
+            body: widget.load == null ? unavailableBody : loadableBody,
+            // Both or neither: the empty state asserts that a label without
+            // a callback is a control that does nothing. While the request is
+            // out the ring below carries the state instead.
+            actionLabel: widget.load == null || _loading ? null : loadLabel,
+            onAction: widget.load == null || _loading ? null : _load,
+          ),
+        if (_loading)
+          Padding(
+            padding: EdgeInsetsDirectional.only(top: ui.space.s3),
+            child: Align(
+              child: UiProgress.ring(
+                semanticsLabel: loadingLabel,
+                announce: true,
               ),
             ),
           ),
@@ -184,31 +213,40 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
             liveRegion: true,
             child: Text(
               _error!,
-              style: TextStyle(color: theme.colorScheme.error),
+              style: ui.type.body.copyWith(
+                color: ui.color.status.blocked.content,
+              ),
             ),
           ),
         if (_artifact != null) ...<Widget>[
           Text(
             'The complete evidence file is verified. Choose a section to read.',
-            style: theme.textTheme.bodySmall,
+            style: line,
           ),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s2),
           _picker(context),
-          SizedBox(height: context.space.space2),
+          SizedBox(height: ui.space.s2),
           Wrap(
-            spacing: context.space.space3,
+            spacing: ui.space.s3,
+            runSpacing: ui.space.s2,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text('Text page ${_page + 1} of $pages'),
-              TextButton(
+              Text('Text page ${_page + 1} of $pages', style: ui.type.label),
+              UiButton(
+                label: previousPageLabel,
+                variant: UiButtonVariant.ghost,
+                leading: UiIcons.previous,
+                disabledReason: 'This is the first page',
                 onPressed: _page > 0 ? () => setState(() => _page--) : null,
-                child: const Text('Previous text page'),
               ),
-              TextButton(
+              UiButton(
+                label: nextPageLabel,
+                variant: UiButtonVariant.ghost,
+                trailing: UiIcons.next,
+                disabledReason: 'This is the last page',
                 onPressed: _page + 1 < pages
                     ? () => setState(() => _page++)
                     : null,
-                child: const Text('Next text page'),
               ),
             ],
           ),
@@ -217,8 +255,8 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
           SizedBox(
             height: pageHeight,
             child: SingleChildScrollView(
-              child: SelectionArea(
-                child: Text(pageText, style: context.mono.code),
+              child: SelectableEvidence(
+                child: Text(pageText, style: ui.type.mono.code),
               ),
             ),
           ),
@@ -227,43 +265,40 @@ class _LargeRecordEvidenceState extends State<LargeRecordEvidence> {
     );
   }
 
+  /// The section picker: a segmented track where the sections fit one, and a
+  /// select where they do not (blueprint 9; 11 section 3.3).
   Widget _picker(BuildContext context) {
     final List<String> sections = _sections;
+    final String chosen = _section ?? sections.first;
     final bool segmented =
+        sections.length >= UiSegmented.minSegments &&
         sections.length <= segmentedSectionLimit &&
         WindowClass.of(context).isAtLeast(WindowClass.medium);
     if (segmented) {
       return Align(
         alignment: AlignmentDirectional.centerStart,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SegmentedButton<String>(
-            segments: <ButtonSegment<String>>[
-              for (final String section in sections)
-                ButtonSegment<String>(value: section, label: Text(section)),
-            ],
-            selected: <String>{_section ?? sections.first},
-            showSelectedIcon: false,
-            onSelectionChanged: (Set<String> next) =>
-                setState(() => _select(next.first)),
-          ),
+        child: UiSegmented<String>(
+          label: sectionLabel,
+          value: chosen,
+          segments: <UiSegment<String>>[
+            for (final String section in sections)
+              UiSegment<String>(value: section, label: section),
+          ],
+          onChanged: (String next) => setState(() => _select(next)),
         ),
       );
     }
-    return Semantics(
-      container: true,
-      child: DropdownButtonFormField<String>(
-        initialValue: _section,
-        isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Evidence section'),
-        items: <DropdownMenuItem<String>>[
-          for (final String section in sections)
-            DropdownMenuItem<String>(value: section, child: Text(section)),
-        ],
-        onChanged: (String? value) {
-          if (value != null) setState(() => _select(value));
-        },
-      ),
+    return UiSelect<String>(
+      label: sectionLabel,
+      placeholder: sectionLabel,
+      value: chosen,
+      options: <UiSelectOption<String>>[
+        for (final String section in sections)
+          UiSelectOption<String>(value: section, label: section),
+      ],
+      onChanged: (String? value) {
+        if (value != null) setState(() => _select(value));
+      },
     );
   }
 

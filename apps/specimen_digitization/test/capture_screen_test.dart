@@ -11,8 +11,8 @@ import 'dart:typed_data';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/capture/capture_camera.dart';
 import 'package:specimen_digitization/src/capture/capture_screen.dart';
 import 'package:specimen_digitization/src/capture_quality.dart';
@@ -205,7 +205,7 @@ void main() {
     expect(camera.focusPoints, hasLength(1));
     expect(camera.focusPoints.single.dx, closeTo(0.5, 0.02));
     expect(camera.focusPoints.single.dy, closeTo(0.5, 0.02));
-    expect(find.byIcon(Symbols.lock), findsOneWidget);
+    expect(find.byIcon(UiIcons.locked.defaultGlyph), findsOneWidget);
     expect(
       tester
           .getSemantics(
@@ -227,7 +227,7 @@ void main() {
       tester.getRect(find.byKey(const ValueKey<String>('fake-preview'))).center,
     );
     await tester.pumpAndSettle();
-    expect(find.byIcon(Symbols.lock_open), findsOneWidget);
+    expect(find.byIcon(UiIcons.unlocked.defaultGlyph), findsOneWidget);
     expect(
       tester
           .getSemantics(
@@ -492,6 +492,30 @@ void main() {
         throwsArgumentError,
       );
     });
+  });
+
+  testWidgets('the viewfinder and the review step lay out at 200 percent '
+      'text in a compact window', (WidgetTester tester) async {
+    // The promise the control contract makes is 200 percent, and the camera
+    // is where it costs the most: the shutter, the counter and the two
+    // review actions share one narrow window.
+    final List<String> errors = <String>[];
+    final void Function(FlutterErrorDetails)? previous = FlutterError.onError;
+    FlutterError.onError = (FlutterErrorDetails details) =>
+        errors.add(details.exceptionAsString());
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    addTearDown(() => FlutterError.onError = previous);
+
+    final FakeCaptureCamera camera = FakeCaptureCamera();
+    await pumpCapture(tester, camera);
+    await takeOne(tester);
+
+    FlutterError.onError = previous;
+    expect(errors, isEmpty, reason: 'the capture route at 200 percent text');
+    expect(tester.takeException(), isNull);
+    expect(find.text('Use photograph'), findsOneWidget);
+    expect(find.text('Retake'), findsOneWidget);
   });
 
   testWidgets('the viewfinder and the review step meet the guidelines', (

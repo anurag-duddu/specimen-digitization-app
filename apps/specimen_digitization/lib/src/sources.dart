@@ -75,7 +75,8 @@ class SourceObject {
   /// The specimen this object was imported as, when it is already in the
   /// queue.
   String? get specimenId =>
-      data['specimen_id'] is String && (data['specimen_id'] as String).isNotEmpty
+      data['specimen_id'] is String &&
+          (data['specimen_id'] as String).isNotEmpty
       ? data['specimen_id'] as String
       : null;
 
@@ -200,7 +201,8 @@ class SourceImportOutcome {
   String get state => textOf(data['state'], '');
 
   String? get specimenId =>
-      data['specimen_id'] is String && (data['specimen_id'] as String).isNotEmpty
+      data['specimen_id'] is String &&
+          (data['specimen_id'] as String).isNotEmpty
       ? data['specimen_id'] as String
       : null;
 }

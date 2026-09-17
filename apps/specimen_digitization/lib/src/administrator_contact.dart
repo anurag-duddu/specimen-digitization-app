@@ -8,10 +8,13 @@
 /// collection the contact would be listed under rather than inventing a name.
 library;
 
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
-import 'theme/icons.dart';
 import 'workspace.dart';
 
 /// The keys a collection document may publish a contact under.
@@ -222,7 +225,7 @@ class AdministratorContactLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final WorkspaceScope? scope = context
         .getInheritedWidgetOfExactType<WorkspaceScope>();
     // Outside the collection shell there is no scope at all, and
@@ -231,11 +234,9 @@ class AdministratorContactLine extends StatelessWidget {
     final AdministratorContact contact = AdministratorContact.of(
       scope?.notifier?.scope,
     );
-    final TextStyle? style = dense
-        ? theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          )
-        : theme.textTheme.bodyMedium;
+    final TextStyle style = dense
+        ? ui.type.bodySmall.copyWith(color: ui.color.inkSecondary)
+        : ui.type.body.copyWith(color: ui.color.ink);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -243,18 +244,36 @@ class AdministratorContactLine extends StatelessWidget {
         Text(contact.sentence, style: style),
         if (contact.mailtoFor(specimenId: specimenId)
             case final String link) ...<Widget>[
-          SizedBox(height: context.space.space1),
-          // The whole link, address and subject, selectable rather than
-          // opened: nothing in this app hands a URL to the platform
-          // without the reviewer choosing it.
-          SelectableText(
-            link,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+          SizedBox(height: ui.space.s1),
+          // The whole link, address and subject, copied rather than opened:
+          // nothing in this app hands a URL to the platform without the
+          // reviewer choosing it. The copy control is what replaced the
+          // selectable run of text, which was a Material component.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  link,
+                  style: ui.type.mono.identifier.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+              ),
+              UiIconButton(
+                icon: UiIcons.copy,
+                semanticsLabel: copyLabel,
+                tooltip: copyLabel,
+                onPressed: () =>
+                    unawaited(Clipboard.setData(ClipboardData(text: link))),
+              ),
+            ],
           ),
         ],
       ],
     );
   }
+
+  /// What the copy control is called.
+  static const String copyLabel = 'Copy the mail link';
 }

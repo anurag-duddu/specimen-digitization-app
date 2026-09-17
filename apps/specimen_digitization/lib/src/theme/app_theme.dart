@@ -1,73 +1,109 @@
-/// The two themes the application runs on (design system, section 8.1).
+/// The bridge `ThemeData` the carrier `MaterialApp` runs on.
 ///
-/// Light and dark are both first class and both defined by hand in the design
-/// system. `themeMode` follows the platform.
+/// The product reads `context.ui` and never `Theme.of`. This file exists for
+/// the infrastructure below `MaterialApp` that cannot:
+/// `UiThemeData.toThemeData` derives the colour scheme, the Geist text theme
+/// (09 section 4.3) and the ground from the tokens; this adds the selection
+/// colours the editing infrastructure paints with and the page transitions
+/// 10 section 1.3 keeps; and `MaterialApp` itself supplies the
+/// `MaterialLocalizations` the package's tooltip reads its dismissal strings
+/// from. That is the whole bridge.
+///
+/// Nothing here shapes a component any more. The fifteen v1 component themes,
+/// the `InputDecorationTheme` beneath every field and the four product
+/// `ThemeExtension`s left with the last Material widget on a screen: no call
+/// site reads `Theme.of` for a token, and `FieldCore` builds no
+/// `InputDecorator` for a decoration theme to paint through (11 section 4).
+///
+/// Light and dark are both first class; `themeMode` follows the platform.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import 'color_schemes.dart';
-import 'component_themes.dart';
-import 'motion.dart';
-import 'semantic_colors.dart';
-import 'spacing.dart';
-import 'typography.dart';
-
-/// Assembles the token layer into `ThemeData`.
+/// Assembles the tokens into the `ThemeData` the carrier expects.
 abstract final class AppTheme {
   static ThemeData? _light;
   static ThemeData? _dark;
 
   /// The light theme.
-  static ThemeData light() => _light ??= _build(
-    scheme: lightColorScheme(),
-    colors: SpecimenColors.light,
-  );
+  static ThemeData light() => _light ??= _build(UiThemeData.light());
 
   /// The dark theme.
-  static ThemeData dark() =>
-      _dark ??= _build(scheme: darkColorScheme(), colors: SpecimenColors.dark);
+  static ThemeData dark() => _dark ??= _build(UiThemeData.dark());
 
-  static ThemeData _build({
-    required ColorScheme scheme,
-    required SpecimenColors colors,
-  }) {
-    final TextTheme text = specimenTextTheme();
-    return ThemeData(
-      useMaterial3: true,
-      brightness: scheme.brightness,
-      colorScheme: scheme,
-      textTheme: text,
-      scaffoldBackgroundColor: scheme.surface,
-      canvasColor: scheme.surface,
-      // Density follows the input modality, seeded from the platform. A touch
-      // probe overrides it per window in the adaptation step; hit boxes stay
-      // at 48 in every case (design system, section 5.6).
-      visualDensity: VisualDensity.adaptivePlatformDensity,
-      appBarTheme: specimenAppBarTheme(scheme),
-      cardTheme: specimenCardTheme(scheme),
-      inputDecorationTheme: specimenInputTheme(scheme, colors),
-      filledButtonTheme: specimenFilledButtonTheme(colors),
-      outlinedButtonTheme: specimenOutlinedButtonTheme(scheme, colors),
-      textButtonTheme: specimenTextButtonTheme(colors),
-      iconButtonTheme: specimenIconButtonTheme(colors),
-      chipTheme: specimenChipTheme(scheme, colors),
-      dialogTheme: specimenDialogTheme(scheme),
-      bottomSheetTheme: specimenBottomSheetTheme(scheme),
-      menuTheme: specimenMenuTheme(scheme),
-      dividerTheme: specimenDividerTheme(scheme),
-      iconTheme: specimenIconTheme(scheme),
-      snackBarTheme: specimenSnackBarTheme(scheme, text),
-      tooltipTheme: specimenTooltipTheme(scheme, text),
-      navigationRailTheme: specimenNavigationRailTheme(scheme),
-      extensions: <ThemeExtension<dynamic>>[
-        colors,
-        SpecimenTypography.standard(),
-        const SpecimenSpacing(),
-        const SpecimenSizing(),
-        const SpecimenShape(),
-        const MotionTokens(),
-      ],
+  static ThemeData _build(UiThemeData ui) => ui.toThemeData().copyWith(
+    // The caret and the highlight behind selected characters are published
+    // from inside the field as well, through `DefaultSelectionStyle`, so a
+    // field is right in a bare `WidgetsApp` too. The drag handles are not:
+    // they are drawn by the Material selection controls above the editor,
+    // which read them here. Same two tokens, stated where the infrastructure
+    // looks for them (11 section 4).
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: ui.color.ink,
+      selectionColor: ui.color.selection,
+      selectionHandleColor: ui.color.ink,
+    ),
+    pageTransitionsTheme: specimenPageTransitions,
+  );
+}
+
+/// The page transitions the motion document specifies (section 6.1).
+///
+/// The mobile entries restate Flutter's own defaults so a future SDK change is
+/// a visible diff; the desktop and web entries move off the zoom transition
+/// onto the Material 3 forward transition.
+const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
+  builders: <TargetPlatform, PageTransitionsBuilder>{
+    TargetPlatform.android: ReducedMotionPageTransitions(
+      PredictiveBackPageTransitionsBuilder(),
+    ),
+    TargetPlatform.iOS: ReducedMotionPageTransitions(
+      CupertinoPageTransitionsBuilder(),
+    ),
+    TargetPlatform.macOS: ReducedMotionPageTransitions(
+      CupertinoPageTransitionsBuilder(),
+    ),
+    TargetPlatform.windows: ReducedMotionPageTransitions(
+      FadeForwardsPageTransitionsBuilder(),
+    ),
+    TargetPlatform.linux: ReducedMotionPageTransitions(
+      FadeForwardsPageTransitionsBuilder(),
+    ),
+    TargetPlatform.fuchsia: ReducedMotionPageTransitions(
+      FadeForwardsPageTransitionsBuilder(),
+    ),
+  },
+);
+
+/// A platform's page transition, collapsed under reduced motion.
+///
+/// 04 section 2.5 has every transition collapse when the platform or the
+/// reviewer asks for less motion; the Cupertino slide alone travelled the
+/// full 450 ms on iOS (verification report v2, V2-6). The route appears in
+/// place instead, and the platform's own builder runs otherwise.
+class ReducedMotionPageTransitions extends PageTransitionsBuilder {
+  /// Wraps [inner], the platform's own builder.
+  const ReducedMotionPageTransitions(this.inner);
+
+  /// The platform's builder, which runs whenever motion is not reduced.
+  final PageTransitionsBuilder inner;
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MotionTokens.of(context).reduced) return child;
+    return inner.buildTransitions<T>(
+      route,
+      context,
+      animation,
+      secondaryAnimation,
+      child,
     );
   }
 }

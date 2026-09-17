@@ -8,6 +8,9 @@ import 'package:specimen_digitization/src/operational_panel.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_digitization/src/vocabulary.dart';
 
 void main() {
   final fixture =
@@ -32,38 +35,37 @@ void main() {
         workbenchHost(
           Builder(
             builder: (context) => Center(
-              child: FilledButton(
+              child: UiButton(
+                label: 'Classify',
                 onPressed: () async {
-                  decision = await showDialog<Json>(
-                    context: context,
-                    builder: (_) => ClassificationDialog(
-                      specimen: Specimen(fixture['workspace_before_selection']),
-                      scope: scope,
-                    ),
+                  decision = await showClassificationForm(
+                    context,
+                    specimen: Specimen(fixture['workspace_before_selection']),
+                    scope: scope,
                   );
                 },
-                child: const Text('Classify'),
               ),
             ),
           ),
         ),
       );
-      await tester.tap(find.text('Classify'));
-      await tester.pumpAndSettle();
-      final dropdown = find.byType(DropdownButtonFormField<String>);
-      await tester.tap(dropdown);
+      await tester.tap(uiButton('Classify'));
       await tester.pumpAndSettle();
       final node = objects(
         configuration['classification_nodes'],
       ).firstWhere((n) => n['id'] == 'insects');
-      await tester.tap(find.text(node['name']).last);
-      await tester.pumpAndSettle();
-      final save = find.byType(FilledButton).last;
+      await pickUiSelect(
+        tester,
+        ClassificationDialog.nodeLabel,
+        node['name'] as String,
+      );
+      final save = uiButton(ClassificationDialog.action);
       await tester.tap(save);
       await tester.pumpAndSettle();
       expect(decision, isNull);
+      expect(find.text(reasonRequired), findsOneWidget);
       await tester.enterText(
-        find.byType(TextFormField).last,
+        uiField('Reason'),
         'Synthetic profile confirmation',
       );
       await tester.tap(save);
@@ -113,18 +115,12 @@ void main() {
       expect(find.text('Actual cost'), findsOneWidget);
       // A permitted action that is blocked right now is disabled with the
       // reason on it, never a silent no-op (pass criterion 5.6).
-      expect(buttonWithLabel(tester, 'Resume processing').onPressed, isNull);
+      expect(controlEnabled(tester, 'Resume processing'), isFalse);
+      // The reason rides on the control's own node, which is what a screen
+      // reader reads and what `Pressable` reports on a press.
       expect(
-        find
-            .ancestor(
-              of: find.text('Resume processing'),
-              matching: find.byType(Tooltip),
-            )
-            .evaluate()
-            .map((e) => (e.widget as Tooltip).message)
-            .whereType<String>()
-            .any((m) => m.contains('processing service')),
-        isTrue,
+        disabledReasonOf(tester, 'Resume processing'),
+        contains('processing service'),
       );
       expect(action, isNull);
       await tester.ensureVisible(find.text('Pause processing'));
@@ -133,12 +129,12 @@ void main() {
       await tester.pumpAndSettle();
       final confirm = find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Pause processing'),
+        matching: uiButton('Pause processing'),
       );
-      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      expect(tester.widget<UiButton>(confirm).onPressed, isNull);
       expect(action, isNull);
       await tester.enterText(
-        find.widgetWithText(TextField, 'Reason'),
+        uiField('Reason'),
         'Reconcile synthetic unknown request',
       );
       await tester.pumpAndSettle();

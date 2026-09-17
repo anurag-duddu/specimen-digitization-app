@@ -1,10 +1,12 @@
-// The evidence drawer: closed by default, and silent while it is closed.
+// The evidence drawer: one control on the page, and the raw payload behind a
+// modal that only opens when the reviewer asks for it (10 section 5).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/evidence_drawer.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 const Map<String, Object?> _payload = <String, Object?>{
@@ -26,10 +28,10 @@ void main() {
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, const EvidenceDrawer(payload: _payload));
-    await tester.tap(find.text('Technical detail'));
+    await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
     await tester.pumpAndSettle();
     expect(find.textContaining('"phase": "transcription"'), findsOneWidget);
-    expect(find.byTooltip('Copy the raw payload'), findsOneWidget);
+    expect(uiIconButton(EvidenceDrawer.copyLabel), findsOneWidget);
   });
 
   testWidgets('the payload is not in the semantics tree while closed', (
@@ -43,7 +45,7 @@ void main() {
       reason: 'a closed drawer holds nothing a reader has to walk past',
     );
 
-    await tester.tap(find.text('Technical detail'));
+    await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
     await tester.pumpAndSettle();
     expect(
       find.bySemanticsLabel(RegExp('"phase": "transcription"')),
@@ -53,20 +55,20 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('the trigger reports its expanded state', (
+  testWidgets('the trigger names the section its payload belongs to', (
     WidgetTester tester,
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
-    await pumpComponent(tester, const EvidenceDrawer(payload: _payload));
-    expect(
-      tester.getSemantics(find.bySubtype<TextButton>()),
-      containsSemantics(label: 'Technical detail', isExpanded: false),
+    await pumpComponent(
+      tester,
+      const EvidenceDrawer(payload: _payload, section: 'Parse'),
     );
-    await tester.tap(find.text('Technical detail'));
-    await tester.pumpAndSettle();
+    // Every drawer carries the same visible word, so the section is what
+    // tells one from another when a panel draws a dozen of them.
+    expect(find.text(EvidenceDrawer.defaultTitle), findsOneWidget);
     expect(
-      tester.getSemantics(find.bySubtype<TextButton>()),
-      containsSemantics(label: 'Technical detail', isExpanded: true),
+      find.bySemanticsLabel('${EvidenceDrawer.defaultTitle}, Parse'),
+      findsOneWidget,
     );
     handle.dispose();
   });
@@ -90,9 +92,9 @@ void main() {
     );
 
     await pumpComponent(tester, const EvidenceDrawer(payload: _payload));
-    await tester.tap(find.text('Technical detail'));
+    await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Copy the raw payload'));
+    await tester.tap(uiIconButton(EvidenceDrawer.copyLabel));
     await tester.pumpAndSettle();
 
     expect(calls, hasLength(1));
@@ -106,10 +108,10 @@ void main() {
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, const EvidenceDrawer(payload: null));
-    await tester.tap(find.text('Technical detail'));
+    await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
     await tester.pumpAndSettle();
     expect(find.text('No raw payload for this phase'), findsOneWidget);
-    expect(find.byTooltip('Copy the raw payload'), findsNothing);
+    expect(uiIconButton(EvidenceDrawer.copyLabel), findsNothing);
   });
 
   testWidgets('under reduced motion the drawer opens without an animation', (
@@ -120,7 +122,8 @@ void main() {
       const EvidenceDrawer(payload: _payload),
       reduceMotion: true,
     );
-    await tester.tap(find.text('Technical detail'));
+    await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
+    await tester.pump();
     await tester.pump();
     expect(find.textContaining('"phase": "transcription"'), findsOneWidget);
   });
@@ -134,7 +137,7 @@ void main() {
         const EvidenceDrawer(payload: _payload),
         theme: theme,
       );
-      await tester.tap(find.text('Technical detail'));
+      await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
       await tester.pumpAndSettle();
       await expectAccessible(tester);
     }

@@ -141,13 +141,21 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('closed, it is one line and a small fraction of the window', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('closed, it is two lines at most and a small fraction of the '
+        'window', (WidgetTester tester) async {
       await pumpPhone(tester);
+      // Two rather than one since wave G. 11 section 3.3 calls a band's
+      // sentence content and lets it wrap, and the cap finding V-15 asks for
+      // is on the band, not on the line: closed, the sentence may take both
+      // of the band's two lines; open, it takes one and the detail takes the
+      // other. The height below is the guarantee either way.
       expect(
         tester.widget<Text>(find.textContaining('Test environment.')),
-        isA<Text>().having((Text t) => t.maxLines, 'maxLines', 1),
+        isA<Text>().having(
+          (Text t) => t.maxLines,
+          'maxLines',
+          EnvironmentBanner.maxLines,
+        ),
       );
       expect(
         tester.getSize(find.byType(EnvironmentBanner)).height,
@@ -161,60 +169,74 @@ void main() {
     testWidgets('open, it is capped at two lines and still small', (
       WidgetTester tester,
     ) async {
-      await pumpPhone(tester);
-      final Finder line = find.textContaining('Test environment.');
-      // One line, measured rather than assumed, so the cap below is in the
-      // same units the band actually draws at this text scale.
-      final double oneLine = tester.getSize(line).height;
-      await tester.tap(find.byTooltip('Show what a test environment means'));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<Text>(line),
-        isA<Text>().having(
-          (Text t) => t.maxLines,
-          'maxLines',
-          EnvironmentBanner.maxLines,
-        ),
-      );
-      expect(
-        tester.getSize(line).height,
-        lessThanOrEqualTo(oneLine * EnvironmentBanner.maxLines + 1),
-        reason: 'the open band is two lines at most, at any text scale',
-      );
-      expect(
-        tester.getSize(find.byType(EnvironmentBanner)).height,
-        lessThan(844 * 0.3),
-      );
-    });
-
-    testWidgets('the whole sentence is on the tooltip and the semantics node', (
-      WidgetTester tester,
-    ) async {
       final SemanticsHandle handle = tester.ensureSemantics();
       await pumpPhone(tester);
-      final String message = EnvironmentBanner.messageFor('synthetic');
+      final Finder line = find.textContaining('Test environment.');
+      final double closed = tester
+          .getSize(find.byType(EnvironmentBanner))
+          .height;
+
+      await tester.tap(find.bySemanticsLabel(EnvironmentBanner.detailLabel));
+      await tester.pumpAndSettle();
+
+      // Two lines, not one long one: the headline keeps its own line and the
+      // detail takes the second, each capped, at every text scale.
       expect(
-        find.ancestor(
-          of: find.textContaining('Test environment.'),
-          matching: find.byWidgetPredicate(
-            (Widget w) => w is Tooltip && w.message == message,
-          ),
-        ),
+        tester.widget<Text>(line),
+        isA<Text>().having((Text t) => t.maxLines, 'maxLines', 1),
+      );
+      expect(find.text(EnvironmentBanner.detail), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text(EnvironmentBanner.detail)),
+        isA<Text>().having((Text t) => t.maxLines, 'maxLines', 1),
+      );
+      final double open = tester.getSize(find.byType(EnvironmentBanner)).height;
+      expect(
+        open,
+        lessThanOrEqualTo(closed * EnvironmentBanner.maxLines + 1),
+        reason: 'the open band is two lines at most, at any text scale',
+      );
+      expect(open, lessThan(844 * 0.3));
+      handle.dispose();
+    });
+
+    testWidgets('the whole sentence is reachable without sight', (
+      WidgetTester tester,
+    ) async {
+      // The v1 band put the whole sentence on one node and excluded
+      // everything under it, which also excluded its own disclosure: the
+      // statement was readable and the control was not. The headline is
+      // announced, the control is a named target, and the second clause is a
+      // node of its own once it is opened.
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpPhone(tester);
+      expect(
+        find.bySemanticsLabel(EnvironmentBanner.headlineFor('synthetic')),
         findsOneWidget,
       );
-      expect(find.bySemanticsLabel(message), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(EnvironmentBanner.detail),
+        findsNothing,
+        reason: 'the second clause is not read before it is asked for',
+      );
+
+      await tester.tap(find.bySemanticsLabel(EnvironmentBanner.detailLabel));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel(EnvironmentBanner.detail), findsOneWidget);
       handle.dispose();
     });
 
     testWidgets('the disclosure keeps a full target', (
       WidgetTester tester,
     ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
       await pumpPhone(tester);
       final Size target = tester.getSize(
-        find.byTooltip('Show what a test environment means'),
+        find.bySemanticsLabel(EnvironmentBanner.detailLabel),
       );
       expect(target.width, greaterThanOrEqualTo(48));
       expect(target.height, greaterThanOrEqualTo(48));
+      handle.dispose();
     });
   });
 }

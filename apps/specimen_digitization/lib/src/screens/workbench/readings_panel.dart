@@ -7,8 +7,8 @@
 /// screen beside the field (audit finding H6.2).
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
 import '../../reading_alignment.dart';
@@ -16,7 +16,6 @@ import '../../reading_declarations.dart';
 import '../../review_context.dart';
 import '../../risk_assessment.dart';
 import '../../evidence_panel.dart';
-import '../../theme/icons.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
@@ -92,9 +91,18 @@ class WorkbenchReadings extends StatelessWidget {
     return index < 0 ? 'Unassigned label' : 'Label ${index + 1}';
   }
 
+  /// The heading over the comparison and its resolution.
+  static const String differencesHeading = 'Differences and resolution';
+
+  /// The control that records which reading the source supports.
+  static const String resolveLabel = 'Resolve transcription';
+
+  /// Why that control is unavailable when there is nothing to resolve.
+  static const String noReadingsReason = 'No model has read this specimen yet';
+
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final Map<String, int> firstOfRegion = _referenceIndex;
     final Json run = objectOf(specimen.data['run']);
     final List<Json> observations = specimen.observations;
@@ -104,8 +112,8 @@ class WorkbenchReadings extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (observations.isEmpty)
-          const EmptyState(
-            icon: Symbols.memory,
+          EmptyState(
+            icon: UiIcons.modelReading.defaultGlyph,
             title: 'No readings yet',
             body: 'No model has read this specimen. Refresh to check again.',
           ),
@@ -113,11 +121,11 @@ class WorkbenchReadings extends StatelessWidget {
           builder: (BuildContext context, BoxConstraints c) {
             final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
             final double cardWidth = sideBySide
-                ? (c.maxWidth - context.space.space4) / 2
+                ? (c.maxWidth - ui.space.s4) / 2
                 : c.maxWidth;
             return Wrap(
-              spacing: context.space.space4,
-              runSpacing: context.space.space4,
+              spacing: ui.space.s4,
+              runSpacing: ui.space.s4,
               children: <Widget>[
                 for (final (int i, Json o) in observations.indexed)
                   SizedBox(
@@ -143,11 +151,15 @@ class WorkbenchReadings extends StatelessWidget {
             );
           },
         ),
-        SizedBox(height: context.space.space6),
+        SizedBox(height: ui.space.s6),
         _declarations(context, run),
-        SizedBox(height: context.space.space6),
-        Text('Differences and resolution', style: theme.textTheme.titleMedium),
-        SizedBox(height: context.space.space2),
+        SizedBox(height: ui.space.s6),
+        Semantics(
+          container: true,
+          header: true,
+          child: Text(differencesHeading, style: ui.type.title),
+        ),
+        SizedBox(height: ui.space.s2),
         _differences(context, run),
       ],
     );
@@ -188,10 +200,11 @@ class WorkbenchReadings extends StatelessWidget {
           if (o['region_id'] is String)
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
+              child: UiButton(
+                label: 'Show $regionName on the photograph',
+                variant: UiButtonVariant.ghost,
+                leading: UiIcons.wholeImage,
                 onPressed: () => onSelectRegion(o['region_id'] as String),
-                icon: const Icon(Symbols.crop_free),
-                label: Text('Show $regionName on the photograph'),
               ),
             ),
           if (loadArtifact != null && o['raw_ref'] != null)
@@ -343,38 +356,25 @@ class WorkbenchReadings extends StatelessWidget {
                 ? TranscriptionComparisonSummary(transcription: t)
                 : null,
           ),
-        SizedBox(height: context.space.space2),
+        SizedBox(height: context.ui.space.s2),
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: Tooltip(
-            message:
-                transcriptionBlockedReason ??
-                'Record which reading the source supports',
-            // `MergeSemantics` is what puts the reason on the button's own
-            // node. Without it the hint sits on a parent node and the
-            // disabled button is a separate child, so a screen reader hears
-            // the name and the dimmed state but never why (accessibility,
-            // section 3.2).
-            child: MergeSemantics(
-              child: Semantics(
-                hint: transcriptionBlockedReason ?? '',
-                // Repeated here because a merge boundary keeps its own flags:
-                // a node that does not say it is disabled is read as if it
-                // were live.
-                enabled:
-                    transcriptionBlockedReason == null &&
-                    specimen.observations.isNotEmpty,
-                child: FilledButton.tonalIcon(
-                  onPressed:
-                      transcriptionBlockedReason != null ||
-                          specimen.observations.isEmpty
-                      ? null
-                      : () => _resolve(context),
-                  icon: const Icon(Symbols.edit_note),
-                  label: const Text('Resolve transcription'),
-                ),
-              ),
-            ),
+          // `UiButton` carries the reason itself: `Pressable` publishes it as
+          // the control's semantic hint and reports it on press, so a screen
+          // reader hears why rather than only that the control is dimmed
+          // (accessibility, section 3.2).
+          child: UiButton(
+            label: resolveLabel,
+            variant: UiButtonVariant.secondary,
+            leading: UiIcons.editReason,
+            disabledReason: specimen.observations.isEmpty
+                ? noReadingsReason
+                : transcriptionBlockedReason,
+            onPressed:
+                transcriptionBlockedReason != null ||
+                    specimen.observations.isEmpty
+                ? null
+                : () => _resolve(context),
           ),
         ),
       ],
@@ -420,19 +420,22 @@ class _DifferenceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(bottom: context.space.space2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(title, style: theme.textTheme.titleSmall),
-          if (detail.isNotEmpty && detail != 'Not recorded')
-            Text(detail, style: context.mono.literalDense),
-          ?extra,
-          EvidenceDrawer(payload: payload),
-        ],
+    final UiThemeData ui = context.ui;
+    return Semantics(
+      container: true,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(title, style: ui.type.label),
+            if (detail.isNotEmpty && detail != 'Not recorded')
+              Text(detail, style: ui.type.mono.literalDense),
+            ?extra,
+            EvidenceDrawer(payload: payload, section: title),
+          ],
+        ),
       ),
     );
   }
@@ -449,10 +452,10 @@ Future<Json?> showResolveTranscription(
   required String? regionId,
   required List<({String model, String literal})> readings,
   required List<EvidenceChoice> choices,
-}) => showAdaptiveForm<Json>(
+}) => showAdaptiveModal<Json>(
   context,
-  width: DialogWidths.wide,
-  builder: (BuildContext formContext) => _ResolveTranscriptionForm(
+  title: 'Resolve $regionName',
+  body: (BuildContext formContext) => _ResolveTranscriptionForm(
     regionName: regionName,
     regionId: regionId,
     readings: readings,
@@ -497,6 +500,28 @@ class _ResolveTranscriptionFormState extends State<_ResolveTranscriptionForm> {
     'unresolved',
   ];
 
+  /// The sentence above the two readings.
+  static const String preamble =
+      'Both readings stay unchanged. Your decision is recorded beside them.';
+
+  /// The control that copies one reading into the value.
+  static const String useReadingLabel = 'Use this reading';
+
+  /// The field that names the evidence state.
+  static const String stateLabel = 'Evidence state';
+
+  /// The verbatim value, and the rule for typing into it.
+  static const String valueLabel = 'Value as written';
+  static const String valueHelp =
+      'Keep the text exactly as written. Do not add missing evidence.';
+
+  /// The commit control, and why it is disabled.
+  static const String saveLabel = 'Resolve transcription';
+  static const String saveHint = 'Choose a value, evidence and a reason';
+
+  /// The way out.
+  static const String cancelLabel = 'Cancel';
+
   @override
   void dispose() {
     _value.dispose();
@@ -512,155 +537,130 @@ class _ResolveTranscriptionFormState extends State<_ResolveTranscriptionForm> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     return PopScope<Json?>(
       canPop: _reason.text.trim().isEmpty,
       onPopInvokedWithResult: (bool didPop, Json? result) {
         if (!didPop) _confirmDismiss();
       },
-      child: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(context.space.space6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                'Resolve ${widget.regionName}',
-                style: theme.textTheme.titleLarge,
-              ),
-              SizedBox(height: context.space.space2),
-              const Text(
-                'Both readings stay unchanged. Your decision is recorded '
-                'beside them.',
-              ),
-              SizedBox(height: context.space.space4),
-              // Both readings, on screen, beside the field.
-              LayoutBuilder(
-                builder: (BuildContext context, BoxConstraints c) {
-                  final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
-                  return Wrap(
-                    spacing: context.space.space4,
-                    runSpacing: context.space.space4,
-                    children: <Widget>[
-                      for (final (
-                            int i,
-                            ({String model, String literal}) reading,
-                          )
-                          in widget.readings.indexed)
-                        SizedBox(
-                          width: sideBySide
-                              ? (c.maxWidth - context.space.space4) / 2
-                              : c.maxWidth,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              Text(
-                                reading.model,
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              DiffText(
-                                text: reading.literal,
-                                reference: i == 0
-                                    ? null
-                                    : widget.readings.first.literal,
-                                dense: true,
-                              ),
-                              SizedBox(height: context.space.space1),
-                              OutlinedButton(
-                                onPressed: () => setState(() {
-                                  _state = 'supported';
-                                  _value.text = reading.literal;
-                                }),
-                                child: const Text('Use this reading'),
-                              ),
-                            ],
-                          ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Text(preamble, style: ui.type.body),
+            SizedBox(height: ui.space.s4),
+            // Both readings, on screen, beside the field.
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints c) {
+                final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
+                return Wrap(
+                  spacing: ui.space.s4,
+                  runSpacing: ui.space.s4,
+                  children: <Widget>[
+                    for (final (int i, ({String model, String literal}) reading)
+                        in widget.readings.indexed)
+                      SizedBox(
+                        width: sideBySide
+                            ? (c.maxWidth - ui.space.s4) / 2
+                            : c.maxWidth,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(reading.model, style: ui.type.label),
+                            DiffText(
+                              text: reading.literal,
+                              reference: i == 0
+                                  ? null
+                                  : widget.readings.first.literal,
+                              dense: true,
+                            ),
+                            SizedBox(height: ui.space.s1),
+                            UiButton(
+                              label: useReadingLabel,
+                              variant: UiButtonVariant.secondary,
+                              semanticsLabel:
+                                  '$useReadingLabel from ${reading.model}',
+                              onPressed: () => setState(() {
+                                _state = 'supported';
+                                _value.text = reading.literal;
+                              }),
+                            ),
+                          ],
                         ),
-                    ],
-                  );
-                },
-              ),
-              SizedBox(height: context.space.space4),
-              DropdownButtonFormField<String>(
-                initialValue: _state,
-                decoration: const InputDecoration(labelText: 'Evidence state'),
-                items: <DropdownMenuItem<String>>[
-                  for (final String s in states)
-                    DropdownMenuItem<String>(
-                      value: s,
-                      child: Text(vocabularyLabel(s)),
-                    ),
-                ],
-                onChanged: (String? s) => setState(() => _state = s!),
-              ),
-              SizedBox(height: context.space.space2),
-              if (_state != 'supported')
-                const CaveatText(
-                  label:
-                      'Both readings are kept unchanged and the record stays '
-                      'blocked from clearance.',
-                  why:
-                      'Absence is recorded as a state, never as a made up '
-                      'value.',
-                ),
-              if (_state == 'supported') ...<Widget>[
-                TextField(
-                  controller: _value,
-                  minLines: 2,
-                  maxLines: 6,
-                  onChanged: (String _) => setState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Value as written',
-                    helperText:
-                        'Keep the text exactly as written. Do not add missing '
-                        'evidence.',
+                      ),
+                  ],
+                );
+              },
+            ),
+            SizedBox(height: ui.space.s4),
+            UiSelect<String>(
+              label: stateLabel,
+              placeholder: stateLabel,
+              value: _state,
+              options: <UiSelectOption<String>>[
+                for (final String option in states)
+                  UiSelectOption<String>(
+                    value: option,
+                    label: vocabularyLabel(option),
                   ),
-                ),
-                SizedBox(height: context.space.space4),
-                EvidencePicker(
-                  choices: widget.choices,
-                  selected: _evidence,
-                  required: true,
-                  onChanged: (Set<String> next) =>
-                      setState(() => _evidence = next),
-                ),
               ],
-              SizedBox(height: context.space.space4),
-              TextField(
-                controller: _reason,
-                minLines: 2,
-                maxLines: 4,
-                onChanged: (String _) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Reason',
-                  helperText: reasonHelperText,
-                ),
+              onChanged: (String? next) {
+                if (next != null) setState(() => _state = next);
+              },
+            ),
+            SizedBox(height: ui.space.s2),
+            if (_state != 'supported')
+              const CaveatText(
+                label:
+                    'Both readings are kept unchanged and the record stays '
+                    'blocked from clearance.',
+                why:
+                    'Absence is recorded as a state, never as a made up '
+                    'value.',
               ),
-              SizedBox(height: context.space.space6),
-              Wrap(
-                alignment: WrapAlignment.end,
-                spacing: context.space.space2,
-                runSpacing: context.space.space2,
-                children: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  Semantics(
-                    hint: _complete
-                        ? ''
-                        : 'Choose a value, evidence and a reason',
-                    child: FilledButton(
-                      onPressed: _complete ? _save : null,
-                      child: const Text('Resolve transcription'),
-                    ),
-                  ),
-                ],
+            if (_state == 'supported') ...<Widget>[
+              UiTextArea(
+                label: valueLabel,
+                helpText: valueHelp,
+                controller: _value,
+                minLines: _valueMinLines,
+                maxLines: _valueMaxLines,
+                onChanged: (String _) => setState(() {}),
+              ),
+              SizedBox(height: ui.space.s4),
+              EvidencePicker(
+                choices: widget.choices,
+                selected: _evidence,
+                required: true,
+                onChanged: (Set<String> next) =>
+                    setState(() => _evidence = next),
               ),
             ],
-          ),
+            SizedBox(height: ui.space.s4),
+            UiTextArea(
+              label: 'Reason',
+              helpText: reasonHelperText,
+              controller: _reason,
+              minLines: _reasonMinLines,
+              maxLines: _reasonMaxLines,
+              onChanged: (String _) => setState(() {}),
+            ),
+            SizedBox(height: ui.space.s6),
+            UiButtonRow(
+              primary: UiButton(
+                label: saveLabel,
+                disabledReason: saveHint,
+                onPressed: _complete ? _save : null,
+              ),
+              secondary: UiButton(
+                label: cancelLabel,
+                variant: UiButtonVariant.ghost,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -678,24 +678,30 @@ class _ResolveTranscriptionFormState extends State<_ResolveTranscriptionForm> {
   Future<void> _confirmDismiss() async {
     final NavigatorState navigator = Navigator.of(context);
     final bool discard =
-        await showDialog<bool>(
+        await UiDialog.show<bool>(
           context: context,
-          builder: (BuildContext c) => AlertDialog(
-            title: const Text('Discard this resolution?'),
-            content: const Text('The text you typed is not saved anywhere.'),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.of(c).pop(false),
-                child: const Text('Keep editing'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(c).pop(true),
-                child: const Text('Discard the resolution'),
-              ),
-            ],
+          title: 'Discard this resolution?',
+          semanticsLabel: 'Discard this resolution?',
+          dismissLabel: modalDismissLabel,
+          body: (BuildContext _) =>
+              const Text('The text you typed is not saved anywhere.'),
+          primaryAction: (BuildContext confirmContext) => UiButton(
+            label: 'Discard the resolution',
+            onPressed: () => Navigator.of(confirmContext).pop(true),
+          ),
+          secondaryAction: (BuildContext confirmContext) => UiButton(
+            label: 'Keep editing',
+            variant: UiButtonVariant.ghost,
+            onPressed: () => Navigator.of(confirmContext).pop(false),
           ),
         ) ??
         false;
     if (discard && navigator.mounted) navigator.pop();
   }
+
+  /// How far the verbatim value and the reason grow before they scroll.
+  static const int _valueMinLines = 2;
+  static const int _valueMaxLines = 6;
+  static const int _reasonMinLines = 2;
+  static const int _reasonMaxLines = 4;
 }

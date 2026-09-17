@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/workspace.dart';
@@ -131,11 +131,8 @@ void main() {
     await tester.pumpWidget(
       SpecimenDigitizationApp(session: session, setupMessage: backendPending),
     );
-    await tester.enterText(
-      find.byType(TextFormField).at(0),
-      'test@example.test',
-    );
-    await tester.enterText(find.byType(TextFormField).at(1), 'local-test-only');
+    await tester.enterText(find.byType(UiField).at(0), 'test@example.test');
+    await tester.enterText(find.byType(UiField).at(1), 'local-test-only');
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
     expect(find.text('Verify your account'), findsOneWidget);

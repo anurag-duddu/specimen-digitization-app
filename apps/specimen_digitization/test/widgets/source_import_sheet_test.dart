@@ -7,12 +7,68 @@
 // records and runs nothing, so it says that rather than naming a price or an
 // allowance that no endpoint reports yet.
 
+// `material.dart` here is the harness, not the component: `productThemes` is
+// a map of `ThemeData`, which is the carrier `MaterialApp` still expects.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/widgets/source_import_sheet.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
+
+/// Opens the confirmation the way the browse screen does.
+///
+/// The title and the two actions are the modal's own chrome now, so a test
+/// that wants to read them opens the pane rather than pumping its body.
+Future<bool?> openConfirmation(
+  WidgetTester tester, {
+  required int count,
+  required int alreadyInQueue,
+  Size size = const Size(1000, 800),
+  ThemeData? theme,
+}) async {
+  bool? answer;
+  await pumpComponent(
+    tester,
+    Builder(
+      builder: (BuildContext context) => UiButton(
+        label: 'Open',
+        onPressed: () async {
+          answer = await confirmSourceImport(
+            context,
+            count: count,
+            alreadyInQueue: alreadyInQueue,
+          );
+        },
+      ),
+    ),
+    size: size,
+    theme: theme,
+  );
+  await tester.tap(find.text('Open'));
+  await tester.pumpAndSettle();
+  return answer;
+}
+
+/// Opens the report the way the browse screen does.
+Future<void> openReport(
+  WidgetTester tester,
+  SourceImportProgress progress,
+) async {
+  await pumpComponent(
+    tester,
+    Builder(
+      builder: (BuildContext context) => UiButton(
+        label: 'Open',
+        onPressed: () => showSourceImportOutcome(context, progress: progress),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Open'));
+  await tester.pumpAndSettle();
+}
 
 SourceImportProgress progressOf({
   int requested = 3,
@@ -33,10 +89,7 @@ void main() {
     testWidgets('names the exact count in the title and on the button', (
       WidgetTester tester,
     ) async {
-      await pumpComponent(
-        tester,
-        const SourceImportConfirmation(count: 1000, alreadyInQueue: 0),
-      );
+      await openConfirmation(tester, count: 1000, alreadyInQueue: 0);
 
       // A gesture that picked a thousand and one that picked one look
       // identical on screen, so the number is stated in words.
@@ -55,7 +108,10 @@ void main() {
       // what it costs, so that is what it says. It must not name a price or
       // an allowance, because no endpoint reports either yet and a
       // confirmation that invented one would look authoritative.
-      expect(find.text('No model runs and no allowance is used.'), findsOneWidget);
+      expect(
+        find.text('No model runs and no allowance is used.'),
+        findsOneWidget,
+      );
       expect(find.textContaining('cents'), findsNothing);
       expect(find.textContaining(r'$'), findsNothing);
       expect(find.textContaining('remaining'), findsNothing);
@@ -87,7 +143,9 @@ void main() {
       );
 
       expect(
-        find.textContaining('342 photographs of these are already in the queue'),
+        find.textContaining(
+          '342 photographs of these are already in the queue',
+        ),
         findsOneWidget,
       );
     });
@@ -104,10 +162,7 @@ void main() {
     });
 
     testWidgets('is singular for one photograph', (WidgetTester tester) async {
-      await pumpComponent(
-        tester,
-        const SourceImportConfirmation(count: 1, alreadyInQueue: 0),
-      );
+      await openConfirmation(tester, count: 1, alreadyInQueue: 0);
 
       expect(find.text('Add 1 photograph to the queue?'), findsOneWidget);
       expect(find.text('Add 1 photograph'), findsOneWidget);
@@ -124,7 +179,8 @@ void main() {
         await pumpComponent(
           tester,
           Builder(
-            builder: (BuildContext context) => TextButton(
+            builder: (BuildContext context) => UiButton(
+              label: 'Open',
               onPressed: () async {
                 answer = await confirmSourceImport(
                   context,
@@ -132,7 +188,6 @@ void main() {
                   alreadyInQueue: 0,
                 );
               },
-              child: const Text('Open'),
             ),
           ),
         );
@@ -156,9 +211,10 @@ void main() {
 
     for (final MapEntry<String, ThemeData> entry in productThemes.entries) {
       testWidgets('renders in ${entry.key}', (WidgetTester tester) async {
-        await pumpComponent(
+        await openConfirmation(
           tester,
-          const SourceImportConfirmation(count: 6, alreadyInQueue: 1),
+          count: 6,
+          alreadyInQueue: 1,
           theme: entry.value,
         );
         expect(find.text('Add 6 photographs to the queue?'), findsOneWidget);
@@ -174,7 +230,8 @@ void main() {
       await pumpComponent(
         tester,
         Builder(
-          builder: (BuildContext context) => TextButton(
+          builder: (BuildContext context) => UiButton(
+            label: 'Open',
             onPressed: () async {
               answer = await confirmSourceImport(
                 context,
@@ -182,17 +239,17 @@ void main() {
                 alreadyInQueue: 0,
               );
             },
-            child: const Text('Open'),
           ),
         ),
-        // Compact: showAdaptiveForm draws a bottom sheet rather than a
-        // dialog, and the count has to survive the change of surface.
+        // Compact: showAdaptiveForm draws a sheet against the bottom of the
+        // window rather than a dialog, and the count has to survive the
+        // change of surface.
         size: const Size(390, 844),
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(modalIsSheet(tester), isTrue);
       expect(find.text('Add 1,000 photographs to the queue?'), findsOneWidget);
 
       await tester.tap(find.text('Add 1,000 photographs'));
@@ -203,20 +260,19 @@ void main() {
     testWidgets('lays out at 200 percent text without overflowing', (
       WidgetTester tester,
     ) async {
-      await pumpComponent(
+      // The scale has to reach the route, and a route on the root navigator
+      // is above anything a `MediaQuery` in the page could publish.
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await openConfirmation(
         tester,
-        MediaQuery(
-          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
-          child: const SourceImportConfirmation(
-            count: 1000,
-            alreadyInQueue: 342,
-          ),
-        ),
+        count: 1000,
+        alreadyInQueue: 342,
         size: const Size(390, 844),
       );
 
-      // The buttons wrap rather than run off the edge, which is what
-      // OverflowBar is there for. An exception would have failed the pump.
+      // The actions stack rather than run off the edge, which is what
+      // `UiButtonRow` is there for. An exception would have failed the pump.
       expect(tester.takeException(), isNull);
       expect(find.text('Add 1,000 photographs'), findsOneWidget);
     });
@@ -226,19 +282,17 @@ void main() {
     testWidgets('says how many of how many landed', (
       WidgetTester tester,
     ) async {
-      await pumpComponent(
+      await openReport(
         tester,
-        SourceImportReport(
-          progress: progressOf(
-            requested: 3,
-            imported: 2,
-            duplicates: 1,
-            items: const <Map<String, dynamic>>[
-              <String, dynamic>{'object_name': 'a.jpg', 'state': 'imported'},
-              <String, dynamic>{'object_name': 'b.jpg', 'state': 'imported'},
-              <String, dynamic>{'object_name': 'c.jpg', 'state': 'duplicate'},
-            ],
-          ),
+        progressOf(
+          requested: 3,
+          imported: 2,
+          duplicates: 1,
+          items: const <Map<String, dynamic>>[
+            <String, dynamic>{'object_name': 'a.jpg', 'state': 'imported'},
+            <String, dynamic>{'object_name': 'b.jpg', 'state': 'imported'},
+            <String, dynamic>{'object_name': 'c.jpg', 'state': 'duplicate'},
+          ],
         ),
       );
 
@@ -280,16 +334,14 @@ void main() {
     testWidgets('a run that stopped says why, and keeps what landed', (
       WidgetTester tester,
     ) async {
-      await pumpComponent(
+      await openReport(
         tester,
-        SourceImportReport(
-          progress: progressOf(
-            requested: 100,
-            imported: 50,
-            stoppedReason:
-                'This source changed while the photographs were being '
-                'added. Reload the source and add the rest.',
-          ),
+        progressOf(
+          requested: 100,
+          imported: 50,
+          stoppedReason:
+              'This source changed while the photographs were being '
+              'added. Reload the source and add the rest.',
         ),
       );
 

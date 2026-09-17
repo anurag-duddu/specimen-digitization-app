@@ -6,7 +6,9 @@ import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
+import 'ui_finders.dart';
 import 'workbench_harness.dart';
 
 class TestSession implements SessionAccess {
@@ -201,6 +203,7 @@ class TestRepository implements SpecimenRepository {
         ),
     ]);
   }
+
   @override
   Future<Json> createIntake(
     CollectionScope scope,
@@ -242,15 +245,15 @@ void main() {
       SpecimenDigitizationApp(session: session, repository: repo),
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Email address'),
+      find.widgetWithText(UiField, 'Email address'),
       'review@example.test',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Password'),
+      find.widgetWithText(UiField, 'Password'),
       'fixture-only-password',
     );
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Sign in'));
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.ensureVisible(uiButton('Sign in'));
+    await tester.tap(uiButton('Sign in'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Test environment.'), findsOneWidget);
     // The queue row sits below the fold, so scroll the queue list to it
@@ -275,7 +278,15 @@ void main() {
           .first,
     );
     expect(find.text('Chicago 1917', findRichText: true), findsOneWidget);
-    await tester.tap(find.byTooltip('Sign out'));
+    // Settle the scroll before pressing the chrome: an unsettled ballistic
+    // scroll swallows the next tap, and the account menu is a toggle, so a
+    // swallowed press reads as a menu that will not open.
+    await tester.pumpAndSettle();
+    // Signing out lives in the account menu, which is also the only place a
+    // reviewer can read which account they are using (05 section 2).
+    await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sign out'));
     await tester.pumpAndSettle();
     expect(find.text('Sign in to your collection'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -295,7 +306,7 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: TestRepository()),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(UiPillNav), findsOneWidget);
 
       final semantics = tester.ensureSemantics();
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -329,7 +340,7 @@ void main() {
       // photograph still on screen (audit finding H6.2).
       await scrollAndTap(
         tester,
-        find.byTooltip(RegExp(r'^Edit as written')).first,
+        uiIconButton(RegExp(r'^Edit as written')).first,
       );
       expect(find.text('Correct Country'), findsOneWidget);
       await tester.tap(find.text('Keep this correction'));
@@ -342,12 +353,12 @@ void main() {
       await tester.pumpAndSettle();
       final save = find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Save 1 pending change'),
+        matching: uiButton('Save 1 pending change'),
       );
-      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+      expect(tester.widget<UiButton>(save).onPressed, isNull);
       expect(saved, isEmpty);
       await tester.enterText(
-        find.widgetWithText(TextField, 'Reason'),
+        uiField('Reason'),
         'No country appears in the original label',
       );
       await tester.pumpAndSettle();
@@ -400,7 +411,7 @@ void main() {
       // One row per field: the nth edit control belongs to the nth field.
       await scrollAndTap(
         tester,
-        find.byTooltip(RegExp(r'^Edit as written')).at(i),
+        uiIconButton(RegExp(r'^Edit as written')).at(i),
       );
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
@@ -409,14 +420,14 @@ void main() {
     await tester.tap(find.text('Save 5 pending changes').last);
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Reason'),
+      uiField('Reason'),
       'Nothing on the label supports these fields',
     );
     await tester.pumpAndSettle();
     await tester.tap(
       find.descendant(
         of: find.byType(ReasonForm),
-        matching: find.widgetWithText(FilledButton, 'Save 5 pending changes'),
+        matching: uiButton('Save 5 pending changes'),
       ),
     );
     await tester.pumpAndSettle();
@@ -482,7 +493,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byTooltip(RegExp(r'^Edit as written')), findsNothing);
+    expect(uiIconButton(RegExp(r'^Edit as written')), findsNothing);
     // The state the server sent is still shown, never swallowed.
     expect(find.text('State unknown'), findsWidgets);
   });
@@ -505,15 +516,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     for (final label in ['Approve record', 'Confirm label coverage']) {
-      expect(buttonWithLabel(tester, label).onPressed, isNull);
-      final tooltip = find
-          .ancestor(of: find.text(label), matching: find.byType(Tooltip))
-          .evaluate()
-          .map((e) => (e.widget as Tooltip).message)
-          .whereType<String>();
+      expect(controlEnabled(tester, label), isFalse);
       expect(
-        tooltip.any((m) => m.contains('does not include reviewing')),
-        isTrue,
+        disabledReasonOf(tester, label),
+        contains('does not include reviewing'),
         reason: 'the disabled reason must be on the control itself',
       );
     }
@@ -524,7 +530,7 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(buttonWithLabel(tester, 'Retry processing').onPressed, isNull);
+    expect(controlEnabled(tester, 'Retry processing'), isFalse);
   });
 
   testWidgets(
@@ -560,19 +566,19 @@ void main() {
       // Both readings are visible beside the field, not behind it.
       expect(find.text('Synthetic reading A'), findsWidgets);
       expect(find.text('Synthetic reading B'), findsWidgets);
-      await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+      await tester.tap(uiSelect('Evidence state'));
       await tester.pumpAndSettle();
       expect(find.text('Not applicable'), findsNothing);
       await tester.tap(find.text('Unreadable').last);
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextField, 'Reason'),
+        uiField('Reason'),
         'Source damaged; no supported reading',
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.widgetWithText(FilledButton, 'Resolve transcription'),
-      );
+      // The page's own trigger and the form's primary carry the same verb,
+      // and the form is the one on top.
+      await tester.tap(uiButton('Resolve transcription').last);
       await tester.pumpAndSettle();
       expect(saved?['state'], 'unreadable');
       expect(saved?['value'], isNull);
@@ -598,11 +604,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(buttonWithLabel(tester, 'Approve record').onPressed, isNull);
-      expect(
-        buttonWithLabel(tester, 'Confirm label coverage').onPressed,
-        isNull,
-      );
+      expect(controlEnabled(tester, 'Approve record'), isFalse);
+      expect(controlEnabled(tester, 'Confirm label coverage'), isFalse);
       await tester.tap(find.text('Fields'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
@@ -610,7 +613,7 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(buttonWithLabel(tester, 'Retry processing').onPressed, isNotNull);
+      expect(controlEnabled(tester, 'Retry processing'), isTrue);
     },
   );
 }

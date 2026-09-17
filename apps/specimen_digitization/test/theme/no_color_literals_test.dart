@@ -1,51 +1,64 @@
-// The grep gate from the design system, section 8.3, as a test rather than a
-// shell line, so it runs wherever `flutter test` runs.
+// The colour-literal gate (10 section 8, `no_color_literals`), as a test
+// rather than a shell line, so it runs wherever `flutter test` runs.
 //
-// `lib/src/theme/tokens.dart` is the only file allowed to carry a
-// `Color(0x...)` literal. The files still holding literals today are listed in
-// [migrationBacklog]; every later step of the redesign removes entries, and
-// the list may only ever shrink.
+// One file in the product may carry a `Color(0x...)` literal:
+// `packages/specimen_ui/lib/src/foundation/palette.dart`. Everything else
+// reads a role. The scan covers the application's `lib/` and the whole
+// package, because moving a literal from one to the other is not progress.
+//
+// The backlog is empty and stays empty: 10 section 8 gives this gate "none
+// from day one".
 
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// Widget files that still carry color literals, with the count each holds at
-/// the time of writing. Shrink this list; never add to it.
+/// The only file allowed to hold a colour literal.
+const String paletteFile =
+    'packages/specimen_ui/lib/src/foundation/palette.dart';
+
+/// Files that still carry a literal, with the count each holds. Shrink this
+/// list; never add to it.
 const Map<String, int> migrationBacklog = <String, int>{};
 
 final RegExp _colorLiteral = RegExp(r'Color\(0x');
 
-void main() {
-  test('no widget outside lib/src/theme/ carries a color literal', () {
-    final Directory root = Directory('lib/src');
+/// Drops line and doc comments, so a comment that names the pattern is not
+/// read as a use of it. The gate is about code.
+String withoutComments(String source) => source.replaceAll(RegExp(r'//.*'), '');
+
+/// Every Dart file the gate scans: the application's widgets and screens, and
+/// the design system package.
+List<File> scannedFiles() {
+  final List<File> files = <File>[];
+  for (final String root in <String>['lib', 'packages/specimen_ui/lib']) {
+    final Directory directory = Directory(root);
     expect(
-      root.existsSync(),
+      directory.existsSync(),
       isTrue,
       reason:
-          'run this test from the package root, where lib/src is visible; '
-          'looked in ${root.absolute.path}',
+          'run this test from the application root, where $root is visible; '
+          'looked in ${directory.absolute.path}',
     );
-
-    final Map<String, int> found = <String, int>{};
-    for (final FileSystemEntity entity in root.listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.dart')) continue;
-      final String path = entity.path;
-      if (path.startsWith('lib/src/theme/')) continue;
-      final int count = _colorLiteral
-          .allMatches(entity.readAsStringSync())
-          .length;
-      if (count > 0) found[path] = count;
+    for (final FileSystemEntity entity in directory.listSync(recursive: true)) {
+      if (entity is File && entity.path.endsWith('.dart')) {
+        files.add(entity);
+      }
     }
+  }
+  return files;
+}
 
-    final int remaining = found.values.fold(0, (int a, int b) => a + b);
-    // ignore: avoid_print
-    print(
-      'Color literals still outside lib/src/theme/: $remaining '
-      'in ${found.length} file(s). Allowed while the migration runs: '
-      '${migrationBacklog.values.fold(0, (int a, int b) => a + b)} '
-      'in ${migrationBacklog.length} file(s).',
-    );
+void main() {
+  test('only the palette carries a colour literal', () {
+    final Map<String, int> found = <String, int>{};
+    for (final File file in scannedFiles()) {
+      if (file.path == paletteFile) continue;
+      final int count = _colorLiteral
+          .allMatches(withoutComments(file.readAsStringSync()))
+          .length;
+      if (count > 0) found[file.path] = count;
+    }
 
     final Iterable<String> unexpected = found.keys.where(
       (String path) => !migrationBacklog.containsKey(path),
@@ -54,7 +67,7 @@ void main() {
       unexpected,
       isEmpty,
       reason:
-          'these files must read their colors from the theme: '
+          'these files must read their colours from a role: '
           '${unexpected.join(', ')}',
     );
 
@@ -63,20 +76,40 @@ void main() {
         entry.value,
         lessThanOrEqualTo(migrationBacklog[entry.key]!),
         reason:
-            '${entry.key} gained a color literal. The backlog may only shrink.',
+            '${entry.key} gained a colour literal. The backlog may only '
+            'shrink.',
       );
     }
   });
 
+  test('the palette itself is where the literals live', () {
+    final File palette = File(paletteFile);
+    expect(
+      palette.existsSync(),
+      isTrue,
+      reason: 'the one file allowed to hold a literal is missing',
+    );
+    expect(
+      _colorLiteral
+          .allMatches(withoutComments(palette.readAsStringSync()))
+          .length,
+      greaterThan(0),
+      reason:
+          'if the palette holds no literal, either the gate is scanning the '
+          'wrong path or the token table has moved',
+    );
+  });
+
   test('the backlog only lists files that still need migrating', () {
     for (final String path in migrationBacklog.keys) {
+      final File file = File(path);
       expect(
-        File(path).existsSync(),
+        file.existsSync(),
         isTrue,
         reason: '$path is in the backlog but does not exist',
       );
       expect(
-        _colorLiteral.hasMatch(File(path).readAsStringSync()),
+        _colorLiteral.hasMatch(withoutComments(file.readAsStringSync())),
         isTrue,
         reason: '$path is clean now, so remove it from the backlog',
       );

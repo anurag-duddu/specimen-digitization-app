@@ -1,4 +1,5 @@
-/// One field of the record (design system, 7.3 `FieldRow`; UX writing, 1.13).
+/// One field of the record (design system, 7.3 `FieldRow`; UX writing, 1.13;
+/// 10 section 5).
 ///
 /// The verbatim and the interpreted live in separately named slots, always in
 /// the same order, and a missing layer shows an abstention rather than a
@@ -6,10 +7,9 @@
 /// them be confused with one another.
 library;
 
-import 'package:flutter/material.dart';
-import 'package:material_symbols_icons/symbols.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
 import 'term_text.dart';
@@ -44,8 +44,17 @@ class FieldRow extends StatelessWidget {
     this.authority,
     this.onEdit,
     this.editSemanticsLabel,
+    this.editBlockedReason,
     this.findings,
   });
+
+  /// The disclosure the three layers sit behind (10 section 5).
+  ///
+  /// Open from medium up, where the pane has the room for three layers per
+  /// field, and closed on a compact window, where twelve fields would
+  /// otherwise be thirty six lines before the first correction
+  /// (11 section 3.1: the arrangement is declared per window class).
+  static const String layersTitle = 'Values';
 
   /// The field's name, as the record calls it.
   final String name;
@@ -79,6 +88,13 @@ class FieldRow extends StatelessWidget {
   /// "Edit read as for Scientific name" instead of "Edit read as".
   final String Function(FieldLayer layer)? editSemanticsLabel;
 
+  /// Why this field cannot be corrected, or null when it can.
+  ///
+  /// It lands on the row's own node rather than on a wrapper, so a screen
+  /// reader that focuses the row hears the sentence rather than only that the
+  /// control is dimmed (accessibility, section 3.2).
+  final String? editBlockedReason;
+
   /// Validation findings for this field, rendered under the layers.
   final Widget? findings;
 
@@ -90,6 +106,9 @@ class FieldRow extends StatelessWidget {
 
   /// The word shown in place of a missing layer.
   String get _abstention => state.isRecordStatus ? 'Not recorded' : state.label;
+
+  /// The row's own title, with the required marker a reviewer reads.
+  String get _title => required ? '$name (required)' : name;
 
   /// Everything the row says, in one phrase.
   ///
@@ -105,6 +124,12 @@ class FieldRow extends StatelessWidget {
       '${layer.label}: ${_valueOf(layer) ?? _abstention}',
   ].map(_withoutTrailingStop).join('. ');
 
+  /// Everything the row says, with its state at the end.
+  ///
+  /// One node rather than two: the row is the control a reader lands on, and
+  /// a container above it repeating the name announces the field twice.
+  String get _rowSpoken => '$_spoken. ${state.semanticsLabel}';
+
   /// A value that already ends in a full stop does not get a second one.
   /// "U.S.A." is a real transcription, and "U.S.A.." is not a sentence.
   static String _withoutTrailingStop(String part) =>
@@ -112,77 +137,99 @@ class FieldRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
+    final bool compact = WindowClass.of(context).isCompact;
+    final Widget chip = StatusChip(state, dense: true);
 
-    return Semantics(
-      container: true,
-      // The field's own name leads the label. Without it twenty rows announce
-      // as "Field: supported" and a screen reader user cannot tell which
-      // field they are standing on.
-      label: _spoken,
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: context.space.space2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Flexible(
-                  child: Text(
-                    required ? '$name (required)' : name,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                SizedBox(width: context.space.space2),
-                StatusChip(state, dense: true),
-              ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        // The status chip is the row's trailing from medium up. On a
+        // compact window it moves to a line of its own beneath the row,
+        // because a trailing the row cannot measure is bounded to what is
+        // left after the title's minimum, and at 360 dp that is not enough
+        // for "Processing blocked" (11 section 3.3, the open row variant).
+        //
+        // The field's own name leads the row's label. Without it twenty rows
+        // announce as "Field: supported" and a screen reader user cannot tell
+        // which field they are standing on.
+        UiListRow(
+          title: _title,
+          semanticsLabel: _rowSpoken,
+          trailing: compact ? null : chip,
+          disabledReason: editBlockedReason,
+          onPressed: onEdit == null
+              ? null
+              : () => onEdit!(FieldLayer.asWritten),
+        ),
+        if (compact)
+          Padding(
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: chip,
             ),
-            SizedBox(height: context.space.space1),
-            for (final FieldLayer layer in FieldLayer.values)
-              _Layer(
-                layer: layer,
-                value: _valueOf(layer),
-                state: state,
-                onEdit: onEdit == null ? null : () => onEdit!(layer),
-                editLabel: editSemanticsLabel?.call(layer),
-              ),
-            if (authority != null) ...<Widget>[
-              SizedBox(height: context.space.space1),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Icon(
-                    Symbols.menu_book,
-                    size: context.sizes.iconInline,
-                    color: context.tokens.evidenceAuthorityContent,
-                  ),
-                  SizedBox(width: context.space.space1),
-                  Expanded(
-                    child: Text(
-                      authority!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+          ),
+        UiDisclosure(
+          title: layersTitle,
+          summary:
+              '${FieldLayer.asWritten.label}: '
+              '${asWritten ?? _abstention}',
+          semanticsLabel: '$layersTitle, $name',
+          initiallyExpanded: !compact,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              for (final FieldLayer layer in FieldLayer.values)
+                _Layer(
+                  layer: layer,
+                  value: _valueOf(layer),
+                  state: state,
+                  onEdit: onEdit == null ? null : () => onEdit!(layer),
+                  editLabel: editSemanticsLabel?.call(layer),
+                ),
+              if (authority != null) ...<Widget>[
+                SizedBox(height: ui.space.s1),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    UiIcon(
+                      UiIcons.authority,
+                      size: UiIconSize.inline,
+                      color: ui.color.status.authority.content,
+                    ),
+                    SizedBox(width: ui.space.s1),
+                    Expanded(
+                      child: Text(
+                        authority!,
+                        style: ui.type.bodySmall.copyWith(
+                          color: ui.color.inkSecondary,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
-            if (findings != null) ...<Widget>[
-              SizedBox(height: context.space.space2),
-              findings!,
-            ],
-          ],
+          ),
         ),
-      ),
+        if (findings != null) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          findings!,
+        ],
+      ],
     );
   }
 }
 
 /// One named slot: its label, its value or an abstention, and its edit action.
+///
+/// The name sits above the value rather than beside it in a column of fixed
+/// width. "Standardized" at 200 percent text is wider than any column this
+/// pane can spare, and a label that ellipsises is a layer a reviewer can
+/// confuse with another (11 section 2.2).
 class _Layer extends StatelessWidget {
   const _Layer({
     required this.layer,
@@ -200,55 +247,56 @@ class _Layer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String? text = value;
     final bool verbatim = layer == FieldLayer.asWritten;
+    final String edit = editLabel ?? 'Edit ${layer.label.toLowerCase()}';
 
     return Padding(
-      padding: EdgeInsets.only(bottom: context.space.space1),
+      padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          SizedBox(
-            // Wide enough for "Standardized" at `labelSmall`, composed from
-            // the grid rather than measured by eye.
-            width: context.space.space16 + context.space.space8,
-            // "As written", "Read as" and "Standardized" are the three
-            // words this product asks a reviewer to keep apart, so each one
-            // carries its own definition (pass criterion 10.2).
-            child: TermText(
-              layer.label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // "As written", "Read as" and "Standardized" are the three
+                // words this product asks a reviewer to keep apart, so each
+                // one carries its own definition (pass criterion 10.2).
+                TermText(
+                  layer.label,
+                  style: ui.type.labelSmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+                if (text == null)
+                  // A missing layer shows the field's own abstention, never a
+                  // blank, so absence is a value the reviewer can read.
+                  _Abstention(state: state)
+                else
+                  // A node of its own: without it the value merges into the
+                  // panel above and a reader hears every field's text in one
+                  // utterance rather than beside the layer it belongs to.
+                  Semantics(
+                    container: true,
+                    child: Text(
+                      text,
+                      style: verbatim
+                          ? ui.type.mono.literalDense
+                          : ui.type.body,
+                    ),
+                  ),
+              ],
             ),
           ),
-          SizedBox(width: context.space.space2),
-          Expanded(
-            child: text == null
-                // A missing layer shows the field's own abstention, never a
-                // blank, so absence is a value the reviewer can read.
-                ? _Abstention(state: state)
-                : Text(
-                    text,
-                    style: verbatim
-                        ? context.mono.literalDense
-                        : theme.textTheme.bodyMedium,
-                  ),
-          ),
           if (onEdit != null)
-            Semantics(
-              label: editLabel,
-              child: IconButton(
-                onPressed: onEdit,
-                icon: const Icon(Symbols.edit),
-                iconSize: context.sizes.iconInline,
-                tooltip: editLabel ?? 'Edit ${layer.label.toLowerCase()}',
-                constraints: BoxConstraints(
-                  minWidth: context.sizes.targetMin,
-                  minHeight: context.sizes.targetMin,
-                ),
-              ),
+            UiIconButton(
+              icon: UiIcons.edit,
+              semanticsLabel: edit,
+              tooltip: edit,
+              onPressed: onEdit,
             ),
         ],
       ),
@@ -264,17 +312,17 @@ class _Abstention extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
     final String word = state.isRecordStatus ? 'Not recorded' : state.label;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Icon(
-          state.isRecordStatus ? Symbols.horizontal_rule : state.icon,
-          size: context.sizes.iconInline,
-          color: theme.colorScheme.onSurfaceVariant,
+        UiIcon(
+          state.isRecordStatus ? UiIcons.notPresent : state.iconSpec,
+          size: UiIconSize.inline,
+          color: ui.color.inkSecondary,
         ),
-        SizedBox(width: context.space.space1),
+        SizedBox(width: ui.space.s1),
         // Flexible, because a `Row` hands a non-flex child unbounded width
         // and the row itself is inside a bounded column: "Not recorded"
         // beside its glyph is four pixels wider than a field row on a phone
@@ -282,9 +330,7 @@ class _Abstention extends StatelessWidget {
         Flexible(
           child: TermText(
             word,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
           ),
         ),
       ],
