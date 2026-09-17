@@ -16,8 +16,10 @@ import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/widgets/upload_item.dart';
 
 import 'intake_harness.dart';
+import 'ui_finders.dart';
 import 'widget_test.dart' show TestRepository;
 
 const CollectionScope scope = CollectionScope(
@@ -251,7 +253,7 @@ void main() {
     expect(find.byType(IntakeManifestRow), findsOneWidget);
     final Finder remove = find.descendant(
       of: find.byType(IntakeManifestRow),
-      matching: find.byType(IconButton),
+      matching: uiIconButton(UploadItem.removeLabel),
     );
     await tester.ensureVisible(remove);
     await tester.pumpAndSettle();

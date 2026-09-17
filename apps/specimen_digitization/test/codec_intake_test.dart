@@ -10,6 +10,7 @@ import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 
 import 'intake_harness.dart';
 
@@ -101,7 +102,15 @@ void main() {
       final handles = objects(jsonDecode(stored));
       expect(handles.single['upload_id'], 'u');
       expect(handles.single.keys, unorderedEquals(['digest', 'upload_id']));
-      expect(find.text('Accepted'), findsNothing);
+      // Scoped to the row: the header counts accepted photographs under the
+      // same word.
+      expect(
+        find.descendant(
+          of: find.byType(IntakeManifestRow),
+          matching: find.text('Accepted'),
+        ),
+        findsNothing,
+      );
     },
   );
 }

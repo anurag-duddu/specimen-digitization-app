@@ -16,6 +16,7 @@ import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
 import 'package:specimen_digitization/src/widgets/upload_item.dart';
 import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 
+import 'ui_finders.dart';
 import 'widgets/harness.dart';
 
 ManifestEntry entryIn(
@@ -81,7 +82,15 @@ void main() {
         await pumpManifest(tester, <ManifestEntry>[
           entryIn(state, reason: 'A stated reason.', progress: 0.5),
         ]);
-        expect(find.text(state.label), findsOneWidget);
+        // Scoped to the row: the header counts accepted, already in
+        // collection and failed photographs under those same words.
+        expect(
+          find.descendant(
+            of: find.byType(IntakeManifestRow),
+            matching: find.text(state.label),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('A stated reason.'), findsOneWidget);
       });
     }
@@ -153,16 +162,13 @@ void main() {
       ready,
       accepted,
     ], onRemove: removed.add);
-    final Finder controls = find.widgetWithIcon(IconButton, Icons.close);
-    expect(controls, findsNothing, reason: 'the library uses Material Symbols');
-
-    final List<IconButton> buttons = tester
-        .widgetList<IconButton>(find.byType(IconButton))
+    final List<UiIconButton> buttons = tester
+        .widgetList<UiIconButton>(uiIconButton(UploadItem.removeLabel))
         .toList();
     expect(buttons.length, 2);
     expect(buttons.first.onPressed, isNotNull);
     expect(buttons.last.onPressed, isNull);
-    await tester.tap(find.byType(IconButton).first);
+    await tester.tap(uiIconButton(UploadItem.removeLabel).first);
     await tester.pumpAndSettle();
     expect(removed, <ManifestEntry>[ready]);
   });
@@ -201,11 +207,9 @@ void main() {
     WidgetTester tester,
   ) async {
     await pumpManifest(tester, <ManifestEntry>[]);
+    expect(find.text(IntakeManifest.emptyTitle), findsOneWidget);
+    expect(find.text(IntakeManifest.emptyBody), findsOneWidget);
     expect(find.text('No files selected yet'), findsOneWidget);
-    expect(
-      find.text('Nothing here yet. Photographs appear as you add them.'),
-      findsOneWidget,
-    );
   });
 
   testWidgets('local measurements are three labelled values and a caveat', (
@@ -224,6 +228,44 @@ void main() {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.text(NotCalibratedChip.label), findsOneWidget);
+  });
+
+  testWidgets('the header counts every outcome the batch reached', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await pumpManifest(tester, <ManifestEntry>[
+      for (int i = 0; i < 8; i++) entryIn(UploadState.accepted, digest: 'a$i'),
+      entryIn(UploadState.duplicate, digest: 'd0'),
+      entryIn(UploadState.failed, digest: 'f0'),
+      entryIn(UploadState.ready, digest: 'r0'),
+    ]);
+    // A field never encodes a value, so the counts are numerals under their
+    // own names (09 section 3.2; 07 section 5).
+    for (final String label in <String>[
+      'Accepted',
+      'Already in collection',
+      'Failed',
+    ]) {
+      expect(
+        find.descendant(
+          of: find.byType(IntakeManifest),
+          matching: find.text(label),
+        ),
+        findsWidgets,
+        reason: label,
+      );
+    }
+    expect(find.text('of 11'), findsOneWidget);
+    // One node for the whole account, so a reader hears the sentence once
+    // rather than three tiles and then the sentence again.
+    expect(
+      find.bySemanticsLabel(
+        '8 of 11 accepted, 1 already in collection, 1 failed',
+      ),
+      findsOneWidget,
+    );
+    handle.dispose();
   });
 
   group('the batch progress line', () {

@@ -15,6 +15,7 @@ import 'package:specimen_digitization/src/screens/sources/sources_screen.dart';
 import 'package:specimen_digitization/src/sources.dart';
 
 import '../sources/source_fixtures.dart';
+import '../ui_finders.dart';
 import '../widgets/harness.dart';
 
 Future<SourceBrowseController> pumpBrowse(
@@ -383,7 +384,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('listed again'), findsOneWidget);
-      await tester.tap(find.text('Dismiss'));
+      // The band's dismiss draws a glyph, so the control is reached by the
+      // name it publishes rather than by a word on screen.
+      await tester.tap(uiControl(sourceRefreshedDismissLabel));
       await tester.pumpAndSettle();
       expect(find.textContaining('listed again'), findsNothing);
     });

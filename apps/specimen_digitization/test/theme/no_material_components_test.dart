@@ -86,22 +86,19 @@ final RegExp _constructors = RegExp(
 /// the list. `app_router.dart` keeps one, the transparent `Scaffold` that
 /// stands in for the shell's own until the screens that raise a snackbar or
 /// build a Material component move in wave 3.
+///
+/// Wave 3, slot E5: intake, capture, the sources screens and the D6 patterns
+/// are off it. None of them raises a toast through `ScaffoldMessenger` or
+/// asserts on a `Material` ancestor any more.
 const Map<String, int> componentBacklog = <String, int>{
   'lib/src/app/app_router.dart': 1,
   'lib/src/audit_history.dart': 4,
-  'lib/src/capture/capture_screen.dart': 6,
-  'lib/src/capture_quality.dart': 1,
-  'lib/src/intake.dart': 2,
   'lib/src/large_record.dart': 3,
   'lib/src/operational_panel.dart': 4,
   'lib/src/reading_declarations.dart': 10,
   'lib/src/region_editor.dart': 13,
   'lib/src/review_context.dart': 6,
   'lib/src/risk_assessment.dart': 2,
-  'lib/src/screens/intake/capture_card.dart': 2,
-  'lib/src/screens/intake/manifest_panel.dart': 1,
-  'lib/src/screens/sources/source_screen.dart': 6,
-  'lib/src/screens/sources/sources_screen.dart': 2,
   'lib/src/screens/workbench/decision_bar.dart': 5,
   'lib/src/screens/workbench/evidence_picker.dart': 1,
   'lib/src/screens/workbench/fields_panel.dart': 8,
@@ -117,9 +114,6 @@ const Map<String, int> componentBacklog = <String, int>{
   'lib/src/widgets/reason_sheet.dart': 7,
   'lib/src/widgets/region_overlay.dart': 2,
   'lib/src/widgets/risk_meter.dart': 1,
-  'lib/src/widgets/source_import_sheet.dart': 2,
-  'lib/src/widgets/source_object_row.dart': 2,
-  'lib/src/widgets/upload_item.dart': 1,
   'lib/src/workbench.dart': 10,
 };
 
