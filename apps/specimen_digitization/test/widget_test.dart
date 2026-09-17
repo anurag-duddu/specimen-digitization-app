@@ -282,6 +282,13 @@ void main() {
     // scroll swallows the next tap, and the account menu is a toggle, so a
     // swallowed press reads as a menu that will not open.
     await tester.pumpAndSettle();
+    // Out of the record first. 13 section 4.1 gives the bar inside a record
+    // three things, back, the specimen id and refresh, so the account menu is
+    // on the list screens the way out leads back to.
+    // The bar's own back, which is the first of the two while the record
+    // screen still draws a row of its own under it (slot A2 removes that).
+    await tester.tap(find.bySemanticsLabel('Back to queue').first);
+    await tester.pumpAndSettle();
     // Signing out lives in the account menu, which is also the only place a
     // reviewer can read which account they are using (05 section 2).
     await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
