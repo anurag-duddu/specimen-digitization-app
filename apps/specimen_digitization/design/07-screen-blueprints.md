@@ -1,5 +1,7 @@
 # Screen blueprints
 
+> **Partly superseded on 2026-09-17.** Component anatomy, which the preamble below sends to 03, is [10-component-library.md](10-component-library.md) section 4. How a screen is put together from those components is [13-screen-composition.md](13-screen-composition.md): one scroll per screen per axis, surface depth, the chrome budget, one job per region, and the primary region above the fold. 13 enforces the arrangements these blueprints describe and wins where the two differ, and it names each difference. Everything else here still applies.
+
 This document turns the audit, the writing guidelines, the design system, the
 motion system, the responsive spec and the accessibility requirements into one
 blueprint per screen. Each blueprint says what the screen is for, what is wrong

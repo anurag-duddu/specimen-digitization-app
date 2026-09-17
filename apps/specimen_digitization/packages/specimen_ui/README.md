@@ -15,14 +15,16 @@ library is specified in
 | Layer | Directory | What it holds |
 | --- | --- | --- |
 | Foundation | `lib/src/foundation/` | Colour, fields, glass, type, shape, space, density, motion, icons, window classes, the theme |
-| Primitives | `lib/src/primitives/` | Geometry and state with no styling opinions: `Pressable`, `Surface`, `GlassSurface`, `FieldLayer`, `FocusRing`, `Squircle`, `Popover`, `ModalRoutes`, `FieldCore`, `UiLabel`, `FitBuilder`, `Announcer`, `Scrim` |
+| Primitives | `lib/src/primitives/` | Geometry and state with no styling opinions: `Pressable`, `StateLayer`, `Surface`, `GlassSurface`, `FieldLayer`, `FocusRing`, `Squircle`, `Popover`, `ModalRoutes`, `FieldCore`, `UiLabel`, `FitBuilder`, `EdgeFadedRow`, `Announcer`, `Scrim` |
 | Controls | `lib/src/controls/<family>/` | The thirty components a screen composes, one barrel per family: actions, inputs, overlays, navigation, data |
 | Gallery | `lib/src/gallery/` | Every token and component in every state, both modes, both densities |
 
-At 0.2.0 all five families are built. There is no Material component left to
-reach for: a page is a `UiScaffold` with a `UiTopBar`, a navigation and a
-body, and the frame hosts the toast layer itself, so `UiToasts.show(context,
-message: ...)` works from anywhere inside it.
+At 0.3.0 all five families are built, every control in them declares what it
+does with less width than it needs, and no screen in the application draws a
+Material component. There is nothing left to reach for: a page is a
+`UiScaffold` with a `UiTopBar`, a navigation and a body, and the frame hosts
+the toast layer itself, so `UiToasts.show(context, message: ...)` works from
+anywhere inside it.
 
 Beside the components there is one arrangement, because every screen needs it
 and no two should disagree about it: `UiButtonRow` (11 section 3.4) draws a

@@ -1,6 +1,6 @@
 # Design system: Specimen Digitization
 
-> **Partly superseded on 2026-09-16.** Sections 2 (brand direction), 3 (colour), 4 (typography), 5.3 (shape), 6 (iconography), 7 (atomic inventory) and 8 (Flutter implementation plan) are replaced by [09-brand-direction.md](09-brand-direction.md) and [10-component-library.md](10-component-library.md). They remain here as the record of the v1 rebuild that shipped to `main`. Sections 1, 5.1, 5.2, 5.4 to 5.9 and 9 still apply, read together with 09 section 12.
+> **Partly superseded on 2026-09-16.** Sections 2 (brand direction), 3 (colour), 4 (typography), 5.3 (shape), 6 (iconography), 7 (atomic inventory) and 8 (Flutter implementation plan) are replaced by [09-brand-direction.md](09-brand-direction.md) and [10-component-library.md](10-component-library.md). They remain here as the record of the v1 rebuild that shipped to `main`. Sections 1, 5.1, 5.2, 5.4 to 5.9 and 9 still apply, read together with 09 section 12. [11-fit-and-scale.md](11-fit-and-scale.md) and [13-screen-composition.md](13-screen-composition.md) sit on top of 09 and 10 and win over both: 11 owns text scale, window classes and what a control does with less room than it needs, and 13 owns how a screen is composed from the controls.
 
 
 Owner: design systems. Applies to every widget in `apps/specimen_digitization/lib/`.

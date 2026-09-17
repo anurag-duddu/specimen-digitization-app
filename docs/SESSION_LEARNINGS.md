@@ -9371,3 +9371,190 @@ clears the capsule, the queue does not. One of the two is in the report.
 - No cloud command, no deploy, no dependency added, no SDK change, no screen
   golden and no semantics fixture committed, and nothing under the application's
   `lib/` or `test/theme/` touched.
+
+## 2026-09-17: Front-end refactor wave B, slot B2, documentation and lessons
+
+- Task: slot B2 of `docs/execution/FRONT_END_REFACTOR.md` section 3I, to the
+  brief in `scratchpad/briefs/b2-release-docs.md` and the wave A and B common
+  section. Put every document in order for a reader who did not watch the
+  refactor: what the client is now, how it is built and released, and what the
+  sessions learned.
+- Branch and worktree: `fe/release-docs` at `.claude/worktrees/fe-release-docs`,
+  cut from `front-end-refactor` at `f3b6363`. Pushed to
+  `origin/fe/release-docs`. No pull request; the integrator merges the slot.
+- Outcome: complete. Eight commits, twelve files, one of them new. No Dart
+  changed, so no screen golden, no semantics fixture and no package golden
+  moved, and none was regenerated.
+- Commits (eight, oldest first):
+  - `e5abdb2` `docs: the client, its design system and the release rules, for a reader who did not watch the refactor`
+  - `e13a524` `docs(design): the index says what 03, 05 and 07 defer to`
+  - `74ebdbb` `docs(deploy): the Flutter client section is the client that actually ships`
+  - `c0a828a` `docs(specimen_ui): 0.3.0 reads as release notes rather than six appended slots`
+  - `3151a43` `docs: what the front-end refactor taught, distilled from twenty two closeouts`
+  - `846e93e` `docs(plan): how each definition of done item is verified, and the measured size`
+  - `8e62ee1` `docs: slot B2 closeout`
+  - `829b6e0` `docs: the reason a file may import material.dart lives in the gate, not on the line`
+
+The last commit is a correction made after the gate run, found by reading the
+four files the application README's layers section describes rather than by a
+test. Two of the four infrastructure importers carry their reason in a `show`
+clause and two do not; the reason for all four lives in the
+`infrastructureImporters` map in `test/theme/no_material_imports_test.dart`,
+which is also what fails when a named file stops needing the import. It changes
+one sentence of one markdown file, so the gate results below stand; the commit
+hooks ran on it and passed.
+
+### Validation
+
+Every gate run on its own with the tree untouched, `rc=$?` read directly and
+never off a pipe, the locale exported and the placeholder Firebase options in
+place.
+
+| Gate | Exit code | Evidence |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app) | 0 | lockfile unchanged, no dependency added |
+| `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+| `flutter test` (package) | 0 | 685 passed, the count H3 left |
+| `flutter analyze --fatal-infos` (app) | 0 | no issues |
+| `flutter test` (app) | 0 | 1301 passed, 7 skipped, 0 failed |
+| `check_ui_strings.py` | 0 | 194 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (11 files, as a zsh array) | 0 | 13 hooks passed, 4 had no file of that kind. Every commit ran the hooks again |
+| `flutter build web --release` | 0 | 27 s wall; `main.dart.js` 3,272,537 bytes. Run to verify a documented command, not as a gate |
+
+The application suite passes whole, which is what a slot that changes no Dart
+should leave.
+
+### The goldens and the fixtures
+
+None regenerated, none moved, none committed. `git status` over
+`test/golden/images/`, `test/accessibility/fixtures/` and the package's
+`test/` is empty at every commit. This slot touches no `lib/` file in either
+tree, so there was nothing for a golden to move for and no reason to run
+`--update-goldens` at all.
+
+### What changed, file by file
+
+| File | What it says now that it did not |
+|---|---|
+| `README.md` (root) | The client and its design system, how to reach the gallery, how to run the client's gates one at a time, the design documents in the index, and the three release rules with a pointer at `docs/DEPLOYMENT.md` |
+| `apps/specimen_digitization/README.md` | Was the Flutter template. Now the six layers and the import direction, the fifteen gates as a table with the backlog each still carries, the three checked-in binary sets with the question each answers and the macOS comparison policy, the one source of text scale and the four sources of reduced motion, and the gallery route |
+| `docs/DEPLOYMENT.md` | The Flutter client entry covers both packages and the order they run in, and states the five properties of the rebuilt client that bear on a release. The procedure adds the checked-in binaries to the release-sensitive review list and says verify.sh wants a quiet worktree |
+| `apps/specimen_digitization/design/README.md` | 03, 05 and 07 say what they defer to; 12 and 13 are in numeric order; one paragraph says why 11 and 13 exist |
+| `design/03`, `05`, `07` | A superseded note at the top of each pointing at 09 to 13. Nothing else in any of the three |
+| `packages/specimen_ui/CHANGELOG.md` | 0.3.0 is release notes with a date rather than six appended slot sections |
+| `packages/specimen_ui/README.md` | 0.3.0 rather than 0.2.0, and the three primitives the fit waves added |
+| `docs/execution/FRONT_END_REFACTOR.md` | Section 2 is a table with a verification column and a state column, plus two rows for what a release needs that the definition of done never covered. Section 12 keeps the estimate beside the measurement |
+| `docs/LESSONS_FRONT_END_REFACTOR.md` | New. The protocol, the machine, the design lessons and the failed approaches, each naming the closeout it came from |
+
+### Durable learnings
+
+- **A changelog written by appended slots is not release notes, and turning it
+  into them is a mechanical operation that must be done mechanically.** The
+  0.3.0 section held 101 entries under three headings called Testing, three
+  called Public API, two called Primitives and one called Primitives,
+  continued, because six slots appended in merge order. The reorganisation was
+  done by a script that parses the region into blocks, emits them under a
+  declared plan, and asserts that the plan is an exact partition of the blocks;
+  a second script then compared the multiset of entries before and after and
+  reported them identical. Doing it by hand across 700 lines would have lost or
+  silently reworded something, and no test in this repository would have
+  noticed.
+- **A documentation claim is worth what it was measured against.** Every
+  command written into the deployment catalog was run once, read only, at this
+  head. Two numbers in the new prose exist only because of that: the Material
+  icon font tree-shakes from 1,645,184 to 7,736 bytes, which is what makes
+  `uses-material-design: true` cost 7.7 KB rather than 1.6 MB, and `Gallery`
+  appears zero times in the built `main.dart.js`, which turns "the gallery is
+  not in a release build" from a claim about a `kReleaseMode` guard into a
+  claim about the artifact a museum would be served.
+- **Relative links between documents rot silently and are cheap to check.** A
+  twenty line script that resolves every `](path)` in the files a slot touched
+  found exactly one dangling target, `CLIENT_LIVE_DATA_READINESS.md`, which
+  slot B3 has not written yet; it is now phrased as what B3 delivers rather
+  than as a link. Nothing in this repository checks markdown links, and a
+  broken one in a runbook is read as a missing procedure.
+- **`pre-commit` at commit time stashes through its own patch cache, not
+  `git stash`.** It prints "Stashing unstaged files to
+  `~/.cache/pre-commit/patch<n>`" and restores from there, so committing one
+  coherent slice of a dirty tree is safe in a worktree whose `git stash` stack
+  is shared with other sessions. Six commits were made this way with nine other
+  files dirty throughout.
+- **Two documents can both be measured and still disagree, and the record does
+  not say which measurement is later.** 10 section 6 states the data family
+  golden window as 1180 by 2360 with the page measuring 2343; the package
+  changelog's polish 2 entry states 1180 by 2460 with the page measuring 2458.
+  Both read as measured rather than guessed, and the changelog entry is the
+  later of the two. The test file is the only thing that settles it. Recorded
+  as a follow-up rather than edited, because 10 is not this slot's file and the
+  changelog entries were frozen by the brief.
+
+### Failed approaches
+
+- **Reorganising the changelog from an inventory produced by a different
+  parse.** The first attempt built the block index in the inventory script by
+  enumerating heading, prose and bullet blocks together, and rebuilt it in the
+  reorganisation script by counting lines, so every index in the plan pointed
+  at a different entry. Nothing was written, because the script asserted that
+  the plan is an exact partition of the parsed bullets first and reported
+  forty two missing. The lesson is the assertion rather than the bug: when a
+  plan is a list of indices into a parse, assert the partition before emitting
+  a byte.
+- **Putting the release date in the changelog's first prose line.** That is
+  what 0.2.0 does, and 0.1.0 carries no date at all, so the file has no
+  convention to match. The date went in the heading, because "(unreleased)"
+  was in the heading and removing it is the point.
+
+### Deviations from the brief, with why
+
+- **The commit trailer names `Claude Opus 5 (1M context)`** where the common
+  section names a different model's line. The session's own attribution
+  instruction is the one followed, as slots E1, E4, E5, F2, G1, G2, G3, G4,
+  polish 2, H1 and H3 all recorded. The integrator may normalise the trailers.
+- **`docs/DEPLOYMENT.md` was read conservatively.** The brief's sentence lists
+  four sections after naming the CI paragraphs slot B1 owns; it was read as
+  naming the four sections this slot owns. "Full required pre-push
+  verification", which describes `verify.sh`, and "Deployment-only scripts",
+  which describes `ci-cd.yml`'s scripts, were therefore left untouched for B1.
+  The new Flutter client text states that `verify.sh` and `ci-cd.yml` both
+  resolve, analyse and test `packages/specimen_ui`, which is a fact about those
+  files at `f3b6363` rather than an edit to them, verified by reading both.
+- **Not every catalogued command was executed.** The brief asks for every read
+  only command to be run once. The Flutter commands, the five version checks
+  and `flutter build web --release` were run. `uv sync --frozen`,
+  `uv run pytest -q`, the three `uv run specimen-*` smoke entry points,
+  `pre-commit run --all-files` and `scripts/ci/verify.sh` were checked for
+  existence instead: every script path resolves and all three entry points are
+  declared in `pyproject.toml`. Running the whole Python suite and a full
+  verify on a machine carrying seven live agent worktrees would contend with
+  sibling slots for no documentation benefit, and this slot changed none of
+  those sections. `scripts/ci/smoke_hosting.sh` was deliberately not run
+  because it makes a network request against the production site.
+- **`packages/specimen_ui/pubspec.yaml` was not bumped to 0.3.0**, although
+  the changelog heading now carries a release date. Bumping it moves one line
+  of the application's `pubspec.lock`, which `--enforce-lockfile` then requires
+  of every live slot; slot F1 left it at 0.2.0 for the same reason. It belongs
+  to the integrator's release commit.
+
+### Follow-ups
+
+- **The package version.** `pubspec.yaml` is 0.2.0 and `CHANGELOG.md` heads
+  0.3.0 with a date. The integrator bumps both in one commit with the
+  application's `pubspec.lock` line.
+- **The data family golden window, 2360 against 2460.** 10 section 6 and the
+  0.3.0 changelog disagree; `packages/specimen_ui/test/gallery/data_golden_test.dart`
+  has the value in force. Whoever next owns 10 should take it from the test.
+- **`docs/execution/CLIENT_LIVE_DATA_READINESS.md` is named in the plan's
+  section 2 as what slot B3 writes.** If B3 does not land with this wave, that
+  cell reads as a promise rather than a plan.
+- **The application README's gate table says the composition gates of 13
+  section 5 are not in it.** One line changes when wave A's `test/composition/`
+  lands.
+- **The application README and `DEPLOYMENT.md` both say formatting is checked
+  before a commit and is not a repository hook**, which is true at `f3b6363`.
+  If slot B1 adds `dart format --set-exit-if-changed` to `verify.sh` or to
+  `ci-cd.yml`, both sentences want one word changed.
+- Nothing is added to the package's public API by this slot, so there is
+  nothing for wave A or the other wave B slots to import.
+- No cloud command, no deploy, no dependency added, no SDK change, no Dart
+  file touched, and no screen golden or semantics fixture regenerated or
+  committed.

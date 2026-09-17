@@ -1,5 +1,7 @@
 # Responsive and platform adaptation
 
+> **Partly superseded on 2026-09-17.** The size classes of section 1 are unchanged in value, but they live in the design system now rather than in the application: `WindowClass` and `Adaptive<T>` in `specimen_ui`'s foundation, per [11-fit-and-scale.md](11-fit-and-scale.md) section 3.1. What a control does when it is given less room than a layout here assumes is 11 section 3.3, which this document does not cover. The per screen arrangements of section 3 are enforced by [13-screen-composition.md](13-screen-composition.md), which wins where the two differ and says so. Everything else here still applies.
+
 This document specifies how the client adapts to window size, input device and
 platform. It covers breakpoints, navigation, a screen-by-screen layout spec,
 input modalities and shortcuts, platform conventions, web specifics, camera
