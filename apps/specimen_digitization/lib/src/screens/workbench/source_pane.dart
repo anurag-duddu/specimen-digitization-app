@@ -601,13 +601,15 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
 /// `ground`, so no light field, no glass and no tint reaches within 24 dp of
 /// the evidence: a colour cast on a faded label is a data error.
 ///
-/// The band is painted rather than clipped because `UiScaffold.exclusion` is
-/// a constructor argument of the frame, and the record route's frame is the
-/// shell's. Publishing the matte's rect upward would close it at the paint
-/// layer and cost no layout.
-/// fe/polish-2: an exclusion a descendant can publish to the enclosing
-/// `UiScaffold`, so this band is a clip on the field layer rather than a
-/// gutter in the pane.
+/// The band is painted rather than clipped, which costs
+/// `UiFields.matteExclusion` of layout on every side. It was written that way
+/// because `UiScaffold.exclusion` was a constructor argument of a frame this
+/// pane does not build. It is not any more: polish 2 added
+/// `UiScaffoldExclusion.of(context)?.publish(rect)`, which the enclosing
+/// scaffold answers itself, so a pane can hand the frame the matte's rect and
+/// let `FieldLayer` clip its light out of it. What is left is measuring that
+/// rect in the frame's coordinates and giving back the gutter, which moves
+/// the photograph on every workbench window. Open, with the API in place.
 class SourceMatte extends StatelessWidget {
   const SourceMatte({
     super.key,

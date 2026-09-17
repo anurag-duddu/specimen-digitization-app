@@ -762,8 +762,13 @@ const double coordinateFieldWidth = 140;
 /// entrance is therefore the system's own: the emphasized pair `ModalRoutes`
 /// uses, which collapses to nothing under reduced motion because the duration
 /// does.
-/// fe/polish-2: a `UiPageRoute` in the package, so a screen pushing a full
-/// window surface gets one entrance rather than each writing its own.
+/// Open: a `UiPageRoute` in the package, so a screen pushing a full window
+/// surface gets one entrance rather than each writing its own. Two are
+/// written today. This one, which the editor and the source pane's full
+/// window view share, and the `MaterialPageRoute` the capture route keeps
+/// because it is the only route a `PageTransitionsTheme` reaches, and with it
+/// the platform's own back gesture, which a bare `PageRouteBuilder` has no
+/// answer for.
 PageRoute<T> uiFullScreenRoute<T>(
   BuildContext context, {
   required WidgetBuilder builder,
