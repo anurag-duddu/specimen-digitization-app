@@ -122,6 +122,17 @@ titles, help text, banner text) is not a label and wraps as content should.
 | `UiBanner`, `UiToast` | text plus action | the action moves under the text | the text wraps (it is content) |
 | `UiField` | label, box, footer | none: the box stretches to the width given; label and footer wrap as content | none |
 
+**Constraints, learned in wave G (2026-09-16).** `UiLabel` measures its own
+overflow with a `LayoutBuilder`, so a control that carries a label cannot sit
+under `IntrinsicWidth` or `IntrinsicHeight`; a pane that needs equal widths
+uses a `Table`, a `Flex` with fixed flexes, or `Adaptive` widths. A trailing a
+`UiListRow` cannot measure (a chip, a switch, a time) is bounded to the room
+left once the title has its minimum, and ellipsises through its own label;
+the declared "trailing under the title" variant for compact windows is open.
+Gallery pages stack their specimen columns below 320 dp per column
+(`GalleryColumns`), so the matrix pictures a control's fit policy at 360 dp
+and never the page's squeeze.
+
 ### 3.4 Arrangement: `UiButtonRow`
 
 The one arrangement every screen needs is a row of actions. `UiButtonRow`
