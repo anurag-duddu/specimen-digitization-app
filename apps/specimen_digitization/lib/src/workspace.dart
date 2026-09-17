@@ -15,7 +15,6 @@ import 'app/shell.dart';
 import 'auth.dart';
 import 'models.dart';
 import 'screens/queue/queue_screen.dart';
-import 'widgets/widgets.dart';
 
 /// How often the queue asks the server for the current page.
 const Duration queuePollInterval = Duration(seconds: 20);
