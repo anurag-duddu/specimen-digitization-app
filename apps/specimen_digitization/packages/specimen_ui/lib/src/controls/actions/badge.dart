@@ -5,6 +5,9 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/color.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
+import '../../primitives/label.dart';
+import '../overlays/tooltip.dart';
 
 /// The resolved paint of one badge.
 @immutable
@@ -33,28 +36,40 @@ class UiBadgeStyle {
 
   /// The capsule's height, which is also its minimum width, so a single
   /// digit reads as a disc.
+  ///
+  /// Derived from the count's own role rather than declared (11 section 2.2),
+  /// so a reviewer reading at 200 percent gets a badge that grew rather than a
+  /// digit with its head cut off.
   final double minHeight;
 
   /// The dot form's diameter.
   final double dotSize;
 
-  /// The style in [ui], tinted by [status] where the badge names one.
-  static UiBadgeStyle resolve(UiThemeData ui, {UiStatusTriple? status}) =>
-      UiBadgeStyle(
-        background: status?.content ?? ui.color.ink,
-        // `paper` in both modes, the inversion the primary button makes: the
-        // fill follows the mode, so its text has to be the other end of the
-        // pair or the badge disappears in one of them.
-        foreground: ui.color.paper,
-        label: ui.type.labelSmall.copyWith(
-          // 09 section 4.2: every count in Geist is set with tabular figures,
-          // so a changed digit is visible by position rather than by width.
-          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-        ),
-        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s2),
-        minHeight: ui.space.s5,
-        dotSize: ui.space.s2,
-      );
+  /// The style in [ui], tinted by [status] where the badge names one, at
+  /// [textScaler].
+  static UiBadgeStyle resolve(
+    UiThemeData ui, {
+    UiStatusTriple? status,
+    TextScaler textScaler = TextScaler.noScaling,
+  }) => UiBadgeStyle(
+    background: status?.content ?? ui.color.ink,
+    // `paper` in both modes, the inversion the primary button makes: the
+    // fill follows the mode, so its text has to be the other end of the
+    // pair or the badge disappears in one of them.
+    foreground: ui.color.paper,
+    label: ui.type.labelSmall.copyWith(
+      // 09 section 4.2: every count in Geist is set with tabular figures,
+      // so a changed digit is visible by position rather than by width.
+      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+    ),
+    padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s2),
+    minHeight: UiType.heightAroundAt(
+      ui.space.s5,
+      ui.type.labelSmall,
+      textScaler,
+    ),
+    dotSize: ui.space.s2,
+  );
 }
 
 /// A count, or a dot where the number would say nothing.
@@ -92,7 +107,11 @@ class UiBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final UiBadgeStyle style = UiBadgeStyle.resolve(ui, status: status);
+    final UiBadgeStyle style = UiBadgeStyle.resolve(
+      ui,
+      status: status,
+      textScaler: MediaQuery.textScalerOf(context),
+    );
     final Widget body = count == null
         ? SizedBox.square(
             dimension: style.dotSize,
@@ -118,9 +137,15 @@ class UiBadge extends StatelessWidget {
                 child: Center(
                   widthFactor: 1,
                   heightFactor: 1,
-                  child: Text(
+                  // A badge is not pressed, so nothing beneath the tooltip
+                  // competes for the tap and the primitive's own slot is the
+                  // whole of rule 4 here (11 section 3.3).
+                  child: UiLabel(
                     '$count',
                     style: style.label.copyWith(color: style.foreground),
+                    tooltip:
+                        (BuildContext context, String message, Widget label) =>
+                            UiTooltip(message: message, child: label),
                   ),
                 ),
               ),
