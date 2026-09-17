@@ -7329,3 +7329,208 @@ before it goes in a `SizedBox`.
     `test/gallery/actions_golden_test.dart`. G3's golden matrix pictures these
     controls, so it is regenerated after this slot and G2 land, as
     11 section 7 says.
+
+## 2026-09-16: Front-end refactor wave G, slot G3, the gallery matrix
+
+- Task: section 3.5 of `design/11-fit-and-scale.md`. The gallery shell gets a
+  compact arrangement, a Fit page draws every control of the fit table in 11
+  section 3.3 at four column widths, and a golden matrix draws every page at
+  four window classes by three text scales by two modes. No control is
+  converted here; G1 and G2 do that, and the matrix pictures whatever the
+  controls do today.
+- Branch and worktree: `fe/fit-gallery` at `.claude/worktrees/fe-fit-gallery`,
+  cut from `front-end-refactor` at `a301748`, which already carries the merged
+  wave F. Pushed to `origin/fe/fit-gallery` at `7bfa7d9`. No pull request; the
+  integrator merges the slot with G1 and G2.
+- Outcome: complete. Four commits, 296 files (288 of them goldens), three new
+  files under the package, 20 new tests, every gate green.
+- Commits (four, oldest first):
+  - `3a42591` `feat(gallery): the Fit page, one section per row of the fit table`
+  - `afcd869` `feat(gallery): the page list is a select below medium, and one text style`
+  - `42259dc` `test(gallery): the golden matrix, four classes by three scales by two modes`
+  - `7bfa7d9` `docs(specimen_ui): the 0.3.0 entry for the compact shell, the Fit page and the matrix`
+- Validation, every gate run on its own against the committed tree, the tree
+  untouched while it ran, and `rc=$?` read directly, never off a pipe:
+
+  | Gate | Exit code | Evidence |
+  |---|---|---|
+  | `flutter pub get --enforce-lockfile` (app) | 0 | no dependency added, `pubspec.lock` unchanged |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues, with `public_member_api_docs` on |
+  | `flutter test` (package) | 0 | 624 passed, 0 failed, 42 s |
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues |
+  | `flutter test` (app) | 0 | 1066 passed, 9 skipped, 0 failed, 41 s |
+  | `check_ui_strings.py` | 0 | 197 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (296 files) | 0 | 11 hooks passed, 6 had no file of that kind |
+
+- Goldens.
+  - **Committed: 288 new matrix goldens** under
+    `packages/specimen_ui/test/gallery/goldens/matrix/`, 52 MB, largest 393 KB
+    against the 1 MB pre-commit ceiling. Twelve pages times four window
+    classes (360, 700, 1000, 1400 dp) times three text scales (1.0, 1.3, 2.0)
+    times two modes, named `<page>_<class>_<scale>_<mode>.png`. Pointer
+    density, reduced motion on, the fonts `flutter_test_config.dart` loads.
+    A full verifying run is 28.6 s wall, against the three minute budget.
+  - **Moved: none.** No existing gallery golden moves. The foundation goldens
+    pin `foundationPages`, each family golden renders its own page alone, and
+    the sidebar arrangement is unchanged pixel for pixel at 1180.
+  - **Application screen goldens and semantics fixtures: none touched and none
+    regenerated.** The app suite is green without them, which is the check
+    that this slot changed nothing a screen draws.
+  - **The integrator regenerates the matrix after G1 and G2 merge**, per 11
+    section 7: those slots change the controls it pictures, and the Fit page
+    collapses from about 4100 dp tall to something near a third of that once
+    the top bar and the toast stop breaking their words one letter to a line.
+- What the goldens show, read by eye at eight of the 288:
+  - `fit_large_1.0_light`: the four columns read left to right as a control
+    recovering as it is given room. `UiSegmented` at 200 dp breaks every
+    segment into single letters, which is the checkpoint 1 defect exactly;
+    at 280 it breaks two labels; at 360 it breaks one; at 480 it is correct.
+    `UiButton` wraps to two lines at 200 and is correct from 280. The focus
+    rings run concentric with the capsules, which is F1's ring shape working.
+  - `fit_large_1.0_light`, further down: `UiTopBar` is the worst thing in the
+    wave. At 200 and 280 dp the title breaks one character to a line and the
+    bar grows to about 500 dp tall, which is most of why the page is 4100 dp
+    tall at scale 1.0. `UiToast` does the same at 200. `UiListRow` and
+    `UiModalActions` draw the black and yellow overflow stripes at 200 and
+    280. `UiDataTile` holds at every width at scale 1.0 and overflows at 2.0.
+    `UiBanner` ellipsises its message at 200, which is its own small defect:
+    11 section 3.3 has banner text wrap, because a sentence is content.
+    `UiField` is correct at every width: the box stretches, the label and the
+    footer wrap.
+  - `fit_compact_1.0_light`: the shell's compact arrangement, the select above
+    the content, the content the full width of the window but its gutters.
+  - `actions_compact_2.0_light`: the family page at a phone width and 200
+    percent text. "Approve record" wraps inside its capsule, "Save correction"
+    breaks between letters, "secondary" breaks as "second ary". Slot G1.
+  - `data_compact_1.0_light`: the page's two column layout leaves each row
+    about 160 dp, and every `UiListRow` draws the overflow stripes with its
+    title ellipsised to "SP...". Slot G2.
+  - `shape_compact_1.0_dark`: the foundation shape page overflows by 3 dp at
+    360, because its stroke rows are a `Row` of a 160 dp swatch and a label.
+    Dark mode is correct everywhere it was read.
+- Durable learnings:
+  - **A `RenderFlex` names the widget at fault once and then stays quiet.**
+    `debugOverflowIndicator` reports an overflow on the first layout that
+    overflows and not again until the amount changes, so a golden loop that
+    reuses its tree records the defect against whichever window happened to be
+    pumped first. The first run of the matrix attributed every overflow to the
+    dark half of each pair for exactly that reason. Unmounting between
+    captures (`pumpWidget(const SizedBox.shrink())`) makes the record a
+    property of the page. It cost 6 s across 288 captures.
+  - **A repeat report also loses the creator chain.** The first report of an
+    overflow carries "The relevant error-causing widget was: Row:file:///...";
+    the ones after it carry only the message. Anything that attributes an
+    overflow to a file has to key on the message and keep the first
+    attribution, or it will see a report it cannot name. The package matrix
+    never hit this because it unmounts between captures; the application's
+    gallery route test did, and records the message instead.
+  - **A page inside a horizontal `SingleChildScrollView` is the only way to
+    draw a 480 dp specimen in a 360 dp window.** A `SizedBox(width: 480)`
+    under a bounded parent is clamped to the parent, so a `Wrap` of fixed
+    width cells silently draws the wrong widths. The scroll view hands its
+    child unbounded width, so 480 is 480 and the window clips it.
+  - **A gallery page is a specimen sheet and states its own glass budget.**
+    The Fit page draws the top bar, the navigation row and the toast once per
+    column, and each is a frosted pane: twelve, plus the shell's page list
+    where the sidebar is drawn. `maxGlassPanes: 13` says so out loud, which is
+    what 10 section 6 asks of a sheet that exceeds the window budget on
+    purpose.
+  - **`Adaptive.of` with `compact` set never returns null**, so the shell
+    resolves its arrangement with `_sidebarArrangement.of(context)!` and a
+    line of comment. A `?? true` there would be a fallback that cannot happen.
+  - **Only one control on a page can hold primary focus.**
+    `FocusableActionDetector` raises the ring from `hasPrimaryFocus` alone, and
+    a forced `WidgetStatesController` gives the control's own paint but not
+    the primitive's ring. A page of forty specimens cannot act focus out, so
+    the Fit page draws the ring with `FocusRing` on the same box the control's
+    own ring wraps, which for a control whose root is a `Pressable` is the
+    identical picture.
+- Failed approaches:
+  - Drawing the four columns widest first, as the table lists the widths. The
+    row is 1380 dp and the content pane at the `large` window is about 1116,
+    so the 200 dp column, the only one where a compact variant has to fire,
+    was off screen in all 24 of the Fit page's goldens.
+  - Keying the overflow backlog by golden. It produced 54 lines that were an
+    artifact of the loop's order (see the learning above), and every one of
+    them would churn the moment a scale or a window changed. By file it is
+    seven lines that name the slot that owns each one.
+  - `find.text(page.title).last` to pick an option out of the gallery's page
+    select in the application test. The title is on screen four times at that
+    point (the trigger, the page heading, the option, the page body) and the
+    last is not the option. Filtering the list and pressing `Enter`, which is
+    `UiSelect`'s own documented interaction, is both shorter and exact.
+  - Lengthening the Fit page's button and chip labels was not vanity: at
+    "Approve this record" and "Needs human review" both controls fit all four
+    columns, and a specimen whose label happens to fit every width is evidence
+    of nothing.
+- Deviations from the brief, each deliberate:
+  - **One file outside the slot was edited:
+    `packages/specimen_ui/test/foundation/no_fallback_text_style_test.dart`,
+    which is F2's.** That gate walks every page of `galleryPages`, the Fit
+    page is now one of them, and a layout overflow reported during its pump
+    fails the test. The gate is about the style a paragraph inherits, not
+    about layout, so it now runs its page walk with overflow reports set
+    aside and hands every other report straight back to the framework. Nothing
+    it asserts is weakened. The alternative was a red package suite or a Fit
+    page that does not picture the defect it exists for. F2 is merged and no
+    live slot owns that file, so the edit should not conflict.
+  - **`test/gallery/gallery_shell_test.dart` is a new file the slot brief does
+    not list.** The compact arrangement and its keyboard were otherwise
+    proved only by a golden, and a golden cannot say that `Enter` opened the
+    page. Six tests, all in the slot's own area.
+  - **The matrix window is a fixed 900 dp**, which the brief offers as one of
+    two choices. The other, a height that shows the whole page, would make the
+    data page about 3800 dp at scale 2.0 and the Fit page about 8000, which is
+    a multi megabyte binary per golden and over the 1 MB pre-commit ceiling.
+  - **The matrix shows each page alone in the shell's page list**, the way a
+    family golden does, so registering a page moves that page's 24 files and
+    nobody else's. The shell's two arrangements are still pictured, and
+    `gallery_shell_test.dart` is what proves the list itself.
+  - **`extraLarge` is not a column of the matrix.** Nothing in the system
+    declares an arrangement at 1600 that it does not already have at 1200, so
+    a fifth column would be a fifth more goldens for none of the evidence.
+  - **The commit trailer names Claude Opus 5 (1M context).** The slot brief
+    asked for a different model's line; the session's own attribution
+    instruction is the one followed, as slot F2 did before it.
+- Follow-ups, with the slot that owns each:
+  - **G1 and G2, from `overflowBacklog` in
+    `test/gallery/matrix_golden_test.dart`.** `controls/data/list_row.dart`
+    (108 reports), `controls/overlays/sheet.dart`, which is `UiModalActions`
+    (72), `controls/overlays/toast.dart` (32),
+    `controls/navigation/pill_nav.dart` (6) and `controls/data/data_tile.dart`
+    (2). Each line is deleted when the control gets its fit policy, and the
+    matrix fails if one is left standing after it stops overflowing.
+  - **Nobody's slot yet: two foundation gallery pages cannot be drawn at a
+    phone width.** `gallery/pages/shape_page.dart:68` lays a 160 dp stroke
+    swatch beside its label in a `Row` and overflows by 3 dp at 360;
+    `gallery/pages/type_page.dart:64` puts the 64 dp hero numeral beside its
+    unit and overflows above scale 1.0. Both want a `Wrap`. They are recorded
+    in `overflowBacklog` and in `knownNarrowOverflows` in the application's
+    `test/app/gallery_route_test.dart`. Neither is a control and neither was
+    written to be drawn this narrow, because until this slot the gallery was
+    never opened there.
+  - **`UiBanner` ellipsises its message at 200 dp.** 11 section 3.3 has
+    banner text wrap, because a sentence is content rather than a label. Slot
+    G2, and it is visible on the Fit page's ninth section.
+  - **The comment at the top of `no_fallback_text_style_test.dart`'s page loop
+    still says the pages are pumped outside `UiGallery` "because the shell
+    publishes a text style of its own".** It no longer does. One stale
+    sentence in a file this slot only minimally edited; the integrator or a
+    later polish can delete it, and the gate could then pump the shell itself.
+  - **The Fit page's focused row covers four of its ten sections.** The other
+    six draw their ring on a member the control builds for itself and cannot
+    be reached from outside it. Two of those, `UiSegmented` and `UiTabs`,
+    would be reachable if the segment took a builder; nothing needs that yet,
+    and a ring drawn around the whole track would be a picture the product
+    never draws.
+- Package API wave G and the integrator will want:
+  - `galleryPages` is now `foundationPages` plus `familyPages` plus `fitPage`,
+    twelve pages. `fitPage` and `fitColumns` live in
+    `lib/src/gallery/pages/fit_page.dart` and are reached through
+    `galleryPages` rather than exported, the way every family page is.
+  - `UiGallery` is unchanged in its constructor and its `pages` parameter. It
+    now reads `MediaQuery.sizeOf` through `WindowClass`, so a host that pumps
+    it has to publish a `MediaQuery`, which `uiHarness` already does.
+  - `matrixClasses`, `matrixScales`, `matrixWindowHeight`, `matrixDensity`,
+    `matrixGoldenName` and `overflowBacklog` are the matrix's own constants,
+    in `test/gallery/matrix_golden_test.dart`, for whoever regenerates it.
