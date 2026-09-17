@@ -1089,9 +1089,10 @@ section.
 Overlays, navigation and data moved again in wave G, measured the same way,
 when each page gained the fit section 11 section 3.3 asks for: 1540 for
 overlays, 1220 for navigation and 2280 for data. Data moved once more in
-polish 2, to 2360, when the row gained the variant that puts its trailing
-under the title and the 200 dp specimen grew by a line: the page measures 2343
-and 2360 is the first height with nothing left to scroll. Two of those pages also state
+polish 2, to 2460, when the row gained the variant that puts its trailing
+under the title and the 200 dp specimen grew by a line, and when the tile
+gained the paper surface a list header can hold: the page measures 2458 and
+2460 is the first height with nothing left to scroll. Two of those pages also state
 a frosted pane count of their own, seven for overlays and eight for data,
 because a sheet that shows one toast or one tile per column draws four of
 them; a product window draws one toast and one row of tiles.
