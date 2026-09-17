@@ -88,11 +88,24 @@ allowlist is not evidence that an entrypoint or its live inputs are ready.
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
 | `Python tests` | Locked Python environment and all backend/policy tests |
-| `Flutter checks and web build` | Locked Flutter dependencies, static analysis, widget tests, release build, and immutable deployment metadata |
+| `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
 They receive neither the real FlutterFire configuration nor a Google OIDC
 token and cannot deploy.
+
+`scripts/ci/smoke_web_routes.py` runs between the deployment stamp and the
+artifact upload, so a build that fails it is never uploaded and therefore can
+never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites
+`firebase.json` declares, reads the route table out of
+`apps/specimen_digitization/lib/src/app/app_router.dart`, and proves three
+things about the artifact: every declared location answers with the
+application shell rather than a 404, the design system gallery is absent from
+the release bundle, and `deployment.json` is the exact marker
+`scripts/ci/deploy_hosting.sh` and `scripts/ci/smoke_hosting.sh` accept. It
+contacts no host, holds no credential and deploys nothing. It says nothing
+about the public site: only `scripts/ci/smoke_hosting.sh` does that, after a
+deploy.
 
 ### Pushes to `main`
 
@@ -209,10 +222,17 @@ scripts/ci/verify.sh
 ```
 
 This is the canonical local gate. It runs repository hooks, secret scanning,
-actionlint, shellcheck, locked Python installation, Python tests, Flutter
-dependency resolution, Flutter analysis, Flutter tests, and the release web
-build. If the local ignored production FlutterFire file is absent, it uses and
-then removes the credential-free CI placeholder. It never deploys.
+actionlint, shellcheck, locked Python installation, Python tests, the UI
+string check, the `specimen_ui` design system's own analysis and tests, client
+dependency resolution, client analysis, client tests, Dart formatting, the
+release web build, and the route smoke over that build. If the local ignored
+production FlutterFire file is absent, it uses and then removes the
+credential-free CI placeholder. It never deploys.
+
+It runs the same Dart formatting and route checks the `Flutter checks and web
+build` job runs, so a branch that passes here passes those two in CI. On a
+loaded workstation the whole script can be reaped part way through; run its
+gates one at a time when that happens and read each gate's own exit status.
 
 ### Repository and secret checks only
 
