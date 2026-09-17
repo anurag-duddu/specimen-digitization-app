@@ -459,6 +459,16 @@ sheet asked for.
   resolved by whichever of the two the resolver happened to test first. Both
   hover and press are cleared in the same pass that sets `disabled`.
 
+### Primitives, continued
+- `FieldLayer` cross fades one sky into the next rather than cutting to it.
+  `ui.motion.standard`, which is what the detail pane beside it cross fades at
+  (04 section 4, row 17) and which the tokens return as zero under reduced
+  motion, so the swap is instant there with no branch in the layer. The
+  switcher does not animate its first child, so a screen opens with its own
+  sky already painted. Reason: the application now paints `sky.work` on the
+  record route and `sky.home` everywhere else, and a hard cut of the light
+  behind the whole window reads as a flash.
+
 ### Data
 - `UiListRow`'s tone follows its state, as every other control's does.
   `UiListRowStyle.titleColor`, `subtitleColor` and `trailingColor` are
@@ -483,8 +493,30 @@ sheet asked for.
   at 200 dp was thirteen logical pixels of chip.
 - `UiListRowStyle` gains `stackGap`, the space between the text and a trailing
   drawn under it, and `trailingMin`.
+- A `UiListRow` with no `onPressed`, no `onLongPress` and no `disabledReason`
+  publishes a plain node with the row's words, and no role, no focus and no
+  state layer. Reason: it used to be a `Pressable` with nothing to do, so an
+  upload row and a photograph that is not a record announced "disabled
+  button", which promises a button a reviewer then cannot find, and the intake
+  screens were wrapping such rows in `Semantics(excludeSemantics: true)` to
+  silence it. A row the server forbids is the other case and keeps its
+  `Pressable`: it is a control, it is off, and it owes the reviewer the
+  reason.
+- `UiDataTile` takes `surface`, a `UiDataTileSurface` of `glass` (the default,
+  unchanged) or `paper`, which is the same shape and the same tokens on a
+  solid pane with a hairline. Reason: `GlassSurface` asserts inside a sliver
+  list item, because 09 section 3.3 forbids glass on repeated items, and three
+  tiles in a list header spend the whole four pane glass budget on one row of
+  chrome. A manifest's three counts are the product's own example and were a
+  private `_CountTile` for want of this.
 
 ### Overlays
+- `UiDisclosure`'s header keeps the 48 dp hit box of clause 2 in both
+  densities. Reason: a header whose title fits one line was
+  `density.rowHeight` tall, which is 44 in pointer, so every tap target
+  guideline on a screen with a disclosure on it failed. The visual row keeps
+  its density height and the difference is transparent slop inside the
+  control's own box, so a column of disclosures still tiles without gaps.
 - `UiDialog` takes `scrollBody`, defaulting to true, and `UiDialog.show` and
   `UiDialog.showAdaptive` forward it. Reason: `UiSheet` already had it, so a
   body written for `showAdaptive` had to know which of the two frames it landed
@@ -493,15 +525,29 @@ sheet asked for.
   nowhere to go. The application's filter form was carrying the difference as a
   height cap of its own.
 
+### Navigation
+- `UiScaffoldExclusion` is new: a screen inside a scaffold asks for a
+  rectangle to be kept clear with
+  `UiScaffoldExclusion.of(context)?.publish(rect)`, and the frame clips its
+  fields out of it. Reason: `UiScaffold.exclusion` is a constructor argument
+  and the frame is built by the application's shell, which does not know where
+  the photograph is, so the 24 dp clear band around a matte (09 section 2,
+  principle 1) was unreachable from the pane that draws it. What the page asks
+  for wins over what the caller passed, and `of` returns null outside a
+  scaffold so a publisher is one call with no branch. Publishing is safe from
+  a layout callback: a change reported while the frame is being built is
+  announced after it.
+
 ### Gallery
 - Every "Needs human review" in the gallery is "Needs review", which is the
   chip label 02 section 4.13 specifies; the long form is the queue state's own
   name and stays in the token documentation, where it names which state a role
   and a glyph stand for.
-- The data page's fit section notes the row's third variant at 200 dp, and the
-  data family golden window is 1180 by 2360 rather than 2280: the page needs
-  2343 with the taller 200 dp row on it, and 2360 is the first height with
-  nothing left to scroll. Measured, not guessed (10 section 6).
+- The data page's fit section notes the row's third variant at 200 dp, its
+  tile section gains the paper surface, and the data family golden window is
+  1180 by 2460 rather than 2280: the page needs 2458 with the taller 200 dp
+  row and the new tile on it, and 2460 is the first height with nothing left
+  to scroll. Measured, not guessed (10 section 6).
 - The Fit page's `UiListRow` section names all three variants.
 
 ## 0.2.0

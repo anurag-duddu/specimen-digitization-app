@@ -292,7 +292,7 @@ motion state the test asked for rather than in the light fallback.
 | `StateLayer` | `AnimatedContainer` | The hover and press overlay per the contract | Used only inside `Pressable`. |
 | `Surface` | `DecoratedBox`, `ClipRSuperellipse` | A solid `paper` or `matte` pane with a shape token and optional hairline | The non-glass container. |
 | `GlassSurface` | `BackdropFilter`, `ClipRSuperellipse`, `DecoratedBox` | The 09 section 3.3 recipe at a level; honours `GlassQuality`; asserts in debug that it is not inside a scrolling list item | Counted by `glass_budget`. |
-| `FieldLayer` | `CustomPaint`, `RepaintBoundary` | Paints a sky preset once behind a screen; clips the matte exclusion zone passed by the source pane | The only gradient painter in the product. |
+| `FieldLayer` | `CustomPaint`, `RepaintBoundary` | Paints a sky preset once behind a screen; clips the matte exclusion zone passed by the source pane | The only gradient painter in the product. Amended in polish 2: one preset cross fades into the next at `motion.standard`, which the tokens return as zero under reduced motion, because the application now paints `sky.work` on the record route and a hard cut of the light behind the whole window reads as a flash. |
 | `FocusRing` | `CustomPaint` | The 2 dp ring, 2 dp gap, radius plus 4, outside bounds, on the shape it rings | Amended in wave F: it takes a `FocusRingShape` (`superellipse`, `stadium`, `circle`) and paints an `RSuperellipse`, an `RRect` at half the shorter side, or a circle, so ring and edge run concentric at every corner. Used by `Pressable`, `UiFieldBox` and `UiRadio`; `FieldCore` no longer draws one, because the edge and the ring belong to the same layer. `Pressable.focusRing` turns its own ring off for a control that rings its own edge. |
 | `Squircle` | `RoundedSuperellipseBorder`, `ClipRSuperellipse`, `StadiumBorder` | `Squircle.border(radius)`, `Squircle.clip(radius, child)`; switches to capsule when radius is at least half the height | Every corner in the product passes through here. |
 | `Popover` | `OverlayPortal`, `TapRegion`, `FocusScope`, `Shortcuts` | Anchored overlay with placement (above, below, start, end, auto), outside-tap and `Escape` dismissal, focus return, `glass.floating` | Base of menus, selects, tooltips, date inputs. |
@@ -750,7 +750,13 @@ titles are `UiLabel`, one line with the whole of the title on the semantics
 node, because a title that wraps to four lines pushes the body out of the
 pane.
 
-Amended in polish 2. `scrollBody` is on the dialog as well as the sheet, and
+Amended in polish 2, twice. `UiDisclosure`'s header hit box is the 48 dp of
+section 2 clause 2 in both densities: it published `density.rowHeight`, which
+is 44 in pointer, and every tap target guideline on a screen with a disclosure
+failed on it. The visual row keeps its density height and the difference is
+transparent slop inside the control's own box, so a column of disclosures
+still tiles without gaps. And `scrollBody` is on the dialog as well as the
+sheet, and
 defaults to true on both, so a body written for `showAdaptive` never has to
 know which of the two frames it landed in. A dialog is bounded by the window
 it floats in, and two sentences are three lines at 200 percent text on a short
@@ -864,6 +870,15 @@ density height alone (11 section 2.2), which is 56 and 48 unchanged at scale
 the caller from window class); applies safe areas and keyboard insets; hosts
 the toast layer. Retires `Scaffold`.
 
+Amended in polish 2: `exclusion` is reachable from inside the page.
+`UiScaffoldExclusion.of(context)?.publish(rect)` asks the frame to keep a
+rectangle clear and the field layer clips its fields out of it; what the page
+asks for wins over what the caller passed. The argument alone was unreachable
+in this product, because the frame is built by the application's shell and the
+shell does not know where the photograph is, so the 24 dp clear band around a
+matte that 09 section 2 principle 1 makes non negotiable had nowhere to come
+from.
+
 Amended in wave 1, four ways. "Hosts the toast layer" is now exact: with no
 `overlays` of its own the frame wraps `body` in a `UiToastHost` and gives it
 the published bottom inset, so `UiToasts.show` works from anywhere in any page
@@ -924,6 +939,12 @@ both. A `UiRowTrailing` reaches it after its word and its glyph rungs; a
 trailing the row cannot read (a chip, a switch, a time) has no glyph rung and
 goes there directly, at the point where the line would leave it less than the
 hit box, which replaces the bound wave G's integration put on such a trailing.
+A row with nothing to do and no reason it cannot be done is not a control at
+all, and stops saying it is one: an upload row and a photograph that is not a
+record publish the same one merged node with the same words and no role, no
+focus and no state layer, where they used to announce "disabled button" and
+send a reviewer looking for a button that is not there. A row the server
+forbids keeps its `Pressable`, because there is a control and it is off.
 And the row's tone follows its state, as every other control's does: the
 title, the subtitle, a `UiRowTrailing`'s word and glyph, and the selected
 row's bar all resolve `disabled.content` when the row is disabled. A row the
@@ -986,6 +1007,13 @@ does not decide how a measurement is written, and "Not measured" at
 "Not", which is worse than one that is two lines tall (02 section 4.14). The
 one node merges its child's, so a `child` carrying a value of its own states
 it in the tile's `semanticsLabel`.
+
+Amended in polish 2: the tile takes a `surface`, `glass` or `paper`. The
+frosted pane is the default and 09 section 3.3's tile; the solid one is the
+same shape and the same tokens for the two places glass cannot go, inside a
+scrolling list item and in a row of counts wide enough to spend the whole four
+pane budget on one header. A manifest's three counts are the product's own
+example.
 
 Amended in wave G: the value no longer wraps. 11 section 3.3 gives the tile a
 third option the wave 1 amendment did not have, so "Not measured" arrives at a
