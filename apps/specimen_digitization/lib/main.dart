@@ -209,8 +209,8 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
     final Widget app = MaterialApp.router(
       title: 'Specimen Digitization',
       debugShowCheckedModeBanner: false,
-      theme: _lightTheme,
-      darkTheme: _darkTheme,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
       routerConfig: _router,
       // `UiTheme` and the density probe sit here rather than above
@@ -237,22 +237,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
                 data: Theme.of(context).brightness == Brightness.dark
                     ? _darkTokens
                     : _lightTokens,
-                child: ExpansionTileTheme(
-                  // `ExpansionTile` animates at Material's own 200 ms on a
-                  // linear curve. The duration is already the `standard`
-                  // token; the curve is not, and the reduced-motion collapse
-                  // is ours to apply because a theme built once at startup
-                  // cannot read an accessibility feature (motion catalog,
-                  // row 43).
-                  data: ExpansionTileThemeData(
-                    expansionAnimationStyle: AnimationStyle(
-                      duration: MotionTokens.of(context).standard,
-                      curve: MotionTokens.standardCurve,
-                      reverseCurve: MotionTokens.standardCurve,
-                    ),
-                  ),
-                  child: child ?? const SizedBox.shrink(),
-                ),
+                child: child ?? const SizedBox.shrink(),
               ),
             ),
           ),
@@ -269,22 +254,6 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   }
 }
 
-/// The page transitions the motion document specifies (section 6.1).
-///
-/// The mobile entries restate Flutter's own defaults so a future SDK change is
-/// a visible diff; the desktop and web entries move off the zoom transition
-/// onto the Material 3 forward transition.
-const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
-  builders: <TargetPlatform, PageTransitionsBuilder>{
-    TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-    TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-    TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-    TargetPlatform.fuchsia: FadeForwardsPageTransitionsBuilder(),
-  },
-);
-
 /// The tokens, built once. `UiTheme.of` folds the live density and the live
 /// reduced-motion state into these on every read, so the stored value carries
 /// only what does not change while the window is open.
@@ -292,11 +261,3 @@ final UiThemeData _lightTokens = UiThemeData.light();
 
 /// The dark tokens.
 final UiThemeData _darkTokens = UiThemeData.dark();
-
-final ThemeData _lightTheme = AppTheme.light().copyWith(
-  pageTransitionsTheme: specimenPageTransitions,
-);
-
-final ThemeData _darkTheme = AppTheme.dark().copyWith(
-  pageTransitionsTheme: specimenPageTransitions,
-);

@@ -11,7 +11,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
-import 'package:specimen_digitization/src/theme/semantic_colors.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// WCAG 2.2 relative luminance, on a channel in the range 0 to 1.
 double _channel(double c) =>
@@ -33,6 +33,39 @@ const double textMinimum = 4.5;
 /// https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html
 const double nonTextMinimum = 3.0;
 
+/// A named fill and the colour that has to stay legible on it.
+typedef FillPair = ({String name, Color fill, Color onFill});
+
+/// Every fill the product paints text on, with that text's colour.
+List<FillPair> fillPairsOf(UiColor ui) {
+  final UiStatusColors status = ui.status;
+  return <FillPair>[
+    for (final MapEntry<String, UiStatusTriple> e in status.triples.entries)
+      (name: e.key, fill: e.value.fill, onFill: e.value.onFill),
+    (
+      name: 'environment.synthetic',
+      fill: status.environmentSyntheticFill,
+      onFill: status.environmentSyntheticOnFill,
+    ),
+    (
+      name: 'region.selected',
+      fill: status.regionSelectedCasing,
+      onFill: status.regionSelectedCore,
+    ),
+  ];
+}
+
+/// Diff fills carry body text in `ink`, not in an on-fill colour, so they are
+/// checked against the body colour the surface supplies.
+List<FillPair> diffFillPairsOf(UiColor ui, Color onSurface) => <FillPair>[
+  (name: 'diff.added fill', fill: ui.status.diffAddedFill, onFill: onSurface),
+  (
+    name: 'diff.changed fill',
+    fill: ui.status.diffChangedFill,
+    onFill: onSurface,
+  ),
+];
+
 void main() {
   group('the WCAG formula itself', () {
     test('reproduces the two ratios everyone knows', () {
@@ -47,10 +80,10 @@ void main() {
     });
   });
 
-  for (final (String name, ThemeData theme, SpecimenColors tokens)
-      in <(String, ThemeData, SpecimenColors)>[
-        ('light', AppTheme.light(), SpecimenColors.light),
-        ('dark', AppTheme.dark(), SpecimenColors.dark),
+  for (final (String name, ThemeData theme, UiColor tokens)
+      in <(String, ThemeData, UiColor)>[
+        ('light', AppTheme.light(), UiColor.light),
+        ('dark', AppTheme.dark(), UiColor.dark),
       ]) {
     final ColorScheme scheme = theme.colorScheme;
     final Map<String, Color> surfaces = <String, Color>{
@@ -138,7 +171,7 @@ void main() {
 
       test('every product content token clears 4.5:1 on every surface', () {
         for (final MapEntry<String, Color> t
-            in tokens.allContentColors.entries) {
+            in tokens.status.contentColors.entries) {
           for (final MapEntry<String, Color> s in surfaces.entries) {
             expect(
               contrast(t.value, s.value),
@@ -150,7 +183,7 @@ void main() {
       });
 
       test('every on-fill clears 4.5:1 on its fill', () {
-        for (final FillPair pair in tokens.fillPairs) {
+        for (final FillPair pair in fillPairsOf(tokens)) {
           expect(
             contrast(pair.onFill, pair.fill),
             greaterThanOrEqualTo(textMinimum),
@@ -160,7 +193,7 @@ void main() {
       });
 
       test('body text on a diff fill clears 4.5:1', () {
-        for (final FillPair pair in tokens.diffFillPairs(scheme.onSurface)) {
+        for (final FillPair pair in diffFillPairsOf(tokens, scheme.onSurface)) {
           expect(
             contrast(pair.onFill, pair.fill),
             greaterThanOrEqualTo(textMinimum),
@@ -170,7 +203,8 @@ void main() {
       });
 
       test('content is legible on its own fill', () {
-        for (final MapEntry<String, TokenTriple> t in tokens.triples.entries) {
+        for (final MapEntry<String, UiStatusTriple> t
+            in tokens.status.triples.entries) {
           expect(
             contrast(t.value.content, t.value.fill),
             greaterThanOrEqualTo(textMinimum),
@@ -196,7 +230,9 @@ void main() {
       // theme passes them to every button, chip and field rather than
       // leaving Material's default in place.
       test('both disabled tokens clear 3:1 on every surface', () {
-        for (final MapEntry<String, Color> t in tokens.disabledColors.entries) {
+        for (final MapEntry<String, Color> t in _disabledColours(
+          tokens,
+        ).entries) {
           for (final MapEntry<String, Color> s in surfaces.entries) {
             expect(
               contrast(t.value, s.value),
@@ -219,10 +255,7 @@ void main() {
 
       test('disabled content clears 3:1 on the disabled container', () {
         for (final MapEntry<String, Color> s in surfaces.entries) {
-          final Color filled = Color.alphaBlend(
-            tokens.disabledContainer,
-            s.value,
-          );
+          final Color filled = Color.alphaBlend(tokens.disabledFill, s.value);
           expect(
             contrast(tokens.disabledContent, filled),
             greaterThanOrEqualTo(nonTextMinimum),
@@ -260,13 +293,14 @@ void main() {
       });
 
       test('a region stroke survives the photograph behind it', () {
+        final UiStatusColors status = tokens.status;
         expect(
-          contrast(tokens.regionOverlayStroke, tokens.regionOverlayCasing),
+          contrast(status.regionOverlayStroke, status.regionOverlayCasing),
           greaterThanOrEqualTo(nonTextMinimum),
           reason: '$name region overlay against its casing',
         );
         expect(
-          contrast(tokens.regionSelectedCore, tokens.regionSelectedCasing),
+          contrast(status.regionSelectedCore, status.regionSelectedCasing),
           greaterThanOrEqualTo(nonTextMinimum),
           reason: '$name selected region against its casing',
         );
@@ -274,3 +308,14 @@ void main() {
     });
   }
 }
+
+/// The two disabled tokens, by the name a failure reports them under.
+///
+/// WCAG 2.2 exempts an inactive component from both 1.4.3 and 1.4.11, but a
+/// disabled control in this product carries the reason the server forbids the
+/// decision, so both are held to the 3:1 non-text floor on every surface
+/// (09 section 3.6).
+Map<String, Color> _disabledColours(UiColor ui) => <String, Color>{
+  'disabled.content': ui.disabledContent,
+  'disabled.outline': ui.disabledOutline,
+};
