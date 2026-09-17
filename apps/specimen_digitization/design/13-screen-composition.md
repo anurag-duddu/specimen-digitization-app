@@ -145,6 +145,19 @@ lands), so the shell owns the bottom of the screen and the budget.
 sky preset paints, whether the environment band is the one line form. The
 shell already switches the sky by route; the pill and the band follow.
 
+**Amendment, wave A integration (2026-09-17).** Three rules the merge of the
+record and the shell settled. A screen's ask comes before the shell's rule for
+the same thing: the shell states the band's form by window, the strip at
+compact and the full band above, and the record asks for the strip at every
+window because its decision bar and the band are what its chrome budget is
+spent on; the shell takes a route's ask where one exists and its window rule
+where none does. A null written to a slot by a screen that does not hold it is
+not a release: the queue stays mounted under the record pushed over it and
+gives back the bulk bar it no longer needs, and that null must not take the
+record's decision bar with it. `setNavVisible(false)` hides the navigation the
+frame floats, the pill, and never a rail or a sidebar: they are columns beside
+the body and the only navigation a desktop has inside a record.
+
 ### 3.5 `UiStickyBar`
 A pinned `SliverPersistentHeader` of one fixed extent for the region that
 scrolls up to the header and then sticks under it: the record's segments, the

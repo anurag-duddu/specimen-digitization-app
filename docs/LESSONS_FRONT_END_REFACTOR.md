@@ -264,6 +264,29 @@ form and the new in one walk, outermost only, for as long as both exist; a
 switch that picks one is right only at the two ends of the migration. From the
 wave A integration.
 
+**Two green slots merge into a red screen, and the gate says green.** Slot A2
+made the record publish its decision bar into the frame's action bar slot; slot
+A3 made the queue give the slot back with a null when a record is pushed over
+it. Each branch passed every test. Merged, the queue's null arrived one frame
+after the record's bar and cleared it, so the record had no decision bar at any
+window, and the chrome budget read the missing region as a screen well inside
+its budget. Three of the wave's four integration defects were of this shape: a
+last write to a shared slot from a screen that no longer held it, a nearer ask
+(the shell's band form by window) shadowing a farther one (the record's), and
+one ask (hide the navigation) read wider than its clause (hide the pill). When
+two slots publish into one seam, run the seam's tests on the merged tree before
+the gates, and print the parts a gate sums, not only the share: 27 percent with
+five regions and 27 percent with four are different screens. From the wave A
+integration.
+
+**A shared slot is a contract about who may write null.** `UiScaffoldSlots`
+took an owner so that `release(owner)` gives back only what that owner holds,
+and every setter then accepted a null from anyone. The owner has to bind the
+null as well as the value, or the first screen to say "I no longer need this"
+takes the next screen's chrome with it; a null that names no one is the only
+outright clear, and it belongs to `release` alone. The same rule applies to any
+ambient a screen publishes and a frame reads. From the wave A integration.
+
 ## 3. The design lessons
 
 **Every layer was correct and nobody owned the seam.** Checkpoint 1 found a
