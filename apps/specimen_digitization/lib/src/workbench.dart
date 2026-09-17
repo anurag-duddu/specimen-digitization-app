@@ -11,7 +11,11 @@
 /// the navigation pill, asks for the one line environment band and fills the
 /// action bar with its decision bar, all four through `UiScaffoldSlots`, so
 /// the shell owns the top and the bottom of the window and the chrome budget
-/// with them (13 sections 2.3 and 3.4). What is left is the work: the
+/// with them (13 sections 2.3 and 3.4). From the expanded class up the
+/// decision sits in the top bar beside the identifier and the action bar is
+/// given back, because the bar, the band and an action bar together are more
+/// than the 20 percent those classes allow at 200 percent text
+/// (`decisionInTopBar`). What is left is the work: the
 /// photograph never scrolls away, every correction happens with the pixels on
 /// screen, and the corrections a reviewer makes on one record are saved
 /// together under one reason.
@@ -387,28 +391,34 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   ///
   /// Four asks. The bar across the top carries the identifier, the way out
   /// and the record's own commands, none of which the shell that built the
-  /// frame holds. The action bar carries the decision bar, so the two
-  /// decisions sit on the frame's one pane rather than on a second one over
-  /// it. The navigation pill is hidden, because the way out of a record is
-  /// the bar's back and three other destinations are chrome the reviewer did
-  /// not ask for. The band drops to its one line form, which is what buys the
-  /// action bar its share of the budget on a phone.
+  /// frame holds; from `expanded` up it carries the decision as well
+  /// ([decisionInTopBar]). The action bar carries the decision bar at compact
+  /// and medium, so the two decisions sit on the frame's one pane rather than
+  /// on a second one over it, and is given back from `expanded` up, where the
+  /// bar, the band and an action bar together are more than the 20 percent
+  /// 13 section 2.3 allows at 200 percent text. The navigation pill is
+  /// hidden, because the way out of a record is the bar's back and three
+  /// other destinations are chrome the reviewer did not ask for. The band
+  /// drops to its one line form, which is what buys the action bar its share
+  /// of the budget on a phone.
   ///
   /// Called from `build`, because every one of the four reads state that
   /// changes under the reviewer: the identifier when the record is replaced,
   /// the two decisions when the server withdraws one, the count when the
-  /// queue moves. A publish during a build is announced after it, which is
-  /// what `UiScaffoldSlots` promises, and the frame rebuilds the chrome and
-  /// not the body, so the two settle rather than chase each other.
+  /// queue moves, the window class when the frame is resized. A publish
+  /// during a build is announced after it, which is what `UiScaffoldSlots`
+  /// promises, and the frame rebuilds the chrome and not the body, so the two
+  /// settle rather than chase each other.
   void _publish(BuildContext context) {
     final UiScaffoldSlots? slots = _slots;
     if (slots == null) return;
-    final List<Object?> now = _chromeState();
+    final bool decides = decisionInTopBar(WindowClass.of(context));
+    final List<Object?> now = _chromeState(decides: decides);
     if (_published != null && listEquals(_published, now)) return;
     _published = now;
     slots
-      ..setTopBar(_recordTopBar(context), owner: this)
-      ..setActionBar(_decisionBar(context), owner: this)
+      ..setTopBar(_recordTopBar(context, decides: decides), owner: this)
+      ..setActionBar(decides ? null : _decisionBar(context), owner: this)
       ..setNavVisible(false, owner: this)
       ..setBandCompact(true, owner: this);
   }
@@ -421,7 +431,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// chasing each other one frame apart for as long as the record is open.
   /// This is every value the two bars read, compared before publishing, so a
   /// rebuild that changes none of them changes nothing in the frame.
-  List<Object?> _chromeState() => <Object?>[
+  List<Object?> _chromeState({required bool decides}) => <Object?>[
+    decides,
     widget.specimen.id,
     widget.busy,
     _pending.length,
@@ -838,18 +849,40 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   /// The record's own bar across the top (13 section 4.1).
   ///
-  /// Back, the specimen identifier in `mono.identifier`, and the commands
-  /// that belong to the record rather than to any one segment of it. The bar
-  /// keeps the first two of them beside the identifier and puts the rest in
-  /// its own overflow menu, which is the fit policy 11 section 3.3 gives it,
-  /// so a phone reaches every command through one control instead of four
-  /// rows of the page.
+  /// Back, the specimen identifier in `mono.identifier`, refresh, and one
+  /// overflow trigger holding the commands that belong to the record rather
+  /// than to any one segment of it: correct label regions, correct
+  /// classification, retry, copy the identifier, source details and the
+  /// shortcut list. 13 section 4.1 gives the bar those three things and puts
+  /// the record's commands in its overflow menu, and 13 section 2.4 gives a
+  /// region one job, so the trigger is built here rather than left to the
+  /// bar's own fit ladder: that ladder draws every declared action wherever
+  /// there is width for it, which was seven discs across a 1440 dp window,
+  /// two of them sharing a glyph. The menu rows carry the same labels,
+  /// glyphs, shortcuts and reasons the discs would.
+  ///
+  /// From `expanded` up the bar carries the decision as well
+  /// ([decisionInTopBar]). The identifier and the decision bar share the
+  /// bar's middle: the identifier at its own width, bounded only by the
+  /// middle itself, and the decision in what is left, so the name is never
+  /// cut and the decision degrades by its own ladder, the secondary into its
+  /// menu and then the primary's ellipsis. The middle is the one slot the bar
+  /// hands a bounded width, which the decision bar needs for the count it
+  /// stretches; an action slot is laid out at its intrinsic width.
   ///
   /// The collection switcher is deliberately absent: a reviewer inside a
   /// record is inside one collection, and a control that would take them to
   /// another is the top bar doing a second job (13 sections 2.4 and 4.1).
-  Widget _recordTopBar(BuildContext context) {
+  Widget _recordTopBar(BuildContext context, {required bool decides}) {
     final UiThemeData ui = context.ui;
+    // The centre slot rather than the title, because an identifier is set in
+    // `mono.identifier` and a title is set in `type.title`: two records whose
+    // identifiers differ by one character have to be told apart at a glance
+    // (blueprint 6.1).
+    final Widget identifier = UiLabel(
+      widget.specimen.id,
+      style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
+    );
     return UiTopBar(
       leading: widget.onBack == null
           ? null
@@ -859,14 +892,26 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               tooltip: backToQueueLabel,
               onPressed: widget.onBack,
             ),
-      // The centre slot rather than the title, because an identifier is set
-      // in `mono.identifier` and a title is set in `type.title`: two records
-      // whose identifiers differ by one character have to be told apart at a
-      // glance (blueprint 6.1).
-      center: UiLabel(
-        widget.specimen.id,
-        style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
-      ),
+      center: decides
+          ? LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) =>
+                  Row(
+                    children: <Widget>[
+                      // A row hands an inflexible child an unbounded width;
+                      // the bound is the middle itself, so the label reads
+                      // its own overflow and ellipsises only past that.
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth,
+                        ),
+                        child: identifier,
+                      ),
+                      SizedBox(width: ui.space.s4),
+                      Expanded(child: _decisionBar(context)),
+                    ],
+                  ),
+            )
+          : identifier,
       actions: <Widget>[
         UiTopBarAction(
           icon: UiIcons.reload,
@@ -876,6 +921,28 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               : null,
           onPressed: widget.busy ? null : _refresh,
         ),
+        UiMenuTrigger(
+          semanticsLabel: UiTopBarStyle.overflowLabel,
+          icon: UiIcons.more,
+          items: <UiMenuItem>[
+            for (final UiTopBarAction command in _recordCommands(context))
+              command.menuItem,
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// The record's own commands, declared once and drawn as menu rows.
+  ///
+  /// Declared as `UiTopBarAction`s rather than as menu items so that each
+  /// carries the glyph, the label, the shortcut and the reason in the one
+  /// form the bar reads, and so a test reads a command rather than hunting
+  /// for the row that draws it. Every glyph is its own: classification is the
+  /// provenance tree, and the source details sheet, which is the checksum and
+  /// the coordinate basis of the photograph, is supporting information.
+  List<UiTopBarAction> _recordCommands(BuildContext context) =>
+      <UiTopBarAction>[
         UiTopBarAction(
           icon: UiIcons.correctRegions,
           label: SourceRegionEditControl.label,
@@ -902,7 +969,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           onPressed: () => _copyIdentifier(context),
         ),
         UiTopBarAction(
-          icon: UiIcons.provenance,
+          icon: UiIcons.info,
           label: sourceDetailsLabel,
           onPressed: () => showSourceDetailsSheet(context, asset: _asset),
         ),
@@ -912,9 +979,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           shortcut: 'Question mark',
           onPressed: () => showShortcutSheet(context),
         ),
-      ],
-    );
-  }
+      ];
 
   /// The photograph this record carries, or an empty asset where it has none.
   Json get _asset => widget.specimen.assets.isEmpty
@@ -1124,7 +1189,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         ],
       );
 
-  /// The bar the frame floats above the navigation (13 section 3.3).
+  /// The record's decision bar (13 section 3.3).
+  ///
+  /// In the frame's action bar at compact and medium, and in the top bar's
+  /// middle from `expanded` up ([decisionInTopBar]); the same widget either
+  /// way, so the two decisions, the count and the two edge buttons read the
+  /// same wherever the window put them.
   ///
   /// Previous and next are handed through whether or not there is a neighbour
   /// to move to: at the end of the queue the control announces the reason,

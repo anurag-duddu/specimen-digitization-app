@@ -16,6 +16,10 @@ import 'ui_finders.dart';
 /// (responsive and platform adaptation, 3.5).
 const Size compactWindow = Size(390, 844);
 
+/// A tablet in portrait: one column, the decision bar in the frame's action
+/// bar, the search row stuck on the queue.
+const Size mediumWindow = Size(768, 1024);
+
 /// A tablet in landscape: two panes.
 const Size expandedWindow = Size(1000, 800);
 
@@ -131,28 +135,45 @@ String? disabledReasonOf(WidgetTester tester, String label) {
   return tester.widget<UiButton>(ui.first).disabledReason;
 }
 
+/// What a record command declares: whether it can be used, and why not.
+typedef RecordCommand = ({VoidCallback? onPressed, String? disabledReason});
+
 /// The record command named [label], as the top bar declares it.
 ///
-/// 13 section 4.1 moves the record's own commands into the bar, which keeps
-/// the first two as discs and puts the rest in its own overflow menu, so a
-/// test that wants to know whether a command is available reads the command
-/// rather than hunting for whichever of the two arrangements the width
-/// earned. The same answer a screen reader gets: `UiTopBarAction` carries the
-/// label, the callback and the reason into both.
-UiTopBarAction recordCommand(WidgetTester tester, String label) => tester
-    .widget<UiTopBar>(find.byType(UiTopBar))
-    .actions
-    .whereType<UiTopBarAction>()
-    .firstWhere(
-      (UiTopBarAction action) => action.label == label,
-      orElse: () => throw StateError('no record command named "$label"'),
-    );
+/// 13 section 4.1 gives the record's bar back, the identifier and refresh,
+/// and puts the record's own commands in the bar's overflow menu at every
+/// width, so a command is either the one disc the bar keeps or a row of the
+/// menu the trigger holds. A test that wants to know whether a command is
+/// available reads the command rather than hunting for whichever form it
+/// took; both forms carry the callback and the reason, which is the same
+/// answer a screen reader gets.
+RecordCommand recordCommand(WidgetTester tester, String label) {
+  final UiTopBar bar = tester.widget<UiTopBar>(find.byType(UiTopBar));
+  for (final Widget action in bar.actions) {
+    if (action is UiTopBarAction && action.label == label) {
+      return (
+        onPressed: action.onPressed,
+        disabledReason: action.disabledReason,
+      );
+    }
+    if (action is UiMenuTrigger) {
+      for (final UiMenuItem item in action.items) {
+        if (item.label == label) {
+          return (
+            onPressed: item.onSelected,
+            disabledReason: item.disabledReason,
+          );
+        }
+      }
+    }
+  }
+  throw StateError('no record command named "$label"');
+}
 
 /// Presses the record command named [label], wherever the bar drew it.
 ///
-/// `UiTopBar` keeps the first two commands as discs and puts the rest in its
-/// own overflow menu (11 section 3.3), so which of the two a test finds is a
-/// property of the width rather than of the record.
+/// Refresh is the one disc the record's bar keeps; every other command is a
+/// row of its overflow menu (13 section 4.1), reached through the trigger.
 Future<void> openRecordCommand(WidgetTester tester, String label) async {
   final Finder disc = uiIconButton(label);
   if (disc.evaluate().isNotEmpty) {
