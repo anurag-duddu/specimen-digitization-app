@@ -23,31 +23,30 @@ naturally; it is recorded, not sought.
 
 ## 2. Definition of done for the whole refactor
 
-1. The `no_material_components` and `no_material_imports` backlogs are empty:
-   zero Material component widgets outside `packages/specimen_ui`.
-2. Geist and Geist Mono render everywhere; `google_fonts` is gone from
-   `pubspec.yaml` and `pubspec.lock`.
-3. Every glyph comes from `UiIcons` on Phosphor; `material_symbols_icons` is
-   gone.
-4. Every control in 10 section 4 exists, passes `expectControlContract`, and
-   appears on its gallery page; the six gallery goldens exist in four
-   combinations each.
-5. The existing app suite is green with finders migrated to roles and labels;
-   screen goldens and semantics fixtures are regenerated and their diff is
-   reviewed and recorded.
-6. `flutter analyze --fatal-infos` and `flutter test` pass in the app and in
-   the package; `scripts/ci/check_ui_strings.py` reports zero violations;
-   `flutter build web --release` and `scripts/ci/build_mobile.sh android`
-   succeed; `scripts/ci/verify.sh` and `.github/workflows/ci-cd.yml` run the
-   package tests.
-7. Device captures of every top-level screen on an Android phone, an Android
-   tablet in landscape and a desktop browser, in both modes, are checked in
-   under `design/screenshots/refactor/`.
-8. Launcher icons, splash, favicon and web manifest carry the pin mark.
-9. `design/12-verification-report-v2.md` re-measures the eight dimensions of
-   the north star bar against the rebuilt client.
-10. Every agent session has appended its closeout to
-    `docs/SESSION_LEARNINGS.md`.
+The third column is what actually checks each item, and the fourth is where it
+stood at `a4cd400`, the head the pull request was opened from. An item with no
+instrument says so rather than being scored on the strength of the work.
+
+| # | Done when | Verified by | State |
+|---|---|---|---|
+| 1 | The `no_material_components` and `no_material_imports` backlogs are empty: zero Material component widgets outside `packages/specimen_ui` | `test/theme/no_material_components_test.dart` and `no_material_imports_test.dart`, both scanning all of `lib/` with empty backlog maps. The import gate also asserts that each of the four named infrastructure importers still needs its import | Met, H1 |
+| 2 | Geist and Geist Mono render everywhere; `google_fonts` is gone from `pubspec.yaml` and `pubspec.lock` | `test/theme/fonts_bundled_test.dart` and the package's `test/foundation/fonts_test.dart`: both families resolve to the bundled assets and `google_fonts` is absent from the dependency graph. Visible in all 121 screen goldens, which rendered in Ahem before | Met, wave 0 |
+| 3 | Every glyph comes from `UiIcons` on Phosphor; `material_symbols_icons` is gone | `test/theme/icons_unique_test.dart` with an empty backlog and no allowance; `material_symbols_icons` and `cupertino_icons` absent from `pubspec.lock` | Met, H1 |
+| 4 | Every control in 10 section 4 exists, passes `expectControlContract`, and appears on its gallery page; the six gallery goldens exist in four combinations each | The package suite, 685 tests, with `expectControlContract` called from every interactive control's test file and the nine non-interactive ones named in 10 section 2; 48 family and foundation goldens and 288 matrix goldens under `packages/specimen_ui/test/gallery/goldens/` | Met, waves 1, F and G |
+| 5 | The existing app suite is green with finders migrated to roles and labels; screen goldens and semantics fixtures are regenerated and their diff is reviewed and recorded | `flutter test` in the application, 1301 passed and 7 skipped; `test/ui_finders.dart` is the shared role and label finder set; the moved set is recorded per wave in section 13 and per slot in its closeout, against the set expected to move | Met |
+| 6 | `flutter analyze --fatal-infos` and `flutter test` pass in the app and in the package; `scripts/ci/check_ui_strings.py` reports zero violations; `flutter build web --release` and `scripts/ci/build_mobile.sh android` succeed; `scripts/ci/verify.sh` and `.github/workflows/ci-cd.yml` run the package tests | The gate run recorded at `a4cd400`; `check_ui_strings.py` over 202 files with 0 violations; `flutter build web --release` in 25 s with `main.dart.js` at 3,272,384 bytes; `build_mobile.sh android` in 69 s; the package resolve, analyse and test steps in `ci-cd.yml` and in `verify.sh` | Met, H1 |
+| 7 | Device captures of every top-level screen on an Android phone, an Android tablet in landscape and a desktop browser, in both modes, are checked in under `design/screenshots/refactor/` | 43 captures under `design/screenshots/refactor/`, taken against `cbe78eb` from `test/verification/capture_app.dart`, which composes the shipped application with the golden fixture so a simulator shows a record rather than the setup screen | Partly met, H3. The tablet class is an iPad Pro 13 inch simulator, because no Android tablet image is on this machine. **Landscape is not captured on any device** and the `large` window class has no device capture: `xcrun simctl` has no rotate verb and the AppleScript route needs a macOS accessibility grant the session could not request |
+| 8 | Launcher icons, splash, favicon and web manifest carry the pin mark | E6's 110 files, generated from one reproducible source (`tool/brand/render_mark.py` over `assets/brand/pin.svg`) and inspected in the artifacts: the Android debug APK listed with its mipmap and splash drawables, the iOS `Assets.car` listed with `assetutil`, and `build/web` carrying the favicon, five icons and the manifest | Met, E6 |
+| 9 | `design/12-verification-report-v2.md` re-measures the eight dimensions of the north star bar against the rebuilt client | The report itself, and the instruments it measures with in `test/verification/`: the fit matrix over 132 cells, the reduced motion sweep over 14 transitions and both platform signals, the dark mode sweep over 40 screen cells, and the glass probe on three surfaces | Met, H3, with three dimensions at Partial (visual system, motion, adaptation), Accessibility at Partial, and Usability recorded as not re-measured |
+| 10 | Every agent session has appended its closeout to `docs/SESSION_LEARNINGS.md` | Twenty two closeouts in the file, one per slot, each naming its branch, its commits, its gates with exit codes, the goldens it moved, and what it left undone. Distilled in `docs/LESSONS_FRONT_END_REFACTOR.md` | Met |
+
+Two things a release needs that this definition of done never covered, stated
+here so a table of "Met" is not read as readiness:
+
+| Item | Verified by | State |
+|---|---|---|
+| VoiceOver and TalkBack complete every review script unaided on hardware (06 section 2, and the Accessibility row of the bar in 12) | Nothing. The checked-in semantics fixtures are the proxy: they pin what a screen reader is told, not what it says | **Not verified.** Not run in 08 either. It needs a person, an iPhone or iPad and an Android phone, and the scripts in 06 section 4.2 |
+| The client behaves against live museum data (wave B) | Nothing yet. Slot B3 of section 3I writes `docs/execution/CLIENT_LIVE_DATA_READINESS.md` for the client's own side | **Not verified.** The pilot itself is gated by `docs/execution/CURRENT_RELEASE_CHECKLIST.md`, whose open items are the user's and protected CI's rather than a front end slot's |
 
 ## 3. Work breakdown
 
@@ -347,13 +346,24 @@ Every brief contains, in this order:
 8. **Load discipline.** Targeted tests while developing; one full run at the
    end with the tree untouched; log to a file and poll it.
 
-## 12. Size
+## 12. Size, estimated and measured
 
-The package lands at roughly nine to twelve thousand lines including tests
-and gallery. The screen migration touches roughly twelve thousand lines of
-existing Dart, mostly replacements at call sites, plus test finder changes.
-About sixteen agent runs across five waves; two to three days of wall clock
-with the concurrency cap, dominated by full test runs.
+The estimate was written on 2026-09-16 before wave 0. The measurement is taken
+at `f3b6363`, after waves 0 to H.
+
+| | Estimated | Measured |
+|---|---|---|
+| The package | nine to twelve thousand lines including tests and gallery | 23,550 lines of `lib/` over 94 files, of which the gallery is 4,898, plus 18,352 lines of tests over 69 files |
+| The screen migration | roughly twelve thousand lines of existing Dart, mostly call site replacements | the application is 29,585 lines of `lib/` over 100 files and 29,133 lines of test over 130 files; against `f05d496` the branch is 984 files changed, 68,268 insertions and 10,593 deletions over 235 commits, and the insertions include five new design documents totalling 3,180 lines |
+| Agent runs | about sixteen across five waves | twenty two across eight waves (0, 1, 1.5, 2, F, G, 3 with polish 2, and H), with waves A and B running now |
+| Wall clock | two to three days with the concurrency cap, dominated by full test runs | two days |
+
+The estimate was low by about a factor of two on the package, and the extra is
+not controls: it is the tests, the gallery, the 336 goldens and the two
+documents the reviews forced, `11-fit-and-scale.md` and
+`13-screen-composition.md`, neither of which existed when the estimate was
+made. The wall clock held because the slots were disjoint and ran in parallel,
+which is the whole argument for section 6.
 
 ## 13. Status log
 
