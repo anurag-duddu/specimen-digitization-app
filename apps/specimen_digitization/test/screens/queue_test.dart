@@ -13,6 +13,8 @@ import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
+import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_digitization/src/workspace.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
 
@@ -66,9 +68,16 @@ void main() {
     await pumpQueue(tester, ScriptedRepository());
     expect(find.text('No specimens yet'), findsOneWidget);
     expect(find.text('Add photographs'), findsOneWidget);
+    // 13 section 4.2: the header states the count as a numeral with its unit
+    // and what the loaded page is made of under it. The whole sentence is
+    // still what the live region announces, which is the line a screen reader
+    // hears when the count moves.
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('RECORDS'), findsOneWidget);
+    expect(find.text('0 need review, 0 blocked.'), findsOneWidget);
     expect(
-      find.text('0 records loaded. 0 need review, 0 blocked.'),
-      findsOneWidget,
+      tester.getSemantics(find.text('0 need review, 0 blocked.')).label,
+      '0 records loaded. 0 need review, 0 blocked.',
     );
     await tester.pumpWidget(const SizedBox());
   });
@@ -212,5 +221,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  // The queue at compact (13 section 4.2). A phone has room for a header, a
+  // search row and the rows: six disposition chips above the list are the
+  // region that pushed the first row to 763 of 844 at 200 percent text, so
+  // they are in the filter sheet there, with the chosen one on a chip that
+  // survives the sheet closing (pass criterion 6.4).
+  group('at compact', () {
+    Future<TestSession> pumpPhone(
+      WidgetTester tester,
+      ScriptedRepository repository,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 844);
+      addTearDown(tester.view.reset);
+      final TestSession session = TestSession();
+      addTearDown(session.controller.close);
+      await tester.pumpWidget(
+        SpecimenDigitizationApp(session: session, repository: repository),
+      );
+      await tester.pumpAndSettle();
+      return session;
+    }
+
+    testWidgets('the dispositions are in the sheet, not above the list', (
+      tester,
+    ) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpPhone(tester, repository);
+
+      expect(
+        find.text('Needs review'),
+        findsNothing,
+        reason: 'the six chips are not a region of the page on a phone',
+      );
+
+      await tester.tap(find.text('Filters'));
+      await tester.pumpAndSettle();
+      expect(find.text(searchFiltersTitle), findsOneWidget);
+      expect(
+        find.text(queueDispositionLabel),
+        findsWidgets,
+        reason: 'the sheet is where a phone chooses the disposition',
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('a chosen disposition stays visible once the sheet closes', (
+      tester,
+    ) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpPhone(tester, repository);
+      final WorkspaceController controller = WorkspaceScope.read(
+        tester.element(find.byType(QueuePane)),
+      );
+      await controller.selectDisposition('cleared');
+      // Single frames, not a settle: the header ages its own freshness line
+      // once a second for as long as there is an answer to age, so a queue
+      // that has been answered never reaches a still frame.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        find.text('$queueDispositionLabel: Cleared'),
+        findsOneWidget,
+        reason:
+            'a filter must never be invisible once the sheet closes (audit, '
+            'pass criterion 6.4)',
+      );
+      expect(
+        repository.requests.last['disposition'],
+        'cleared',
+        reason: 'the chip is the filter the server was asked for',
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 }
