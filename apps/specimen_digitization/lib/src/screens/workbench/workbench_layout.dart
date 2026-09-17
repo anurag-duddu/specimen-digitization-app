@@ -126,7 +126,18 @@ const double layoutTextScrollThreshold = 1.4;
 const double stickySegmentsMaxScale = 1.0;
 
 /// True while the record's segments may stick under its header.
-bool segmentsStickAtThisTextScale(TextScaler scaler) =>
+///
+/// Two things spend the budget the bar needs: the reviewer's text size, above
+/// [stickySegmentsMaxScale], and the window class. From `expanded` up 13
+/// section 2.3 allows 20 percent, and the frame's own chrome takes it at
+/// default type: at 1180 by 820 the top bar is 48, the one line band 52 and
+/// the action bar 64, which is 164 of the 164 allowed, and at 1440 by 900 the
+/// same 164 of 180. A 56 dp bar cannot stick in the 0 or the 16 that is left,
+/// so from `expanded` up the segments scroll with the evidence at every text
+/// size. This is the record beside a queue pane and a sidebar at 1440, which
+/// leaves it 799 dp and the stacked regime, as much as the record on its own.
+bool segmentsStick(TextScaler scaler, WindowClass window) =>
+    window.index <= WindowClass.medium.index &&
     scaler.scale(layoutTextProbe) <= layoutTextProbe * stickySegmentsMaxScale;
 
 /// True when the reviewer's text is large enough that a pane has to scroll.

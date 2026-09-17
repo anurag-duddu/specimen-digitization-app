@@ -1437,16 +1437,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// `UiStickyBar` pins the row once it has scrolled up to the header, so the
   /// reviewer never loses which evidence is showing (13 sections 3.5 and
   /// 4.1). It is pinned chrome while it is stuck, which is what
-  /// [segmentsStickAtThisTextScale] weighs: above the reviewer's default type
-  /// size the frame's own chrome has already spent the budget of 13 section
-  /// 2.3, and a screen over the budget gives a pinned region up.
+  /// [segmentsStick] weighs: above the reviewer's default type size, and
+  /// from `expanded` up at any size, the frame's own chrome has already spent
+  /// the budget of 13 section 2.3, and a screen over the budget gives a pinned
+  /// region up.
   Widget _segmentBar(BuildContext context, WorkbenchRegime regime) {
     final UiThemeData ui = context.ui;
     final Widget bar = Padding(
       padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
       child: _segments(context, regime),
     );
-    if (!segmentsStickAtThisTextScale(MediaQuery.textScalerOf(context))) {
+    if (!segmentsStick(
+      MediaQuery.textScalerOf(context),
+      WindowClass.of(context),
+    )) {
       return SliverToBoxAdapter(child: bar);
     }
     return UiStickyBar(
