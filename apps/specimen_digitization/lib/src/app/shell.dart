@@ -165,11 +165,17 @@ class _TopBar extends StatelessWidget {
               child: _CollectionSwitcher(controller: controller),
             )
           : null,
+      // Declared commands rather than discs: a `UiTopBarAction` carries the
+      // label, the glyph and the reason a menu row needs, so the bar can put
+      // the ones past the second into its overflow menu on a window too
+      // narrow to draw them beside the title. The account menu is a trigger
+      // of its own and stays a widget, which the bar reads as "keep them all
+      // drawn"; it is the second action wherever it appears, so nothing
+      // collapses today and the bar is ready for the third.
       actions: <Widget>[
-        UiIconButton(
+        UiTopBarAction(
           icon: UiIcons.reload,
-          semanticsLabel: AppShell.reloadLabel,
-          tooltip: AppShell.reloadLabel,
+          label: AppShell.reloadLabel,
           onPressed: controller.loading
               ? null
               : () => unawaited(
@@ -185,10 +191,9 @@ class _TopBar extends StatelessWidget {
         // so the bar carries help on its own; everywhere else the account
         // menu is where help and signing out live.
         if (sidebar)
-          UiIconButton(
+          UiTopBarAction(
             icon: UiIcons.help,
-            semanticsLabel: AppShell.helpLabel,
-            tooltip: AppShell.helpLabel,
+            label: AppShell.helpLabel,
             onPressed: () => context.push(AppRoutes.help),
           )
         else
@@ -419,66 +424,14 @@ class _ErrorBanner extends StatelessWidget {
       visible: failure != null,
       child: failure == null
           ? const SizedBox(width: double.infinity)
-          : _BandWithAction(
-              tone: UiBannerTone.blocked,
+          : UiBanner(
               message: failure.message,
+              tone: UiBannerTone.blocked,
               actionLabel: failure.actionLabel,
               onAction: () => unawaited(failure.action()),
               onDismiss: onDismiss,
-            ),
-    );
-  }
-}
-
-/// A band carrying a named recovery action beside its message.
-///
-/// `UiBanner` has a dismiss control and a disclosure and no action slot, and
-/// 07 section 11 requires every failure class to name its own recovery. The
-/// band's own resolved style paints the strip the action sits on, so the two
-/// halves are one band rather than a band with a button under it.
-// TODO(fe/polish-2): UiBanner needs an action slot, a label and a callback,
-// so a recovery action does not have to be composed beside the strip.
-class _BandWithAction extends StatelessWidget {
-  const _BandWithAction({
-    required this.tone,
-    required this.message,
-    required this.actionLabel,
-    required this.onAction,
-    required this.onDismiss,
-  });
-
-  final UiBannerTone tone;
-  final String message;
-  final String actionLabel;
-  final VoidCallback onAction;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final UiBannerStyle style = UiBannerStyle.resolve(ui, tone);
-    return ColoredBox(
-      color: style.fill,
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: UiBanner(
-              message: message,
-              tone: tone,
-              onDismiss: onDismiss,
               dismissLabel: _ErrorBanner.dismissLabel,
             ),
-          ),
-          Padding(
-            padding: EdgeInsetsDirectional.only(end: ui.space.s2),
-            child: UiButton(
-              label: actionLabel,
-              variant: UiButtonVariant.ghost,
-              onPressed: onAction,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -490,19 +443,30 @@ class _BandWithAction extends StatelessWidget {
 /// is built only while it is busy: an indeterminate indicator animates
 /// forever, and an animation that never ends is an animation a test can never
 /// settle.
+///
+/// Visual only. The strip used to be a live region reading "Loading
+/// collection data" while the screen under it announced its own load, so the
+/// first frame of every collection said two things at once and a screen
+/// reader user heard neither whole (06 section 3: a status change is
+/// announced once). The screen is the one that knows what is loading, so the
+/// screen keeps the announcement and this keeps the picture.
 class _ProgressStrip extends StatelessWidget {
   const _ProgressStrip({required this.busy});
 
   final bool busy;
 
-  /// What the strip announces, once, while it is up.
+  /// What the strip would be called, if it were read.
+  ///
+  /// Kept because `UiProgress` requires a label of every indicator and the
+  /// requirement is right: the day this strip is the only thing reporting a
+  /// load, taking it back into the tree is deleting one widget.
   static const String label = 'Loading collection data';
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: context.ui.space.s1,
-    child: busy
-        ? const UiProgress.bar(semanticsLabel: label, announce: true)
-        : null,
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: SizedBox(
+      height: context.ui.space.s1,
+      child: busy ? const UiProgress.bar(semanticsLabel: label) : null,
+    ),
   );
 }
