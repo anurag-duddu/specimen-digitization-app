@@ -44,7 +44,7 @@ naturally; it is recorded, not sought.
    tablet in landscape and a desktop browser, in both modes, are checked in
    under `design/screenshots/refactor/`.
 8. Launcher icons, splash, favicon and web manifest carry the pin mark.
-9. `design/11-verification-report-v2.md` re-measures the eight dimensions of
+9. `design/12-verification-report-v2.md` re-measures the eight dimensions of
    the north star bar against the rebuilt client.
 10. Every agent session has appended its closeout to
     `docs/SESSION_LEARNINGS.md`.
@@ -137,8 +137,24 @@ semantics fixtures untouched for the integrator.
 | F1 | Golden and fixture regeneration per wave, moved-set review, `glass_budget` and `contrast_composite` on the real screens | each wave | S per wave |
 | F2 | Motion signature and reduced-motion pass; dark-mode QA on device; `GlassQuality` default per platform from measurement | E1 to E6 | M |
 | F3 | Device captures under `design/screenshots/refactor/` and the web smoke | E1 to E6 | S |
-| F4 | `design/11-verification-report-v2.md`; `design/README.md`, `05`, `07` deltas (pill navigation, superellipse, density) | F1 to F3 | M |
+| F4 | `design/12-verification-report-v2.md`; `design/README.md`, `05`, `07` deltas (pill navigation, superellipse, density) | F1 to F3 | M |
 | F5 | `no_literal_geometry` gate introduced with backlog and driven to zero | E1 to E6 | M |
+
+### G. Fit (waves F and G, inserted before wave 3 on 2026-09-16)
+
+Checkpoint 1 review found three composition defects (a three edged focused
+field, labels wrapping letter by letter in narrow columns, overlay text in the
+framework fallback style). `design/11-fit-and-scale.md` gives the causes, the
+rules and this breakdown. Wave 3 waits for both waves because its screens are
+mostly fields and rows of actions.
+
+| ID | Scope | Depends on | Size |
+|---|---|---|---|
+| F1 | `fe/fit-fields`: `FieldCore` paints text only; `UiFieldBox` paints the one edge; `FocusRing` follows the shape; fields ring on any focus; inputs gallery states; the edge count test (11 section 4) | wave 1.5 | L |
+| F2 | `fe/fit-foundation`: `WindowClass` and `Adaptive` in the package; scaled line height and strut on the type scale; `UiTheme` publishes `DefaultTextStyle`; overlay frames re-publish it; `FitBuilder` and label measurement; `no_fallback_text_style`; harness clauses 13 to 15; root text scale clamp (11 sections 2, 3.1, 5) | wave 1.5 | L |
+| G1 | `fe/fit-actions`: segmented, button, chip fit variants; `UiButtonRow`; actions gallery | F1, F2 | M |
+| G2 | `fe/fit-surfaces`: top bar, tabs, tile, row, dialog, sheet, banner, toast fit variants; their galleries | F1, F2 | L |
+| G3 | `fe/fit-gallery`: compact gallery shell; Fit page; golden matrix (four classes by three scales by two modes) | F1, F2 | M |
 
 ## 4. Dependency graph
 
@@ -318,6 +334,8 @@ with the concurrency cap, dominated by full test runs.
 | 2026-09-16 | Wave 1, `fe/data` (8a7b420, 7 commits) merged as 50b7154; its four goldens re-rendered against the new sky in 80fa279. Gates green at 80fa279: package tests 505, app 1062 passed and 7 skipped. **Wave 1 complete: all five families integrated.** Stand-ins marked `TODO(fe/...)` and the package test harness fix are handled by a short integration-polish slot (`fe/polish`) before checkpoint 1's web build; the family goldens were sent for review at this point. |
 | 2026-09-16 | Wave 1.5, `fe/polish` (93e3253, 11 commits) merged as cbd74bb, gates green (package 519 tests, app 1062 passed and 7 skipped). Every `TODO(fe/...)` stand-in swapped for the real control and a `no_stand_ins` gate added; the package test harness publishes `UiTheme`, `Density` and `MediaQuery` above the navigator with a proof test; 10 reconciled with what the five families shipped (38 amendments); `specimen_ui` 0.2.0. Follow-ups for a later polish: a disabled `Pressable` reports no hover, so its reason shows on press and in semantics but not on hover alone; `UiListRow` has no `tone`, so `UiPopoverMenu` items stay private rows. `fe/brand-assets` (E6, assets half) in progress; it was interrupted once by a transient HTTP 529 and resumed. Wave 2 slots E1 (`fe/shell`) and E2 (`fe/queue`) cut from cbd74bb. |
 | 2026-09-16 | E6 assets half, `fe/brand-assets` (c1620b0, 8 commits, 110 files) merged as 7beda85, gates green (package 513 tests, app 1062 passed and 7 skipped, `build web --release`, `build_mobile.sh android` with the adaptive icon and splash drawables verified in the APK, an iOS build whose asset catalogue lists the icon and launch images). The pin mark exists as `assets/brand/pin.svg`, a reproducible generator `tool/brand/render_mark.py`, launcher icons on all three platforms, the splash, the web manifest and favicon, and `UiMark` in the package. `flutter_native_splash` is 2.4.7, not 2.4.8, which needs a `meta` the pinned `flutter_test` forbids; 09 section 9 amended. The tool bug that rewrites unrelated `ASSETCATALOG` build settings was reverted before commit. **Checkpoint 1 delivered:** the family goldens and the browsable profile build of `/gallery` (release builds exclude the route by design). The icon sweep (E6's other half) waits for waves 2 and 3. |
+| 2026-09-16 | Wave 2, `fe/queue` (683af7d) merged as 04e4708 and its goldens and fixtures regenerated in baf0f6f; gates green at baf0f6f. `fe/shell` (8833de7) merged as a8561a0 with the three gate backlog maps intersection resolved; copy fix c412bf1 (the chip says "Needs review", 02 section 4.13); regeneration 81a64fb moved 111 of 121 screen goldens and 5 fixtures. Three app tests then failed because the shell turned the queue's static placeholder into the pulsing `UiSkeleton` and its indicators into `UiProgress`; fixed in 31ffbff (the fixture harness can skip settling; the first load test looks inside `QueueScreen`). Gates green at 31ffbff (package 513 tests, app 1062 passed and 7 skipped); pushed. **Wave 2 complete.** `fe-shell` and `fe-queue` retired. |
+| 2026-09-16 | Checkpoint 1 review in chat: a three edged focused field, labels wrapping letter by letter at narrow widths, yellow double underlines in overlays. Root causes and rules written as `design/11-fit-and-scale.md`; 09 section 3.6 and 10 sections 2, 4, 6 and 8 amended; section 3G above added and the verification report renumbered to 12. Waves F (F1, F2) and G (G1 to G3) run before wave 3. Defects recorded for polish 2: the shell's busy strip is a live region ("Loading collection data") while the queue announces "Loading queue", a double announcement on first load. |
 
 ## Appendix A. Icon mapping, Material Symbols to Phosphor
 

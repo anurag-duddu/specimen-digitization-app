@@ -18,6 +18,7 @@ first time; afterwards, go straight to the one that covers your change.
 | [08-verification-report.md](08-verification-report.md) | The independent re-audit of the rebuilt client: every pass criterion and every dimension of the bar marked Pass, Partial or Fail with its evidence, the ranked remaining defects with their exact fixes, and the gate results | Picking up any remaining defect, or claiming a criterion now passes |
 | [09-brand-direction.md](09-brand-direction.md) | The agreed 2026-09-16 visual direction: frosted glass over light fields, Geist, Phosphor, superellipse shape, the accent, density, the mark; supersedes sections 2 to 6 of 03 | Any front-end work from the refactor on |
 | [10-component-library.md](10-component-library.md) | What makes the design system strong and how each property is enforced; the `specimen_ui` package: layers, the control contract, every primitive and control, the gallery, the gates, the definition of done; supersedes sections 7 and 8 of 03 | Adding or changing any component |
+| [11-fit-and-scale.md](11-fit-and-scale.md) | Units (what Flutter has for `px` and `rem`), text scale, window classes, the fit policy of every control, the one edge field anatomy, the one text style source, contract clauses 13 to 15, waves F and G | Any sizing, responsive or field work |
 | [screenshots/](screenshots/) | Captures of the current app used as evidence in the audit | Reference only |
 
 ## Evidence from the rebuild

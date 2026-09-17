@@ -243,6 +243,15 @@ retired; a monochrome ring reads as part of this system and clears 3:1 against
 every surface and every field. Over the photograph it keeps the 1 dp dark
 outer and 1 dp light inner casing from 03 section 5.8.
 
+**Amendment, fit (2026-09-16, 11 sections 4 and 6).** The ring follows the
+component's shape: a superellipse ring around a superellipse, a stadium ring
+around a capsule, never a circular rounded rectangle around either, so ring and
+edge run concentric at every corner. A control that has an edge keeps that
+edge unchanged on focus; the ring is the whole focus treatment, and a field's
+outline no longer thickens to `stroke.emphasis`. A field shows the ring for any
+focus, pointer or keyboard, because a focused field is being edited; every
+other control shows it for keyboard focus only.
+
 ### 3.7 What the contrast tests must now do
 
 `test/theme/contrast_test.dart` and `test/accessibility/contrast_test.dart`

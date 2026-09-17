@@ -259,6 +259,21 @@ motion state the test asked for rather than in the light fallback.
 12. **Gallery.** Appears on its family page in every variant, state and size,
     in both modes and both densities.
 
+**Amendment, fit (2026-09-16).** Three clauses added by
+`11-fit-and-scale.md` section 6; the harness gains a check for each.
+
+13. **Labels never wrap.** Every label `Text` inside a control is one line
+    (`maxLines: 1`, `softWrap: false`); the harness pumps the control at 480,
+    360, 280 and 200 dp and fails on a label that lays out two lines.
+14. **Geometry derives from type.** No height that holds text is a constant:
+    it is `max(density height, scaled line height + 2 * inset)`; the harness
+    pumps at text scales 1.0, 1.3 and 2.0 and fails on overflow, clipped
+    glyphs or a hit box under 48 dp.
+15. **Fit is declared.** A control that arranges more than one label names its
+    compact variants in its style class, tries them in order when given less
+    than its intrinsic width, and ends in an ellipsis with the full label in
+    the tooltip and the semantics label only when none fits (11 section 3.3).
+
 ## 3. Primitives (L2)
 
 | Primitive | Built on | Responsibility | Notes |
@@ -428,6 +443,12 @@ that drifts away from a field. The trailing clear control sits in a
 slop the field already pads itself with. Six `bool` properties reach the
 control, of which two are visual (`showLabel`, `obscureText`); the other four
 are behaviour and keep the SDK's names, so section 11's cap of two is met.
+
+**Amendment, fit (2026-09-16).** The field anatomy above is superseded by
+`11-fit-and-scale.md` section 4: the core paints text only (no decorator, its
+own placeholder, caret and selection), the box paints the one edge and never
+thickens it, the focus ring is the whole focus treatment and is shown for any
+focus, and the ring is painted on the box's own shape.
 
 **`UiTextArea`.** `UiField` with `minLines`, `maxLines`, auto-grow.
 
@@ -861,6 +882,12 @@ out, and every gallery golden calls it. A golden presses no key, so no focus
 ring is drawn in one unless the test states
 `FocusManager.instance.highlightStrategy = FocusHighlightStrategy.alwaysTraditional`.
 
+**Amendment, fit (2026-09-16).** Every family page renders at the four window
+classes and at text scales 1.0, 1.3 and 2.0 in both modes, twenty four goldens
+per page, and a Fit page shows each fit declaring control in 480, 360, 280 and
+200 dp columns. Below `medium` the gallery shell's page list becomes a
+`UiSelect` above full width content (11 section 3.5).
+
 ## 7. Testing strategy
 
 Package tests, run with `flutter test` from `packages/specimen_ui/`:
@@ -920,6 +947,8 @@ control, which is what one vocabulary exists to prevent (section 0, property
 | `strings` | `scripts/ci/check_ui_strings.py` extended to `packages/specimen_ui/lib` | existing baseline mechanism |
 | `no_dashes` | No em or en dash in any `.dart` string literal or `design/*.md` | none |
 | `no_stand_ins` | No `TODO(fe/` marker under the package's `lib/` | none |
+| `no_fallback_text_style` | Every gallery page and every overlay pumped under `WidgetsApp`; no `RenderParagraph` carries the framework fallback style or a double underline (11 section 5) | none |
+| `fit_matrix` | The golden matrix of 11 section 3.5: four window classes by three text scales by two modes per family page, plus the Fit page | none |
 
 ## 9. Definition of done for a component
 
