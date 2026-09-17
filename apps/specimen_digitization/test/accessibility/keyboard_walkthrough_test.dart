@@ -20,6 +20,8 @@ import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../golden/golden_harness.dart';
+import '../ui_finders.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 /// A desktop browser window: the one the keyboard script is written for.
 const Size keyboardWindow = Size(1180, 820);
@@ -119,7 +121,7 @@ void main() {
     // A starts the approval, with its reason field and its consequences.
     await press(tester, LogicalKeyboardKey.keyA);
     expect(find.byType(ReasonForm), findsOneWidget);
-    expect(find.widgetWithText(TextField, 'Reason'), findsOneWidget);
+    expect(uiField('Reason'), findsOneWidget);
 
     // Escape backs out of it. Nothing was typed, so nothing is lost and the
     // sheet closes without asking.
@@ -173,8 +175,10 @@ void main() {
     // disabled with the reason on it rather than moving nowhere
     // (pass criterion 5.6).
     expect(
-      find.byTooltip('This is the first record in the queue.'),
-      findsOneWidget,
+      tester
+          .widget<UiIconButton>(uiIconButton('Previous specimen'))
+          .disabledReason,
+      'This is the first record in the queue.',
     );
     await press(tester, LogicalKeyboardKey.keyK);
     expect(locationOf(tester), opened, reason: 'K at the head wraps nowhere');
@@ -194,12 +198,12 @@ void main() {
       location: goldenSpecimenLocation,
       repository: GoldenQueueRepository(goldenQueue(3)),
     );
-    await tester.tap(find.byTooltip('Next specimen'));
+    await tester.tap(uiIconButton('Next specimen'));
     await tester.pumpAndSettle();
     expect(locationOf(tester), endsWith('/fixture-002'));
     expect(find.text('2 of 3'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Previous specimen'));
+    await tester.tap(uiIconButton('Previous specimen'));
     await tester.pumpAndSettle();
     expect(locationOf(tester), endsWith('/fixture-001'));
     await tester.pumpWidget(const SizedBox());

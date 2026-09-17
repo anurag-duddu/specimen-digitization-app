@@ -1,4 +1,5 @@
-/// The reason sheet (design system, 7.3 `ReasonSheet`; UX writing, 4.4, 4.5).
+/// The reason sheet (design system, 7.3 `ReasonSheet`; UX writing, 4.4, 4.5;
+/// 10 section 5).
 ///
 /// Every consequence is visible before the commit. The sheet states what the
 /// action will do, what survives it, what is still outstanding, and it will
@@ -6,9 +7,9 @@
 /// accidental tap on the scrim.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../theme/icons.dart';
 import 'adaptive_form.dart';
 
 /// Collects a reason for one consequential action.
@@ -31,6 +32,11 @@ import 'adaptive_form.dart';
 /// API exposes none: a decision is recorded against a version and superseded
 /// by the next one rather than removed, so the sheet states that instead of
 /// offering an Undo it could not honour (pass criterion 3.4).
+///
+/// A sheet on a compact window and a dialog on a wider one, through
+/// `showAdaptiveModal`: the form owns its own scroll view, because the dialog
+/// form has none of its own and a sheet that also scrolled would nest one
+/// inside the other.
 Future<String?> showReasonSheet(
   BuildContext context, {
   required String title,
@@ -42,10 +48,8 @@ Future<String?> showReasonSheet(
   List<String> configuredReasons = const <String>[],
   List<String> recordReasons = const <String>[],
   List<String> recentReasons = const <String>[],
-}) => showAdaptiveForm<String>(
-  context,
-  width: DialogWidths.standard,
-  builder: (BuildContext formContext) => ReasonForm(
+}) {
+  Widget body(BuildContext _) => ReasonForm(
     title: title,
     action: action,
     consequence: consequence,
@@ -55,8 +59,12 @@ Future<String?> showReasonSheet(
     configuredReasons: configuredReasons,
     recordReasons: recordReasons,
     recentReasons: recentReasons,
-  ),
-);
+    // The sheet and the dialog draw the title themselves, as a header node.
+    showTitle: false,
+  );
+
+  return showAdaptiveModal<String>(context, title: title, body: body);
+}
 
 /// The body of [showReasonSheet]. Exposed so it can be tested and previewed
 /// without driving a route.
@@ -72,6 +80,7 @@ class ReasonForm extends StatefulWidget {
     this.configuredReasons = const <String>[],
     this.recordReasons = const <String>[],
     this.recentReasons = const <String>[],
+    this.showTitle = true,
   });
 
   final String title;
@@ -97,11 +106,30 @@ class ReasonForm extends StatefulWidget {
   /// Reasons this reviewer typed before, newest first.
   final List<String> recentReasons;
 
+  /// False when a modal frame above this one already draws [title].
+  final bool showTitle;
+
   /// The heading over each group of chips, fixed so the sheet and its tests
   /// cannot word them differently.
   static const String configuredHeading = 'Reasons for this collection';
   static const String recordHeading = 'Why this record is in review';
   static const String recentHeading = 'Recent reasons';
+
+  /// The heading over the findings the action does not resolve.
+  static const String outstandingHeading = 'Still outstanding';
+
+  /// The field's own name and the sentence under it.
+  static const String reasonLabel = 'Reason';
+  static const String reasonHelp = 'Recorded on the decision. Required.';
+
+  /// Why the primary action is unavailable before anything is typed.
+  static const String reasonRequiredHint = 'Type a reason first';
+
+  /// The way out of the sheet.
+  static const String cancelLabel = 'Cancel';
+
+  /// What a chip does when it is pressed.
+  static const String useReasonLabel = 'Use this reason';
 
   /// The sentence every decision without a reversal carries.
   ///
@@ -131,21 +159,21 @@ class _ReasonFormState extends State<ReasonForm> {
   Future<void> _handleDismissAttempt() async {
     final NavigatorState navigator = Navigator.of(context);
     final bool discard =
-        await showDialog<bool>(
+        await UiDialog.show<bool>(
           context: context,
-          builder: (BuildContext confirmContext) => AlertDialog(
-            title: const Text('Discard this reason?'),
-            content: const Text('The text you typed is not saved anywhere.'),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.of(confirmContext).pop(false),
-                child: const Text('Keep editing'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(confirmContext).pop(true),
-                child: const Text('Discard the reason'),
-              ),
-            ],
+          title: 'Discard this reason?',
+          semanticsLabel: 'Discard this reason?',
+          dismissLabel: modalDismissLabel,
+          body: (BuildContext _) =>
+              const Text('The text you typed is not saved anywhere.'),
+          primaryAction: (BuildContext confirmContext) => UiButton(
+            label: 'Discard the reason',
+            onPressed: () => Navigator.of(confirmContext).pop(true),
+          ),
+          secondaryAction: (BuildContext confirmContext) => UiButton(
+            label: 'Keep editing',
+            variant: UiButtonVariant.ghost,
+            onPressed: () => Navigator.of(confirmContext).pop(false),
           ),
         ) ??
         false;
@@ -154,7 +182,7 @@ class _ReasonFormState extends State<ReasonForm> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
+    final UiThemeData ui = context.ui;
 
     return PopScope<String?>(
       // Once there is text, the scrim, the drag handle and the system back
@@ -164,96 +192,78 @@ class _ReasonFormState extends State<ReasonForm> {
         if (didPop) return;
         _handleDismissAttempt();
       },
-      child: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.all(context.space.space6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(widget.title, style: theme.textTheme.titleLarge),
-              SizedBox(height: context.space.space2),
-              Text(widget.consequence, style: theme.textTheme.bodyMedium),
-              SizedBox(height: context.space.space2),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (widget.showTitle) ...<Widget>[
+              Semantics(
+                container: true,
+                header: true,
+                child: Text(widget.title, style: ui.type.titleLarge),
+              ),
+              SizedBox(height: ui.space.s2),
+            ],
+            Text(widget.consequence, style: ui.type.body),
+            SizedBox(height: ui.space.s2),
+            Text(widget.reversal ?? ReasonForm.finality, style: ui.type.label),
+            if (widget.retained != null) ...<Widget>[
+              SizedBox(height: ui.space.s2),
               Text(
-                widget.reversal ?? ReasonForm.finality,
-                style: theme.textTheme.titleSmall,
-              ),
-              if (widget.retained != null) ...<Widget>[
-                SizedBox(height: context.space.space2),
-                Text(
-                  widget.retained!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              if (widget.outstanding.isNotEmpty) ...<Widget>[
-                SizedBox(height: context.space.space4),
-                Text('Still outstanding', style: theme.textTheme.titleSmall),
-                SizedBox(height: context.space.space1),
-                for (final String finding in widget.outstanding)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: context.space.space1),
-                    child: Text(
-                      finding,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-              ],
-              ..._chipGroup(
-                context,
-                ReasonForm.configuredHeading,
-                widget.configuredReasons,
-              ),
-              ..._chipGroup(
-                context,
-                ReasonForm.recordHeading,
-                widget.recordReasons,
-              ),
-              ..._chipGroup(
-                context,
-                ReasonForm.recentHeading,
-                widget.recentReasons,
-              ),
-              SizedBox(height: context.space.space4),
-              TextField(
-                controller: _reason,
-                focusNode: _field,
-                autofocus: true,
-                minLines: _reasonMinLines,
-                maxLines: _reasonMaxLines,
-                onChanged: (String _) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Reason',
-                  helperText: 'Recorded on the decision. Required.',
-                ),
-              ),
-              SizedBox(height: context.space.space6),
-              Wrap(
-                alignment: WrapAlignment.end,
-                spacing: context.space.space2,
-                runSpacing: context.space.space2,
-                children: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  Semantics(
-                    hint: _hasText ? '' : 'Type a reason first',
-                    child: FilledButton(
-                      onPressed: _hasText
-                          ? () => Navigator.of(context).pop(_reason.text.trim())
-                          : null,
-                      child: Text(widget.action),
-                    ),
-                  ),
-                ],
+                widget.retained!,
+                style: ui.type.body.copyWith(color: ui.color.inkSecondary),
               ),
             ],
-          ),
+            if (widget.outstanding.isNotEmpty) ...<Widget>[
+              SizedBox(height: ui.space.s4),
+              Text(ReasonForm.outstandingHeading, style: ui.type.label),
+              SizedBox(height: ui.space.s1),
+              for (final String finding in widget.outstanding)
+                Padding(
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
+                  child: Text(
+                    finding,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
+                    ),
+                  ),
+                ),
+            ],
+            ..._chipGroup(
+              ui,
+              ReasonForm.configuredHeading,
+              widget.configuredReasons,
+            ),
+            ..._chipGroup(ui, ReasonForm.recordHeading, widget.recordReasons),
+            ..._chipGroup(ui, ReasonForm.recentHeading, widget.recentReasons),
+            SizedBox(height: ui.space.s4),
+            UiTextArea(
+              label: ReasonForm.reasonLabel,
+              helpText: ReasonForm.reasonHelp,
+              controller: _reason,
+              focusNode: _field,
+              autofocus: true,
+              minLines: _reasonMinLines,
+              maxLines: _reasonMaxLines,
+              onChanged: (String _) => setState(() {}),
+            ),
+            SizedBox(height: ui.space.s6),
+            UiButtonRow(
+              primary: UiButton(
+                label: widget.action,
+                disabledReason: ReasonForm.reasonRequiredHint,
+                onPressed: _hasText
+                    ? () => Navigator.of(context).pop(_reason.text.trim())
+                    : null,
+              ),
+              secondary: UiButton(
+                label: ReasonForm.cancelLabel,
+                variant: UiButtonVariant.ghost,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -264,24 +274,27 @@ class _ReasonFormState extends State<ReasonForm> {
   /// Empty for an empty list, so a collection that publishes no vocabulary
   /// gets no heading promising one.
   List<Widget> _chipGroup(
-    BuildContext context,
+    UiThemeData ui,
     String heading,
     List<String> reasons,
   ) {
     if (reasons.isEmpty) return const <Widget>[];
-    final ThemeData theme = Theme.of(context);
     return <Widget>[
-      SizedBox(height: context.space.space4),
-      Text(heading, style: theme.textTheme.titleSmall),
-      SizedBox(height: context.space.space1),
+      SizedBox(height: ui.space.s4),
+      Text(heading, style: ui.type.label),
+      SizedBox(height: ui.space.s1),
       Wrap(
-        spacing: context.space.space2,
-        runSpacing: context.space.space2,
+        spacing: ui.space.s2,
+        runSpacing: ui.space.s2,
         children: <Widget>[
           for (final String reason in reasons)
-            ActionChip(
-              label: Text(reason),
-              tooltip: 'Use this reason',
+            UiChip(
+              label: reason,
+              // The only chip in the system that can be pressed. It publishes
+              // a toggle rather than a button, which is recorded in the slot
+              // closeout as the action chip the actions family does not have.
+              variant: UiChipVariant.filter,
+              semanticsLabel: '${ReasonForm.useReasonLabel}: $reason',
               onPressed: () => _fill(reason),
             ),
         ],

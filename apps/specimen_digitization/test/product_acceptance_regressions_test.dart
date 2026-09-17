@@ -12,6 +12,7 @@ import 'package:specimen_digitization/src/workspace.dart';
 
 import 'widget_test.dart' show TestRepository, TestSession, fixture;
 import 'workbench_harness.dart';
+import 'ui_finders.dart';
 
 class MutableReviewSession extends TestSession implements VerifiedEmailAccess {
   Completer<void>? verificationRefresh;
@@ -120,7 +121,7 @@ Future<void> openReview(
 Future<void> stageCountry(WidgetTester tester) async {
   await tester.tap(find.text('Fields'));
   await tester.pumpAndSettle();
-  await scrollAndTap(tester, find.byTooltip(RegExp(r'^Edit as written')).first);
+  await scrollAndTap(tester, uiIconButton(RegExp(r'^Edit as written')).first);
   await scrollAndTap(tester, find.text('Keep this correction'));
   expect(
     tester.widget<WorkbenchFields>(find.byType(WorkbenchFields)).pending,
@@ -136,15 +137,12 @@ Future<void> confirmReason(
   await tester.tap(find.text(action).last);
   await tester.pumpAndSettle();
   await tester.enterText(
-    find.widgetWithText(TextField, 'Reason'),
+    uiField('Reason'),
     'Compared the original label and retained readings',
   );
   await tester.pumpAndSettle();
   await tester.tap(
-    find.descendant(
-      of: find.byType(ReasonForm),
-      matching: find.widgetWithText(FilledButton, action),
-    ),
+    find.descendant(of: find.byType(ReasonForm), matching: uiButton(action)),
   );
   if (settle) {
     await tester.pumpAndSettle();
@@ -260,7 +258,7 @@ void main() {
       isEmpty,
     );
     expect(find.text('Save not confirmed'), findsNothing);
-    await tester.tap(find.byTooltip('Refresh this record'));
+    await tester.tap(uiIconButton('Refresh this record'));
     await tester.pumpAndSettle();
     final controller = WorkspaceScope.read(
       tester.element(find.byType(Navigator).first),
@@ -290,10 +288,7 @@ void main() {
       ..failOnRequest = 2;
     await openReview(tester, session, repository);
     await stageCountry(tester);
-    await scrollAndTap(
-      tester,
-      find.byTooltip(RegExp(r'^Edit as written')).last,
-    );
+    await scrollAndTap(tester, uiIconButton(RegExp(r'^Edit as written')).last);
     await scrollAndTap(tester, find.text('Keep this correction'));
     await confirmReason(tester, 'Save 2 pending changes');
     final pending = tester

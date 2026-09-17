@@ -89,26 +89,6 @@ final RegExp _constructors = RegExp(
 ///
 const Map<String, int> componentBacklog = <String, int>{
   'lib/src/app/app_router.dart': 1,
-  'lib/src/audit_history.dart': 4,
-  'lib/src/large_record.dart': 3,
-  'lib/src/operational_panel.dart': 4,
-  'lib/src/reading_declarations.dart': 10,
-  'lib/src/review_context.dart': 6,
-  'lib/src/risk_assessment.dart': 2,
-  'lib/src/screens/workbench/decision_bar.dart': 5,
-  'lib/src/screens/workbench/evidence_picker.dart': 1,
-  'lib/src/screens/workbench/fields_panel.dart': 8,
-  'lib/src/screens/workbench/readings_panel.dart': 9,
-  'lib/src/screens/workbench/shortcuts.dart': 1,
-  'lib/src/screens/workbench/status_strip.dart': 5,
-  'lib/src/widgets/adaptive_form.dart': 1,
-  'lib/src/widgets/authority_candidate_card.dart': 1,
-  'lib/src/widgets/evidence_drawer.dart': 3,
-  'lib/src/widgets/field_row.dart': 1,
-  'lib/src/widgets/reading_card.dart': 1,
-  'lib/src/widgets/reason_sheet.dart': 7,
-  'lib/src/widgets/risk_meter.dart': 1,
-  'lib/src/workbench.dart': 10,
 };
 
 /// Counts the retired widgets in [source], ignoring line comments so a

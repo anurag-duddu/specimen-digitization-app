@@ -15,6 +15,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/widgets/source_import_sheet.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 /// Opens the confirmation the way the browse screen does.
@@ -240,15 +241,15 @@ void main() {
             },
           ),
         ),
-        // Compact: the modal is a `UiSheet` rather than a `UiDialog`, and the
-        // count has to survive the change of surface.
+        // Compact: showAdaptiveForm draws a sheet against the bottom of the
+        // window rather than a dialog, and the count has to survive the
+        // change of surface.
         size: const Size(390, 844),
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(UiSheet), findsOneWidget);
-      expect(find.byType(UiDialog), findsNothing);
+      expect(modalIsSheet(tester), isTrue);
       expect(find.text('Add 1,000 photographs to the queue?'), findsOneWidget);
 
       await tester.tap(find.text('Add 1,000 photographs'));

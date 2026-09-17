@@ -6,6 +6,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/widgets/authority_candidate_card.dart';
 import 'package:specimen_digitization/src/widgets/evidence_drawer.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 Widget _card({VoidCallback? onUse, bool selected = false, Object? raw}) =>
@@ -62,7 +63,9 @@ void main() {
   ) async {
     await pumpComponent(tester, _card());
     expect(
-      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      tester
+          .widget<UiButton>(uiButton(AuthorityCandidateCard.useLabel))
+          .onPressed,
       isNull,
     );
   });

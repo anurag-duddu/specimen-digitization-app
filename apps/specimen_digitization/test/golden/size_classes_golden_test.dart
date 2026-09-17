@@ -19,9 +19,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'golden_harness.dart';
+import '../ui_finders.dart';
 
 /// Runs [body] once per window and theme.
 void forEachWindowAndTheme(
@@ -315,12 +317,10 @@ void main() {
               // capture of a scrolled pane. The shortcut moves the segment
               // without moving anything else, and it is the same binding the
               // keyboard walkthrough proves.
-              final Finder tab = find
-                  .descendant(
-                    of: find.byType(SegmentedButton<WorkbenchSegment>),
-                    matching: find.text(segment.label),
-                  )
-                  .first;
+              final Finder tab = find.descendant(
+                of: uiTabs(evidenceTabsLabel),
+                matching: find.text(segment.label),
+              );
               if (tab.evaluate().isNotEmpty) {
                 await tester.sendKeyEvent(switch (segment) {
                   WorkbenchSegment.readings => LogicalKeyboardKey.keyR,
@@ -331,11 +331,10 @@ void main() {
                 await settleImages(tester);
                 expect(
                   tester
-                      .widget<SegmentedButton<WorkbenchSegment>>(
-                        find.byType(SegmentedButton<WorkbenchSegment>),
-                      )
-                      .selected,
-                  <WorkbenchSegment>{segment},
+                      .widget<UiTabs>(uiTabs(evidenceTabsLabel))
+                      .selected
+                      .value,
+                  segment.index,
                   reason: 'the golden is of the wrong segment',
                 );
               }
@@ -356,9 +355,9 @@ void main() {
               await tester.pumpAndSettle();
 
               // A golden of the record must be a golden of the record, not of
-              // a dialog a stray tap opened over it.
+              // a modal a stray tap opened over it.
               expect(
-                find.byType(Dialog),
+                find.byType(Scrim),
                 findsNothing,
                 reason: 'the segment tap must not open a route',
               );

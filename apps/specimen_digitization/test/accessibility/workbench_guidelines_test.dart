@@ -13,9 +13,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/screens/workbench/shortcuts.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'guidelines_test.dart' show countSemantics, guidelines;
+import '../ui_finders.dart';
 
 /// A record carrying one of everything the workbench renders.
 Specimen workbenchRecord() => Specimen({
@@ -121,10 +123,18 @@ Future<void> pumpWorkbench(WidgetTester tester, Size window) async {
 }
 
 void main() {
+  // The regime is chosen by width, so the heights here are generous on
+  // purpose: `textContrastGuideline` samples a node's rect, and a control that
+  // straddles the foot of a scrolling pane is sampled as the background it is
+  // drawn on rather than as its own text. That is an artifact of measuring a
+  // half visible control, not a contrast defect, and a window taller than the
+  // record removes it without changing what the guideline covers. Compact
+  // keeps its own height, because the stacked layout divides it between the
+  // photograph and the evidence and a taller one is a different layout.
   const Map<String, Size> windows = <String, Size>{
     'compact': Size(390, 844),
-    'expanded': Size(1000, 800),
-    'large': Size(1440, 1000),
+    'expanded': Size(1000, 1800),
+    'large': Size(1440, 1800),
   };
 
   windows.forEach((String name, Size window) {
@@ -157,7 +167,7 @@ void main() {
       await pumpWorkbench(tester, windows['large']!);
       await tester.tap(find.text('Fields'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip(RegExp(r'^Edit as written')).first);
+      await tester.tap(uiIconButton(RegExp(r'^Edit as written')).first);
       await tester.pumpAndSettle();
       for (final AccessibilityGuideline guideline in guidelines.values) {
         await expectLater(tester, meetsGuideline(guideline));
@@ -168,7 +178,7 @@ void main() {
     testWidgets('the shortcut list meets every guideline', (tester) async {
       final handle = tester.ensureSemantics();
       await pumpWorkbench(tester, windows['large']!);
-      await tester.tap(find.byTooltip('Keyboard shortcuts'));
+      await tester.tap(uiIconButton(shortcutSheetTitle));
       await tester.pumpAndSettle();
       for (final AccessibilityGuideline guideline in guidelines.values) {
         await expectLater(tester, meetsGuideline(guideline));

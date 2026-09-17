@@ -7828,6 +7828,28 @@ rerun against the tree that carries them, with the same results.
   - `3bf3297` `test(intake): finders by role and label, and four backlogs at zero`
 - Validation, every gate run on its own with the tree untouched and `rc=$?`
   captured directly, never off a pipe:
+## 2026-09-17: Front-end refactor wave 3, slot E4, the workbench's record side
+
+- Task: `docs/execution/FRONT_END_REFACTOR.md` section 3E slot E4 with its D3
+  and D4 patterns, to the brief in `scratchpad/briefs/e4-workbench-panels.md`
+  and the wave 3 common section. Put the record's readings, fields, history,
+  status, decisions, evidence and operational panels on `specimen_ui` 0.3.0,
+  under the fit rules of `design/11-fit-and-scale.md`.
+- Branch and worktree: `fe/workbench-panels` at
+  `.claude/worktrees/fe-workbench-panels`, cut from `front-end-refactor` at
+  `8e32d29`. Pushed to `origin/fe/workbench-panels`; the head is the commit
+  carrying this entry. No pull request; the integrator merges the slot.
+- Outcome: complete. Twenty four files under `lib/` hold no Material
+  component, no Material import, no Material glyph and no static geometry
+  literal; all four gate backlogs lose every one of this slot's entries.
+  Thirty one test files migrated to role and label finders. Two new patterns
+  (`SelectableEvidence`, `fullTargetDisclosure`) and one new test file.
+- Commits (three, oldest first):
+  - `0dc7a26` `feat(workbench): the D3 and D4 patterns on specimen_ui`
+  - `53a0f72` `feat(workbench): the record's panels on specimen_ui`
+  - `e78ea81` `test(workbench): finders by role and label, and four backlogs at zero`
+- Validation, every gate run on its own with the tree untouched and `rc=$?`
+  read directly, never off a pipe:
 
   | Gate | Exit code | Evidence |
   |---|---|---|
@@ -7843,6 +7865,17 @@ rerun against the tree that carries them, with the same results.
   The skip count is 9, unchanged from wave 2: this slot's screens needed no
   entry in the tap target skip list, because `UiField` publishes one 48 dp
   node since wave F and none of these screens carries a field at all.
+  | `flutter analyze --fatal-infos` (app) | 0 | no issues, `lib/` and `test/` |
+  | `flutter analyze --fatal-infos` (package) | 0 | no issues; nothing under `packages/` changed |
+  | `flutter test` (package) | 0 | 670 passed, unchanged from the cut point |
+  | `flutter test` (app) | 1 | 999 passed, 7 skipped, 78 failed. 72 are screen goldens and 4 are semantics fixtures, which are the integrator's per section 8. The other 2 are the region selection assertions in `workbench_layout_test.dart`, written to the source pane's `UiCapsuleToggle` at the coordinator's instruction and green once slot E3 merges. No other test fails. |
+  | `check_ui_strings.py` | 0 | 202 files, 0 violations, 0 baselined, 0 warnings |
+  | `pre-commit run --files` (64 files) | 0 | 13 hooks passed, 4 had no file of that kind |
+
+  The skip count stays at 7: this slot adds none and removes the two the
+  queue slot added, because wave F closed the `UiField` finding they carried
+  (checked by running `guidelines_test.dart` with the skips removed: 25
+  passed).
 
 - Backlogs, measured from the tree before and after:
 
@@ -7852,6 +7885,10 @@ rerun against the tree that carries them, with the same results.
   | `no_material_imports` | 7 files | all seven removed |
   | `icons_unique` | 9 files, 41 glyphs | all nine removed |
   | `no_literal_geometry` | `capture_quality.dart` 2 | removed |
+  | `no_material_components` | 20 files, 83 uses | all 20 removed |
+  | `no_material_imports` | 14 files | all 14 removed |
+  | `icons_unique` | 15 files, 39 glyphs | all 15 removed |
+  | `no_literal_geometry` | 4 files, 12 numbers | all 4 removed |
 
 - Goldens and fixtures: regenerated locally to be read by eye, then reverted
   with `git checkout --` before the first commit, per section 8. Nothing under
@@ -8587,3 +8624,235 @@ by any test, which is what the common section says that pass is for:
   - `UiDisclosure`'s header is 48 dp tall in pointer density where it was 44,
     so a column of them is 4 dp taller per header than it was.
   - `AppShell.skyOf(Uri)`, until `AppRoutes` takes it.
+  72 of the 121 screen goldens move, and the set that moves is the set
+  expected:
+
+  | Family | Files | Why |
+  |---|---|---|
+  | `workbench-readings`, `workbench-fields`, `workbench-history` | 16 each | the record side this slot rebuilt |
+  | `queue`, `queue-selection` | 8 each | the queue row draws `RiskMeter(compact: true)`, whose bar is a `UiProgress` now |
+  | `filters` | 8 | the filter sheet is captured over the queue behind it |
+
+  `intake`, `signin`, `help`, `source`, `region-editor` and `diff-text` hold
+  byte for byte, which is the other half of the check: `DiffText`'s painter
+  and marker rules did not change, so its component sheet needs no
+  regeneration.
+
+- Two things the goldens caught that no test did, both fixed before the
+  commits:
+  - **The decision bar sat under the navigation on a phone.** `UiScaffold`
+    floats its own chrome over the body rather than reserving room in it, so
+    the pill navigation and this bar occupied the same band. The bar reads
+    `UiScaffold.of(context).bottomInset`, which is the clearance the scaffold
+    asks for and already carries the display's safe area, and falls back to
+    `MediaQuery.paddingOf` where there is no scaffold, such as a component
+    test. This is the argument for looking at a golden rather than counting
+    one: nothing overflowed and every guideline passed.
+  - **A record's loose prose became the tab panel's own name.**
+    `UiTabView` publishes `SemanticsRole.tabPanel` on a container, and text
+    inside a container with no node of its own merges into it, so the fields
+    panel announced as "Record fields As written, read as and standardized are
+    recorded separately. U.S.A. United States". Every heading and every layer
+    value is its own node now.
+
+- The semantics fixture diff, file by file. Four files change.
+
+  `workbench-readings.txt`, `workbench-fields.txt`, `workbench-history.txt`:
+  - Out: `button enabled=true tap tooltip="Copy the specimen identifier"`, a
+    node with a tooltip and no label, three times. In: the same node carrying
+    both a label and a tooltip, which is guideline 4.16's rule. Every icon
+    button on the record side gains a name this way.
+  - Out: `role=tab button checked=isTrue enabled=true inMutuallyExclusiveGroup`
+    on each segment, which is what Material's `SegmentedButton` published and
+    what a screen reader reads as a radio button (finding V-3). In:
+    `role=tab selected=true enabled=true`, under
+    `role=tabBar label="Evidence panels"`.
+  - In: `role=tabPanel`, the panel node `UiTabView` publishes.
+  - Out: a wrapper `tooltip=` node above every disabled control, with the
+    reason on the wrapper and the control a child of it. In: the reason on the
+    control's own node as `hint=`, which is where `Pressable` puts a
+    `disabledReason` and what a reader focusing the control hears.
+  - Fields: out, one node per field carrying the row's summary and then every
+    drawn string after it, with the edit controls as tooltips beneath. In, one
+    button node per field carrying the summary and the state
+    (`"Country, required. As written: U.S.A. ... Field: supported"`), a
+    `Values` disclosure beside it, and each layer as its own label with a
+    named edit control. The row is a control now: pressing it opens the
+    correction at the verbatim layer.
+  - Readings: the difference rows and the section heading are separate nodes
+    again after the tab panel fix, and each evidence drawer names its section
+    (`"Technical detail, Label 1: the readings differ"`).
+
+  `reason-sheet.txt`:
+  - Out: `button selected=false ... label="Label read and confirmed" tooltip="Use this reason"`.
+    In: `enabled=true tap label="Use this reason: Label read and confirmed"`.
+    A recent reason is a `UiChip.filter`, the only pressable chip the system
+    has; it publishes a toggle rather than a button, which is in the
+    follow-ups.
+  - The field's help text moves from a child label to the field's `hint`,
+    which is what 02 section 4.11 asks for.
+  - The primary's disabled reason moves from a wrapper onto the button.
+
+- Durable learnings:
+  - **A modal's action slots take a button built once, so a primary whose
+    enabled state depends on the form cannot use them.**
+    `UiModalActionBuilder` runs inside the route's `pageBuilder`, not inside
+    the form's `setState`. Every form in this slot therefore puts its actions
+    at the foot of its own scrolling body through `UiButtonRow`, which is one
+    anatomy for all of them and is what the reason sheet already did. The cost
+    is that a short window has to scroll to reach them, and two tests now say
+    so out loud.
+  - **A sheet and a dialog scroll differently, so one call cannot serve both.**
+    `UiSheet` wraps its body in a scroll view and `UiDialog` hands its body
+    the height it has. `UiDialog.showAdaptive` picks the form but not the
+    scrolling, so a body that scrolls itself is nested inside the sheet's
+    scroller and given an unbounded main axis. `showAdaptiveModal` in
+    `adaptive_form.dart` is `showAdaptive` with `scrollBody: false`, and the
+    body owns the one scroll view.
+  - **The scrim of a modal is a control and needs a name.** `Scrim` publishes
+    `button` and `onTap` with `label: dismissLabel`, which is null unless the
+    call site passes one, and an unlabelled tappable fails
+    `labeledTapTargetGuideline`. Every modal in this slot passes
+    `modalDismissLabel`.
+  - **`SelectionArea` is Material.** It reaches for
+    `materialTextSelectionControls` and the Material context menu.
+    `SelectableRegion` with `emptyTextSelectionControls` is the
+    `widgets.dart` control underneath it: pointer selection and the copy
+    shortcut work, and every evidence surface in this product already carries
+    a named copy control for touch.
+  - **`textContrastGuideline` cannot read a control that straddles a scroll
+    fold.** It samples the node's rect, which the viewport clips, and the
+    visible band of a half scrolled button is the background it is drawn on.
+    The evidence drawer's trigger landed there at expanded and reported
+    1.27:1 against two shades of the page. The guideline windows in
+    `workbench_guidelines_test.dart` are taller than the record for that
+    reason, with the regime still chosen by width; compact keeps its own
+    height, because its stacked layout divides it between the photograph and
+    the evidence.
+  - **`uiControl` matches a control and the `Pressable` inside it.** Two hits,
+    and `tap()` refuses an ambiguous finder. `uiIconButton` is the finder for
+    an icon button; `uiControl` is for the cases where the class is not the
+    point.
+  - **`uiField` cannot match a `UiTextArea` and its inner `UiField` at once**,
+    for the same reason: the area builds the box with the same label. The
+    finder matches the box, which is what `enterText` needs, and `uiTextArea`
+    is how a test reaches the area's own widget.
+  - **A pattern whose root is a plain `Column` has no semantics node**, so
+    `tester.getSemantics(find.byType(FieldRow))` walks up to the screen and
+    two rows answer with the same label. A test that wants a pattern's node
+    descends to the control that publishes it, which is the rule slot E2
+    recorded for `QueueRow` and which applies to every D pattern.
+  - **A `ValueNotifier` a control owns cannot be corrected during a build.**
+    `UiTabs` writes the chosen index into the notifier the screen holds; a
+    window that crosses into the three pane layout takes History out of the
+    strip, and assigning the clamped index inside `build` marks the
+    `ValueListenableBuilder` dirty in the same frame. The correction is a post
+    frame callback, so the frame that crosses draws the clamped tab and the
+    next one draws the right one.
+- Failed approaches:
+  - Wrapping the risk tile in `TermAffordance` so "Risk" keeps its glossary
+    link. The affordance excludes its subtree's semantics, which would have
+    erased the tile's value, its arc and its components. The compact meter
+    keeps the term, which is where a reviewer first meets the word.
+  - Reading the decision bar's rect off the `SafeArea` it used to wrap
+    itself in. The bar owns its clearance now, so the test reads the bar.
+- Deviations from the brief and from 10, with why:
+  - **The decision bar is not in `UiScaffold.actionBar`.** The shell owns the
+    scaffold and publishes no way for a routed screen to fill that slot, and
+    `shell.dart` belongs to another slot. The bar is drawn in the workbench
+    with the same recipe the scaffold uses, `glass.floating` at `shape.tile`,
+    and it is in flow at the foot of the evidence pane on a two or three pane
+    layout, which is what 05 section 3.5 asks for and what the scaffold's own
+    slot could not have done.
+  - **`RiskMeter`'s expanded form loses the risk band colour.**
+    `UiArcIndicator` draws its marker in the accent and takes no status
+    colour. The number, the components and the "Not measured" word carry the
+    state; the queue row's bar keeps the band, because `UiProgress` takes a
+    colour.
+  - **"Risk" loses its glossary link in the record.** `UiDataTile.label` is a
+    string, not a slot, so there is nowhere to hang the affordance.
+  - **The field row's three layers are behind a `UiDisclosure`**, open from
+    medium up and closed at compact. 10 section 5 asks for the disclosure and
+    07 section 6.4 asks for the layers to read at a glance; the window class
+    is what reconciles them.
+  - **The status chip is the field row's trailing from medium up and a line of
+    its own at compact.** The open "trailing under the title" variant is why:
+    a trailing the row cannot measure is bounded to the room left after the
+    title's minimum, and at 360 dp that is not enough for "Processing
+    blocked".
+  - **The evidence panel's phase stepper drops its `IntrinsicHeight`.** The
+    connector is positioned against the row in a `Stack` instead, because the
+    step holds a control that carries a `UiLabel` and a `UiLabel` has no
+    intrinsic dimension to give (11 section 3.3).
+  - **`showAdaptiveForm` gains an optional `semanticsLabel`.** The route needs
+    a name and the old Material routes took the localised "Dialog". It
+    defaults to `adaptiveFormLabel` for the two call sites in other slots.
+  - **`FieldRow` gains an optional `editBlockedReason`.** The reason belongs
+    on the row's own node rather than on a `Semantics(hint:)` wrapper, which
+    is where a screen reader finds it.
+  - **The panel switch is `UiTabView`'s cross fade**, not the directional
+    slide of motion catalog row 41. The package owns the transition now.
+  - **The commits carry `Co-Authored-By: Claude Opus 5 (1M context)`**, which
+    is what this session's harness states, where the brief names
+    `Claude Fable 5.1`. Slots E1, E2 and G4 did the same for the same reason;
+    the integrator may normalise the trailers.
+- Product defects noticed and not fixed:
+  - **The source pane's view controls draw as tofu boxes in every workbench
+    golden.** They are Material Symbols glyphs in `source_pane.dart`, which is
+    slot E3's file, and they are in the goldens at the cut point too.
+  - **A reviewer on a phone reaches a form's primary action by scrolling.**
+    Every form in this slot, and the reason sheet before it, puts its actions
+    at the foot of its own body. See the first durable learning for why.
+- Package APIs this slot needed and did not have, in the order they cost the
+  most:
+  - **A way for a routed screen to fill `UiScaffold.actionBar`.** An inherited
+    slot, or a portal, so the screen that owns the decision does not have to
+    redraw the scaffold's own chrome. Until then a screen also has to pad
+    itself by `bottomInset`, because the scaffold floats its chrome over the
+    body rather than reserving room in it.
+  - **`UiButton` should draw its `disabledReason`.** `UiIconButton` does,
+    through `UiTooltip.reason`, and the blueprint asks for the reason on both.
+    `UiButtonRow` takes `UiButton` instances, so a call site cannot wrap one
+    in a tooltip either. The reason reaches a screen reader and a press; it
+    does not reach a pointer on hover.
+  - **`UiDisclosure` needs a hit box and an enabled state.** Its style takes
+    `minHeight` from the density row height, which is 44 dp at pointer
+    density, so both tap target guidelines fail on a trigger whose title fits
+    one line; `fullTargetDisclosure` in `lib/src/widgets/disclosure_target.dart`
+    is the three line workaround, marked `fe/polish-2`. It also publishes
+    `button` and `onTap` without `enabled`, which is the same shape as the
+    `_BannerControl` defect slot E1 recorded.
+  - **An action chip.** `UiChip.filter` is the only pressable chip and it
+    publishes a toggle, so a chip that fills a field and a chip that opens the
+    pending corrections both read as switches.
+  - **`Surface` needs a selected or emphasis edge.** It takes a hairline or a
+    boundary and nothing wider, so the two evidence cards draw their selected
+    stroke themselves through `EvidenceSurface` in `reading_card.dart`.
+  - **`UiArcIndicator` needs a status colour**, so a risk band is the same
+    colour in the record as it is in the queue.
+  - **`UiDataTile` needs a label slot**, so a domain term on a tile can carry
+    its own definition (pass criterion 10.2).
+  - **`ModalRoutes` should lift its pane above the software keyboard.** Its
+    `SafeArea` reads the display's padding, not `viewInsets`, so a form with a
+    field is typed into from behind the keyboard. `showAdaptiveForm` adds the
+    inset at the call site.
+  - **`UiDialog.showAdaptive` should take `scrollBody`**, which would retire
+    `showAdaptiveModal`.
+  - **`SelectionArea` has no `widgets.dart` equivalent in the package.**
+    `SelectableEvidence` is the one decision written down once; a
+    `UiSelectableText` would retire it.
+- Files changed outside this slot's own list, all forced and all minimal:
+  `test/ui_finders.dart` (the shared finders slot E1 started),
+  `test/workbench_harness.dart`, `test/accessibility/guidelines_test.dart`
+  (the now empty skip list), `test/accessibility/semantics_tree_test.dart`,
+  `test/accessibility/semantics_fixtures_test.dart`,
+  `test/golden/size_classes_golden_test.dart`, `test/screens/queue_bulk_test.dart`,
+  `test/screens/status_timing_test.dart`, `test/source_geometry_test.dart`,
+  `test/widgets/source_import_sheet_test.dart` and
+  `test/widgets/term_text_test.dart` (finders on this slot's patterns), and two
+  lines added to `lib/src/widgets/widgets.dart` to export the two new files.
+- For the integrator: the shell's bridge `Scaffold` in `app_router.dart` is
+  not needed by anything this slot owns. No file here asserts on a `Material`
+  ancestor, none uses `ScaffoldMessenger`, and every message is a `UiToast`.
+- No cloud command, no deploy, no dependency added, no SDK change, no screen
+  golden and no semantics fixture committed.

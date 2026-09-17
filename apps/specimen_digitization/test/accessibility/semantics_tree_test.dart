@@ -154,14 +154,16 @@ void main() {
 
     // Two rows in the same state used to be indistinguishable, because the
     // only label either produced came from its status chip.
-    final String first = tester
-        .getSemantics(find.byType(FieldRow).first)
+    // The row is the node: the pattern's own root is a column with no
+    // semantics of its own, so a finder on it walks up to the screen.
+    String rowLabel(Finder row) => tester
+        .getSemantics(
+          find.descendant(of: row, matching: find.byType(UiListRow)),
+        )
         .getSemanticsData()
         .label;
-    final String second = tester
-        .getSemantics(find.byType(FieldRow).last)
-        .getSemanticsData()
-        .label;
+    final String first = rowLabel(find.byType(FieldRow).first);
+    final String second = rowLabel(find.byType(FieldRow).last);
     expect(first, contains('Country'));
     expect(second, contains('Collector'));
     expect(first, isNot(second));

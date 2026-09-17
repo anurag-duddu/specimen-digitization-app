@@ -11,10 +11,10 @@
 /// subtree. Do not wrap a form in this map.
 library;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
-import '../../theme/icons.dart';
 import '../../widgets/widgets.dart';
 
 /// Moves to the next specimen in the queue.
@@ -142,53 +142,110 @@ const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
 ];
 
 /// Shows the shortcut list.
-Future<void> showShortcutSheet(BuildContext context) => showAdaptiveForm<void>(
+Future<void> showShortcutSheet(BuildContext context) => showAdaptiveModal<void>(
   context,
-  width: DialogWidths.standard,
-  builder: (BuildContext formContext) => SafeArea(
-    child: SingleChildScrollView(
-      padding: EdgeInsets.all(formContext.space.space6),
+  title: shortcutSheetTitle,
+  body: (BuildContext formContext) => const _ShortcutList(),
+  primaryAction: (BuildContext formContext) => UiButton(
+    label: shortcutSheetClose,
+    autofocus: true,
+    onPressed: () => Navigator.of(formContext).pop(),
+  ),
+);
+
+/// The sheet's own title.
+const String shortcutSheetTitle = 'Keyboard shortcuts';
+
+/// The way out of it.
+const String shortcutSheetClose = 'Close the shortcut list';
+
+/// The map, one row per binding, each key drawn as a cap.
+class _ShortcutList extends StatelessWidget {
+  const _ShortcutList();
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Keyboard shortcuts',
-            style: Theme.of(formContext).textTheme.titleLarge,
-          ),
-          SizedBox(height: formContext.space.space3),
           for (final ShortcutEntry entry in workbenchShortcutHelp)
             MergeSemantics(
               child: Padding(
-                padding: EdgeInsets.symmetric(
-                  vertical: formContext.space.space1,
-                ),
+                padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s1),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    SizedBox(
-                      width:
-                          formContext.space.space16 + formContext.space.space12,
-                      child: Text(
-                        entry.keys,
-                        style: Theme.of(formContext).textTheme.labelMedium,
-                      ),
-                    ),
-                    Expanded(child: Text(entry.action)),
+                    // The caps take the width their own labels need at this
+                    // text scale, rather than a column measured by eye: at
+                    // 200 percent "Shift" alone is wider than the column
+                    // this row used to reserve (11 section 2.2).
+                    _Caps(keys: entry.keys),
+                    SizedBox(width: ui.space.s3),
+                    Expanded(child: Text(entry.action, style: ui.type.body)),
                   ],
                 ),
               ),
             ),
-          SizedBox(height: formContext.space.space6),
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: FilledButton(
-              onPressed: () => Navigator.of(formContext).pop(),
-              autofocus: true,
-              child: const Text('Close the shortcut list'),
-            ),
-          ),
         ],
       ),
-    ),
-  ),
-);
+    );
+  }
+}
+
+/// One binding, drawn as the keys it is pressed with.
+///
+/// The help table is written in words, because a screen reader reads the
+/// words and a caption has to say "Question mark" rather than "?". The caps
+/// print the key and keep the word on the semantics node, which is what
+/// `UiKeyCap.semanticsLabel` is for.
+class _Caps extends StatelessWidget {
+  const _Caps({required this.keys});
+
+  final String keys;
+
+  /// The word a shortcut is written with, and the key a cap prints.
+  static const Map<String, String> printed = <String, String>{
+    'Plus': '+',
+    'Minus': '-',
+    'Question mark': '?',
+  };
+
+  /// The words that join two caps rather than naming one.
+  static const List<String> joiners = <String>[' and ', ' to '];
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final List<Widget> parts = <Widget>[];
+    for (final String joiner in joiners) {
+      if (!keys.contains(joiner)) continue;
+      final List<String> sides = keys.split(joiner);
+      for (final (int i, String side) in sides.indexed) {
+        if (i > 0) {
+          parts
+            ..add(SizedBox(width: ui.space.s1))
+            ..add(
+              Text(
+                joiner.trim(),
+                style: ui.type.labelSmall.copyWith(
+                  color: ui.color.inkSecondary,
+                ),
+              ),
+            )
+            ..add(SizedBox(width: ui.space.s1));
+        }
+        parts.add(_cap(side));
+      }
+      return Row(mainAxisSize: MainAxisSize.min, children: parts);
+    }
+    return _cap(keys);
+  }
+
+  Widget _cap(String word) => UiKeyCap(
+    label: printed[word] ?? word,
+    semanticsLabel: printed.containsKey(word) ? word : null,
+  );
+}

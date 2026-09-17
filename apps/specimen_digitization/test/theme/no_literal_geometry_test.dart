@@ -62,10 +62,6 @@ const String modelsPrefix = 'lib/src/models';
 const Map<String, int> geometryBacklog = <String, int>{
   'lib/src/api_repository.dart': 7,
   'lib/src/magic_link.dart': 1,
-  'lib/src/reading_alignment.dart': 2,
-  'lib/src/reading_declarations.dart': 2,
-  'lib/src/review_context.dart': 6,
-  'lib/src/risk_assessment.dart': 2,
   'lib/src/widgets/previews.dart': 2,
   'lib/src/workspace.dart': 2,
 };

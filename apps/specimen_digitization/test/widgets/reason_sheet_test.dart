@@ -3,11 +3,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/reason_sheet.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 Widget _opener(void Function(String?) record) => Builder(
-  builder: (BuildContext context) => TextButton(
+  builder: (BuildContext context) => UiButton(
+    label: 'Open',
     onPressed: () async => record(
       await showReasonSheet(
         context,
@@ -24,15 +27,20 @@ Widget _opener(void Function(String?) record) => Builder(
         recentReasons: <String>['Wrong locality', 'Duplicate record'],
       ),
     ),
-    child: const Text('Open'),
   ),
 );
 
 Future<void> _open(WidgetTester tester, void Function(String?) record) async {
   await pumpComponent(tester, _opener(record), size: const Size(1000, 800));
-  await tester.tap(find.text('Open'));
+  await tester.tap(uiButton('Open'));
   await tester.pumpAndSettle();
 }
+
+/// What the reason field holds right now.
+String? _reasonText(WidgetTester tester) => tester
+    .widget<UiTextArea>(uiTextArea(ReasonForm.reasonLabel))
+    .controller
+    ?.text;
 
 void main() {
   testWidgets('states the consequence, what is retained and what is left', (
@@ -84,23 +92,26 @@ void main() {
     WidgetTester tester,
   ) async {
     await _open(tester, (String? _) {});
-    FilledButton primary() =>
-        tester.widget<FilledButton>(find.byType(FilledButton));
+    UiButton primary() =>
+        tester.widget<UiButton>(uiButton('Supersede the decision'));
     expect(primary().onPressed, isNull);
+    // A control the reviewer cannot use yet says why rather than only
+    // dimming (pass criterion 5.6).
+    expect(primary().disabledReason, ReasonForm.reasonRequiredHint);
 
-    await tester.enterText(find.byType(TextField), 'Locality is wrong');
+    await tester.enterText(
+      uiField(ReasonForm.reasonLabel),
+      'Locality is wrong',
+    );
     await tester.pumpAndSettle();
     expect(primary().onPressed, isNotNull);
   });
 
   testWidgets('a recent reason fills the field', (WidgetTester tester) async {
     await _open(tester, (String? _) {});
-    await tester.tap(find.widgetWithText(ActionChip, 'Wrong locality'));
+    await tester.tap(uiChip('Wrong locality'));
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
-      'Wrong locality',
-    );
+    expect(_reasonText(tester), 'Wrong locality');
   });
 
   testWidgets('the action returns the trimmed reason', (
@@ -108,7 +119,10 @@ void main() {
   ) async {
     String? result = 'not called';
     await _open(tester, (String? value) => result = value);
-    await tester.enterText(find.byType(TextField), '  Wrong locality  ');
+    await tester.enterText(
+      uiField(ReasonForm.reasonLabel),
+      '  Wrong locality  ',
+    );
     await tester.pumpAndSettle();
     // The sheet scrolls, and it states the consequence, the finality, what is
     // retained and what is outstanding above the action.
@@ -142,7 +156,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await _open(tester, (String? _) {});
-    await tester.enterText(find.byType(TextField), 'Wrong locality');
+    await tester.enterText(uiField(ReasonForm.reasonLabel), 'Wrong locality');
     await tester.pumpAndSettle();
 
     await tester.tapAt(const Offset(20, 20));
@@ -152,10 +166,7 @@ void main() {
     await tester.tap(find.text('Keep editing'));
     await tester.pumpAndSettle();
     expect(find.byType(ReasonForm), findsOneWidget);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
-      'Wrong locality',
-    );
+    expect(_reasonText(tester), 'Wrong locality');
   });
 
   testWidgets('discarding from that confirmation closes the sheet', (
@@ -163,7 +174,7 @@ void main() {
   ) async {
     String? result = 'not called';
     await _open(tester, (String? value) => result = value);
-    await tester.enterText(find.byType(TextField), 'Wrong locality');
+    await tester.enterText(uiField(ReasonForm.reasonLabel), 'Wrong locality');
     await tester.pumpAndSettle();
     await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
@@ -181,9 +192,9 @@ void main() {
       _opener((String? _) {}),
       size: const Size(420, 900),
     );
-    await tester.tap(find.text('Open'));
+    await tester.tap(uiButton('Open'));
     await tester.pumpAndSettle();
-    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(modalIsSheet(tester), isTrue);
   });
 
   testWidgets('renders in both themes and meets the guidelines', (
@@ -196,7 +207,7 @@ void main() {
         size: const Size(1000, 800),
         theme: theme,
       );
-      await tester.tap(find.text('Open'));
+      await tester.tap(uiButton('Open'));
       await tester.pumpAndSettle();
       await expectAccessible(tester);
     }

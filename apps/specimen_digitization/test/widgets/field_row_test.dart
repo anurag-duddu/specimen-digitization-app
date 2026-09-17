@@ -6,6 +6,7 @@ import 'package:specimen_digitization/src/widgets/field_row.dart';
 import 'package:specimen_digitization/src/widgets/specimen_status.dart';
 import 'package:specimen_digitization/src/widgets/status_chip.dart';
 
+import '../ui_finders.dart';
 import 'harness.dart';
 
 void main() {
@@ -106,7 +107,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Edit read as'));
+    await tester.tap(uiIconButton('Edit read as'));
     await tester.pumpAndSettle();
     expect(edited, <FieldLayer>[FieldLayer.readAs]);
   });
