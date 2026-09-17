@@ -408,6 +408,91 @@ void main() {
       expect(find.text('Run'), findsNothing);
     });
 
+    testWidgets('a modal holds the scope it was shown inside from its entrance '
+        'to its exit', (WidgetTester tester) async {
+      final UiModalScope scope = UiModalScope();
+      addTearDown(scope.dispose);
+      int announced = 0;
+      scope.addListener(() => announced++);
+      late BuildContext inside;
+      await tester.pumpWidget(
+        uiHarness(
+          child: UiModalScope.publish(
+            scope: scope,
+            child: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+      expect(UiModalScope.of(inside), same(scope));
+      expect(scope.isOpen, isFalse);
+
+      unawaited(
+        showUiSheet<void>(
+          context: inside,
+          semanticsLabel: 'Record a reason',
+          builder: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      await tester.pump();
+      expect(
+        scope.isOpen,
+        isFalse,
+        reason: 'held once the entrance has finished, not from the push',
+      );
+      await tester.pumpAndSettle();
+      expect(scope.isOpen, isTrue);
+      expect(announced, 1);
+
+      Navigator.of(inside, rootNavigator: true).pop();
+      await tester.pump();
+      expect(
+        scope.isOpen,
+        isFalse,
+        reason: 'given back the moment the exit begins',
+      );
+      await tester.pumpAndSettle();
+      expect(announced, 2);
+    });
+
+    testWidgets(
+      'a modal dismissed before its entrance finished holds nothing',
+      (WidgetTester tester) async {
+        final UiModalScope scope = UiModalScope();
+        addTearDown(scope.dispose);
+        late BuildContext inside;
+        await tester.pumpWidget(
+          uiHarness(
+            child: UiModalScope.publish(
+              scope: scope,
+              child: Builder(
+                builder: (BuildContext context) {
+                  inside = context;
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ),
+        );
+        unawaited(
+          showUiSheet<void>(
+            context: inside,
+            semanticsLabel: 'Record a reason',
+            builder: (BuildContext context) => const Text('Reason'),
+          ),
+        );
+        await tester.pump();
+        Navigator.of(inside, rootNavigator: true).pop();
+        await tester.pumpAndSettle();
+        expect(scope.isOpen, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     test('the compact threshold matches the window class', () {
       // The package cannot import `WindowClass` without inverting the
       // layering, so the two values are pinned here and in the application.

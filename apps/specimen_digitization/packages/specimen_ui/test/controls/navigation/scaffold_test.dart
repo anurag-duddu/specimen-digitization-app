@@ -1,5 +1,7 @@
 // The page frame (10 section 4.4, `UiScaffold`).
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -1260,6 +1262,186 @@ void main() {
             'the rule is the compact budget of 09 section 3.3, not a ban '
             'on frosted glass',
       );
+    });
+  });
+
+  group('the frame under a modal (13 section 2.2; 09 section 3.3)', () {
+    testWidgets('a sheet over a compact frame leaves one pane, the sheet\'s', (
+      WidgetTester tester,
+    ) async {
+      late BuildContext inside;
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: _pill(),
+            body: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return _scrollingBody();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 1, reason: 'the action bar, before the sheet');
+
+      unawaited(
+        UiSheet.show<void>(
+          context: inside,
+          title: 'Record a reason',
+          body: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The sheet's pane over the frame's used to be two on a phone whose
+      // budget is one: the pill or the action bar kept blurring under the
+      // scrim. A pane under a scrim is a save layer nobody sees.
+      expect(find.text('Reason'), findsOneWidget);
+      expect(glassPaneCount(), 1);
+      expect(modalGlassPaneCount(), 1, reason: 'and the one pane is the sheet');
+
+      Navigator.of(inside, rootNavigator: true).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Reason'), findsNothing);
+      expect(glassPaneCount(), 1, reason: 'the frame has its pane back');
+      expect(modalGlassPaneCount(), 0);
+    });
+
+    testWidgets('a dialog over a medium frame does the same', (
+      WidgetTester tester,
+    ) async {
+      const Size window = Size(768, 1024);
+      late BuildContext inside;
+      final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          child: _page(
+            size: window,
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: UiRail(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+            body: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return CustomScrollView(
+                  controller: controller,
+                  slivers: <Widget>[
+                    const UiCollapsingHeader(
+                      primary: true,
+                      content: ColoredBox(color: Color(0xFF000000)),
+                      chrome: <Widget>[Text('Labels')],
+                    ),
+                    SliverList.builder(
+                      itemCount: 30,
+                      itemBuilder: (BuildContext context, int index) =>
+                          const SizedBox(height: 80),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 2, reason: 'the two panes medium spends');
+
+      unawaited(
+        UiDialog.show<void>(
+          context: inside,
+          title: 'Start a new run',
+          body: (BuildContext context) => const Text('Run'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 1);
+      expect(modalGlassPaneCount(), 1);
+
+      Navigator.of(inside, rootNavigator: true).pop();
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 2);
+    });
+
+    testWidgets('the frame gives its panes up once the entrance has finished', (
+      WidgetTester tester,
+    ) async {
+      late BuildContext inside;
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            actionBar: const Text('Clear record'),
+            body: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      unawaited(
+        UiSheet.show<void>(
+          context: inside,
+          title: 'Record a reason',
+          body: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      // The first frame of the entrance: the scrim is still fading in, and
+      // the frame's pane is still frosted under it rather than switching in
+      // plain sight.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(glassPaneCount(), 2);
+
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 1, reason: 'solid once the scrim is drawn');
+    });
+
+    testWidgets('a modal shown from outside a frame changes nothing', (
+      WidgetTester tester,
+    ) async {
+      late BuildContext outside;
+      await tester.pumpWidget(
+        uiHarness(
+          child: Builder(
+            builder: (BuildContext context) {
+              outside = context;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      unawaited(
+        UiSheet.show<void>(
+          context: outside,
+          title: 'Record a reason',
+          body: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Reason'), findsOneWidget);
+      expect(glassPaneCount(), 1);
+      expect(tester.takeException(), isNull);
     });
   });
 }

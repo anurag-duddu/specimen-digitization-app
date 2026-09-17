@@ -4,7 +4,7 @@ library;
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart' show RenderProxyBox;
-import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/fields.dart';
@@ -13,39 +13,13 @@ import '../../foundation/theme.dart';
 import '../../foundation/window.dart';
 import '../../primitives/composition_markers.dart';
 import '../../primitives/field_layer.dart';
+import '../../primitives/frame_safe_notifier.dart';
 import '../../primitives/glass_surface.dart';
+import '../../primitives/modal_routes.dart';
 import '../overlays/banner.dart';
 import '../overlays/toast.dart';
 import 'rail.dart';
 import 'sidebar.dart';
-
-/// Announces a change now, or after the frame when one is being built.
-///
-/// A page publishes what it wants from the frame while it is being laid out,
-/// which is the one moment the frame above it cannot be rebuilt. Both of the
-/// scaffold's published channels defer to the end of the frame when they are
-/// written during one, and announce immediately otherwise.
-mixin _FrameSafeNotifier on ChangeNotifier {
-  bool _disposed = false;
-
-  @override
-  void dispose() {
-    _disposed = true;
-    super.dispose();
-  }
-
-  void _announce() {
-    final SchedulerPhase phase = SchedulerBinding.instance.schedulerPhase;
-    if (phase == SchedulerPhase.persistentCallbacks ||
-        phase == SchedulerPhase.midFrameMicrotasks) {
-      SchedulerBinding.instance.addPostFrameCallback((Duration _) {
-        if (!_disposed) notifyListeners();
-      });
-      return;
-    }
-    notifyListeners();
-  }
-}
 
 /// The rectangle a screen asks the field layer to keep clear.
 ///
@@ -65,7 +39,7 @@ mixin _FrameSafeNotifier on ChangeNotifier {
 /// its own has, so a publisher is a single call with no branch. A screen that
 /// leaves publishes null, and one that stops being visible publishes null in
 /// `dispose`; nothing else clears it.
-class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
+class UiScaffoldExclusion extends ChangeNotifier with FrameSafeNotifier {
   /// What is kept clear now, or null for nothing.
   Rect? get rect => _rect;
   Rect? _rect;
@@ -79,7 +53,7 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
   void publish(Rect? rect) {
     if (rect == _rect) return;
     _rect = rect;
-    _announce();
+    announce();
   }
 
   /// The nearest scaffold's exclusion, or null when there is no scaffold.
@@ -142,7 +116,7 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
 ///
 /// Null outside a scaffold, which is what a component test pumping one screen
 /// on its own has, so a publisher is one call with no branch.
-class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
+class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
   /// What the page put in the top bar, or null for the caller's own.
   Widget? get topBar => _topBar;
   Widget? _topBar;
@@ -175,7 +149,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _topBarOwner = bar == null ? null : owner;
     if (bar == _topBar) return;
     _topBar = bar;
-    _announce();
+    announce();
   }
 
   /// Puts [bar] in the frame's action bar. Null gives the slot back, where
@@ -192,7 +166,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _actionBarOwner = bar == null ? null : owner;
     if (bar == _actionBar) return;
     _actionBar = bar;
-    _announce();
+    announce();
   }
 
   /// Asks for the navigation to be drawn or hidden. Null gives the answer
@@ -202,7 +176,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _navOwner = visible == null ? null : owner;
     if (visible == _navVisible) return;
     _navVisible = visible;
-    _announce();
+    announce();
   }
 
   /// Asks for the one line environment band. Null gives the answer back,
@@ -212,7 +186,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _bandOwner = compact == null ? null : owner;
     if (compact == _bandCompact) return;
     _bandCompact = compact;
-    _announce();
+    announce();
   }
 
   /// True where a null from [asking] may give back a slot [holder] holds.
@@ -483,16 +457,22 @@ class _UiScaffoldState extends State<UiScaffold> {
   /// What the page inside this frame asks of the frame itself.
   final UiScaffoldSlots _slots = UiScaffoldSlots();
 
+  /// Whether a modal shown from inside this frame is over it.
+  final UiModalScope _modal = UiModalScope();
+
   @override
   void initState() {
     super.initState();
     _slots.addListener(_slotsChanged);
+    _modal.addListener(_slotsChanged);
   }
 
   @override
   void dispose() {
     _slots.removeListener(_slotsChanged);
+    _modal.removeListener(_slotsChanged);
     _slots.dispose();
+    _modal.dispose();
     _exclusion.dispose();
     super.dispose();
   }
@@ -570,16 +550,31 @@ class _UiScaffoldState extends State<UiScaffold> {
     // past.
     //
     // A sheet or a dialog is pushed over the frame rather than inside it and
-    // keeps its own pane, which is the surface 13 section 2.2 exempts.
+    // keeps its own pane, which is the surface 13 section 2.2 exempts and 09
+    // section 3.3 counts within the window's budget. While one is over this
+    // frame, every pane the frame draws is under its scrim, and a pane under
+    // a scrim is a save layer nobody sees: the frame draws them all solid
+    // until the modal begins to leave (polish 3).
     final bool compact = WindowClass.of(context).isCompact;
+    final bool covered = _modal.isOpen;
     final UiThemeData? published = context
         .dependOnInheritedWidgetOfExactType<UiTheme>()
         ?.data;
-    final UiThemeData flat = _flat(published ?? ui);
+    final UiThemeData ambient = published ?? ui;
+    final UiThemeData flat = _flat(ambient);
+    // Every region is wrapped in a theme whatever it is given, and only the
+    // tokens change: a wrapper that came and went with a modal would rebuild
+    // the page under it from nothing, and the reviewer's scroll position
+    // with it.
+    //
     // The solid form of every pane under [child].
     Widget solid(Widget child) => UiTheme(data: flat, child: child);
+    // The chrome the frame floats: its pane, unless a modal covers it.
+    Widget floated(Widget child) =>
+        UiTheme(data: covered ? flat : ambient, child: child);
     // A region the frame does not float: solid at compact, as built above it.
-    Widget unfloated(Widget child) => compact ? solid(child) : child;
+    Widget unfloated(Widget child) =>
+        UiTheme(data: compact || covered ? flat : ambient, child: child);
 
     final UiNavPlacement placement =
         widget.navPlacement ?? UiScaffold.placementOf(widget.nav);
@@ -601,11 +596,13 @@ class _UiScaffoldState extends State<UiScaffold> {
       if (actionBar != null)
         PinnedChrome(
           region: UiPinnedRegion.actionBar,
-          child: GlassSurface(
-            level: GlassLevel.floating,
-            radius: style.actionBarRadius,
-            padding: style.actionBarPadding,
-            child: unfloated(actionBar),
+          child: floated(
+            GlassSurface(
+              level: GlassLevel.floating,
+              radius: style.actionBarRadius,
+              padding: style.actionBarPadding,
+              child: unfloated(actionBar),
+            ),
           ),
         ),
       if (actionBar != null && floats && navShown) SizedBox(height: style.gap),
@@ -617,7 +614,7 @@ class _UiScaffoldState extends State<UiScaffold> {
         PinnedChrome(
           region: UiPinnedRegion.navigation,
           child: navKeepsPane
-              ? Offstage(offstage: !navShown, child: widget.nav!)
+              ? floated(Offstage(offstage: !navShown, child: widget.nav!))
               : unfloated(Offstage(offstage: !navShown, child: widget.nav!)),
         ),
     ];
@@ -736,23 +733,26 @@ class _UiScaffoldState extends State<UiScaffold> {
         exclusion: _exclusion,
         child: _UiScaffoldSlotsScope(
           slots: _slots,
-          child: ListenableBuilder(
-            listenable: _exclusion,
-            builder: (BuildContext context, Widget? child) => FieldLayer(
-              preset: widget.sky,
-              // What the page asked for wins over what the caller passed, and
-              // the caller's is the fallback: a shell that knows the rectangle
-              // still states it, and a screen inside one that does not can say
-              // so for itself.
-              exclusion: _exclusion.rect ?? widget.exclusion,
-              child: child,
-            ),
-            child: Column(
-              children: <Widget>[
-                ?topBar,
-                ?banner,
-                Expanded(child: belowBar),
-              ],
+          child: UiModalScope.publish(
+            scope: _modal,
+            child: ListenableBuilder(
+              listenable: _exclusion,
+              builder: (BuildContext context, Widget? child) => FieldLayer(
+                preset: widget.sky,
+                // What the page asked for wins over what the caller passed, and
+                // the caller's is the fallback: a shell that knows the rectangle
+                // still states it, and a screen inside one that does not can say
+                // so for itself.
+                exclusion: _exclusion.rect ?? widget.exclusion,
+                child: child,
+              ),
+              child: Column(
+                children: <Widget>[
+                  ?topBar,
+                  ?banner,
+                  Expanded(child: belowBar),
+                ],
+              ),
             ),
           ),
         ),
