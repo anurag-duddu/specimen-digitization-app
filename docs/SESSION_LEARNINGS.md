@@ -9747,3 +9747,63 @@ and changed none of them.
 - No cloud command, no `firebase` or `gcloud` command, no deploy, no dependency
   added, no SDK change, no Dart touched, no screen golden or semantics fixture
   regenerated or committed, and nothing owned by another slot changed.
+
+### 2026-09-17: Addendum to the slot B1 closeout above, written after the merge
+
+Pull request 64 merged while this slot was finishing, so the release it was
+reporting on stopped being a candidate and became a release. Three facts the
+closeout above could not carry, and one of them changes what every other live
+slot has to do.
+
+**The release completed.** Merge commit `4f9f518` on `main`, `CI/CD` run
+[35241427956](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/35241427956)
+attempt 1, all six jobs green including `Deploy Firebase Hosting` and its own
+`Verify the public site` step. The independent recheck `docs/DEPLOYMENT.md`
+section 7 asks for was then run from this worktree and exited 0:
+`scripts/ci/smoke_hosting.sh https://specimen-digitization.web.app
+4f9f5187eed314fefb6611c2f71c71888258dd4b 35241427956 1` reported
+`Production smoke passed`. The public `deployment.json` carries that exact
+repository, SHA, run and attempt, so by rule 11 the release is complete. No
+deploy command was run from this shell; the recheck and the GETs below are the
+read only ones the runbook allows.
+
+**The gate's assertions hold on the deployed artifact, and real Hosting
+behaves as the route smoke emulates it.** Read only GETs against the public
+site: `/sign-in`, `/help`, `/gallery`, `/c/.../queue/:specimen` and
+`/c/.../intake/sources` each answer 200 with the same 2,088 byte application
+shell, and `/main.dart.js` answers 200 with 3,272,654 bytes of itself rather
+than being rewritten. The deployed bundle carries 0 of the 220 gallery only
+strings and exactly 1 occurrence of `/gallery`, which is the same pair the gate
+measured on a local release build. It also carries the string
+`Not stamped by the build`, so the `APP_BUILD` follow-up above is now a thing
+observable in production rather than a reading of the source.
+
+**The merge was a squash, and that breaks the merge path for every other
+`fe/*` slot.** `4f9f518` has one parent, `a9a61af`, the tip of `main` before
+the merge; the refactor's 234 commits are not in `main`'s history, only their
+content is. `git merge-base --is-ancestor f3b6363 origin/main` returns 1, and
+`front-end-refactor` was deleted by the merge and answers 404.
+
+  - Merging a slot branch into `main` replays all 234 commits against content
+    that is already there. Tested read only:
+    `git merge-tree --write-tree origin/main fe/release-ci` conflicts in four
+    files, none of which is a real disagreement.
+  - Replaying only the slot's own commits is the right move and is what a
+    rebase does. `git merge-tree --write-tree --merge-base=f3b6363
+    origin/main fe/release-ci` returns 0, so
+    `git rebase --onto origin/main f3b6363 fe/release-ci` is clean for this
+    slot. Every other slot should be checked the same way, with its own cut
+    point as the merge base, before anybody reaches for a merge.
+  - `git merge-tree --write-tree --merge-base=<cut point>` is the tool for
+    this question generally: it runs the same three way merge a rebase runs,
+    in memory, without touching a worktree, a branch or the stash. Worth
+    reaching for whenever an integration branch has been squashed out from
+    under a slot.
+
+**Durable learning.** A squash merge is the right default for a 234 commit
+pull request and the wrong one while sibling branches are still cut from the
+branch being squashed. The two together also delete the integration branch, so
+the slots lose both their base and their target in one action. Either hold the
+squash until every slot has landed, or cut a fresh integration branch from the
+squash commit and rebase each slot onto it. The rebase is clean either way;
+the merge is not.
