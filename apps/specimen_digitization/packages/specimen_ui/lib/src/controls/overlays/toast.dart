@@ -11,6 +11,7 @@ import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/announcer.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/glass_surface.dart';
 import '../../primitives/modal_routes.dart';
 import '../actions/button.dart';
@@ -65,6 +66,7 @@ class UiToastStyle {
     required this.message,
     required this.foreground,
     required this.margin,
+    required this.messageMin,
   });
 
   /// Padding inside the capsule.
@@ -88,6 +90,10 @@ class UiToastStyle {
   /// The gap between the toast and the edges of the window.
   final EdgeInsetsGeometry margin;
 
+  /// The least width the message is given before the action moves under it
+  /// (11 section 3.3).
+  final double messageMin;
+
   /// The style a toast draws with in [ui].
   static UiToastStyle resolve(UiThemeData ui) => UiToastStyle(
     padding: EdgeInsetsDirectional.fromSTEB(
@@ -102,6 +108,7 @@ class UiToastStyle {
     message: ui.type.body,
     foreground: ui.color.ink,
     margin: EdgeInsetsDirectional.all(ui.space.s4),
+    messageMin: ui.space.labelMin,
   );
 
   /// How long a toast with no action stays on screen.
@@ -146,11 +153,36 @@ class UiToast extends StatelessWidget {
       // so it publishes the product's style rather than inheriting the host's
       // (11 section 5).
       style: ui.defaultTextStyle,
-      child: _capsule(paint),
+      child: _capsule(ui, paint),
     );
   }
 
-  Widget _capsule(UiToastStyle paint) {
+  Widget _capsule(UiThemeData ui, UiToastStyle paint) {
+    final Widget glyph = UiIcon(
+      data.icon ?? UiIcons.info,
+      size: UiIconSize.inline,
+      color: paint.foreground,
+    );
+    // Only the message is inside the live region, so a screen reader is told
+    // the news once and the action announces itself as the control it is
+    // (06 section 3).
+    final Widget words = Announcer(
+      child: Text(
+        data.message,
+        style: paint.message.copyWith(color: paint.foreground),
+      ),
+    );
+    final UiButton? action = data.hasAction
+        ? UiButton(
+            label: data.actionLabel!,
+            variant: UiButtonVariant.ghost,
+            onPressed: () {
+              data.onAction!();
+              onDismissed?.call();
+            },
+          )
+        : null;
+
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: paint.maxWidth),
       child: GlassSurface(
@@ -160,44 +192,85 @@ class UiToast extends StatelessWidget {
           constraints: BoxConstraints(minHeight: paint.minHeight),
           child: Padding(
             padding: paint.padding,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                UiIcon(
-                  data.icon ?? UiIcons.info,
-                  size: UiIconSize.inline,
-                  color: paint.foreground,
-                ),
-                SizedBox(width: paint.gap),
-                // Only the message is inside the live region, so a screen
-                // reader is told the news once and the action announces
-                // itself as the control it is (06 section 3).
-                Flexible(
-                  child: Announcer(
-                    child: Text(
-                      data.message,
-                      style: paint.message.copyWith(color: paint.foreground),
-                    ),
-                  ),
-                ),
-                if (data.hasAction) ...<Widget>[
-                  SizedBox(width: paint.gap),
-                  UiButton(
-                    label: data.actionLabel!,
-                    variant: UiButtonVariant.ghost,
-                    onPressed: () {
-                      data.onAction!();
-                      onDismissed?.call();
-                    },
-                  ),
-                ],
-              ],
-            ),
+            child: _fitted(ui, paint, glyph, words, action),
           ),
         ),
       ),
     );
   }
+
+  /// The capsule's two arrangements (11 section 3.3).
+  ///
+  /// The action moves under the message rather than the message shrinking:
+  /// the message is content and the action is a control with a hit box, and
+  /// squeezing either of them is what the row of the table forbids. A toast
+  /// with no action has one arrangement and its message simply wraps.
+  Widget _fitted(
+    UiThemeData ui,
+    UiToastStyle paint,
+    Widget glyph,
+    Widget words,
+    UiButton? action,
+  ) => Builder(
+    builder: (BuildContext context) {
+      Widget line({required bool withAction}) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          glyph,
+          SizedBox(width: paint.gap),
+          Flexible(child: words),
+          if (withAction && action != null) ...<Widget>[
+            SizedBox(width: paint.gap),
+            action,
+          ],
+        ],
+      );
+      if (action == null) {
+        return FitBuilder(
+          variants: <FitVariant>[
+            FitVariant(
+              intrinsicWidth: 0,
+              builder: (BuildContext context, bool _) =>
+                  line(withAction: false),
+            ),
+          ],
+        );
+      }
+      final double chrome =
+          paint.padding.resolve(Directionality.of(context)).horizontal +
+          UiIconSize.inline.dimension +
+          paint.gap +
+          paint.messageMin;
+      return FitBuilder(
+        variants: <FitVariant>[
+          FitVariant(
+            intrinsicWidth:
+                chrome +
+                paint.gap +
+                measureLabel(context, action.label, ui.type.label).width +
+                ui.space.s8,
+            builder: (BuildContext context, bool _) => line(withAction: true),
+          ),
+          FitVariant(
+            intrinsicWidth: 0,
+            builder: (BuildContext context, bool _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                line(withAction: false),
+                SizedBox(height: paint.gap),
+                // Aligned to the end, where the eye finishes the message.
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: action,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// The layer every toast in a window appears on.

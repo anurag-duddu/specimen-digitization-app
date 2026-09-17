@@ -7,7 +7,9 @@ import '../../foundation/color.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/announcer.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/pressable.dart';
+import '../actions/button.dart';
 
 /// What a banner is reporting.
 ///
@@ -51,6 +53,7 @@ class UiBannerStyle {
     required this.minHeight,
     required this.message,
     required this.detail,
+    required this.messageMin,
   });
 
   /// The strip's fill.
@@ -84,6 +87,10 @@ class UiBannerStyle {
 
   /// The second line's type role.
   final TextStyle detail;
+
+  /// The least width the message is given before the action moves under it
+  /// (11 section 3.3).
+  final double messageMin;
 
   /// The style a banner of [tone] draws with in [ui].
   static UiBannerStyle resolve(UiThemeData ui, UiBannerTone tone) {
@@ -145,6 +152,7 @@ class UiBannerStyle {
       minHeight: ui.space.s6,
       message: ui.type.bodySmall,
       detail: ui.type.bodySmall,
+      messageMin: ui.space.labelMin,
     );
   }
 
@@ -176,12 +184,18 @@ class UiBanner extends StatefulWidget {
     this.icon,
     this.onDismiss,
     this.dismissLabel,
+    this.actionLabel,
+    this.onAction,
     this.detailLabel = defaultDetailLabel,
     this.style,
   }) : assert(
          onDismiss == null || dismissLabel != null,
          'a dismiss control has no visible text, so it needs a label '
          '(10 section 11)',
+       ),
+       assert(
+         (actionLabel == null) == (onAction == null),
+         'a recovery action needs both a label and a callback',
        );
 
   /// The one line. 90 characters is the target, 120 the maximum
@@ -206,6 +220,17 @@ class UiBanner extends StatefulWidget {
 
   /// What the dismiss control is called. Required wherever [onDismiss] is set.
   final String? dismissLabel;
+
+  /// The recovery the band offers, in the reviewer's words. Verb first, two
+  /// to four words (02 section 4.3).
+  ///
+  /// 07 section 11 asks every failure class to name its own recovery, and a
+  /// band that reports one without offering it leaves the reviewer to find
+  /// the way back themselves.
+  final String? actionLabel;
+
+  /// What the recovery does. Null for a band that only reports.
+  final VoidCallback? onAction;
 
   /// What the disclosure control is called.
   ///
@@ -234,74 +259,169 @@ class _UiBannerState extends State<UiBanner> {
     final UiBannerStyle style =
         widget.style ?? UiBannerStyle.resolve(ui, widget.tone);
     final String? detail = widget.detail;
+    final String? actionLabel = widget.actionLabel;
+    final UiButton? action = actionLabel == null
+        ? null
+        : UiButton(
+            label: actionLabel,
+            variant: UiButtonVariant.ghost,
+            size: UiSize.sm,
+            onPressed: widget.onAction,
+          );
+
     return DecoratedBox(
       decoration: BoxDecoration(color: style.fill, border: style.border),
       child: Padding(
         padding: style.padding,
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: style.minHeight),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: _fitted(context, ui, style, detail, action),
+        ),
+      ),
+    );
+  }
+
+  /// The band's two arrangements (11 section 3.3).
+  ///
+  /// A band with no recovery has one: the strip is a glyph, a sentence and
+  /// the controls that belong to the band itself. A band that offers a
+  /// recovery moves it under the sentence rather than squeezing the words,
+  /// because the sentence is content and the recovery is the point of the
+  /// band. The disclosure and the dismiss stay on the first line either way:
+  /// they act on the band, not on what it reports.
+  Widget _fitted(
+    BuildContext context,
+    UiThemeData ui,
+    UiBannerStyle style,
+    String? detail,
+    UiButton? action,
+  ) {
+    Widget strip({required bool withAction}) => Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        UiIcon(
+          widget.icon ?? style.icon,
+          size: UiIconSize.inline,
+          color: style.foreground,
+        ),
+        SizedBox(width: style.gap),
+        Expanded(child: _words(style, detail)),
+        if (withAction && action != null) ...<Widget>[
+          SizedBox(width: style.gap),
+          action,
+        ],
+        if (detail != null) ...<Widget>[
+          SizedBox(width: style.gap),
+          _BannerControl(
+            label: widget.detailLabel,
+            icon: _open ? UiIcons.collapse : UiIcons.expand,
+            color: style.foreground,
+            expanded: _open,
+            onPressed: () => setState(() => _open = !_open),
+          ),
+        ],
+        if (widget.onDismiss != null) ...<Widget>[
+          SizedBox(width: style.gap),
+          _BannerControl(
+            label: widget.dismissLabel!,
+            icon: UiIcons.close,
+            color: style.foreground,
+            onPressed: widget.onDismiss!,
+          ),
+        ],
+      ],
+    );
+
+    if (action == null) {
+      return FitBuilder(
+        variants: <FitVariant>[
+          FitVariant(
+            intrinsicWidth: _chrome(context, style, detail),
+            builder: (BuildContext context, bool _) =>
+                strip(withAction: false),
+          ),
+        ],
+      );
+    }
+    return FitBuilder(
+      variants: <FitVariant>[
+        FitVariant(
+          intrinsicWidth:
+              _chrome(context, style, detail) +
+              style.gap +
+              measureLabel(
+                context,
+                action.label,
+                ui.type.label,
+              ).width +
+              ui.space.s6,
+          builder: (BuildContext context, bool _) => strip(withAction: true),
+        ),
+        FitVariant(
+          intrinsicWidth: 0,
+          builder: (BuildContext context, bool _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              UiIcon(
-                widget.icon ?? style.icon,
-                size: UiIconSize.inline,
-                color: style.foreground,
-              ),
-              SizedBox(width: style.gap),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    // Only the message is the live region, so opening the
-                    // second line does not make a screen reader read the
-                    // whole band again (06 section 3).
-                    Announcer(
-                      child: Text(
-                        widget.message,
-                        style: style.message.copyWith(
-                          color: style.foreground,
-                        ),
-                        // One line, at every text scale. The full sentence
-                        // stays on the semantics node whether it fits or not.
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (detail != null && _open)
-                      Text(
-                        detail,
-                        style: style.detail.copyWith(color: style.foreground),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                  ],
-                ),
-              ),
-              if (detail != null) ...<Widget>[
-                SizedBox(width: style.gap),
-                _BannerControl(
-                  label: widget.detailLabel,
-                  icon: _open ? UiIcons.collapse : UiIcons.expand,
-                  color: style.foreground,
-                  expanded: _open,
-                  onPressed: () => setState(() => _open = !_open),
-                ),
-              ],
-              if (widget.onDismiss != null) ...<Widget>[
-                SizedBox(width: style.gap),
-                _BannerControl(
-                  label: widget.dismissLabel!,
-                  icon: UiIcons.close,
-                  color: style.foreground,
-                  onPressed: widget.onDismiss!,
-                ),
-              ],
+              strip(withAction: false),
+              SizedBox(height: style.gap),
+              action,
             ],
           ),
         ),
-      ),
+      ],
+    );
+  }
+
+  /// The width of everything on the strip that is not the sentence, plus the
+  /// least width the sentence itself is worth drawing in.
+  double _chrome(
+    BuildContext context,
+    UiBannerStyle style,
+    String? detail,
+  ) =>
+      style.padding.resolve(Directionality.of(context)).horizontal +
+      UiIconSize.inline.dimension +
+      style.gap +
+      style.messageMin +
+      (detail == null ? 0 : style.gap + UiIconSize.inline.dimension) +
+      (widget.onDismiss == null
+          ? 0
+          : style.gap + UiIconSize.inline.dimension);
+
+  /// The sentence, and the second line when it is open.
+  ///
+  /// Both are content and both wrap, which is the last resort 11 section 3.3
+  /// gives this row. The band is still one line or two whatever the text
+  /// scale, which is the guarantee that replaced finding V-15: the sentence
+  /// alone may take both lines, and opening the detail gives each of them
+  /// one.
+  Widget _words(UiBannerStyle style, String? detail) {
+    final bool open = detail != null && _open;
+    final int lines = open ? 1 : UiBannerStyle.maxLines;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // Only the message is the live region, so opening the second line
+        // does not make a screen reader read the whole band again
+        // (06 section 3).
+        Announcer(
+          child: Text(
+            widget.message,
+            style: style.message.copyWith(color: style.foreground),
+            maxLines: lines,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (open)
+          Text(
+            detail,
+            style: style.detail.copyWith(color: style.foreground),
+            maxLines: lines,
+            overflow: TextOverflow.ellipsis,
+          ),
+      ],
     );
   }
 }

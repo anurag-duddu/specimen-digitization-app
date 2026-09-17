@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 
 /// The resolved paint of one disclosure.
@@ -81,6 +82,12 @@ class UiDisclosureStyle {
   /// glyph is the same one either way so the two states are one object moving
   /// rather than two glyphs swapping (09 section 8).
   static const double caretTurns = 0.5;
+
+  /// The most lines the summary takes before it ellipsises.
+  ///
+  /// Two, the same as a list row's subtitle: the summary is the row's second
+  /// line and is content rather than a label (11 section 3.3).
+  static const int summaryMaxLines = 2;
 }
 
 /// A row that reveals a body.
@@ -179,18 +186,24 @@ class _UiDisclosureState extends State<UiDisclosure> {
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Text(
+                              UiLabel(
                                 widget.title,
                                 style: style.title.copyWith(
                                   color: style.titleColor,
                                 ),
                               ),
+                              // The summary is content, not a label: it is
+                              // the row's second line, the same object a
+                              // list row's subtitle is, so it wraps to two
+                              // lines before it is cut (11 section 3.3).
                               if (widget.summary != null)
                                 Text(
                                   widget.summary!,
                                   style: style.summary.copyWith(
                                     color: style.summaryColor,
                                   ),
+                                  maxLines: UiDisclosureStyle.summaryMaxLines,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                             ],
                           ),

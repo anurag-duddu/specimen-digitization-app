@@ -232,6 +232,72 @@ void main() {
     expectGlassBudget(tester);
   });
 
+  testWidgets('a strip that fits does not scroll', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(size: const Size(600, 800), child: const _TabsHost()),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(SingleChildScrollView),
+      findsNothing,
+      reason: 'three tabs fit a 600 dp column, so the strip is the track',
+    );
+  });
+
+  testWidgets('a strip that does not fit scrolls and keeps every tab', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(200, 800),
+        child: const SizedBox(width: 200, child: _TabsHost()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(SingleChildScrollView),
+      findsOneWidget,
+      reason: '11 section 3.3 gives a tab row one compact variant',
+    );
+    for (final UiTab tab in _tabs) {
+      expect(find.text(tab.label), findsOneWidget);
+    }
+    expect(
+      tester.getSize(find.byType(UiSegmented<int>)).width,
+      greaterThan(200),
+      reason: 'the track keeps its intrinsic width inside the scroller',
+    );
+  });
+
+  testWidgets('choosing a tab scrolls it into view', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(200, 800),
+        child: const SizedBox(width: 200, child: _TabsHost()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final ScrollableState scroller = tester.state<ScrollableState>(
+      find.byType(Scrollable),
+    );
+    expect(scroller.position.pixels, 0);
+
+    final _TabsHostState host = tester.state<_TabsHostState>(
+      find.byType(_TabsHost),
+    );
+    host.selected.value = _tabs.length - 1;
+    await tester.pumpAndSettle();
+    expect(
+      scroller.position.pixels,
+      scroller.position.maxScrollExtent,
+      reason: 'the last tab is at the end of the row, so the row ends there',
+    );
+  });
+
   testWidgets('a tab satisfies the control contract', (
     WidgetTester tester,
   ) async {
@@ -240,6 +306,21 @@ void main() {
       (BuildContext context) => const _TabsHost(),
       semanticsLabel: 'Readings',
       hasRole: (SemanticsFlags flags) => flags.isSelected != Tristate.none,
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          for (final UiTab tab in _tabs) {
+            expect(
+              find.text(tab.label),
+              findsOneWidget,
+              reason:
+                  'a strip that does not fit scrolls, so every tab is still '
+                  'drawn at $width dp rather than one of them being dropped',
+            );
+          }
+        },
+      ),
     );
   });
 }

@@ -209,6 +209,13 @@ void main() {
       tester,
       (BuildContext context) => _tooltip(),
       semanticsLabel: 'Rotate view',
+      labelsNeverWrap: true,
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.bySemanticsLabel('Rotate view'), findsOneWidget);
+        },
+      ),
     );
   });
 }

@@ -236,6 +236,177 @@ void main() {
     );
   });
 
+  testWidgets('the body is bounded by the window and scrolls inside it', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(390, 700),
+        child: SizedBox(
+          width: 390,
+          height: 700,
+          child: UiSheet(
+            title: _title,
+            primaryAction: UiButton(label: 'Save', onPressed: () {}),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (int i = 0; i < 40; i++)
+                  SizedBox(height: 40, child: Text('Row $i')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'a 1600 dp body in a 700 dp window overflowed the sheet before the '
+          'padded block was made flexible',
+    );
+    expect(
+      tester.getSize(find.byType(UiSheet)).height,
+      lessThanOrEqualTo(700),
+      reason: 'the sheet is the window height minus nothing it does not use',
+    );
+    expect(
+      find.bySemanticsLabel('Save'),
+      findsOneWidget,
+      reason: 'and the action row is still on screen, which is the defect',
+    );
+
+    final ScrollableState scroller = tester.state<ScrollableState>(
+      find.byType(Scrollable),
+    );
+    expect(
+      scroller.position.maxScrollExtent,
+      greaterThan(0),
+      reason: 'the body scrolls rather than being cut off',
+    );
+  });
+
+  testWidgets('a body that scrolls itself is not scrolled twice', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(390, 700),
+        child: SizedBox(
+          width: 390,
+          height: 700,
+          child: UiSheet(
+            title: _title,
+            scrollBody: false,
+            child: ListView(
+              children: <Widget>[
+                for (int i = 0; i < 40; i++)
+                  SizedBox(height: 40, child: Text('Row $i')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SingleChildScrollView), findsNothing);
+  });
+
+  testWidgets('the actions stack with the primary on top when they do not '
+      'fit one line', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(
+        // Wider than compact, so the stack is the row not fitting rather than
+        // the window class deciding it.
+        size: const Size(900, 700),
+        child: SizedBox(
+          width: 260,
+          child: UiModalActions(
+            primary: UiButton(
+              label: 'Replace the classification',
+              onPressed: () {},
+            ),
+            secondary: UiButton(
+              label: 'Keep what is recorded',
+              variant: UiButtonVariant.secondary,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Replace the classification')).dy,
+      lessThan(
+        tester.getTopLeft(find.bySemanticsLabel('Keep what is recorded')).dy,
+      ),
+      reason: '11 section 3.4: the actions stack, primary on top',
+    );
+  });
+
+  testWidgets('the actions are a row with the primary last when they fit', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(900, 700),
+        child: SizedBox(
+          width: 900,
+          child: UiModalActions(
+            primary: UiButton(label: 'Save', onPressed: () {}),
+            secondary: UiButton(
+              label: 'Cancel',
+              variant: UiButtonVariant.secondary,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Cancel')).dx,
+      lessThan(tester.getTopLeft(find.bySemanticsLabel('Save')).dx),
+      reason: 'aligned to the end with the primary last',
+    );
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Cancel')).dy,
+      tester.getTopLeft(find.bySemanticsLabel('Save')).dy,
+    );
+  });
+
+  testWidgets('the actions stack on a compact window however short they are', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(390, 700),
+        child: SizedBox(
+          width: 390,
+          child: UiModalActions(
+            primary: UiButton(label: 'Save', onPressed: () {}),
+            secondary: UiButton(
+              label: 'Cancel',
+              variant: UiButtonVariant.secondary,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.bySemanticsLabel('Save')).dy,
+      lessThan(tester.getTopLeft(find.bySemanticsLabel('Cancel')).dy),
+      reason: 'a compact window stacks whether or not the row would fit',
+    );
+  });
+
   testWidgets('the primary action satisfies the control contract', (
     WidgetTester tester,
   ) async {
@@ -247,6 +418,20 @@ void main() {
         child: const Text(_body),
       ),
       semanticsLabel: 'Save correction',
+      labelsNeverWrap: true,
+      wrappingContent: <String>{
+        _body,
+        // See the same entry in `dialog_test.dart`: the button's own fit is
+        // slot G1's row of the table.
+        'Save correction',
+      },
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text(_title), findsOneWidget);
+          expect(find.bySemanticsLabel('Save correction'), findsOneWidget);
+        },
+      ),
     );
   });
 }
