@@ -356,10 +356,10 @@ void main() {
   testWidgets('the top bar fills once the body has scrolled under it', (
     WidgetTester tester,
   ) async {
-    // A medium window, because at compact the frame spends the window's one
-    // pane on its floating chrome and the bar's fill is the solid form of the
-    // same surface; what this test is about is the threshold, which is the
-    // same at every class.
+    // A medium window: the threshold is the same at every class, and so is
+    // the surface. The bar's fill is the solid form of `glass.flat` wherever
+    // the frame draws it, because the frame's top bar is never one of the
+    // window's panes (13 section 2.2, polish 3).
     const Size window = Size(700, 900);
     await tester.pumpWidget(
       uiHarness(
@@ -372,19 +372,32 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(GlassSurface), findsNothing);
     expect(glassPaneCount(), 0);
 
     await tester.drag(find.byType(ListView), const Offset(0, -200));
     await tester.pumpAndSettle();
     expect(
-      glassPaneCount(),
-      1,
+      find.ancestor(
+        of: find.text('Queue'),
+        matching: find.byType(GlassSurface),
+      ),
+      findsOneWidget,
       reason: 'the bar takes its glass.flat fill from the body scrolling',
+    );
+    expect(
+      glassPaneCount(),
+      0,
+      reason: 'and the fill is the surface drawn solid, not a save layer',
     );
 
     await tester.drag(find.byType(ListView), const Offset(0, 400));
     await tester.pumpAndSettle();
-    expect(glassPaneCount(), 0, reason: 'and gives it back at the top');
+    expect(
+      find.byType(GlassSurface),
+      findsNothing,
+      reason: 'given back at the top',
+    );
   });
 
   testWidgets('a rail sits beside the body and a pill floats over it', (
@@ -532,10 +545,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       glassPaneCount(),
-      3,
+      2,
       reason:
-          'a top bar, an action bar and a pill are three panes at a class '
-          'whose budget is three',
+          'an action bar and a pill are two panes at a class whose budget is '
+          'three; the scrolled top bar draws its fill solid at every class',
     );
     expectGlassBudget(tester, window: 'a scrolled page with every slot');
   });
@@ -1151,6 +1164,74 @@ void main() {
       // form of the same surface rather than a second save layer.
       expect(find.byType(GlassSurface), findsWidgets);
       expect(glassPaneCount(), 1);
+    });
+
+    testWidgets('a medium window spends two panes: the floated chrome and a '
+        'collapsed header', (WidgetTester tester) async {
+      // The record at medium (13 section 2.2, polish 3): the scrolled top bar,
+      // the frame's action bar and the collapsed header's chrome all blurred,
+      // three where the class allows two. The bar gives its pane up at every
+      // class; the pane the frame floats and the pane over the photograph are
+      // the two.
+      const Size window = Size(768, 1024);
+      final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          child: _page(
+            size: window,
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: UiRail(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+            body: CustomScrollView(
+              controller: controller,
+              slivers: <Widget>[
+                const UiCollapsingHeader(
+                  primary: true,
+                  content: ColoredBox(color: Color(0xFF000000)),
+                  chrome: <Widget>[Text('Labels')],
+                ),
+                SliverList.builder(
+                  itemCount: 30,
+                  itemBuilder: (BuildContext context, int index) =>
+                      const SizedBox(height: 80),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      expect(
+        UiScaffold.of(
+          tester.element(find.byType(CustomScrollView)),
+        ).scrolledUnder,
+        isTrue,
+      );
+      expect(
+        find.ancestor(
+          of: find.text('CAS 118402'),
+          matching: find.byType(GlassSurface),
+        ),
+        findsOneWidget,
+        reason: 'the bar is filled',
+      );
+      expect(
+        glassPaneCount(),
+        2,
+        reason:
+            'the action bar and the collapsed header\'s chrome blur; the '
+            'filled top bar draws solid',
+      );
+      expectGlassBudget(tester, maxPanes: 2, window: 'the record at medium');
     });
 
     testWidgets('a medium window keeps the panes it had', (

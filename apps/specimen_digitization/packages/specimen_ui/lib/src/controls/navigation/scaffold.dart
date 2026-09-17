@@ -547,18 +547,27 @@ class _UiScaffoldState extends State<UiScaffold> {
     // The keyboard covers the home indicator, so the two do not add up.
     final double bottomSafe = math.max(safe.bottom, keyboard);
 
-    // The compact window's one frosted pane (13 section 2.2; 09 section 3.3).
+    // Where the frame's panes go (13 section 2.2; 09 section 3.3).
     //
     // Every pinned region used to draw its own: the top bar's fill once
     // content scrolled under it, the action bar, the pill, and a collapsed
     // collapsing header's chrome. That is four panes on a phone where the
     // budget is one, and two of them stacked is the "glass decision bar over
-    // a glass pill" 13 section 0 reads as a defect. The frame spends the one
-    // pane where the reviewer's thumb is, on its own floating chrome, and
-    // turns the blur off everywhere else inside itself, so a pane that is no
-    // longer frosted is still the surface it was, drawn solid. A window with
-    // no action bar spends it on the navigation instead, because a pill is
-    // the only thing floating over the page on a list screen.
+    // a glass pill" 13 section 0 reads as a defect. A compact window spends
+    // its one pane where the reviewer's thumb is, on the chrome the frame
+    // floats, and turns the blur off everywhere else inside itself, so a pane
+    // that is no longer frosted is still the surface it was, drawn solid. A
+    // window with no action bar spends it on the navigation instead, because
+    // a pill is the only thing floating over the page on a list screen.
+    //
+    // A medium window spends two (polish 3): the chrome the frame floats and
+    // the pane over the photograph, a collapsed header's chrome in the body.
+    // The top bar is never one of them, at any class. Its fill once content
+    // scrolls under it is the same surface drawn solid, as it is at compact,
+    // so a record at medium blurs the action bar and the collapsed header's
+    // chrome and nothing else; the wider classes have room for more panes
+    // and spend none of it on a bar that is chrome the reviewer scrolls
+    // past.
     //
     // A sheet or a dialog is pushed over the frame rather than inside it and
     // keeps its own pane, which is the surface 13 section 2.2 exempts.
@@ -567,8 +576,10 @@ class _UiScaffoldState extends State<UiScaffold> {
         .dependOnInheritedWidgetOfExactType<UiTheme>()
         ?.data;
     final UiThemeData flat = _flat(published ?? ui);
-    Widget solid(Widget child) =>
-        compact ? UiTheme(data: flat, child: child) : child;
+    // The solid form of every pane under [child].
+    Widget solid(Widget child) => UiTheme(data: flat, child: child);
+    // A region the frame does not float: solid at compact, as built above it.
+    Widget unfloated(Widget child) => compact ? solid(child) : child;
 
     final UiNavPlacement placement =
         widget.navPlacement ?? UiScaffold.placementOf(widget.nav);
@@ -594,7 +605,7 @@ class _UiScaffoldState extends State<UiScaffold> {
             level: GlassLevel.floating,
             radius: style.actionBarRadius,
             padding: style.actionBarPadding,
-            child: solid(actionBar),
+            child: unfloated(actionBar),
           ),
         ),
       if (actionBar != null && floats && navShown) SizedBox(height: style.gap),
@@ -607,7 +618,7 @@ class _UiScaffoldState extends State<UiScaffold> {
           region: UiPinnedRegion.navigation,
           child: navKeepsPane
               ? Offstage(offstage: !navShown, child: widget.nav!)
-              : solid(Offstage(offstage: !navShown, child: widget.nav!)),
+              : unfloated(Offstage(offstage: !navShown, child: widget.nav!)),
         ),
     ];
 
@@ -621,7 +632,7 @@ class _UiScaffoldState extends State<UiScaffold> {
     // than sit beside it, because `UiToastHost.maybeOf` walks upward.
     final Widget? body = widget.body == null
         ? null
-        : solid(
+        : unfloated(
             widget.overlays != null
                 ? widget.body!
                 : UiToastHost(bottomInset: bottomInset, child: widget.body!),
@@ -667,7 +678,7 @@ class _UiScaffoldState extends State<UiScaffold> {
         // a desktop with its navigation taken away inside a record has no
         // navigation at all, so only the caller's own answer hides them.
         if (beside)
-          solid(Offstage(offstage: !widget.navVisible, child: widget.nav!)),
+          unfloated(Offstage(offstage: !widget.navVisible, child: widget.nav!)),
         Expanded(child: bodyArea),
       ],
     );
@@ -706,8 +717,12 @@ class _UiScaffoldState extends State<UiScaffold> {
           child: banner,
         );
       }
-      banner = PinnedChrome(region: UiPinnedRegion.band, child: solid(banner));
+      banner = PinnedChrome(
+        region: UiPinnedRegion.band,
+        child: unfloated(banner),
+      );
     }
+    // Never a pane, at any class: see the policy above.
     final Widget? topBar = bar == null
         ? null
         : PinnedChrome(region: UiPinnedRegion.topBar, child: solid(bar));
