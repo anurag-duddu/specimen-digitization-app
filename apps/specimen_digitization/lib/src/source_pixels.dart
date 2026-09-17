@@ -1,8 +1,18 @@
-import 'package:flutter/material.dart';
+/// The immutable original, drawn as the reviewer's coordinates see it.
+///
+/// The derivative a browser can decode carries an EXIF display transform; the
+/// recorded region coordinates do not. This undoes the transform so an
+/// overlay, a crop and a typed coordinate all land on the same pixel. The
+/// original bytes are never rewritten.
+library;
+
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
 import 'models.dart';
 import 'review_context.dart';
-import 'widgets/evidence_drawer.dart';
 import 'vocabulary.dart';
+import 'widgets/evidence_drawer.dart';
 
 /// Undo the derivative's EXIF display transform so overlays and crops share
 /// original pixel-edge coordinates. The immutable bytes are never rewritten.
@@ -88,6 +98,7 @@ class SourceBasisNotice extends StatelessWidget {
     final processing = objectOf(asset['processing_derivative']);
     if (processing.isEmpty) return const SizedBox.shrink();
     final basis = textOf(asset['pixel_basis']);
+    final ui = context.ui;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -95,9 +106,14 @@ class SourceBasisNotice extends StatelessWidget {
           basis == 'decoded_heif_primary_pixel_edges'
               ? 'Coordinates use the decoded HEIF primary image after container orientation. The original HEIC file is kept, and mapping to its encoded grid is unavailable.'
               : 'Source coordinate basis: ${vocabularyLabel(basis)}. The preview is decoded from the original, and the original bytes are kept.',
+          style: ui.type.bodySmall,
         ),
+        // The decoder and the conversion are provenance rather than a
+        // statement about the record, so they sit under the basis in the
+        // secondary ink the rest of the source details use.
         Text(
           'Decoder: ${textOf(processing['codec'])} ${textOf(processing['codec_version'])} · Conversion: ${processing['conversion'] ?? 'Not recorded'}',
+          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
         ),
         EvidenceDrawer(
           title: 'Codec and source coordinate provenance',

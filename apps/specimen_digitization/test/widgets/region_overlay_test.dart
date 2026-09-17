@@ -3,8 +3,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/widgets/region_overlay.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
+
+/// The overlay's hit target, by the role it publishes rather than by a
+/// Material type: the box a reviewer presses is a `Pressable` now.
+final Finder target = find.byWidgetPredicate(
+  (Widget widget) => widget is Pressable && widget.semanticsLabel == 'Label 2',
+  description: 'the overlay\'s hit target',
+);
 
 Widget _overlay({
   Rect rect = const Rect.fromLTWH(60, 60, 200, 120),
@@ -53,7 +61,7 @@ void main() {
       tester,
       _overlay(rect: const Rect.fromLTWH(150, 150, 6, 4), onTap: () {}),
     );
-    final Size hit = tester.getSize(find.byType(InkWell));
+    final Size hit = tester.getSize(target);
     expect(hit.width, greaterThanOrEqualTo(44));
     expect(hit.height, greaterThanOrEqualTo(44));
   });
@@ -62,7 +70,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, _overlay(onTap: () {}));
-    final Size hit = tester.getSize(find.byType(InkWell));
+    final Size hit = tester.getSize(target);
     expect(hit.width, 200);
     expect(hit.height, 120);
   });
@@ -70,7 +78,7 @@ void main() {
   testWidgets('tapping selects the region', (WidgetTester tester) async {
     int taps = 0;
     await pumpComponent(tester, _overlay(onTap: () => taps++));
-    await tester.tap(find.byType(InkWell));
+    await tester.tap(target);
     await tester.pumpAndSettle();
     expect(taps, 1);
   });
@@ -100,17 +108,53 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await pumpComponent(tester, _overlay(onTap: () {}, selected: true));
     expect(
-      tester.getSemantics(find.byType(InkWell)),
+      tester.getSemantics(target),
       containsSemantics(label: 'Label 2', isSelected: true),
     );
     handle.dispose();
   });
 
-  testWidgets('the overlay carries a focus ring from the reserved token', (
+  testWidgets('the hit target draws the system focus ring', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, _overlay(onTap: () {}));
-    expect(tester.widget<InkWell>(find.byType(InkWell)).focusColor, isNotNull);
+    // The ring is the package's, drawn on the superellipse the target names,
+    // rather than a tinted fill this pattern used to pick for itself
+    // (09 section 3.6).
+    expect(tester.widget<Pressable>(target).focusRing, isTrue);
+    expect(
+      find.descendant(of: target, matching: find.byType(FocusRing)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the selected region is the screen\'s one accent', (
+    WidgetTester tester,
+  ) async {
+    RegionBoxPainter painterOf() => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((CustomPaint paint) => paint.painter)
+        .whereType<RegionBoxPainter>()
+        .single;
+
+    for (final ThemeData theme in productThemes.values) {
+      final UiThemeData ui = theme.brightness == Brightness.dark
+          ? UiThemeData.dark()
+          : UiThemeData.light();
+      await pumpComponent(tester, _overlay(onTap: () {}), theme: theme);
+      expect(painterOf().stroke, ui.color.status.regionOverlayStroke);
+
+      await pumpComponent(
+        tester,
+        _overlay(onTap: () {}, selected: true),
+        theme: theme,
+      );
+      // 09 section 3.4: the active region marker over the photograph is an
+      // accent use, and the accent carries a 1 dp ink casing wherever it is
+      // the only thing saying where a value is.
+      expect(painterOf().stroke, ui.color.accent);
+      expect(painterOf().casing, ui.color.ink);
+    }
   });
 
   test('the painter repaints only when something it draws changes', () {
