@@ -257,20 +257,22 @@ class _FitPageState extends State<_FitPage> {
         _Section(
           title: 'UiListRow',
           variants:
-              'The trailing control drops its label and keeps its glyph; the '
-              'title takes two lines, because a row title is content. The '
-              'title ellipsises last.',
+              'The trailing drops its label and keeps its glyph, then moves '
+              'under the title on a line of its own. A trailing the row '
+              'cannot read, such as this chip, skips the glyph rung. The '
+              'title takes two lines, because a row title is content, and '
+              'ellipsises last.',
           rest: (BuildContext context) => UiListRow(
             title: 'SPEC 2026 0041',
             subtitle: 'Two readings disagree on the collector',
             leading: const UiIcon(UiIcons.record, size: UiIconSize.action),
             trailing: UiChip(
-              label: 'Needs human review',
+              label: 'Needs review',
               icon: UiIcons.needsReview,
               status: ui.color.status.needsReview,
             ),
             semanticsLabel:
-                'SPEC 2026 0041, needs human review, two readings disagree '
+                'SPEC 2026 0041, needs review, two readings disagree '
                 'on the collector',
             onPressed: _noop,
           ),
