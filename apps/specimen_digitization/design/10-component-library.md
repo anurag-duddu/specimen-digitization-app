@@ -359,6 +359,16 @@ what varies by state is the opacity, and the contract's two opacities live in
 `statesController`, as `ButtonStyleButton` does and for the same reason: hover
 and press cannot be drawn in a golden otherwise.
 
+Amended in wave G, three ways. Its height is derived rather than declared
+(11 section 2.2): `max(the size table's row, the scaled line box plus twice
+the inset)`, so `sm`, `md` and `lg` are 32, the density row and 56 at scale
+1.0 and grow from there. Its label is a `UiLabel`, so it is one line and ends
+in an ellipsis with the whole word on a tooltip that wraps the control from
+outside its `Pressable`, where a tap still reaches the button. And it
+publishes `intrinsicWidth(context)`, the width it needs to draw its label
+whole, because `UiButtonRow` chooses between a row and a column by measuring
+its actions.
+
 **`UiIconButton`.** 48 dp disc (40 in pointer), glyph 24, `ghost` or
 `secondary` variant; requires `semanticsLabel`; tooltip on hover and long
 press. Retires `IconButton`.
@@ -398,6 +408,13 @@ background in a stack rather than as a `Pressable`'s own surface, because
 second target inside it; that is also what lets the remove glyph keep a 48 dp
 box inside a 32 dp capsule.
 
+Amended in wave G: a chip takes a `leading` widget in an `inline` box before
+the label, mutually exclusive with `icon`. Section 5 defines `StatusChip` as a
+tag with a status triple, and the one status it cannot draw that way is a
+measured fraction, which is a ring rather than a glyph; the pattern drew its
+own capsule around one because no slot existed. Its height derives from the
+`label` role the same way a button's does, and its label is a `UiLabel`.
+
 **`UiSegmented`.** One capsule track with 2 to 5 equal segments and an ink
 thumb that glides (navigation glide motion). Semantics: `tab` per segment
 with `selected`; arrows move, `Enter` selects. Retires `SegmentedButton`.
@@ -416,6 +433,21 @@ evaluated in a `const` expression and would make every `const UiSegmented`
 a compile error. The control's `Shortcuts` is built with
 `includeSemantics: false`, per the note on clause 5 of section 2.
 
+Amended in wave G by 11 section 3.3, which gives this control the only fit
+ladder in the family. `UiSegment` grows an optional `icon`; `UiSegmented`
+grows an optional `label`, the name the select rung offers the options under.
+The intrinsic width is the count times the widest label measured at the
+current text scale plus a segment's padding, plus the track's insets, and
+every segment is drawn at that one width so the thumb's step is even. Given
+less: icon only segments with a tooltip each when every segment carries a
+glyph, then a `UiSelect` over the same options when the track is named, then
+the segments with their words cut short. Collapsing into the select changes
+the form and not the value: nothing is reported and no selection moves. A
+track with no name never collapses, which is what `UiTabs` needs, since a
+select under its `tabBar` node would be a child of a tab bar that is not a
+tab. The `IntrinsicWidth` that used to size the track is gone, because the
+width is now declared.
+
 **`UiBadge`.** Count or dot at `label.small` on `ink` (or a status `content`
 when it names a status), capsule. Retires `Badge`.
 
@@ -425,6 +457,25 @@ stroke. Carried from v1.
 Amended in wave 1: neither is interactive, so neither runs the control
 contract. See the amendment to the preamble of section 2 for what they are
 held to instead.
+
+Amended in wave G: both derive their height from the role they draw, a badge
+from `label.small` and a cap from `mono.identifier`, so each grows with the
+reviewer's text size instead of clipping it (11 section 2.2). Both draw their
+text as a `UiLabel`, and because neither is pressed, the tooltip that carries
+an overflowing word is the label primitive's own slot rather than a wrapper
+around the control.
+
+**`UiButtonRow`.** Added in wave G by 11 section 3.4: a primary action, an
+optional secondary and optional tertiary actions, ends aligned with the
+primary last, becoming a column with the primary on top when the line does not
+fit at the reviewer's text size or the window is compact. Keyboard order is
+reading order in both arrangements, which is left to right in the line and top
+to bottom in the column. Stacked actions sit on the column's centre line at
+their own widths: a capsule pulled to a phone's full width stops reading as
+the disc of 09 section 1. It is the one widget in the package that reads
+`WindowClass`, because it is an arrangement rather than a control. `UiDialog`
+and `UiSheet` adopt it for their actions and patterns use it for form footers,
+so no screen writes its own `Row` of buttons.
 
 ### 4.2 Inputs family
 
@@ -898,6 +949,9 @@ Amended in wave 1: a family golden is captured at the height its page needs,
 not at one shared window. The width is the gallery's 1180 everywhere; the
 height is 820 for actions, 1180 for inputs, 1000 for overlays, 940 for
 navigation and 1900 for data, measured against the page rather than guessed.
+Actions moved to 2540 in wave G, measured the same way, when the page gained
+the Fit block 11 section 3.5 asks for; see the amendment at the end of this
+section.
 Inputs moved to 1600 in wave F, measured the same way, when the page gained
 the box section 11 section 4 asks for: the box itself in each shape, at rest,
 focused, and focused with a value under the caret. One control on a page can
@@ -906,8 +960,10 @@ one of the shapes it ships and leave the others unseen.
 Eight controls in every variant, size and state do not fit 820, and a golden
 that reviews the top of a page is not reviewing the controls below the fold.
 Each family owns its own window, so taking a taller one moves no other
-family's files. The actions page is the one still taller than its window, and
-the whole of it is reviewable at `/gallery`.
+family's files. The actions page was the one still taller than its window;
+wave G measured it at 1616 without the Fit block and 2492 with it, and took a
+2540 window, so the family is now reviewed whole rather than down to its
+fold.
 
 Two goldens are not pages: `overlays-sheet-<mode>` and
 `overlays-dialog-<mode>` capture the window with the modal open, at the

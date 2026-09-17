@@ -111,7 +111,7 @@ titles, help text, banner text) is not a label and wraps as content should.
 
 | Control | Intrinsic width | Compact variants, in order | Last resort |
 |---|---|---|---|
-| `UiSegmented` | count times (widest label plus segment padding) plus insets | equal segments at the widest label; icon only segments with tooltips when every segment carries a glyph; a `UiSelect` with the same options | ellipsis in each segment |
+| `UiSegmented` | count times (widest label plus segment padding) plus insets | equal segments at the widest label; icon only segments with tooltips when every segment carries a glyph; a `UiSelect` with the same options, where the track carries a name to offer them under | ellipsis in each segment |
 | `UiButton` | label plus glyph plus padding | none: a button keeps its width and the parent arranges | ellipsis; the tooltip carries the label |
 | `UiChip` | label plus glyph plus padding | none | ellipsis |
 | `UiTabs`, navigation rows | sum of labels | a scrolling row with edge fades | ellipsis |
@@ -130,6 +130,17 @@ optional tertiary actions, aligns them to the end with the primary last, and
 becomes a column with the primary on top when the row does not fit in one line
 or the window is compact. `UiDialog` and `UiSheet` use it for their actions;
 patterns use it for form footers. No screen writes its own `Row` of buttons.
+
+**Amendment, wave G (2026-09-16).** Two things the row found in the building.
+The select rung above needs a name for the choice, so `UiSegmented` takes an
+optional `label` and a track without one keeps its segments and ellipsises
+them. That is the rung a tab strip has to skip anyway: `UiTabs` publishes
+`SemanticsRole.tabBar` with `explicitChildNodes`, and a select beneath that
+node is a child of a tab bar that is not a tab, which the SDK's own check
+fails rather than degrades. And a stacked action sits on the column's centre
+line at its own width rather than stretched to the column: a `UiButton` is the
+reference's disc, and a capsule pulled to the full width of a phone stops
+reading as one.
 
 ### 3.5 The gallery proves it
 
