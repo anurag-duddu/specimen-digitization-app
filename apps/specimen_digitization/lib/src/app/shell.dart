@@ -550,8 +550,15 @@ class _Chrome extends StatelessWidget {
       // the blocker notice and the screen level error below it carry their own
       // recovery, and a band whose recovery is behind a tap is a band a
       // reviewer has to open before they can act.
+      //
+      // A route that asked the frame for a form comes first (13 section 3.4):
+      // the record asks for the strip at every window, because its decision
+      // bar and the band together are what its chrome budget is spent on. The
+      // window decides only where no route asked.
       UiBandForm(
-        form: window.isCompact ? UiBannerForm.strip : UiBannerForm.full,
+        form:
+            UiBandForm.of(context) ??
+            (window.isCompact ? UiBannerForm.strip : UiBannerForm.full),
         child: EnvironmentBanner(
           environment: controller.environment,
           // The open collection names its own administrator, which is a
