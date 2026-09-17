@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+Wave F slot F2 of the front-end refactor: sections 2, 3.1, 5 and 6 of
+`design/11-fit-and-scale.md`. One text style source, window classes in the
+foundation, geometry that derives from type, and the harness the fit clauses
+run in. No control is converted here; wave G does that.
+
+### Foundation
+- `foundation/window.dart` is new. `WindowClass` moves in from the application
+  unchanged, same breakpoints and same members, and `Adaptive<T>` arrives with
+  it: one optional value per class, resolving to the nearest smaller class
+  that is set. The application file is a re-export, so no call site moved.
+- Every type role carries `TextLeadingDistribution.even`. Flutter splits the
+  leading a `height` multiplier adds in proportion to ascent and descent, and
+  Geist's asymmetry then floats text above the centre of its line box, which
+  is the visible cause of "the text sits high" in a field. Text drawn under a
+  `Material` was already even, because Material's own 2021 typography sets it
+  and `ThemeData` merges the product roles onto that; text this package draws
+  was not. Every gallery golden moves.
+- `UiType` gains the geometry of 11 section 2.2: `lineHeightOf`,
+  `unscaledLineHeightOf`, `strutOf`, `insetFor` and `controlHeightFor`. A
+  height that contains text is now derived rather than declared:
+  `max(density height, scaled line height + 2 * inset)`, the inset being what
+  reproduces the density height at scale 1.0.
+  `controlHeightFor` takes a `UiDensity` rather than a `UiThemeData`, because
+  the theme is composed of the type scale and a token file that imports the
+  theme inverts that.
+- `UiThemeData.defaultTextStyle` is the product's ambient text style,
+  `type.body` in `ink` with `decoration: none`, and `UiTheme` publishes it as
+  a `DefaultTextStyle` around its child. Every subtree under the tokens,
+  including every route on the root navigator, now reads the system's style
+  rather than the framework fallback that `MaterialApp` installs. `UiTheme`'s
+  constructor is no longer `const`; its public surface is otherwise unchanged
+  and it is still the inherited widget itself, so `context.ui` is one lookup.
+
+### Primitives
+- `primitives/label.dart` is new. `UiLabel` is the one line label of clause
+  13: `maxLines: 1`, `softWrap: false`, an ellipsis, and the full text on the
+  semantics label and in a tooltip only when the label actually overflows. The
+  tooltip arrives as a slot rather than an import, because a drawn tooltip is
+  a control and this is a primitive.
+- `primitives/fit.dart` is new. `measureLabel` reports what one unbroken line
+  needs at the current text scale, and `FitBuilder` draws the first declared
+  variant that fits, or the last with a last resort flag.
+- `ModalRoutes` and `Popover` publish the ambient text style around their
+  panes from `context.ui`, so an overlay is correct in a host that resets the
+  style below the tokens. `compactWindowMax` is `WindowClass.mediumMin` rather
+  than a second copy of 600, and `isCompactWindow` reads the class.
+
+### Overlays
+- The tooltip pane and the toast capsule publish the ambient text style the
+  same way. No other change to either control.
+
+### Testing
+- `expectControlContract` gains clauses 13, 14 and 15, each off by default so
+  the families that shipped before 11 stay green: `labelsNeverWrap` (pumped at
+  480, 360, 280 and 200 dp, with `wrappingContent` naming the strings that are
+  content rather than labels), `geometryFromType` (pumped at 1.0, 1.3 and 2.0)
+  and `fit`, a caller supplied `FitExpectation`. The harness also releases its
+  semantics handle in a `finally`, so a contract that fails a clause reports
+  that clause rather than a leaked handle.
+- The harness no longer publishes a text style of its own. It used to, which
+  is why nothing caught a route inheriting the framework fallback.
+- `no_fallback_text_style` is new: every gallery page and every overlay those
+  pages offer, pumped in a host that installs the fallback on purpose, with no
+  paragraph allowed to carry its debug label or its double underline.
+
 ## 0.2.0
 
 2026-09-16. Wave 1 of the front-end refactor: the five control families of 10
