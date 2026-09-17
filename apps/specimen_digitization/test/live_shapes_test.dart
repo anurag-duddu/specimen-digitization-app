@@ -293,9 +293,7 @@ void main() {
           isNotEmpty,
         );
         expect(
-          tester
-              .getSemantics(find.textContaining('need review'))
-              .label,
+          tester.getSemantics(find.textContaining('need review')).label,
           contains('1000 records loaded'),
         );
 
