@@ -28,10 +28,10 @@ UiBlockers _blockers({VoidCallback? onAction}) => UiBlockers(
 
 Widget _strip({
   VoidCallback? onAction,
-  List<String> facts = const <String>[],
+  List<Widget> provenance = const <Widget>[],
 }) => UiStatusStrip(
   disposition: const UiChip(label: 'Cleared'),
-  facts: facts,
+  provenance: provenance,
   blockers: _blockers(onAction: onAction),
 );
 
@@ -64,7 +64,7 @@ void main() {
     );
   });
 
-  testWidgets('is one line: the facts are joined and ellipsise', (
+  testWidgets('is one line: the facts are one paragraph and ellipsise', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -72,26 +72,99 @@ void main() {
         size: const Size(390, 844),
         child: SizedBox(
           width: 390,
-          child: _strip(facts: const <String>['Run 42', 'Version 3']),
+          child: _strip(
+            provenance: const <Widget>[Text('Run 42'), Text('Version 3')],
+          ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final RenderParagraph facts = tester
-        .renderObjectList<RenderParagraph>(find.byType(RichText))
-        .firstWhere(
-          (RenderParagraph paragraph) =>
-              paragraph.text.toPlainText().contains('Run 42'),
-        );
+    expect(find.text('Run 42'), findsOneWidget);
+    expect(find.text('Version 3'), findsOneWidget);
     expect(
-      facts.text.toPlainText(),
-      contains('Version 3'),
+      tester.getRect(find.text('Version 3')).top,
+      moreOrLessEquals(tester.getRect(find.text('Run 42')).top, epsilon: 1),
+      reason: 'the facts share one line',
+    );
+    // The paragraph the facts are set in is the nearest rich text above a
+    // fact; the fact's own text builds one of its own beneath it.
+    final RenderParagraph line = tester.renderObject<RenderParagraph>(
+      find
+          .ancestor(of: find.text('Run 42'), matching: find.byType(RichText))
+          .first,
+    );
+    expect(find.text(UiStatusStripStyle.factSeparator), findsOneWidget);
+    expect(
+      line.maxLines,
+      1,
       reason:
-          'the facts are one label, so the line ellipsises at its end '
+          'the facts are one paragraph, so the line ellipsises at its end '
           'rather than dropping the fact the reviewer was reading',
     );
-    expect(facts.maxLines, 1);
+    expect(line.didExceedMaxLines, isFalse);
+  });
+
+  testWidgets('plain facts draw as the same line', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(390, 844),
+        child: const SizedBox(
+          width: 390,
+          child: UiStatusStrip(facts: <String>['Run 42', 'Version 3']),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Run 42'), findsOneWidget);
+    expect(find.text('Version 3'), findsOneWidget);
+    expect(find.text(UiStatusStripStyle.factSeparator), findsOneWidget);
+  });
+
+  testWidgets('a fact is a slot: a glossary term opens where it is read', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    int opened = 0;
+    await tester.pumpWidget(
+      uiHarness(
+        size: const Size(800, 800),
+        child: SizedBox(
+          width: 600,
+          child: _strip(
+            provenance: <Widget>[
+              Semantics(
+                link: true,
+                label: 'Version 3, term, double tap for definition',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => opened++,
+                  child: const Text('Version 3'),
+                ),
+              ),
+              const Text('Run 42'),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Version 3'));
+    await tester.pumpAndSettle();
+    expect(
+      opened,
+      1,
+      reason:
+          'a product that defines its own vocabulary keeps the definition on '
+          'the line it is read on',
+    );
+    expect(
+      find.bySemanticsLabel('Version 3, term, double tap for definition'),
+      findsOneWidget,
+    );
+    handle.dispose();
   });
 
   testWidgets('a strip with nothing blocking is 40 dp and has no control', (

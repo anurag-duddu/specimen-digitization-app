@@ -14,9 +14,15 @@ import '../harness/control_contract.dart';
 
 /// A trigger with a popover attached, for the popover tests.
 class _PopoverHost extends StatefulWidget {
-  const _PopoverHost({this.placement = PopoverPlacement.below});
+  const _PopoverHost({
+    this.placement = PopoverPlacement.below,
+    this.paneWidth = 200,
+  });
 
   final PopoverPlacement placement;
+
+  /// How wide the pane asks to be.
+  final double paneWidth;
 
   @override
   State<_PopoverHost> createState() => _PopoverHostState();
@@ -37,7 +43,7 @@ class _PopoverHostState extends State<_PopoverHost> {
     placement: widget.placement,
     semanticsLabel: 'Collection menu',
     overlayBuilder: (BuildContext context) => SizedBox(
-      width: 200,
+      width: widget.paneWidth,
       height: 120,
       child: Center(
         child: UiButton(label: 'Insects', onPressed: controller.close),
@@ -97,6 +103,180 @@ void main() {
       await tester.pumpAndSettle();
       expect(glassPaneCount(), 1);
       expectGlassBudget(tester);
+    });
+
+    group('fits the overlay it opens in', () {
+      const double inset = 16;
+      Finder trigger() => find.widgetWithText(UiButton, 'Collection');
+      Finder pane() => find.byType(GlassSurface);
+
+      /// The window itself, not only the media query: a pane fits the
+      /// overlay it is drawn in, and the overlay is the size of the view.
+      void window(WidgetTester tester, Size size) {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = size;
+        addTearDown(tester.view.reset);
+      }
+
+      testWidgets('a trigger at the trailing edge keeps its pane inside', (
+        WidgetTester tester,
+      ) async {
+        // The defect slot A3 measured: a trigger at the end of a bar opened
+        // its menu off the window. The anchor mirrors, so the pane's trailing
+        // edge meets the trigger's, in both directions and at both windows.
+        for (final double width in <double>[390, 800]) {
+          for (final TextDirection direction in TextDirection.values) {
+            window(tester, Size(width, 600));
+            await tester.pumpWidget(
+              uiHarness(
+                size: Size(width, 600),
+                textDirection: direction,
+                child: const Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: _PopoverHost(placement: PopoverPlacement.auto),
+                ),
+              ),
+            );
+            await tester.tap(trigger());
+            await tester.pumpAndSettle();
+            final Rect anchor = tester.getRect(trigger());
+            final Rect drawn = tester.getRect(pane());
+            final String where = '$width dp, ${direction.name}';
+            expect(drawn.left, greaterThanOrEqualTo(0), reason: where);
+            expect(drawn.right, lessThanOrEqualTo(width), reason: where);
+            if (direction == TextDirection.ltr) {
+              expect(
+                drawn.right,
+                moreOrLessEquals(anchor.right, epsilon: 0.5),
+                reason: '$where: the trailing edges align once mirrored',
+              );
+            } else {
+              expect(
+                drawn.left,
+                moreOrLessEquals(anchor.left, epsilon: 0.5),
+                reason: '$where: the trailing edges align once mirrored',
+              );
+            }
+            await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+            await tester.pumpAndSettle();
+          }
+        }
+      });
+
+      testWidgets('the leading edges align where there is room', (
+        WidgetTester tester,
+      ) async {
+        for (final TextDirection direction in TextDirection.values) {
+          window(tester, const Size(800, 600));
+          await tester.pumpWidget(
+            uiHarness(
+              size: const Size(800, 600),
+              textDirection: direction,
+              child: const _PopoverHost(),
+            ),
+          );
+          await tester.tap(trigger());
+          await tester.pumpAndSettle();
+          final Rect anchor = tester.getRect(trigger());
+          final Rect drawn = tester.getRect(pane());
+          if (direction == TextDirection.ltr) {
+            expect(drawn.left, moreOrLessEquals(anchor.left, epsilon: 0.5));
+          } else {
+            expect(drawn.right, moreOrLessEquals(anchor.right, epsilon: 0.5));
+          }
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+        }
+      });
+
+      testWidgets('a pane wider than the room is clamped inside the padding', (
+        WidgetTester tester,
+      ) async {
+        window(tester, const Size(390, 600));
+        await tester.pumpWidget(
+          uiHarness(
+            size: const Size(390, 600),
+            child: const _PopoverHost(paneWidth: 500),
+          ),
+        );
+        await tester.tap(trigger());
+        await tester.pumpAndSettle();
+        final Rect drawn = tester.getRect(pane());
+        expect(drawn.left, greaterThanOrEqualTo(inset));
+        expect(drawn.right, lessThanOrEqualTo(390 - inset));
+        expect(
+          drawn.width,
+          moreOrLessEquals(390 - 2 * inset, epsilon: 0.5),
+          reason: 'neither anchor holds it, so it takes the room there is',
+        );
+      });
+
+      testWidgets('a pane may come as close to an edge as its trigger', (
+        WidgetTester tester,
+      ) async {
+        // A select flush with the window keeps its list flush under it: the
+        // padding is what a pane keeps clear, not a rule that moves it away
+        // from the control that opened it.
+        window(tester, const Size(390, 600));
+        await tester.pumpWidget(
+          uiHarness(
+            size: const Size(390, 600),
+            child: const Align(
+              alignment: Alignment.centerRight,
+              child: _PopoverHost(),
+            ),
+          ),
+        );
+        await tester.tap(trigger());
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(pane()).right,
+          moreOrLessEquals(tester.getRect(trigger()).right, epsilon: 0.5),
+        );
+      });
+
+      testWidgets('auto still flips above in the bottom third', (
+        WidgetTester tester,
+      ) async {
+        window(tester, const Size(800, 600));
+        await tester.pumpWidget(
+          uiHarness(
+            size: const Size(800, 600),
+            child: const Align(
+              alignment: Alignment.bottomCenter,
+              child: _PopoverHost(placement: PopoverPlacement.auto),
+            ),
+          ),
+        );
+        await tester.tap(trigger());
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(pane()).bottom,
+          lessThanOrEqualTo(tester.getRect(trigger()).top),
+          reason: 'the vertical rule is kept (10 section 3)',
+        );
+        // Closed before the second pump: `pumpWidget` updates the host's
+        // state rather than rebuilding it, so a pane left open would be
+        // toggled shut by the tap below.
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        await tester.pumpWidget(
+          uiHarness(
+            size: const Size(800, 600),
+            child: const Align(
+              alignment: Alignment.topCenter,
+              child: _PopoverHost(placement: PopoverPlacement.auto),
+            ),
+          ),
+        );
+        await tester.tap(trigger());
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(pane()).top,
+          greaterThanOrEqualTo(tester.getRect(trigger()).bottom),
+        );
+      });
     });
 
     testWidgets('every placement builds', (WidgetTester tester) async {
@@ -227,6 +407,91 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Run'), findsNothing);
     });
+
+    testWidgets('a modal holds the scope it was shown inside from its entrance '
+        'to its exit', (WidgetTester tester) async {
+      final UiModalScope scope = UiModalScope();
+      addTearDown(scope.dispose);
+      int announced = 0;
+      scope.addListener(() => announced++);
+      late BuildContext inside;
+      await tester.pumpWidget(
+        uiHarness(
+          child: UiModalScope.publish(
+            scope: scope,
+            child: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+      expect(UiModalScope.of(inside), same(scope));
+      expect(scope.isOpen, isFalse);
+
+      unawaited(
+        showUiSheet<void>(
+          context: inside,
+          semanticsLabel: 'Record a reason',
+          builder: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      await tester.pump();
+      expect(
+        scope.isOpen,
+        isFalse,
+        reason: 'held once the entrance has finished, not from the push',
+      );
+      await tester.pumpAndSettle();
+      expect(scope.isOpen, isTrue);
+      expect(announced, 1);
+
+      Navigator.of(inside, rootNavigator: true).pop();
+      await tester.pump();
+      expect(
+        scope.isOpen,
+        isFalse,
+        reason: 'given back the moment the exit begins',
+      );
+      await tester.pumpAndSettle();
+      expect(announced, 2);
+    });
+
+    testWidgets(
+      'a modal dismissed before its entrance finished holds nothing',
+      (WidgetTester tester) async {
+        final UiModalScope scope = UiModalScope();
+        addTearDown(scope.dispose);
+        late BuildContext inside;
+        await tester.pumpWidget(
+          uiHarness(
+            child: UiModalScope.publish(
+              scope: scope,
+              child: Builder(
+                builder: (BuildContext context) {
+                  inside = context;
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ),
+        );
+        unawaited(
+          showUiSheet<void>(
+            context: inside,
+            semanticsLabel: 'Record a reason',
+            builder: (BuildContext context) => const Text('Reason'),
+          ),
+        );
+        await tester.pump();
+        Navigator.of(inside, rootNavigator: true).pop();
+        await tester.pumpAndSettle();
+        expect(scope.isOpen, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     test('the compact threshold matches the window class', () {
       // The package cannot import `WindowClass` without inverting the

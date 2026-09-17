@@ -87,6 +87,22 @@ class UiCollapsingHeaderStyle {
 /// band is drawn either way; what the class of window decides is whether it
 /// costs a save layer.
 ///
+/// **A header that is the region under review is content, not chrome
+/// (polish 3; amends 13 section 2.3).** Built with `primary: true` it
+/// publishes `PrimaryRegion` on the thing it shows, at the height that thing
+/// keeps once the header is pinned, and no `PinnedChrome` at all: 13 section
+/// 2.3 lists a pinned header among the five regions the budget adds up, and
+/// 13 section 4.1 pins this one at 40 percent of a phone while giving the
+/// whole of the chrome 28, so the two cannot both be read with the header
+/// inside the budget. Nor are its chrome rows a half measure the budget can
+/// hold: at 200 percent text on a 390 by 844 phone the frame's own top bar is
+/// 69.75 dp, the one line band 52 and the action bar 80, which is 201.75 of
+/// the 236.3 the budget allows, and one row riding this header's edge is 80
+/// on its own. The rows ride the region under review and are inside the
+/// extent 13 section 2.5 already measures; a marker on them would count the
+/// same height twice. A header built without `primary` is a pinned header of
+/// the kind 2.3 names and keeps the `header` marker at the extent it pins.
+///
 /// Under reduced motion the collapse still tracks the scroll. It is a
 /// position and not a transition: the reviewer's finger is what moves it, and
 /// freezing it would leave the header at whichever extent the scroll started
@@ -140,9 +156,14 @@ class UiCollapsingHeader extends StatelessWidget {
 
   /// True when this header is the screen's primary region (13 section 2.5).
   ///
-  /// It then marks itself with [PrimaryRegion] at the extent it pins, which
-  /// is the number the `above_the_fold` gate measures. The screen does not
-  /// have to restate a height only the header can compute.
+  /// It then marks [content] with [PrimaryRegion] at the height the content
+  /// keeps once the header is pinned, the extent it pins less the one chrome
+  /// row that survives the collapse, which is the number the `above_the_fold`
+  /// gate measures, and it publishes no [PinnedChrome]: the region under
+  /// review is content, not chrome, and spends nothing of the budget of 13
+  /// section 2.3. The marker is on the content's box rather than around the
+  /// sliver, because a sliver has no box for the gate to read. The screen does
+  /// not have to restate a height only the header can compute.
   final bool primary;
 
   /// Overrides the resolved style. A code review event (10 section 1.5).
@@ -183,7 +204,7 @@ class UiCollapsingHeader extends StatelessWidget {
       math.max(minExtent, maxChrome),
     );
 
-    Widget header = SliverPersistentHeader(
+    final Widget header = SliverPersistentHeader(
       pinned: true,
       delegate: _CollapsingHeaderDelegate(
         content: content,
@@ -193,15 +214,19 @@ class UiCollapsingHeader extends StatelessWidget {
         maxExtent: maxExtent,
         minChrome: minChrome,
         maxChrome: maxChrome,
+        // What the thing under review keeps once the header is pinned: the
+        // extent less the one chrome row that rides its edge to the end.
+        primaryMinExtent: primary ? minExtent - minChrome : null,
       ),
     );
-    header = PinnedChrome(
+    // The region under review is content and holds no budget; a pinned header
+    // that is not the region under review is chrome at the extent it pins.
+    if (primary) return header;
+    return PinnedChrome(
       region: UiPinnedRegion.header,
       extent: minExtent,
       child: header,
     );
-    if (!primary) return header;
-    return PrimaryRegion(minExtent: minExtent, child: header);
   }
 }
 
@@ -214,6 +239,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.maxExtent,
     required this.minChrome,
     required this.maxChrome,
+    required this.primaryMinExtent,
   });
 
   final Widget content;
@@ -221,6 +247,10 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
   final UiCollapsingHeaderStyle style;
   final double minChrome;
   final double maxChrome;
+
+  /// The height the content is marked as the primary region at, or null for
+  /// a header that is not the region under review.
+  final double? primaryMinExtent;
 
   @override
   final double minExtent;
@@ -250,6 +280,12 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
     final double band = chrome.isEmpty
         ? 0
         : lerpDouble(maxChrome, minChrome, progress)!;
+    final double? primaryMin = primaryMinExtent;
+    // The marker sits on the content's own box, which is what the fold gate
+    // reads; the sliver around it has no box to read.
+    final Widget shown = primaryMin == null
+        ? content
+        : PrimaryRegion(minExtent: primaryMin, child: content);
 
     return Column(
       // Stretched, because the thing under review is the width of the window:
@@ -259,7 +295,7 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
       children: <Widget>[
         // The thing under review takes whatever the band leaves, and is
         // clipped rather than allowed to paint over the evidence below it.
-        Expanded(child: ClipRect(child: content)),
+        Expanded(child: ClipRect(child: shown)),
         if (chrome.isNotEmpty)
           SizedBox(
             height: band,
@@ -283,7 +319,8 @@ class _CollapsingHeaderDelegate extends SliverPersistentHeaderDelegate {
       old.minExtent != minExtent ||
       old.maxExtent != maxExtent ||
       old.minChrome != minChrome ||
-      old.maxChrome != maxChrome;
+      old.maxChrome != maxChrome ||
+      old.primaryMinExtent != primaryMinExtent;
 }
 
 /// The rows riding the header's lower edge.

@@ -4,7 +4,7 @@ library;
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart' show RenderProxyBox;
-import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/fields.dart';
@@ -13,39 +13,13 @@ import '../../foundation/theme.dart';
 import '../../foundation/window.dart';
 import '../../primitives/composition_markers.dart';
 import '../../primitives/field_layer.dart';
+import '../../primitives/frame_safe_notifier.dart';
 import '../../primitives/glass_surface.dart';
+import '../../primitives/modal_routes.dart';
 import '../overlays/banner.dart';
 import '../overlays/toast.dart';
 import 'rail.dart';
 import 'sidebar.dart';
-
-/// Announces a change now, or after the frame when one is being built.
-///
-/// A page publishes what it wants from the frame while it is being laid out,
-/// which is the one moment the frame above it cannot be rebuilt. Both of the
-/// scaffold's published channels defer to the end of the frame when they are
-/// written during one, and announce immediately otherwise.
-mixin _FrameSafeNotifier on ChangeNotifier {
-  bool _disposed = false;
-
-  @override
-  void dispose() {
-    _disposed = true;
-    super.dispose();
-  }
-
-  void _announce() {
-    final SchedulerPhase phase = SchedulerBinding.instance.schedulerPhase;
-    if (phase == SchedulerPhase.persistentCallbacks ||
-        phase == SchedulerPhase.midFrameMicrotasks) {
-      SchedulerBinding.instance.addPostFrameCallback((Duration _) {
-        if (!_disposed) notifyListeners();
-      });
-      return;
-    }
-    notifyListeners();
-  }
-}
 
 /// The rectangle a screen asks the field layer to keep clear.
 ///
@@ -65,7 +39,7 @@ mixin _FrameSafeNotifier on ChangeNotifier {
 /// its own has, so a publisher is a single call with no branch. A screen that
 /// leaves publishes null, and one that stops being visible publishes null in
 /// `dispose`; nothing else clears it.
-class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
+class UiScaffoldExclusion extends ChangeNotifier with FrameSafeNotifier {
   /// What is kept clear now, or null for nothing.
   Rect? get rect => _rect;
   Rect? _rect;
@@ -79,7 +53,7 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
   void publish(Rect? rect) {
     if (rect == _rect) return;
     _rect = rect;
-    _announce();
+    announce();
   }
 
   /// The nearest scaffold's exclusion, or null when there is no scaffold.
@@ -99,12 +73,17 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
 /// frame reads them, which is the same seam [UiScaffoldExclusion] already is,
 /// and for the same reason.
 ///
-/// Four asks, each null until a screen makes it, and each winning over what
+/// Six asks, each null until a screen makes it, and each winning over what
 /// the scaffold's caller passed:
 ///
 /// - [setTopBar] replaces the bar across the top. A record names itself and
 ///   offers the way out of itself, and neither fact reaches the shell that
 ///   built the frame (13 sections 2.4 and 4.1).
+/// - [setTitle] and [setLeading] name the bar and its start slot without
+///   replacing it (polish 3). A shell derives both by route; a screen that
+///   knows better publishes one of them, and the frame hands the two to the
+///   `UiTopBar` in the slot through [UiTopBarAsk], whichever of the two
+///   built it and whatever it is wrapped in.
 /// - [setActionBar] fills the sticky pane above the navigation. The decision
 ///   bar of 13 section 3.3 is what goes in it.
 /// - [setNavVisible] hides the navigation pill on a screen that is inside a
@@ -142,10 +121,18 @@ class UiScaffoldExclusion extends ChangeNotifier with _FrameSafeNotifier {
 ///
 /// Null outside a scaffold, which is what a component test pumping one screen
 /// on its own has, so a publisher is one call with no branch.
-class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
+class UiScaffoldSlots extends ChangeNotifier with FrameSafeNotifier {
   /// What the page put in the top bar, or null for the caller's own.
   Widget? get topBar => _topBar;
   Widget? _topBar;
+
+  /// What the page named the bar, or null for the bar's own title.
+  String? get title => _title;
+  String? _title;
+
+  /// What the page put in the bar's start slot, or null for the bar's own.
+  Widget? get leading => _leading;
+  Widget? _leading;
 
   /// What the page put in the action bar, or null for the caller's own.
   Widget? get actionBar => _actionBar;
@@ -162,6 +149,8 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   bool? _bandCompact;
 
   Object? _topBarOwner;
+  Object? _titleOwner;
+  Object? _leadingOwner;
   Object? _actionBarOwner;
   Object? _navOwner;
   Object? _bandOwner;
@@ -175,7 +164,31 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _topBarOwner = bar == null ? null : owner;
     if (bar == _topBar) return;
     _topBar = bar;
-    _announce();
+    announce();
+  }
+
+  /// Names the bar across the top [title]. Null gives the slot back, where
+  /// [owner] holds it or names no one.
+  ///
+  /// The bar in the slot keeps everything else it was built with: a screen
+  /// that is one route of a shell names itself without rebuilding the
+  /// switcher and the commands the shell put beside the name.
+  void setTitle(String? title, {Object? owner}) {
+    if (title == null && !_mayClear(_titleOwner, owner)) return;
+    _titleOwner = title == null ? null : owner;
+    if (title == _title) return;
+    _title = title;
+    announce();
+  }
+
+  /// Puts [leading] in the bar's start slot. Null gives the slot back, where
+  /// [owner] holds it or names no one.
+  void setLeading(Widget? leading, {Object? owner}) {
+    if (leading == null && !_mayClear(_leadingOwner, owner)) return;
+    _leadingOwner = leading == null ? null : owner;
+    if (leading == _leading) return;
+    _leading = leading;
+    announce();
   }
 
   /// Puts [bar] in the frame's action bar. Null gives the slot back, where
@@ -192,7 +205,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _actionBarOwner = bar == null ? null : owner;
     if (bar == _actionBar) return;
     _actionBar = bar;
-    _announce();
+    announce();
   }
 
   /// Asks for the navigation to be drawn or hidden. Null gives the answer
@@ -202,7 +215,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _navOwner = visible == null ? null : owner;
     if (visible == _navVisible) return;
     _navVisible = visible;
-    _announce();
+    announce();
   }
 
   /// Asks for the one line environment band. Null gives the answer back,
@@ -212,7 +225,7 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
     _bandOwner = compact == null ? null : owner;
     if (compact == _bandCompact) return;
     _bandCompact = compact;
-    _announce();
+    announce();
   }
 
   /// True where a null from [asking] may give back a slot [holder] holds.
@@ -230,6 +243,8 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   /// screen arriving publishes before the screen leaving is disposed.
   void release(Object owner) {
     if (identical(_topBarOwner, owner)) setTopBar(null);
+    if (identical(_titleOwner, owner)) setTitle(null);
+    if (identical(_leadingOwner, owner)) setLeading(null);
     if (identical(_actionBarOwner, owner)) setActionBar(null);
     if (identical(_navOwner, owner)) setNavVisible(null);
     if (identical(_bandOwner, owner)) setBandCompact(null);
@@ -241,6 +256,38 @@ class UiScaffoldSlots extends ChangeNotifier with _FrameSafeNotifier {
   /// publisher wants the object, not a rebuild every time it publishes to it.
   static UiScaffoldSlots? of(BuildContext context) =>
       context.getInheritedWidgetOfExactType<_UiScaffoldSlotsScope>()?.slots;
+}
+
+/// What the routed screen asked of the frame's top bar (13 section 3.4;
+/// polish 3).
+///
+/// Published by `UiScaffold` around its top bar slot and read by `UiTopBar`,
+/// so a screen's `UiScaffoldSlots.setTitle` or `setLeading` reaches the bar
+/// the shell built, whatever the shell wrapped it in, without the frame
+/// having to rebuild a widget it cannot read. A bar outside a frame finds
+/// none and draws its own.
+class UiTopBarAsk extends InheritedWidget {
+  /// Publishes [title] and [leading] to the bar in [child].
+  const UiTopBarAsk({
+    super.key,
+    this.title,
+    this.leading,
+    required super.child,
+  });
+
+  /// What the page named the bar, or null for the bar's own title.
+  final String? title;
+
+  /// What the page put in the bar's start slot, or null for the bar's own.
+  final Widget? leading;
+
+  /// The nearest ask above [context], or null outside a frame.
+  static UiTopBarAsk? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<UiTopBarAsk>();
+
+  @override
+  bool updateShouldNotify(UiTopBarAsk oldWidget) =>
+      oldWidget.title != title || oldWidget.leading != leading;
 }
 
 /// Publishes one scaffold's slots to its body.
@@ -483,16 +530,22 @@ class _UiScaffoldState extends State<UiScaffold> {
   /// What the page inside this frame asks of the frame itself.
   final UiScaffoldSlots _slots = UiScaffoldSlots();
 
+  /// Whether a modal shown from inside this frame is over it.
+  final UiModalScope _modal = UiModalScope();
+
   @override
   void initState() {
     super.initState();
     _slots.addListener(_slotsChanged);
+    _modal.addListener(_slotsChanged);
   }
 
   @override
   void dispose() {
     _slots.removeListener(_slotsChanged);
+    _modal.removeListener(_slotsChanged);
     _slots.dispose();
+    _modal.dispose();
     _exclusion.dispose();
     super.dispose();
   }
@@ -547,28 +600,54 @@ class _UiScaffoldState extends State<UiScaffold> {
     // The keyboard covers the home indicator, so the two do not add up.
     final double bottomSafe = math.max(safe.bottom, keyboard);
 
-    // The compact window's one frosted pane (13 section 2.2; 09 section 3.3).
+    // Where the frame's panes go (13 section 2.2; 09 section 3.3).
     //
     // Every pinned region used to draw its own: the top bar's fill once
     // content scrolled under it, the action bar, the pill, and a collapsed
     // collapsing header's chrome. That is four panes on a phone where the
     // budget is one, and two of them stacked is the "glass decision bar over
-    // a glass pill" 13 section 0 reads as a defect. The frame spends the one
-    // pane where the reviewer's thumb is, on its own floating chrome, and
-    // turns the blur off everywhere else inside itself, so a pane that is no
-    // longer frosted is still the surface it was, drawn solid. A window with
-    // no action bar spends it on the navigation instead, because a pill is
-    // the only thing floating over the page on a list screen.
+    // a glass pill" 13 section 0 reads as a defect. A compact window spends
+    // its one pane where the reviewer's thumb is, on the chrome the frame
+    // floats, and turns the blur off everywhere else inside itself, so a pane
+    // that is no longer frosted is still the surface it was, drawn solid. A
+    // window with no action bar spends it on the navigation instead, because
+    // a pill is the only thing floating over the page on a list screen.
+    //
+    // A medium window spends two (polish 3): the chrome the frame floats and
+    // the pane over the photograph, a collapsed header's chrome in the body.
+    // The top bar is never one of them, at any class. Its fill once content
+    // scrolls under it is the same surface drawn solid, as it is at compact,
+    // so a record at medium blurs the action bar and the collapsed header's
+    // chrome and nothing else; the wider classes have room for more panes
+    // and spend none of it on a bar that is chrome the reviewer scrolls
+    // past.
     //
     // A sheet or a dialog is pushed over the frame rather than inside it and
-    // keeps its own pane, which is the surface 13 section 2.2 exempts.
+    // keeps its own pane, which is the surface 13 section 2.2 exempts and 09
+    // section 3.3 counts within the window's budget. While one is over this
+    // frame, every pane the frame draws is under its scrim, and a pane under
+    // a scrim is a save layer nobody sees: the frame draws them all solid
+    // until the modal begins to leave (polish 3).
     final bool compact = WindowClass.of(context).isCompact;
+    final bool covered = _modal.isOpen;
     final UiThemeData? published = context
         .dependOnInheritedWidgetOfExactType<UiTheme>()
         ?.data;
-    final UiThemeData flat = _flat(published ?? ui);
-    Widget solid(Widget child) =>
-        compact ? UiTheme(data: flat, child: child) : child;
+    final UiThemeData ambient = published ?? ui;
+    final UiThemeData flat = _flat(ambient);
+    // Every region is wrapped in a theme whatever it is given, and only the
+    // tokens change: a wrapper that came and went with a modal would rebuild
+    // the page under it from nothing, and the reviewer's scroll position
+    // with it.
+    //
+    // The solid form of every pane under [child].
+    Widget solid(Widget child) => UiTheme(data: flat, child: child);
+    // The chrome the frame floats: its pane, unless a modal covers it.
+    Widget floated(Widget child) =>
+        UiTheme(data: covered ? flat : ambient, child: child);
+    // A region the frame does not float: solid at compact, as built above it.
+    Widget unfloated(Widget child) =>
+        UiTheme(data: compact || covered ? flat : ambient, child: child);
 
     final UiNavPlacement placement =
         widget.navPlacement ?? UiScaffold.placementOf(widget.nav);
@@ -586,18 +665,66 @@ class _UiScaffoldState extends State<UiScaffold> {
     // Where the one pane goes at compact: the action bar has it wherever
     // there is one, and the navigation keeps its own otherwise.
     final bool navKeepsPane = compact && actionBar == null;
+    final bool pillShown = floats && navShown;
+
+    // The action bar's two forms (polish 3). Above a pill it floats as a
+    // tile, with the pill's own gap under it, because the pill is the lowest
+    // chrome and a capsule floats over the page by design (10 section 4.4).
+    // Where nothing floats under it, inside a record or beside a rail, the
+    // bar is the lowest chrome and anchors to the window's bottom edge: the
+    // pane spans the body's width with its top corners turned, and the
+    // bottom system inset is padding inside the pane below the bar, so the
+    // page's content never shows in a band between the bar and the edge. The
+    // device captures found about 48 dp of the record's evidence scrolling
+    // under the decision bar on a phone with gesture navigation, and the
+    // readings' footer rows under it on a tablet with a home indicator.
+    //
+    // The keyboard covers the home indicator, so when it is up the pane
+    // sits on the keyboard's edge and carries no inset of its own.
+    final bool anchored = actionBar != null && !pillShown;
+    final double insetInside = anchored && keyboard <= safe.bottom
+        ? safe.bottom
+        : 0;
+    // The distance from the window's bottom edge to the floating column.
+    final double chromeBottom = anchored
+        ? bottomSafe - insetInside
+        : bottomSafe + style.gap;
     final List<Widget> floatingChrome = <Widget>[
       if (actionBar != null)
-        PinnedChrome(
-          region: UiPinnedRegion.actionBar,
-          child: GlassSurface(
+        floated(
+          GlassSurface(
             level: GlassLevel.floating,
-            radius: style.actionBarRadius,
-            padding: style.actionBarPadding,
-            child: solid(actionBar),
+            radius: anchored ? null : style.actionBarRadius,
+            corners: anchored
+                ? BorderRadius.vertical(
+                    top: Radius.circular(style.actionBarRadius),
+                  )
+                : null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              // A floating tile keeps the width of what it holds, as it always
+              // did; an anchored bar spans the body.
+              crossAxisAlignment: anchored
+                  ? CrossAxisAlignment.stretch
+                  : CrossAxisAlignment.center,
+              children: <Widget>[
+                // The marker measures the bar and its padding, the 64 dp of
+                // 13 section 4.1, and not the system inset the pane extends
+                // through: that inset is the device's, and content could not
+                // have used it either way.
+                PinnedChrome(
+                  region: UiPinnedRegion.actionBar,
+                  child: Padding(
+                    padding: style.actionBarPadding,
+                    child: unfloated(actionBar),
+                  ),
+                ),
+                if (insetInside > 0) SizedBox(height: insetInside),
+              ],
+            ),
           ),
         ),
-      if (actionBar != null && floats && navShown) SizedBox(height: style.gap),
+      if (actionBar != null && pillShown) SizedBox(height: style.gap),
       // Hidden rather than removed: a pill taken out of the tree loses the
       // destination it was on and glides in from the first one when the
       // reviewer leaves the record. Offstage keeps the state and takes no
@@ -606,14 +733,17 @@ class _UiScaffoldState extends State<UiScaffold> {
         PinnedChrome(
           region: UiPinnedRegion.navigation,
           child: navKeepsPane
-              ? Offstage(offstage: !navShown, child: widget.nav!)
-              : solid(Offstage(offstage: !navShown, child: widget.nav!)),
+              ? floated(Offstage(offstage: !navShown, child: widget.nav!))
+              : unfloated(Offstage(offstage: !navShown, child: widget.nav!)),
         ),
     ];
 
+    // What the body pads its content by: everything from the window's edge
+    // to the top of whatever the frame floats, inset included, so the last
+    // row clears the pane and not only the bar in it.
     final double bottomInset = floatingChrome.isEmpty
         ? bottomSafe
-        : bottomSafe + style.gap + _floatingHeight;
+        : chromeBottom + _floatingHeight;
 
     // With no overlay layer of its own, the frame installs the one every page
     // wants: a toast host around the body, so `UiToasts.show` finds an
@@ -621,7 +751,7 @@ class _UiScaffoldState extends State<UiScaffold> {
     // than sit beside it, because `UiToastHost.maybeOf` walks upward.
     final Widget? body = widget.body == null
         ? null
-        : solid(
+        : unfloated(
             widget.overlays != null
                 ? widget.body!
                 : UiToastHost(bottomInset: bottomInset, child: widget.body!),
@@ -635,11 +765,13 @@ class _UiScaffoldState extends State<UiScaffold> {
           PositionedDirectional(
             start: 0,
             end: 0,
-            bottom: bottomSafe + style.gap,
+            bottom: chromeBottom,
+            // The body area already clears the side safe areas (see
+            // `belowBar`), so the gutter is the whole of the side padding; an
+            // anchored bar spans the body's width and has none.
             child: Padding(
-              padding: EdgeInsets.only(
-                left: safe.left + style.gutter,
-                right: safe.right + style.gutter,
+              padding: EdgeInsets.symmetric(
+                horizontal: anchored ? 0 : style.gutter,
               ),
               child: _MeasureHeight(
                 onHeight: _floatingMeasured,
@@ -667,7 +799,7 @@ class _UiScaffoldState extends State<UiScaffold> {
         // a desktop with its navigation taken away inside a record has no
         // navigation at all, so only the caller's own answer hides them.
         if (beside)
-          solid(Offstage(offstage: !widget.navVisible, child: widget.nav!)),
+          unfloated(Offstage(offstage: !widget.navVisible, child: widget.nav!)),
         Expanded(child: bodyArea),
       ],
     );
@@ -706,11 +838,23 @@ class _UiScaffoldState extends State<UiScaffold> {
           child: banner,
         );
       }
-      banner = PinnedChrome(region: UiPinnedRegion.band, child: solid(banner));
+      banner = PinnedChrome(
+        region: UiPinnedRegion.band,
+        child: unfloated(banner),
+      );
     }
+    // Never a pane, at any class: see the policy above. The title and the
+    // leading a screen asked for ride down to the bar in the slot.
     final Widget? topBar = bar == null
         ? null
-        : PinnedChrome(region: UiPinnedRegion.topBar, child: solid(bar));
+        : PinnedChrome(
+            region: UiPinnedRegion.topBar,
+            child: UiTopBarAsk(
+              title: _slots.title,
+              leading: _slots.leading,
+              child: solid(bar),
+            ),
+          );
 
     return _UiScaffoldScope(
       geometry: UiScaffoldGeometry(
@@ -721,23 +865,26 @@ class _UiScaffoldState extends State<UiScaffold> {
         exclusion: _exclusion,
         child: _UiScaffoldSlotsScope(
           slots: _slots,
-          child: ListenableBuilder(
-            listenable: _exclusion,
-            builder: (BuildContext context, Widget? child) => FieldLayer(
-              preset: widget.sky,
-              // What the page asked for wins over what the caller passed, and
-              // the caller's is the fallback: a shell that knows the rectangle
-              // still states it, and a screen inside one that does not can say
-              // so for itself.
-              exclusion: _exclusion.rect ?? widget.exclusion,
-              child: child,
-            ),
-            child: Column(
-              children: <Widget>[
-                ?topBar,
-                ?banner,
-                Expanded(child: belowBar),
-              ],
+          child: UiModalScope.publish(
+            scope: _modal,
+            child: ListenableBuilder(
+              listenable: _exclusion,
+              builder: (BuildContext context, Widget? child) => FieldLayer(
+                preset: widget.sky,
+                // What the page asked for wins over what the caller passed, and
+                // the caller's is the fallback: a shell that knows the rectangle
+                // still states it, and a screen inside one that does not can say
+                // so for itself.
+                exclusion: _exclusion.rect ?? widget.exclusion,
+                child: child,
+              ),
+              child: Column(
+                children: <Widget>[
+                  ?topBar,
+                  ?banner,
+                  Expanded(child: belowBar),
+                ],
+              ),
             ),
           ),
         ),

@@ -31,6 +31,7 @@ Future<ScrollController> _pumpScreen(
   List<Widget> chrome = const <Widget>[Text(_chromeOne), Text(_chromeTwo)],
   double maxFraction = UiCollapsingHeader.defaultMaxFraction,
   double minFraction = UiCollapsingHeader.defaultMinFraction,
+  bool primary = true,
 }) async {
   final ScrollController controller = ScrollController();
   addTearDown(controller.dispose);
@@ -45,7 +46,7 @@ Future<ScrollController> _pumpScreen(
           controller: controller,
           slivers: <Widget>[
             UiCollapsingHeader(
-              primary: true,
+              primary: primary,
               maxFraction: maxFraction,
               minFraction: minFraction,
               content: const ColoredBox(color: Color(0xFF000000)),
@@ -175,22 +176,63 @@ void main() {
     expect(find.byType(GlassSurface), findsOneWidget);
   });
 
-  testWidgets('reports the extent it pins through the marker', (
+  testWidgets('a header that is not the region under review is chrome', (
     WidgetTester tester,
   ) async {
-    await _pumpScreen(tester);
+    await _pumpScreen(tester, primary: false);
     final Element marker = tester.element(find.byType(PinnedChrome));
 
+    // 13 section 2.3 counts a pinned header at its collapsed height, which is
+    // the extent it pins and not the extent it happens to be drawn at.
     expect(PinnedChrome.extentOf(marker), closeTo(phone.height * 0.40, 0.5));
     expect(
       tester.widget<PinnedChrome>(find.byType(PinnedChrome)).region,
       UiPinnedRegion.header,
     );
-    // `primary: true` marks it for the fold rule at the same number, so a
-    // screen never restates a height only the header can compute.
+    expect(find.byType(PrimaryRegion), findsNothing);
+  });
+
+  testWidgets('the region under review is content, not chrome', (
+    WidgetTester tester,
+  ) async {
+    final ScrollController controller = await _pumpScreen(tester);
+
+    // No budget spent: 13 section 4.1 pins this header at 40 percent of a
+    // phone and gives the whole of the chrome 28, and the rows on its edge
+    // are inside the extent 13 section 2.5 measures already.
+    expect(find.byType(PinnedChrome), findsNothing);
+
+    // The fold rule reads the thing under review on its own box, at the
+    // height it keeps once the header is pinned: the extent less the one
+    // chrome row that survives the collapse.
+    final UiThemeData ui = UiThemeData.light();
+    final BuildContext context = tester.element(find.byType(CustomScrollView));
+    final UiCollapsingHeaderStyle style = UiCollapsingHeaderStyle.resolve(
+      ui,
+      context,
+    );
+    final double row =
+        style.chromeRowHeight +
+        style.chromePadding.resolve(TextDirection.ltr).vertical;
+    final Element marker = tester.element(find.byType(PrimaryRegion));
     expect(
-      PrimaryRegion.minExtentOf(tester.element(find.byType(PrimaryRegion))),
-      closeTo(phone.height * 0.40, 0.5),
+      PrimaryRegion.minExtentOf(marker),
+      closeTo(phone.height * 0.40 - row, 0.5),
+    );
+    expect(
+      marker.renderObject,
+      isA<RenderBox>(),
+      reason: 'a marker around the sliver has no box for the gate to read',
+    );
+    final Rect atRest = tester.getRect(find.byType(PrimaryRegion));
+    expect(atRest.top, 0);
+
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.byType(PrimaryRegion)).height,
+      closeTo(PrimaryRegion.minExtentOf(marker), 0.5),
+      reason: 'pinned, the content is exactly the height the marker promises',
     );
   });
 

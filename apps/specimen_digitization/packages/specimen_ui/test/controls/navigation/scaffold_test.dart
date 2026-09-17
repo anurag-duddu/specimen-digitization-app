@@ -1,5 +1,7 @@
 // The page frame (10 section 4.4, `UiScaffold`).
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -24,9 +26,15 @@ Widget _page({
   Size size = _window,
 }) => Builder(
   builder: (BuildContext context) => MediaQuery(
-    data: MediaQuery.of(
-      context,
-    ).copyWith(size: size, padding: padding, viewInsets: viewInsets),
+    // The view padding is the padding with the keyboard taken out, which is
+    // what a device reports; both are set so the frame reads what a device
+    // would say.
+    data: MediaQuery.of(context).copyWith(
+      size: size,
+      padding: padding,
+      viewPadding: padding,
+      viewInsets: viewInsets,
+    ),
     child: SizedBox.fromSize(
       size: size,
       child: UiScaffold(
@@ -51,11 +59,15 @@ class _SlotPublisher extends StatefulWidget {
     this.actionBar,
     this.navVisible,
     this.bandCompact,
+    this.title,
+    this.leading,
   });
 
   final Widget? actionBar;
   final bool? navVisible;
   final bool? bandCompact;
+  final String? title;
+  final Widget? leading;
 
   @override
   State<_SlotPublisher> createState() => _SlotPublisherState();
@@ -70,7 +82,9 @@ class _SlotPublisherState extends State<_SlotPublisher> {
     _slots = UiScaffoldSlots.of(context)
       ?..setActionBar(widget.actionBar, owner: this)
       ..setNavVisible(widget.navVisible, owner: this)
-      ..setBandCompact(widget.bandCompact, owner: this);
+      ..setBandCompact(widget.bandCompact, owner: this)
+      ..setTitle(widget.title, owner: this)
+      ..setLeading(widget.leading, owner: this);
   }
 
   @override
@@ -356,10 +370,10 @@ void main() {
   testWidgets('the top bar fills once the body has scrolled under it', (
     WidgetTester tester,
   ) async {
-    // A medium window, because at compact the frame spends the window's one
-    // pane on its floating chrome and the bar's fill is the solid form of the
-    // same surface; what this test is about is the threshold, which is the
-    // same at every class.
+    // A medium window: the threshold is the same at every class, and so is
+    // the surface. The bar's fill is the solid form of `glass.flat` wherever
+    // the frame draws it, because the frame's top bar is never one of the
+    // window's panes (13 section 2.2, polish 3).
     const Size window = Size(700, 900);
     await tester.pumpWidget(
       uiHarness(
@@ -372,19 +386,32 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.byType(GlassSurface), findsNothing);
     expect(glassPaneCount(), 0);
 
     await tester.drag(find.byType(ListView), const Offset(0, -200));
     await tester.pumpAndSettle();
     expect(
-      glassPaneCount(),
-      1,
+      find.ancestor(
+        of: find.text('Queue'),
+        matching: find.byType(GlassSurface),
+      ),
+      findsOneWidget,
       reason: 'the bar takes its glass.flat fill from the body scrolling',
+    );
+    expect(
+      glassPaneCount(),
+      0,
+      reason: 'and the fill is the surface drawn solid, not a save layer',
     );
 
     await tester.drag(find.byType(ListView), const Offset(0, 400));
     await tester.pumpAndSettle();
-    expect(glassPaneCount(), 0, reason: 'and gives it back at the top');
+    expect(
+      find.byType(GlassSurface),
+      findsNothing,
+      reason: 'given back at the top',
+    );
   });
 
   testWidgets('a rail sits beside the body and a pill floats over it', (
@@ -532,10 +559,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       glassPaneCount(),
-      3,
+      2,
       reason:
-          'a top bar, an action bar and a pill are three panes at a class '
-          'whose budget is three',
+          'an action bar and a pill are two panes at a class whose budget is '
+          'three; the scrolled top bar draws its fill solid at every class',
     );
     expectGlassBudget(tester, window: 'a scrolled page with every slot');
   });
@@ -950,19 +977,26 @@ void main() {
     final Object record = Object();
     final Object queue = Object();
     const Widget decision = Text('Clear record');
+    const Widget back = Text('Back');
     slots
       ..setTopBar(const Text('FMNH-0001'), owner: record)
+      ..setTitle('Sources', owner: record)
+      ..setLeading(back, owner: record)
       ..setActionBar(decision, owner: record)
       ..setNavVisible(false, owner: record)
       ..setBandCompact(true, owner: record);
 
     slots
       ..setTopBar(null, owner: queue)
+      ..setTitle(null, owner: queue)
+      ..setLeading(null, owner: queue)
       ..setActionBar(null, owner: queue)
       ..setNavVisible(null, owner: queue)
       ..setBandCompact(null, owner: queue);
     expect(slots.actionBar, same(decision));
     expect(slots.topBar, isNotNull);
+    expect(slots.title, 'Sources');
+    expect(slots.leading, same(back));
     expect(slots.navVisible, isFalse);
     expect(slots.bandCompact, isTrue);
 
@@ -975,7 +1009,129 @@ void main() {
     slots.release(record);
     expect(slots.navVisible, isNull);
     expect(slots.bandCompact, isNull);
+    expect(slots.title, isNull);
+    expect(slots.leading, isNull);
     slots.dispose();
+  });
+
+  group('a screen names the bar through the frame (13 section 3.4)', () {
+    Widget shellBar() => const UiTopBar(
+      leading: SizedBox.square(key: ValueKey<String>('mark'), dimension: 24),
+      title: 'Queue',
+      center: SizedBox(key: ValueKey<String>('switcher'), width: 120),
+    );
+
+    testWidgets('a page\'s title replaces the bar\'s and nothing else moves', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: shellBar(),
+            body: const _SlotPublisher(title: 'Sources'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('Queue'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('switcher')),
+        findsOneWidget,
+        reason: 'the shell\'s switcher and commands stay beside the new name',
+      );
+      expect(find.byKey(const ValueKey<String>('mark')), findsOneWidget);
+    });
+
+    testWidgets('a page\'s leading replaces the bar\'s start slot', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: shellBar(),
+            body: const _SlotPublisher(
+              leading: SizedBox.square(
+                key: ValueKey<String>('back'),
+                dimension: 24,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey<String>('back')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('mark')), findsNothing);
+      expect(
+        tester.getCenter(find.byKey(const ValueKey<String>('back'))).dx,
+        lessThan(tester.getCenter(find.text('Queue')).dx),
+      );
+    });
+
+    testWidgets('the ask reaches a bar the shell has wrapped', (
+      WidgetTester tester,
+    ) async {
+      // The shell used to wrap its bar to draw the compact fill on ground,
+      // and a frame that rebuilt the bar it was given would have found a
+      // wrapper it cannot read. The ask rides down to the bar instead.
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: ColoredBox(
+              color: const Color(0xFF000000),
+              child: shellBar(),
+            ),
+            body: const _SlotPublisher(title: 'Sources'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('Queue'), findsNothing);
+    });
+
+    testWidgets('a page leaving gives the name back', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            topBar: shellBar(),
+            body: const _SlotPublisher(
+              key: ValueKey<String>('sources'),
+              title: 'Sources',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Sources'), findsOneWidget);
+
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(topBar: shellBar(), body: const SizedBox.expand()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Queue'), findsOneWidget);
+      expect(find.text('Sources'), findsNothing);
+    });
+
+    testWidgets('a bar outside a frame draws its own', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(uiHarness(child: shellBar()));
+      await tester.pumpAndSettle();
+      expect(find.text('Queue'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('a screen leaving keeps the screen arriving in the action bar', (
@@ -1153,6 +1309,74 @@ void main() {
       expect(glassPaneCount(), 1);
     });
 
+    testWidgets('a medium window spends two panes: the floated chrome and a '
+        'collapsed header', (WidgetTester tester) async {
+      // The record at medium (13 section 2.2, polish 3): the scrolled top bar,
+      // the frame's action bar and the collapsed header's chrome all blurred,
+      // three where the class allows two. The bar gives its pane up at every
+      // class; the pane the frame floats and the pane over the photograph are
+      // the two.
+      const Size window = Size(768, 1024);
+      final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          child: _page(
+            size: window,
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: UiRail(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+            body: CustomScrollView(
+              controller: controller,
+              slivers: <Widget>[
+                const UiCollapsingHeader(
+                  primary: true,
+                  content: ColoredBox(color: Color(0xFF000000)),
+                  chrome: <Widget>[Text('Labels')],
+                ),
+                SliverList.builder(
+                  itemCount: 30,
+                  itemBuilder: (BuildContext context, int index) =>
+                      const SizedBox(height: 80),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      expect(
+        UiScaffold.of(
+          tester.element(find.byType(CustomScrollView)),
+        ).scrolledUnder,
+        isTrue,
+      );
+      expect(
+        find.ancestor(
+          of: find.text('CAS 118402'),
+          matching: find.byType(GlassSurface),
+        ),
+        findsOneWidget,
+        reason: 'the bar is filled',
+      );
+      expect(
+        glassPaneCount(),
+        2,
+        reason:
+            'the action bar and the collapsed header\'s chrome blur; the '
+            'filled top bar draws solid',
+      );
+      expectGlassBudget(tester, maxPanes: 2, window: 'the record at medium');
+    });
+
     testWidgets('a medium window keeps the panes it had', (
       WidgetTester tester,
     ) async {
@@ -1179,6 +1403,374 @@ void main() {
             'the rule is the compact budget of 09 section 3.3, not a ban '
             'on frosted glass',
       );
+    });
+  });
+
+  group('the frame under a modal (13 section 2.2; 09 section 3.3)', () {
+    testWidgets('a sheet over a compact frame leaves one pane, the sheet\'s', (
+      WidgetTester tester,
+    ) async {
+      late BuildContext inside;
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: _pill(),
+            body: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return _scrollingBody();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 1, reason: 'the action bar, before the sheet');
+
+      unawaited(
+        UiSheet.show<void>(
+          context: inside,
+          title: 'Record a reason',
+          body: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The sheet's pane over the frame's used to be two on a phone whose
+      // budget is one: the pill or the action bar kept blurring under the
+      // scrim. A pane under a scrim is a save layer nobody sees.
+      expect(find.text('Reason'), findsOneWidget);
+      expect(glassPaneCount(), 1);
+      expect(modalGlassPaneCount(), 1, reason: 'and the one pane is the sheet');
+
+      Navigator.of(inside, rootNavigator: true).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Reason'), findsNothing);
+      expect(glassPaneCount(), 1, reason: 'the frame has its pane back');
+      expect(modalGlassPaneCount(), 0);
+    });
+
+    testWidgets('a dialog over a medium frame does the same', (
+      WidgetTester tester,
+    ) async {
+      const Size window = Size(768, 1024);
+      late BuildContext inside;
+      final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          child: _page(
+            size: window,
+            topBar: const UiTopBar(title: 'CAS 118402'),
+            actionBar: const Text('Clear record'),
+            nav: UiRail(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+            body: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return CustomScrollView(
+                  controller: controller,
+                  slivers: <Widget>[
+                    const UiCollapsingHeader(
+                      primary: true,
+                      content: ColoredBox(color: Color(0xFF000000)),
+                      chrome: <Widget>[Text('Labels')],
+                    ),
+                    SliverList.builder(
+                      itemCount: 30,
+                      itemBuilder: (BuildContext context, int index) =>
+                          const SizedBox(height: 80),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 2, reason: 'the two panes medium spends');
+
+      unawaited(
+        UiDialog.show<void>(
+          context: inside,
+          title: 'Start a new run',
+          body: (BuildContext context) => const Text('Run'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 1);
+      expect(modalGlassPaneCount(), 1);
+
+      Navigator.of(inside, rootNavigator: true).pop();
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 2);
+    });
+
+    testWidgets('the frame gives its panes up once the entrance has finished', (
+      WidgetTester tester,
+    ) async {
+      late BuildContext inside;
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: _page(
+            size: const Size(390, 844),
+            actionBar: const Text('Clear record'),
+            body: Builder(
+              builder: (BuildContext context) {
+                inside = context;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      unawaited(
+        UiSheet.show<void>(
+          context: inside,
+          title: 'Record a reason',
+          body: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      // The first frame of the entrance: the scrim is still fading in, and
+      // the frame's pane is still frosted under it rather than switching in
+      // plain sight.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(glassPaneCount(), 2);
+
+      await tester.pumpAndSettle();
+      expect(glassPaneCount(), 1, reason: 'solid once the scrim is drawn');
+    });
+
+    testWidgets('a modal shown from outside a frame changes nothing', (
+      WidgetTester tester,
+    ) async {
+      late BuildContext outside;
+      await tester.pumpWidget(
+        uiHarness(
+          child: Builder(
+            builder: (BuildContext context) {
+              outside = context;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+      unawaited(
+        UiSheet.show<void>(
+          context: outside,
+          title: 'Record a reason',
+          body: (BuildContext context) => const Text('Reason'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Reason'), findsOneWidget);
+      expect(glassPaneCount(), 1);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the action bar through the bottom inset (polish 3)', () {
+    /// The pane the frame draws the action bar on.
+    Finder pane() => find
+        .ancestor(
+          of: find.text('Approve record'),
+          matching: find.byType(GlassSurface),
+        )
+        .first;
+
+    Finder marker() => find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is PinnedChrome && widget.region == UiPinnedRegion.actionBar,
+    );
+
+    testWidgets('anchors to the window\'s edge when nothing floats under it', (
+      WidgetTester tester,
+    ) async {
+      late double inset;
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            actionBar: const Text('Approve record'),
+            body: Builder(
+              builder: (BuildContext context) {
+                inset = UiScaffold.of(context).bottomInset;
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect drawn = tester.getRect(pane());
+      final Rect bar = tester.getRect(find.text('Approve record'));
+      expect(
+        drawn.bottom,
+        frame.bottom,
+        reason: 'the pane\'s fill extends through the inset to the edge',
+      );
+      expect(drawn.left, frame.left);
+      expect(
+        drawn.right,
+        frame.right,
+        reason: 'an anchored bar spans the body',
+      );
+      expect(
+        frame.bottom - bar.bottom,
+        greaterThanOrEqualTo(34),
+        reason: 'the inset is padding inside the pane, below the bar',
+      );
+      expect(
+        inset,
+        greaterThanOrEqualTo(drawn.height),
+        reason: 'the body clears the pane, not only the bar',
+      );
+      expect(
+        PinnedChrome.extentOf(tester.element(marker())),
+        moreOrLessEquals(drawn.height - 34, epsilon: 0.5),
+        reason:
+            'the budget counts the bar and its padding; the system inset is '
+            'the device\'s',
+      );
+    });
+
+    testWidgets('a hidden pill anchors the bar too', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            nav: _pill(),
+            body: const _SlotPublisher(
+              actionBar: Text('Approve record'),
+              navVisible: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(pane()).bottom,
+        tester.getRect(find.byType(UiScaffold)).bottom,
+      );
+    });
+
+    testWidgets('above a pill the bar still floats as a tile', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            nav: _pill(),
+            actionBar: const Text('Approve record'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect pill = tester.getRect(find.byType(UiPillNav));
+      final Rect drawn = tester.getRect(pane());
+      final BuildContext context = tester.element(find.byType(UiPillNav));
+      final double gap = UiScaffoldStyle.resolve(context.ui).gap;
+      // The pill is the lowest chrome and floats by design (10 section 4.4);
+      // the bar keeps the pill's gap under it and its gutters beside it.
+      expect(frame.bottom - pill.bottom, 34 + gap);
+      expect(drawn.bottom, moreOrLessEquals(pill.top - gap, epsilon: 0.5));
+      expect(drawn.left, greaterThan(frame.left));
+      expect(drawn.right, lessThan(frame.right));
+      expect(
+        PinnedChrome.extentOf(tester.element(marker())),
+        moreOrLessEquals(drawn.height, epsilon: 0.5),
+        reason: 'no inset inside a floating tile, so the marker is the pane',
+      );
+    });
+
+    testWidgets('the keyboard lifts the anchored bar and takes the inset', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: _window,
+          child: _page(
+            padding: const EdgeInsets.only(bottom: 34),
+            viewInsets: const EdgeInsets.only(bottom: 300),
+            actionBar: const Text('Approve record'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect drawn = tester.getRect(pane());
+      expect(
+        frame.bottom - drawn.bottom,
+        300,
+        reason: 'the pane sits on the keyboard\'s edge',
+      );
+      expect(
+        drawn.height,
+        moreOrLessEquals(
+          PinnedChrome.extentOf(tester.element(marker())),
+          epsilon: 0.5,
+        ),
+        reason: 'the keyboard covers the home indicator, so no inset inside',
+      );
+    });
+
+    testWidgets('beside a rail the bar anchors across the body', (
+      WidgetTester tester,
+    ) async {
+      const Size window = Size(900, 700);
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          child: _page(
+            size: window,
+            padding: const EdgeInsets.only(bottom: 20),
+            nav: UiRail(
+              destinations: threeDestinations,
+              currentIndex: 0,
+              onSelect: (int _) {},
+            ),
+            actionBar: const Text('Approve record'),
+            body: const SizedBox.expand(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Rect frame = tester.getRect(find.byType(UiScaffold));
+      final Rect drawn = tester.getRect(pane());
+      expect(drawn.bottom, frame.bottom);
+      expect(
+        drawn.left,
+        greaterThanOrEqualTo(tester.getRect(find.byType(UiRail)).right),
+      );
+      expect(drawn.right, frame.right);
     });
   });
 }

@@ -168,6 +168,11 @@ class UiTopBarStyle {
 /// Pass it to drive the bar from something else, and say what at the call
 /// site.
 ///
+/// Inside a frame the bar also reads [UiTopBarAsk]: a routed screen that
+/// names itself through `UiScaffoldSlots.setTitle` or puts its way out in
+/// `setLeading` wins over the [title] and [leading] the shell built the bar
+/// with, and everything else on the bar stays (13 section 3.4; polish 3).
+///
 /// Retires `AppBar`.
 class UiTopBar extends StatelessWidget {
   /// A bar with the given slots.
@@ -223,6 +228,11 @@ class UiTopBar extends StatelessWidget {
     final UiTopBarStyle style = UiTopBarStyle.resolve(ui);
     final EdgeInsets safe = MediaQuery.paddingOf(context);
     final bool filled = scrolledUnder ?? UiScaffold.of(context).scrolledUnder;
+    // What the routed screen asked of this bar wins over what it was built
+    // with, slot by slot.
+    final UiTopBarAsk? asked = UiTopBarAsk.maybeOf(context);
+    final String? shownTitle = asked?.title ?? title;
+    final Widget? shownLeading = asked?.leading ?? leading;
 
     final Widget content = ConstrainedBox(
       constraints: BoxConstraints(
@@ -232,7 +242,13 @@ class UiTopBar extends StatelessWidget {
         padding: EdgeInsetsDirectional.symmetric(horizontal: style.gutter).add(
           EdgeInsets.only(left: safe.left, top: safe.top, right: safe.right),
         ),
-        child: _fitted(context, ui, style),
+        child: _fitted(
+          context,
+          ui,
+          style,
+          title: shownTitle,
+          leading: shownLeading,
+        ),
       ),
     );
 
@@ -256,7 +272,13 @@ class UiTopBar extends StatelessWidget {
   ///
   /// A bar given opaque widgets declares one arrangement and keeps them all,
   /// because it cannot put into a menu a control it cannot read.
-  Widget _fitted(BuildContext context, UiThemeData ui, UiTopBarStyle style) {
+  Widget _fitted(
+    BuildContext context,
+    UiThemeData ui,
+    UiTopBarStyle style, {
+    required String? title,
+    required Widget? leading,
+  }) {
     final List<UiTopBarAction>? declared = _declared;
     // The chrome the title has to share the line with. The leading slot is an
     // opaque widget, so it is counted as one hit box, which is what a back
@@ -278,7 +300,8 @@ class UiTopBar extends StatelessWidget {
         for (final List<Widget> drawn in arrangements)
           FitVariant(
             intrinsicWidth: widthOf(drawn.length),
-            builder: (BuildContext context, bool _) => _row(ui, style, drawn),
+            builder: (BuildContext context, bool _) =>
+                _row(ui, style, drawn, title: title, leading: leading),
           ),
       ],
     );
@@ -306,13 +329,19 @@ class UiTopBar extends StatelessWidget {
   /// `Flexible` title would have taken half of that space in both cases, and
   /// a 200 percent title then ellipsised with the other half of the bar
   /// empty beside it.
-  Widget _row(UiThemeData ui, UiTopBarStyle style, List<Widget> drawn) {
+  Widget _row(
+    UiThemeData ui,
+    UiTopBarStyle style,
+    List<Widget> drawn, {
+    required String? title,
+    required Widget? leading,
+  }) {
     final Widget? name = title == null
         ? null
-        : UiLabel(title!, style: style.title.copyWith(color: ui.color.ink));
+        : UiLabel(title, style: style.title.copyWith(color: ui.color.ink));
     return Row(
       children: <Widget>[
-        if (leading != null) ...<Widget>[leading!, SizedBox(width: style.gap)],
+        if (leading != null) ...<Widget>[leading, SizedBox(width: style.gap)],
         if (center != null) ...<Widget>[
           if (name != null) Flexible(child: name),
           Expanded(child: Center(child: center)),
