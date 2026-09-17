@@ -598,6 +598,11 @@ is the shell's way out. `UiToastHost` is the layer and `UiToasts.show` the
 entry point, and `UiScaffold` installs a host around its body by default
 (section 4.4), so a screen raises a toast with nothing at the call site.
 
+Amended in wave G: the action moves under the message when the two do not fit
+on one line, which is 11 section 3.3's row for this control. The message is
+content and wraps; the action is a control with a hit box; neither is
+squeezed.
+
 **`UiBanner`.** Full-width in-flow strip at `radius.none`: glyph, one line,
 optional disclosure to a second line, optional dismiss. The environment banner
 (`state.synthetic` fill and glyph) is an instance. Semantics `liveRegion`
@@ -616,10 +621,25 @@ the strip's minimum is `space.s6` rather than a control height, so a plain
 band is 40 tall and a band with a control is 64; the 48 dp hit box is never
 shrunk, the band around it is.
 
+Amended in wave G, three ways. The band takes an action, `actionLabel` and
+`onAction`, which 07 section 11 asks of every failure class and wave 2's shell
+composed beside the strip for want of a slot; it moves under the words when
+the two do not fit on one line. The sentence wraps rather than being cut at
+one line: 11 section 3.3 calls it content, and the two line cap finding V-15
+asks for is on the band, so closed the sentence may take both lines and open
+it takes one while the detail takes the other. And the disclosure and the
+dismiss stay on the first line in both arrangements, because they act on the
+band rather than on what it reports.
+
 **`UiDisclosure`.** A row (`title`, optional summary, caret) that reveals a
 body with `AnimatedSize`; caret rotates 180 degrees; semantics `expanded`;
 `Space` and `Enter` toggle. Body content is never glass. Retires
 `ExpansionTile`.
+
+Amended in wave G: the title is a `UiLabel` and the summary is content. A
+summary is the row's second line, the same object a list row's subtitle is, so
+it wraps to two lines before it is cut rather than ellipsising at 200 percent
+text in a 360 dp pane.
 
 **`UiTabs`.** A `UiSegmented` at `lg` bound to a `TabController`-free
 `ValueNotifier<int>`, plus `UiTabView` that cross-fades panes (shared axis is
@@ -636,6 +656,15 @@ row that scrolls, passes it through the `strip` slot rather than growing this
 control. `UiTabView` cross fades at `medium` rather than at 04 section 2.4's
 `standard` for a panel content swap, on the brief's instruction as the later
 document.
+
+Amended in wave G: the strip now has the compact variant 11 section 3.3 gives
+it, so a caller no longer has to pass a scrolling row through `strip`. Given
+less than the width its labels need, `UiTabs` draws the same `UiSegmented` at
+its intrinsic width inside a horizontal scroller whose edges fade on the side
+there is something to scroll to, and the chosen tab is scrolled into view when
+it changes. One track, one thumb, one keyboard pattern either way. The
+`tabBar` role moved inside the scroller, because every child node of a tab bar
+has to carry `tab` and a `Scrollable` publishes a node of its own.
 
 **`UiSheet`, `UiDialog`.** The chrome for `ModalRoutes`: `glass.modal`,
 `radius.sheet` (top corners for the sheet, all corners for the dialog), drag
@@ -656,6 +685,18 @@ cannot cross two files in Dart, which section 11's one public class per file
 requires. The sheet's drag handle closes it on a downward flick, and carries
 no semantics of its own: dragging is never the only way out, because the scrim
 and `Escape` both close a dismissible sheet, which is what SC 2.5.7 requires.
+
+Amended in wave G, three ways. `UiModalActions` is the `UiButtonRow` of 11
+section 3.4 under the name this family already had for it: it takes tertiary
+actions as well, aligns them to the end with the primary last, and becomes a
+column with the primary on top when the row does not fit one line or the
+window is compact. The sheet bounds its body and scrolls it: its padded block
+is `Flexible`, because a `Column` hands an inflexible child an unbounded main
+axis and the `Flexible` inside it therefore had nothing to be flexible
+against, which is how a filter sheet overflowed a phone by 1044 dp. And both
+titles are `UiLabel`, one line with the whole of the title on the semantics
+node, because a title that wraps to four lines pushes the body out of the
+pane.
 
 ### 4.4 Navigation family
 
@@ -734,6 +775,22 @@ title and the actions leave, not in the window: centring it in the window lets
 it sit on top of a long title, and a collection name is not worth covering a
 page title with.
 
+Amended in wave G, three ways. The bar has the fit of 11 section 3.3: the
+title ellipsises first, and when a title cut to `space.labelMin` still leaves
+no room the actions past the second collapse into an overflow `UiPopoverMenu`
+carrying the same labels, glyphs and shortcuts, with a third arrangement that
+puts every action in the menu for a column too narrow for two discs and a
+trigger. That needs an action the bar can read, so `UiTopBarAction` is the
+declared form of the slot; `actions` keeps its `List<Widget>` type and a bar
+given plain widgets keeps them all drawn, because a bar cannot put into a menu
+a control it cannot describe. The title is an `Expanded` rather than a
+`Flexible` beside a `Spacer` where there is no `center`: a `Spacer` is a flex
+child, so the title was capped at half the bar and ellipsised at 200 percent
+text with the other half of the bar empty beside it. And the bar's height is
+the line box of `type.title` floored at the density height rather than the
+density height alone (11 section 2.2), which is 56 and 48 unchanged at scale
+1.0.
+
 **`UiScaffold`.** The page frame: paints `ground` and the sky preset via
 `FieldLayer`, then `topBar`, `banner` slot, `body`, `actionBar` slot (sticky,
 `glass.floating`, above the nav), `nav` slot (pill, rail or sidebar chosen by
@@ -786,6 +843,14 @@ control all leave the title's edge in one place; a row with no leading child
 has no slot and starts its text at the padding. And there is a third mode,
 `tab`, beside `navigate` and `select`, because `UiSidebar`'s destinations are
 rows inside a `SemanticsRole.tabBar`, whose every child node has to be a tab.
+
+Amended in wave G: the row's fit is 11 section 3.3's row for it. The title and
+the subtitle are content and take two lines each before they ellipsise; the
+title was capped at one. The trailing drops its word and keeps its glyph when
+the title would otherwise fall under `space.labelMin`, which needs a trailing
+the row can read, so `UiRowTrailing` is the declared form of the slot. Text, a
+chip or a caret passed straight into `trailing` is drawn as it was given and
+the title wraps instead.
 
 **`UiProgress`.** `ring` (16, 24, 40; determinate arc in `ink`, track
 `hairline`; indeterminate rotates unless reduced motion, then pulses opacity)
@@ -840,6 +905,16 @@ does not decide how a measurement is written, and "Not measured" at
 "Not", which is worse than one that is two lines tall (02 section 4.14). The
 one node merges its child's, so a `child` carrying a value of its own states
 it in the tile's `semanticsLabel`.
+
+Amended in wave G: the value no longer wraps. 11 section 3.3 gives the tile a
+third option the wave 1 amendment did not have, so "Not measured" arrives at a
+size that fits rather than on a second line: the numeral steps down one
+display role at a time to `display.medium`, and below that the numeral and its
+unit are scaled together in a `FittedBox`. Together, because a `FittedBox`
+reports its child's unscaled baseline to the row above it and a unit aligned
+to a scaled numeral's baseline would float above the digits it belongs to. The
+unit's own role never steps down: it is the one upper case role in the product
+and a smaller one would read as a different unit.
 
 **`UiArcIndicator`.** A 180 or 270 degree `hairline` arc with an `accent`
 triangular marker at the value; optional min and max labels in `unit`. Used by
@@ -898,6 +973,12 @@ Amended in wave 1: a family golden is captured at the height its page needs,
 not at one shared window. The width is the gallery's 1180 everywhere; the
 height is 820 for actions, 1180 for inputs, 1000 for overlays, 940 for
 navigation and 1900 for data, measured against the page rather than guessed.
+Overlays, navigation and data moved again in wave G, measured the same way,
+when each page gained the fit section 11 section 3.3 asks for: 1540 for
+overlays, 1220 for navigation and 2280 for data. Two of those pages also state
+a frosted pane count of their own, seven for overlays and eight for data,
+because a sheet that shows one toast or one tile per column draws four of
+them; a product window draws one toast and one row of tiles.
 Inputs moved to 1600 in wave F, measured the same way, when the page gained
 the box section 11 section 4 asks for: the box itself in each shape, at rest,
 focused, and focused with a value under the caret. One control on a page can
