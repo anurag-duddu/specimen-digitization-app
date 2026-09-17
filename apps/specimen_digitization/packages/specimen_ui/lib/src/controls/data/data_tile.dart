@@ -6,7 +6,9 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/glass.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/glass_surface.dart';
+import '../../primitives/label.dart';
 
 /// The resolved paint of one tile.
 @immutable
@@ -14,7 +16,7 @@ class UiDataTileStyle {
   /// Binds every token a tile draws with.
   const UiDataTileStyle({
     required this.label,
-    required this.numeral,
+    required this.numeralSteps,
     required this.unit,
     required this.footer,
     required this.padding,
@@ -29,8 +31,19 @@ class UiDataTileStyle {
   /// The label above the numeral.
   final TextStyle label;
 
-  /// The numeral itself.
-  final TextStyle numeral;
+  /// The numeral itself: the first, widest role of [numeralSteps].
+  TextStyle get numeral => numeralSteps.first;
+
+  /// The display roles the numeral steps down through, widest first
+  /// (11 section 3.3).
+  ///
+  /// A hero tile starts at `display.hero` and a tile starts at
+  /// `display.large`; both stop at `display.medium`, which is the smallest
+  /// role 09 section 4.2 calls a display. Below that the last resort is a
+  /// scale rather than a fourth size, because a numeral set in `headline`
+  /// beside a tile set in `display.medium` reads as a different kind of
+  /// measurement rather than the same one in less room.
+  final List<TextStyle> numeralSteps;
 
   /// The unit beside the numeral's baseline.
   final TextStyle unit;
@@ -63,9 +76,11 @@ class UiDataTileStyle {
   static UiDataTileStyle resolve(UiThemeData ui, {bool hero = false}) =>
       UiDataTileStyle(
         label: ui.type.label.copyWith(color: ui.color.inkSecondary),
-        numeral: (hero ? ui.type.displayHero : ui.type.displayLarge).copyWith(
-          color: ui.color.ink,
-        ),
+        numeralSteps: <TextStyle>[
+          if (hero) ui.type.displayHero,
+          ui.type.displayLarge,
+          ui.type.displayMedium,
+        ].map((TextStyle role) => role.copyWith(color: ui.color.ink)).toList(),
         unit: ui.type.unit.copyWith(color: ui.color.inkTertiary),
         footer: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
         padding: EdgeInsetsDirectional.all(ui.density.tilePadding),
@@ -179,20 +194,9 @@ class UiDataTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(label, style: style.label),
+            UiLabel(label, style: style.label),
             SizedBox(height: style.labelGap),
-            Row(
-              // The unit sits on the numeral's baseline, not on its box.
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: <Widget>[
-                Flexible(child: _numeral(ui, style)),
-                if (measure != null) ...<Widget>[
-                  SizedBox(width: style.unitGap),
-                  Text(measure, style: style.unit),
-                ],
-              ],
-            ),
+            _measurement(ui, style, measure),
             if (under != null) ...<Widget>[
               SizedBox(height: style.footerGap),
               Text(under, style: style.footer),
@@ -207,12 +211,69 @@ class UiDataTile extends StatelessWidget {
     );
   }
 
+  /// The numeral beside its unit, at the widest role that fits
+  /// (11 section 3.3).
+  ///
+  /// The tile steps the numeral down one display role at a time and then
+  /// scales what is left. The unit's role never changes: it is the one upper
+  /// case role in the product and a smaller one would read as a different
+  /// unit rather than the same unit in less room.
+  ///
+  /// The last resort scales the numeral and the unit together rather than the
+  /// numeral alone. A `FittedBox` reports its child's unscaled baseline to
+  /// the row above it, so a unit aligned to a scaled numeral's baseline would
+  /// float above the digits it belongs to; scaling the pair keeps the two on
+  /// one baseline and leaves that baseline inside the box.
+  Widget _measurement(
+    UiThemeData ui,
+    UiDataTileStyle style,
+    String? measure,
+  ) => Builder(
+    builder: (BuildContext context) {
+      Widget line(TextStyle numeral) => Row(
+        // The unit sits on the numeral's baseline, not on its box.
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Flexible(child: _numeral(ui, style, numeral)),
+          if (measure != null) ...<Widget>[
+            SizedBox(width: style.unitGap),
+            Text(measure, style: style.unit, maxLines: 1, softWrap: false),
+          ],
+        ],
+      );
+
+      double widthOf(TextStyle numeral) =>
+          measureLabel(context, value, numeral).width +
+          (measure == null
+              ? 0
+              : style.unitGap + measureLabel(context, measure, style.unit).width);
+
+      return FitBuilder(
+        variants: <FitVariant>[
+          for (final TextStyle numeral in style.numeralSteps)
+            FitVariant(
+              intrinsicWidth: widthOf(numeral),
+              builder: (BuildContext context, bool lastResort) => lastResort
+                  ? FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: line(numeral),
+                    )
+                  : line(numeral),
+            ),
+        ],
+      );
+    },
+  );
+
   /// The numeral, cross-fading and sliding 6 dp upward when it changes.
   ///
   /// Both numerals travel the same way, because the tick is one number
   /// turning over rather than two numbers passing each other: the value
   /// leaving rises out of the slot while the value arriving rises into it.
-  Widget _numeral(UiThemeData ui, UiDataTileStyle style) {
+  Widget _numeral(UiThemeData ui, UiDataTileStyle style, TextStyle numeral) {
     final bool reduced = ui.motion.reduced;
     return AnimatedSwitcher(
       duration: style.tick,
@@ -248,11 +309,18 @@ class UiDataTile extends StatelessWidget {
           child: faded,
         );
       },
-      // No line limit. A numeral never wraps, and an absence is not a
-      // numeral: "Not measured" at `display.large` is wider than a tile and
-      // clipping it would leave a tile reading "Not", which is worse than
-      // one that is two lines tall (02 section 4.14).
-      child: Text(value, key: ValueKey<String>(value), style: style.numeral),
+      // One line at every role. A numeral never wraps, and the tile no longer
+      // needs it to: 11 section 3.3 gives the tile a step down and then a
+      // scale, so "Not measured" arrives at a size that fits rather than on a
+      // second line (amends the wave 1 reading of 02 section 4.14, which had
+      // no third option).
+      child: Text(
+        value,
+        key: ValueKey<String>(value),
+        style: numeral,
+        maxLines: 1,
+        softWrap: false,
+      ),
     );
   }
 }

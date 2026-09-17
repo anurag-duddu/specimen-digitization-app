@@ -24,6 +24,15 @@ const Map<String, Widget> _leadingStates = <String, Widget>{
   'disabled': UiButton(label: 'Select', size: UiSize.sm),
 };
 
+/// Whether the trailing still carries its word at [width].
+///
+/// The row's chrome is its padding, the leading bar, the 40 dp leading slot
+/// and two gaps; below the width at which the title would fall under
+/// `space.labelMin`, the trailing drops to its glyph. 480 and 360 are above
+/// that line and 280 and 200 are below it, which is the whole of the row's
+/// compact variant stated as a table.
+Matcher matcher(double width) => width >= 360 ? findsOneWidget : findsNothing;
+
 void main() {
   setUp(() {
     FocusManager.instance.highlightStrategy =
@@ -39,10 +48,35 @@ void main() {
       (BuildContext context) => UiListRow(
         title: 'SPEC-2026-0041',
         subtitle: 'Two readings disagree on the collector',
+        trailing: const UiRowTrailing(
+          label: 'Needs review',
+          icon: UiIcons.needsReview,
+        ),
         onPressed: () {},
       ),
       semanticsLabel:
           'SPEC-2026-0041, Two readings disagree on the collector',
+      labelsNeverWrap: true,
+      // The title and the subtitle are what the row is for. 11 section 3.3
+      // calls them content and gives them two lines each; the trailing is the
+      // label, and it is the one the row makes narrower.
+      wrappingContent: <String>{
+        'SPEC-2026-0041',
+        'Two readings disagree on the collector',
+      },
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text('Needs review'), matcher(width));
+          expect(
+            find.byIcon(UiIcons.needsReview.defaultGlyph),
+            findsOneWidget,
+            reason:
+                'the trailing keeps its glyph at every width: dropping the '
+                'word is the compact variant, dropping the slot is not',
+          );
+        },
+      ),
     );
   });
 
@@ -57,6 +91,14 @@ void main() {
       ),
       semanticsLabel: 'SPEC-2026-0041',
       disabledWithReason: true,
+      labelsNeverWrap: true,
+      wrappingContent: <String>{'SPEC-2026-0041'},
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text('SPEC-2026-0041'), findsOneWidget);
+        },
+      ),
     );
   });
 
@@ -72,6 +114,14 @@ void main() {
         onPressed: () {},
       ),
       semanticsLabel: 'SPEC-2026-0041',
+      labelsNeverWrap: true,
+      wrappingContent: <String>{'SPEC-2026-0041'},
+      geometryFromType: true,
+      fit: FitExpectation(
+        check: (WidgetTester tester, double width) async {
+          expect(find.text('SPEC-2026-0041'), findsOneWidget);
+        },
+      ),
     );
   });
 

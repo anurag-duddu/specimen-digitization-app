@@ -64,6 +64,16 @@ class UiSpace {
   /// Density changes the visual size and the padding; it never shrinks this.
   double get targetMin => 48;
 
+  /// The least width a one line label or title is worth drawing in
+  /// (11 section 3.3, rule 3).
+  ///
+  /// Two hit boxes, which is about eight characters of `body` at scale 1.0.
+  /// Below it an ellipsis leaves a word fragment rather than a word, so a
+  /// control that has a compact variant switches to it here rather than
+  /// shrinking its words any further. A control with no variant left keeps
+  /// its label and ellipsises, which is rule 4.
+  double get labelMin => targetMin * 2;
+
   /// Smallest a control may look. Below this, pad the hit box transparently.
   double get targetVisualMin => 40;
 

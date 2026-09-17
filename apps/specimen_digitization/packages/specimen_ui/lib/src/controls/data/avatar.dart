@@ -4,6 +4,7 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
 
 /// The two avatar diameters 10 section 4.5 names.
 enum UiAvatarSize {
@@ -109,10 +110,9 @@ class UiAvatar extends StatelessWidget {
         color: style.fill,
       ),
       child: Center(
-        child: Text(
+        child: UiLabel(
           UiAvatarStyle.initialsOf(name),
           style: style.initials.copyWith(color: style.foreground),
-          maxLines: 1,
         ),
       ),
     );
