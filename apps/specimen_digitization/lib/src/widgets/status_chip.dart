@@ -76,6 +76,12 @@ class StatusChip extends StatelessWidget {
     return TermAffordance(
       term: style.label,
       spokenTerm: semantics,
+      // An upload reports bytes, and a fraction the byte stream gave us is
+      // drawn rather than described (02 section 4.8), so a determinate ring
+      // stands in the chip's leading slot where the registry glyph would.
+      // The ring keeps its motion under reduced motion because it is
+      // information (04 section 1.5), and the chip publishes one node, so the
+      // ring's own label is never read beside the chip's.
       child: progress == null
           ? UiChip(
               label: label,
@@ -83,84 +89,17 @@ class StatusChip extends StatelessWidget {
               status: style.triple,
               semanticsLabel: semantics,
             )
-          : _MeasuredChip(
+          : UiChip(
               label: label,
               status: style.triple,
-              progress: progress,
               semanticsLabel: semantics,
+              leading: UiProgress.ring(
+                semanticsLabel: semantics,
+                value: progress,
+                size: UiProgressSize.small,
+                color: style.triple.onFill,
+              ),
             ),
-    );
-  }
-}
-
-/// A status chip whose glyph is a measured fraction.
-///
-/// An upload reports bytes, and a fraction the byte stream gave us is drawn
-/// rather than described (02 section 4.8), so the ring stands where the glyph
-/// would. It keeps its motion under reduced motion because it is information
-/// (04 section 1.5).
-// TODO(fe/polish-2): UiChip needs a leading widget slot, so a determinate ring
-// can sit where its glyph does without the capsule being drawn here.
-class _MeasuredChip extends StatelessWidget {
-  const _MeasuredChip({
-    required this.label,
-    required this.status,
-    required this.progress,
-    required this.semanticsLabel,
-  });
-
-  final String label;
-  final UiStatusTriple status;
-  final double progress;
-  final String semanticsLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final UiChipStyle style = UiChipStyle.resolve(
-      ui,
-      UiChipVariant.tag,
-      status: status,
-    );
-    const Set<WidgetState> rest = <WidgetState>{};
-    final Color foreground = style.foreground.resolve(rest);
-
-    return Semantics(
-      container: true,
-      label: semanticsLabel,
-      excludeSemantics: true,
-      child: DecoratedBox(
-        decoration: ShapeDecoration(
-          color: style.background.resolve(rest),
-          shape: StadiumBorder(side: style.side.resolve(rest)),
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: style.height),
-          child: Padding(
-            padding: style.padding,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                UiProgress.ring(
-                  semanticsLabel: semanticsLabel,
-                  value: progress,
-                  size: UiProgressSize.small,
-                  color: foreground,
-                ),
-                SizedBox(width: style.gap),
-                Flexible(
-                  child: Text(
-                    label,
-                    style: style.label.copyWith(color: foreground),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
