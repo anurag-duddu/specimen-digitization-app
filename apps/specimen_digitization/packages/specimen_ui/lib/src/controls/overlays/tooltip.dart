@@ -11,6 +11,7 @@ import 'package:flutter/material.dart' show MaterialLocalizations;
 import 'package:flutter/gestures.dart' show PointerEnterEvent, PointerExitEvent;
 import 'package:flutter/widgets.dart';
 
+import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/popover.dart';
 
@@ -60,13 +61,13 @@ class UiTooltipStyle {
   /// policy in 04 section 2.5 does not collapse it: a reviewer who asked for
   /// less motion did not ask for tooltips that fire the moment the pointer
   /// crosses a control.
-  static const Duration hoverDelay = Duration(milliseconds: 400);
+  static const Duration hoverDelay = MotionTokens.tooltipHoverDelay;
 
   /// How long a tooltip revealed by a long press stays on screen.
   ///
   /// Touch has no pointer to leave, so the reveal is a window rather than a
   /// state. Tapping anywhere ends it early.
-  static const Duration touchDuration = Duration(milliseconds: 1500);
+  static const Duration touchDuration = MotionTokens.tooltipTouchWindow;
 }
 
 /// A short phrase describing the control beneath the pointer.
@@ -104,7 +105,8 @@ class UiTooltip extends StatefulWidget {
     this.placement = PopoverPlacement.above,
     this.enabled = true,
     this.style,
-  }) : message = null, child = null;
+  }) : message = null,
+       child = null;
 
   /// The phrase. A verb phrase, 40 characters or fewer, no period
   /// (02 section 4.12). Null in the [UiTooltip.reason] form, which takes its
@@ -170,10 +172,7 @@ class _UiTooltipState extends State<UiTooltip> {
   void _pointerEntered() {
     if (!widget.enabled || (_message ?? '').isEmpty) return;
     _cancel();
-    _timer = Timer(
-      UiTooltipStyle.hoverDelay,
-      () => _show(fromTouch: false),
-    );
+    _timer = Timer(UiTooltipStyle.hoverDelay, () => _show(fromTouch: false));
   }
 
   /// Takes the reason a disabled control reported and reveals it.
@@ -187,8 +186,7 @@ class _UiTooltipState extends State<UiTooltip> {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final UiTooltipStyle style = widget.style ?? UiTooltipStyle.resolve(ui);
-    final Widget control =
-        widget.child ?? widget.builder!(context, _report);
+    final Widget control = widget.child ?? widget.builder!(context, _report);
     return Popover(
       controller: _controller,
       placement: widget.placement,

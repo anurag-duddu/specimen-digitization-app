@@ -24,8 +24,7 @@ import 'scrim.dart';
 const double compactWindowMax = WindowClass.mediumMin;
 
 /// True when [context] is painted into a compact window.
-bool isCompactWindow(BuildContext context) =>
-    WindowClass.of(context).isCompact;
+bool isCompactWindow(BuildContext context) => WindowClass.of(context).isCompact;
 
 /// Shows [builder] as a bottom sheet.
 ///
@@ -95,57 +94,61 @@ Future<T?> _show<T>({
   // focus scope rather than to the control inside it, so the node is captured
   // here and asked for focus back when the route completes.
   final FocusNode? trigger = FocusManager.instance.primaryFocus;
-  return navigator.push<T>(
-    RawDialogRoute<T>(
-      barrierDismissible: false,
-      barrierColor: null,
-      transitionDuration: ui.motion.emphasized,
-      // The route owns the scrim so that the scrim fades with the pane rather
-      // than snapping, and so that a caller cannot forget it.
-      pageBuilder:
-          (
-            BuildContext context,
-            Animation<double> animation,
-            Animation<double> secondary,
-          ) => _ModalFrame(
-            sheet: sheet,
-            semanticsLabel: semanticsLabel,
-            dismissLabel: dismissLabel,
-            dismissible: dismissible,
-            builder: builder,
-          ),
-      transitionBuilder:
-          (
-            BuildContext context,
-            Animation<double> animation,
-            Animation<double> secondary,
-            Widget child,
-          ) {
-            final CurvedAnimation curved = CurvedAnimation(
-              parent: animation,
-              curve: MotionTokens.emphasizedEnterCurve,
-              reverseCurve: MotionTokens.emphasizedExitCurve,
-            );
-            final Widget faded = FadeTransition(
-              opacity: curved,
-              child: child,
-            );
-            // Under reduced motion the pane appears without travel, which is
-            // what 04 section 2.5 collapses a sheet to. The fade stays,
-            // because a fade is not motion.
-            if (context.ui.motion.reduced) return faded;
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: sheet ? const Offset(0, 0.08) : const Offset(0, 0.02),
-                end: Offset.zero,
-              ).animate(curved),
-              child: faded,
-            );
-          },
-    ),
-  ).whenComplete(() {
-    if (trigger?.context?.mounted ?? false) trigger!.requestFocus();
-  });
+  return navigator
+      .push<T>(
+        RawDialogRoute<T>(
+          barrierDismissible: false,
+          barrierColor: null,
+          transitionDuration: ui.motion.emphasized,
+          // The route owns the scrim so that the scrim fades with the pane rather
+          // than snapping, and so that a caller cannot forget it.
+          pageBuilder:
+              (
+                BuildContext context,
+                Animation<double> animation,
+                Animation<double> secondary,
+              ) => _ModalFrame(
+                sheet: sheet,
+                semanticsLabel: semanticsLabel,
+                dismissLabel: dismissLabel,
+                dismissible: dismissible,
+                builder: builder,
+              ),
+          transitionBuilder:
+              (
+                BuildContext context,
+                Animation<double> animation,
+                Animation<double> secondary,
+                Widget child,
+              ) {
+                final CurvedAnimation curved = CurvedAnimation(
+                  parent: animation,
+                  curve: MotionTokens.emphasizedEnterCurve,
+                  reverseCurve: MotionTokens.emphasizedExitCurve,
+                );
+                final Widget faded = FadeTransition(
+                  opacity: curved,
+                  child: child,
+                );
+                // Under reduced motion the pane appears without travel, which is
+                // what 04 section 2.5 collapses a sheet to. The fade stays,
+                // because a fade is not motion.
+                if (context.ui.motion.reduced) return faded;
+                return SlideTransition(
+                  position: Tween<Offset>(
+                    begin: sheet
+                        ? const Offset(0, MotionTokens.sheetEntranceRise)
+                        : const Offset(0, MotionTokens.dialogEntranceRise),
+                    end: Offset.zero,
+                  ).animate(curved),
+                  child: faded,
+                );
+              },
+        ),
+      )
+      .whenComplete(() {
+        if (trigger?.context?.mounted ?? false) trigger!.requestFocus();
+      });
 }
 
 /// The chrome around a modal: the scrim, the focus trap and the pane.
@@ -223,9 +226,7 @@ class _ModalFrame extends StatelessWidget {
           Positioned.fill(
             child: SafeArea(
               child: Align(
-                alignment: sheet
-                    ? Alignment.bottomCenter
-                    : Alignment.center,
+                alignment: sheet ? Alignment.bottomCenter : Alignment.center,
                 child: Padding(
                   padding: EdgeInsets.all(sheet ? 0 : ui.space.s4),
                   child: ConstrainedBox(

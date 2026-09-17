@@ -133,6 +133,23 @@ class MotionTokens {
   /// The fraction of [capsuleFill] that passes before the check fades in.
   static const double capsuleCheckDelayFraction = 0.4;
 
+  /// How long a pointer rests on a control before its tooltip shows. An
+  /// interaction delay, not a transition, so [reduced] leaves it alone.
+  static const Duration tooltipHoverDelay = Duration(milliseconds: 400);
+
+  /// How long a tooltip revealed by a long press stays on screen. Touch has
+  /// no pointer to leave, so the reveal is a window rather than a state.
+  static const Duration tooltipTouchWindow = Duration(milliseconds: 1500);
+
+  /// How long a toast stays before it leaves on its own.
+  static const Duration toastDuration = Duration(seconds: 6);
+
+  /// A sheet enters rising this fraction of its height (04 section 5.3).
+  static const double sheetEntranceRise = 0.08;
+
+  /// A dialog enters rising this fraction of its height (04 section 5.3).
+  static const double dialogEntranceRise = 0.02;
+
   /// Collapses a decorative duration to zero under reduced motion. Flutter
   /// treats a zero duration as a synchronous jump without starting a ticker.
   Duration d(Duration token) => reduced ? Duration.zero : token;

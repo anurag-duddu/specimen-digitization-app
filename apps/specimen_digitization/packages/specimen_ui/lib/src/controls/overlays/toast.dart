@@ -108,7 +108,7 @@ class UiToastStyle {
   ///
   /// Six seconds, per 10 section 4.3. Long enough to read one line twice,
   /// short enough that a reviewer who looked away is not still being told.
-  static const Duration showDuration = Duration(seconds: 6);
+  static const Duration showDuration = MotionTokens.toastDuration;
 
   /// How far a toast rises as it arrives. Collapsed under reduced motion.
   static const double entranceRise = 8;
@@ -121,12 +121,7 @@ class UiToastStyle {
 /// render one in place, which is what the gallery does.
 class UiToast extends StatelessWidget {
   /// Draws [data] as a capsule.
-  const UiToast({
-    super.key,
-    required this.data,
-    this.onDismissed,
-    this.style,
-  });
+  const UiToast({super.key, required this.data, this.onDismissed, this.style});
 
   /// The message, its glyph and its action.
   final UiToastData data;
@@ -207,11 +202,7 @@ class UiToast extends StatelessWidget {
 /// time rather than stacking up over the record.
 class UiToastHost extends StatefulWidget {
   /// Hosts toasts over [child].
-  const UiToastHost({
-    super.key,
-    required this.child,
-    this.bottomInset = 0,
-  });
+  const UiToastHost({super.key, required this.child, this.bottomInset = 0});
 
   /// The page beneath the toasts.
   final Widget child;

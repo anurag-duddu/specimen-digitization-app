@@ -66,11 +66,7 @@ final RegExp generatedFile = RegExp(r'(?:^|/)[^/]*\.g\.dart$');
 ///
 /// The integrator empties this map when wave F merges. Shrink only, like the
 /// application's backlog.
-const Map<String, int> waveFHandoff = <String, int>{
-  'lib/src/controls/overlays/toast.dart': 1,
-  'lib/src/controls/overlays/tooltip.dart': 2,
-  'lib/src/primitives/modal_routes.dart': 2,
-};
+const Map<String, int> waveFHandoff = <String, int>{};
 
 // ---------------------------------------------------------------------------
 // The scanner. Every file is read once, masked once, and matched with compiled
