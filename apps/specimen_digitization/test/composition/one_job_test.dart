@@ -44,16 +44,12 @@ final Set<String> pinnedRepetitionBacklog = <String>{};
 
 /// The cells that draw a back action outside the top bar today.
 ///
-/// Three, and they are one control: `workbench_screen.dart` line 110 draws an
-/// `Align` holding a "Back to queue" button and nothing else whenever the
-/// record is narrow, which is every window below large. It is the third row of
-/// 13 section 0's table and the row 13 section 4.1 deletes by putting back in
-/// the top bar. Slot A2 owns it.
-final Set<String> backRowBacklog = <String>{
-  'record@compact-390x844',
-  'record@medium-768x1024',
-  'record@expanded-1180x820',
-};
+/// Empty, and it is a real zero. The three it held were one control:
+/// `workbench_screen.dart` drew an `Align` holding a "Back to queue" button
+/// and nothing else whenever the record was narrow. It was the third row of 13
+/// section 0's table, and 13 section 4.1 deletes it by putting back in the top
+/// bar, which the record now publishes into the frame itself.
+final Set<String> backRowBacklog = <String>{};
 
 // ---------------------------------------------------------------------------
 // The measurements.

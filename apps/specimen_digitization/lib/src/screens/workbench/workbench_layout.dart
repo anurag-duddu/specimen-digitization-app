@@ -50,10 +50,6 @@ enum WorkbenchRegime {
 /// The fixed width of the persistent history pane (responsive 3.5).
 const double historyPaneWidth = 320;
 
-/// The share of the viewport the pinned source header keeps on a stacked
-/// layout (blueprint 6.1, and audit pass criterion 8.4).
-const double sourcePaneMinViewportFraction = 0.4;
-
 /// The evidence segments, in the order they are shown.
 enum WorkbenchSegment {
   /// The two independent model readings and their comparison.
@@ -78,71 +74,24 @@ enum WorkbenchSegment {
       : <WorkbenchSegment>[WorkbenchSegment.readings, WorkbenchSegment.fields];
 }
 
-/// The floor the evidence pane keeps on a stacked layout.
-///
-/// Enough for the segment selector and two rows beneath it, which is what
-/// makes a pane worth scrolling. A pane squeezed below this has nowhere to
-/// scroll to, which on a device reads as "the screen is frozen" rather than
-/// as "the photograph is large".
-///
-/// Deliberately smaller than the photograph's target share: on a phone in
-/// portrait both cannot have what they would like, and the photograph is the
-/// one the blueprint says may shrink.
-const double evidencePaneMinHeight = 180;
+/// The share of the viewport the source header takes at rest
+/// (13 sections 3.1 and 4.1; 07 section 6.1).
+const double sourceHeaderMaxFraction = 0.55;
 
-/// The height the pinned photograph's own pixels are given on a stacked
-/// layout.
+/// The share it holds once the reviewer has scrolled it to its floor.
 ///
-/// [available] is the height the workbench itself was given, never the height
-/// of the window: the blueprint's forty percent is measured against the pane
-/// the reviewer is looking at. [free] is what is left of it once every fixed
-/// row has had its height: the record header, the decision bar, and the
-/// source pane's own chrome, meaning its title row, its caveat, its view
-/// controls and its region chips.
-///
-/// Taking the pane's own chrome out before this is the fix for finding V-1.
-/// The old floor was a single number, 160, that was smaller than the chrome
-/// it was supposed to contain, so a pane drawn at the floor overflowed its
-/// own column and the photograph got no height at all. The chrome is measured
-/// now, at whatever text scale the reviewer is reading at, and this function
-/// only ever decides how many pixels of photograph sit inside it.
-///
-/// The forty percent is a target. [evidencePaneMinHeight] is the floor, and
-/// the floor wins: a window too short for both takes the difference out of
-/// the photograph rather than out of the evidence.
-///
-/// Returns zero when the photograph cannot be given [sourceImageMinHeight]
-/// without squeezing the evidence pane below the height it can still scroll
-/// at. The workbench answers a zero by scrolling the whole record instead of
-/// pinning the photograph, so the pixels are still on the screen.
-double pinnedSourceHeight(double available, double free) {
-  final double target = available * sourcePaneMinViewportFraction;
-  final double ceiling = free - evidencePaneMinHeight;
-  final double height = target < ceiling ? target : ceiling;
-  if (height >= sourceImageMinHeight) return height;
-  // Neither can have what it wants. The photograph takes the least height it
-  // can be read at, as long as the evidence pane can still scroll at its hard
-  // minimum. A pane with a small viewport still scrolls; a pane with none
-  // does not.
-  return free - evidencePaneHardMinHeight >= sourceImageMinHeight
-      ? sourceImageMinHeight
-      : 0;
-}
+/// The header is a `UiCollapsingHeader` between the two fractions, so the
+/// arithmetic that used to compute a band out of the pane's leftovers is the
+/// scroll position now: the reviewer's finger decides how much photograph is
+/// on screen, between these two numbers, and nothing else does.
+const double sourceHeaderMinFraction = 0.40;
 
 /// The least height the photograph's own pixels are worth drawing at.
 ///
-/// This is the image band alone. The pane's controls and its region list are
-/// measured separately and are never taken out of it, which is what the old
-/// `pinnedSourceMinHeight` got wrong.
+/// The floor under the fraction on a window short enough that 40 percent of
+/// it is less than this, and the floor under the header's content where a
+/// large text scale has grown the chrome row riding its edge.
 const double sourceImageMinHeight = 120;
-
-/// The least a scrolling evidence pane can be given and still move under a
-/// finger.
-///
-/// Below [evidencePaneMinHeight] the pane is cramped; below this it is not a
-/// scroll view any more. When even this cannot be met the workbench stops
-/// pinning the photograph and scrolls the whole record.
-const double evidencePaneHardMinHeight = 96;
 
 /// The body text size the layout measures a reviewer's text scale against.
 ///
@@ -150,15 +99,35 @@ const double evidencePaneHardMinHeight = 96;
 /// way to ask "is the type large" is to scale a known size and compare.
 const double layoutTextProbe = 14;
 
-/// Above this multiple of [layoutTextProbe], a pane stops pinning its parts
-/// against each other and scrolls as one instead.
+/// Above this multiple of [layoutTextProbe], a region stops pinning and
+/// scrolls with the page instead.
 ///
-/// At normal type the photograph is pinned above the evidence and the
-/// decision bar is pinned below it, which is what the blueprint asks for. At
-/// 200 percent the pane's own fixed rows are taller than the pane, and
-/// something has to give: what gives is the pinning, not the content
-/// (finding V-1, pass criterion 8.5).
+/// Two regions read it. A source pane beside the evidence, where the pane's
+/// own fixed rows are together taller than the pane at 200 percent and what
+/// gives is the pinning rather than the content (finding V-1, pass criterion
+/// 8.5). And the record's evidence segments, which stick under the header
+/// while the chrome budget holds them and scroll away above it: 13 section
+/// 2.3 says a screen over the budget gives a pinned region up rather than
+/// shrinking one below its density height, and at 200 percent on a phone the
+/// segments are the region the record can do without.
 const double layoutTextScrollThreshold = 1.4;
+
+/// The largest text the record's evidence segments still stick at.
+///
+/// 13 section 4.1 sticks them under the header, and 13 section 3.5 counts a
+/// sticky bar against the chrome budget while it is stuck. On a 390 by 844
+/// phone that budget is 236 dp, and at 130 percent text the frame has already
+/// spent 177 of it on its top bar, the one line band and the action bar; the
+/// segments are 61 more, which is 238. 13 section 2.3 says a screen over the
+/// budget gives a pinned region up rather than shrinking one below its
+/// density height, and the segments are the region this record can do
+/// without: they scroll with the evidence there, one flick from the top of
+/// it, and the tab strip still says which evidence is showing.
+const double stickySegmentsMaxScale = 1.0;
+
+/// True while the record's segments may stick under its header.
+bool segmentsStickAtThisTextScale(TextScaler scaler) =>
+    scaler.scale(layoutTextProbe) <= layoutTextProbe * stickySegmentsMaxScale;
 
 /// True when the reviewer's text is large enough that a pane has to scroll.
 bool paneScrollsAtThisTextScale(TextScaler scaler) =>

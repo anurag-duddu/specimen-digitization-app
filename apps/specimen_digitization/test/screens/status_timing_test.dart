@@ -92,12 +92,14 @@ class GatedRepository extends GoldenQueueRepository {
   }
 }
 
-/// The status strip's version line, which is where a landed decision shows.
+/// The status strip's version, which is where a landed decision shows.
+///
+/// `UiStatusStrip` joins its facts onto one line and draws them as one label,
+/// so the version is a run inside that label rather than a node of its own
+/// (13 section 3.2).
 Finder versionLine(int revision) => find.byWidgetPredicate(
   (Widget widget) =>
-      widget is TermText &&
-      widget.term == 'Version' &&
-      widget.spokenTerm == 'Version $revision',
+      widget is Text && (widget.data ?? '').contains('Version $revision'),
 );
 
 /// The progress affordance every one of these controls swaps in.
@@ -195,6 +197,11 @@ void main() {
     );
 
     await tester.pump(progressBudget);
+    // The decision bar is the frame's action bar, and a screen publishes into
+    // the frame while it is being laid out, so the frame draws what it was
+    // asked for in the frame after (13 section 3.4). No clock advances here:
+    // the indicator is on screen at 200 ms and this is the paint of it.
+    await tester.pump();
     expect(
       workingIndicator,
       findsWidgets,
@@ -247,6 +254,8 @@ void main() {
     );
 
     await tester.pump(progressBudget);
+    // As above: the frame draws the chrome one frame after the body asks.
+    await tester.pump();
     expect(
       workingIndicator,
       findsWidgets,

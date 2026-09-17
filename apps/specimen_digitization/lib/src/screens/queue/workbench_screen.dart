@@ -89,7 +89,6 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
     final WorkspaceController controller = WorkspaceScope.of(context);
     final Specimen? specimen = controller.selected;
     final CollectionScope? scope = controller.scope;
-    final bool narrow = !WindowClass.of(context).isAtLeast(WindowClass.large);
     // Next and previous come from the list the queue already holds, in the
     // order it holds it. Null at each end rather than wrapping: a queue that
     // loops has no end, and a reviewer working it cannot tell when they are
@@ -101,106 +100,90 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
 
     // A back gesture must not abandon a save that is in flight
     // (motion catalog, row 19).
+    // The way out is the top bar's back, which the workbench publishes into
+    // the frame with the record's identifier and its commands (13 sections
+    // 2.4 and 4.1). The row that used to hold a back control and nothing else
+    // is gone: it repeated what the bar's leading slot is for, which is the
+    // third row of 13 section 0's table.
     return PopScope<Object?>(
       canPop: !controller.mutating,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          if (narrow)
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiButton(
-                label: 'Back to queue',
-                variant: UiButtonVariant.ghost,
-                leading: UiIcons.back,
-                onPressed: _backToQueue,
-              ),
-            ),
-          Expanded(
-            child: specimen == null || scope == null
-                ? _Loading(id: widget.specimenId)
-                : ReviewWorkbench(
-                    key: ValueKey<String>('${scope.key}:${specimen.id}'),
-                    specimen: specimen,
-                    loadArtifact: (ArtifactRequest artifact) => controller
-                        .repository
-                        .artifact(scope, specimen, artifact),
-                    loadHistoricalArtifact:
-                        (Specimen record, ArtifactRequest artifact) =>
-                            controller.repository.artifact(
-                              scope,
-                              record,
-                              artifact,
-                            ),
-                    loadHistoryPage: (int after, int through) =>
-                        controller.repository.historyPage(
-                          scope,
-                          specimen.id,
-                          afterRevision: after,
-                          throughRevision: through,
-                        ),
-                    loadHistoricalRevision:
-                        (int revision, String? runId, String? runSha256) =>
-                            controller.repository.historicalSpecimen(
-                              scope,
-                              specimen.id,
-                              revision,
-                              runId: runId,
-                              runSha256: runSha256,
-                            ),
-                    collections: controller.scopes,
-                    canReview: scope.permissions.any(
-                      (String p) =>
-                          <String>['reviewer', 'manager', 'admin'].contains(p),
-                    ),
-                    canOperate: scope.permissions.any(
-                      (String p) => <String>[
-                        'operator',
-                        'reviewer',
-                        'manager',
-                        'admin',
-                      ].contains(p),
-                    ),
-                    busy:
-                        controller.mutating ||
-                        (specimen.disposition != null &&
-                            !<String>[
-                              'cleared',
-                              'needs_human_review',
-                              'deferred',
-                            ].contains(specimen.disposition)),
-                    onNext: next == null ? null : () => _goTo(scope, next),
-                    onPrevious: previous == null
-                        ? null
-                        : () => _goTo(scope, previous),
-                    nextBlockedReason: !listed || next != null
-                        ? null
-                        : 'This is the last record loaded. Load more in the '
-                              'queue to carry on.',
-                    previousBlockedReason: !listed || previous != null
-                        ? null
-                        : 'This is the first record in the queue.',
-                    positionLabel: listed
-                        ? '$position of ${controller.items.length}'
-                        : null,
-                    reviewerId: controller.session.userId,
-                    onChange: (Json change) => controller.mutate(change, null),
-                    onChangeBatch:
-                        (
-                          List<Json> changes,
-                          String reason,
-                          bool Function(Specimen, Json) stillApplies,
-                        ) => controller.mutateBatch(
-                          changes,
-                          reason,
-                          stillApplies: stillApplies,
-                        ),
-                    onRetry: (String reason) => controller.mutate(null, reason),
-                    onRefresh: () => controller.refresh(),
+      child: specimen == null || scope == null
+          ? _Loading(id: widget.specimenId)
+          : ReviewWorkbench(
+              key: ValueKey<String>('${scope.key}:${specimen.id}'),
+              specimen: specimen,
+              loadArtifact: (ArtifactRequest artifact) =>
+                  controller.repository.artifact(scope, specimen, artifact),
+              loadHistoricalArtifact:
+                  (Specimen record, ArtifactRequest artifact) =>
+                      controller.repository.artifact(scope, record, artifact),
+              loadHistoryPage: (int after, int through) =>
+                  controller.repository.historyPage(
+                    scope,
+                    specimen.id,
+                    afterRevision: after,
+                    throughRevision: through,
                   ),
-          ),
-        ],
-      ),
+              loadHistoricalRevision:
+                  (int revision, String? runId, String? runSha256) =>
+                      controller.repository.historicalSpecimen(
+                        scope,
+                        specimen.id,
+                        revision,
+                        runId: runId,
+                        runSha256: runSha256,
+                      ),
+              collections: controller.scopes,
+              canReview: scope.permissions.any(
+                (String p) =>
+                    <String>['reviewer', 'manager', 'admin'].contains(p),
+              ),
+              canOperate: scope.permissions.any(
+                (String p) => <String>[
+                  'operator',
+                  'reviewer',
+                  'manager',
+                  'admin',
+                ].contains(p),
+              ),
+              busy:
+                  controller.mutating ||
+                  (specimen.disposition != null &&
+                      !<String>[
+                        'cleared',
+                        'needs_human_review',
+                        'deferred',
+                      ].contains(specimen.disposition)),
+              onNext: next == null ? null : () => _goTo(scope, next),
+              onPrevious: previous == null
+                  ? null
+                  : () => _goTo(scope, previous),
+              nextBlockedReason: !listed || next != null
+                  ? null
+                  : 'This is the last record loaded. Load more in the '
+                        'queue to carry on.',
+              previousBlockedReason: !listed || previous != null
+                  ? null
+                  : 'This is the first record in the queue.',
+              positionLabel: listed
+                  ? '$position of ${controller.items.length}'
+                  : null,
+              reviewerId: controller.session.userId,
+              onChange: (Json change) => controller.mutate(change, null),
+              onChangeBatch:
+                  (
+                    List<Json> changes,
+                    String reason,
+                    bool Function(Specimen, Json) stillApplies,
+                  ) => controller.mutateBatch(
+                    changes,
+                    reason,
+                    stillApplies: stillApplies,
+                  ),
+              onRetry: (String reason) => controller.mutate(null, reason),
+              onRefresh: () => controller.refresh(),
+              onBack: _backToQueue,
+            ),
     );
   }
 }

@@ -12,13 +12,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
-import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/screens/workbench/shortcuts.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'guidelines_test.dart' show countSemantics, guidelines;
 import '../ui_finders.dart';
 import '../golden/golden_harness.dart';
+import '../workbench_harness.dart';
 
 /// A record carrying one of everything the workbench renders.
 Specimen workbenchRecord() => Specimen({
@@ -105,18 +105,19 @@ Future<void> pumpWorkbench(WidgetTester tester, Size window) async {
   tester.view.physicalSize = window;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  // Inside a `UiScaffold`, because the record publishes its top bar and its
+  // decision bar into one (13 section 3.4) and a guideline sweep of a screen
+  // without them would be a sweep of a screen that does not ship.
   await tester.pumpWidget(
-    MaterialApp(
-      theme: AppTheme.light(),
-      home: Scaffold(
-        body: ReviewWorkbench(
-          specimen: workbenchRecord(),
-          onChange: (_) async => false,
-          onRetry: (_) async {},
-          onRefresh: () {},
-          onNext: () {},
-          onPrevious: () {},
-        ),
+    workbenchHost(
+      ReviewWorkbench(
+        specimen: workbenchRecord(),
+        onChange: (_) async => false,
+        onRetry: (_) async {},
+        onRefresh: () {},
+        onNext: () {},
+        onPrevious: () {},
+        onBack: () {},
       ),
     ),
   );
@@ -179,8 +180,9 @@ void main() {
     testWidgets('the shortcut list meets every guideline', (tester) async {
       final handle = tester.ensureSemantics();
       await pumpWorkbench(tester, windows['large']!);
-      await tester.tap(uiIconButton(shortcutSheetTitle));
-      await tester.pumpAndSettle();
+      // The list is one keystroke away, and its command is in the top bar
+      // with the record's others (13 section 4.1).
+      await openRecordCommand(tester, shortcutSheetTitle);
       for (final AccessibilityGuideline guideline in guidelines.values) {
         await expectGuideline(tester, guideline);
       }

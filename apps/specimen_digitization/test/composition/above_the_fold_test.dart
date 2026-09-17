@@ -34,18 +34,17 @@ import 'composition_harness.dart';
 /// Measured on 2026-09-17 against `front-end-refactor` at f3b6363, in both
 /// modes at 1.0, 1.3 and 2.0.
 ///
-/// The record is the screen 13 was written from: the photograph is laid out
-/// 168 dp tall inside a 844 dp window, where 13 section 4.1 gives it 40
-/// percent, which is 338, and the status strip beneath it starts at 750 and is
-/// off the bottom by 200 percent text. Intake lays its capture card out 1018
-/// dp tall, so the manifest under it starts a viewport and a half down. The
-/// queue holds the fold at 1.0 and 1.3 and loses it at 2.0, where the first
-/// row starts at 803 of 844: the rows are below a header, a search field and a
-/// filter row that all scroll with them.
+/// Intake lays its capture card out 1018 dp tall, so the manifest under it
+/// starts a viewport and a half down. The queue holds the fold at 1.0 and 1.3
+/// and loses it at 2.0, where the first row starts at 803 of 844: the rows are
+/// below a header, a search field and a filter row that all scroll with them.
 ///
-/// Slot A2 owns the record and slot A3 owns the queue and intake.
+/// The record left this list on `fe/compose-record`: the photograph is the
+/// content of a `UiCollapsingHeader` pinned between 55 and 40 percent of the
+/// viewport, and the status strip is the sliver under it.
+///
+/// Slot A3 owns the queue and intake.
 final Set<String> aboveTheFoldBacklog = <String>{
-  'record@compact-390x844',
   'intake@compact-390x844',
   'queue@compact-390x844',
 };

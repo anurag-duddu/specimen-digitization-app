@@ -113,12 +113,21 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   return blockers;
 }
 
-/// The summary line above the list (blueprint 6.1).
-String blockersSummary(int count) => switch (count) {
-  0 => 'Nothing outstanding. Approval is available.',
-  1 => '1 thing blocks clearance',
-  _ => '$count things block clearance',
-};
+/// The summary the status strip carries, for a record that has blockers
+/// (13 section 3.2).
+///
+/// A record with none carries no summary: a control that opens an empty list
+/// is a control that does nothing (pass criterion 5.6), and the decision bar's
+/// enabled approval already says that nothing is outstanding. The count starts
+/// at one for that reason.
+String blockersSummary(int count) =>
+    count == 1 ? '1 thing blocks clearance' : '$count things block clearance';
+
+/// What the sheet behind the summary is called.
+const String blockersSheetTitle = 'What blocks clearance';
+
+/// What the control that moves to one blocker is called.
+const String goToBlockerLabel = 'Go to';
 
 String _regionName(Specimen specimen, Object? regionId) {
   final int index = specimen.regions.indexWhere(

@@ -166,6 +166,7 @@ Future<void> pumpSurface(
   Widget child, {
   Size window = dumpWindow,
   bool settle = true,
+  bool scrolls = true,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = window;
@@ -174,7 +175,14 @@ Future<void> pumpSurface(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      home: Scaffold(body: SingleChildScrollView(child: child)),
+      home: Scaffold(
+        // The scroll is how a surface taller than the dump window still dumps
+        // whole. A surface that is its own scroll takes the height instead:
+        // a `CustomScrollView` handed an unbounded height lays out no sliver
+        // at all, and the tree walk then reads a sliver with no geometry
+        // (13 section 2.1 is the same rule from the other side).
+        body: scrolls ? SingleChildScrollView(child: child) : child,
+      ),
     ),
   );
   // A placeholder pulses until it is replaced, so a surface that holds one
@@ -256,6 +264,7 @@ void main() {
       await pumpSurface(
         tester,
         RegionEditorBody(regions: goldenRegions, asset: goldenEditableAsset()),
+        scrolls: false,
       );
       expectSemanticsFixture(tester, 'region-editor');
       handle.dispose();

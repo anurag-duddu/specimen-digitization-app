@@ -47,14 +47,14 @@ int glassBudgetFor(String window) => switch (windowClassOf(window)) {
 ///
 /// Measured on 2026-09-17 against `front-end-refactor` at f3b6363, at every
 /// window, both modes and 1.0, 1.3 and 2.0.
-/// One cell, and it is the row of 13 section 0 that named this clause. The
-/// record screen on a phone puts the photograph on its matte inside the
-/// source pane's own surface, which is two where compact allows one. Slot A2
-/// owns 13 section 4.1, where the photograph sits on the matte and the matte
-/// is the collapsing header's own content.
-const Map<String, num> surfaceDepthBacklog = <String, num>{
-  'record@compact-390x844': 2,
-};
+///
+/// Empty, and it is a real zero. The one cell it held was the row of 13
+/// section 0 that named this clause: the record on a phone put the photograph
+/// on its matte and a floating glass capsule of view controls on top of the
+/// matte, which is two surfaces where compact allows one. The controls ride
+/// the collapsing header's lower edge now, beside the matte rather than over
+/// it (13 sections 3.1 and 4.1), and the chain is one.
+const Map<String, num> surfaceDepthBacklog = <String, num>{};
 
 /// The panes each cell draws today, where it is over budget.
 /// Seven cells, and six of them are one sentence: the shell gives a phone two
@@ -66,11 +66,17 @@ const Map<String, num> surfaceDepthBacklog = <String, num>{
 /// so it never scrolls and never gains the second pane. Slot A3 owns the
 /// shell's half of 13 section 2.3.
 ///
-/// The record screen at compact is four: the two above, the source pane's own
-/// pane and the decision bar's. The import sheet at compact is three: the two
-/// above and the modal's. The record at medium is three against two, which is
-/// the same decision bar over the same scrolled top bar with a rail instead of
-/// a pill. Slot A2 owns the record's half.
+/// The record screen at compact is four and at medium three, and after wave A
+/// they are the same numbers for different panes: the scrolled top bar, the
+/// scaffold's action bar, the collapsed header's own chrome band, and at
+/// compact the hidden pill, which is `Offstage` rather than absent and so
+/// builds its pane while holding no height. Three of the four draw the solid
+/// form of the surface at compact, because `UiScaffold` publishes
+/// `GlassQuality.off` to everything but the chrome it floats (13 section 2.2,
+/// wave A amendment); this gate counts `GlassSurface` rather than
+/// `BackdropFilter`, so it counts them all. No screen slot can close these
+/// two: the panes belong to the frame and to the pattern, and what would
+/// close them is the instrument agreeing with the amendment it now measures.
 const Map<String, num> glassCountBacklog = <String, num>{
   'setup@compact-390x844': 2,
   'queue@compact-390x844': 2,

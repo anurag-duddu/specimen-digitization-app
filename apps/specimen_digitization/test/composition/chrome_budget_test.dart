@@ -45,21 +45,19 @@ double chromeBudgetFor(String window) => switch (windowClassOf(window)) {
 /// Measured on 2026-09-17 against `front-end-refactor` at f3b6363, at every
 /// window, both modes and 1.0, 1.3 and 2.0; the number is the worst of the six.
 ///
-/// One screen, at all four of its windows, which is 13 section 0's second row
-/// stated as four numbers. At 390 by 844 the record pins a 56 dp top bar, a 64
-/// dp environment band, a 200 dp decision bar and a 64 dp navigation pill: 384
-/// of 844, and at 200 percent text 453 of 844. 13 section 4.1 budgets the same
-/// screen at 152 of 844, and gets there by three of the rules in section 2.3
-/// that nothing enforces today: the band is one 32 dp line rather than a two
-/// line paragraph, the pill hides inside a record, and the decision bar is one
-/// row rather than a count over two stacked buttons.
-///
-/// Slot A2 owns the decision bar and slot A3 owns the band and the pill.
+/// **Two left, measured against `fe/compose-record` on 2026-09-17.** The
+/// record at compact and at medium composed to 27.0 and 22.3 percent and
+/// those two lines are gone. The two that remain are one sentence, and it is
+/// not about this screen: at 200 percent text the frame's own top bar is 61
+/// dp, the one line environment band 52 and the action bar 72, which is 185
+/// of a 820 dp window where 13 section 2.3 allows 164, and of a 900 dp window
+/// where it allows 180. Every screen from the expanded class up that carries
+/// a band and a decision bar is over this budget at that text scale, whatever
+/// else it does, so the number below is what a record spends and the clause
+/// is what has to answer for it.
 const Map<String, num> chromeBudgetBacklog = <String, num>{
-  'record@compact-390x844': 0.540,
-  'record@medium-768x1024': 0.280,
-  'record@expanded-1180x820': 0.320,
-  'record@large-1440x900': 0.290,
+  'record@expanded-1180x820': 0.226,
+  'record@large-1440x900': 0.206,
 };
 
 // ---------------------------------------------------------------------------

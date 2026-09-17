@@ -12,8 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
+import 'package:specimen_digitization/src/screens/workbench/source_pane.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import '../app/routing_test.dart' show pumpApp;
 import '../workbench_harness.dart';
@@ -156,27 +158,44 @@ void main() {
     },
   );
 
-  test('the photograph never takes the evidence pane below its floor', () {
-    // `free` is what is left once every fixed row has had its height: the
-    // record header, the decision bar and the source pane's own chrome. What
-    // this function decides is how many pixels of photograph sit inside the
-    // pane, never how tall the pane itself is (finding V-1).
-    //
-    // Room for both: the blueprint's forty percent of the pane, outright.
-    expect(pinnedSourceHeight(1000, 900), closeTo(400, 0.001));
-    // The chrome has taken enough that the two cannot both be satisfied. The
-    // evidence floor wins and the photograph takes the difference.
-    expect(pinnedSourceHeight(1000, 500), closeTo(320, 0.001));
-    // Below the height the photograph can be read at, it stops shrinking and
-    // takes its minimum instead, as long as the evidence pane can still
-    // scroll at its hard minimum.
-    expect(pinnedSourceHeight(600, 300), sourceImageMinHeight);
-    expect(pinnedSourceHeight(600, 260), sourceImageMinHeight);
-    // Less room than even that: the pinned photograph goes, and the workbench
-    // scrolls the whole record instead so the pixels are still on screen.
-    expect(pinnedSourceHeight(600, 200), 0);
-    expect(pinnedSourceHeight(600, 160), 0);
-    expect(pinnedSourceHeight(600, 100), 0);
+  testWidgets('the source header pins two fifths of the viewport', (
+    WidgetTester tester,
+  ) async {
+    // 13 sections 3.1 and 4.1: the header is a `UiCollapsingHeader` between
+    // 55 and 40 percent of the viewport, and the floor is what the reviewer
+    // is left with once they have scrolled to the evidence. The arithmetic
+    // that used to compute a band out of what the other rows left is the
+    // scroll position now, so this asserts the two fractions rather than a
+    // function.
+    useWindow(tester, compactWindow);
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+
+    final UiCollapsingHeader header = tester.widget<UiCollapsingHeader>(
+      find.byType(UiCollapsingHeader),
+    );
+    expect(header.maxFraction, sourceHeaderMaxFraction);
+    expect(header.minFraction, sourceHeaderMinFraction);
+
+    final ScrollableState state = tester.state<ScrollableState>(
+      evidenceScrollable(),
+    );
+    final double before = tester.getSize(find.byType(SourceMatte)).height;
+    state.position.jumpTo(state.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    final double after = tester.getSize(find.byType(SourceMatte)).height;
+
+    expect(
+      after,
+      lessThan(before),
+      reason: 'the header did not give any height back as the page scrolled',
+    );
+    expect(
+      after,
+      greaterThan(0),
+      reason: 'the photograph left the screen, which is what pinning prevents',
+    );
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets(
@@ -219,23 +238,34 @@ void main() {
     },
   );
 
-  testWidgets('the photograph collapses and comes back on a phone', (
+  testWidgets('the photograph gives height back and takes it again', (
     WidgetTester tester,
   ) async {
-    // Blueprint 6.1: the pinned pane is collapsible, and the control that
-    // brings it back is explicit rather than a second tap on the same word.
+    // 13 section 3.1 retires the two collapse controls of 13 section 0: a
+    // heading with its own chevron three rows above a disclosure with
+    // another. The header collapses under the reviewer's finger instead, and
+    // comes back the same way, so there is no state to get out of step with
+    // the scroll.
     useWindow(tester, compactWindow);
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(uiIconButton('Collapse the photograph'), findsNothing);
 
-    await tester.tap(uiIconButton('Collapse the photograph'));
+    final ScrollableState state = tester.state<ScrollableState>(
+      evidenceScrollable(),
+    );
+    state.position.jumpTo(state.position.maxScrollExtent);
     await tester.pumpAndSettle();
-    expect(find.byType(InteractiveViewer), findsNothing);
-    // With the photograph put away there is still a way to the pixels.
+    expect(
+      find.byType(InteractiveViewer),
+      findsOneWidget,
+      reason: 'the photograph never scrolls away',
+    );
+    // The way to every pixel is still one control away.
     expect(uiIconButton('Open the photograph full screen'), findsOneWidget);
 
-    await tester.tap(uiIconButton('Show the photograph'));
+    state.position.jumpTo(0);
     await tester.pumpAndSettle();
     expect(find.byType(InteractiveViewer), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
@@ -254,14 +284,15 @@ void main() {
     state.position.jumpTo(state.position.maxScrollExtent);
     await tester.pumpAndSettle();
 
-    // The bar is pinned below the scroll view, so the two never overlap and
-    // the reviewer can reach the last row without the bar sitting on it.
+    // The frame floats the bar over the body rather than reserving room in
+    // it, so what keeps the last row reachable is the inset the scroll pads
+    // its end by (10 section 4.4).
     final Rect bar = tester.getRect(find.byType(WorkbenchDecisionBar));
-    final Rect pane = tester.getRect(evidenceScrollable());
+    final Rect evidence = tester.getRect(find.byType(UiTabView));
     expect(
-      pane.bottom,
+      evidence.bottom,
       lessThanOrEqualTo(bar.top + 0.5),
-      reason: 'the decision bar overlaps the evidence pane',
+      reason: 'the decision bar sits on the end of the evidence',
     );
   });
 }

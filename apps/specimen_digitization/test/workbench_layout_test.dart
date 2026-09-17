@@ -146,24 +146,21 @@ void main() {
       expect(
         pane.height,
         greaterThanOrEqualTo(
-          compactWindow.height * sourcePaneMinViewportFraction * 0.6,
+          compactWindow.height * sourceHeaderMinFraction * 0.6,
         ),
       );
 
-      // It does not scroll with the evidence: scrolling the evidence pane
-      // leaves the photograph where it was.
+      // It does not scroll away with the evidence: the header gives height
+      // back to its floor and stays there (13 section 3.1).
       final before = tester.getTopLeft(find.byType(InteractiveViewer));
       await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
       await tester.pumpAndSettle();
       expect(tester.getTopLeft(find.byType(InteractiveViewer)), before);
-
-      // The photograph can be collapsed and brought back.
-      await tester.tap(uiIconButton('Collapse the photograph'));
-      await tester.pumpAndSettle();
-      expect(find.byType(InteractiveViewer), findsNothing);
-      await tester.tap(uiIconButton('Show the photograph'));
-      await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(InteractiveViewer)).height,
+        greaterThan(0),
+      );
     });
 
     testWidgets('840 to 1199 is two panes with History as a segment', (
@@ -200,27 +197,43 @@ void main() {
       );
     });
 
-    testWidgets('the decision bar is pinned at every regime', (tester) async {
+    testWidgets('the decision bar is the frame action bar at every regime', (
+      tester,
+    ) async {
       for (final window in [compactWindow, expandedWindow, largeWindow]) {
         useWindow(tester, window);
         await tester.pumpWidget(host(record()));
         await tester.pumpAndSettle();
-        // The bar is its own widget now, and it clears the navigation the
-        // scaffold floats over the body rather than wrapping a `SafeArea` of
-        // its own.
+        // 13 section 3.3: the bar sits in `UiScaffold.actionBar`, which the
+        // screen fills through the frame's own slot, so the shell owns the
+        // bottom of the window and the chrome budget with it.
         final bar = tester.getRect(find.byType(WorkbenchDecisionBar));
         expect(
           bar.bottom,
           closeTo(window.height, 32),
-          reason: 'the decision bar sits at the foot of the pane at $window',
+          reason:
+              'the decision bar is not at the foot of the window at '
+              '$window',
         );
-        // It is below the evidence, which is the thing that scrolls.
         expect(
-          bar.top,
-          greaterThanOrEqualTo(
-            tester.getRect(scrollableIn(find.byType(ReviewWorkbench))).bottom -
-                1,
+          find.ancestor(
+            of: find.byType(WorkbenchDecisionBar),
+            matching: find.byWidgetPredicate(
+              (Widget widget) =>
+                  widget is PinnedChrome &&
+                  widget.region == UiPinnedRegion.actionBar,
+            ),
           ),
+          findsOneWidget,
+          reason: 'the frame does not count the bar as its action bar',
+        );
+        // The evidence ends clear of it, which is what the frame's own
+        // bottom inset buys (10 section 4.4).
+        expect(
+          UiScaffold.of(
+            tester.element(find.byType(ReviewWorkbench)),
+          ).bottomInset,
+          greaterThanOrEqualTo(bar.height),
         );
       }
     });
@@ -243,7 +256,9 @@ void main() {
         WorkbenchSegment.readings,
         WorkbenchSegment.fields,
       });
-      expect(blockersSummary(0), 'Nothing outstanding. Approval is available.');
+      // A record with nothing outstanding carries no summary at all: a
+      // control that opens an empty list is a control that does nothing, and
+      // the decision bar's enabled approval already says it (13 section 3.2).
       expect(blockersSummary(1), '1 thing blocks clearance');
       expect(blockersSummary(4), '4 things block clearance');
     });
@@ -348,11 +363,35 @@ void main() {
       expect(uiIconButton('Next specimen'), findsOneWidget);
       expect(uiIconButton('Previous specimen'), findsOneWidget);
 
-      // Without the callbacks there is no control and no shortcut, because a
-      // control that does nothing is worse than no control.
+      // Without the callbacks the control is still drawn, because the bar
+      // draws its two edges from `medium` up whatever the screen hands it,
+      // and pressing one says why there is nowhere to go rather than doing
+      // nothing at all (pass criterion 5.6, finding V-2).
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
-      expect(uiIconButton('Next specimen'), findsNothing);
+      expect(uiIconButton('Next specimen'), findsOneWidget);
+      final semantics = tester.ensureSemantics();
+      final List<String> announced = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<
+        dynamic
+      >(SystemChannels.accessibility, (dynamic message) async {
+        final Map<Object?, Object?> event = message as Map<Object?, Object?>;
+        if (event['type'] != 'announce') return;
+        final Map<Object?, Object?> data =
+            event['data']! as Map<Object?, Object?>;
+        announced.add('${data['message']}');
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger
+            .setMockDecodedMessageHandler<dynamic>(
+              SystemChannels.accessibility,
+              null,
+            ),
+      );
+      await tester.tap(uiIconButton('Next specimen'));
+      await tester.pumpAndSettle();
+      expect(announced, contains(notInQueueMessage));
+      semantics.dispose();
     });
 
     testWidgets('the shortcut list is one keystroke away', (tester) async {
