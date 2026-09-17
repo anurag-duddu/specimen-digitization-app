@@ -9807,3 +9807,192 @@ the slots lose both their base and their target in one action. Either hold the
 squash until every slot has landed, or cut a fresh integration branch from the
 squash commit and rebase each slot onto it. The rebase is clean either way;
 the merge is not.
+## Wave B, slot B3: the client against live data (`fe/release-client`), 2026-09-17
+
+**Task.** `docs/execution/FRONT_END_REFACTOR.md` section 3I, B3. Make the
+client ready to meet real specimens and write down, honestly, what remains
+before a live data pilot.
+
+**Branch and worktree.** `fe/release-client`, cut from `front-end-refactor` at
+f3b6363, in `.claude/worktrees/fe-release-client`. Seven commits, fc44055
+through 1f5bea2. No pull request opened by this slot.
+
+**Outcome.** Delivered. Fifty two new tests over four files, five live shaped
+fixtures, three client changes, one new document, one gate backlog shrunk.
+
+**Two facts the coordinator sent mid slot, both folded in.** The deployment
+gate `scripts/ci/validate_public_settings.py` refuses a bare name for
+`SPECIMEN_ADMIN_CONTACT` while the client documents one; resolved as a
+deliberate difference and pinned by test, see learning 8. And pull request #64
+was merged to `main` at 15:37 UTC as the squash `4f9f518`, with `main` CI/CD
+run `35241427956` deploying the client to Firebase Hosting and the deployment
+marker verified; the readiness document's "what a merge to main deploys"
+section now says so and keeps the rest as the runbook for the next merge. That
+merge is reported rather than observed: this worktree cannot reach the cloud.
+The branch is unchanged by it and the integrator re-bases at merge time.
+
+### Commits
+
+| Commit | What |
+|---|---|
+| fc44055 | `api_repository.dart`: seven inline thirty second waits become one `apiRequestTimeout`. `no_literal_geometry` backlog for the file 7 to 1 |
+| b254f3b | `source_pixels.dart`: the source photograph decodes at the size it is drawn, bounded by the window in device pixels and by the pane where it knows its own width |
+| f82fd37 | `environment_banner.dart`: a third band state for a bounded pilot, and every band names an administrator where one is named |
+| 6b51633 | `test/live_wire_contract_test.dart`: every client request against `backend-openapi.json` |
+| 0152667 | `test/fixtures/live_shapes/` and `test/live_shapes_test.dart`: five shapes on the record and queue screens at two windows |
+| 795b0a1 | `test/live_connectivity_test.dart`: every screen failure of 07 section 11 end to end |
+| 1f5bea2 | `docs/execution/CLIENT_LIVE_DATA_READINESS.md` |
+| 32353b7 | the contact forms the deployment gate admits, and the merge that has now happened |
+
+### Validation, with numbers
+
+Every gate run on its own, tree untouched during each, `rc` read directly.
+
+| Gate | Result |
+|---|---|
+| `flutter pub get --enforce-lockfile` | rc 0 |
+| package `flutter analyze --fatal-infos` | rc 0, no issues |
+| package `flutter test` | rc 0, 685 passed |
+| app `flutter analyze --fatal-infos` | rc 0, no issues |
+| app `flutter test` | rc 1: 1322 passed, 7 skipped, 28 failed, all 28 screen goldens the integrator regenerates |
+| `check_ui_strings.py` | rc 0, 194 files, 0 violations, 0 baselined, 0 warnings |
+| `pre-commit run --files` (15 files) | rc 0 |
+| `dart format --set-exit-if-changed` (9 files) | rc 0 |
+
+This slot's own suites: wire contract 8, live shapes 11, connectivity 11,
+environment 22. Fifty two, all green, in 28 seconds together. The app suite
+was 1325 passing at the end, from 1322 before the contact form tests.
+
+### The golden diff
+
+Regenerated once to inspect, counted, then `git checkout -- test/golden/images
+test/accessibility/fixtures`. Nothing regenerated is committed.
+
+**28 screen goldens moved, 0 semantics fixtures.** All 28 are screens that
+draw the source photograph, at compact and medium only: `workbench-readings`,
+`workbench-fields` and `workbench-history` at 390 by 844 and 768 by 1024, in
+both modes at text 1.0 and 2.0, and `region-editor` at the same two windows in
+both modes. Pixel differences of 1.4 to 3.2 percent, confined to the
+photograph. Nothing moved at expanded or large, where the checked in
+photograph was already inside the new decode bound, and no fixture moved,
+because a decode size is not a meaning. One regenerated golden was opened and
+read: the label is legible and the photograph is not blurred.
+
+### Durable learnings
+
+1. **A fixture that never goes through the client's parse is a fixture that
+   tests the fixture.** Every shape here is a wire body sent through
+   `ApiSpecimenRepository` before a screen sees it. That is how the
+   `alignment_status` mistake surfaced: a transcript carrying a status the
+   wire does not send reads as unmeasured on every screen, which was the
+   client being right and the fixture being wrong. A hand built `Specimen`
+   would have hidden it in either direction.
+2. **A probe that reports "everything is fine" has to be able to report
+   nothing at all.** The first wire contract test recorded one path and passed:
+   `ApiSpecimenRepository` refuses every protected call until a session is
+   verified, and the stub never verified one. It answers the session and the
+   collections from the checked in contract now and asserts a floor on the
+   routes reached. Any test that iterates over what a system did should assert
+   how much it did.
+3. **The published request contract is stale and the client is right.**
+   `docs/execution/backend-openapi.json` describes twenty routes; the backend
+   serves thirty seven. It predates four request properties and two whole
+   request models, and marks two properties required that the backend has made
+   optional. Every request model is `extra="forbid"`, so this is a 422 waiting
+   for the first live request rather than a documentation nicety. Held as two
+   shrink only backlogs, each entry naming the backend line that declares it.
+4. **The wire's authoritative values are in the backend source, not in the
+   snapshot.** `alignment_status` is `Literal["agreement", "disagreement",
+   "policy_blocked"]` at `application/reading_evidence.py:222`. A region's
+   `bbox` is `[x, y, x + width, y + height]` with an exclusive upper bound. A
+   workspace's top level `regions`, `observations` and `transcriptions` carry
+   projection keys that `run`'s own copies do not.
+5. **A digest shaped fixture lands in two secret baselines.** Forty three
+   synthetic sixty four character hex values tripped `detect-secrets`, and
+   admitting them would have meant editing `.secrets.baseline` and adding
+   forty three allowlist regexes to `.gitleaks.toml`, both repository wide
+   files that several live slots would conflict over. Sixty zeros and a
+   counter is shaped like a digest, reads as one to the client, scans clean,
+   and is visibly not real, which is what a fixture shaped from a contract
+   rather than from a specimen should look like.
+6. **A `cacheWidth` of zero is not a bound, it is a crash.** `Image.memory`
+   asserts `cacheWidth > 0`, and a harness that pumps a `MediaQueryData` with
+   no size gives exactly zero. Clamp the low end of any derived decode bound.
+7. **A parser that serves two sources cannot be gated as though it served
+   one.** `AdministratorContact` reads a build stamp and a collection
+   document. `validate_public_settings.py` gates the stamp and admits only
+   forms carrying an address; the collection document is server data and the
+   gate has no jurisdiction over it, so a collection that publishes "The
+   entomology data team" has named its administrator. Making the parser refuse
+   a bare name to satisfy the gate would have lost the authoritative source to
+   satisfy a build setting. The right answer was to pin the asymmetry in a
+   test and correct two prose lines, one on each side.
+8. **Elapsed time is not motion.** The same thirty seconds typed at seven call
+   sites is seven places to change one policy. `no_literal_geometry` counts a
+   `Duration(` wherever it is written, including at a declaration, so the
+   honest resting state for these files is one rather than zero.
+
+### Failed approaches
+
+- **Asserting a real elapsed timeout.** A test that delayed a token by twice
+  `apiRequestTimeout` burned thirty real seconds and then failed on the test
+  runner's own timeout. Replaced with a source assertion that counts
+  `Duration(` in the file, which is the property that actually matters and
+  runs in milliseconds.
+- **Reading the window through a new `LayoutBuilder` in `SourcePixels`.** It
+  would have changed the pane's layout for a value that only bounds a decode.
+  `MediaQuery` gives the same upper bound with no layout change, and the
+  derivative path tightens it with the `LayoutBuilder` that was already there.
+- **Putting the administrator contact on every band unconditionally.** For an
+  unstamped build `AdministratorContact` answers a sentence that says where a
+  contact would be published rather than naming one, which on a band capped at
+  two lines spends the second line on nothing and broke two existing tests.
+  The band appends a contact only where somebody is named, which also left the
+  existing tests byte identical.
+- **`pumpAndSettle` after dragging a thousand row queue.** Thirty seconds per
+  window. A single `pump` proves the same thing.
+
+### Follow ups, each another slot's file
+
+| Finding | File and line | Owner |
+|---|---|---|
+| The queue builds every row a collection has. `ListView(children: ...)` is the eager constructor; measured 1000 of 1000 at both windows. 13 section 4.2's `SliverList.builder` fixes it | `lib/src/screens/queue/queue_screen.dart:416` | A3 |
+| `SpecimenThumbnail` decodes a whole original into a forty pixel square; the intake manifest feeds it capture bytes | `lib/src/widgets/thumbnail.dart:59`, `lib/src/screens/intake/manifest_panel.dart:390` | unowned, nearest A3 |
+| The pre upload preview's `cacheWidth` is the capture's own width, which is a bound in name only | `lib/src/capture_quality.dart:329` | capture slot |
+| At 390 by 844 the Readings, Fields and History strip lays out at y about 1010, so the readings are below the fold. 13 section 0 measured rather than argued | `lib/src/workbench.dart`, `lib/src/screens/workbench/` | A2 |
+| The pilot stamp is read and never supplied. Two lines: pass `SPECIMEN_PILOT_SCOPE` through `build_web.sh` beside `SPECIMEN_ADMIN_CONTACT`, and add the repository variable beside `ci-cd.yml` lines 113 to 115 | `scripts/ci/build_web.sh:12`, `.github/workflows/ci-cd.yml:115` | B1 |
+| The band should name the collection's own administrator inside the shell: pass `AdministratorContact.of(controller.scope).sentence` to `EnvironmentBanner` | `lib/src/app/shell.dart:239` | A3 |
+| Regenerate `backend-openapi.json` from the running application, so fifteen routes, four properties and two models stop living in a test's amendment map | `docs/execution/backend-openapi.json` | backend workstream |
+| Two prose lines disagree about the contact forms. The client lists a bare name among the build stamp's spellings and the gate refuses one; the gate's docstring says the client parses three forms when it parses four. The behaviour is right on both sides and only the prose is wrong | `lib/src/administrator_contact.dart:57`, `scripts/ci/validate_public_settings.py:43` | unowned, and B1 |
+| This slot's commits carry the attribution line the session environment specifies rather than the one the brief quoted. Normalise at the merge if the wave wants one line | the seven commits | integrator |
+
+### Public API the other slots will need
+
+`EnvironmentBanner` gained, all additive, all defaulted so existing call sites
+compile unchanged:
+
+- `pilotScope`, defaulting to the `SPECIMEN_PILOT_SCOPE` build stamp.
+- `contactSentence`, defaulting to the build stamp's contact where it names
+  somebody and to nothing where it does not.
+- `EnvironmentBanner.showsBand`, `isPilot`, `pilotHeadlineFor`, `pilotDetail`,
+  `pilotDetailLabel`, `sentenceFor`, `detailFor`, `contactFor`.
+- `showsFor` is unchanged and still means "not production". A caller that has
+  the pilot stamp in scope should ask `showsBand`.
+
+`api_repository.dart` exports `apiRequestTimeout`. `source_pixels.dart`
+exports `sourceDecodeWidth(BuildContext)`, which any other image on a record
+screen should read rather than inventing its own bound.
+
+`test/live_shapes_harness.dart` is reusable: `liveShapeRecord` sends any wire
+body through the real parse, `liveShapeQueue(n)` builds a page of any length,
+and `collectLayoutErrors` plus `expectNoOverflow` collect overflows while
+letting every other exception fail where it happened.
+
+### Not done, and why
+
+- Nothing spoke to the live API. There is no published address, and
+  `AGENTS.md` forbids it from any agent shell.
+- No screen under `lib/src/screens/`, no `workbench.dart`, `intake.dart`,
+  `sources.dart` or `lib/src/app/` other than nothing at all. No sibling
+  slot's file. No screen golden or semantics fixture committed. No cloud or
+  deploy command. No dependency added, no SDK change. No em dash or en dash.
