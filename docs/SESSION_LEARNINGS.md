@@ -9408,7 +9408,7 @@ placeholder Firebase options in place.
 | `uv run python scripts/ci/check_ui_strings.py --baseline ...` | 0 | 194 files, 0 violations, 0 baselined |
 | `uvx --from pre-commit==4.5.1 pre-commit run --files` (6 files) | 0 | every hook Passed or Skipped |
 | `uvx --from pre-commit==4.5.1 pre-commit run --all-files` | 0 | every hook Passed, `.secrets.baseline` unchanged |
-| `uv run pytest scripts/ci/test_smoke_web_routes.py scripts/ci/test_public_settings.py -q` | 0 | 91 passed, of which 62 are new |
+| `uv run pytest scripts/ci/test_smoke_web_routes.py scripts/ci/test_public_settings.py -q` | 0 | 93 passed, of which 64 are new |
 | `flutter build web --release` | 0 | Built `build/web`, 35,146,003 bytes over 41 files |
 | `uv run python scripts/ci/smoke_web_routes.py` | 0 | 11 locations, 2 static probes, the gallery absent |
 | `python3 ../../scripts/ci/smoke_web_routes.py --require-marker` (the exact CI step) | 0 | same, with a marker in place |
