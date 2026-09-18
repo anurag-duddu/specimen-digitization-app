@@ -191,6 +191,44 @@ zero extent `PinnedChrome` around both collapsing headers, `ShellChrome` in
 `shell.dart`, and the four `UiDecisionBar`, `UiStatusStrip` and `UiTopBar`
 asks marked `fe/polish-3` in `lib/`.
 
+**Status, polish 3 (2026-09-17), slot P3 `fe/polish3-consume`.** The screens
+consume the frame P1 grew, and the documents say so. `ShellChrome`,
+`ShellChromeScope` and `_SolidBar` are gone: `UiScaffoldSlots.setTitle` and
+`setLeading` reach the shell's bar through `UiTopBarAsk`, proven by a shell
+test that publishes from inside the queue, and the frame draws the bar solid
+at every class. The record keeps publishing a whole bar, since 13 section 4.1
+gives it the identifier in `mono.identifier`, the decision from `expanded` up
+and six commands behind one trigger, and the shell's account menu closes it
+below large (`AppShell.accountInBar`, one rule for every bar); at 390 by 844
+the identifier has 134 dp beside four discs and ellipsises at 200 percent,
+recorded for the integrator. Both collapsing headers are `primary: true` with
+the zero extent wrappers and the pane's hand built `PrimaryRegion` deleted,
+and every record and region editor cell measures the same with the gates' own
+walk: 0.2701 and 0.2380 at compact, 0.2227 and 0.1961 at medium, 0.1220 and
+0.1381 at expanded, 0.1733 and 0.1258 at large, the fold at 273.6 dp at
+default type and 258 at 200 percent, with the `header 0` part gone from every
+list. The strip's facts are `TermText`s for Version, Run and Step, each built
+under `MediaQuery.withNoTextScaling` because the pattern's paragraph scales a
+placeholder by the text scale and the shipped goldens drew "Version 17" over
+four lines of display type at 200 percent (a package finding for 0.4.0, with
+a second: the facts slot clips "Versio" at 768 by 1024 at 200 percent because
+the fit reserves `labelMin` rather than measuring the first fact).
+`WorkbenchDecisionBar` offers the save, the approval and the coverage
+confirmation as three, and the queue's ends are drawn disabled with their
+reasons rather than announcing on press; the `J` and `K` keys still speak,
+and `_announce` now schedules the frame its post frame callback waits for,
+a latent defect the key press exposed. Intake's upload is a `UiDecisionBar`
+again. All seven `fe/polish-3` markers in `lib/` are resolved and none is
+left. The ten P1 amendments are placed in 13 (2.2, 2.3 with the insets, 3.1,
+3.2, 3.3, 3.4, 3.5, 4.1) and 10 (3, 4.4), reconciled with P2's paragraphs and
+carrying measured numbers (the record's bar 69.25, the band 52 and the action
+bar 79.6 dp at 200 percent on the phone, 200.85 of 236.3), 4.3 records the
+editor's header as primary, and the section 5 table says every backlog is
+empty and what closed each. Gates: package 778; app 1517 passed, 7 skipped,
+51 failed, all of them the 48 record goldens and the 3 workbench fixtures the
+integrator regenerates; composition 179 green with every backlog empty;
+strings 201 files clean; pre-commit clean.
+
 ### I. Release readiness for a live data pilot (wave B, added 2026-09-17)
 
 Anurag asked for the client to be ready to test on live data: CI/CD fully
@@ -415,6 +453,7 @@ which is the whole argument for section 6.
 | 2026-09-17 | Wave A, first half. `fe/compose-gates` (d446a45) re-based and merged as f7886c4: five composition gates under `test/composition/` (29 s together) with the backlog the record starts from at compact: chrome 54 percent against 28, depth 2 against 1, four glass panes, the photograph at 168 of 338 dp, the back row failing one job; `scripts/ci/capture_devices.sh` drives the emulator and the iPad through every route. `fe/compose-package` (f3f07e7, 51 files) carried onto the branch as c90c3af after its rebase stopped on the reordered changelog: the markers, `UiCollapsingHeader`, `UiStatusStrip` and `UiBlockers`, `UiDecisionBar` and `UiDecisionSwipe`, `UiBanner.strip`, `UiScaffoldSlots` and `navVisible`, the compact window's one frosted pane settled in the scaffold (13 sections 2.2 and 3.1 amended), a Composition gallery page with 30 goldens; the integrator added `UiStickyBar` (13 section 3.5) so both screen slots compose the same pinned bar. Package 742 tests. `fe/compose-record` and `fe/compose-shell` cut from c90c3af; 42 screen goldens (B3's photograph decode and A1's pane policy) regenerate with their merge. |
 | 2026-09-17 | Wave A, second half (integration) | `front-end-composition` at 22d5110 | A2 record (5545ce5) and A3 shell (fe4b1a7) merged; four conflicts were the two slots deleting different lines from the same shrink-only sets, resolved as their intersection. Five integration defects, none visible to either slot's green run: the composition harness read markers only once one was mounted (870b3d3); the glass count counted solid panes (5fd233a); a null from a screen that did not hold a slot cleared the record's decision bar (9a750e7); the shell's band form by window shadowed the record's ask (74d4b90); a screen's ask hid the sidebar (85c5064), and honouring it put the record at 1440 into the stacked regime, where the sticky segments broke the budget (the segments now weigh the window class, 22d5110). Composition gates 179 green; backlogs left: chrome record@expanded 0.226 and record@large 0.206 (a contract finding at 200 percent text), glass import-sheet@compact 2 and record@medium 3 (frame and pattern decisions), all briefed to polish 3. Screen goldens regenerated three times (a2ae9c8, 49f9a99, none moved after 22d5110); every gate green at 22d5110. Package 0.3.0 in the manifest and the lockfile. |
 | 2026-09-17 | Polish 3, slot P2 `fe/polish3-screens` (screens and documents), cut from `front-end-composition` at 4735cfa. The record from `expanded` up moves its decision into the top bar's middle beside the identifier and gives the action bar back (`decisionInTopBar`): pinned chrome 0.122 and 0.138 of 820, 0.173 (segments stuck) and 0.126 of 900, against the 0.226 and 0.206 the backlog held; both `chrome_budget` lines deleted, backlog empty. The record's bar is back, identifier, refresh and one overflow trigger for its six commands at every width; source details takes `UiIcons.info`. The segments stick at default type at every class. The queue's search row sticks at medium (0.168, 0.174, 0.203 of 1024) and scrolls elsewhere, and only while the queue is the route on top: the chrome gate counts markers on covered routes (the record at medium read 0.270 with the queue's row beneath it), a finding for the integrator. 13 amended (2.2, 3.4, 4.1 with the expanded and large table, 4.2, 4.4, section 5 table). Left for P1's merge: `glass_count` `record@medium` 3 and `import-sheet@compact` 2, the two zero extent markers, `ShellChrome`, and the `UiDecisionBar` and `UiStatusStrip` asks. |
+| 2026-09-17 | Polish 3, slot P3 `fe/polish3-consume` (the screens consume the frame's new seams), cut from `front-end-composition` at bfbc4e8 with P1 and P2 merged. `ShellChrome`, `ShellChromeScope` and `_SolidBar` deleted: `setTitle` and `setLeading` reach the shell's bar through `UiTopBarAsk`, and the frame draws the bar solid at every class. The record keeps its whole bar and gains the shell's account menu below large (`AppShell.accountInBar`); the identifier has 134 dp beside four discs at 390 by 844 and ellipsises at 200 percent (for the integrator). Both collapsing headers `primary: true`, wrappers and the hand built `PrimaryRegion` gone, every cell measured identical before and after (record at compact 0.2701 and 0.2380; fold 273.6 and 258 dp). The strip's facts are `TermText`s under `MediaQuery.withNoTextScaling`: the package's paragraph scales a placeholder by the text scale and the shipped goldens drew a fact at four times its size at 200 percent (finding, 0.4.0). `WorkbenchDecisionBar` holds three decisions and the queue's ends are drawn disabled with their reasons; `_announce` schedules its frame; intake's upload is a `UiDecisionBar` again. Seven `fe/polish-3` markers resolved, none left. Ten amendments placed in 13 and 10 with measured numbers (69.25, 52, 79.6 dp at 200 percent; 200.85 of 236.3), 4.3 and the section 5 table updated. Gates: package 778; app 1517 passed, 7 skipped, 51 failed, all 48 record goldens and 3 fixtures (regenerated by the integrator); composition 179; strings 201 files clean; pre-commit clean. Xcode 27.0 landed on the machine mid slot with its license unaccepted; `DEVELOPER_DIR=/Library/Developer/CommandLineTools` plus a `PATH` shim for `xcrun` (the hooks runner passes only `PATH` to a native asset hook) is how the gates ran. |
 
 ## Appendix A. Icon mapping, Material Symbols to Phosphor
 

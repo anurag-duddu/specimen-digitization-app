@@ -757,17 +757,16 @@ class _IntakeScreenState extends State<IntakeScreen> {
     if (state == _publishedUpload) return;
     _publishedUpload = state;
     slots.setActionBar(
-      // A row rather than `UiDecisionBar`: the bar is built for a primary, a
-      // secondary and a count, and a single long primary in it overflows the
-      // window by five pixels at 200 percent text on a phone. `UiButtonRow`
-      // is the arrangement 11 section 3.4 gives one action, and it stacks and
-      // ellipsises rather than spilling.
-      //
-      // fe/polish-3: `UiDecisionBar` should declare the same last resort for
-      // a bar carrying only a primary that it declares for a bar carrying
-      // two.
+      // The decision bar of 13 section 3.3, carrying the one decision this
+      // screen has. It used to be a `UiButtonRow`, because a bar carrying
+      // only a primary had no last resort and "Upload 0 photographs" with its
+      // glyph overflowed a phone by five pixels at 200 percent text; the bar
+      // measures its primary with its glyph now and lets it ellipsise at the
+      // last resort the way a bar carrying two does (polish 3), so the frame
+      // holds the same pattern at the same height on every screen that
+      // decides.
       current && _uploadCarriedByFrame
-          ? UiButtonRow(primary: _uploadButton())
+          ? UiDecisionBar(primary: _uploadButton())
           : null,
       owner: this,
     );

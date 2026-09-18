@@ -94,12 +94,14 @@ class GatedRepository extends GoldenQueueRepository {
 
 /// The status strip's version, which is where a landed decision shows.
 ///
-/// `UiStatusStrip` joins its facts onto one line and draws them as one label,
-/// so the version is a run inside that label rather than a node of its own
-/// (13 section 3.2).
+/// The version is one of the strip's provenance slots, a `TermText` whose
+/// term is the glossary word and whose trailing is the number (13 section
+/// 3.2, polish 3), so the finder reads the slot rather than a run of text.
 Finder versionLine(int revision) => find.byWidgetPredicate(
   (Widget widget) =>
-      widget is Text && (widget.data ?? '').contains('Version $revision'),
+      widget is TermText &&
+      widget.term == WorkbenchStatusStrip.versionTerm &&
+      widget.trailing == ' $revision',
 );
 
 /// The progress affordance every one of these controls swaps in.

@@ -88,15 +88,12 @@ const String backToQueueLabel = 'Back to queue';
 /// What a step along the queue says when this record is not in the loaded
 /// list at all, so there is neither a neighbour nor a reason there is none.
 ///
-/// `UiDecisionBar` draws its two edge controls from `medium` up whether or
-/// not the screen gave it somewhere to go, so the record answers every press
-/// rather than leaving one of them a control that does nothing (pass
+/// The decision bar's edge control is drawn disabled with this on its hint
+/// and its tooltip where the host gave neither a move nor a reason of its own
+/// (13 section 3.3, polish 3), so a record reached by a deep link still says
+/// why it cannot step rather than drawing a control that does nothing (pass
 /// criterion 5.6, finding V-2). The same sentence answers the `J` and `K`
-/// keys and the compact swipe.
-///
-/// fe/polish-3: `UiDecisionBar` should draw no edge control where there is no
-/// move, and should take the reason for its absence where there is one, the
-/// way every other control in the system carries a `disabledReason`.
+/// keys and the compact swipe, which have no control to carry it.
 const String notInQueueMessage = 'This record is not in the loaded queue.';
 
 class ReviewWorkbench extends StatefulWidget {
@@ -122,6 +119,7 @@ class ReviewWorkbench extends StatefulWidget {
     this.previousBlockedReason,
     this.positionLabel,
     this.onBack,
+    this.account,
   });
   final Specimen specimen;
   final Future<Json> Function(Specimen, ArtifactRequest)?
@@ -172,8 +170,12 @@ class ReviewWorkbench extends StatefulWidget {
   )?
   loadHistoricalRevision;
 
-  /// Opens the next specimen in the queue. Null hides the control and the
-  /// shortcut, because a control that does nothing is worse than no control.
+  /// Opens the next specimen in the queue.
+  ///
+  /// Null draws the bar's next control disabled with [nextBlockedReason] on
+  /// it, or with [notInQueueMessage] where the host gave no reason, and the
+  /// `J` key says the same sentence aloud: a control that does nothing is
+  /// worse than no control, and a control that says why is neither.
   final VoidCallback? onNext;
 
   /// Opens the previous specimen in the queue.
@@ -201,6 +203,15 @@ class ReviewWorkbench extends StatefulWidget {
   /// (13 sections 2.3 and 2.4). Null where the host offers no way back, which
   /// is a component test pumping the workbench on its own.
   final VoidCallback? onBack;
+
+  /// The account menu the shell puts at the end of its own bars, drawn at the
+  /// end of this record's bar too (13 section 4.1, polish 3).
+  ///
+  /// The shell's, because the session it names and signs out of is the
+  /// shell's. Null where the frame's navigation already carries the account,
+  /// which is the sidebar's footer at large, and in a host with no shell,
+  /// which is a component test.
+  final Widget? account;
 
   @override
   State<ReviewWorkbench> createState() => _ReviewWorkbenchState();
@@ -437,6 +448,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     widget.busy,
     _pending.length,
     widget.onBack == null,
+    widget.account == null,
     widget.positionLabel,
     widget.onNext == null,
     widget.onPrevious == null,
@@ -452,19 +464,31 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// The state the chrome on screen was built from.
   List<Object?>? _published;
 
+  /// Says [message] to a screen reader once, after the frame.
+  ///
+  /// After the frame so that two announcements in one build collapse into
+  /// the last, and so that the tree the message is about is the one on
+  /// screen. A post frame callback runs only once a frame does, and a key
+  /// press that moves nowhere schedules none: `J` at the end of the queue
+  /// changes nothing on screen, so without [ensureVisualUpdate] its reason
+  /// waited for the next repaint, which on a still screen is never. A tap
+  /// never met this, because a pressed control repaints (found at polish 3,
+  /// when the layout test pressed the key rather than the control).
   void _announce(String message) {
     _announcement = message;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final String? pending = _announcement;
-      _announcement = null;
-      if (pending == null || !mounted) return;
-      if (!MediaQuery.supportsAnnounceOf(context)) return;
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        pending,
-        TextDirection.ltr,
-      );
-    });
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        final String? pending = _announcement;
+        _announcement = null;
+        if (pending == null || !mounted) return;
+        if (!MediaQuery.supportsAnnounceOf(context)) return;
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          pending,
+          TextDirection.ltr,
+        );
+      })
+      ..ensureVisualUpdate();
   }
 
   GlobalKey _anchor(Map<String, GlobalKey> anchors, String id) =>
@@ -859,7 +883,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// bar's own fit ladder: that ladder draws every declared action wherever
   /// there is width for it, which was seven discs across a 1440 dp window,
   /// two of them sharing a glyph. The menu rows carry the same labels,
-  /// glyphs, shortcuts and reasons the discs would.
+  /// glyphs, shortcuts and reasons the discs would. Below large the shell's
+  /// [ReviewWorkbench.account] menu closes the bar, in the slot every list
+  /// screen's bar gives it, so signing out is one tap from a record as it is
+  /// from the queue (13 section 4.1, polish 3).
   ///
   /// From `expanded` up the bar carries the decision as well
   /// ([decisionInTopBar]). The identifier and the decision bar share the
@@ -929,6 +956,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               command.menuItem,
           ],
         ),
+        ?widget.account,
       ],
     );
   }
@@ -1193,14 +1221,16 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   ///
   /// In the frame's action bar at compact and medium, and in the top bar's
   /// middle from `expanded` up ([decisionInTopBar]); the same widget either
-  /// way, so the two decisions, the count and the two edge buttons read the
-  /// same wherever the window put them.
+  /// way, so the decisions, the count and the two edge buttons read the same
+  /// wherever the window put them.
   ///
-  /// Previous and next are handed through whether or not there is a neighbour
-  /// to move to: at the end of the queue the control announces the reason,
-  /// which is the answer the `J` and `K` keys already give and is what a
-  /// control that would otherwise be a silent no-op owes the reviewer
-  /// (pass criterion 5.6, finding V-2).
+  /// Previous and next go through as the host gave them, and where a move is
+  /// absent the bar takes the reason instead: the host's, which says which
+  /// end of the queue this is, or [notInQueueMessage] where the host had
+  /// none. The bar draws the control disabled with the reason on its hint and
+  /// its tooltip (13 section 3.3, polish 3), which is the answer the `J` and
+  /// `K` keys give aloud and is what a control that would otherwise be a
+  /// silent no-op owes the reviewer (pass criterion 5.6, finding V-2).
   Widget _decisionBar(BuildContext context) => WorkbenchDecisionBar(
     busy: widget.busy,
     pendingCount: _pending.length,
@@ -1217,8 +1247,14 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     ),
     coverageBlockedReason: blockedReason('coverage'),
     approveBlockedReason: blockedReason('approve'),
-    onNext: () => _step(widget.onNext, widget.nextBlockedReason),
-    onPrevious: () => _step(widget.onPrevious, widget.previousBlockedReason),
+    onNext: widget.onNext,
+    onPrevious: widget.onPrevious,
+    nextDisabledReason: widget.onNext == null
+        ? widget.nextBlockedReason ?? notInQueueMessage
+        : null,
+    previousDisabledReason: widget.onPrevious == null
+        ? widget.previousBlockedReason ?? notInQueueMessage
+        : null,
     positionLabel: widget.positionLabel,
   );
 

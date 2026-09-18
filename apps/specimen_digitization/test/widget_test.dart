@@ -282,10 +282,12 @@ void main() {
     // scroll swallows the next tap, and the account menu is a toggle, so a
     // swallowed press reads as a menu that will not open.
     await tester.pumpAndSettle();
-    // The bar inside a record carries the record: back, the identifier and
-    // the record's own commands, and neither the collection switcher nor the
-    // account (13 section 4.1). The way out is the bar's back, which is what
-    // this presses before reaching for the shell's chrome again.
+    // The bar inside a record carries the record: back, the identifier, the
+    // record's own commands and, below large, the same account menu the
+    // queue's bar carries (13 section 4.1, polish 3); the collection switcher
+    // is not there. The way out is the bar's back, which is what this presses
+    // so that the sign out below is the queue's, the way a reviewer finishing
+    // a session leaves.
     await tester.tap(uiIconButton(backToQueueLabel));
     await tester.pumpAndSettle();
     // Signing out lives in the account menu, which is also the only place a

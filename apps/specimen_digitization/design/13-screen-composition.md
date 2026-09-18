@@ -73,25 +73,23 @@ record screen, and 2.2 is what the gates measure. At medium and above depth is a
 panes at most the budget 09 sets per class (compact 1, medium 2, expanded 3,
 large 4), counted on the whole screen including the navigation.
 
-**Amendment, polish 3 (2026-09-17).** Two cells of `glass_count` are open
-lines with an owner, slot P1 (`fe/polish3-package`), and neither is a screen's
-to close. The record at medium draws three frosted panes where the class
-allows two, `record@medium-768x1024: 3`: the scrolled top bar, the frame's
-action bar and the collapsed header's chrome all blur from medium up, because
-the wave A amendment above publishes `GlassQuality.off` at compact only, and
-which pane medium gives up is a decision the frame makes once for every screen
-rather than one a screen makes for itself. The design intent P1 builds to: the
-pane the frame floats (the action bar) and the pane over the photograph (the
-collapsed header's chrome, 09 section 11) are the two, and the top bar draws
-solid once content scrolls under it from medium up, as it does at compact. The
-import sheet at compact draws its `glass.modal` pane over the navigation pill
-the frame still frosts beneath the barrier, `import-sheet@compact-390x844: 2`
-where the budget is one: the sheet exemption in this document is about scrolls
-(section 2.1), 09 section 3.3 counts the modal within the four, and the frame
-needs a way to draw its floated chrome solid while a modal route is current
-above it, which P1 gives it. Both lines stay in `glassCountBacklog` at what
-they measure until P1's frame is merged and measured; the screen slot deletes
-them then, and never before.
+**Amendment, polish 3 (2026-09-17).** Glass at medium is two panes on the
+whole screen: the chrome the frame floats and the pane over the photograph, a
+collapsed header's chrome. The frame's top bar is never one of the window's
+panes at any class: its fill once content scrolls under it is `glass.flat`
+drawn solid, as it is at compact, because a wider class spends its room on the
+panes over the work and not on a bar the reviewer scrolls past. The record at
+medium drew three and now draws two. And while a sheet or a dialog shown from
+inside the frame is over it, from the end of its entrance to the start of its
+exit, the frame draws every pane it owns solid: the sheet's pane over the pill
+the frame still frosted was two on a phone whose budget is one, this clause
+exempts a sheet's scroll and not its pane, and a pane under a scrim is a save
+layer nobody sees. The import sheet at compact measures 1 of 1. The two
+`glass_count` lines this section carried as open at the screen slot's cut,
+`record@medium-768x1024: 3` and `import-sheet@compact-390x844: 2`, were the
+frame's and the pattern's to close and not a screen's; both measured inside
+their budgets once the frame above was merged, and the integrator deleted them
+(ca307ca). The backlog is empty.
 
 ### 2.3 The chrome budget
 Pinned chrome at compact is at most 28 percent of the viewport height: top
@@ -114,6 +112,45 @@ below their density height. The rules that make the budget reachable:
   buttons from medium up (07 section 6.1).
 - The top bar carries the screen's title and the back action; no screen draws
   a second title row or a "Back to ..." row under the bar.
+
+**Amendment, polish 3 (2026-09-17).** A pinned header counts here only where
+it is not the region under review. A `UiCollapsingHeader` built with
+`primary: true` is the primary region of 2.5 and is content, not chrome: it
+publishes `PrimaryRegion` on the thing it shows, at the extent it pins less the
+one chrome row that survives the collapse, and no `PinnedChrome`. The
+arithmetic: 4.1 pins the record's header at 40 percent of a 390 by 844 phone,
+337.6 dp, and gives the whole of the chrome 28 percent, 236.3 dp, so the two
+cannot both be read with the header inside the budget, and 4.1's own total of
+152 counts the top bar, the band and the decision bar and not the header. Its
+chrome rows are not a half measure the budget can hold either: at 200 percent
+text the record's own top bar is 69.25, the one line band 52 and the action
+bar 79.6, which is 200.85 of the 236.3, and the one row riding the header's
+edge is 79.6 on its own (measured with the gates' walk at polish 3; the
+package slot's closeout rounded the bar to 69.75 and the row to 80); the rows
+ride the region under review and are inside the extent 2.5 measures already,
+so a marker on them would count the same height twice. A header built without
+`primary` is a pinned header of the kind this list names and keeps its marker
+at the extent it pins. The minimum the header declares for the photograph is
+the extent it pins less that row, 273.6 dp on the phone at default type and
+258 at 200 percent, which is what the record's pane declared by hand before
+the pattern said it (2.5).
+
+**Amendment, polish 3 (2026-09-17): the system insets.** The gates read the
+marker's box as drawn, or the extent a sliver declares, and nothing else. The
+frame's top bar owns the top safe area so its pane reaches the window's edge
+(10 section 4.4), and its marker is the whole bar, inset included; the action
+bar, where it is the lowest chrome and anchors to the window's bottom edge
+(3.3, polish 3), extends its pane through the bottom inset but its marker
+stops at the bar and its padding, the 64 dp of 4.1, with the inset a sibling
+outside the marker (`scaffold.dart`, the anchored form). The two rules differ,
+and both insets are zero in the four windows of section 5, where the budget
+clauses were written: 844 dp with no inset. The consequence on a device is
+that a phone with insets spends more of its height on chrome than the golden
+shows, the status bar's inset charged to the top bar and the home indicator's
+taken from the content without being charged, so the budget holds for the
+test window and a device reads higher by its insets. A rule that charges both,
+or neither, is the integrator's to state; a slot does not change how a gate
+counts.
 
 ### 2.4 One job per region
 Each pinned or scrolling region has one job and says it once. The top bar
@@ -148,10 +185,45 @@ single row at the minimum. It is pinned; it never floats; it draws
 compact is this one. Under reduced motion the collapse still tracks the
 scroll, because it is a scroll position and not a transition.
 
+**Amendment, wave A integration (2026-09-17), recorded here at polish 3.**
+The clause above giving this band the compact window's one frosted pane is
+superseded by section 2.2's wave A amendment: a record screen has an action
+bar as well and 2.2 allows compact exactly one pane, so the frame spends it on
+the chrome it floats, and this band is the solid form of the same surface at
+compact and frosted from medium up.
+
+**Amendment, polish 3 (2026-09-17).** `primary: true` marks the header's
+content rather than the sliver, because a `SliverPersistentHeader` has no box
+for the fold gate to read; the minimum it declares is the extent it pins less
+the collapsed chrome band, which is the height the photograph keeps. The
+header then spends nothing of 2.3, per that section's amendment. Both of the
+product's headers are built this way, the record's (4.1) and the region
+editor's (4.3), and the zero extent markers the screens wrapped them in are
+gone.
+
 ### 3.2 `UiStatusStrip`
 One line at the top of the evidence: the disposition chip, run and version,
 and the blockers summary ("2 things block clearance") that opens a sheet
 listing each with its control. It scrolls with the evidence.
+
+**Amendment, polish 3 (2026-09-17).** The run and the version are slots,
+`UiStatusStrip.provenance`, so a fact is the product's glossary term and opens
+its definition on the line it is read on. They are set as one paragraph of
+inline widgets that ellipsises at its end, each on a semantics node of its
+own, with the separators drawn and not spoken. The record's three are
+`TermText`s for "Version", "Run" and "Step", spoken whole with their values
+("Version 17, term, double tap for definition"), from medium up; on a phone
+the line holds the disposition and what blocks clearance and nothing else
+(4.1). `facts` stays one version for a caller with no term to carry. One
+finding against the pattern, found in the goldens this change moved: a
+paragraph scales a placeholder by the text scale itself (`WidgetSpan` wraps
+each child in the SDK's auto scaling inline widget), so a slot that also reads
+the scale draws at four times its size at 200 percent, which is what the
+record's plain facts did at 768 by 1024 from the wave A merge on, "Version 17"
+over four lines of display type. The record builds each fact under
+`MediaQuery.withNoTextScaling` so it takes the paragraph's scale once; the
+pattern should do that for every slot it is given, the plain `facts` form
+included (`UiStatusStrip`, 0.4.0).
 
 ### 3.3 `UiDecisionBar`
 The decision bar of 2.3 as a pattern: primary, secondary, count, optional
@@ -159,6 +231,22 @@ previous and next from medium up, and the swipe handler for compact. It sits
 in `UiScaffold.actionBar`, which a routed screen can now fill
 (`UiScaffold.of(context).setActionBar` or the equivalent hook the package
 lands), so the shell owns the bottom of the screen and the budget.
+
+**Amendment, polish 3 (2026-09-17).** The bar takes tertiary actions the way
+`UiButtonRow` does, drawn before the secondary and the first into the overflow
+menu, so a record whose approval has a prerequisite offers the save, the
+approval and the confirmation from one bar. Previous and next take the reason
+a move is absent, drawn disabled with the reason on the hint and the tooltip,
+so the queue's ends say why; a control with neither a move nor a reason is
+not drawn. At the last resort the primary ellipsises and takes three parts of
+the line to the count's one, and a bar carrying only a primary reaches it the
+same way, which is how intake's upload sits in this bar again. And the action
+bar the frame holds has two forms: above a pill it floats as a tile with the
+pill's gap under it, and where nothing floats under it, inside a record or
+beside a rail, it anchors to the window's bottom edge with the system inset as
+padding inside the pane below the bar, so nothing scrolls under the bar into
+the band between the pane and the edge. The budget counts the bar and its
+padding, 64 dp, and never the device's inset (2.3, the insets).
 
 ### 3.4 `UiScaffold` by route
 `UiScaffold` reads the route: which screens hide the navigation pill, which
@@ -195,6 +283,19 @@ beneath it, against 22.3 without). A screen therefore pins only while it is
 the route on top, read through `ModalRoute.of(context).isCurrent`, which is
 the same reading the bulk bar already took.
 
+**Amendment, polish 3 (2026-09-17): the bar's title and leading.**
+`UiScaffoldSlots` carries the bar's title and its leading beside the whole
+bar: a shell derives both by route, a screen that knows better publishes one
+of them, and the frame hands the two to the `UiTopBar` in the slot through
+`UiTopBarAsk`, whatever the shell wrapped it in. The application's
+`ShellChrome` retires, and with it the shell's solid wrapper for the compact
+bar, which the frame's pane policy covers at every class (2.2). The record
+keeps publishing a whole bar, because 4.1 gives it things a title and a
+leading cannot carry: the identifier in `mono.identifier`, the decision from
+`expanded` up and its commands behind one trigger; the shell's own bar inside
+a record agrees with it on everything the two share and is what the frame
+shows until the record has loaded.
+
 ### 3.5 `UiStickyBar`
 A pinned `SliverPersistentHeader` of one fixed extent for the region that
 scrolls up to the header and then sticks under it: the record's segments, the
@@ -202,6 +303,14 @@ queue's search and filter row. It carries a `PinnedChrome` marker of the
 `header` region, so the budget counts it while it is stuck, and it draws solid
 under the scaffold's compact pane policy. Added by the integrator at the wave A
 merge so both screen slots compose the same bar.
+
+**Amendment, polish 3 (2026-09-17).** A sticky bar is chrome only while it is
+stuck. In the flow it paints nothing and lets the sky through; once pinned,
+scrolled past the top of the viewport or held under a pinned header through
+the overlap, it takes its `ground` fill at the threshold and without fading
+(09 section 11), the way a collapsing header takes its chrome fill. The
+queue's search row, stuck at medium, drew a band of ground across the home sky
+while it was still a row of the page.
 
 ### 3.6 `UiBanner.strip`
 The one line environment band: tint, glyph, one `label` line, tap for the
@@ -215,7 +324,7 @@ this differs from 05 or 07 the difference is noted.
 ### 4.1 Record (workbench)
 | Region | Pinned | Content | Height at 390 by 844 |
 |---|---|---|---|
-| Top bar | yes | Back, specimen id (`mono.identifier`), refresh; the collection switcher is not shown inside a record | 56 |
+| Top bar | yes | Back, specimen id (`mono.identifier`), refresh, the record's commands behind one trigger and the account menu (polish 3); the collection switcher is not shown inside a record | 56 |
 | Environment band | yes | One line strip when the environment is not production | 32 |
 | Source header | collapsing, 0.55 to 0.40 | Photograph on its matte edge to edge, region overlays, the view control capsule riding the lower edge, the region toggle strip as the header's last row | 464 to 338 |
 | Status strip | scrolls | Disposition, run and version, blockers summary | 40 |
@@ -286,7 +395,7 @@ classes allow hold it (27.0 and 22.3 percent measured).
 
 | Region | Pinned | Content | Height at 1180 by 820 | Height at 1440 by 900 |
 |---|---|---|---|---|
-| Top bar | yes | Back, specimen id (`mono.identifier`), the decision bar (previous, "3 of 38", secondary, primary, next), refresh, the record's commands behind one overflow trigger | 48; 48 at 1.3; 61.25 at 2.0 | 48; 48 at 1.3; 61.25 at 2.0 |
+| Top bar | yes | Back, specimen id (`mono.identifier`), the decision bar (previous, "3 of 38", secondary, primary, next), refresh, the record's commands behind one overflow trigger, and the account menu at expanded (at large the sidebar's footer carries it) | 48; 48 at 1.3; 61.25 at 2.0 | 48; 48 at 1.3; 61.25 at 2.0 |
 | Environment band | yes | One line strip | 52 | 52 |
 | Source pane | fixed, beside the evidence (two pane, 07 section 6.1) | Photograph, overlays, view controls, region toggles | 0 of the budget | at 1440 beside the queue pane and the sidebar the record is 799 dp and stacked: the collapsing header, counted at nothing (section 2.3, decision 1 of the A2 closeout) |
 | Status strip | scrolls | Disposition, run and version, blockers summary | 0 | 0 |
@@ -322,10 +431,41 @@ one disc it keeps at every width and the six commands are rows of one menu,
 carrying the same labels, glyphs, shortcuts and reasons. Source details takes
 `UiIcons.info`, the registry's glyph for supporting information, which is what
 a photograph's checksum and coordinate basis are; classification keeps the
-provenance tree. The trigger sits at the bar's end, and until P1's `Popover`
-fits its pane inside the window horizontally (P1 task 1) the menu it opens
-crosses the window's trailing edge at every width, as A3 measured for the
-account menu; the record's bar had that trigger at compact and medium already.
+provenance tree. The trigger sits beside refresh.
+
+**Amendment, polish 3 (2026-09-17): the account menu.** The account menu sits
+on the record's bar below large, at the bar's end after the trigger, in the
+slot every list screen's bar gives it, so a reviewer inside a record reads
+which account they are using and signs out without leaving it (05 section 2);
+at large the sidebar's footer carries the account, as it does on every screen.
+What kept it off this bar in slot A3 was `Popover` opening a pane past the
+window's trailing edge from the last slot of a bar; the pane fits the window
+it opens in now (10 section 3), so the menu opens inside it at every width.
+The shell states the rule once (`AppShell.accountInBar`) and hands the record
+the same menu it draws on its own bars. The cost is width: at 390 by 844 the
+identifier has 134 dp beside back and three discs (390 less two 16 dp gutters,
+a 48 dp back with its 8 dp gap, and three 56 dp action slots), which holds the
+fixture's eleven character identifier at default type and ellipsises it at 200
+percent ("fixture..." in the regenerated golden), with the whole of it on the
+label's semantics node and tooltip (11 section 3.3, rule 4). A bar that wants
+the identifier whole at 200 percent on a phone gives up a disc, and the
+account is the one 4.1 did not list; that is the integrator's call, recorded
+here rather than made.
+
+**Amendment, polish 3 (2026-09-17): the bar holds three, and the ends say
+why.** Two decisions of the slot A2 amendment above are superseded by section
+3.3's polish 3 amendment. The bar takes tertiary actions, so while there are
+corrections the record offers the save, the approval and the coverage
+confirmation from one bar, the confirmation first into the bar's menu where
+the line does not hold all three, rather than choosing two of three. And the
+bar takes the reason a move is absent, so at the ends of the queue the edge
+control is drawn disabled with the host's reason on its hint and its tooltip
+("This is the first record in the queue."), or with "This record is not in the
+loaded queue." where the record is not in the loaded list, in place of a
+control that answered a press by announcing; the `J` and `K` keys and the
+compact swipe still say the same sentence aloud, since a key has no control to
+carry it. The strip's provenance from medium up is three glossary terms
+(section 3.2, polish 3).
 
 ### 4.2 Queue
 | Region | Pinned | Content |
@@ -365,6 +505,14 @@ Full screen route (05 section 3.6): top bar (back, title, save), the
 photograph band as a collapsing header floored at 0.40, the coordinate form
 and provenance scrolling beneath, order controls as the top bar's overflow,
 no pill.
+
+**Amendment, polish 3 (2026-09-17).** The header is built `primary: true`:
+the photograph is the region the editor exists to show, so the header
+publishes `PrimaryRegion` at the extent it pins and no `PinnedChrome` (section
+2.3, polish 3), and the route's chrome is the frame's bar alone, 56 dp of 844.
+The fold clause runs at compact only and section 5 names no fold expectation
+for the editor, so the marker states what the header is and no gate reads a
+new number off it.
 
 ### 4.4 Intake and capture
 One scroll: the batch header, the capture card, the pre-upload checks, the
@@ -459,16 +607,18 @@ region editor's nested scroll above the expanded floor, and the second glass
 pane every compact screen gains on its first scroll, which `glass_budget` never
 saw because it counts at rest.
 
-**The backlogs after polish 3 (2026-09-17).** Every line a screen could
-delete is deleted. What remains has an owner:
+**The backlogs after polish 3 (2026-09-17).** Every backlog is empty, and
+each is a real zero: the gates run 179 tests against every cell and hold the
+lines in both directions, so a line could not have outlived what it allowed.
+What closed each:
 
-| Gate | Cells | What they are | Owner |
-|---|---|---|---|
-| `no_nested_scrollables` | 0 | Empty, and `shrinkWrapBacklog` is empty | |
-| `surface_depth` | 0 depth, 2 panes | `record@medium-768x1024: 3` and `import-sheet@compact-390x844: 2`, the frame's and the pattern's decisions of the section 2.2 polish 3 amendment | P1 `fe/polish3-package`, deleted by the screen slot once merged and measured |
-| `chrome_budget` | 0 | Empty. The record at expanded and large gave the action bar up (section 4.1) | |
-| `above_the_fold` | 0 | Empty | |
-| `one_job` | 0 | Both sets empty | |
+| Gate | Cells | What closed them |
+|---|---|---|
+| `no_nested_scrollables` | 0 | Slot A3 made intake one `CustomScrollView` of sections and the import sheet's body a column inside the frame that already scrolls it; slot A2 passed `scrollBody: false` to the region editor's dialog so the editor keeps the one scroll it had. `shrinkWrapBacklog` is empty: the help panel's list is the pane's one scroll and the manifest is a column wherever its caller scrolls it (A3) |
+| `surface_depth` | 0 depth, 0 panes | Depth: slot A2 moved the record's view controls from a capsule over the matte to the header's lower edge. Panes: the wave A integration counted save layers rather than solid fills; slot A3 drew the compact bar solid; polish 3 slot P1 made the frame's top bar never a pane and the frame solid under a modal shown from inside it, and the integrator deleted the last two lines once they measured 2 of 2 and 1 of 1 (ca307ca) |
+| `chrome_budget` | 0 | Slot A2 composed the record as one scroll with the header outside the budget (27.0 and 22.3 percent at compact and medium); polish 3 slot P2 moved the record's decision into the top bar from `expanded` up (0.138 of 820 and 0.173 of 900 at worst) |
+| `above_the_fold` | 0 | Slot A2 pinned the photograph between 55 and 40 percent with the strip beneath it; slot A3 rebuilt the queue's header and search row and put intake's checks under the manifest. Polish 3 slot P3 moved both headers to `primary: true` and measured the same fold, 273.6 dp at default type and 258 at 200 percent on the phone |
+| `one_job` | 0 | Slot A2 put back in the record's bar and deleted the row that held it alone; no pinned region has ever repeated another's words |
 
 One finding for the integrator from the same slot: `chrome_budget` counts
 every `PinnedChrome` in the tree, including a marker on a route beneath the

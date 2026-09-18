@@ -507,19 +507,17 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   /// The band and nothing else. A header with a chrome row draws `glass.flat`
   /// behind that row once it is collapsed, which is a second frosted pane on
   /// a window 13 section 2.2 allows one, and this editor's region list has
-  /// the whole width of the form to sit in. The marker declares nothing, for
-  /// the reason `WorkbenchSourcePane` states at length: the photograph is the
-  /// thing under review and 13 section 2.3's budget cannot hold a region that
-  /// is 40 percent of the viewport on its own.
+  /// the whole width of the form to sit in.
   ///
-  /// fe/polish-3: `UiCollapsingHeader` should publish no `PinnedChrome` where
-  /// it is the region under review. Integration note (slot P2, 2026-09-17):
-  /// P1's contract keeps the marker on a header built without `primary`, and
-  /// this one passes none, because 13 section 5 names no primary region for
-  /// the editor and the fold clause runs at compact only. The wrapper comes
-  /// out only if the call site moves to `primary: true` at the merge, with
-  /// the fold clause then measuring the photograph here too; until then it is
-  /// the reading the gates take.
+  /// Built `primary: true`: the photograph is the thing this editor exists to
+  /// show, so the header publishes `PrimaryRegion` on it at the extent it
+  /// pins and no `PinnedChrome`, and spends nothing of the chrome budget, for
+  /// the reason `WorkbenchSourcePane` states and the pattern now carries (13
+  /// sections 2.3 and 3.1, polish 3). 13 section 5 names no fold expectation
+  /// for the editor and the fold clause runs at compact only, so the marker
+  /// states what the header is and no gate reads a number off it that it did
+  /// not read before: the editor's chrome is the frame's bar alone, as it was
+  /// with the zero extent wrapper this replaces.
   Widget _header(BuildContext context, UiThemeData ui) {
     // The band takes the height the photograph actually needs, between the
     // floor 13 section 4.3 gives it and the 55 percent 13 section 3.1 starts
@@ -529,19 +527,16 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     final Size viewport = MediaQuery.sizeOf(context);
     final double natural =
         (viewport.width - 2 * ui.space.s6) * _height / _width;
-    return PinnedChrome(
-      region: UiPinnedRegion.header,
-      extent: 0,
-      child: UiCollapsingHeader(
-        maxFraction: (natural / viewport.height).clamp(
-          sourceHeaderMinFraction,
-          sourceHeaderMaxFraction,
-        ),
-        minFraction: sourceHeaderMinFraction,
-        content: Padding(
-          padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s6),
-          child: Center(child: _previewImage(context, _box)),
-        ),
+    return UiCollapsingHeader(
+      primary: true,
+      maxFraction: (natural / viewport.height).clamp(
+        sourceHeaderMinFraction,
+        sourceHeaderMaxFraction,
+      ),
+      minFraction: sourceHeaderMinFraction,
+      content: Padding(
+        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s6),
+        child: Center(child: _previewImage(context, _box)),
       ),
     );
   }
