@@ -450,13 +450,24 @@ void main() {
       expect(uiIconButton('Next specimen'), findsOneWidget);
       expect(uiIconButton('Previous specimen'), findsOneWidget);
 
-      // Without the callbacks the control is still drawn, because the bar
-      // draws its two edges from `medium` up whatever the screen hands it,
-      // and pressing one says why there is nowhere to go rather than doing
-      // nothing at all (pass criterion 5.6, finding V-2).
+      // Without the callbacks the control is drawn disabled with the reason
+      // on it, the way every other control in the system carries a
+      // `disabledReason` (13 section 3.3, polish 3), and the key says the
+      // same sentence aloud rather than doing nothing at all (pass criterion
+      // 5.6, finding V-2).
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
-      expect(uiIconButton('Next specimen'), findsOneWidget);
+      final UiIconButton nextControl = tester.widget<UiIconButton>(
+        uiIconButton('Next specimen'),
+      );
+      expect(nextControl.onPressed, isNull);
+      expect(nextControl.disabledReason, notInQueueMessage);
+      expect(
+        tester
+            .widget<UiIconButton>(uiIconButton('Previous specimen'))
+            .disabledReason,
+        notInQueueMessage,
+      );
       final semantics = tester.ensureSemantics();
       final List<String> announced = <String>[];
       tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<
@@ -475,7 +486,7 @@ void main() {
               null,
             ),
       );
-      await tester.tap(uiIconButton('Next specimen'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
       await tester.pumpAndSettle();
       expect(announced, contains(notInQueueMessage));
       semantics.dispose();
