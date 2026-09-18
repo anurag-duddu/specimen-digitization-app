@@ -220,17 +220,37 @@ void main() {
           isFalse,
           reason: 'the pill hides on a screen that is inside a record',
         );
-        // Below large the account menu closes the record's bar in the slot
-        // the queue's bar gives it, so a reviewer inside a record can read
-        // which account they are using and sign out without leaving it
-        // (13 section 4.1, polish 3; 05 section 2).
+        // At compact the identifier is the bar's one fact and a fourth disc
+        // would cut it at 200 percent text, so the account menu waits for
+        // medium (`AppShell.accountOnRecordBar`; 13 section 4.1, polish 3).
+        // The way out is back, and the queue's bar carries the account.
         expect(
           uiMenuTrigger(RegExp('^Account menu')),
-          findsOneWidget,
-          reason: 'the account menu is not on the record bar below large',
+          findsNothing,
+          reason: 'the account menu is not on the record bar at compact',
         );
       },
     );
+
+    testWidgets('from medium up the record bar carries the account menu', (
+      WidgetTester tester,
+    ) async {
+      await pumpGoldenApp(
+        tester,
+        window: const Size(768, 1024),
+        brightness: Brightness.light,
+        location: goldenSpecimenLocation,
+      );
+      // Below large and above compact the record's bar has the width, so it
+      // carries the same menu in the same slot as the queue's bar, and a
+      // reviewer inside a record reads which account they are using and
+      // signs out without leaving it (13 section 4.1, polish 3; 05 section 2).
+      expect(
+        uiMenuTrigger(RegExp('^Account menu')),
+        findsOneWidget,
+        reason: 'the account menu is on the record bar from medium up',
+      );
+    });
 
     testWidgets('a record keeps the navigation that sits beside the body', (
       WidgetTester tester,

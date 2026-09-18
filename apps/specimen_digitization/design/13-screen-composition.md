@@ -324,7 +324,7 @@ this differs from 05 or 07 the difference is noted.
 ### 4.1 Record (workbench)
 | Region | Pinned | Content | Height at 390 by 844 |
 |---|---|---|---|
-| Top bar | yes | Back, specimen id (`mono.identifier`), refresh, the record's commands behind one trigger and the account menu (polish 3); the collection switcher is not shown inside a record | 56 |
+| Top bar | yes | Back, specimen id (`mono.identifier`), refresh, the record's commands behind one trigger (polish 3); the account menu joins from medium up and the collection switcher is not shown inside a record | 56 |
 | Environment band | yes | One line strip when the environment is not production | 32 |
 | Source header | collapsing, 0.55 to 0.40 | Photograph on its matte edge to edge, region overlays, the view control capsule riding the lower edge, the region toggle strip as the header's last row | 464 to 338 |
 | Status strip | scrolls | Disposition, run and version, blockers summary | 40 |
@@ -449,8 +449,12 @@ fixture's eleven character identifier at default type and ellipsises it at 200
 percent ("fixture..." in the regenerated golden), with the whole of it on the
 label's semantics node and tooltip (11 section 3.3, rule 4). A bar that wants
 the identifier whole at 200 percent on a phone gives up a disc, and the
-account is the one 4.1 did not list; that is the integrator's call, recorded
-here rather than made.
+account is the one 4.1 did not list. **The integrator's call (2026-09-18):**
+the disc waits for medium. At compact the record's bar carries back, the
+identifier, refresh and the trigger, and the identifier keeps its 182 dp; the
+way out is back and the queue's bar carries the account at every width below
+large. From medium up the record's bar has the width and carries the same menu
+in the same slot (`AppShell.accountOnRecordBar`).
 
 **Amendment, polish 3 (2026-09-17): the bar holds three, and the ends say
 why.** Two decisions of the slot A2 amendment above are superseded by section

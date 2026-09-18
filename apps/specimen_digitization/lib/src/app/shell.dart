@@ -102,6 +102,19 @@ class AppShell extends StatefulWidget {
   static bool accountInBar(WindowClass window) =>
       !window.isAtLeast(WindowClass.large);
 
+  /// True where the bar a record publishes carries the account menu: the
+  /// windows [accountInBar] names, less compact.
+  ///
+  /// At 390 by 844 the record's identifier has 134 dp beside back and three
+  /// discs and ellipsises at 200 percent text, and the identifier is the one
+  /// fact that bar exists to state (13 section 4.1). A screen over its width
+  /// gives a disc up rather than cutting its fact, and the account is the one
+  /// disc 4.1 did not list: the way out is back, and the queue's bar carries
+  /// the account at every width below large. From medium up the record's bar
+  /// has the width and carries the same menu in the same slot.
+  static bool accountOnRecordBar(WindowClass window) =>
+      accountInBar(window) && !window.isCompact;
+
   /// Which sky the location paints (09 section 3.2).
   ///
   /// `sky.work` is the workbench, the region editor inside it, and the large

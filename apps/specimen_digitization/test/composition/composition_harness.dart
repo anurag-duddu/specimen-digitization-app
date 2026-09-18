@@ -22,7 +22,6 @@ import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/screens/intake/capture_card.dart';
 import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
-import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
 import 'package:specimen_digitization/src/screens/workbench/source_pane.dart';
 import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/widgets/source_import_sheet.dart';
@@ -297,7 +296,9 @@ List<Element> compositionElements() {
 ///
 /// 13 section 2.3 names the top bar, the environment band, a pinned header at
 /// its collapsed height, the decision bar and the navigation pill, and these
-/// are the widgets that draw those five today. A rail and a sidebar are
+/// are the widgets that draw the first, second and fifth today; the decision
+/// bar has been inside the frame's action bar marker since wave A, and a
+/// pinned header carries the pattern's own marker. A rail and a sidebar are
 /// deliberately absent: they are laid out beside the body rather than above
 /// it, so they spend width and the budget is a share of the height.
 ///
@@ -309,10 +310,7 @@ List<Element> compositionElements() {
 /// measured the record screen at a quarter of the phone with its decision bar
 /// uncounted, and the ratchet asked for the backlog line to be deleted.
 bool isPinnedChromeWidget(Widget widget) =>
-    widget is UiTopBar ||
-    widget is UiPillNav ||
-    widget is EnvironmentBanner ||
-    widget is WorkbenchDecisionBar;
+    widget is UiTopBar || widget is UiPillNav || widget is EnvironmentBanner;
 
 /// True where [element] is a pinned region: the marker, or a widget the list
 /// above names.

@@ -188,7 +188,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
               // the slot every list screen's bar gives it, below large; at
               // large the sidebar's footer carries the account (13 section
               // 4.1, polish 3).
-              account: AppShell.accountInBar(WindowClass.of(context))
+              account: AppShell.accountOnRecordBar(WindowClass.of(context))
                   ? ShellAccountMenu(controller: controller)
                   : null,
             ),

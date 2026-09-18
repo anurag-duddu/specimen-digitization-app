@@ -956,6 +956,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               command.menuItem,
           ],
         ),
+        // The account is the shell's, handed in where its rule says the bar
+        // carries it (`AppShell.accountOnRecordBar`): below large and not at
+        // compact, where the identifier is the bar's one fact.
         ?widget.account,
       ],
     );
