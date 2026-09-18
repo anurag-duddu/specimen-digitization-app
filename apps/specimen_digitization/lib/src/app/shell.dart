@@ -1,9 +1,20 @@
-/// The adaptive collection shell (05 section 2; 07 sections 1.2, 1.3 and 11).
+/// The adaptive collection shell (05 section 2; 07 sections 1.2, 1.3 and 11;
+/// 13 sections 2.3 and 3.4).
 ///
 /// One navigation control per window class: a floating pill below 600, a
 /// collapsed rail to 839, an extended rail to 1199, and a sidebar at 1200 and
 /// above. The collection switcher and the account menu move with it, and the
 /// mark leads the rail and the sidebar.
+///
+/// The frame is built once and the router swaps the body inside it, so what
+/// the chrome says is decided here, by route: which sky paints, whether the
+/// navigation is drawn, whether the bar carries the collection switcher or the
+/// screen's own name and the way out, and which form the environment band
+/// takes. 13 section 3.4 asks the scaffold to read the route; the shell is
+/// where this application reads it. A screen that knows better than the route
+/// names the frame through `UiScaffoldSlots`, the one hook for the bar, its
+/// title and its start slot, the action bar, the navigation and the band's
+/// form (13 section 3.4, polish 3); the shell holds no hook of its own.
 library;
 
 import 'dart:async';
@@ -20,7 +31,7 @@ import '../workspace.dart';
 import 'routes.dart';
 
 /// The navigation frame every collection screen is drawn inside.
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.destination, required this.child});
 
   /// The destination the current route belongs to.
@@ -44,6 +55,12 @@ class AppShell extends StatelessWidget {
   /// What the reload control is called.
   static const String reloadLabel = 'Refresh collection';
 
+  /// What the way out of a record is called, in the bar's leading slot.
+  ///
+  /// 13 section 2.3 gives the way out to the top bar, so this is the only
+  /// back action a record needs and the row under the bar goes.
+  static const String backLabel = 'Back to queue';
+
   /// The two destinations, in the order they are read.
   ///
   /// Sources is reached from Intake rather than from here (07 section 13), so
@@ -57,43 +74,96 @@ class AppShell extends StatelessWidget {
   /// What the mark says where it leads the navigation.
   static const String markLabel = 'Specimen Digitization';
 
-  /// Which sky the location paints (09 section 3.2).
+  /// The record [location] is inside, or null where it is a list screen.
   ///
-  /// `sky.work` is the workbench, the region editor inside it, and the large
-  /// record fallback; everything else in the collection, the queue, intake
-  /// and the sources under it, is `sky.home`. A record is the one route with
-  /// a segment after `queue`, which is what `AppRoutes.specimenOf` builds.
+  /// A record is the one route with a segment after `queue`, which is what
+  /// `AppRoutes.specimenOf` builds.
   ///
   /// This predicate belongs beside `AppRoutes.isEntryLocation` and
   /// `isGlobalLocation` rather than here; `routes.dart` is not this slot's
   /// file, so it is written once here and the cleanup slot can move it.
-  static SkyPreset skyOf(Uri location) {
+  static String? recordIn(Uri location) {
     final List<String> segments = location.pathSegments;
     final int queue = segments.indexOf('queue');
-    return queue >= 0 && queue < segments.length - 1
-        ? SkyPreset.work
-        : SkyPreset.home;
+    if (queue < 0 || queue >= segments.length - 1) return null;
+    return Uri.decodeComponent(segments[queue + 1]);
   }
 
+  /// True where [location] is inside a record.
+  static bool insideRecord(Uri location) => recordIn(location) != null;
+
+  /// True where the bar carries the account menu, which is every window
+  /// narrower than large: at large the sidebar's footer carries the account
+  /// and signing out, so the bar carries help on its own (07 section 10).
+  ///
+  /// One rule for the shell's own bars and for the bar a record publishes
+  /// (13 section 4.1, polish 3), so the menu sits in the same slot on every
+  /// screen of the collection and a reviewer learns where it is once.
+  static bool accountInBar(WindowClass window) =>
+      !window.isAtLeast(WindowClass.large);
+
+  /// True where the bar a record publishes carries the account menu: the
+  /// windows [accountInBar] names, less compact.
+  ///
+  /// At 390 by 844 the record's identifier has 134 dp beside back and three
+  /// discs and ellipsises at 200 percent text, and the identifier is the one
+  /// fact that bar exists to state (13 section 4.1). A screen over its width
+  /// gives a disc up rather than cutting its fact, and the account is the one
+  /// disc 4.1 did not list: the way out is back, and the queue's bar carries
+  /// the account at every width below large. From medium up the record's bar
+  /// has the width and carries the same menu in the same slot.
+  static bool accountOnRecordBar(WindowClass window) =>
+      accountInBar(window) && !window.isCompact;
+
+  /// Which sky the location paints (09 section 3.2).
+  ///
+  /// `sky.work` is the workbench, the region editor inside it, and the large
+  /// record fallback; everything else in the collection, the queue, intake
+  /// and the sources under it, is `sky.home`.
+  static SkyPreset skyOf(Uri location) =>
+      insideRecord(location) ? SkyPreset.work : SkyPreset.home;
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  /// Goes to [next], or back to the destination's own root when the reviewer
+  /// is already inside it.
+  ///
+  /// Pressing Intake while browsing a registered source used to do nothing,
+  /// because the source route belongs to the Intake destination and the
+  /// navigation only moved between destinations. That left the sources list
+  /// with no way back but the system gesture, which is half of finding V2-4.
   void _select(BuildContext context, WorkspaceDestination next) {
-    if (next == destination) return;
     final WorkspaceController controller = WorkspaceScope.read(context);
     final String? key = controller.defaultRouteKey;
     if (key == null) return;
-    context.go(
-      next == WorkspaceDestination.queue
-          ? AppRoutes.queueOf(key)
-          : AppRoutes.intakeOf(key),
-    );
+    final String root = next == WorkspaceDestination.queue
+        ? AppRoutes.queueOf(key)
+        : AppRoutes.intakeOf(key);
+    if (GoRouterState.of(context).uri.path == root) return;
+    context.go(root);
   }
 
   @override
   Widget build(BuildContext context) {
     final WorkspaceController controller = WorkspaceScope.of(context);
     final WindowClass window = WindowClass.of(context);
+    final Uri location = GoRouterState.of(context).uri;
     final bool sidebar = window.isAtLeast(WindowClass.large);
     final bool rail = !sidebar && window.isAtLeast(WindowClass.medium);
     final bool extended = rail && window.isAtLeast(WindowClass.expanded);
+    // 13 section 2.3: the pill hides on a screen that is inside a record,
+    // where the way out is the top bar's back. The frame owns this by route,
+    // and a record that asks for it again through the scaffold's own slot
+    // asks for what it already has.
+    //
+    // The pill, and only the pill. A rail and a sidebar are columns beside
+    // the body rather than chrome over it: they spend width, the budget in
+    // 13 section 2.3 is a share of the height, and a desktop with its
+    // navigation taken away inside a record has no navigation at all.
+    final bool inRecord = AppShell.insideRecord(location);
     final bool busy =
         controller.loading ||
         controller.recordLoading ||
@@ -102,8 +172,8 @@ class AppShell extends StatelessWidget {
 
     final Widget navigation = sidebar
         ? UiSidebar(
-            destinations: destinations,
-            currentIndex: destination.index,
+            destinations: AppShell.destinations,
+            currentIndex: widget.destination.index,
             onSelect: (int index) =>
                 _select(context, WorkspaceDestination.values[index]),
             header: _SidebarHeader(controller: controller),
@@ -111,19 +181,21 @@ class AppShell extends StatelessWidget {
           )
         : rail
         ? UiRail(
-            destinations: destinations,
-            currentIndex: destination.index,
+            destinations: AppShell.destinations,
+            currentIndex: widget.destination.index,
             extended: extended,
             onSelect: (int index) =>
                 _select(context, WorkspaceDestination.values[index]),
             // The bar's title already says the product's name, so the mark
             // beside it is decoration: a screen reader that reads both hears
             // it twice on the way into the navigation.
-            leading: const ExcludeSemantics(child: UiMark(label: markLabel)),
+            leading: const ExcludeSemantics(
+              child: UiMark(label: AppShell.markLabel),
+            ),
           )
         : UiPillNav(
-            destinations: destinations,
-            currentIndex: destination.index,
+            destinations: AppShell.destinations,
+            currentIndex: widget.destination.index,
             onSelect: (int index) =>
                 _select(context, WorkspaceDestination.values[index]),
           );
@@ -134,10 +206,19 @@ class AppShell extends StatelessWidget {
       // photograph publishes the matte's clear band through
       // `UiScaffoldExclusion.of(context)?.publish(rect)`, which the frame
       // clips its fields out of.
-      sky: skyOf(GoRouterState.of(context).uri),
-      topBar: _TopBar(controller: controller, window: window, sidebar: sidebar),
-      banner: _Chrome(controller: controller, busy: busy),
+      sky: AppShell.skyOf(location),
+      // What the route says the bar carries. A screen that names itself or
+      // its way out publishes through `UiScaffoldSlots`, and the frame draws
+      // what it asked for over this (13 section 3.4).
+      topBar: _TopBar(
+        controller: controller,
+        window: window,
+        sidebar: sidebar,
+        location: location,
+      ),
+      banner: _Chrome(controller: controller, busy: busy, window: window),
       nav: navigation,
+      navVisible: !(inRecord && !sidebar && !rail),
       // The routed screen is a nested `Navigator`, and a route's modal
       // barrier blocks the semantics of everything painted before it inside
       // the same semantics boundary. The shell's own chrome, the environment
@@ -145,38 +226,82 @@ class AppShell extends StatelessWidget {
       // its own the screen erased all of it: a reviewer working through a
       // browser's accessibility tree found a queue with no navigation and no
       // way into a record.
-      body: Semantics(container: true, explicitChildNodes: true, child: child),
+      body: Semantics(
+        container: true,
+        explicitChildNodes: true,
+        child: widget.child,
+      ),
     );
   }
 }
 
-/// The bar across the top of every collection screen.
+/// The bar across the top of every collection screen (13 sections 2.3 and 4).
+///
+/// Two arrangements, chosen by route. On a list screen the bar carries the
+/// mark, the collection switcher and the commands. Inside a record it carries
+/// the way out and the record's own name instead: a reviewer in a record is
+/// not choosing a collection, and the switcher there would offer to leave the
+/// thing they are reading without saying so.
+///
+/// The record publishes a bar of its own into the frame through
+/// `UiScaffoldSlots.setTopBar`, with its commands and, from `expanded` up, its
+/// decision (13 section 4.1), and the frame draws that over this one. What
+/// this builds inside a record is what the frame shows until the record has
+/// loaded, and it agrees with the record's bar on everything the two share.
+/// A screen that names the bar or its start slot alone, through `setTitle` or
+/// `setLeading`, reaches this bar through `UiTopBarAsk`, which `UiTopBar`
+/// reads itself (13 section 3.4, polish 3); the shell holds no hook for it.
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.controller,
     required this.window,
     required this.sidebar,
+    required this.location,
   });
 
   final WorkspaceController controller;
   final WindowClass window;
   final bool sidebar;
+  final Uri location;
 
   @override
   Widget build(BuildContext context) {
+    final String? record = AppShell.recordIn(location);
+    final bool inRecord = record != null;
     final bool switchable = controller.scopes.isNotEmpty;
     // The switcher is reachable at every window class (07 section 1.2): in
     // the bar's centre from medium up, in the bar's own title row on compact,
-    // and in the sidebar's header at large.
-    final bool inBar = !sidebar && switchable;
+    // and in the sidebar's header at large. Not inside a record, where the
+    // bar's one job is to say which record this is and how to leave it.
+    final bool inBar = !sidebar && switchable && !inRecord;
+    // What the bar names on this route, in the centre slot rather than the
+    // title slot (13 section 4.1): the centre takes a widget, so a record
+    // names itself in `mono.identifier`, which is the role 13 section 4.1
+    // gives a specimen id and which the title slot cannot draw.
+    final Widget? named = inRecord
+        ? _BarName(text: record, style: context.ui.type.mono.identifier)
+        : null;
+    final String? title = named != null || window.isCompact
+        ? null
+        : AppShell.markLabel;
 
+    // The frame draws the bar solid at every class, so it spends no pane
+    // (13 section 2.2, polish 3): nothing wraps it here.
     return UiTopBar(
       // The rail and the sidebar carry the mark, so the bar carries it only
-      // on a compact window, where there is neither.
-      leading: window.isCompact
+      // on a compact window, where there is neither. Inside a record the
+      // slot is the way out, which is what 13 section 2.3 puts there.
+      leading: inRecord
+          ? UiIconButton(
+              icon: UiIcons.back,
+              semanticsLabel: AppShell.backLabel,
+              tooltip: AppShell.backLabel,
+              onPressed: () => _leaveRecord(context),
+            )
+          : window.isCompact
           ? const UiMark(label: AppShell.markLabel)
           : null,
-      title: window.isCompact ? null : AppShell.markLabel,
+      title: title,
       center: inBar
           ? ConstrainedBox(
               constraints: const BoxConstraints(
@@ -184,13 +309,13 @@ class _TopBar extends StatelessWidget {
               ),
               child: _CollectionSwitcher(controller: controller),
             )
-          : null,
+          : named,
       // Declared commands rather than discs: a `UiTopBarAction` carries the
       // label, the glyph and the reason a menu row needs, so the bar can put
       // the ones past the second into its overflow menu on a window too
       // narrow to draw them beside the title. The account menu is a trigger
       // of its own and stays a widget, which the bar reads as "keep them all
-      // drawn"; it is the second action wherever it appears, so nothing
+      // drawn"; it is the last action wherever it appears, so nothing
       // collapses today and the bar is ready for the third.
       actions: <Widget>[
         UiTopBarAction(
@@ -207,36 +332,96 @@ class _TopBar extends StatelessWidget {
               ? 'The collection is loading. This is available once it lands.'
               : null,
         ),
-        // At large the sidebar's footer carries the account and signing out,
-        // so the bar carries help on its own; everywhere else the account
-        // menu is where help and signing out live.
-        if (sidebar)
+        // Below large the account menu closes the bar, inside a record as
+        // well (13 section 4.1, polish 3): the record's own bar carries the
+        // same menu in the same slot, and `Popover` fits its pane inside the
+        // window at every width now (10 section 3), so a menu opened from the
+        // last slot of a bar opens inside it. At large the sidebar's footer
+        // carries the account and signing out, and the bar carries help on
+        // its own.
+        if (AppShell.accountInBar(window))
+          ShellAccountMenu(controller: controller)
+        else
           UiTopBarAction(
             icon: UiIcons.help,
             label: AppShell.helpLabel,
             onPressed: () => context.push(AppRoutes.help),
-          )
-        else
-          _AccountMenu(controller: controller),
+          ),
       ],
     );
   }
+
+  /// Leaves the record for the queue it was opened from.
+  void _leaveRecord(BuildContext context) {
+    final String? key = AppRoutes.collectionKeyIn(location);
+    context.go(
+      key == null
+          ? AppRoutes.queueOf(controller.defaultRouteKey ?? '')
+          : AppRoutes.queueOf(key),
+    );
+  }
+}
+
+/// What the bar names, in the slot that takes a role rather than a string.
+///
+/// One line, ellipsised, with the whole of it on the semantics node and in a
+/// tooltip when it does not fit, which is what `UiLabel` is for.
+class _BarName extends StatelessWidget {
+  const _BarName({required this.text, required this.style});
+
+  /// The name.
+  final String text;
+
+  /// The role it is set in: `mono.identifier` for a record, `title` for a
+  /// screen that published its own name.
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) =>
+      UiLabel(text, style: style.copyWith(color: context.ui.color.ink));
 }
 
 /// Everything that sits between the top bar and the screen: the environment
 /// band, the repository's blockers, the screen level error and the progress
 /// strip.
 class _Chrome extends StatelessWidget {
-  const _Chrome({required this.controller, required this.busy});
+  const _Chrome({
+    required this.controller,
+    required this.busy,
+    required this.window,
+  });
 
   final WorkspaceController controller;
   final bool busy;
+  final WindowClass window;
 
   @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      EnvironmentBanner(environment: controller.environment),
+      // 13 section 2.3: at compact the band is one `label` line on its tint,
+      // 32 dp inside a 48 dp hit box, with the sentence, the contact and the
+      // recovery behind a tap. The ask is published around this banner alone:
+      // the blocker notice and the screen level error below it carry their own
+      // recovery, and a band whose recovery is behind a tap is a band a
+      // reviewer has to open before they can act.
+      //
+      // A route that asked the frame for a form comes first (13 section 3.4):
+      // the record asks for the strip at every window, because its decision
+      // bar and the band together are what its chrome budget is spent on. The
+      // window decides only where no route asked.
+      UiBandForm(
+        form:
+            UiBandForm.of(context) ??
+            (window.isCompact ? UiBannerForm.strip : UiBannerForm.full),
+        child: EnvironmentBanner(
+          environment: controller.environment,
+          // The open collection names its own administrator, which is a
+          // better answer than the build time default meant to cover every
+          // collection at once (07 section 10).
+          contactSentence: AdministratorContact.of(controller.scope).sentence,
+        ),
+      ),
       _BlockerNotice(blockers: controller.repository.blockers),
       _ErrorBanner(error: controller.error, onDismiss: controller.clearError),
       _ProgressStrip(busy: busy),
@@ -287,9 +472,17 @@ class _CollectionSwitcher extends StatelessWidget {
 }
 
 /// The account menu: the signed-in name, help, and signing out.
-class _AccountMenu extends StatelessWidget {
-  const _AccountMenu({required this.controller});
+///
+/// The shell's, and drawn at the end of every bar the shell owns below large
+/// (`AppShell.accountInBar`). Public because the record publishes a bar of its
+/// own into the frame and 13 section 4.1 (polish 3) puts the same menu on it
+/// in the same slot, so a reviewer inside a record can read which account
+/// they are using and sign out without leaving it (05 section 2).
+class ShellAccountMenu extends StatelessWidget {
+  /// The menu for the account [controller] holds.
+  const ShellAccountMenu({super.key, required this.controller});
 
+  /// The workspace whose session the menu names and signs out of.
   final WorkspaceController controller;
 
   @override

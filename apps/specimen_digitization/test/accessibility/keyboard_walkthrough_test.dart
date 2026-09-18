@@ -171,15 +171,15 @@ void main() {
       reason: 'K returns to the record it came from',
     );
 
-    // The queue does not wrap. At the head, the previous control is drawn and
-    // disabled with the reason on it rather than moving nowhere
-    // (pass criterion 5.6).
-    expect(
-      tester
-          .widget<UiIconButton>(uiIconButton('Previous specimen'))
-          .disabledReason,
-      'This is the first record in the queue.',
+    // The queue does not wrap. At the head the previous control is drawn
+    // disabled with the reason on its hint and its tooltip, so the end of the
+    // queue says why rather than moving nowhere (13 section 3.3, polish 3;
+    // pass criterion 5.6, finding V-2).
+    final UiIconButton previous = tester.widget<UiIconButton>(
+      uiIconButton('Previous specimen'),
     );
+    expect(previous.onPressed, isNull);
+    expect(previous.disabledReason, 'This is the first record in the queue.');
     await press(tester, LogicalKeyboardKey.keyK);
     expect(locationOf(tester), opened, reason: 'K at the head wraps nowhere');
 

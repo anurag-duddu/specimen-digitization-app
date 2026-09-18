@@ -66,6 +66,14 @@ void main() {
       greaterThanOrEqualTo(card.bottom),
       reason: 'one column stacks the manifest below the capture card',
     );
+    final Rect checks = tester.getRect(find.byType(IntakeChecks));
+    expect(
+      checks.top,
+      greaterThanOrEqualTo(manifest.bottom),
+      reason:
+          'the checks sit under the manifest, next to the action that sends '
+          'the batch (13 section 2.5: the manifest is above the fold)',
+    );
     expect(card.width, lessThan(WindowClass.mediumMin));
   });
 
@@ -101,8 +109,8 @@ void main() {
   ) async {
     await pumpIntake(tester, const Size(900, 700));
     expect(
-      tester.widget<IntakeManifest>(find.byType(IntakeManifest)).nested,
-      isFalse,
+      tester.widget<IntakeManifest>(find.byType(IntakeManifest)).scrollable,
+      isTrue,
     );
   });
 
@@ -111,8 +119,22 @@ void main() {
   ) async {
     await pumpIntake(tester, const Size(400, 2000));
     expect(
-      tester.widget<IntakeManifest>(find.byType(IntakeManifest)).nested,
-      isTrue,
+      tester.widget<IntakeManifest>(find.byType(IntakeManifest)).scrollable,
+      isFalse,
+      reason: 'the page is the one scroll and the manifest is a section of it',
+    );
+    // 13 section 2.1: one vertical scroll per screen. The manifest used to
+    // shrink wrap a `ListView` inside the page's own, which is the nesting
+    // the clause names.
+    expect(
+      find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is Scrollable &&
+                axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
+          )
+          .evaluate(),
+      hasLength(1),
     );
   });
 

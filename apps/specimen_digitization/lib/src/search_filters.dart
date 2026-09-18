@@ -73,6 +73,9 @@ class SearchFilters extends StatefulWidget {
     required this.initial,
     this.configuration = const <String, dynamic>{},
     this.savedFilters,
+    this.dispositions,
+    this.dispositionLabel = 'Status',
+    this.disposition = '',
   });
 
   /// The filters already applied.
@@ -85,6 +88,22 @@ class SearchFilters extends StatefulWidget {
   /// (pass criterion 7.4).
   final SavedFilterStore? savedFilters;
 
+  /// The disposition options this sheet also chooses, or null where the
+  /// screen draws them itself.
+  ///
+  /// A phone has no room for six chips above the list and a pinned row it
+  /// could put them in (13 sections 2.3 and 4.2), so the sheet is where the
+  /// disposition is chosen there. A window with room keeps them one tap away
+  /// and passes null.
+  final Map<String, String>? dispositions;
+
+  /// What the disposition filter is called. The caller's word, so the sheet
+  /// and the chip that survives it cannot drift.
+  final String dispositionLabel;
+
+  /// The disposition already chosen, as a key of [dispositions].
+  final String disposition;
+
   /// Opens the form and answers the filters the reviewer applied.
   ///
   /// Null when they backed out; an empty map when they cleared everything,
@@ -94,6 +113,10 @@ class SearchFilters extends StatefulWidget {
     required Map<String, String> initial,
     Json configuration = const <String, dynamic>{},
     SavedFilterStore? savedFilters,
+    Map<String, String>? dispositions,
+    String dispositionLabel = 'Status',
+    String disposition = '',
+    ValueChanged<String>? onDisposition,
   }) {
     final GlobalKey<SearchFiltersState> form = GlobalKey<SearchFiltersState>();
     return showProductModal<Map<String, String>>(
@@ -104,18 +127,30 @@ class SearchFilters extends StatefulWidget {
         initial: initial,
         configuration: configuration,
         savedFilters: savedFilters,
+        dispositions: dispositions,
+        dispositionLabel: dispositionLabel,
+        disposition: disposition,
       ),
       secondaryAction: (BuildContext modalContext) => UiButton(
         label: 'Clear all',
         variant: UiButtonVariant.ghost,
-        onPressed: () =>
-            Navigator.of(modalContext).pop(const <String, String>{}),
+        onPressed: () {
+          // Clearing clears everything the sheet holds, the disposition
+          // included: a reviewer who cleared the filters and found the list
+          // still hiding four of its six dispositions would be right to call
+          // that a lie.
+          onDisposition?.call('');
+          Navigator.of(modalContext).pop(const <String, String>{});
+        },
       ),
       primaryAction: (BuildContext modalContext) => UiButton(
         label: 'Apply',
         onPressed: () {
-          final Map<String, String>? values = form.currentState?.submit();
-          if (values != null) Navigator.of(modalContext).pop(values);
+          final SearchFiltersState? state = form.currentState;
+          final Map<String, String>? values = state?.submit();
+          if (values == null) return;
+          onDisposition?.call(state!.disposition);
+          Navigator.of(modalContext).pop(values);
         },
       ),
     );
@@ -133,6 +168,13 @@ class SearchFiltersState extends State<SearchFilters> {
   late final Map<String, String> _values = Map<String, String>.from(
     widget.initial,
   );
+
+  /// The disposition the reviewer has chosen in this sheet.
+  ///
+  /// Public for the same reason [submit] is: the control that commits the
+  /// sheet is drawn by the chrome around it.
+  String get disposition => _disposition;
+  late String _disposition = widget.disposition;
   final Map<String, TextEditingController> _text =
       <String, TextEditingController>{};
   final Map<String, String> _errors = <String, String>{};
@@ -383,6 +425,29 @@ class SearchFiltersState extends State<SearchFilters> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          if (widget.dispositions != null) ...<Widget>[
+            _Group(
+              title: widget.dispositionLabel,
+              children: <Widget>[
+                UiSelect<String>(
+                  label: widget.dispositionLabel,
+                  placeholder: widget.dispositions![''] ?? 'All',
+                  value: _disposition,
+                  options: <UiSelectOption<String>>[
+                    for (final MapEntry<String, String> entry
+                        in widget.dispositions!.entries)
+                      UiSelectOption<String>(
+                        value: entry.key,
+                        label: entry.value,
+                      ),
+                  ],
+                  onChanged: (String value) =>
+                      setState(() => _disposition = value),
+                ),
+              ],
+            ),
+            SizedBox(height: ui.space.s4),
+          ],
           if (widget.savedFilters != null)
             _SavedSets(
               sets: _saved,

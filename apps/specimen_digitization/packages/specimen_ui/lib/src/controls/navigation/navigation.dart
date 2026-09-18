@@ -10,9 +10,11 @@
 /// needs, and nothing outside this family has a use for either.
 library;
 
+export 'collapsing_header.dart';
 export 'nav_destination.dart';
 export 'pill_nav.dart';
 export 'rail.dart';
 export 'scaffold.dart';
 export 'sidebar.dart';
+export 'sticky_bar.dart';
 export 'top_bar.dart';

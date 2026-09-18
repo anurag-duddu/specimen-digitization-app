@@ -102,6 +102,15 @@ class IntakeScreen extends StatefulWidget {
 
 class _IntakeScreenState extends State<IntakeScreen> {
   final List<ManifestEntry> _entries = <ManifestEntry>[];
+
+  /// The frame's slots, so the upload action goes where 13 section 3.3 puts a
+  /// screen's decision.
+  UiScaffoldSlots? _slots;
+
+  /// What the published action bar last said, so the frame is told once per
+  /// change rather than once per frame.
+  ({bool busy, bool confirmed, int pending, bool current})? _publishedUpload;
+
   bool _busy = false;
   bool _stopRequested = false;
   bool _qualityConfirmed = false;
@@ -123,6 +132,18 @@ class _IntakeScreenState extends State<IntakeScreen> {
   void initState() {
     super.initState();
     _restore().then((_) => _recoverCamera());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _slots = UiScaffoldSlots.of(context);
+  }
+
+  @override
+  void dispose() {
+    _slots?.release(this);
+    super.dispose();
   }
 
   // ---------------------------------------------------------------- storage
@@ -645,54 +666,112 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onDismiss: () => setState(() => _error = null),
   );
 
-  Widget _captureColumn(BuildContext context) {
+  /// The screen's own name and purpose (13 section 4.4's batch header).
+  Widget _batchHeader(BuildContext context) {
     final UiThemeData ui = context.ui;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        // Height and opacity, no shake and no colour pulse: the control below
-        // is already the retry (motion catalog, row 69).
-        MotionReveal(
-          visible: _error != null,
-          child: _error == null
-              ? const SizedBox(width: double.infinity)
-              : Padding(
-                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
-                  child: _errorBand(context),
-                ),
+        Semantics(
+          container: true,
+          header: true,
+          child: Text(
+            intakeTitle,
+            style: ui.type.headline.copyWith(color: ui.color.ink),
+          ),
         ),
-        IntakeCaptureCard(
-          sensitive: _newSensitive,
-          onSensitivityChanged: _busy
-              ? null
-              : (bool value) => setState(() => _newSensitive = value),
-          onChooseFiles: _busy ? null : _chooseFiles,
-          onTakePhotograph: _busy ? null : _takePhotograph,
-          cameraAvailable: _cameraAvailable,
-          confirmed: _qualityConfirmed,
-          onConfirmedChanged: _busy
-              ? null
-              : (bool value) => setState(() => _qualityConfirmed = value),
-          onUpload: _busy || !_qualityConfirmed || _pendingCount == 0
-              ? null
-              : _send,
-          uploading: _busy,
-          pendingCount: _pendingCount,
-        ),
-        if (widget.onBrowseSources != null) ...<Widget>[
-          SizedBox(height: ui.space.s4),
-          _sourcesEntry(context),
-        ],
+        SizedBox(height: ui.space.s2),
+        Text(intakePurpose, style: ui.type.body.copyWith(color: ui.color.ink)),
       ],
     );
   }
 
-  /// The way to the photographs the collection already holds.
+  Widget _captureCard(BuildContext context) => IntakeCaptureCard(
+    sensitive: _newSensitive,
+    onSensitivityChanged: _busy
+        ? null
+        : (bool value) => setState(() => _newSensitive = value),
+    onChooseFiles: _busy ? null : _chooseFiles,
+    onTakePhotograph: _busy ? null : _takePhotograph,
+    cameraAvailable: _cameraAvailable,
+  );
+
+  /// The pre-upload checks, and the upload action where there is no frame to
+  /// put it in.
+  Widget _checks(BuildContext context) => IntakeChecks(
+    confirmed: _qualityConfirmed,
+    onConfirmedChanged: _busy
+        ? null
+        : (bool value) => setState(() => _qualityConfirmed = value),
+    // The frame carries the action while there is a batch to send. Before
+    // there is one, and in any host with no `UiScaffold` above this screen,
+    // the control stays here, so the one thing that releases a batch is never
+    // somewhere a reviewer cannot find it.
+    upload: _uploadCarriedByFrame ? null : _uploadButton(),
+  );
+
+  /// True while the frame's action bar is the one drawing the upload action.
   ///
-  /// Under the capture card rather than beside it: uploading is still the
-  /// ordinary path, and this is the one for a collection whose photographs
-  /// are already in storage.
+  /// A batch that is in flight keeps it there even as the rows settle and the
+  /// pending count falls to zero: a control that moved back into the page
+  /// half way through its own upload is the interface moving under the
+  /// reviewer.
+  bool get _uploadCarriedByFrame =>
+      _slots != null && (_pendingCount > 0 || _busy);
+
+  /// The one control that releases a batch.
+  UiButton _uploadButton() => UiButton(
+    key: const ValueKey<String>('intake-upload'),
+    // The label is the present participle while a batch is in flight and the
+    // control is disabled, which is what 02 section 4.3 asks for. The measured
+    // progress is on the manifest, where the denominator is.
+    label: intakeUploadLabel(uploading: _busy, pending: _pendingCount),
+    leading: UiIcons.cloudUpload,
+    onPressed: _busy || !_qualityConfirmed || _pendingCount == 0 ? null : _send,
+  );
+
+  /// Puts the upload action in the frame's action bar (13 section 3.3).
+  ///
+  /// Only while there is a batch to send, and only while this screen is the
+  /// route on top. A bar that says "Upload 0 photographs" and cannot be
+  /// pressed is a pinned region with nothing to decide, and 13 section 2.3
+  /// spends pinned height on nothing at its peril: a phone at 200 percent
+  /// text pins 70 dp of top bar, 52 of band and 64 of navigation, which
+  /// leaves 50 of the 236 the budget allows and an action bar is 80. The
+  /// sources list and one source are routes under this one, so this screen
+  /// stays mounted beneath them; without the [current] test its upload bar
+  /// would follow the reviewer into a screen that has its own decision.
+  ///
+  /// Published only when what it says changes, so the frame is told about its
+  /// own action bar once per change rather than once per frame.
+  void _publishUpload({required bool current}) {
+    final UiScaffoldSlots? slots = _slots;
+    if (slots == null) return;
+    final ({bool busy, bool confirmed, int pending, bool current}) state = (
+      busy: _busy,
+      confirmed: _qualityConfirmed,
+      pending: _pendingCount,
+      current: current,
+    );
+    if (state == _publishedUpload) return;
+    _publishedUpload = state;
+    slots.setActionBar(
+      // The decision bar of 13 section 3.3, carrying the one decision this
+      // screen has. It used to be a `UiButtonRow`, because a bar carrying
+      // only a primary had no last resort and "Upload 0 photographs" with its
+      // glyph overflowed a phone by five pixels at 200 percent text; the bar
+      // measures its primary with its glyph now and lets it ellipsise at the
+      // last resort the way a bar carrying two does (polish 3), so the frame
+      // holds the same pattern at the same height on every screen that
+      // decides.
+      current && _uploadCarriedByFrame
+          ? UiDecisionBar(primary: _uploadButton())
+          : null,
+      owner: this,
+    );
+  }
+
   Widget _sourcesEntry(BuildContext context) => UiButtonRow(
     primary: UiButton(
       label: intakeBrowseSourcesLabel,
@@ -705,7 +784,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
   Widget _manifest(
     BuildContext context, {
     EdgeInsetsGeometry? padding,
-    bool nested = false,
+    bool scrollable = true,
   }) => IntakeManifest(
     entries: _entries,
     busy: _busy,
@@ -714,13 +793,32 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onRemove: _remove,
     onServerCheck: _preflight,
     padding: padding,
-    nested: nested,
+    scrollable: scrollable,
   );
+
+  /// The one message slot, revealed above the sections.
+  Widget _errorSlot(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    // Height and opacity, no shake and no colour pulse: the control below
+    // is already the retry (motion catalog, row 69).
+    return MotionReveal(
+      visible: _error != null,
+      child: _error == null
+          ? const SizedBox(width: double.infinity)
+          : Padding(
+              padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
+              child: _errorBand(context),
+            ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    // Two declared arrangements, one per window class: a single column below
+    // `ModalRoute.of` depends on the scope that carries `isCurrent`, so this
+    // screen is rebuilt when a route is pushed over it or popped back off.
+    _publishUpload(current: ModalRoute.of(context)?.isCurrent ?? true);
+    // Two declared arrangements, one per window class: a single scroll below
     // 600 dp and two columns from 600 up, with the capture card fixed on the
     // start edge so the control an operator presses repeatedly never scrolls
     // away from the list it fills (05 section 3.4; 07 section 5). The window
@@ -728,12 +826,45 @@ class _IntakeScreenState extends State<IntakeScreen> {
     final bool twoColumn =
         const Adaptive<bool>(compact: false, medium: true).of(context) ?? false;
     if (!twoColumn) {
-      return ListView(
-        padding: EdgeInsetsDirectional.all(ui.space.s4),
-        children: <Widget>[
-          _captureColumn(context),
-          SizedBox(height: ui.space.s6),
-          _manifest(context, padding: EdgeInsets.zero, nested: true),
+      // One scroll of sections with an `s6` gap between them (13 section
+      // 4.4). The manifest used to be a shrink wrapped list inside this one,
+      // which is the nesting 13 section 2.1 forbids, and the capture card
+      // used to carry the checks and the upload as well, which laid it out
+      // 1018 dp tall in an 844 dp window.
+      //
+      // The checks are under the manifest rather than over it, which is the
+      // one place this differs from 13 section 4.4's order. 13 section 2.5
+      // asks for the manifest's first row inside the first viewport, and at
+      // 200 percent text on a 390 by 844 phone the chrome takes 122 dp and
+      // leaves 722: the header is 137 of it and the capture card 320, so the
+      // manifest starts at 643 with the checks after it and at 964 with the
+      // checks before it. Section 2.5 is the clause the gates measure, and
+      // the checks read better where they now are anyway: the confirmation
+      // that releases a batch sits next to the control that sends it.
+      final List<Widget> sections = <Widget>[
+        _batchHeader(context),
+        _captureCard(context),
+        _manifest(context, padding: EdgeInsets.zero, scrollable: false),
+        _checks(context),
+        if (widget.onBrowseSources != null) _sourcesEntry(context),
+      ];
+      return CustomScrollView(
+        slivers: <Widget>[
+          SliverPadding(
+            padding: EdgeInsetsDirectional.all(ui.space.s4),
+            sliver: SliverList.separated(
+              itemCount: sections.length + 1,
+              itemBuilder: (BuildContext context, int index) =>
+                  index == 0 ? _errorSlot(context) : sections[index - 1],
+              separatorBuilder: (BuildContext context, int index) =>
+                  SizedBox(height: index == 0 ? 0 : ui.space.s6),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: ui.space.s4 + UiScaffold.of(context).bottomInset,
+            ),
+          ),
         ],
       );
     }
@@ -745,7 +876,25 @@ class _IntakeScreenState extends State<IntakeScreen> {
           width: intakeCaptureColumnWidth,
           child: SingleChildScrollView(
             padding: EdgeInsetsDirectional.all(ui.space.s6),
-            child: _captureColumn(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                _errorSlot(context),
+                _batchHeader(context),
+                SizedBox(height: ui.space.s6),
+                _captureCard(context),
+                SizedBox(height: ui.space.s6),
+                _checks(context),
+                if (widget.onBrowseSources != null) ...<Widget>[
+                  SizedBox(height: ui.space.s6),
+                  _sourcesEntry(context),
+                ],
+                SizedBox(
+                  height: ui.space.s4 + UiScaffold.of(context).bottomInset,
+                ),
+              ],
+            ),
           ),
         ),
         // Decorative separation between two panes, never a boundary

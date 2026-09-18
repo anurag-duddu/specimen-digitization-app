@@ -1,10 +1,28 @@
-/// The status strip above the evidence segments (screen blueprints, 6.1).
+/// The status strip above the evidence segments (13 sections 3.2 and 4.1).
 ///
-/// The disposition, the run and version, the stage, what blocks clearance,
-/// and what the reviewer has changed but not yet saved. The run internals
-/// that used to fill the record status card live behind one closed
-/// disclosure, because they are an operator's concern and not a reviewer's
-/// (audit finding H8.2).
+/// One line at the top of the evidence: where the record stands, what made
+/// the reading, and what is holding a decision up. `UiStatusStrip` is the
+/// pattern; this is the record's binding of it. The blockers used to be a
+/// disclosure that grew the strip to five rows on a phone and are now a
+/// summary that opens `UiBlockersSheet`, one row per blocker with the control
+/// that clears it (13 section 3.2).
+///
+/// The version, the run and the step are the strip's provenance from medium
+/// up, each the product's own glossary term with its definition one tap from
+/// the word it is read on (13 section 3.2, polish 3; pass criterion 10.2); a
+/// phone states the disposition and what blocks clearance and nothing else
+/// (13 section 4.1).
+///
+/// The strip scrolls with the evidence, so it costs the chrome budget
+/// nothing. Two things are drawn above it and only when they exist, because
+/// each is a statement about this record rather than a part of the line: the
+/// conflict banner, which says the record moved under the reviewer, and the
+/// corrections the reviewer has made and not yet sent.
+///
+/// The run internals that used to fill the record status card are an
+/// operator's concern and not a reviewer's (audit finding H8.2). They are one
+/// closed disclosure in the Fields segment, beside the review context, which
+/// is where the blocker that names them sends the reviewer.
 library;
 
 import 'package:flutter/semantics.dart';
@@ -12,7 +30,6 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
-import '../../operational_panel.dart';
 import '../../review_context.dart';
 import '../../theme/motion.dart';
 import '../../vocabulary.dart';
@@ -20,18 +37,14 @@ import '../../widgets/widgets.dart';
 import 'blockers.dart';
 import 'pending_changes.dart';
 
-/// The compact status header of the evidence pane.
+/// Where the record stands, in one line.
 class WorkbenchStatusStrip extends StatefulWidget {
   const WorkbenchStatusStrip({
     super.key,
     required this.specimen,
     required this.blockers,
     required this.pending,
-    required this.canOperate,
-    required this.busy,
-    required this.onAction,
     required this.onGoToBlocker,
-    required this.onReviewPending,
     this.conflictVersion,
     this.onRefresh,
     this.staleChanges = const <PendingFieldChange>[],
@@ -49,20 +62,8 @@ class WorkbenchStatusStrip extends StatefulWidget {
   /// Corrections dropped because the field moved under the reviewer.
   final List<PendingFieldChange> staleChanges;
 
-  /// True when this session may act on the run.
-  final bool canOperate;
-
-  /// True while a save is in flight.
-  final bool busy;
-
-  /// Sends a run action.
-  final Future<void> Function(Json) onAction;
-
   /// Moves to the control that resolves one blocker.
   final void Function(ClearanceBlocker) onGoToBlocker;
-
-  /// Opens the pending changes for saving.
-  final VoidCallback onReviewPending;
 
   /// The version another reviewer saved, when one arrived under this one.
   final int? conflictVersion;
@@ -70,13 +71,23 @@ class WorkbenchStatusStrip extends StatefulWidget {
   /// Reloads the record so the reviewer can compare.
   final VoidCallback? onRefresh;
 
+  /// The glossary word the version fact is an instance of, so its definition
+  /// is one tap from the line it is read on (13 section 3.2, polish 3; pass
+  /// criterion 10.2). Drawn as the first word of the fact; the glossary reads
+  /// it case insensitively.
+  static const String versionTerm = 'Version';
+
+  /// The run fact's word.
+  static const String runTerm = 'Run';
+
+  /// The step fact's word.
+  static const String stepTerm = 'Step';
+
   @override
   State<WorkbenchStatusStrip> createState() => _WorkbenchStatusStripState();
 }
 
 class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
-  bool _blockersOpen = false;
-
   /// The disposition this strip last drew, so a change can be told from a
   /// first paint. A record opened at Cleared was not cleared just now.
   String? _lastDisposition;
@@ -125,14 +136,15 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final Specimen s = widget.specimen;
-    final Json run = objectOf(s.data['run']);
+    final Specimen record = widget.specimen;
+    final Json run = objectOf(record.data['run']);
     final SpecimenStatus status = SpecimenStatus.fromWire(
-      s.disposition ?? s.data['operational_state'] as String?,
+      record.disposition ?? record.data['operational_state'] as String?,
     );
     final String stage = vocabularyLabel(
-      textOf(run['stage'], textOf(s.data['stage'], '')),
+      textOf(run['stage'], textOf(record.data['stage'], '')),
     );
+    final List<ClearanceBlocker> blockers = widget.blockers;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -154,44 +166,12 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
                   ),
                 ),
         ),
-        Wrap(
-          spacing: ui.space.s2,
-          runSpacing: ui.space.s2,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: <Widget>[
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // Flexible, because a `Row` hands a non-flex child unbounded
-                // main axis constraints and the chip's own label would then
-                // never truncate.
-                Flexible(child: StatusChip(status, decisive: true)),
-                _SavedCheck(shown: _settled),
-              ],
-            ),
-            // Version, Run and Step are the three words the strip uses
-            // that a first-time reviewer has no way to guess, so each
-            // carries its own definition (pass criterion 10.2). The values
-            // beside them are identifiers, so they are set in
-            // `mono.identifier` and the word beside them is not.
-            _MetaPair(term: 'Version', value: '${s.revision}'),
-            if (s.data['active_run_id'] != null)
-              _MetaPair(term: 'Run', value: textOf(s.data['active_run_id'])),
-            if (stage.isNotEmpty && stage != 'Not recorded')
-              _MetaPair(term: 'Step', value: stage, identifier: false),
-            if (widget.pending.isNotEmpty)
-              _PendingChip(
-                count: widget.pending.length,
-                onPressed: widget.onReviewPending,
-              ),
-          ],
-        ),
         MotionReveal(
           visible: widget.staleChanges.isNotEmpty,
           child: widget.staleChanges.isEmpty
               ? const SizedBox(width: double.infinity)
               : Padding(
-                  padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+                  padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
                   child: Semantics(
                     liveRegion: true,
                     child: Text(
@@ -210,198 +190,124 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
                   ),
                 ),
         ),
-        SizedBox(height: ui.space.s2),
-        _blockers(context),
-        ProcessingDisclosure(
-          specimen: s,
-          canOperate: widget.canOperate,
-          busy: widget.busy,
-          onAction: widget.onAction,
+        // What the reviewer has changed and not sent. A statement of the
+        // record's state and not a control: the decision bar carries the one
+        // control that sends them, where a thumb can reach it from the field
+        // that was just corrected (13 section 2.4).
+        if (widget.pending.isNotEmpty)
+          Padding(
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: _PendingChip(count: widget.pending.length),
+            ),
+          ),
+        UiStatusStrip(
+          disposition: _Disposition(status: status, settled: _settled),
+          // The provenance, on every window with a line long enough to hold
+          // it beside the two things that outrank it. A phone has 358 dp for
+          // a 130 dp chip, 160 of run and version and a 180 dp summary, and
+          // 11 section 3.3 rule 3 is that a control below its threshold drops
+          // a variant rather than ellipsising a word to a letter. What blocks
+          // clearance is stated in words at every width, because the north
+          // star says a count is never a colour or a glyph alone; the run and
+          // the version are what a reviewer reads at leisure, and they are in
+          // the Fields segment's processing disclosure either way.
+          //
+          // Each fact is a `TermText`: its first word is the product's own
+          // glossary term and opens its definition on the line it is read on,
+          // spoken whole with its value ("Version 17, term, double tap for
+          // definition") on a node of its own (13 section 3.2, polish 3).
+          provenance: WindowClass.of(context).isCompact
+              ? const <Widget>[]
+              : <Widget>[
+                  _fact(WorkbenchStatusStrip.versionTerm, '${record.revision}'),
+                  if (record.data['active_run_id'] != null)
+                    _fact(
+                      WorkbenchStatusStrip.runTerm,
+                      textOf(record.data['active_run_id']),
+                    ),
+                  if (stage.isNotEmpty && stage != 'Not recorded')
+                    _fact(WorkbenchStatusStrip.stepTerm, stage),
+                ],
+          blockers: blockers.isEmpty
+              ? null
+              : UiBlockers(
+                  summary: blockersSummary(blockers.length),
+                  sheetTitle: blockersSheetTitle,
+                  items: <UiBlocker>[
+                    for (final ClearanceBlocker blocker in blockers)
+                      UiBlocker(
+                        label: blocker.message,
+                        detail: blocker.detail,
+                        actionLabel: goToBlockerLabel,
+                        onAction: () => widget.onGoToBlocker(blocker),
+                      ),
+                  ],
+                ),
         ),
       ],
     );
   }
-
-  /// What blocks clearance: one line when nothing does, and a disclosure over
-  /// the list when something does.
-  ///
-  /// `UiDisclosure` has no leading slot, so the amber flag that used to sit
-  /// beside the summary now sits on every row inside it. The cleared form is
-  /// a statement rather than a control, because a disclosure over an empty
-  /// list is a control that does nothing (pass criterion 5.6).
-  Widget _blockers(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final List<ClearanceBlocker> blockers = widget.blockers;
-    final String summary = blockersSummary(blockers.length);
-    if (blockers.isEmpty) {
-      return Padding(
-        padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
-        child: MergeSemantics(
-          child: Row(
-            children: <Widget>[
-              UiIcon(
-                UiIcons.cleared,
-                size: UiIconSize.inline,
-                color: ui.color.status.cleared.content,
-              ),
-              SizedBox(width: ui.space.s2),
-              Flexible(child: Text(summary, style: ui.type.label)),
-            ],
-          ),
-        ),
-      );
-    }
-    return UiDisclosure(
-      title: summary,
-      onExpansionChanged: (bool open) => _blockersOpen = open,
-      initiallyExpanded: _blockersOpen,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          for (final ClearanceBlocker blocker in blockers)
-            _BlockerRow(
-              blocker: blocker,
-              onGoTo: () => widget.onGoToBlocker(blocker),
-            ),
-        ],
-      ),
-    );
-  }
 }
 
-/// A word the product defines, and the value beside it.
+/// One provenance fact: the glossary [term] and its [value], as the strip's
+/// paragraph draws it.
 ///
-/// The word carries its own definition; the value is an identifier and is set
-/// in `mono.identifier` so two run ids can be told apart at a glance
-/// (blueprint 6.1).
-class _MetaPair extends StatelessWidget {
-  const _MetaPair({
-    required this.term,
-    required this.value,
-    this.identifier = true,
-  });
+/// One line, so a fact that does not fit leaves the paragraph whole rather
+/// than wrapping the strip to two. And built with no text scaling of its own:
+/// the strip sets each fact as a placeholder in one paragraph, and a
+/// paragraph already scales a placeholder by the text scale (`WidgetSpan`
+/// wraps each child in the SDK's auto scaling inline widget), so a `Text`
+/// inside one that also read the scale drew at four times its size at 200
+/// percent, which is "Version 17" wrapped over four lines of display type in
+/// the record's goldens at 768 by 1024 before this. The fact takes the
+/// paragraph's scale once. The pattern should do this for every slot it is
+/// given, the plain `facts` form included; recorded for `UiStatusStrip` 0.4.0.
+Widget _fact(String term, String value) => MediaQuery.withNoTextScaling(
+  child: TermText(term, trailing: ' $value', maxLines: 1),
+);
 
-  final String term;
-  final String value;
+/// Where the record stands, and the check that marks a decision just made.
+///
+/// The strip's disposition slot. A `Row` that is handed a bounded width by
+/// the strip, so both children are flexible: an inflexible child of a `Row`
+/// is given an unbounded main axis and a chip at 200 percent text then lays
+/// out at its intrinsic width and pushes the line over (11 section 3.3).
+class _Disposition extends StatelessWidget {
+  const _Disposition({required this.status, required this.settled});
 
-  /// False where the value is a word rather than an identifier, such as the
-  /// processing step.
-  final bool identifier;
+  final SpecimenStatus status;
 
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final TextStyle label = ui.type.label.copyWith(
-      color: ui.color.inkSecondary,
-    );
-    return MergeSemantics(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          TermText(term, style: label, spokenTerm: '$term $value'),
-          SizedBox(width: ui.space.s1),
-          // The spoken term already carries the value, so the drawn one is
-          // not a second stop that says the number twice.
-          Flexible(
-            child: ExcludeSemantics(
-              child: Text(
-                value,
-                style: identifier
-                    ? ui.type.mono.identifier.copyWith(
-                        color: ui.color.inkSecondary,
-                      )
-                    : label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BlockerRow extends StatelessWidget {
-  const _BlockerRow({required this.blocker, required this.onGoTo});
-
-  final ClearanceBlocker blocker;
-  final VoidCallback onGoTo;
-
-  /// What the control that moves to the blocking field is called.
-  static const String goToLabel = 'Go to';
+  /// True once the disposition changed while this record was open.
+  final bool settled;
 
   @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final String? detail = blocker.detail;
-    return Padding(
-      padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Padding(
-            padding: EdgeInsetsDirectional.only(top: ui.space.s1),
-            child: UiIcon(
-              UiIcons.needsReview,
-              size: UiIconSize.inline,
-              color: ui.color.status.needsReview.content,
-            ),
-          ),
-          SizedBox(width: ui.space.s2),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(blocker.message, style: ui.type.body),
-                if (detail != null && detail.isNotEmpty)
-                  Text(
-                    detail,
-                    style: ui.type.bodySmall.copyWith(
-                      color: ui.color.inkSecondary,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          SizedBox(width: ui.space.s2),
-          UiButton(
-            label: goToLabel,
-            variant: UiButtonVariant.ghost,
-            semanticsLabel: '$goToLabel: ${blocker.message}',
-            onPressed: onGoTo,
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: <Widget>[
+      Flexible(child: StatusChip(status, decisive: true)),
+      _SavedCheck(shown: settled),
+    ],
+  );
 }
 
 /// The amber count of corrections the reviewer has made but not sent.
 ///
-/// A chip rather than a button, because it is a state of the record that
-/// happens to be pressable, and the amber is the state (blueprint 6.4). A
-/// filter chip is the only pressable chip the system has; it publishes a
-/// toggle, which is recorded in the slot closeout.
+/// A state of the record, in the colour the state is drawn in (blueprint
+/// 6.4), and nothing more: the control that sends them is the decision bar's
+/// primary while there are any, which is where a reviewer's thumb already is
+/// and one region per job (13 section 2.4).
 class _PendingChip extends StatelessWidget {
-  const _PendingChip({required this.count, required this.onPressed});
+  const _PendingChip({required this.count});
 
   final int count;
-  final VoidCallback onPressed;
-
-  /// What pressing it does.
-  static const String action = 'Review and save these corrections';
 
   @override
   Widget build(BuildContext context) => UiChip(
     label: pendingChangesLabel(count),
-    variant: UiChipVariant.filter,
     icon: UiIcons.editReason,
     status: context.ui.color.status.needsReview,
-    semanticsLabel: '${pendingChangesLabel(count)}. $action',
-    onPressed: onPressed,
   );
 }
 

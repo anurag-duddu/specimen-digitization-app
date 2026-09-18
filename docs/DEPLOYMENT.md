@@ -88,11 +88,24 @@ allowlist is not evidence that an entrypoint or its live inputs are ready.
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
 | `Python tests` | Locked Python environment and all backend/policy tests |
-| `Flutter checks and web build` | Locked Flutter dependencies, static analysis, widget tests, release build, and immutable deployment metadata |
+| `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
 They receive neither the real FlutterFire configuration nor a Google OIDC
 token and cannot deploy.
+
+`scripts/ci/smoke_web_routes.py` runs between the deployment stamp and the
+artifact upload, so a build that fails it is never uploaded and therefore can
+never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites
+`firebase.json` declares, reads the route table out of
+`apps/specimen_digitization/lib/src/app/app_router.dart`, and proves three
+things about the artifact: every declared location answers with the
+application shell rather than a 404, the design system gallery is absent from
+the release bundle, and `deployment.json` is the exact marker
+`scripts/ci/deploy_hosting.sh` and `scripts/ci/smoke_hosting.sh` accept. It
+contacts no host, holds no credential and deploys nothing. It says nothing
+about the public site: only `scripts/ci/smoke_hosting.sh` does that, after a
+deploy.
 
 ### Pushes to `main`
 
@@ -209,10 +222,17 @@ scripts/ci/verify.sh
 ```
 
 This is the canonical local gate. It runs repository hooks, secret scanning,
-actionlint, shellcheck, locked Python installation, Python tests, Flutter
-dependency resolution, Flutter analysis, Flutter tests, and the release web
-build. If the local ignored production FlutterFire file is absent, it uses and
-then removes the credential-free CI placeholder. It never deploys.
+actionlint, shellcheck, locked Python installation, Python tests, the UI
+string check, the `specimen_ui` design system's own analysis and tests, client
+dependency resolution, client analysis, client tests, Dart formatting, the
+release web build, and the route smoke over that build. If the local ignored
+production FlutterFire file is absent, it uses and then removes the
+credential-free CI placeholder. It never deploys.
+
+It runs the same Dart formatting and route checks the `Flutter checks and web
+build` job runs, so a branch that passes here passes those two in CI. On a
+loaded workstation the whole script can be reaped part way through; run its
+gates one at a time when that happens and read each gate's own exit status.
 
 ### Repository and secret checks only
 
@@ -254,6 +274,10 @@ USD 5 reservation ledger. It is never run inside ordinary pull-request CI.
 
 ### Flutter client
 
+The client is two Dart packages: the application, and the `specimen_ui` design
+system it is built from. Both are resolved, analysed and tested, in that order,
+because a control changes under every screen at once.
+
 ```bash
 cd apps/specimen_digitization
 flutter pub get --enforce-lockfile
@@ -262,12 +286,77 @@ flutter test
 flutter build web --release
 ```
 
+```bash
+cd apps/specimen_digitization/packages/specimen_ui
+flutter pub get
+flutter analyze --fatal-infos
+flutter test
+```
+
+Run each command on its own and read its own exit code. The two suites contend
+for one machine, so a single chained command can be reaped without either
+having failed.
+
+Formatting is checked before a commit and is not a repository hook:
+
+```bash
+cd apps/specimen_digitization
+dart format --set-exit-if-changed lib test
+```
+
 For local development only:
 
 ```bash
 cd apps/specimen_digitization
 flutter run
 ```
+
+The credential-free native compile checks are
+`scripts/ci/build_mobile.sh android` and `scripts/ci/build_mobile.sh ios`. They
+are described under "Credential-free mobile build coverage" below and must not
+run concurrently with other Flutter verification in the same worktree.
+
+#### What the rebuilt client means for a release
+
+The presentation layer was replaced in September 2026 by an in-repo design
+system, `apps/specimen_digitization/packages/specimen_ui`. Five things about it
+bear on a release build.
+
+- **The typefaces ship in the artifact.** Geist and Geist Mono are bundled
+  inside the package under `assets/fonts/` and their SIL Open Font License text
+  is registered with `LicenseRegistry` at startup. `google_fonts` is gone from
+  `pubspec.yaml` and from `pubspec.lock`, so nothing fetches a face at runtime
+  and a deployed page needs no font host. The `fonts_bundled` gate fails if
+  either statement stops being true.
+- **There are no Material Symbols.** Every glyph comes from Phosphor through
+  the package's `UiIcons` registry; `material_symbols_icons` and
+  `cupertino_icons` are out of the pubspec, and the `icons_unique` gate allows
+  no `Symbols.` or `Icons.` reference under `lib/`. `uses-material-design: true`
+  stays on because Flutter's own text selection controls reach a few glyphs
+  statically: the web build tree-shakes `MaterialIcons-Regular.otf` from
+  1,645,184 bytes to 7,736, so the flag costs 7.7 KB rather than 1.6 MB.
+- **The gallery is not in a release build.** `/gallery` renders every token and
+  control for review. Its route is registered only when `kReleaseMode` is
+  false, so `flutter build web --release` carries neither the route nor a way
+  to reach it, and the tree shaker then removes the gallery itself: the string
+  `Gallery` does not appear in the built `main.dart.js`.
+- **The package's tests are part of the required check.**
+  `.github/workflows/ci-cd.yml` and `scripts/ci/verify.sh` both resolve,
+  analyse and test `packages/specimen_ui` before the application. A change to
+  one control is a change to every screen, so a green application suite over a
+  red package is not a signal.
+- **Goldens are compared on macOS only.** Every checked-in golden, in the
+  application and in the package, is generated on macOS. Off macOS the test
+  still builds the screen, so every layout, overflow and semantics assertion in
+  it runs; only the pixel comparison is set aside, and `--update-goldens`
+  refuses, so no file is ever written by a platform that did not draw the rest
+  of the set. Linux rasterises the same bundled fonts one to eleven percent
+  differently, which would otherwise fail every file on the CI runner for a
+  reason no reviewer could act on.
+
+`lib/firebase_options.dart` is gitignored and is never committed. Copy
+`lib/firebase_options.ci.dart` over it for a credential-free local build;
+`scripts/ci/verify.sh` does this for you and removes the placeholder again.
 
 ### Firebase emulators
 
@@ -340,6 +429,12 @@ Changes to the following are release-sensitive and require deliberate review:
 - `.gitignore` and `.pre-commit-config.yaml`
 - `apps/specimen_digitization/pubspec.lock`
 - `uv.lock`
+- the checked-in binaries: `apps/specimen_digitization/test/golden/images/`,
+  `apps/specimen_digitization/test/accessibility/fixtures/`, and the design
+  system's `test/gallery/goldens/`. Two branches that both regenerate one of
+  these sets revert each other with no conflict to warn either of them, so a
+  regenerated golden in a diff is read rather than skimmed, and the set that
+  moved is compared with the set expected to move
 - SQL Connect schemas, connectors, operations, or generated SDKs
 - IAM, Workload Identity Federation, GitHub environment, secret, or branch
   protection settings
@@ -351,6 +446,12 @@ scripts/ci/verify.sh
 git diff --check
 git status --short
 ```
+
+Run it in a quiet worktree. `verify.sh` runs both Flutter suites, and a second
+Flutter or Git command against the same worktree while it is running will fail
+one of them for a reason that is not in the diff. If a run is killed rather
+than failed, run the gates it contains one at a time and read each exit code
+directly, rather than rerunning the whole script and hoping.
 
 Do not commit until all intended files are understood and no sensitive file is
 present.

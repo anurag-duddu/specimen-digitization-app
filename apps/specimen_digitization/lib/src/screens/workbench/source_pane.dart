@@ -59,7 +59,32 @@ class WorkbenchSourcePane extends StatefulWidget {
     this.compact = false,
     this.imageHeight,
     this.controller,
-  });
+  }) : asHeader = false;
+
+  /// The pane as the record's collapsing header (13 sections 3.1 and 4.1).
+  ///
+  /// **This constructor builds a sliver, not a box.** It is the one region of
+  /// the record screen that pins, and a pinned region is a sliver of the one
+  /// scroll rather than a box above it (13 section 2.1). The photograph is the
+  /// header's content and the two rows that ride its lower edge are the
+  /// header's chrome: the view controls, which the band gives back as it
+  /// collapses, and the region toggle strip, which is the last row and stays.
+  ///
+  /// One widget rather than three, because the transformation, the rotation
+  /// and the framed region are one state and the three slots all read it.
+  const WorkbenchSourcePane.header({
+    super.key,
+    required this.specimen,
+    required this.selectedRegionId,
+    required this.onSelectRegion,
+    this.onExpand,
+    this.controller,
+  }) : asHeader = true,
+       compact = true,
+       fullScreen = false,
+       imageHeight = null,
+       onEditRegions = null,
+       editRegionsBlockedReason = null;
 
   /// The record whose source is shown.
   final Specimen specimen;
@@ -100,6 +125,10 @@ class WorkbenchSourcePane extends StatefulWidget {
 
   /// Lets the workbench drive zoom and rotation from the keyboard.
   final SourceViewController? controller;
+
+  /// True when this pane is the record's pinned collapsing header, and so is
+  /// a sliver rather than a box.
+  final bool asHeader;
 
   @override
   State<WorkbenchSourcePane> createState() => _WorkbenchSourcePaneState();
@@ -308,13 +337,44 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
           ),
       ];
 
+  /// The view controls as the header's own row, with no surface of its own.
+  ///
+  /// In the header the band behind the row is the surface, and a capsule
+  /// inside it would be the second surface 13 section 2.2 refuses a compact
+  /// window. The row scrolls with faded edges where the window is narrower
+  /// than five hit boxes, which is the one horizontal strip 13 section 2.1
+  /// allows inside the vertical scroll.
+  Widget _controlRow(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final List<SourceViewAction> actions = _viewActions(context);
+    return EdgeFadedRow(
+      index: 0,
+      length: actions.length,
+      fadeExtent: ui.space.s6,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: ui.space.s1,
+        children: <Widget>[
+          for (final SourceViewAction action in actions)
+            UiIconButton(
+              icon: action.icon,
+              semanticsLabel: action.label,
+              tooltip: action.label,
+              onPressed: action.onPressed,
+            ),
+        ],
+      ),
+    );
+  }
+
   /// The view controls: one `glass.floating` capsule over the matte.
   ///
-  /// Five 48 dp targets do not fit beside each other on a phone at a large
-  /// text scale, and a second row of chrome is height taken from the
-  /// photograph (finding V-1). Below the width the capsule needs, the same
-  /// set with the same words collapses into one menu, which is the fit
-  /// policy 11 section 3.3 gives a row of commands.
+  /// The arrangement the side by side regimes keep, where the photograph has
+  /// a pane of its own and the chrome floats over its lower edge. Five 48 dp
+  /// targets do not fit beside each other at a large text scale, and below
+  /// the width the capsule needs the same set with the same words collapses
+  /// into one menu, which is the fit policy 11 section 3.3 gives a row of
+  /// commands.
   Widget _controls(BuildContext context) {
     final UiThemeData ui = context.ui;
     final List<SourceViewAction> actions = _viewActions(context);
@@ -469,6 +529,38 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
     );
   }
 
+  /// The record's source header, as the one region the screen pins.
+  ///
+  /// `UiCollapsingHeader` between [sourceHeaderMaxFraction] and
+  /// [sourceHeaderMinFraction] of the viewport (13 sections 3.1 and 4.1), the
+  /// photograph on its matte as the content, the view controls and the region
+  /// toggle strip as the two rows riding its lower edge.
+  ///
+  /// Built `primary: true`, because the photograph is what the screen exists
+  /// to show (13 section 2.5). The pattern then says what this pane used to
+  /// say with two markers of its own: it publishes `PrimaryRegion` on the
+  /// photograph's box, at the extent it pins less the one chrome row that
+  /// rides the edge to the end, and no `PinnedChrome` at all, because the
+  /// region under review is content and spends nothing of the chrome budget
+  /// (13 sections 2.3 and 3.1, polish 3). The arithmetic is the pattern's:
+  /// 13 section 4.1 pins this header at 40 percent of a phone and 13 section
+  /// 2.3 gives the whole of the chrome 28, and at 200 percent text the
+  /// frame's own top bar, band and action bar already spend 200.87 of the
+  /// 236.3 dp a 390 by 844 phone allows, with the row riding this edge 79.6
+  /// on its own. The minimum the pattern declares is the one this pane
+  /// declared: 273.6 dp on that phone at default type and 258 at 200 percent,
+  /// measured the same before and after. The floor at [sourceImageMinHeight]
+  /// this pane used to add to it applies only to a window under 460 dp tall,
+  /// which no class the gates run has; the pane keeps that floor for the
+  /// photograph it draws beside the evidence.
+  Widget _header(BuildContext context) => UiCollapsingHeader(
+    primary: true,
+    maxFraction: sourceHeaderMaxFraction,
+    minFraction: sourceHeaderMinFraction,
+    content: SourceMatte(child: _image(context)),
+    chrome: <Widget>[_controlRow(context), _regionChips(context)],
+  );
+
   static List<num>? _boxOf(Json region) {
     final List<num>? bbox = (region['bbox'] as List?)?.cast<num>();
     return bbox != null && bbox.length == 4 ? bbox : null;
@@ -511,6 +603,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
+    if (widget.asHeader) return _header(context);
     final double? band = widget.imageHeight;
 
     List<Widget> parts(Widget image) => <Widget>[
@@ -562,7 +655,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
         // and 8.5).
         if (paneScrollsAtThisTextScale(MediaQuery.textScalerOf(context))) {
           final double height = c.maxHeight.isFinite
-              ? c.maxHeight * sourcePaneMinViewportFraction
+              ? c.maxHeight * sourceHeaderMinFraction
               : sourceImageMinHeight;
           return SingleChildScrollView(
             child: Column(
@@ -614,15 +707,21 @@ class SourceMatte extends StatelessWidget {
   const SourceMatte({
     super.key,
     required this.child,
-    required this.controls,
+    this.controls,
     this.height,
   });
 
   /// The photograph and its overlays.
   final Widget child;
 
-  /// The view controls, drawn floating over the matte.
-  final WidgetBuilder controls;
+  /// The view controls, drawn floating over the matte, or null where the
+  /// caller draws them somewhere else.
+  ///
+  /// Null in the record's collapsing header, where the controls ride the
+  /// header's own lower edge: a capsule over the matte is a surface inside a
+  /// surface, which is the depth 13 section 2.2 allows a compact window none
+  /// of (13 section 0, "things inside things").
+  final WidgetBuilder? controls;
 
   /// The height the photograph's own box is given, or null to fill the pane.
   final double? height;
@@ -657,15 +756,16 @@ class SourceMatte extends StatelessWidget {
           // reads the width it is given to decide between its row and its
           // menu (11 section 3.3). Pinned on one edge it would never see a
           // narrow pane at all.
-          PositionedDirectional(
-            bottom: insetOf(ui),
-            start: insetOf(ui),
-            end: insetOf(ui),
-            child: Align(
-              alignment: AlignmentDirectional.bottomCenter,
-              child: controls(context),
+          if (controls case final WidgetBuilder floating)
+            PositionedDirectional(
+              bottom: insetOf(ui),
+              start: insetOf(ui),
+              end: insetOf(ui),
+              child: Align(
+                alignment: AlignmentDirectional.bottomCenter,
+                child: floating(context),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -761,9 +861,19 @@ class SourceRegionEditControl extends StatelessWidget {
 /// The checksum and the coordinate basis, one disclosure away
 /// (07 section 6.2).
 class SourceDetails extends StatelessWidget {
-  const SourceDetails({super.key, required this.asset});
+  const SourceDetails({super.key, required this.asset}) : disclosed = true;
+
+  /// The same lines with no disclosure around them, for a surface that is
+  /// already the disclosure: the sheet the composed record opens from its top
+  /// bar. A disclosure inside a sheet titled with the same words is the
+  /// "heading over a disclosure over a pane" of 13 section 0.
+  const SourceDetails.lines({super.key, required this.asset})
+    : disclosed = false;
 
   final Json asset;
+
+  /// True where the lines are drawn behind their own disclosure.
+  final bool disclosed;
 
   @override
   Widget build(BuildContext context) {
@@ -772,51 +882,71 @@ class SourceDetails extends StatelessWidget {
     final double width = (asset['width'] as num?)?.toDouble() ?? 1;
     final double height = (asset['height'] as num?)?.toDouble() ?? 1;
     final TextStyle line = ui.type.bodySmall;
-    return UiDisclosure(
-      title: 'Source details',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
+    final Widget lines = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          'Source pixels: ${width.toStringAsFixed(0)} by '
+          '${height.toStringAsFixed(0)} pixels',
+          style: line,
+        ),
+        Text('Asset: ${textOf(asset['asset_id'])}', style: line),
+        // The v1 line was a `SelectableText`. A copy control keeps the
+        // capability, names itself, and is a 48 dp target rather than a
+        // drag a touch reviewer has to discover, which is what the shell
+        // did with the build line for the same reason.
+        _CopyableChecksum(value: textOf(asset['sha256'])),
+        SizedBox(height: ui.space.s1),
+        SourceBasisNotice(asset: asset),
+        if (processing.isEmpty)
           Text(
-            'Source pixels: ${width.toStringAsFixed(0)} by '
-            '${height.toStringAsFixed(0)} pixels',
+            'Coordinate basis: '
+            '${vocabularyLabel(textOf(asset['pixel_basis']))}',
             style: line,
           ),
-          Text('Asset: ${textOf(asset['asset_id'])}', style: line),
-          // The v1 line was a `SelectableText`. A copy control keeps the
-          // capability, names itself, and is a 48 dp target rather than a
-          // drag a touch reviewer has to discover, which is what the shell
-          // did with the build line for the same reason.
-          _CopyableChecksum(value: textOf(asset['sha256'])),
-          SizedBox(height: ui.space.s1),
-          SourceBasisNotice(asset: asset),
-          if (processing.isEmpty)
-            Text(
-              'Coordinate basis: '
-              '${vocabularyLabel(textOf(asset['pixel_basis']))}',
-              style: line,
-            ),
-          Text(
-            'Rotating the view does not change the original.',
-            style: line.copyWith(color: ui.color.inkSecondary),
-          ),
-          EvidenceDrawer(
-            payload: <String, dynamic>{
-              'asset_id': asset['asset_id'],
-              'sha256': asset['sha256'],
-              'width': asset['width'],
-              'height': asset['height'],
-              'pixel_basis': asset['pixel_basis'],
-              'processing_derivative': asset['processing_derivative'],
-              'view_derivative': asset['view_derivative'],
-            },
-          ),
-        ],
-      ),
+        Text(
+          'Rotating the view does not change the original.',
+          style: line.copyWith(color: ui.color.inkSecondary),
+        ),
+        EvidenceDrawer(
+          payload: <String, dynamic>{
+            'asset_id': asset['asset_id'],
+            'sha256': asset['sha256'],
+            'width': asset['width'],
+            'height': asset['height'],
+            'pixel_basis': asset['pixel_basis'],
+            'processing_derivative': asset['processing_derivative'],
+            'view_derivative': asset['view_derivative'],
+          },
+        ),
+      ],
     );
+    return disclosed
+        ? UiDisclosure(title: sourceDetailsSheetTitle, child: lines)
+        : lines;
   }
 }
+
+/// The source details as a sheet, for a record that has no room to disclose
+/// them in place (13 section 4.1).
+///
+/// The photograph's checksum and coordinate basis are a command of the record
+/// rather than a row of its evidence, so on the composed record they are in
+/// the top bar's overflow and this is what it opens. The same
+/// [SourceDetails] the side by side regimes draw inline.
+Future<void> showSourceDetailsSheet(
+  BuildContext context, {
+  required Json asset,
+}) => UiSheet.show<void>(
+  context: context,
+  title: sourceDetailsSheetTitle,
+  dismissLabel: 'Close',
+  body: (BuildContext sheetContext) => SourceDetails.lines(asset: asset),
+);
+
+/// What the source details sheet is called.
+const String sourceDetailsSheetTitle = 'Source details';
 
 /// The checksum, with a control that puts it on the clipboard.
 class _CopyableChecksum extends StatelessWidget {

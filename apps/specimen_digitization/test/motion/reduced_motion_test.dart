@@ -307,11 +307,7 @@ void main() {
         specimen: record(disposition: on ? 'cleared' : 'needs_human_review'),
         blockers: const <ClearanceBlocker>[],
         pending: const <PendingFieldChange>[],
-        canOperate: true,
-        busy: false,
-        onAction: (Json _) async {},
         onGoToBlocker: (ClearanceBlocker _) {},
-        onReviewPending: () {},
       ),
     );
     expect(find.bySemanticsLabel('Saved'), findsOneWidget);

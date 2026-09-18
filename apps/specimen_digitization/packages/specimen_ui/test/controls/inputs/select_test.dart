@@ -72,6 +72,41 @@ void main() {
     );
   });
 
+  testWidgets('a select at the window\'s edge keeps its list under it', (
+    WidgetTester tester,
+  ) async {
+    // The list is the trigger's own width and hangs from its leading edge.
+    // At the end of a phone's line the popover mirrors rather than running
+    // off the window, and a pane may come as close to the edge as the control
+    // that opened it, so the two stay flush (10 section 3, fit).
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 800);
+    addTearDown(tester.view.reset);
+    for (final TextDirection direction in TextDirection.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 800),
+          textDirection: direction,
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: _select(value: 'cleared', onChanged: (String _) {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel(_label));
+      await tester.pumpAndSettle();
+
+      final Rect anchor = tester.getRect(find.byType(Popover));
+      final Rect pane = tester.getRect(find.byType(GlassSurface));
+      expect(pane.left, moreOrLessEquals(anchor.left, epsilon: 0.5));
+      expect(pane.right, moreOrLessEquals(anchor.right, epsilon: 0.5));
+      expect(pane.right, lessThanOrEqualTo(390), reason: direction.name);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('the trigger reads the placeholder until something is picked', (
     WidgetTester tester,
   ) async {

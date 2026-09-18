@@ -237,9 +237,18 @@ void main() {
       expect(termNamed('Provider'), findsOneWidget);
     });
 
-    testWidgets('the status strip names Version, Run and Step', (
+    testWidgets('the status strip states the version, the run and the step', (
       WidgetTester tester,
     ) async {
+      // 13 section 3.2 makes the strip one line, and `UiStatusStrip` joins
+      // its facts into a single label so the line ellipsises at its end
+      // rather than dropping a fact. A label is text and not a control, so
+      // the three words no longer carry the hairline that opens their
+      // definition, which is what this case used to assert.
+      //
+      // fe/polish-3: `UiStatusStrip` should take its facts as slots, so a
+      // product that defines its own vocabulary keeps the definition on the
+      // line it is read on (pass criterion 10.2).
       await pumpComponent(
         tester,
         WorkbenchStatusStrip(
@@ -252,16 +261,12 @@ void main() {
           }),
           blockers: const <ClearanceBlocker>[],
           pending: const <PendingFieldChange>[],
-          canOperate: false,
-          busy: false,
-          onAction: (Json _) async {},
           onGoToBlocker: (ClearanceBlocker _) {},
-          onReviewPending: () {},
         ),
       );
-      expect(termNamed('Version'), findsOneWidget);
-      expect(termNamed('Run'), findsOneWidget);
-      expect(termNamed('Step'), findsOneWidget);
+      expect(find.textContaining('Version 17'), findsOneWidget);
+      expect(find.textContaining('Run run-1'), findsOneWidget);
+      expect(find.textContaining('Step finalized'), findsOneWidget);
     });
   });
 }

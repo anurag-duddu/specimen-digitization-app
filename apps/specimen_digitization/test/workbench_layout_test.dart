@@ -146,24 +146,21 @@ void main() {
       expect(
         pane.height,
         greaterThanOrEqualTo(
-          compactWindow.height * sourcePaneMinViewportFraction * 0.6,
+          compactWindow.height * sourceHeaderMinFraction * 0.6,
         ),
       );
 
-      // It does not scroll with the evidence: scrolling the evidence pane
-      // leaves the photograph where it was.
+      // It does not scroll away with the evidence: the header gives height
+      // back to its floor and stays there (13 section 3.1).
       final before = tester.getTopLeft(find.byType(InteractiveViewer));
       await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
       await tester.pumpAndSettle();
       expect(tester.getTopLeft(find.byType(InteractiveViewer)), before);
-
-      // The photograph can be collapsed and brought back.
-      await tester.tap(uiIconButton('Collapse the photograph'));
-      await tester.pumpAndSettle();
-      expect(find.byType(InteractiveViewer), findsNothing);
-      await tester.tap(uiIconButton('Show the photograph'));
-      await tester.pumpAndSettle();
       expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(
+        tester.getSize(find.byType(InteractiveViewer)).height,
+        greaterThan(0),
+      );
     });
 
     testWidgets('840 to 1199 is two panes with History as a segment', (
@@ -200,27 +197,130 @@ void main() {
       );
     });
 
-    testWidgets('the decision bar is pinned at every regime', (tester) async {
-      for (final window in [compactWindow, expandedWindow, largeWindow]) {
+    test('the decision sits in the top bar from expanded up', () {
+      // 13 section 4.1, the expanded and large table: at 200 percent text
+      // the bar, the one line band and an action bar are 184.85 dp against
+      // the 164 an 820 dp window allows, so those classes give the action bar
+      // up and the decision moves into the bar the record already publishes.
+      expect(decisionInTopBar(WindowClass.compact), isFalse);
+      expect(decisionInTopBar(WindowClass.medium), isFalse);
+      for (final WindowClass window in WindowClass.values) {
+        expect(
+          decisionInTopBar(window),
+          window.isAtLeast(WindowClass.expanded),
+          reason: '$window',
+        );
+      }
+    });
+
+    test('the segments stick at default type at every window class', () {
+      // A2's rule by text size, and the window weighed as 22d5110 asked: the
+      // classes that used to spend their budget on the action bar hold the
+      // segments once the decision is in the bar (148 of the 180 a 900 dp
+      // window allows at 1440 by 900 in the stacked regime).
+      for (final WindowClass window in WindowClass.values) {
+        expect(segmentsStick(TextScaler.noScaling, window), isTrue);
+        expect(segmentsStick(const TextScaler.linear(1.3), window), isFalse);
+        expect(segmentsStick(const TextScaler.linear(2.0), window), isFalse);
+      }
+    });
+
+    testWidgets(
+      'the decision bar is the frame action bar at compact and medium',
+      (tester) async {
+        for (final window in [compactWindow, mediumWindow]) {
+          useWindow(tester, window);
+          await tester.pumpWidget(host(record()));
+          await tester.pumpAndSettle();
+          // 13 section 3.3: the bar sits in `UiScaffold.actionBar`, which the
+          // screen fills through the frame's own slot, so the shell owns the
+          // bottom of the window and the chrome budget with it.
+          final bar = tester.getRect(find.byType(WorkbenchDecisionBar));
+          expect(
+            bar.bottom,
+            closeTo(window.height, 32),
+            reason:
+                'the decision bar is not at the foot of the window at '
+                '$window',
+          );
+          expect(
+            find.ancestor(
+              of: find.byType(WorkbenchDecisionBar),
+              matching: find.byWidgetPredicate(
+                (Widget widget) =>
+                    widget is PinnedChrome &&
+                    widget.region == UiPinnedRegion.actionBar,
+              ),
+            ),
+            findsOneWidget,
+            reason: 'the frame does not count the bar as its action bar',
+          );
+          // The evidence ends clear of it, which is what the frame's own
+          // bottom inset buys (10 section 4.4).
+          expect(
+            UiScaffold.of(
+              tester.element(find.byType(ReviewWorkbench)),
+            ).bottomInset,
+            greaterThanOrEqualTo(bar.height),
+          );
+        }
+      },
+    );
+
+    testWidgets('from expanded up the decision bar is in the top bar', (
+      tester,
+    ) async {
+      for (final window in [expandedWindow, largeWindow]) {
         useWindow(tester, window);
         await tester.pumpWidget(host(record()));
         await tester.pumpAndSettle();
-        // The bar is its own widget now, and it clears the navigation the
-        // scaffold floats over the body rather than wrapping a `SafeArea` of
-        // its own.
-        final bar = tester.getRect(find.byType(WorkbenchDecisionBar));
-        expect(
-          bar.bottom,
-          closeTo(window.height, 32),
-          reason: 'the decision bar sits at the foot of the pane at $window',
-        );
-        // It is below the evidence, which is the thing that scrolls.
+        // 13 section 4.1, the expanded and large table. The same widget as
+        // below medium, inside the bar the record publishes, so the frame
+        // counts it as the top bar and floats nothing over the evidence.
+        final Rect bar = tester.getRect(find.byType(WorkbenchDecisionBar));
+        final Rect top = tester.getRect(find.byType(UiTopBar));
         expect(
           bar.top,
-          greaterThanOrEqualTo(
-            tester.getRect(scrollableIn(find.byType(ReviewWorkbench))).bottom -
-                1,
+          greaterThanOrEqualTo(top.top - 0.5),
+          reason: 'the decision bar is not inside the top bar at $window',
+        );
+        expect(bar.bottom, lessThanOrEqualTo(top.bottom + 0.5));
+        expect(
+          find.ancestor(
+            of: find.byType(WorkbenchDecisionBar),
+            matching: find.byWidgetPredicate(
+              (Widget widget) =>
+                  widget is PinnedChrome &&
+                  widget.region == UiPinnedRegion.topBar,
+            ),
           ),
+          findsOneWidget,
+          reason: 'the frame does not count the bar as its top bar',
+        );
+        expect(
+          find.byWidgetPredicate(
+            (Widget widget) =>
+                widget is PinnedChrome &&
+                widget.region == UiPinnedRegion.actionBar,
+          ),
+          findsNothing,
+          reason: 'the action bar was not given back at $window',
+        );
+        // The identifier keeps its own width beside the decision: the name
+        // is never cut, the decision degrades by its own ladder.
+        expect(find.text('layout-001'), findsOneWidget);
+        expect(
+          tester.getRect(find.text('layout-001')).right,
+          lessThanOrEqualTo(bar.left + 0.5),
+        );
+        // Both decisions are reachable from the bar at this width.
+        expect(controlEnabled(tester, 'Confirm label coverage'), isTrue);
+        expect(
+          UiScaffold.of(
+            tester.element(find.byType(ReviewWorkbench)),
+          ).bottomInset,
+          0,
+          reason: 'the frame floats nothing inside a record at $window',
         );
       }
     });
@@ -243,7 +343,9 @@ void main() {
         WorkbenchSegment.readings,
         WorkbenchSegment.fields,
       });
-      expect(blockersSummary(0), 'Nothing outstanding. Approval is available.');
+      // A record with nothing outstanding carries no summary at all: a
+      // control that opens an empty list is a control that does nothing, and
+      // the decision bar's enabled approval already says it (13 section 3.2).
       expect(blockersSummary(1), '1 thing blocks clearance');
       expect(blockersSummary(4), '4 things block clearance');
     });
@@ -348,11 +450,46 @@ void main() {
       expect(uiIconButton('Next specimen'), findsOneWidget);
       expect(uiIconButton('Previous specimen'), findsOneWidget);
 
-      // Without the callbacks there is no control and no shortcut, because a
-      // control that does nothing is worse than no control.
+      // Without the callbacks the control is drawn disabled with the reason
+      // on it, the way every other control in the system carries a
+      // `disabledReason` (13 section 3.3, polish 3), and the key says the
+      // same sentence aloud rather than doing nothing at all (pass criterion
+      // 5.6, finding V-2).
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
-      expect(uiIconButton('Next specimen'), findsNothing);
+      final UiIconButton nextControl = tester.widget<UiIconButton>(
+        uiIconButton('Next specimen'),
+      );
+      expect(nextControl.onPressed, isNull);
+      expect(nextControl.disabledReason, notInQueueMessage);
+      expect(
+        tester
+            .widget<UiIconButton>(uiIconButton('Previous specimen'))
+            .disabledReason,
+        notInQueueMessage,
+      );
+      final semantics = tester.ensureSemantics();
+      final List<String> announced = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<
+        dynamic
+      >(SystemChannels.accessibility, (dynamic message) async {
+        final Map<Object?, Object?> event = message as Map<Object?, Object?>;
+        if (event['type'] != 'announce') return;
+        final Map<Object?, Object?> data =
+            event['data']! as Map<Object?, Object?>;
+        announced.add('${data['message']}');
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger
+            .setMockDecodedMessageHandler<dynamic>(
+              SystemChannels.accessibility,
+              null,
+            ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+      await tester.pumpAndSettle();
+      expect(announced, contains(notInQueueMessage));
+      semantics.dispose();
     });
 
     testWidgets('the shortcut list is one keystroke away', (tester) async {

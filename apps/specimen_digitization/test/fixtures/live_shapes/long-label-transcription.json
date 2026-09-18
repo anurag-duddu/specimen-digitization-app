@@ -1,0 +1,1634 @@
+{
+  "fixture_kind": "live-shape",
+  "shape": "one label region whose transcription is four hundred characters",
+  "derived_from": "docs/execution/backend-wire-examples.json, workspace_response",
+  "evidence": "A determination label with a locality, a date, two collectors, a host plant and a notebook reference runs to four hundred characters on one card. Both readers are given the same card and differ on a date, a surname and a species epithet, which is the disagreement shape 1946 handwriting produces.",
+  "character_count": 400,
+  "not_real": "Shaped from the wire contract and from the evidence cited above. No byte here came off a real specimen.",
+  "workspace_response": {
+    "specimen_id": "fc66f021-c67d-464c-8490-a12b5a4d4d2f",
+    "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+    "collection_id": "00000000-0000-4000-8000-000000000002",
+    "organization_id": "00000000-0000-4000-8000-000000000001",
+    "revision": 17,
+    "batch_id": "7f3c03d8-d18c-5cd6-b840-cfa6cb844513",
+    "filename": "FMNH-INS-1004.jpg",
+    "created_at": "2026-09-08T05:01:39.876709+00:00",
+    "active_run_id": "c29d92c5-0443-4b2c-a775-ef28c654996a",
+    "record_version_id": "c29d92c5-0443-4b2c-a775-ef28c654996a:17",
+    "status": "completed",
+    "stage": "finalized",
+    "disposition": "needs_human_review",
+    "reason_codes": [
+      "transcription_disagreement"
+    ],
+    "blocker": null,
+    "profile_id": "zoology_insects",
+    "profile_version": "0.1.0-draft",
+    "synthetic": true,
+    "available_actions": [
+      "retry",
+      "pause",
+      "cancel",
+      "reprocess"
+    ],
+    "asset": {
+      "id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "blob_ref": "0000000000000000000000000000000000000000000000000000000000000001",
+      "media_type": "image/png",
+      "size_bytes": 28431,
+      "width": 1000,
+      "height": 520,
+      "filename": "synthetic-label.png",
+      "uploader": "synthetic-reviewer",
+      "created_at": "2026-09-08T05:01:39.876696+00:00"
+    },
+    "run": {
+      "id": "c29d92c5-0443-4b2c-a775-ef28c654996a",
+      "profile": {
+        "id": "zoology_insects",
+        "version": "0.1.0-draft",
+        "schema_version": "insects-v1",
+        "policy_version": "insects-clearance-v1",
+        "mandatory_fields": [
+          "fmnh_ins_number",
+          "collection_code",
+          "country",
+          "province_state",
+          "county",
+          "city",
+          "precise_location",
+          "elevation_from_m",
+          "elevation_to_m",
+          "elevation_from_ft",
+          "elevation_to_ft",
+          "habitat",
+          "collection_method",
+          "date_visited_from",
+          "date_visited_to",
+          "collectors",
+          "verbatim_dts",
+          "taxon",
+          "identified_by_irn",
+          "date_identified"
+        ],
+        "routes": [
+          "handwriting-qwen",
+          "handwriting-muse"
+        ],
+        "synthetic": true,
+        "institutional_policy_approved": true,
+        "semantics_confirmed": true
+      },
+      "stage": "finalized",
+      "completed_steps": [
+        "classification_selected_at_intake",
+        "classify",
+        "segment",
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-qwen",
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-muse",
+        "adjudicate",
+        "parse",
+        "plan",
+        "lookup",
+        "resolve",
+        "normalize",
+        "validate",
+        "finalize"
+      ],
+      "regions": [
+        {
+          "id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "x": 60,
+          "y": 40,
+          "width": 1680,
+          "height": 760,
+          "order": 0,
+          "method": "sam3",
+          "version": "segmentation-v1",
+          "crop_ref": null,
+          "mask_ref": null,
+          "rotation_quarter_turns": 0
+        }
+      ],
+      "observations": [
+        {
+          "id": "45a4a7c2-b93d-404b-84a9-d4e663b396af",
+          "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+          "route_id": "handwriting-qwen",
+          "model_id": "qwen2.5-vl-72b",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+          "literal_text": "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1946. Collected at mercury vapour light between 21h and 02h by A. B. Wolcott and Wm. J. Gerhard. On Asclepias syriaca in flower beside a drainage ditch. Det. H. S. Dybas 1951. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink.",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000005",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000005",
+          "created_at": "2026-09-17T09:21:44.906112+00:00",
+          "input_tokens": 2260,
+          "output_tokens": 118
+        },
+        {
+          "id": "a9bccbdc-630e-4087-8aa8-451a0f2a7934",
+          "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+          "route_id": "handwriting-gemma",
+          "model_id": "gemma-3-27b-it",
+          "provider": "vertex",
+          "prompt_version": "transcribe-v3",
+          "input_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+          "literal_text": "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1940. Collected at mercury vapour light between 21h and 02h by A. B. Walcott and Wm. J. Gerhard. On Asclepias syriata in flower beside a drainage ditch. Det. H. S. Dybas 1954. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink.",
+          "unreadable_spans": [],
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000006",
+          "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000006",
+          "created_at": "2026-09-17T09:21:44.906112+00:00",
+          "input_tokens": 2260,
+          "output_tokens": 118
+        }
+      ],
+      "transcripts": [
+        {
+          "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+          "text": null,
+          "observation_ids": [
+            "45a4a7c2-b93d-404b-84a9-d4e663b396af",
+            "a9bccbdc-630e-4087-8aa8-451a0f2a7934"
+          ],
+          "alternatives": [
+            "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1946. Collected at mercury vapour light between 21h and 02h by A. B. Wolcott and Wm. J. Gerhard. On Asclepias syriaca in flower beside a drainage ditch. Det. H. S. Dybas 1951. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink.",
+            "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1940. Collected at mercury vapour light between 21h and 02h by A. B. Walcott and Wm. J. Gerhard. On Asclepias syriata in flower beside a drainage ditch. Det. H. S. Dybas 1954. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink."
+          ],
+          "resolved": false,
+          "actor": null,
+          "reason": null,
+          "disagreement_ratio": 0.0325,
+          "alignment_status": "disagreement",
+          "alignment_algorithm": "needleman-wunsch-v1",
+          "alignment_reasons": [],
+          "value_state": "ambiguous"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "a1f24e0b-bff7-4607-80eb-d962b231a828",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "fmnh_ins_number: FMNH-INS 1001",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917252+00:00"
+        },
+        {
+          "id": "cfae78fe-b51c-44a9-b7d1-f410853b0c4e",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "collection_code: SYNTHETIC",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917265+00:00"
+        },
+        {
+          "id": "66497653-e1ca-4338-88db-eed59880d7b6",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "country: United States",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917274+00:00"
+        },
+        {
+          "id": "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "province_state: Illinois",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917281+00:00"
+        },
+        {
+          "id": "5d36b87d-72b9-446c-95d4-062bf58a08f8",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "county: Cook",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917287+00:00"
+        },
+        {
+          "id": "360bb26d-d3a5-475c-8b3c-1ff621e2169e",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "city: Chicago",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917294+00:00"
+        },
+        {
+          "id": "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "precise_location: Synthetic teaching garden",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917300+00:00"
+        },
+        {
+          "id": "2fb95af9-546d-4fb5-a515-357fd6e349b5",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "elevation_from_m: 180",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917309+00:00"
+        },
+        {
+          "id": "28d5f7db-7688-443d-8294-75eef124cc28",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "elevation_to_m: 181",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917316+00:00"
+        },
+        {
+          "id": "4f012a9c-b4aa-428b-b811-1a5b5c91a969",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "elevation_from_ft: 590.55",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917322+00:00"
+        },
+        {
+          "id": "b859af8b-9a2e-4db8-a44a-b4838d127be2",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "elevation_to_ft: 593.83",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917329+00:00"
+        },
+        {
+          "id": "82331944-84f8-4dfd-afc3-aa35953bfce0",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "habitat: Synthetic grassland",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917335+00:00"
+        },
+        {
+          "id": "740b239d-5de5-41d7-89db-cea0f5b40628",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "collection_method: Synthetic net",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917373+00:00"
+        },
+        {
+          "id": "1a04f894-5977-4e67-a850-ed7f9f5d0841",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "date_visited_from: 2020-06-01",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917382+00:00"
+        },
+        {
+          "id": "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "date_visited_to: 2020-06-01",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917389+00:00"
+        },
+        {
+          "id": "5f96da08-4eed-4076-b355-b2ee7d32296a",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "collectors: Synthetic Collector",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917396+00:00"
+        },
+        {
+          "id": "2b4a65ff-a641-4310-b006-53150f337ab3",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "verbatim_dts: Synthetic D/T/S",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917402+00:00"
+        },
+        {
+          "id": "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "taxon: Danaus plexippus",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917408+00:00"
+        },
+        {
+          "id": "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "identified_by_irn: synthetic:eparties:1",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917416+00:00"
+        },
+        {
+          "id": "a231421a-e9aa-4bcb-b1a1-0c42156e83c3",
+          "kind": "literal",
+          "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+          "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "observation_ids": [
+            "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+            "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+          ],
+          "source": "label",
+          "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+          "excerpt": "date_identified: 2020-06-02",
+          "raw_ref": null,
+          "digest": null,
+          "created_at": "2026-09-08T05:01:39.917422+00:00"
+        },
+        {
+          "id": "17ca1490-7f2d-411c-a525-43b653eb513f",
+          "kind": "authority",
+          "asset_id": null,
+          "region_id": null,
+          "observation_ids": [],
+          "source": "synthetic_taxonomy",
+          "locator": "/v2/species/match",
+          "excerpt": "[{'key': 'synthetic:taxon:1', 'scientificName': 'Danaus plexippus'}]",
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000003",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000003",
+          "created_at": "2026-09-08T05:01:39.921713+00:00"
+        }
+      ],
+      "fields": {
+        "fmnh_ins_number": {
+          "state": "supported",
+          "literal": "FMNH-INS 1001",
+          "parsed": "FMNH-INS 1001",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "a1f24e0b-bff7-4607-80eb-d962b231a828"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "collection_code": {
+          "state": "supported",
+          "literal": "SYNTHETIC",
+          "parsed": "SYNTHETIC",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "cfae78fe-b51c-44a9-b7d1-f410853b0c4e"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "country": {
+          "state": "supported",
+          "literal": "United States",
+          "parsed": "United States",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "66497653-e1ca-4338-88db-eed59880d7b6"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "province_state": {
+          "state": "supported",
+          "literal": "Illinois",
+          "parsed": "Illinois",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "county": {
+          "state": "supported",
+          "literal": "Cook",
+          "parsed": "Cook",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "5d36b87d-72b9-446c-95d4-062bf58a08f8"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "city": {
+          "state": "supported",
+          "literal": "Chicago",
+          "parsed": "Chicago",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "360bb26d-d3a5-475c-8b3c-1ff621e2169e"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "precise_location": {
+          "state": "supported",
+          "literal": "Synthetic teaching garden",
+          "parsed": "Synthetic teaching garden",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_from_m": {
+          "state": "supported",
+          "literal": "180",
+          "parsed": "180",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "2fb95af9-546d-4fb5-a515-357fd6e349b5"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_to_m": {
+          "state": "supported",
+          "literal": "181",
+          "parsed": "181",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "28d5f7db-7688-443d-8294-75eef124cc28"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_from_ft": {
+          "state": "supported",
+          "literal": "590.55",
+          "parsed": "590.55",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "4f012a9c-b4aa-428b-b811-1a5b5c91a969"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "elevation_to_ft": {
+          "state": "supported",
+          "literal": "593.83",
+          "parsed": "593.83",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "b859af8b-9a2e-4db8-a44a-b4838d127be2"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "habitat": {
+          "state": "supported",
+          "literal": "Synthetic grassland",
+          "parsed": "Synthetic grassland",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "82331944-84f8-4dfd-afc3-aa35953bfce0"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "collection_method": {
+          "state": "supported",
+          "literal": "Synthetic net",
+          "parsed": "Synthetic net",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "740b239d-5de5-41d7-89db-cea0f5b40628"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "date_visited_from": {
+          "state": "supported",
+          "literal": "2020-06-01",
+          "parsed": "2020-06-01",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "1a04f894-5977-4e67-a850-ed7f9f5d0841"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "date_visited_to": {
+          "state": "supported",
+          "literal": "2020-06-01",
+          "parsed": "2020-06-01",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "collectors": {
+          "state": "supported",
+          "literal": "Synthetic Collector",
+          "parsed": "Synthetic Collector",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "5f96da08-4eed-4076-b355-b2ee7d32296a"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "verbatim_dts": {
+          "state": "supported",
+          "literal": "Synthetic D/T/S",
+          "parsed": "Synthetic D/T/S",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "2b4a65ff-a641-4310-b006-53150f337ab3"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "taxon": {
+          "state": "supported",
+          "literal": "Danaus plexippus",
+          "parsed": "Danaus plexippus",
+          "normalized": "Danaus plexippus",
+          "authority_id": "synthetic:taxon:1",
+          "evidence_ids": [
+            "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4",
+            "17ca1490-7f2d-411c-a525-43b653eb513f"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "identified_by_irn": {
+          "state": "supported",
+          "literal": "synthetic:eparties:1",
+          "parsed": "synthetic:eparties:1",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a"
+          ],
+          "reason": "Explicit labeled source line"
+        },
+        "date_identified": {
+          "state": "supported",
+          "literal": "2020-06-02",
+          "parsed": "2020-06-02",
+          "normalized": null,
+          "authority_id": null,
+          "evidence_ids": [
+            "a231421a-e9aa-4bcb-b1a1-0c42156e83c3"
+          ],
+          "reason": "Explicit labeled source line"
+        }
+      },
+      "lookups": [
+        {
+          "id": "947b20aa-0853-4da0-aa1a-6e3e87e0a503",
+          "provider": "synthetic_taxonomy",
+          "adapter_version": "fixture-v1",
+          "query": {
+            "name": "Danaus plexippus"
+          },
+          "status": "success",
+          "candidates": [
+            {
+              "key": "synthetic:taxon:1",
+              "scientificName": "Danaus plexippus"
+            }
+          ],
+          "metadata": {},
+          "raw_ref": "0000000000000000000000000000000000000000000000000000000000000003",
+          "digest": "0000000000000000000000000000000000000000000000000000000000000003",
+          "retrieved_at": "2026-09-08T05:01:39.921697+00:00",
+          "retry_after_seconds": null
+        }
+      ],
+      "coverage_confirmed": true,
+      "human_approved": false,
+      "disposition": "needs_human_review",
+      "reasons": [
+        "human_approval_required"
+      ],
+      "blocker": null,
+      "attempts": {
+        "segment": 1,
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-qwen": 1,
+        "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-muse": 1,
+        "lookup": 1
+      },
+      "capability_reason": null,
+      "retry_eligibility": null,
+      "next_retry_at": null,
+      "dead_letter": false,
+      "lease_until": null,
+      "created_at": "2026-09-08T05:01:39.876362+00:00"
+    },
+    "regions": [
+      {
+        "id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "x": 60,
+        "y": 40,
+        "width": 1680,
+        "height": 760,
+        "order": 0,
+        "method": "sam3",
+        "version": "segmentation-v1",
+        "crop_ref": null,
+        "mask_ref": null,
+        "rotation_quarter_turns": 0,
+        "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+        "bbox": [
+          60,
+          40,
+          1740,
+          800
+        ]
+      }
+    ],
+    "observations": [
+      {
+        "id": "45a4a7c2-b93d-404b-84a9-d4e663b396af",
+        "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+        "route_id": "handwriting-qwen",
+        "model_id": "qwen2.5-vl-72b",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+        "literal_text": "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1946. Collected at mercury vapour light between 21h and 02h by A. B. Wolcott and Wm. J. Gerhard. On Asclepias syriaca in flower beside a drainage ditch. Det. H. S. Dybas 1951. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink.",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000005",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000005",
+        "created_at": "2026-09-17T09:21:44.906112+00:00",
+        "input_tokens": 2260,
+        "output_tokens": 118,
+        "observation_id": "45a4a7c2-b93d-404b-84a9-d4e663b396af",
+        "verbatim_text": "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1946. Collected at mercury vapour light between 21h and 02h by A. B. Wolcott and Wm. J. Gerhard. On Asclepias syriaca in flower beside a drainage ditch. Det. H. S. Dybas 1951. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink."
+      },
+      {
+        "id": "a9bccbdc-630e-4087-8aa8-451a0f2a7934",
+        "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+        "route_id": "handwriting-gemma",
+        "model_id": "gemma-3-27b-it",
+        "provider": "vertex",
+        "prompt_version": "transcribe-v3",
+        "input_sha256": "0000000000000000000000000000000000000000000000000000000000000004",
+        "literal_text": "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1940. Collected at mercury vapour light between 21h and 02h by A. B. Walcott and Wm. J. Gerhard. On Asclepias syriata in flower beside a drainage ditch. Det. H. S. Dybas 1954. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink.",
+        "unreadable_spans": [],
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000006",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000006",
+        "created_at": "2026-09-17T09:21:44.906112+00:00",
+        "input_tokens": 2260,
+        "output_tokens": 118,
+        "observation_id": "a9bccbdc-630e-4087-8aa8-451a0f2a7934",
+        "verbatim_text": "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1940. Collected at mercury vapour light between 21h and 02h by A. B. Walcott and Wm. J. Gerhard. On Asclepias syriata in flower beside a drainage ditch. Det. H. S. Dybas 1954. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink."
+      }
+    ],
+    "transcriptions": [
+      {
+        "region_id": "36c05e1c-3242-4e8f-83ff-2a251b4fa505",
+        "text": null,
+        "observation_ids": [
+          "45a4a7c2-b93d-404b-84a9-d4e663b396af",
+          "a9bccbdc-630e-4087-8aa8-451a0f2a7934"
+        ],
+        "alternatives": [
+          "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1946. Collected at mercury vapour light between 21h and 02h by A. B. Wolcott and Wm. J. Gerhard. On Asclepias syriaca in flower beside a drainage ditch. Det. H. S. Dybas 1951. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink.",
+          "Field Museum of Natural History, Chicago. Cook County, Illinois, Palos Hills Forest Preserve, north slope above Sag Quarry, elev. 180 m. VII 14 1940. Collected at mercury vapour light between 21h and 02h by A. B. Walcott and Wm. J. Gerhard. On Asclepias syriata in flower beside a drainage ditch. Det. H. S. Dybas 1954. Paratype, see Gerhard notebook twelve, page forty one, entry nine, in faded ink."
+        ],
+        "resolved": false,
+        "actor": null,
+        "reason": null,
+        "disagreement_ratio": 0.0325,
+        "alignment_status": "disagreement",
+        "alignment_algorithm": "needleman-wunsch-v1",
+        "alignment_reasons": [],
+        "verbatim_text": null,
+        "value_state": "ambiguous",
+        "state": "ambiguous"
+      }
+    ],
+    "fields": {
+      "fmnh_ins_number": {
+        "state": "supported",
+        "literal": "FMNH-INS 1001",
+        "parsed": "FMNH-INS 1001",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "a1f24e0b-bff7-4607-80eb-d962b231a828"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "collection_code": {
+        "state": "supported",
+        "literal": "SYNTHETIC",
+        "parsed": "SYNTHETIC",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "cfae78fe-b51c-44a9-b7d1-f410853b0c4e"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "country": {
+        "state": "supported",
+        "literal": "United States",
+        "parsed": "United States",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "66497653-e1ca-4338-88db-eed59880d7b6"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "province_state": {
+        "state": "supported",
+        "literal": "Illinois",
+        "parsed": "Illinois",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "county": {
+        "state": "supported",
+        "literal": "Cook",
+        "parsed": "Cook",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "5d36b87d-72b9-446c-95d4-062bf58a08f8"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "city": {
+        "state": "supported",
+        "literal": "Chicago",
+        "parsed": "Chicago",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "360bb26d-d3a5-475c-8b3c-1ff621e2169e"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "precise_location": {
+        "state": "supported",
+        "literal": "Synthetic teaching garden",
+        "parsed": "Synthetic teaching garden",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_from_m": {
+        "state": "supported",
+        "literal": "180",
+        "parsed": "180",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "2fb95af9-546d-4fb5-a515-357fd6e349b5"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_to_m": {
+        "state": "supported",
+        "literal": "181",
+        "parsed": "181",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "28d5f7db-7688-443d-8294-75eef124cc28"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_from_ft": {
+        "state": "supported",
+        "literal": "590.55",
+        "parsed": "590.55",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "4f012a9c-b4aa-428b-b811-1a5b5c91a969"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "elevation_to_ft": {
+        "state": "supported",
+        "literal": "593.83",
+        "parsed": "593.83",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "b859af8b-9a2e-4db8-a44a-b4838d127be2"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "habitat": {
+        "state": "supported",
+        "literal": "Synthetic grassland",
+        "parsed": "Synthetic grassland",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "82331944-84f8-4dfd-afc3-aa35953bfce0"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "collection_method": {
+        "state": "supported",
+        "literal": "Synthetic net",
+        "parsed": "Synthetic net",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "740b239d-5de5-41d7-89db-cea0f5b40628"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "date_visited_from": {
+        "state": "supported",
+        "literal": "2020-06-01",
+        "parsed": "2020-06-01",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "1a04f894-5977-4e67-a850-ed7f9f5d0841"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "date_visited_to": {
+        "state": "supported",
+        "literal": "2020-06-01",
+        "parsed": "2020-06-01",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "collectors": {
+        "state": "supported",
+        "literal": "Synthetic Collector",
+        "parsed": "Synthetic Collector",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "5f96da08-4eed-4076-b355-b2ee7d32296a"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "verbatim_dts": {
+        "state": "supported",
+        "literal": "Synthetic D/T/S",
+        "parsed": "Synthetic D/T/S",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "2b4a65ff-a641-4310-b006-53150f337ab3"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "taxon": {
+        "state": "supported",
+        "literal": "Danaus plexippus",
+        "parsed": "Danaus plexippus",
+        "normalized": "Danaus plexippus",
+        "authority_id": "synthetic:taxon:1",
+        "evidence_ids": [
+          "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4",
+          "17ca1490-7f2d-411c-a525-43b653eb513f"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "identified_by_irn": {
+        "state": "supported",
+        "literal": "synthetic:eparties:1",
+        "parsed": "synthetic:eparties:1",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      },
+      "date_identified": {
+        "state": "supported",
+        "literal": "2020-06-02",
+        "parsed": "2020-06-02",
+        "normalized": null,
+        "authority_id": null,
+        "evidence_ids": [
+          "a231421a-e9aa-4bcb-b1a1-0c42156e83c3"
+        ],
+        "reason": "Explicit labeled source line",
+        "value_state": "supported"
+      }
+    },
+    "evidence": [
+      {
+        "id": "a1f24e0b-bff7-4607-80eb-d962b231a828",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "fmnh_ins_number: FMNH-INS 1001",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917252+00:00",
+        "evidence_id": "a1f24e0b-bff7-4607-80eb-d962b231a828"
+      },
+      {
+        "id": "cfae78fe-b51c-44a9-b7d1-f410853b0c4e",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "collection_code: SYNTHETIC",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917265+00:00",
+        "evidence_id": "cfae78fe-b51c-44a9-b7d1-f410853b0c4e"
+      },
+      {
+        "id": "66497653-e1ca-4338-88db-eed59880d7b6",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "country: United States",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917274+00:00",
+        "evidence_id": "66497653-e1ca-4338-88db-eed59880d7b6"
+      },
+      {
+        "id": "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "province_state: Illinois",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917281+00:00",
+        "evidence_id": "bc1aa46e-7e8d-49e9-8e15-ad458bb5e76b"
+      },
+      {
+        "id": "5d36b87d-72b9-446c-95d4-062bf58a08f8",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "county: Cook",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917287+00:00",
+        "evidence_id": "5d36b87d-72b9-446c-95d4-062bf58a08f8"
+      },
+      {
+        "id": "360bb26d-d3a5-475c-8b3c-1ff621e2169e",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "city: Chicago",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917294+00:00",
+        "evidence_id": "360bb26d-d3a5-475c-8b3c-1ff621e2169e"
+      },
+      {
+        "id": "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "precise_location: Synthetic teaching garden",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917300+00:00",
+        "evidence_id": "dd78f21b-f98a-42be-ad1f-fbcfdd09a0a1"
+      },
+      {
+        "id": "2fb95af9-546d-4fb5-a515-357fd6e349b5",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "elevation_from_m: 180",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917309+00:00",
+        "evidence_id": "2fb95af9-546d-4fb5-a515-357fd6e349b5"
+      },
+      {
+        "id": "28d5f7db-7688-443d-8294-75eef124cc28",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "elevation_to_m: 181",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917316+00:00",
+        "evidence_id": "28d5f7db-7688-443d-8294-75eef124cc28"
+      },
+      {
+        "id": "4f012a9c-b4aa-428b-b811-1a5b5c91a969",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "elevation_from_ft: 590.55",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917322+00:00",
+        "evidence_id": "4f012a9c-b4aa-428b-b811-1a5b5c91a969"
+      },
+      {
+        "id": "b859af8b-9a2e-4db8-a44a-b4838d127be2",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "elevation_to_ft: 593.83",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917329+00:00",
+        "evidence_id": "b859af8b-9a2e-4db8-a44a-b4838d127be2"
+      },
+      {
+        "id": "82331944-84f8-4dfd-afc3-aa35953bfce0",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "habitat: Synthetic grassland",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917335+00:00",
+        "evidence_id": "82331944-84f8-4dfd-afc3-aa35953bfce0"
+      },
+      {
+        "id": "740b239d-5de5-41d7-89db-cea0f5b40628",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "collection_method: Synthetic net",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917373+00:00",
+        "evidence_id": "740b239d-5de5-41d7-89db-cea0f5b40628"
+      },
+      {
+        "id": "1a04f894-5977-4e67-a850-ed7f9f5d0841",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "date_visited_from: 2020-06-01",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917382+00:00",
+        "evidence_id": "1a04f894-5977-4e67-a850-ed7f9f5d0841"
+      },
+      {
+        "id": "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "date_visited_to: 2020-06-01",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917389+00:00",
+        "evidence_id": "ee1b7d9b-7fc4-4d30-946e-d3f358feb3a2"
+      },
+      {
+        "id": "5f96da08-4eed-4076-b355-b2ee7d32296a",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "collectors: Synthetic Collector",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917396+00:00",
+        "evidence_id": "5f96da08-4eed-4076-b355-b2ee7d32296a"
+      },
+      {
+        "id": "2b4a65ff-a641-4310-b006-53150f337ab3",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "verbatim_dts: Synthetic D/T/S",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917402+00:00",
+        "evidence_id": "2b4a65ff-a641-4310-b006-53150f337ab3"
+      },
+      {
+        "id": "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "taxon: Danaus plexippus",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917408+00:00",
+        "evidence_id": "d7e5b79b-9343-4ad5-b1b3-15c6a332cad4"
+      },
+      {
+        "id": "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "identified_by_irn: synthetic:eparties:1",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917416+00:00",
+        "evidence_id": "7d2a085b-b065-4b9b-bf0e-ea0c5172e11a"
+      },
+      {
+        "id": "a231421a-e9aa-4bcb-b1a1-0c42156e83c3",
+        "kind": "literal",
+        "asset_id": "2ddce10c-d365-5b81-a725-a1a2be520ab3",
+        "region_id": "d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "observation_ids": [
+          "2cebcf55-3300-4159-ba8f-8573c1be4ebe",
+          "3bf9fa3a-81b2-422f-8439-5c300cece2ed"
+        ],
+        "source": "label",
+        "locator": "region:d614c064-60cd-4940-8bbe-f42aee8665e6",
+        "excerpt": "date_identified: 2020-06-02",
+        "raw_ref": null,
+        "digest": null,
+        "created_at": "2026-09-08T05:01:39.917422+00:00",
+        "evidence_id": "a231421a-e9aa-4bcb-b1a1-0c42156e83c3"
+      },
+      {
+        "id": "17ca1490-7f2d-411c-a525-43b653eb513f",
+        "kind": "authority",
+        "asset_id": null,
+        "region_id": null,
+        "observation_ids": [],
+        "source": "synthetic_taxonomy",
+        "locator": "/v2/species/match",
+        "excerpt": "[{'key': 'synthetic:taxon:1', 'scientificName': 'Danaus plexippus'}]",
+        "raw_ref": "0000000000000000000000000000000000000000000000000000000000000003",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000003",
+        "created_at": "2026-09-08T05:01:39.921713+00:00",
+        "evidence_id": "17ca1490-7f2d-411c-a525-43b653eb513f"
+      }
+    ],
+    "validations": [
+      {
+        "rule_id": "human_approval_required",
+        "severity": "hard",
+        "outcome": "fail",
+        "reason_code": "human_approval_required"
+      }
+    ],
+    "decisions": [],
+    "events": [
+      {
+        "id": "dbb22027-183e-4afd-b014-4317e2ea0664",
+        "actor": "synthetic-reviewer",
+        "action": "ingest",
+        "reason": "Verified immutable original",
+        "before": {},
+        "after": {},
+        "created_at": "2026-09-08T05:01:39.876723+00:00",
+        "sequence": 1
+      },
+      {
+        "id": "49a5d009-e96c-4fe0-8c80-558489da786f",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "classify",
+        "before": {},
+        "after": {
+          "stage": "segment",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.909467+00:00",
+        "sequence": 2
+      },
+      {
+        "id": "da0b72b0-2277-477f-a50c-4e3d40b326ad",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "segment",
+        "before": {},
+        "after": {
+          "stage": "transcribe",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.911433+00:00",
+        "sequence": 3
+      },
+      {
+        "id": "82904bcd-e19d-4ca1-a577-044237e0644c",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-qwen",
+        "before": {},
+        "after": {
+          "stage": "transcribe",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.913083+00:00",
+        "sequence": 4
+      },
+      {
+        "id": "bc1416b1-9ebc-4310-98b8-40af52a2d9ad",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "transcribe:d614c064-60cd-4940-8bbe-f42aee8665e6:handwriting-muse",
+        "before": {},
+        "after": {
+          "stage": "adjudicate",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.915063+00:00",
+        "sequence": 5
+      },
+      {
+        "id": "2aee55f5-a747-4746-8fbd-349e9d7e7674",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "adjudicate",
+        "before": {},
+        "after": {
+          "stage": "parse",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.916177+00:00",
+        "sequence": 6
+      },
+      {
+        "id": "38f2c372-86d1-4ebc-8891-b38d2396a8ed",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "parse",
+        "before": {},
+        "after": {
+          "stage": "plan",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.917435+00:00",
+        "sequence": 7
+      },
+      {
+        "id": "d299864d-5b0e-4d77-885e-acc74e77db69",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "plan",
+        "before": {},
+        "after": {
+          "stage": "lookup",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.919144+00:00",
+        "sequence": 8
+      },
+      {
+        "id": "c28636b0-670b-4d66-9470-d3d67f65801f",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "lookup",
+        "before": {},
+        "after": {
+          "stage": "resolve",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.921736+00:00",
+        "sequence": 9
+      },
+      {
+        "id": "d7e8d42e-c21b-4c0e-813a-fb78f50248ac",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "resolve",
+        "before": {},
+        "after": {
+          "stage": "normalize",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.923080+00:00",
+        "sequence": 10
+      },
+      {
+        "id": "19c9130a-27f9-49f2-ada5-a0531e2cb224",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "normalize",
+        "before": {},
+        "after": {
+          "stage": "validate",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.924366+00:00",
+        "sequence": 11
+      },
+      {
+        "id": "3d02d831-3bf0-4e1a-8173-063ffe833ef1",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "validate",
+        "before": {},
+        "after": {
+          "stage": "finalize",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.925888+00:00",
+        "sequence": 12
+      },
+      {
+        "id": "decc5525-377a-4baf-a86c-a51b72c4d241",
+        "actor": "synthetic-reviewer",
+        "action": "workflow_step",
+        "reason": "finalize",
+        "before": {},
+        "after": {
+          "stage": "finalized",
+          "blocker": null
+        },
+        "created_at": "2026-09-08T05:01:39.927305+00:00",
+        "sequence": 13
+      }
+    ]
+  }
+}

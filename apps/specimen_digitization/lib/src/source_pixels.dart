@@ -6,6 +6,8 @@
 /// original bytes are never rewritten.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -14,8 +16,30 @@ import 'review_context.dart';
 import 'vocabulary.dart';
 import 'widgets/evidence_drawer.dart';
 
+/// The widest this client ever decodes a source photograph.
+///
+/// A copy stand sends 6000 by 4000 pixels. Decoded at its own size that is
+/// ninety six million bytes of premultiplied pixels held in the image cache,
+/// for one record, on a phone that still has the queue behind it. No box on
+/// this screen can show more pixels than the window is wide, so the decode is
+/// bounded by the window in device pixels and, where the pane knows its own
+/// width, by that.
+///
+/// Elapsed pixels rather than a layout size: nothing is drawn at this width,
+/// so it is a named policy in the file that owns the pipeline rather than a
+/// space token (10 section 8, the fit amendment, applied to memory).
+int sourceDecodeWidth(BuildContext context) {
+  final MediaQueryData media = MediaQuery.of(context);
+  // At least one pixel. A window with no width of its own draws nothing a
+  // reviewer can see, and a decode of zero pixels is not a bound but a crash.
+  return math.max(1, (media.size.width * media.devicePixelRatio).ceil());
+}
+
 /// Undo the derivative's EXIF display transform so overlays and crops share
 /// original pixel-edge coordinates. The immutable bytes are never rewritten.
+///
+/// The decode is bounded: see [sourceDecodeWidth]. The bytes themselves are
+/// never rewritten, so the record still carries the original the museum keeps.
 class SourcePixels extends StatelessWidget {
   const SourcePixels({
     super.key,
@@ -28,9 +52,13 @@ class SourcePixels extends StatelessWidget {
   Widget build(BuildContext context) {
     final transform = objectOf(objectOf(asset['view_derivative'])['transform']);
     final matrix = transform['matrix'];
-    Widget image() => Image.memory(
+    Widget image({int? decodeWidth}) => Image.memory(
       asset['preview_bytes'],
       fit: BoxFit.fill,
+      // Decoded at the size it is drawn, never at the size it was captured.
+      // `ResizeImage` keeps the aspect ratio and never upscales, so a small
+      // photograph in a wide pane still decodes at its own size.
+      cacheWidth: decodeWidth ?? sourceDecodeWidth(context),
       // The photograph stays on screen while a rebuild resolves the same
       // bytes again. Without this a panel change, which rebuilds the row the
       // image sits in, blanks the specimen for a frame: the reviewer sees a
@@ -79,7 +107,18 @@ class SourcePixels extends StatelessWidget {
                 child: Transform(
                   transform: inverse,
                   alignment: Alignment.topLeft,
-                  child: image(),
+                  child: image(
+                    decodeWidth: math.max(
+                      1,
+                      math.min(
+                        sourceDecodeWidth(context),
+                        (viewWidth *
+                                scale *
+                                MediaQuery.devicePixelRatioOf(context))
+                            .ceil(),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

@@ -245,6 +245,7 @@ class SelectionBar extends StatelessWidget {
     this.busy = false,
     this.countLabel = recordsLabel,
     this.moreMatchLabel = SelectionBar.recordsMoreMatch,
+    this.pane = true,
   });
 
   /// How many records are selected.
@@ -285,6 +286,9 @@ class SelectionBar extends StatelessWidget {
   /// change this too, so one bar does not use two nouns for one thing.
   final String moreMatchLabel;
 
+  /// Whether the bar draws its own pane. See [pane]'s note below the labels.
+  final bool pane;
+
   /// The two words the select all control uses, fixed so the label and the
   /// sentence under it cannot drift apart.
   static const String selectAllLabel = 'Select all loaded';
@@ -292,6 +296,15 @@ class SelectionBar extends StatelessWidget {
   /// The default [moreMatchLabel], for a list whose rows are records.
   static const String recordsMoreMatch =
       'More records match this filter. Load more to select them.';
+
+  /// True to draw the bar on a pane of its own.
+  ///
+  /// False where the bar is published into `UiScaffold`'s action bar, which
+  /// is already the pane the frame floats and the one frosted pane 13 section
+  /// 2.2 allows a phone. A pane inside a pane is the depth that clause counts,
+  /// and the padding around it would be counted twice with it (13 section
+  /// 2.6). True where the bar floats on its own, which is where a component
+  /// test and a host with no scaffold put it.
 
   /// What the select all box reads as.
   ///
@@ -308,6 +321,8 @@ class SelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
+    final Widget content = _content(ui);
+    if (!pane) return content;
     return SafeArea(
       top: false,
       child: Padding(
@@ -332,42 +347,43 @@ class SelectionBar extends StatelessWidget {
               horizontal: ui.space.s4,
               vertical: ui.space.s2,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // The count and the controls are one flow rather than a row
-                // with a breakpoint in it: they sit on one line wherever they
-                // fit, and wrap wherever they do not, at any width and any
-                // text scale. A breakpoint here would be a number tuned to
-                // today's labels, and the first longer label would push a
-                // control off the edge.
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: ui.space.s4,
-                  runSpacing: ui.space.s2,
-                  children: <Widget>[_summary(ui), ..._controls(ui)],
-                ),
-                // Only once a select all has been taken at face value is the
-                // reviewer told how far it reached. Said earlier it is noise;
-                // said later it is too late.
-                if (allLoadedSelected && moreToLoad)
-                  Padding(
-                    padding: EdgeInsetsDirectional.only(top: ui.space.s2),
-                    child: Text(
-                      moreMatchLabel,
-                      style: ui.type.bodySmall.copyWith(
-                        color: ui.color.inkSecondary,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+            child: content,
           ),
         ),
       ),
     );
   }
+
+  /// The count, the controls and the sentence about reach.
+  Widget _content(UiThemeData ui) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: <Widget>[
+      // The count and the controls are one flow rather than a row
+      // with a breakpoint in it: they sit on one line wherever they
+      // fit, and wrap wherever they do not, at any width and any
+      // text scale. A breakpoint here would be a number tuned to
+      // today's labels, and the first longer label would push a
+      // control off the edge.
+      Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: ui.space.s4,
+        runSpacing: ui.space.s2,
+        children: <Widget>[_summary(ui), ..._controls(ui)],
+      ),
+      // Only once a select all has been taken at face value is the
+      // reviewer told how far it reached. Said earlier it is noise;
+      // said later it is too late.
+      if (allLoadedSelected && moreToLoad)
+        Padding(
+          padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+          child: Text(
+            moreMatchLabel,
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
+        ),
+    ],
+  );
 
   /// The count, announced once when it changes.
   Widget _summary(UiThemeData ui) => Announcer(

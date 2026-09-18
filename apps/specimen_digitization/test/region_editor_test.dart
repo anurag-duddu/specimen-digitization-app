@@ -3,8 +3,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
+import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
 import 'package:specimen_digitization/src/source_pixels.dart';
-import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'ui_finders.dart';
@@ -31,6 +31,23 @@ Finder regionOption(String label) => find.byWidgetPredicate(
       widget.semanticsLabel == label,
   description: 'region option "$label"',
 );
+
+/// Presses the editor's save wherever the top bar drew it.
+///
+/// 13 section 4.3 puts it in the bar, and `UiTopBar` keeps the first two
+/// commands as discs and puts the rest in its own overflow menu, so which of
+/// the two a test finds is a property of the width rather than of the editor.
+Future<void> tapEditorSave(WidgetTester tester) async {
+  final Finder disc = uiIconButton(saveRegionsLabel);
+  if (disc.evaluate().isNotEmpty) {
+    await tester.tap(disc);
+  } else {
+    await tester.tap(uiMenuTrigger(UiTopBarStyle.overflowLabel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(saveRegionsLabel).last);
+  }
+  await tester.pumpAndSettle();
+}
 
 /// A trigger that opens the editor, so each test says what it presses.
 Widget opener(String label, Future<void> Function(BuildContext) onPressed) =>
@@ -443,37 +460,53 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the photograph gets the height the report specifies', (
+    testWidgets('the photograph is the header, floored at two fifths', (
       WidgetTester tester,
     ) async {
       await pumpPhoneEditor(tester);
-      final Finder preview = find.byType(RegionOverlay).first;
-      final Rect band = tester.getRect(
-        find.ancestor(of: preview, matching: find.byType(SizedBox)).last,
+      // 13 section 4.3: the band is a collapsing header floored at 40
+      // percent of the viewport, which is what gives a 48 dp corner handle
+      // somewhere to go on a phone (finding V-7).
+      final UiCollapsingHeader header = tester.widget<UiCollapsingHeader>(
+        find.byType(UiCollapsingHeader),
       );
+      expect(header.minFraction, sourceHeaderMinFraction);
+      // The band takes what the photograph needs between the floor and the
+      // 55 percent a source header starts at, so a wide label does not leave
+      // half a phone of empty ground above the form.
       expect(
-        band.height,
-        greaterThanOrEqualTo(RegionEditorBody.compactPreviewMinHeight),
-        reason:
-            'the compact preview is floored so a 48 dp handle has room; '
-            'finding V-7',
+        header.maxFraction,
+        inInclusiveRange(sourceHeaderMinFraction, sourceHeaderMaxFraction),
+      );
+
+      final Rect image = tester.getRect(find.byType(SourcePixels).first);
+      expect(image.top, greaterThanOrEqualTo(0));
+      expect(image.bottom, lessThanOrEqualTo(compactWindow.height));
+      expect(
+        image.height,
+        greaterThanOrEqualTo(2 * 48),
+        reason: 'a handle at each end of the box needs the room',
       );
     });
 
-    testWidgets('the preview is the dominant element of the sheet', (
+    testWidgets('the preview is the first thing and the form is beneath it', (
       WidgetTester tester,
     ) async {
       await pumpPhoneEditor(tester);
       final double image = tester
           .getSize(find.byType(SourcePixels).first)
           .height;
-      // Everything that is not the photograph and not the footer now sits
-      // behind one closed disclosure, so nothing else on the scrolled body
-      // is taller than the pixels.
-      expect(find.text('Exact coordinates'), findsNothing);
-      expect(uiField('Left x'), findsNothing);
-      expect(find.text(RegionEditorBody.coordinatesTitle), findsOneWidget);
+      // The disclosure that used to hold everything that is not the
+      // photograph is gone: the header holds the pixels and the form scrolls
+      // under them, which is one region per job rather than two collapse
+      // controls three rows apart (13 sections 2.4 and 4.3).
+      expect(find.text('Exact coordinates'), findsOneWidget);
+      expect(uiField('Left x'), findsOneWidget);
       expect(image, greaterThan(compactWindow.height * 0.15));
+      expect(
+        tester.getRect(find.byType(SourcePixels).first).top,
+        lessThan(tester.getRect(uiField('Left x')).top),
+      );
     });
 
     testWidgets('every corner handle is still a full target', (
@@ -493,32 +526,30 @@ void main() {
       }
     });
 
-    testWidgets('the pointer free path is one tap away, and opens on error', (
+    testWidgets('the pointer free path needs no tap, and says what is wrong', (
       WidgetTester tester,
     ) async {
       await pumpPhoneEditor(tester);
-      final Finder disclosure = find.text(RegionEditorBody.coordinatesTitle);
-      await tester.ensureVisible(disclosure);
-      await tester.tap(disclosure);
-      await tester.pumpAndSettle();
       final Finder left = uiField('Left x');
-      expect(left, findsOneWidget);
+      expect(
+        left,
+        findsOneWidget,
+        reason: 'the path WCAG 2.2 SC 2.5.7 asks for is behind nothing',
+      );
       await tester.enterText(left, '');
       await tester.pump();
-      // Close it again, then ask to save: the editor has to bring the field
-      // that is wrong back on screen rather than reporting an error about
-      // something the reviewer cannot see.
-      await tester.ensureVisible(disclosure);
-      await tester.tap(disclosure);
-      await tester.pumpAndSettle();
-      expect(uiField('Left x'), findsNothing);
-      await tester.ensureVisible(find.text('Save region version'));
-      await tester.tap(find.text('Save region version'));
-      await tester.pumpAndSettle();
-      expect(uiField('Left x'), findsOneWidget);
+      // The save is the bar's, and the reason it is recorded under is at the
+      // end of the scroll, so an editor that refuses has to put the sentence
+      // that says why back on the screen (13 section 4.3).
+      await tapEditorSave(tester);
       expect(
         find.textContaining('whole pixel numbers before you save'),
         findsOneWidget,
+      );
+      expect(
+        tester.getRect(uiTextArea('Reason')).bottom,
+        lessThanOrEqualTo(compactWindow.height),
+        reason: 'the reason the save needs is off the screen',
       );
     });
   });

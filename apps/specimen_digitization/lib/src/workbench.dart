@@ -1,13 +1,29 @@
-/// The review workbench (screen blueprints, section 6).
+/// The review workbench (13 section 4.1; screen blueprints, section 6).
 ///
-/// Three regions at every window class: the source pane, the evidence pane
-/// and the decision bar. The photograph never scrolls away, every correction
-/// happens with the pixels on screen, and the corrections a reviewer makes on
-/// one record are saved together under one reason.
+/// One screen, composed rather than stacked. On a phone and a tablet in
+/// portrait it is one `CustomScrollView`: the photograph is a
+/// `UiCollapsingHeader` pinned between 55 and 40 percent of the viewport, the
+/// status strip and the evidence scroll beneath it, and the segments stick
+/// under the header. From the expanded class up the two and three pane
+/// arrangements stay, each pane one scroll and none inside another.
+///
+/// The chrome is the frame's. The record names itself in the top bar, hides
+/// the navigation pill, asks for the one line environment band and fills the
+/// action bar with its decision bar, all four through `UiScaffoldSlots`, so
+/// the shell owns the top and the bottom of the window and the chrome budget
+/// with them (13 sections 2.3 and 3.4). From the expanded class up the
+/// decision sits in the top bar beside the identifier and the action bar is
+/// given back, because the bar, the band and an action bar together are more
+/// than the 20 percent those classes allow at 200 percent text
+/// (`decisionInTopBar`). What is left is the work: the
+/// photograph never scrolls away, every correction happens with the pixels on
+/// screen, and the corrections a reviewer makes on one record are saved
+/// together under one reason.
 library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -41,7 +57,7 @@ import 'widgets/widgets.dart';
 /// nothing about whether the pane a reviewer reads actually scrolls.
 const Key evidenceScrollKey = ValueKey<String>('workbench-evidence-scroll');
 
-/// The two header controls that name themselves.
+/// The command that puts the identifier on the clipboard.
 const String copyIdentifierLabel = 'Copy the specimen identifier';
 
 /// The control that reloads the record.
@@ -63,17 +79,22 @@ const String retryLabel = 'Retry processing';
 /// What the evidence strip calls itself to a screen reader.
 const String evidenceTabsLabel = 'Evidence panels';
 
-/// The stacked layout's own source header, and its two controls.
-const String sourceHeading = 'Source photograph';
+/// The command that shows the photograph's checksum and coordinate basis.
+const String sourceDetailsLabel = 'Source details';
 
-/// The control that opens the photograph over the record.
-const String fullScreenLabel = 'Open the photograph full screen';
+/// What the top bar's back control is called, wherever a record is open.
+const String backToQueueLabel = 'Back to queue';
 
-/// The control that brings the photograph back.
-const String showSourceLabel = 'Show the photograph';
-
-/// The control that puts it away.
-const String collapseSourceLabel = 'Collapse the photograph';
+/// What a step along the queue says when this record is not in the loaded
+/// list at all, so there is neither a neighbour nor a reason there is none.
+///
+/// The decision bar's edge control is drawn disabled with this on its hint
+/// and its tooltip where the host gave neither a move nor a reason of its own
+/// (13 section 3.3, polish 3), so a record reached by a deep link still says
+/// why it cannot step rather than drawing a control that does nothing (pass
+/// criterion 5.6, finding V-2). The same sentence answers the `J` and `K`
+/// keys and the compact swipe, which have no control to carry it.
+const String notInQueueMessage = 'This record is not in the loaded queue.';
 
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
@@ -97,6 +118,8 @@ class ReviewWorkbench extends StatefulWidget {
     this.nextBlockedReason,
     this.previousBlockedReason,
     this.positionLabel,
+    this.onBack,
+    this.account,
   });
   final Specimen specimen;
   final Future<Json> Function(Specimen, ArtifactRequest)?
@@ -147,8 +170,12 @@ class ReviewWorkbench extends StatefulWidget {
   )?
   loadHistoricalRevision;
 
-  /// Opens the next specimen in the queue. Null hides the control and the
-  /// shortcut, because a control that does nothing is worse than no control.
+  /// Opens the next specimen in the queue.
+  ///
+  /// Null draws the bar's next control disabled with [nextBlockedReason] on
+  /// it, or with [notInQueueMessage] where the host gave no reason, and the
+  /// `J` key says the same sentence aloud: a control that does nothing is
+  /// worse than no control, and a control that says why is neither.
   final VoidCallback? onNext;
 
   /// Opens the previous specimen in the queue.
@@ -167,6 +194,24 @@ class ReviewWorkbench extends StatefulWidget {
   /// Where this record sits in the loaded queue, as "3 of 38"
   /// (pass criterion 6.5).
   final String? positionLabel;
+
+  /// Leaves the record for the list it came from.
+  ///
+  /// The way out of a record is the top bar's back, which this record
+  /// publishes into the frame itself: the navigation pill is hidden inside a
+  /// record and a screen with neither is a screen a reviewer is stuck on
+  /// (13 sections 2.3 and 2.4). Null where the host offers no way back, which
+  /// is a component test pumping the workbench on its own.
+  final VoidCallback? onBack;
+
+  /// The account menu the shell puts at the end of its own bars, drawn at the
+  /// end of this record's bar too (13 section 4.1, polish 3).
+  ///
+  /// The shell's, because the session it names and signs out of is the
+  /// shell's. Null where the frame's navigation already carries the account,
+  /// which is the sidebar's footer at large, and in a host with no shell,
+  /// which is a component test.
+  final Widget? account;
 
   @override
   State<ReviewWorkbench> createState() => _ReviewWorkbenchState();
@@ -188,7 +233,6 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   WorkbenchRegime _regime = WorkbenchRegime.stacked;
 
   String? _region;
-  bool _sourceCollapsed = false;
   List<PendingFieldChange> _pending = <PendingFieldChange>[];
   List<PendingFieldChange> _stale = <PendingFieldChange>[];
   List<String> _recentReasons = <String>[];
@@ -196,6 +240,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   int? _conflictVersion;
   bool _savingLocally = false;
   String? _announcement;
+
+  /// What this screen has asked of the frame around it (13 section 3.4).
+  ///
+  /// Held rather than looked up in `dispose`, which runs after this element is
+  /// detached and can no longer reach an inherited widget.
+  UiScaffoldSlots? _slots;
 
   final SourceViewController _view = SourceViewController();
   final ScrollController _evidenceScroll = ScrollController();
@@ -328,7 +378,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _slots = UiScaffoldSlots.of(context);
+    _publish(context);
+  }
+
+  @override
   void dispose() {
+    // Only what this screen still holds: the router builds the screen
+    // arriving before it disposes the screen leaving, so clearing the slots
+    // outright would take the next screen's chrome with it.
+    _slots?.release(this);
     _tab
       ..removeListener(_tabChanged)
       ..dispose();
@@ -337,19 +398,97 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     super.dispose();
   }
 
+  /// Asks the frame for the chrome a record needs (13 sections 2.3 and 3.4).
+  ///
+  /// Four asks. The bar across the top carries the identifier, the way out
+  /// and the record's own commands, none of which the shell that built the
+  /// frame holds; from `expanded` up it carries the decision as well
+  /// ([decisionInTopBar]). The action bar carries the decision bar at compact
+  /// and medium, so the two decisions sit on the frame's one pane rather than
+  /// on a second one over it, and is given back from `expanded` up, where the
+  /// bar, the band and an action bar together are more than the 20 percent
+  /// 13 section 2.3 allows at 200 percent text. The navigation pill is
+  /// hidden, because the way out of a record is the bar's back and three
+  /// other destinations are chrome the reviewer did not ask for. The band
+  /// drops to its one line form, which is what buys the action bar its share
+  /// of the budget on a phone.
+  ///
+  /// Called from `build`, because every one of the four reads state that
+  /// changes under the reviewer: the identifier when the record is replaced,
+  /// the two decisions when the server withdraws one, the count when the
+  /// queue moves, the window class when the frame is resized. A publish
+  /// during a build is announced after it, which is what `UiScaffoldSlots`
+  /// promises, and the frame rebuilds the chrome and not the body, so the two
+  /// settle rather than chase each other.
+  void _publish(BuildContext context) {
+    final UiScaffoldSlots? slots = _slots;
+    if (slots == null) return;
+    final bool decides = decisionInTopBar(WindowClass.of(context));
+    final List<Object?> now = _chromeState(decides: decides);
+    if (_published != null && listEquals(_published, now)) return;
+    _published = now;
+    slots
+      ..setTopBar(_recordTopBar(context, decides: decides), owner: this)
+      ..setActionBar(decides ? null : _decisionBar(context), owner: this)
+      ..setNavVisible(false, owner: this)
+      ..setBandCompact(true, owner: this);
+  }
+
+  /// What the published chrome is built from.
+  ///
+  /// A widget has no value equality, so a frame rebuilt for any reason would
+  /// otherwise publish a new bar, the frame would rebuild to draw it, and
+  /// this screen would publish again on the way back: the chrome and the body
+  /// chasing each other one frame apart for as long as the record is open.
+  /// This is every value the two bars read, compared before publishing, so a
+  /// rebuild that changes none of them changes nothing in the frame.
+  List<Object?> _chromeState({required bool decides}) => <Object?>[
+    decides,
+    widget.specimen.id,
+    widget.busy,
+    _pending.length,
+    widget.onBack == null,
+    widget.account == null,
+    widget.positionLabel,
+    widget.onNext == null,
+    widget.onPrevious == null,
+    widget.nextBlockedReason,
+    widget.previousBlockedReason,
+    blockedReason('approve'),
+    blockedReason('coverage'),
+    blockedReason('classification'),
+    _regionEditBlockedReason,
+    _retryBlockedReason,
+  ];
+
+  /// The state the chrome on screen was built from.
+  List<Object?>? _published;
+
+  /// Says [message] to a screen reader once, after the frame.
+  ///
+  /// After the frame so that two announcements in one build collapse into
+  /// the last, and so that the tree the message is about is the one on
+  /// screen. A post frame callback runs only once a frame does, and a key
+  /// press that moves nowhere schedules none: `J` at the end of the queue
+  /// changes nothing on screen, so without [ensureVisualUpdate] its reason
+  /// waited for the next repaint, which on a still screen is never. A tap
+  /// never met this, because a pressed control repaints (found at polish 3,
+  /// when the layout test pressed the key rather than the control).
   void _announce(String message) {
     _announcement = message;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final String? pending = _announcement;
-      _announcement = null;
-      if (pending == null || !mounted) return;
-      if (!MediaQuery.supportsAnnounceOf(context)) return;
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        pending,
-        TextDirection.ltr,
-      );
-    });
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        final String? pending = _announcement;
+        _announcement = null;
+        if (pending == null || !mounted) return;
+        if (!MediaQuery.supportsAnnounceOf(context)) return;
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          pending,
+          TextDirection.ltr,
+        );
+      })
+      ..ensureVisualUpdate();
   }
 
   GlobalKey _anchor(Map<String, GlobalKey> anchors, String id) =>
@@ -732,58 +871,151 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     UiToasts.show(context, message: copiedMessage, icon: UiIcons.copy);
   }
 
-  Widget _header(BuildContext context) {
+  /// The record's own bar across the top (13 section 4.1).
+  ///
+  /// Back, the specimen identifier in `mono.identifier`, refresh, and one
+  /// overflow trigger holding the commands that belong to the record rather
+  /// than to any one segment of it: correct label regions, correct
+  /// classification, retry, copy the identifier, source details and the
+  /// shortcut list. 13 section 4.1 gives the bar those three things and puts
+  /// the record's commands in its overflow menu, and 13 section 2.4 gives a
+  /// region one job, so the trigger is built here rather than left to the
+  /// bar's own fit ladder: that ladder draws every declared action wherever
+  /// there is width for it, which was seven discs across a 1440 dp window,
+  /// two of them sharing a glyph. The menu rows carry the same labels,
+  /// glyphs, shortcuts and reasons the discs would. Below large the shell's
+  /// [ReviewWorkbench.account] menu closes the bar, in the slot every list
+  /// screen's bar gives it, so signing out is one tap from a record as it is
+  /// from the queue (13 section 4.1, polish 3).
+  ///
+  /// From `expanded` up the bar carries the decision as well
+  /// ([decisionInTopBar]). The identifier and the decision bar share the
+  /// bar's middle: the identifier at its own width, bounded only by the
+  /// middle itself, and the decision in what is left, so the name is never
+  /// cut and the decision degrades by its own ladder, the secondary into its
+  /// menu and then the primary's ellipsis. The middle is the one slot the bar
+  /// hands a bounded width, which the decision bar needs for the count it
+  /// stretches; an action slot is laid out at its intrinsic width.
+  ///
+  /// The collection switcher is deliberately absent: a reviewer inside a
+  /// record is inside one collection, and a control that would take them to
+  /// another is the top bar doing a second job (13 sections 2.4 and 4.1).
+  Widget _recordTopBar(BuildContext context, {required bool decides}) {
     final UiThemeData ui = context.ui;
-    return Padding(
-      padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Semantics(
-                  container: true,
-                  header: true,
-                  child: Text(widget.specimen.title, style: ui.type.titleLarge),
-                ),
-                // Plain text, not selectable: a selectable paragraph exposes
-                // a long press action, which makes a 20 dp line a tap target
-                // the guideline rightly refuses. The copy control beside it
-                // is the 48 dp way to take the identifier.
-                Text(
-                  widget.specimen.id,
-                  style: ui.type.mono.identifier.copyWith(
-                    color: ui.color.inkSecondary,
-                  ),
-                ),
-              ],
+    // The centre slot rather than the title, because an identifier is set in
+    // `mono.identifier` and a title is set in `type.title`: two records whose
+    // identifiers differ by one character have to be told apart at a glance
+    // (blueprint 6.1).
+    final Widget identifier = UiLabel(
+      widget.specimen.id,
+      style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
+    );
+    return UiTopBar(
+      leading: widget.onBack == null
+          ? null
+          : UiIconButton(
+              icon: UiIcons.back,
+              semanticsLabel: backToQueueLabel,
+              tooltip: backToQueueLabel,
+              onPressed: widget.onBack,
             ),
-          ),
-          UiIconButton(
-            icon: UiIcons.copy,
-            semanticsLabel: copyIdentifierLabel,
-            tooltip: copyIdentifierLabel,
-            onPressed: () => _copyIdentifier(context),
-          ),
-          UiIconButton(
-            icon: UiIcons.reload,
-            semanticsLabel: refreshLabel,
-            tooltip: refreshLabel,
-            disabledReason: 'Wait for the save that is in flight to finish',
-            onPressed: widget.busy ? null : _refresh,
-          ),
-          UiIconButton(
-            icon: UiIcons.keyboard,
-            semanticsLabel: shortcutSheetTitle,
-            tooltip: shortcutSheetTitle,
-            onPressed: () => showShortcutSheet(context),
-          ),
-        ],
-      ),
+      center: decides
+          ? LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) =>
+                  Row(
+                    children: <Widget>[
+                      // A row hands an inflexible child an unbounded width;
+                      // the bound is the middle itself, so the label reads
+                      // its own overflow and ellipsises only past that.
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth,
+                        ),
+                        child: identifier,
+                      ),
+                      SizedBox(width: ui.space.s4),
+                      Expanded(child: _decisionBar(context)),
+                    ],
+                  ),
+            )
+          : identifier,
+      actions: <Widget>[
+        UiTopBarAction(
+          icon: UiIcons.reload,
+          label: refreshLabel,
+          disabledReason: widget.busy
+              ? 'Wait for the save that is in flight to finish'
+              : null,
+          onPressed: widget.busy ? null : _refresh,
+        ),
+        UiMenuTrigger(
+          semanticsLabel: UiTopBarStyle.overflowLabel,
+          icon: UiIcons.more,
+          items: <UiMenuItem>[
+            for (final UiTopBarAction command in _recordCommands(context))
+              command.menuItem,
+          ],
+        ),
+        // The account is the shell's, handed in where its rule says the bar
+        // carries it (`AppShell.accountOnRecordBar`): below large and not at
+        // compact, where the identifier is the bar's one fact.
+        ?widget.account,
+      ],
     );
   }
+
+  /// The record's own commands, declared once and drawn as menu rows.
+  ///
+  /// Declared as `UiTopBarAction`s rather than as menu items so that each
+  /// carries the glyph, the label, the shortcut and the reason in the one
+  /// form the bar reads, and so a test reads a command rather than hunting
+  /// for the row that draws it. Every glyph is its own: classification is the
+  /// provenance tree, and the source details sheet, which is the checksum and
+  /// the coordinate basis of the photograph, is supporting information.
+  List<UiTopBarAction> _recordCommands(BuildContext context) =>
+      <UiTopBarAction>[
+        UiTopBarAction(
+          icon: UiIcons.correctRegions,
+          label: SourceRegionEditControl.label,
+          disabledReason: _regionEditBlockedReason,
+          onPressed: _regionEditBlockedReason != null ? null : _editRegions,
+        ),
+        UiTopBarAction(
+          icon: UiIcons.provenance,
+          label: classificationLabel,
+          disabledReason: blockedReason('classification'),
+          onPressed: blockedReason('classification') != null
+              ? null
+              : _classification,
+        ),
+        UiTopBarAction(
+          icon: UiIcons.retry,
+          label: retryLabel,
+          disabledReason: _retryBlockedReason,
+          onPressed: _retryBlockedReason != null ? null : _retry,
+        ),
+        UiTopBarAction(
+          icon: UiIcons.copy,
+          label: copyIdentifierLabel,
+          onPressed: () => _copyIdentifier(context),
+        ),
+        UiTopBarAction(
+          icon: UiIcons.info,
+          label: sourceDetailsLabel,
+          onPressed: () => showSourceDetailsSheet(context, asset: _asset),
+        ),
+        UiTopBarAction(
+          icon: UiIcons.keyboard,
+          label: shortcutSheetTitle,
+          shortcut: 'Question mark',
+          onPressed: () => showShortcutSheet(context),
+        ),
+      ];
+
+  /// The photograph this record carries, or an empty asset where it has none.
+  Json get _asset => widget.specimen.assets.isEmpty
+      ? const <String, dynamic>{}
+      : widget.specimen.assets.first;
 
   Widget _sourcePane(
     BuildContext context, {
@@ -875,26 +1107,15 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         SizedBox(height: context.ui.space.s6),
         ReviewContext(specimen: widget.specimen),
         SizedBox(height: context.ui.space.s4),
-        // The two occasional actions. Each carries the server's reason on its
-        // own node when the server forbids it, so neither is ever a dimmed
-        // control with nothing to say (pass criterion 5.6).
-        UiButtonRow(
-          primary: UiButton(
-            label: retryLabel,
-            variant: UiButtonVariant.secondary,
-            leading: UiIcons.retry,
-            disabledReason: _retryBlockedReason,
-            onPressed: _retryBlockedReason != null ? null : _retry,
-          ),
-          secondary: UiButton(
-            label: classificationLabel,
-            variant: UiButtonVariant.secondary,
-            leading: UiIcons.provenance,
-            disabledReason: blockedReason('classification'),
-            onPressed: blockedReason('classification') != null
-                ? null
-                : _classification,
-          ),
+        // The run internals, one closed disclosure, where the blocker that
+        // names them sends the reviewer. An operator's concern rather than a
+        // reviewer's, which is why it is not on the status strip and not a
+        // row of the page (audit finding H8.2; 13 section 4.1).
+        ProcessingDisclosure(
+          specimen: widget.specimen,
+          canOperate: widget.canOperate,
+          busy: widget.busy,
+          onAction: _send,
         ),
       ],
     ),
@@ -909,301 +1130,148 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     loadArtifact: widget.loadHistoricalArtifact,
   );
 
-  /// The evidence pane: the scrolling evidence, with the decision bar pinned
-  /// beneath it.
+  /// The evidence pane of a side by side regime: one scroll, and only one.
   ///
-  /// The two are separate widgets rather than one column, because on a phone
-  /// the bar's height has to come out of the layout before the photograph and
-  /// the evidence split what is left. Taking it out of the evidence pane's
-  /// own share is what left the pane with no viewport, and a scroll view with
-  /// no viewport does not scroll.
+  /// The decision bar is not in it. It is the frame's action bar now, which
+  /// is the one place 13 section 3.3 puts it, so the arithmetic that used to
+  /// take the bar's height out of the pane before the photograph and the
+  /// evidence split what was left is gone with it.
   Widget _evidencePane(BuildContext context, WorkbenchRegime regime) {
-    // At a large text scale the decision bar wraps to three rows of large
-    // type and is taller than what is left of the pane, so pinning it lays
-    // the pane out past its box. The pane then scrolls as one, bar included,
-    // rather than clipping the last row (finding V-1, pass criterion 8.5).
-    if (paneScrollsAtThisTextScale(MediaQuery.textScalerOf(context))) {
-      return SingleChildScrollView(
-        key: evidenceScrollKey,
-        controller: _evidenceScroll,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            _evidenceContent(context, regime, scrollable: false),
-            _decisionBar(context, regime),
-          ],
-        ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Expanded(child: _evidenceContent(context, regime)),
-        _decisionBar(context, regime),
-      ],
-    );
-  }
-
-  /// The evidence pane's content.
-  ///
-  /// [scrollable] is false in the one case where the record is too short for
-  /// a pinned photograph and a scrolling pane beneath it: the whole record
-  /// then scrolls as one, so this returns the content without a scroll view
-  /// of its own rather than nesting one inside another (finding V-1).
-  Widget _evidenceContent(
-    BuildContext context,
-    WorkbenchRegime regime, {
-    bool scrollable = true,
-    Widget? leading,
-  }) {
     final UiThemeData ui = context.ui;
-    final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(regime);
-    _regime = regime;
-    // A window that crosses into the three pane layout takes History out of
-    // the strip. The strip cannot be corrected inside a build, so the frame
-    // that crosses draws the clamped tab and the next one draws the right
-    // one.
-    if (_tab.value >= segments.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _tab.value >= segments.length) _tab.value = 0;
-      });
-    }
-
-    final Widget content = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        // The record's own header scrolls with the evidence on a stacked
-        // layout, so the photograph is what stays. The title and the
-        // identifier are worth reading once; the pixels are what every
-        // correction is checked against (blueprint 6.1, pass criterion 6.1).
-        ?leading,
-        if (regime.isStacked) ...<Widget>[
-          SourceOrientationCaveat(
-            asset: widget.specimen.assets.isEmpty
-                ? const <String, dynamic>{}
-                : widget.specimen.assets.first,
-          ),
-          SourceRegionEditControl(
-            onEditRegions: !_regionsEditable || blockedReason('regions') != null
-                ? null
-                : _editRegions,
-            blockedReason: _regionEditBlockedReason,
-          ),
-          SourceDetails(
-            asset: widget.specimen.assets.isEmpty
-                ? const <String, dynamic>{}
-                : widget.specimen.assets.first,
-          ),
-          SizedBox(height: ui.space.s2),
-        ],
-        WorkbenchStatusStrip(
-          specimen: widget.specimen,
-          blockers: blockersFor(widget.specimen),
-          pending: _pending,
-          staleChanges: _stale,
-          canOperate: widget.canOperate,
-          busy: widget.busy,
-          onAction: _send,
-          onGoToBlocker: _goToBlocker,
-          onReviewPending: _savePending,
-          conflictVersion: _conflictVersion,
-          onRefresh: _refresh,
-        ),
-        SizedBox(height: ui.space.s3),
-        // `UiTabs` publishes the tab bar role and its children publish the
-        // tab role, which is what VoiceOver and TalkBack read as "tab, 1 of
-        // 3, selected" and what a rotor jumps between (finding V-3,
-        // accessibility section 4.2 step 6). Below `medium` the strip scrolls
-        // with fading edges rather than breaking its labels.
-        UiTabs(
-          semanticsLabel: evidenceTabsLabel,
-          selected: _tab,
-          tabs: <UiTab>[
-            for (final WorkbenchSegment s in segments) UiTab(label: s.label),
-          ],
-        ),
-        SizedBox(height: ui.space.s4),
-        UiTabView(
-          selected: _tab,
-          children: <Widget>[
-            for (final WorkbenchSegment s in segments)
-              _segmentContent(context, s),
-          ],
-        ),
-        // The decision bar is pinned below this pane and a phone puts
-        // a gesture bar below that. The content ends clear of both,
-        // so the last row is reachable rather than sitting under
-        // them.
-        SizedBox(
-          height: ui.space.s8 + MediaQuery.viewPaddingOf(context).bottom,
-        ),
-      ],
-    );
-
-    if (!scrollable) {
-      return Padding(
-        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
-        child: content,
-      );
-    }
     return SingleChildScrollView(
       key: evidenceScrollKey,
       controller: _evidenceScroll,
-      padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
-      child: content,
+      padding: EdgeInsetsDirectional.symmetric(
+        horizontal: ui.space.s4,
+      ).add(EdgeInsets.only(bottom: UiScaffold.of(context).bottomInset)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _evidence(context, regime),
+      ),
     );
   }
 
-  /// Records a measured piece of the stacked layout's fixed chrome.
+  /// The evidence, as the rows every regime draws in the same order.
   ///
-  /// Four parts: the record header, the source pane's title row, the source
-  /// pane's own chrome, and the decision bar. Every one of them is measured
-  /// rather than guessed, because each grows with the text scale and with the
-  /// window, and the photograph's band is what is left after all four.
-  void _measureChrome(String part, double height) {
-    final double clamped = height < 0 ? 0 : height;
-    final double? previous = _chromeParts[part];
-    if (previous != null && (previous - clamped).abs() < 0.5) return;
-    if (!mounted) return;
-    setState(() => _chromeParts[part] = clamped);
+  /// The status strip, the segments and the chosen segment's content. A box
+  /// list rather than a sliver list, because the side by side regimes put it
+  /// in a pane's own scroll and the one scroll regime puts each row in a
+  /// sliver of its own; both read this and neither restates it.
+  List<Widget> _evidence(BuildContext context, WorkbenchRegime regime) {
+    final UiThemeData ui = context.ui;
+    _syncTabs(regime);
+    return <Widget>[
+      _statusStrip(context),
+      SizedBox(height: ui.space.s3),
+      _segments(context, regime),
+      SizedBox(height: ui.space.s4),
+      _segmentPanel(context, regime),
+    ];
   }
 
-  final Map<String, double> _chromeParts = <String, double>{};
-
-  /// How the stacked layout is arranged this frame.
+  /// Keeps the strip and the panel from disagreeing about which segment is on.
   ///
-  /// The record's own header is not counted: on a stacked layout it scrolls
-  /// with the evidence, so that the photograph is what stays on the screen.
-  ///
-  /// [band] is the height the photograph's own pixels get, zero when the
-  /// reviewer has collapsed the pane. [scrolls] is true when the record is
-  /// too short to pin the photograph above a scrolling evidence pane, in
-  /// which case the whole record scrolls as one and the photograph is still
-  /// on the screen rather than replaced by an overflow stripe. [pinBar] is
-  /// false in the last resort, where the decision bar alone is taller than
-  /// the height this pane was given, and pinning it would push everything
-  /// else past the window (finding V-1, pass criteria 6.1 and 8.5).
-  ({double band, bool scrolls, bool pinBar}) _stackedPlan(
-    BuildContext context,
-    double available,
-  ) {
-    final double? bar = _chromeParts['bar'];
-    final double? title = _chromeParts['sourceTitle'];
-    final double? pane = _chromeParts['sourcePane'];
-    if (bar == null || title == null || (pane == null && !_sourceCollapsed)) {
-      // Nothing has been measured yet. The scrolling form cannot lay out past
-      // the window whatever the measurements turn out to be, so the first
-      // frame takes it and the pinned form starts once the numbers are in.
-      return (
-        band: _sourceCollapsed ? 0 : sourceImageMinHeight,
-        scrolls: true,
-        pinBar: false,
-      );
-    }
-    // The bar is pinned only while there is still a pane left underneath it.
-    // At 200 percent text on a phone the shell can hand the record barely
-    // two hundred pixels, and a bar that wraps to three rows of large type is
-    // taller than that on its own.
-    final bool pinBar = available - bar >= evidencePaneHardMinHeight;
-    final double fixed =
-        bar + title + (_sourceCollapsed ? 0 : pane!) + context.ui.space.s2;
-    final double free = available - fixed;
-    if (_sourceCollapsed) {
-      return (
-        band: 0,
-        scrolls: !pinBar || free < evidencePaneHardMinHeight,
-        pinBar: pinBar,
-      );
-    }
-    final double band = pinBar ? pinnedSourceHeight(available, free) : 0;
-    return band > 0
-        ? (band: band, scrolls: false, pinBar: true)
-        : (band: sourceImageMinHeight, scrolls: true, pinBar: pinBar);
+  /// A window that crosses into the three pane layout takes History out of
+  /// the strip. The strip cannot be corrected inside a build, so the frame
+  /// that crosses draws the clamped tab and the next one draws the right one.
+  void _syncTabs(WorkbenchRegime regime) {
+    _regime = regime;
+    final int count = WorkbenchSegment.forRegime(regime).length;
+    if (_tab.value < count) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _tab.value >= count) _tab.value = 0;
+    });
   }
 
-  Widget _decisionBar(BuildContext context, WorkbenchRegime regime) =>
-      WorkbenchDecisionBar(
-        compact: regime.isStacked,
-        busy: widget.busy,
-        onConfirmCoverage: () => _decide(
-          'coverage',
-          'Confirm label coverage?',
-          WorkbenchDecisionBar.coverageLabel,
-        ),
-        onApprove: () => _decide(
-          'approve',
-          'Approve this record?',
-          WorkbenchDecisionBar.approveLabel,
-        ),
-        coverageBlockedReason: blockedReason('coverage'),
-        approveBlockedReason: blockedReason('approve'),
-        pendingCount: _pending.length,
-        onSavePending: _savePending,
-        onNext: widget.onNext,
-        onPrevious: widget.onPrevious,
-        nextBlockedReason: widget.nextBlockedReason,
-        previousBlockedReason: widget.previousBlockedReason,
-        positionLabel: widget.positionLabel,
-      );
+  /// Where the record stands, and what is holding a decision up.
+  Widget _statusStrip(BuildContext context) => WorkbenchStatusStrip(
+    specimen: widget.specimen,
+    blockers: blockersFor(widget.specimen),
+    pending: _pending,
+    staleChanges: _stale,
+    onGoToBlocker: _goToBlocker,
+    conflictVersion: _conflictVersion,
+    onRefresh: _refresh,
+  );
 
-  /// The pinned source header of a stacked layout (blueprint 6.1).
+  /// The evidence selector.
   ///
-  /// The title row is always drawn and always measured, so the collapse and
-  /// expand control is reachable whether or not the photograph is on screen.
-  /// The pane below it is handed a band for its pixels rather than a height
-  /// for the whole pane, so its controls and its region chips are never
-  /// squeezed by a box that was sized without them.
-  List<Widget> _stackedSource(BuildContext context, double band) => <Widget>[
-    MeasuredHeight(
-      onHeight: (double h) => _measureChrome('sourceTitle', h),
-      child: Row(
+  /// `UiTabs` publishes the tab bar role and its children publish the tab
+  /// role, which is what VoiceOver and TalkBack read as "tab, 1 of 3,
+  /// selected" and what a rotor jumps between (finding V-3, accessibility
+  /// section 4.2 step 6). Below `medium` the strip scrolls with fading edges
+  /// rather than breaking its labels.
+  Widget _segments(BuildContext context, WorkbenchRegime regime) => UiTabs(
+    semanticsLabel: evidenceTabsLabel,
+    selected: _tab,
+    tabs: <UiTab>[
+      for (final WorkbenchSegment s in WorkbenchSegment.forRegime(regime))
+        UiTab(label: s.label),
+    ],
+  );
+
+  /// The chosen segment's content.
+  Widget _segmentPanel(BuildContext context, WorkbenchRegime regime) =>
+      UiTabView(
+        selected: _tab,
         children: <Widget>[
-          Expanded(
-            child: Semantics(
-              container: true,
-              header: true,
-              child: Text(sourceHeading, style: context.ui.type.label),
-            ),
-          ),
-          if (band <= 0)
-            UiIconButton(
-              icon: UiIcons.enterFullscreen,
-              semanticsLabel: fullScreenLabel,
-              tooltip: fullScreenLabel,
-              onPressed: () => showSourceFullScreen(
-                context,
-                specimen: widget.specimen,
-                selectedRegionId: _region,
-                onSelectRegion: _selectRegion,
-              ),
-            ),
-          UiIconButton(
-            icon: _sourceCollapsed ? UiIcons.expand : UiIcons.collapse,
-            semanticsLabel: _sourceCollapsed
-                ? showSourceLabel
-                : collapseSourceLabel,
-            tooltip: _sourceCollapsed ? showSourceLabel : collapseSourceLabel,
-            onPressed: () =>
-                setState(() => _sourceCollapsed = !_sourceCollapsed),
-          ),
+          for (final WorkbenchSegment s in WorkbenchSegment.forRegime(regime))
+            _segmentContent(context, s),
         ],
-      ),
+      );
+
+  /// The record's decision bar (13 section 3.3).
+  ///
+  /// In the frame's action bar at compact and medium, and in the top bar's
+  /// middle from `expanded` up ([decisionInTopBar]); the same widget either
+  /// way, so the decisions, the count and the two edge buttons read the same
+  /// wherever the window put them.
+  ///
+  /// Previous and next go through as the host gave them, and where a move is
+  /// absent the bar takes the reason instead: the host's, which says which
+  /// end of the queue this is, or [notInQueueMessage] where the host had
+  /// none. The bar draws the control disabled with the reason on its hint and
+  /// its tooltip (13 section 3.3, polish 3), which is the answer the `J` and
+  /// `K` keys give aloud and is what a control that would otherwise be a
+  /// silent no-op owes the reviewer (pass criterion 5.6, finding V-2).
+  Widget _decisionBar(BuildContext context) => WorkbenchDecisionBar(
+    busy: widget.busy,
+    pendingCount: _pending.length,
+    onSavePending: _savePending,
+    onConfirmCoverage: () => _decide(
+      'coverage',
+      'Confirm label coverage?',
+      WorkbenchDecisionBar.coverageLabel,
     ),
-    if (band > 0)
-      // The pane reports its own chrome by subtracting the band it was given
-      // from the height it ended up at, which is the one measurement the
-      // photograph's share cannot be computed without.
-      MeasuredHeight(
-        onHeight: (double h) => _measureChrome('sourcePane', h - band),
-        child: _sourcePane(context, compact: true, imageHeight: band),
-      ),
-  ];
+    onApprove: () => _decide(
+      'approve',
+      'Approve this record?',
+      WorkbenchDecisionBar.approveLabel,
+    ),
+    coverageBlockedReason: blockedReason('coverage'),
+    approveBlockedReason: blockedReason('approve'),
+    onNext: widget.onNext,
+    onPrevious: widget.onPrevious,
+    nextDisabledReason: widget.onNext == null
+        ? widget.nextBlockedReason ?? notInQueueMessage
+        : null,
+    previousDisabledReason: widget.onPrevious == null
+        ? widget.previousBlockedReason ?? notInQueueMessage
+        : null,
+    positionLabel: widget.positionLabel,
+  );
 
   // ------------------------------------------------------- large records
 
+  /// The fallback for a record too large to review field by field.
+  ///
+  /// It carries no source header and no segments, so it is a page of two
+  /// panes rather than a composition: one scroll on a narrow window, two
+  /// beside each other on a wide one, each clearing the frame's own chrome.
   Widget _largeRecord(BuildContext context, WorkbenchRegime regime) {
     final Specimen s = widget.specimen;
+    final UiThemeData ui = context.ui;
+    final double bottom = UiScaffold.of(context).bottomInset;
     final Widget evidence = LargeRecordEvidence(
       key: ValueKey<String>('graph:${s.id}:${s.revision}'),
       specimen: s,
@@ -1223,29 +1291,37 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       ],
     );
 
+    if (regime.isStacked) {
+      return SingleChildScrollView(
+        key: evidenceScrollKey,
+        controller: _evidenceScroll,
+        padding: EdgeInsets.all(ui.space.s4).copyWith(bottom: bottom),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[evidence, side],
+        ),
+      );
+    }
     return Padding(
-      padding: EdgeInsets.all(context.ui.space.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: EdgeInsets.all(ui.space.s4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          _header(context),
           Expanded(
-            child: regime.isStacked
-                ? ListView(children: <Widget>[evidence, side])
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Expanded(
-                        flex: 3,
-                        child: SingleChildScrollView(child: evidence),
-                      ),
-                      SizedBox(width: context.ui.space.s4),
-                      Expanded(
-                        flex: 2,
-                        child: SingleChildScrollView(child: side),
-                      ),
-                    ],
-                  ),
+            flex: 3,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(bottom: bottom),
+              child: evidence,
+            ),
+          ),
+          SizedBox(width: ui.space.s4),
+          Expanded(
+            flex: 2,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.only(bottom: bottom),
+              child: side,
+            ),
           ),
         ],
       ),
@@ -1257,6 +1333,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (BuildContext context, BoxConstraints constraints) {
+      // The frame's chrome is published from here rather than from
+      // `didChangeDependencies` alone, because every part of it reads state
+      // that moves under the reviewer.
+      _publish(context);
       final WorkbenchRegime regime = WorkbenchRegime.fromWidth(
         constraints.maxWidth,
       );
@@ -1378,112 +1458,161 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       move();
       return;
     }
-    if (reason != null) _announce(reason);
+    _announce(reason ?? notInQueueMessage);
   }
 
-  Widget _workbench(BuildContext context, WorkbenchRegime regime) {
-    if (regime.isStacked) {
-      return Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: context.ui.space.s4,
-        ).copyWith(top: context.ui.space.s4),
-        // The photograph's share is measured against the height this pane was
-        // actually given, not against the window. On a phone the two differ by
-        // the app bar, the navigation bar, the environment band and the system
-        // insets, and the difference is the whole evidence pane.
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints box) {
-            final double available = box.maxHeight.isFinite
-                ? box.maxHeight
-                : MediaQuery.sizeOf(context).height;
-            final ({double band, bool scrolls, bool pinBar}) plan =
-                _stackedPlan(context, available);
-            final Widget bar = MeasuredHeight(
-              onHeight: (double h) => _measureChrome('bar', h),
-              child: _decisionBar(context, regime),
-            );
-            final Widget header = _header(context);
+  Widget _workbench(BuildContext context, WorkbenchRegime regime) =>
+      regime.isStacked ? _oneScroll(context, regime) : _panes(context, regime);
 
-            if (plan.scrolls) {
-              // Too short to pin the photograph above a scrolling pane at this
-              // text scale. The record scrolls as one instead, so nothing is
-              // clipped and the photograph is still on the screen, and the
-              // decision bar stays pinned beneath it where it still fits
-              // (finding V-1).
-              final Widget scrolled = SingleChildScrollView(
-                key: evidenceScrollKey,
-                controller: _evidenceScroll,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    header,
-                    ..._stackedSource(context, plan.band),
-                    SizedBox(height: context.ui.space.s2),
-                    _evidenceContent(context, regime, scrollable: false),
-                    if (!plan.pinBar) bar,
-                  ],
-                ),
-              );
-              return plan.pinBar
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        Expanded(child: scrolled),
-                        bar,
-                      ],
-                    )
-                  : scrolled;
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                ..._stackedSource(context, plan.band),
-                SizedBox(height: context.ui.space.s2),
-                Expanded(
-                  child: _evidenceContent(context, regime, leading: header),
-                ),
-                bar,
-              ],
-            );
-          },
+  /// The record as one scroll (13 sections 2.1 and 4.1).
+  ///
+  /// Four slivers and nothing nested: the source header, the status strip,
+  /// the segments, and the chosen segment's content. The header is the only
+  /// region that pins, and it pins by scroll position rather than by an
+  /// arithmetic that had to be told the height of everything else on the
+  /// screen first.
+  Widget _oneScroll(BuildContext context, WorkbenchRegime regime) {
+    final UiThemeData ui = context.ui;
+    _syncTabs(regime);
+    final EdgeInsetsGeometry gutter = EdgeInsetsDirectional.symmetric(
+      horizontal: ui.space.s4,
+    );
+    final Widget scroll = CustomScrollView(
+      key: evidenceScrollKey,
+      controller: _evidenceScroll,
+      slivers: <Widget>[
+        WorkbenchSourcePane.header(
+          specimen: widget.specimen,
+          controller: _view,
+          selectedRegionId: _region,
+          onSelectRegion: _selectRegion,
+          onExpand: () => showSourceFullScreen(
+            context,
+            specimen: widget.specimen,
+            selectedRegionId: _region,
+            onSelectRegion: _selectRegion,
+          ),
         ),
-      );
-    }
-
-    return Padding(
-      padding: EdgeInsets.all(context.ui.space.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _header(context),
-          Expanded(
-            child: Row(
+        SliverPadding(
+          padding: gutter.add(
+            EdgeInsets.only(top: ui.space.s3, bottom: ui.space.s3),
+          ),
+          sliver: SliverToBoxAdapter(child: _statusStrip(context)),
+        ),
+        _segmentBar(context, regime),
+        SliverPadding(
+          padding: gutter.add(
+            EdgeInsets.only(
+              top: ui.space.s4,
+              bottom: ui.space.s4 + UiScaffold.of(context).bottomInset,
+            ),
+          ),
+          sliver: SliverToBoxAdapter(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Expanded(flex: regime.sourceFlex, child: _sourcePane(context)),
-                SizedBox(width: context.ui.space.s4),
-                Expanded(
-                  flex: regime.evidenceFlex,
-                  child: _evidencePane(context, regime),
-                ),
-                if (regime == WorkbenchRegime.threePane) ...<Widget>[
-                  SizedBox(width: context.ui.space.s4),
-                  SizedBox(
-                    width: historyPaneWidth,
-                    child: Semantics(
-                      container: true,
-                      label: 'History',
-                      child: SingleChildScrollView(
-                        child: _history(const ValueKey<String>('history-pane')),
-                      ),
-                    ),
-                  ),
+                // Why the photograph carries no region boxes, where it does
+                // not. It is the first row of the evidence rather than a
+                // region above the strip: at 200 percent text it is three
+                // lines, and three lines between the header and the strip is
+                // the disposition below the fold (13 section 2.5).
+                if (SourceOrientationCaveat.unverified(_asset)) ...<Widget>[
+                  const SourceOrientationCaveat.text(),
+                  SizedBox(height: ui.space.s4),
                 ],
+                _segmentPanel(context, regime),
               ],
             ),
           ),
+        ),
+      ],
+    );
+    if (!WindowClass.of(context).isCompact) return scroll;
+    // Previous and next are a swipe on the phone, where the decision bar
+    // draws no edge buttons, and both moves reach a screen reader as named
+    // custom actions (13 section 3.3).
+    return UiDecisionSwipe(
+      previousLabel: WorkbenchDecisionBar.previousLabel,
+      nextLabel: WorkbenchDecisionBar.nextLabel,
+      onPrevious: () => _step(widget.onPrevious, widget.previousBlockedReason),
+      onNext: () => _step(widget.onNext, widget.nextBlockedReason),
+      child: scroll,
+    );
+  }
+
+  /// The segments, stuck under the header while the chrome budget holds them.
+  ///
+  /// `UiStickyBar` pins the row once it has scrolled up to the header, so the
+  /// reviewer never loses which evidence is showing (13 sections 3.5 and
+  /// 4.1). It is pinned chrome while it is stuck, which is what
+  /// [segmentsStick] weighs: above the reviewer's default type size, and
+  /// from `expanded` up at any size, the frame's own chrome has already spent
+  /// the budget of 13 section 2.3, and a screen over the budget gives a pinned
+  /// region up.
+  Widget _segmentBar(BuildContext context, WorkbenchRegime regime) {
+    final UiThemeData ui = context.ui;
+    final Widget bar = Padding(
+      padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
+      child: _segments(context, regime),
+    );
+    if (!segmentsStick(
+      MediaQuery.textScalerOf(context),
+      WindowClass.of(context),
+    )) {
+      return SliverToBoxAdapter(child: bar);
+    }
+    return UiStickyBar(
+      // The control's own height and nothing around it: the bar is pinned
+      // chrome while it is stuck, and every dp of padding on it is a dp the
+      // budget of 13 section 2.3 does not have. The space above and below it
+      // belongs to the regions it separates, which is 13 section 2.6's rule
+      // that a region's own padding replaces the page's rather than adding
+      // to it. Derived from the type the row holds rather than declared
+      // (11 section 2.2).
+      extent: UiSegmentedStyle.resolve(
+        ui,
+        UiSize.lg,
+        textScaler: MediaQuery.textScalerOf(context),
+      ).outerHeight,
+      child: bar,
+    );
+  }
+
+  /// The record beside itself: source, evidence, and history where the window
+  /// is wide enough to hold all three (05 section 3.5).
+  ///
+  /// Each pane is one scroll and no pane is inside another. The decision bar
+  /// is the frame's action bar here too, so every pane clears it.
+  Widget _panes(BuildContext context, WorkbenchRegime regime) {
+    final UiThemeData ui = context.ui;
+    return Padding(
+      padding: EdgeInsets.all(ui.space.s4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Expanded(flex: regime.sourceFlex, child: _sourcePane(context)),
+          SizedBox(width: ui.space.s4),
+          Expanded(
+            flex: regime.evidenceFlex,
+            child: _evidencePane(context, regime),
+          ),
+          if (regime == WorkbenchRegime.threePane) ...<Widget>[
+            SizedBox(width: ui.space.s4),
+            SizedBox(
+              width: historyPaneWidth,
+              child: Semantics(
+                container: true,
+                label: 'History',
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    bottom: UiScaffold.of(context).bottomInset,
+                  ),
+                  child: _history(const ValueKey<String>('history-pane')),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

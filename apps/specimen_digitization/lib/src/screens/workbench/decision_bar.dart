@@ -1,26 +1,35 @@
-/// The decision bar (screen blueprints, 6.1; responsive 3.5).
+/// The decision bar (13 sections 2.3, 3.3 and 4.1).
 ///
-/// The two actions the reviewer is here for never scroll away, and neither is
-/// ever a silent no-op: when the server does not permit one, the button
-/// carries the reason on its own semantics node rather than a bare disabled
-/// state (accessibility, 2.2 finding 3; pass criterion 5.6).
+/// The decisions the reviewer came to make, in the frame's own action bar
+/// slot at compact and medium and in the top bar's middle from `expanded` up.
+/// `UiDecisionBar` is the pattern: one row of `density.controlHeight`, the
+/// primary, the secondary beside it or in the bar's own overflow when the
+/// line does not hold both, any tertiary action before the secondary and the
+/// first into that overflow, the count of where the reviewer is, and previous
+/// and next as edge buttons from `medium` up. At compact those two are the
+/// swipe `UiDecisionSwipe` puts over the evidence.
 ///
-/// The bar is `glass.floating` where it floats, which is above the navigation
-/// on a stacked layout, and `paper` where it is in flow at the foot of the
-/// evidence pane on a two or three pane layout (09 section 3.3; responsive
-/// 3.5). It is the scaffold's action bar in everything but the slot: the
-/// shell owns the `UiScaffold` and publishes no way for a routed screen to
-/// fill `actionBar`, which is recorded in the slot closeout.
+/// Neither decision is ever a silent no-op: where the server does not permit
+/// one, the button carries the reason on its own semantics node rather than a
+/// bare disabled state (06 section 3.2; pass criterion 5.6). The two queue
+/// steps are the same: at the end of the queue the control is drawn disabled
+/// with the reason on its hint and its tooltip, the same sentence the `J` and
+/// `K` keys say aloud, rather than being drawn as a control that does nothing
+/// (13 section 3.3, polish 3).
+///
+/// This widget is the record's own binding of the pattern. It carries no
+/// surface of its own: the scaffold's action bar is the pane, the padding and
+/// the one frosted surface a compact window may spend (13 section 2.2), and a
+/// pane inside that pane is the "glass decision bar over a glass pill" 13
+/// section 0 reads as a defect.
 library;
-
-import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'pending_changes.dart';
 
-/// The pinned bar at the foot of the evidence pane.
+/// The record's decisions, in the scaffold's action bar.
 class WorkbenchDecisionBar extends StatelessWidget {
   const WorkbenchDecisionBar({
     super.key,
@@ -32,10 +41,9 @@ class WorkbenchDecisionBar extends StatelessWidget {
     required this.onSavePending,
     this.onNext,
     this.onPrevious,
-    this.nextBlockedReason,
-    this.previousBlockedReason,
+    this.nextDisabledReason,
+    this.previousDisabledReason,
     this.positionLabel,
-    this.compact = false,
     this.busy = false,
   });
 
@@ -51,37 +59,32 @@ class WorkbenchDecisionBar extends StatelessWidget {
   /// Why the record cannot be approved, or null when it can.
   final String? approveBlockedReason;
 
-  /// How many corrections are waiting to be sent.
+  /// How many corrections the reviewer has made and not sent.
   final int pendingCount;
 
-  /// Saves them, with one reason.
+  /// Sends them, as one reviewer action under one reason.
   final VoidCallback onSavePending;
 
-  /// The next specimen in the queue, when the host offers one.
+  /// Moves to the next specimen. Null where there is none to move to.
   final VoidCallback? onNext;
 
-  /// The previous specimen in the queue, when the host offers one.
+  /// Moves to the previous specimen. Null where there is none.
   final VoidCallback? onPrevious;
 
-  /// Why there is no next specimen, when the host offers navigation but this
-  /// record is the last one loaded.
+  /// Why there is no next specimen, where [onNext] is null.
   ///
-  /// The control is drawn and disabled with this as its tooltip and its
-  /// semantic hint, rather than moving nowhere or disappearing: a reviewer at
-  /// the end of the queue has to be told they are at the end
-  /// (pass criterion 5.6).
-  final String? nextBlockedReason;
+  /// The bar draws the control disabled with the reason on its hint and its
+  /// tooltip, so the end of the queue says why rather than falling silent
+  /// (pass criterion 5.6, finding V-2); with neither a move nor a reason the
+  /// control is not drawn at all, which is a record with no queue around it.
+  final String? nextDisabledReason;
 
-  /// Why there is no previous specimen, at the head of the queue.
-  final String? previousBlockedReason;
+  /// Why there is no previous specimen, where [onPrevious] is null.
+  final String? previousDisabledReason;
 
   /// Where this record sits in the loaded queue, as "3 of 38", or null when
   /// the queue does not carry it (pass criterion 6.5).
   final String? positionLabel;
-
-  /// True on a stacked layout, where the bar is full width above the
-  /// navigation bar rather than right aligned in a pane.
-  final bool compact;
 
   /// True while a decision is in flight.
   ///
@@ -103,125 +106,52 @@ class WorkbenchDecisionBar extends StatelessWidget {
   /// The step backwards.
   static const String previousLabel = 'Previous specimen';
 
+  /// The word on the control that sends a set of corrections.
+  static String saveLabel(int count) => 'Save ${pendingChangesLabel(count)}';
+
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final UiButtonRow actions = UiButtonRow(
-      primary: UiButton(
-        label: approveLabel,
-        loading: busy,
-        disabledReason: approveBlockedReason,
-        onPressed: approveBlockedReason == null ? onApprove : null,
-      ),
-      secondary: UiButton(
-        label: coverageLabel,
-        variant: UiButtonVariant.secondary,
-        loading: busy,
-        disabledReason: coverageBlockedReason,
-        onPressed: coverageBlockedReason == null ? onConfirmCoverage : null,
-      ),
-      tertiary: <UiButton>[
-        if (pendingCount > 0)
-          UiButton(
-            label: 'Save ${pendingChangesLabel(pendingCount)}',
-            variant: UiButtonVariant.ghost,
-            leading: UiIcons.save,
-            loading: busy,
-            onPressed: onSavePending,
-          ),
-      ],
+    // The record has three things to offer and the bar holds all three. Which
+    // is first depends on what the reviewer has in front of them: corrections
+    // they have made and not sent are what stands between them and any
+    // decision at all, and a decision taken over them would record a version
+    // without them. So while there are corrections the primary is the save,
+    // the approval is the second and the coverage confirmation the third,
+    // the first to leave the line for the bar's own menu; with none, the two
+    // are the two decisions 13 section 3.3 describes (07 section 6.1).
+    final bool pending = pendingCount > 0;
+    final UiButton approve = UiButton(
+      label: approveLabel,
+      variant: pending ? UiButtonVariant.secondary : UiButtonVariant.primary,
+      loading: busy,
+      disabledReason: approveBlockedReason,
+      onPressed: approveBlockedReason == null ? onApprove : null,
     );
-
-    // The scaffold floats its own chrome over the body rather than reserving
-    // room in it, so at compact the navigation pill sits exactly where this
-    // bar does. `bottomInset` is the clearance it asks for, and it already
-    // carries the display's own safe area; the `max` is for a host with no
-    // scaffold, such as a component test.
-    final double clearance = math.max(
-      UiScaffold.of(context).bottomInset,
-      MediaQuery.paddingOf(context).bottom,
+    final UiButton coverage = UiButton(
+      label: coverageLabel,
+      variant: UiButtonVariant.secondary,
+      loading: busy,
+      disabledReason: coverageBlockedReason,
+      onPressed: coverageBlockedReason == null ? onConfirmCoverage : null,
     );
-
-    final Widget bar = Padding(
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: ui.space.s4,
-        vertical: ui.space.s2,
-      ),
-      child: Row(
-        children: <Widget>[
-          if (onPrevious != null || previousBlockedReason != null)
-            _Step(
-              label: WorkbenchDecisionBar.previousLabel,
-              reason: previousBlockedReason,
-              onPressed: onPrevious,
-              icon: UiIcons.previous,
-            ),
-          if (positionLabel != null)
-            Padding(
-              padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s1),
-              child: Text(
-                positionLabel!,
-                style: ui.type.label.copyWith(color: ui.color.inkSecondary),
-              ),
-            ),
-          Expanded(child: actions),
-          if (onNext != null || nextBlockedReason != null)
-            _Step(
-              label: WorkbenchDecisionBar.nextLabel,
-              reason: nextBlockedReason,
-              onPressed: onNext,
-              icon: UiIcons.next,
-            ),
-        ],
-      ),
+    return UiDecisionBar(
+      primary: pending
+          ? UiButton(
+              label: saveLabel(pendingCount),
+              leading: UiIcons.save,
+              loading: busy,
+              onPressed: onSavePending,
+            )
+          : approve,
+      secondary: pending ? approve : coverage,
+      tertiary: pending ? <UiButton>[coverage] : const <UiButton>[],
+      count: positionLabel,
+      onPrevious: onPrevious,
+      onNext: onNext,
+      previousDisabledReason: previousDisabledReason,
+      nextDisabledReason: nextDisabledReason,
+      previousLabel: previousLabel,
+      nextLabel: nextLabel,
     );
-
-    final Widget surface = compact
-        ? GlassSurface(
-            level: GlassLevel.floating,
-            // A tile rather than a capsule, which is the shape the scaffold
-            // gives its own action bar: the row stacks to three buttons on a
-            // phone and a capsule around three lines reads as a pill that
-            // grew (10 section 4.4).
-            radius: ui.shape.tile,
-            child: bar,
-          )
-        : Surface(radius: ui.shape.tile, hairline: true, child: bar);
-
-    return clearance == 0
-        ? surface
-        : Padding(
-            padding: EdgeInsets.only(bottom: clearance),
-            child: surface,
-          );
   }
-}
-
-/// One step along the queue, drawn even when it is unavailable.
-///
-/// `UiIconButton` takes the reason itself: it publishes it as the control's
-/// semantic hint and draws it on hover and on long press through
-/// `UiTooltip.reason`, which is what a dimmed control with nothing to say
-/// would otherwise cost (pass criterion 5.6, finding V-2).
-class _Step extends StatelessWidget {
-  const _Step({
-    required this.label,
-    required this.reason,
-    required this.onPressed,
-    required this.icon,
-  });
-
-  final String label;
-  final String? reason;
-  final VoidCallback? onPressed;
-  final IconSpec icon;
-
-  @override
-  Widget build(BuildContext context) => UiIconButton(
-    icon: icon,
-    semanticsLabel: label,
-    tooltip: label,
-    disabledReason: reason,
-    onPressed: onPressed,
-  );
 }

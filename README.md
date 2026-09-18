@@ -20,19 +20,83 @@ Temporal is the fine-grained recovery candidate because Pydantic AI supports it 
 
 ## Flutter client
 
-The client is in `apps/specimen_digitization` and initializes the registered Firebase Web, iOS, and Android apps from the generated FlutterFire configuration. Authentication, Storage, and SQL Connect packages are installed. The iOS deployment target is 15.0 because the current Firebase Data Connect dependency chain requires it.
+The client is in `apps/specimen_digitization`. It is what a collections
+reviewer works in: photographs come in through intake, a record is reviewed
+against its own evidence, and a decision is recorded with a reason. One
+codebase serves the web, Android and iOS. It initializes the registered
+Firebase Web, iOS and Android apps from the generated FlutterFire
+configuration; Authentication, Storage and SQL Connect packages are installed.
+The iOS deployment target is 15.0 because the current Firebase Data Connect
+dependency chain requires it.
 
 ```bash
 cd apps/specimen_digitization
-flutter analyze
-flutter test
-flutter run
+flutter pub get --enforce-lockfile
+flutter run -d chrome
 ```
 
 The committed SQL Connect schema and named server operations are exercised with
 an isolated PostgreSQL-backed emulator. Their production rollout is separate
 from Hosting and is not performed by this PR. Flutter calls the scoped API;
 it does not connect directly to PostgreSQL.
+
+[`apps/specimen_digitization/README.md`](apps/specimen_digitization/README.md)
+has the layers, the gates, the golden policy and the text scale and reduced
+motion behaviour.
+
+### The design system
+
+The client's presentation layer is an in-repo package,
+[`specimen_ui`](apps/specimen_digitization/packages/specimen_ui), built on
+`package:flutter/widgets.dart` rather than on Material. Tokens, primitives and
+thirty controls live there; no screen in the application constructs a Material
+component, and a test holds that line. The direction is
+[`design/09-brand-direction.md`](apps/specimen_digitization/design/09-brand-direction.md)
+and the library is specified in
+[`design/10-component-library.md`](apps/specimen_digitization/design/10-component-library.md).
+
+Every token and every control, in every variant, state, size, density and mode,
+is on one browsable page:
+
+```bash
+cd apps/specimen_digitization
+flutter run -d chrome
+# then visit /gallery
+```
+
+The gallery needs no session and is absent from release builds, so it is what a
+reviewer looks at and not what a museum sees.
+
+### Running the client's gates
+
+Every rule the client is held to is a test. Run each on its own and read its
+own exit code; the two suites contend for one machine, so a single chained
+command can be reaped without either having failed.
+
+```bash
+cd apps/specimen_digitization
+flutter analyze --fatal-infos
+flutter test
+(cd packages/specimen_ui && flutter analyze --fatal-infos && flutter test)
+dart format --set-exit-if-changed lib test
+```
+
+The full local gate for the whole repository, which is what CI runs, is
+`scripts/ci/verify.sh`.
+
+## Release rules
+
+1. A merge to `main` is the only production trigger; a pull request cannot
+   deploy.
+2. No `firebase deploy`, Hosting channel deploy or `gcloud ... deploy` command
+   is ever run from a workstation or an agent shell.
+3. A release is complete only when the public `/deployment.json` marker reports
+   the exact merged commit SHA and the smoke check passes.
+
+The authoritative runbook, with the required checks, the identities and the
+failure handling, is [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Read it before
+changing CI, release configuration, Firebase Hosting, Google Cloud IAM, GitHub
+environments or production.
 
 ## Documentation
 
@@ -43,6 +107,9 @@ it does not connect directly to PostgreSQL.
 - [Observability, prompt, and evaluation architecture](docs/OBSERVABILITY_AND_EVALUATION.md)
 - [Hugging Face model routing](docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md)
 - [CI/CD and Firebase Hosting](docs/DEPLOYMENT.md)
+- [Front-end design foundation, 00 to 13](apps/specimen_digitization/design/README.md)
+- [The `specimen_ui` design system](apps/specimen_digitization/packages/specimen_ui/README.md)
+- [Front-end refactor plan](docs/execution/FRONT_END_REFACTOR.md) and [what it taught](docs/LESSONS_FRONT_END_REFACTOR.md)
 - [Field Museum EMu Parties and IRN availability check](docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md)
 
 ## Safe local setup

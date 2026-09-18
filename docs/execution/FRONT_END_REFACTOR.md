@@ -23,31 +23,30 @@ naturally; it is recorded, not sought.
 
 ## 2. Definition of done for the whole refactor
 
-1. The `no_material_components` and `no_material_imports` backlogs are empty:
-   zero Material component widgets outside `packages/specimen_ui`.
-2. Geist and Geist Mono render everywhere; `google_fonts` is gone from
-   `pubspec.yaml` and `pubspec.lock`.
-3. Every glyph comes from `UiIcons` on Phosphor; `material_symbols_icons` is
-   gone.
-4. Every control in 10 section 4 exists, passes `expectControlContract`, and
-   appears on its gallery page; the six gallery goldens exist in four
-   combinations each.
-5. The existing app suite is green with finders migrated to roles and labels;
-   screen goldens and semantics fixtures are regenerated and their diff is
-   reviewed and recorded.
-6. `flutter analyze --fatal-infos` and `flutter test` pass in the app and in
-   the package; `scripts/ci/check_ui_strings.py` reports zero violations;
-   `flutter build web --release` and `scripts/ci/build_mobile.sh android`
-   succeed; `scripts/ci/verify.sh` and `.github/workflows/ci-cd.yml` run the
-   package tests.
-7. Device captures of every top-level screen on an Android phone, an Android
-   tablet in landscape and a desktop browser, in both modes, are checked in
-   under `design/screenshots/refactor/`.
-8. Launcher icons, splash, favicon and web manifest carry the pin mark.
-9. `design/12-verification-report-v2.md` re-measures the eight dimensions of
-   the north star bar against the rebuilt client.
-10. Every agent session has appended its closeout to
-    `docs/SESSION_LEARNINGS.md`.
+The third column is what actually checks each item, and the fourth is where it
+stood at `a4cd400`, the head the pull request was opened from. An item with no
+instrument says so rather than being scored on the strength of the work.
+
+| # | Done when | Verified by | State |
+|---|---|---|---|
+| 1 | The `no_material_components` and `no_material_imports` backlogs are empty: zero Material component widgets outside `packages/specimen_ui` | `test/theme/no_material_components_test.dart` and `no_material_imports_test.dart`, both scanning all of `lib/` with empty backlog maps. The import gate also asserts that each of the four named infrastructure importers still needs its import | Met, H1 |
+| 2 | Geist and Geist Mono render everywhere; `google_fonts` is gone from `pubspec.yaml` and `pubspec.lock` | `test/theme/fonts_bundled_test.dart` and the package's `test/foundation/fonts_test.dart`: both families resolve to the bundled assets and `google_fonts` is absent from the dependency graph. Visible in all 121 screen goldens, which rendered in Ahem before | Met, wave 0 |
+| 3 | Every glyph comes from `UiIcons` on Phosphor; `material_symbols_icons` is gone | `test/theme/icons_unique_test.dart` with an empty backlog and no allowance; `material_symbols_icons` and `cupertino_icons` absent from `pubspec.lock` | Met, H1 |
+| 4 | Every control in 10 section 4 exists, passes `expectControlContract`, and appears on its gallery page; the six gallery goldens exist in four combinations each | The package suite, 685 tests, with `expectControlContract` called from every interactive control's test file and the nine non-interactive ones named in 10 section 2; 48 family and foundation goldens and 288 matrix goldens under `packages/specimen_ui/test/gallery/goldens/` | Met, waves 1, F and G |
+| 5 | The existing app suite is green with finders migrated to roles and labels; screen goldens and semantics fixtures are regenerated and their diff is reviewed and recorded | `flutter test` in the application, 1301 passed and 7 skipped; `test/ui_finders.dart` is the shared role and label finder set; the moved set is recorded per wave in section 13 and per slot in its closeout, against the set expected to move | Met |
+| 6 | `flutter analyze --fatal-infos` and `flutter test` pass in the app and in the package; `scripts/ci/check_ui_strings.py` reports zero violations; `flutter build web --release` and `scripts/ci/build_mobile.sh android` succeed; `scripts/ci/verify.sh` and `.github/workflows/ci-cd.yml` run the package tests | The gate run recorded at `a4cd400`; `check_ui_strings.py` over 202 files with 0 violations; `flutter build web --release` in 25 s with `main.dart.js` at 3,272,384 bytes; `build_mobile.sh android` in 69 s; the package resolve, analyse and test steps in `ci-cd.yml` and in `verify.sh` | Met, H1 |
+| 7 | Device captures of every top-level screen on an Android phone, an Android tablet in landscape and a desktop browser, in both modes, are checked in under `design/screenshots/refactor/` | 43 captures under `design/screenshots/refactor/`, taken against `cbe78eb` from `test/verification/capture_app.dart`, which composes the shipped application with the golden fixture so a simulator shows a record rather than the setup screen | Partly met, H3. The tablet class is an iPad Pro 13 inch simulator, because no Android tablet image is on this machine. **Landscape is not captured on any device** and the `large` window class has no device capture: `xcrun simctl` has no rotate verb and the AppleScript route needs a macOS accessibility grant the session could not request |
+| 8 | Launcher icons, splash, favicon and web manifest carry the pin mark | E6's 110 files, generated from one reproducible source (`tool/brand/render_mark.py` over `assets/brand/pin.svg`) and inspected in the artifacts: the Android debug APK listed with its mipmap and splash drawables, the iOS `Assets.car` listed with `assetutil`, and `build/web` carrying the favicon, five icons and the manifest | Met, E6 |
+| 9 | `design/12-verification-report-v2.md` re-measures the eight dimensions of the north star bar against the rebuilt client | The report itself, and the instruments it measures with in `test/verification/`: the fit matrix over 132 cells, the reduced motion sweep over 14 transitions and both platform signals, the dark mode sweep over 40 screen cells, and the glass probe on three surfaces | Met, H3, with three dimensions at Partial (visual system, motion, adaptation), Accessibility at Partial, and Usability recorded as not re-measured |
+| 10 | Every agent session has appended its closeout to `docs/SESSION_LEARNINGS.md` | Twenty two closeouts in the file, one per slot, each naming its branch, its commits, its gates with exit codes, the goldens it moved, and what it left undone. Distilled in `docs/LESSONS_FRONT_END_REFACTOR.md` | Met |
+
+Two things a release needs that this definition of done never covered, stated
+here so a table of "Met" is not read as readiness:
+
+| Item | Verified by | State |
+|---|---|---|
+| VoiceOver and TalkBack complete every review script unaided on hardware (06 section 2, and the Accessibility row of the bar in 12) | Nothing. The checked-in semantics fixtures are the proxy: they pin what a screen reader is told, not what it says | **Not verified.** Not run in 08 either. It needs a person, an iPhone or iPad and an Android phone, and the scripts in 06 section 4.2 |
+| The client behaves against live museum data (wave B) | Nothing yet. Slot B3 of section 3I writes `docs/execution/CLIENT_LIVE_DATA_READINESS.md` for the client's own side | **Not verified.** The pilot itself is gated by `docs/execution/CURRENT_RELEASE_CHECKLIST.md`, whose open items are the user's and protected CI's rather than a front end slot's |
 
 ## 3. Work breakdown
 
@@ -170,6 +169,65 @@ contract and turns it into tests.
 | A2 | `fe/compose-record`: the record screen and region editor rebuilt as one scroll with a collapsing source header, status strip, sticky segments and a one row decision bar (13 sections 4.1, 4.3) | A1 | L |
 | A3 | `fe/compose-shell`: the shell's band strip, pill by route and top bar by route; queue, intake, sources, sign in, help and setup as one scroll each (13 sections 4.2, 4.4 to 4.6) | A1 | L |
 | A4 | `fe/compose-gates`: `test/composition/*` (no nested scrollables, surface depth, chrome budget, above the fold, one job) with per screen expectations, and the emulator and simulator capture script | H1 | M |
+
+**Status, polish 3 (2026-09-17), slot P2 `fe/polish3-screens`.** Wave A's
+screen findings closed on the screen side. The record at expanded and large
+gives the action bar up and its decision sits in the top bar beside the
+identifier (13 section 4.1, the expanded and large table): at 200 percent text
+the bar, the one line band and an action bar were 184.85 dp against the 164
+and 180 those windows allow, and the bar and the band alone are 113.25, so the
+two `chrome_budget` lines are deleted and the backlog is empty; the segments
+stick at default type at every class again, since the window no longer spends
+its bottom on the action bar. The record's bar keeps refresh as its one disc
+and puts the record's six commands behind one overflow trigger at every width
+(13 sections 2.4 and 4.1), which also retires the seven discs and the shared
+provenance glyph the 1440 golden showed. The queue's search row sticks at
+medium, where 24 percent of a portrait tablet holds it at every text scale,
+and scrolls at compact, expanded and large; a screen pins only while it is the
+route on top. 13 carries the amendments (sections 2.2, 3.4, 4.1, 4.2, 4.4 and
+the section 5 backlog table). Open, with owner P1 `fe/polish3-package`: the
+two `glass_count` lines (`record@medium` 3, `import-sheet@compact` 2), the
+zero extent `PinnedChrome` around both collapsing headers, `ShellChrome` in
+`shell.dart`, and the four `UiDecisionBar`, `UiStatusStrip` and `UiTopBar`
+asks marked `fe/polish-3` in `lib/`.
+
+**Status, polish 3 (2026-09-17), slot P3 `fe/polish3-consume`.** The screens
+consume the frame P1 grew, and the documents say so. `ShellChrome`,
+`ShellChromeScope` and `_SolidBar` are gone: `UiScaffoldSlots.setTitle` and
+`setLeading` reach the shell's bar through `UiTopBarAsk`, proven by a shell
+test that publishes from inside the queue, and the frame draws the bar solid
+at every class. The record keeps publishing a whole bar, since 13 section 4.1
+gives it the identifier in `mono.identifier`, the decision from `expanded` up
+and six commands behind one trigger, and the shell's account menu closes it
+below large (`AppShell.accountInBar`, one rule for every bar); at 390 by 844
+the identifier has 134 dp beside four discs and ellipsises at 200 percent,
+recorded for the integrator. Both collapsing headers are `primary: true` with
+the zero extent wrappers and the pane's hand built `PrimaryRegion` deleted,
+and every record and region editor cell measures the same with the gates' own
+walk: 0.2701 and 0.2380 at compact, 0.2227 and 0.1961 at medium, 0.1220 and
+0.1381 at expanded, 0.1733 and 0.1258 at large, the fold at 273.6 dp at
+default type and 258 at 200 percent, with the `header 0` part gone from every
+list. The strip's facts are `TermText`s for Version, Run and Step, each built
+under `MediaQuery.withNoTextScaling` because the pattern's paragraph scales a
+placeholder by the text scale and the shipped goldens drew "Version 17" over
+four lines of display type at 200 percent (a package finding for 0.4.0, with
+a second: the facts slot clips "Versio" at 768 by 1024 at 200 percent because
+the fit reserves `labelMin` rather than measuring the first fact).
+`WorkbenchDecisionBar` offers the save, the approval and the coverage
+confirmation as three, and the queue's ends are drawn disabled with their
+reasons rather than announcing on press; the `J` and `K` keys still speak,
+and `_announce` now schedules the frame its post frame callback waits for,
+a latent defect the key press exposed. Intake's upload is a `UiDecisionBar`
+again. All seven `fe/polish-3` markers in `lib/` are resolved and none is
+left. The ten P1 amendments are placed in 13 (2.2, 2.3 with the insets, 3.1,
+3.2, 3.3, 3.4, 3.5, 4.1) and 10 (3, 4.4), reconciled with P2's paragraphs and
+carrying measured numbers (the record's bar 69.25, the band 52 and the action
+bar 79.6 dp at 200 percent on the phone, 200.85 of 236.3), 4.3 records the
+editor's header as primary, and the section 5 table says every backlog is
+empty and what closed each. Gates: package 778; app 1517 passed, 7 skipped,
+51 failed, all of them the 48 record goldens and the 3 workbench fixtures the
+integrator regenerates; composition 179 green with every backlog empty;
+strings 201 files clean; pre-commit clean.
 
 ### I. Release readiness for a live data pilot (wave B, added 2026-09-17)
 
@@ -347,13 +405,24 @@ Every brief contains, in this order:
 8. **Load discipline.** Targeted tests while developing; one full run at the
    end with the tree untouched; log to a file and poll it.
 
-## 12. Size
+## 12. Size, estimated and measured
 
-The package lands at roughly nine to twelve thousand lines including tests
-and gallery. The screen migration touches roughly twelve thousand lines of
-existing Dart, mostly replacements at call sites, plus test finder changes.
-About sixteen agent runs across five waves; two to three days of wall clock
-with the concurrency cap, dominated by full test runs.
+The estimate was written on 2026-09-16 before wave 0. The measurement is taken
+at `f3b6363`, after waves 0 to H.
+
+| | Estimated | Measured |
+|---|---|---|
+| The package | nine to twelve thousand lines including tests and gallery | 23,550 lines of `lib/` over 94 files, of which the gallery is 4,898, plus 18,352 lines of tests over 69 files |
+| The screen migration | roughly twelve thousand lines of existing Dart, mostly call site replacements | the application is 29,585 lines of `lib/` over 100 files and 29,133 lines of test over 130 files; against `f05d496` the branch is 984 files changed, 68,268 insertions and 10,593 deletions over 235 commits, and the insertions include five new design documents totalling 3,180 lines |
+| Agent runs | about sixteen across five waves | twenty two across eight waves (0, 1, 1.5, 2, F, G, 3 with polish 2, and H), with waves A and B running now |
+| Wall clock | two to three days with the concurrency cap, dominated by full test runs | two days |
+
+The estimate was low by about a factor of two on the package, and the extra is
+not controls: it is the tests, the gallery, the 336 goldens and the two
+documents the reviews forced, `11-fit-and-scale.md` and
+`13-screen-composition.md`, neither of which existed when the estimate was
+made. The wall clock held because the slots were disjoint and ran in parallel,
+which is the whole argument for section 6.
 
 ## 13. Status log
 
@@ -379,6 +448,13 @@ with the concurrency cap, dominated by full test runs.
 | 2026-09-17 | Pull request #64's first CI run failed one job, "Flutter checks and web build": all 336 package goldens differ on the Linux runner by one to eleven percent of pixels, the same font rasterisation gap the application's screen goldens already skip off macOS. `PlatformGatedGoldenComparator` in the package's `flutter_test_config.dart` compares on macOS only, renders elsewhere, and refuses to write goldens off macOS; both paths proven locally (`SPECIMEN_UI_GOLDENS=skip` forces the off macOS path). Package suite 685 green; pushed for CI to rerun. |
 | 2026-09-17 | Morning review on the Android emulator: the record screen at phone width has a scroll inside a scroll, chrome at about three quarters of the height, surfaces inside surfaces and no priority; Anurag asked for the screens fixed end to end and the client made ready to test on live data with CI/CD green, deployments checked and documentation and lessons in order. `design/13-screen-composition.md` written (composition contract, patterns, per screen tables, gates); sections 3H and 3I added; wave A (A1, A4 first, then A2, A3) and wave B (B1 to B3) cut from this commit. |
 | 2026-09-17 | Second CI run on the pull request: the package goldens pass on Linux with the comparator, and 20 application tests fail instead, all pixel sampling contrast instruments (the framework's `textContrastGuideline` in three files and the verification instrument's rendered pixel measurements); Linux rasterises the glyphs thinner and the sampler reads two shades of the background where macOS reads glyph against ground, the unreliability report v2 documented. The same rule as the goldens now covers them: `pixelInstrumentsCompare` in the golden harness, `expectGuideline` marks the text contrast guideline skipped off macOS while the geometry and semantics guidelines run everywhere, and the verification instrument's pixel groups are skipped off macOS; the token based composite contrast tests carry the proof on every platform. Proven locally on both paths (`SPECIMEN_GOLDENS=skip` forces the off macOS path): 122 pass on macOS, 90 pass and 32 skip on the forced path. |
+| 2026-09-17 | Third CI run: nine failures left, the verification instrument's per screen pixel measurements, whose guard the previous commit described but had not written; 3fa61d7 writes it. **Pull request #64 merged by Anurag at 15:37 UTC as the squash 4f9f518 (tree identical to 3fa61d7); the `main` CI/CD run 35241427956 green on all six jobs including `Deploy Firebase Hosting`; slot B1's read only recheck: `smoke_hosting.sh` exit 0, the public marker matches the SHA, run and attempt, every route serves the shell, the bundle carries no gallery string.** The squash deleted `front-end-refactor` on GitHub, so the integration branch is now `front-end-composition`, cut from `main` at 4f9f518 in the same worktree, with slot B2's documentation replayed onto it (8aa3814) and draft pull request #65 opened. Live slots cut from f3b6363 are re-based onto the new branch at merge time (`git rebase --onto front-end-composition f3b6363 fe/<slot>`), which slot B1 verified clean for its own branch. |
+| 2026-09-17 | Wave B on the new branch. `fe/release-docs` (9ac8b51) replayed as 8aa3814; `fe/release-ci` (ec5ddfc) re-based and merged as 85d717b: a formatting gate and `smoke_web_routes.py` (64 tests) in `verify.sh` and the Flutter CI job, run between the deployment stamp and the artifact upload so an untested build is never uploaded; the web build stamps `APP_BUILD` with the commit (f75c7ce; the live help sheet had served the unstamped fallback). `fe/release-client` (f19b2b9, nine commits; the agent's push was refused by the permission classifier, so the integrator published the branch) re-based and merged as 48a532f: seven inline request timeouts become `apiRequestTimeout`; the photograph decodes at the size drawn; the environment band gains a bounded pilot state (`SPECIMEN_PILOT_SCOPE`, forwarded on main pushes in 3e7f753); a wire contract test of every client request against the published `backend-openapi.json`; five live shaped fixtures through the record and queue screens; every failure class of 07 section 11 end to end; `docs/execution/CLIENT_LIVE_DATA_READINESS.md`. **Finding for the backend workstream: the published `backend-openapi.json` is stale against the served API (20 routes documented, 37 served; four properties and two models missing; two required against optional mismatches) and every model is `extra="forbid"`, so the first live request that carries a newer field is a 422; held as shrink only backlogs citing backend source lines.** Screen defects recorded for A2 and A3 (segments below the fold at 390 by 844; the queue builds every row; thumbnails decode whole originals). 28 screen goldens move (the photograph decode); regenerated with wave A. |
+| 2026-09-17 | Wave A, first half. `fe/compose-gates` (d446a45) re-based and merged as f7886c4: five composition gates under `test/composition/` (29 s together) with the backlog the record starts from at compact: chrome 54 percent against 28, depth 2 against 1, four glass panes, the photograph at 168 of 338 dp, the back row failing one job; `scripts/ci/capture_devices.sh` drives the emulator and the iPad through every route. `fe/compose-package` (f3f07e7, 51 files) carried onto the branch as c90c3af after its rebase stopped on the reordered changelog: the markers, `UiCollapsingHeader`, `UiStatusStrip` and `UiBlockers`, `UiDecisionBar` and `UiDecisionSwipe`, `UiBanner.strip`, `UiScaffoldSlots` and `navVisible`, the compact window's one frosted pane settled in the scaffold (13 sections 2.2 and 3.1 amended), a Composition gallery page with 30 goldens; the integrator added `UiStickyBar` (13 section 3.5) so both screen slots compose the same pinned bar. Package 742 tests. `fe/compose-record` and `fe/compose-shell` cut from c90c3af; 42 screen goldens (B3's photograph decode and A1's pane policy) regenerate with their merge. |
+| 2026-09-17 | Wave A, second half (integration) | `front-end-composition` at 22d5110 | A2 record (5545ce5) and A3 shell (fe4b1a7) merged; four conflicts were the two slots deleting different lines from the same shrink-only sets, resolved as their intersection. Five integration defects, none visible to either slot's green run: the composition harness read markers only once one was mounted (870b3d3); the glass count counted solid panes (5fd233a); a null from a screen that did not hold a slot cleared the record's decision bar (9a750e7); the shell's band form by window shadowed the record's ask (74d4b90); a screen's ask hid the sidebar (85c5064), and honouring it put the record at 1440 into the stacked regime, where the sticky segments broke the budget (the segments now weigh the window class, 22d5110). Composition gates 179 green; backlogs left: chrome record@expanded 0.226 and record@large 0.206 (a contract finding at 200 percent text), glass import-sheet@compact 2 and record@medium 3 (frame and pattern decisions), all briefed to polish 3. Screen goldens regenerated three times (a2ae9c8, 49f9a99, none moved after 22d5110); every gate green at 22d5110. Package 0.3.0 in the manifest and the lockfile. |
+| 2026-09-17 | Polish 3, slot P2 `fe/polish3-screens` (screens and documents), cut from `front-end-composition` at 4735cfa. The record from `expanded` up moves its decision into the top bar's middle beside the identifier and gives the action bar back (`decisionInTopBar`): pinned chrome 0.122 and 0.138 of 820, 0.173 (segments stuck) and 0.126 of 900, against the 0.226 and 0.206 the backlog held; both `chrome_budget` lines deleted, backlog empty. The record's bar is back, identifier, refresh and one overflow trigger for its six commands at every width; source details takes `UiIcons.info`. The segments stick at default type at every class. The queue's search row sticks at medium (0.168, 0.174, 0.203 of 1024) and scrolls elsewhere, and only while the queue is the route on top: the chrome gate counts markers on covered routes (the record at medium read 0.270 with the queue's row beneath it), a finding for the integrator. 13 amended (2.2, 3.4, 4.1 with the expanded and large table, 4.2, 4.4, section 5 table). Left for P1's merge: `glass_count` `record@medium` 3 and `import-sheet@compact` 2, the two zero extent markers, `ShellChrome`, and the `UiDecisionBar` and `UiStatusStrip` asks. |
+| 2026-09-17 | Polish 3, slot P3 `fe/polish3-consume` (the screens consume the frame's new seams), cut from `front-end-composition` at bfbc4e8 with P1 and P2 merged. `ShellChrome`, `ShellChromeScope` and `_SolidBar` deleted: `setTitle` and `setLeading` reach the shell's bar through `UiTopBarAsk`, and the frame draws the bar solid at every class. The record keeps its whole bar and gains the shell's account menu below large (`AppShell.accountInBar`); the identifier has 134 dp beside four discs at 390 by 844 and ellipsises at 200 percent (for the integrator). Both collapsing headers `primary: true`, wrappers and the hand built `PrimaryRegion` gone, every cell measured identical before and after (record at compact 0.2701 and 0.2380; fold 273.6 and 258 dp). The strip's facts are `TermText`s under `MediaQuery.withNoTextScaling`: the package's paragraph scales a placeholder by the text scale and the shipped goldens drew a fact at four times its size at 200 percent (finding, 0.4.0). `WorkbenchDecisionBar` holds three decisions and the queue's ends are drawn disabled with their reasons; `_announce` schedules its frame; intake's upload is a `UiDecisionBar` again. Seven `fe/polish-3` markers resolved, none left. Ten amendments placed in 13 and 10 with measured numbers (69.25, 52, 79.6 dp at 200 percent; 200.85 of 236.3), 4.3 and the section 5 table updated. Gates: package 778; app 1517 passed, 7 skipped, 51 failed, all 48 record goldens and 3 fixtures (regenerated by the integrator); composition 179; strings 201 files clean; pre-commit clean. Xcode 27.0 landed on the machine mid slot with its license unaccepted; `DEVELOPER_DIR=/Library/Developer/CommandLineTools` plus a `PATH` shim for `xcrun` (the hooks runner passes only `PATH` to a native asset hook) is how the gates ran. |
+| 2026-09-18 | Polish 3, integration | `front-end-composition` at de59329 | Three slots merged in sequence, each cut from the pushed head before it: P2 screens (24de216), P1 patterns and frame (b4449ab), P3 the screens take the frame's seams (29a3d24); no conflicts. Every composition backlog is empty: the record gives the action bar back from expanded up and its decision sits in the top bar, the frame's top bar is never a pane, the frame draws solid under a modal shown from inside it, the primary header is content rather than chrome. Defects the captures and goldens found and the slots fixed: the record bar's seven discs with one glyph twice (one trigger now), the sticky bar painting its ground at rest, the action bar pane above the bottom system inset, a popover opening past the window's edge, the version fact drawn at four times scale since wave A. Integrator's decisions: the account menu joins the record's bar from medium up only (`AppShell.accountOnRecordBar`), the harness fallback list drops the decision bar. Screen goldens regenerated after each merge (d8105d1, bfbc4e8, de59329); every gate green at de59329; CI green on PR #65. Left for 0.4.0: `UiStatusStrip` slots under `withNoTextScaling` and a fit that measures the first fact; `UiSegmented` at 200 percent text on a phone clips its last label to a fragment ("Hist" in the regenerated record golden at 390 by 844) where 11 section 3.3 rule 3 wants a shorter label or a glyph; the composition harness reading only the current route's markers. |
 
 ## Appendix A. Icon mapping, Material Symbols to Phosphor
 

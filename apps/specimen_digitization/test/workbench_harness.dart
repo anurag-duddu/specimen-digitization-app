@@ -10,9 +10,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import 'ui_finders.dart';
+
 /// The widths that select each of the three workbench regimes
 /// (responsive and platform adaptation, 3.5).
 const Size compactWindow = Size(390, 844);
+
+/// A tablet in portrait: one column, the decision bar in the frame's action
+/// bar, the search row stuck on the queue.
+const Size mediumWindow = Size(768, 1024);
 
 /// A tablet in landscape: two panes.
 const Size expandedWindow = Size(1000, 800);
@@ -28,7 +34,12 @@ void useWindow(WidgetTester tester, Size size) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-/// Pumps [child] on the product theme, in a scaffold.
+/// Pumps [child] on the product theme, inside the frame it ships in.
+///
+/// The frame is a `UiScaffold` because the record publishes its chrome into
+/// one: the top bar it names itself in and the action bar its two decisions
+/// sit on are `UiScaffoldSlots` asks, and a screen pumped with no frame above
+/// it would be a screen with no decision bar at all (13 section 3.4).
 ///
 /// [reduceMotion] drives `MediaQuery.disableAnimationsOf`, the one
 /// reduced-motion signal a widget test can set.
@@ -41,7 +52,21 @@ Widget workbenchHost(
   home: Builder(
     builder: (BuildContext context) => MediaQuery(
       data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
-      child: Scaffold(body: child),
+      child: UiTheme(
+        // The tokens the application publishes at its root, published here
+        // for the same reason: without them `UiScaffold` builds its own
+        // derived set on every frame, every control under it is told its
+        // tokens changed, and a screen that answers that by publishing into
+        // the frame never settles. `main.dart` and the golden harness both
+        // do this; a screen harness that did not was measuring a tree the
+        // product never draws.
+        data: Theme.of(context).brightness == Brightness.dark
+            ? UiThemeData.dark()
+            : UiThemeData.light(),
+        child: Scaffold(
+          body: UiScaffold(sky: SkyPreset.none, body: child),
+        ),
+      ),
     ),
   ),
 );
@@ -108,6 +133,57 @@ String? disabledReasonOf(WidgetTester tester, String label) {
   final Finder ui = find.widgetWithText(UiButton, label);
   if (ui.evaluate().isEmpty) return null;
   return tester.widget<UiButton>(ui.first).disabledReason;
+}
+
+/// What a record command declares: whether it can be used, and why not.
+typedef RecordCommand = ({VoidCallback? onPressed, String? disabledReason});
+
+/// The record command named [label], as the top bar declares it.
+///
+/// 13 section 4.1 gives the record's bar back, the identifier and refresh,
+/// and puts the record's own commands in the bar's overflow menu at every
+/// width, so a command is either the one disc the bar keeps or a row of the
+/// menu the trigger holds. A test that wants to know whether a command is
+/// available reads the command rather than hunting for whichever form it
+/// took; both forms carry the callback and the reason, which is the same
+/// answer a screen reader gets.
+RecordCommand recordCommand(WidgetTester tester, String label) {
+  final UiTopBar bar = tester.widget<UiTopBar>(find.byType(UiTopBar));
+  for (final Widget action in bar.actions) {
+    if (action is UiTopBarAction && action.label == label) {
+      return (
+        onPressed: action.onPressed,
+        disabledReason: action.disabledReason,
+      );
+    }
+    if (action is UiMenuTrigger) {
+      for (final UiMenuItem item in action.items) {
+        if (item.label == label) {
+          return (
+            onPressed: item.onSelected,
+            disabledReason: item.disabledReason,
+          );
+        }
+      }
+    }
+  }
+  throw StateError('no record command named "$label"');
+}
+
+/// Presses the record command named [label], wherever the bar drew it.
+///
+/// Refresh is the one disc the record's bar keeps; every other command is a
+/// row of its overflow menu (13 section 4.1), reached through the trigger.
+Future<void> openRecordCommand(WidgetTester tester, String label) async {
+  final Finder disc = uiIconButton(label);
+  if (disc.evaluate().isNotEmpty) {
+    await tester.tap(disc);
+  } else {
+    await tester.tap(uiMenuTrigger(UiTopBarStyle.overflowLabel));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(label).last);
+  }
+  await tester.pumpAndSettle();
 }
 
 /// Closes the modal on screen by dismissing its scrim.

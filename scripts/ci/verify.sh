@@ -70,6 +70,23 @@ cd "$flutter_root"
 flutter pub get --enforce-lockfile
 flutter analyze --fatal-infos
 flutter test
+
+# Formatting is a gate rather than a habit. The wave G integration formatted
+# the whole tree once; from there on a file that drifts fails here instead of
+# turning a later review into a diff of whitespace. It covers the client and
+# the design system and nothing else: the frozen Dart under
+# docs/execution/qa-evidence is evidence, and evidence is not reformatted.
+dart format --output=none --set-exit-if-changed \
+  lib test packages/specimen_ui/lib packages/specimen_ui/test
+
 flutter build web --release
+
+# The artifact, before anything can deploy it. Every route the router declares
+# has to answer with the application shell under the rewrites firebase.json
+# declares, the design system gallery has to be absent from the release
+# bundle, and deployment.json, where a build has one, has to be the marker the
+# deploy guard accepts. Loopback only; it contacts no host and deploys nothing.
+cd "$repo_root"
+uv run python scripts/ci/smoke_web_routes.py
 
 printf 'All local CI gates passed. This script does not deploy.\n'

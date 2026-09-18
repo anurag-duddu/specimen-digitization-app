@@ -2,7 +2,7 @@
 
 import 'dart:ui' show Tristate;
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -313,5 +313,150 @@ void main() {
         },
       ),
     );
+  });
+
+  group('UiBanner.strip', () {
+    testWidgets('satisfies the control contract', (WidgetTester tester) async {
+      // The tap is given its own callback here rather than the sheet: the
+      // contract activates a control several times and never pops what it
+      // opened, so a route would cover the band for every clause after the
+      // keyboard one. The sheet has its own test below.
+      await expectControlContract(
+        tester,
+        (BuildContext context) => UiBanner.strip(
+          message: _message,
+          sheetTitle: 'About this build',
+          onTap: () {},
+        ),
+        semanticsLabel: _message,
+        labelsNeverWrap: true,
+        geometryFromType: true,
+        fit: FitExpectation(
+          check: (WidgetTester tester, double width) async {
+            expect(find.bySemanticsLabel(_message), findsOneWidget);
+          },
+        ),
+      );
+    });
+
+    testWidgets('is one line of label on the tint', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: SizedBox(
+            width: 390,
+            child: UiBanner.strip(
+              message: _message,
+              sheetTitle: 'About this build',
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final RenderParagraph line = tester
+          .renderObjectList<RenderParagraph>(find.byType(RichText))
+          .firstWhere(
+            (RenderParagraph paragraph) =>
+                paragraph.text.toPlainText().contains('Test environment'),
+          );
+      expect(line.maxLines, 1);
+      expect(
+        line.text.style?.fontSize,
+        UiThemeData.light().type.label.fontSize,
+        reason: 'a label line, not the band paragraph 13 section 2.3 retires',
+      );
+      // 32 dp of tint, floored by the hit box of the control the whole band
+      // is: the band around a control is what gives in this family, never the
+      // 48 dp itself.
+      expect(tester.getSize(find.byType(UiBanner)).height, UiDensity.hitBox);
+    });
+
+    testWidgets('the tap keeps the sentence and the contact', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: const SizedBox(
+            width: 390,
+            child: UiBanner.strip(
+              message: _message,
+              detail: _detail,
+              sheetTitle: 'About this build',
+              contact: Text('Ask the collection administrator'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(_detail), findsNothing);
+      await tester.tap(find.bySemanticsLabel(_message));
+      await tester.pumpAndSettle();
+
+      expect(find.text('About this build'), findsOneWidget);
+      expect(find.text(_detail), findsOneWidget);
+      expect(find.text('Ask the collection administrator'), findsOneWidget);
+    });
+
+    testWidgets('the route asks for the strip and an explicit form wins', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: SizedBox(
+            width: 390,
+            child: UiBandForm(
+              form: UiBannerForm.strip,
+              child: UiBanner(
+                message: _message,
+                tone: UiBannerTone.synthetic,
+                detail: _detail,
+                sheetTitle: 'About this build',
+                onTap: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The shell writes one call site and the route decides which form it
+      // draws (13 section 3.4).
+      expect(tester.getSize(find.byType(UiBanner)).height, UiDensity.hitBox);
+      expect(find.bySemanticsLabel(UiBanner.defaultDetailLabel), findsNothing);
+
+      await tester.pumpWidget(
+        uiHarness(
+          size: const Size(390, 844),
+          child: const SizedBox(
+            width: 390,
+            child: UiBandForm(
+              form: UiBannerForm.strip,
+              child: UiBanner(
+                message: _message,
+                tone: UiBannerTone.synthetic,
+                detail: _detail,
+                form: UiBannerForm.full,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.bySemanticsLabel(UiBanner.defaultDetailLabel),
+        findsOneWidget,
+        reason:
+            'an explicit form is a decision and the ambient one is a '
+            'default',
+      );
+    });
   });
 }

@@ -92,12 +92,16 @@ class GatedRepository extends GoldenQueueRepository {
   }
 }
 
-/// The status strip's version line, which is where a landed decision shows.
+/// The status strip's version, which is where a landed decision shows.
+///
+/// The version is one of the strip's provenance slots, a `TermText` whose
+/// term is the glossary word and whose trailing is the number (13 section
+/// 3.2, polish 3), so the finder reads the slot rather than a run of text.
 Finder versionLine(int revision) => find.byWidgetPredicate(
   (Widget widget) =>
       widget is TermText &&
-      widget.term == 'Version' &&
-      widget.spokenTerm == 'Version $revision',
+      widget.term == WorkbenchStatusStrip.versionTerm &&
+      widget.trailing == ' $revision',
 );
 
 /// The progress affordance every one of these controls swaps in.
@@ -195,6 +199,11 @@ void main() {
     );
 
     await tester.pump(progressBudget);
+    // The decision bar is the frame's action bar, and a screen publishes into
+    // the frame while it is being laid out, so the frame draws what it was
+    // asked for in the frame after (13 section 3.4). No clock advances here:
+    // the indicator is on screen at 200 ms and this is the paint of it.
+    await tester.pump();
     expect(
       workingIndicator,
       findsWidgets,
@@ -247,6 +256,8 @@ void main() {
     );
 
     await tester.pump(progressBudget);
+    // As above: the frame draws the chrome one frame after the body asks.
+    await tester.pump();
     expect(
       workingIndicator,
       findsWidgets,

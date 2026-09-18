@@ -180,9 +180,14 @@ class _HelpBody extends StatelessWidget {
             ],
           ),
         ),
-        Flexible(
+        // One scroll for the panel (13 section 4.6). The title row above is
+        // the pane's own chrome, the way a sheet's title is, and everything
+        // under it is the single scroll. It used to shrink wrap so it could
+        // sit in a `Flexible`, which is the pair 13 section 2.1 names: a
+        // shrink wrapped list exists to be nested. `Expanded` gives the list
+        // what the pane's own maximum height leaves, so it scrolls itself.
+        Expanded(
           child: ListView(
-            shrinkWrap: true,
             padding: EdgeInsetsDirectional.all(ui.space.s4),
             children: <Widget>[
               Text('Keyboard shortcuts', style: section),

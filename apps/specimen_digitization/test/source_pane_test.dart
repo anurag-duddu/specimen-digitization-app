@@ -298,7 +298,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('Save region version'), findsOneWidget);
+      // 13 section 4.3 gives the save to the bar, which the editor publishes
+      // into the frame itself; at this text scale the bar may have put it in
+      // its own overflow menu, so the assertion is on the command rather than
+      // on whichever of the two arrangements the width earned.
+      final UiTopBar bar = tester.widget<UiTopBar>(find.byType(UiTopBar));
+      expect(
+        bar.actions.whereType<UiTopBarAction>().map(
+          (UiTopBarAction action) => action.label,
+        ),
+        contains(saveRegionsLabel),
+      );
     });
   });
 }
