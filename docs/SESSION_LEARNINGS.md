@@ -11465,3 +11465,267 @@ scrolled top bar draws solid. The integrator regenerates them.
 - No cloud command, no deploy, no dependency added, no SDK change, no screen
   golden or fixture committed, nothing under `<app>/lib` or `<app>/test`
   touched, and no design document edited.
+
+## 2026-09-17: Front-end refactor polish 3, slot P3, the screens take the frame's new seams
+
+- **Task.** Slot P3 of polish 3 (`fe/polish3-consume`): the application
+  consumes the package P1 grew and the documents say so. Six tasks: the
+  record's bar named through the frame's slots and `ShellChrome` retired; the
+  two zero extent `PinnedChrome` wrappers gone with both headers `primary:
+  true`; the strip's facts as `provenance` slots drawn as glossary terms; the
+  decision bar's third action and the queue's end reasons, with the
+  `intake.dart` and `shell.dart` markers assessed; the ten P1 amendments
+  placed in 13 and 10, reconciled with P2's; the plan's 3H paragraph and
+  section 13 row.
+- **Branch and worktree.** `fe/polish3-consume`, cut from
+  `front-end-composition` at bfbc4e8 (P1 and P2 merged, goldens
+  regenerated), in `.claude/worktrees/fe-polish3-consume`. No sibling slot
+  was live. Nothing under `packages/specimen_ui` was touched; the harness and
+  the five gate files are the integrator's and were not edited; every backlog
+  was empty at the cut and is empty now.
+- **Outcome.** Complete. All seven `fe/polish-3` markers in `lib/` are
+  resolved and `grep -rn 'fe/polish-3' lib` finds none. Two defects were found
+  on the way and fixed on the application side: a screen reader announcement
+  that waited for a repaint that never came, and a provenance fact drawn at
+  four times its size at 200 percent text since the wave A merge. Two package
+  findings are recorded for 0.4.0.
+- **Commits**, oldest first:
+  - `c4be20f` feat(shell): the frame's slots are the one hook a screen names the bar through
+  - `2c1fa78` refactor(record): the two collapsing headers are primary regions, not chrome
+  - `5516354` feat(record): the strip's facts are glossary terms with their definitions
+  - `c4c111b` feat(record): the bar holds three decisions, and the queue's ends say why
+  - `03d08c0` fix(record): a provenance fact scales with the paragraph once, not twice
+  - `ca366de` docs(design): 13 and 10 say what the frame and the screens do after polish 3
+  - this commit: the plan's paragraph and row, and this closeout
+
+### Validation, with numbers
+
+Each gate run on its own, the tree untouched while it ran, `rc=$?` read on
+the next line, `LANG` and `LC_ALL` exported, output to a file and read after
+`tr '\r' '\n'`. From the middle of the slot every shell also exported
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools` and put a `PATH` shim for
+`xcrun` first (the machine section below).
+
+| Gate | rc | Result |
+|---|---|---|
+| `flutter pub get --enforce-lockfile` (app, placeholder copied) | 0 | lockfile unchanged |
+| `flutter analyze --fatal-infos` (package) | 0 | No issues found |
+| `flutter test` (package) | 0 | 778 passed, unchanged: nothing under the package was touched |
+| `flutter analyze --fatal-infos` (app), after the last file was written | 0 | No issues found |
+| `flutter test --update-goldens` (app, the inspection run) | 0 | 1567 passed, 7 skipped; 51 files moved |
+| `flutter test` (app) | 1 | 1517 passed, 7 skipped, 51 failed: the 48 size class goldens of the record and the 3 workbench semantics fixtures, and no other failure |
+| `flutter test test/composition` | 0 | 179 passed, every backlog empty |
+| `check_ui_strings.py --baseline` | 0 | 201 files, 0 violations, 0 baselined |
+| `pre-commit run --files` (16 files, zsh array) | 0 | 11 hooks Passed, the rest Skipped |
+| `dart format` over every changed Dart file | 0 | 0 changed |
+| em or en dash scan over every changed file | 0 hits | |
+
+**The measurement**, with the gates' own walk (`chromeNow` and `primaryOf`
+in a throwaway test, deleted before commit), worst over both modes, before
+and after task 2. Every share is identical; what changed is the list of
+parts and the count of markers.
+
+| Cell | Before | After |
+|---|---|---|
+| record at compact, 1.0 | 0.2701: top bar 56, band 52, header 0, header 56 (the stuck segments), action bar 64, navigation 0; 7 pinned markers, 1 primary | 0.2701: top bar 56, band 52, header 56, action bar 64, navigation 0; 5 pinned markers, 1 primary |
+| record at compact, 1.3 and 2.0 | 0.2093 and 0.2380: at 2.0 the top bar 69.25, the band 52, the action bar 79.60 | same |
+| record at medium, 1.0, 1.3, 2.0 | 0.2227, 0.1725, 0.1961 | same, `header 0` gone |
+| record at expanded, 1.0, 1.3, 2.0 | 0.1220, 0.1220, 0.1381 (two pane: no header in the tree) | same |
+| record at large, 1.0, 1.3, 2.0 | 0.1733 (segments stuck), 0.1111, 0.1258 | same, `header 0` gone |
+| fold, record at compact | photograph at top 108, 344.2 tall, needed 273.6 at 1.0; top 121.25, 313 tall, needed 258 at 2.0 | identical, read from the pattern's marker rather than the pane's |
+| region editor at compact and medium | 0.0664 and 0.0547, the frame's bar alone, `header 0` beside it; no primary marker | same shares; a primary marker at 337.6 and 409.6 dp that no gate reads |
+| region editor at expanded and large | 0 (a dialog, no markers) | same |
+
+The pane's declared minimum, `max(0.4 * viewport, chromeRow) - chromeRow`
+floored at `sourceImageMinHeight`, and the pattern's, `minExtent - minChrome`,
+agree at every window the gates run; the floor differs only under 460 dp of
+window height at default type.
+
+**The golden diff.** 51 files: every record cell, 48 goldens (readings,
+fields and history at four windows by two modes by two text scales), because
+the bar changed at every width, and the 3 workbench fixtures. Read by eye at
+390 by 844 at 1.0 (back, "fixture-001" whole, refresh, the trigger and the
+account: four discs) and at 2.0 (the identifier cut to "fixture..." beside
+the same four; the coverage secondary in the bar's menu), at 768 by 1024 at
+1.0 (the account on the bar, "Version 17" underlined as a term, the edge
+controls greyed with their reasons) and at 2.0 ("Versio" clipped: the
+package finding below), at 1180 by 820 at 2.0 (back, the identifier, the
+decision, refresh, the trigger and the account on one bar; "Version 17" at
+the chip's size) and at 1440 by 900 at 1.0 (no account: the sidebar's footer
+carries it; the edge controls disabled). The three fixtures moved by the same
+three lines each: the two edge controls read `enabled=false` with the host's
+reasons on their hints ("This is the first record in the queue.", "This is
+the last record loaded. Load more in the queue to carry on."), the account
+menu node appears ("Account menu, signed in as Synthetic reviewer"), and the
+version reads "Version 17, term, double tap for definition" on a tap node
+rather than a bare label. Reverted with `git checkout -- test/golden/images
+test/accessibility/fixtures`; the integrator regenerates them.
+
+**Backlog lines touched: none.** Every backlog was empty at bfbc4e8 and is
+empty at handback; no line was deleted, moved or added, and the 179 gates
+hold each in both directions.
+
+### The `fe/polish-3` markers
+
+| File and line at the cut | Resolved by |
+|---|---|
+| `lib/src/app/shell.dart:33` (`ShellChrome`) | task 1: deleted with `ShellChromeScope`; `UiScaffoldSlots.setTitle` and `setLeading` reach the bar through `UiTopBarAsk`, proven by the new shell test |
+| `lib/src/app/shell.dart:498` (`_SolidBar`) | task 1: deleted; the frame draws the bar solid at every class (13 section 2.2, polish 3) |
+| `lib/src/screens/workbench/source_pane.dart:567` | task 2: `primary: true`, the wrapper and the hand built `PrimaryRegion` gone |
+| `lib/src/region_editor.dart:515` | task 2: `primary: true`, the wrapper gone; 13 section 4.3 records it |
+| `lib/src/workbench.dart:97` (`notInQueueMessage`) | task 4: the bar takes the reason where a move is absent |
+| `lib/src/screens/workbench/decision_bar.dart:111` | task 4: `tertiary` carries the coverage confirmation while corrections are pending |
+| `lib/src/intake.dart:766` | task 4: `UiDecisionBar(primary:)` again, since a lone primary ellipsises at the last resort |
+
+None left.
+
+### The amendments placed
+
+13: 2.2 (P2's open paragraph rewritten as the resolved rule, P1's text plus
+the closing of the two lines by ca307ca); 2.3 (P1's primary header
+paragraph with measured numbers, and the integrator's insets paragraph);
+3.1 (the wave A supersession recorded in place, then P1's `primary: true`
+paragraph); 3.2 (provenance as slots, the record's three terms, and the
+scaling finding); 3.3 (tertiary, reasons, the last resort, the action bar's
+two forms); 3.4 (the bar's title and leading, `ShellChrome` retired, the
+record's whole bar); 3.5 (the sticky bar's ground); 4.1 (both table rows, the
+trigger sentence, the account menu with the identifier's width, and the
+supersession of two A2 decisions); 4.3 (the editor's header as primary);
+section 5 (every backlog empty and what closed each). 10: section 3 (the
+`Popover` fit, after the primitives table) and 4.4 (`UiScaffold`, amended in
+polish 3 four ways).
+
+### Decisions a reader should be able to argue with
+
+1. **The record keeps publishing a whole bar.** `setTitle` carries a string
+   the bar sets in `type.title`; 13 section 4.1 gives the record's bar the
+   identifier in `mono.identifier`, the decision from `expanded` up and six
+   commands behind one trigger, none of which a title and a leading carry.
+   The shell derives back and the identifier by route as the frame's
+   fallback while the record loads, and agrees with the record's bar on
+   everything the two share.
+2. **The account menu is the last disc, after the trigger.** Every list
+   screen's bar ends with the account, so a reviewer learns its place once;
+   the trigger moves in one slot. The cost is measured and recorded: the
+   identifier has 134 dp at 390 by 844 and ellipsises at 200 percent, with the
+   whole on its node and tooltip. Whether that is worth a disc on the compact
+   record bar is the integrator's call, written in 13 section 4.1 rather than
+   made here.
+3. **The insets paragraph says what the code does.** The brief described the
+   action bar's marker as including the bottom inset; `scaffold.dart` puts the
+   inset in a `SizedBox` beside the marker, outside it, and P1's closeout says
+   the same. 13 section 2.3 states the rule the gates apply (the marker's box
+   as drawn), the two differing rules, and the consequence on a device.
+4. **The measured numbers replace P1's.** P1's 2.3 text said 69.75, 52 and
+   80 (201.75); the record's bar at 200 percent measures 69.25, the band 52
+   and the action bar 79.6 (200.85 of 236.32), and the header's chrome row
+   79.6. The 69.75 is the queue's bar, whose centre holds a `UiSelect` at
+   200 percent; the record's bar holds a label.
+5. **The region editor's header is primary too.** 13 section 5 names no fold
+   expectation for the editor, but the photograph is what the editor exists
+   to show, and a marker that says so costs nothing: the fold clause runs at
+   compact only and the editor is not in its table. 4.3 records it.
+6. **A record not in the loaded queue draws its edge controls disabled with
+   `notInQueueMessage`** rather than not at all. The bar's contract allows
+   either; a control that says why, and says the same sentence as `J` and
+   `K`, is the better answer for a reviewer who arrived by deep link.
+7. **Intake's upload is a `UiDecisionBar` again.** A3 left it a `UiButtonRow`
+   because a lone primary overflowed a phone by five pixels at 200 percent;
+   the bar measures its primary with its glyph now and ellipsises at the last
+   resort, so the frame holds the same pattern at the same height on every
+   screen that decides.
+8. **The double scaled fact is fixed on the application side.** The package
+   is read only for this slot and the defect was in the shipped goldens; each
+   fact is built under `MediaQuery.withNoTextScaling` so it takes the
+   paragraph's scale once, a test holds it, and the pattern's own fix is
+   recorded for 0.4.0.
+
+### Durable learnings
+
+- **Print the parts, not the share, when a marker moves.** The record's
+  compact share was 0.2701 before and after; only the part list showed the
+  `header 0` wrapper leaving and the marker count falling from 7 to 5.
+- **A post frame callback runs when a frame does, and a key press that moves
+  nowhere schedules none.** `_announce` deferred its announcement to a post
+  frame callback; a tap always repainted the pressed control, so the tap path
+  passed for months, and the key path never announced. The automated test
+  binding pumps a frame only when one is scheduled, which is what surfaced
+  it. `ensureVisualUpdate()` beside the callback is the fix.
+- **A `WidgetSpan` child is scaled by its paragraph.** The SDK wraps every
+  placeholder in an auto scaling inline widget with the text scale, and a
+  `Text` inside it scales itself as well, so a fact drew at the square of the
+  scale. Build inline children under `MediaQuery.withNoTextScaling`.
+- **A paragraph drops trailing placeholders whole only while the first fits.**
+  A single placeholder wider than the line is clipped by its own bounds; a
+  fit ladder that reserves a minimum for a slot has to measure the slot's
+  first item, or the word is cut.
+- **The hooks runner passes only `PATH` and a short list to a native asset
+  hook.** `DEVELOPER_DIR` in the shell fixes `flutter analyze` and the tool's
+  own `git` and `xcrun` calls, and the `objective_c` build hook still ran
+  Xcode's unlicensed `xcrun` and died on an empty stdout. A `PATH` shim that
+  execs `/usr/bin/xcrun` with `DEVELOPER_DIR` set is what reaches the hook.
+- **Do not commit while another call writes files in the same worktree.**
+  pre-commit stashes unstaged changes to a patch file around its hooks and
+  restores them after; a file written between the two can be lost or written
+  over. It happened to land safely here, and it was luck.
+- **A shell test that publishes into the frame from inside a routed screen
+  is the proof a retired hook needs.** `UiScaffoldSlots.of(tester.element(
+  find.byType(QueueScreen)))`, `setTitle`, two pumps, read the bar's labels,
+  `release`, read again.
+- **The fixtures' 1180 dump window puts the decision in the top bar,** so a
+  fixture's spoken order is the bar's, and a change to the decision bar moves
+  the top of every workbench fixture.
+
+### Failed approaches
+
+- **Tapping the disabled edge control to test the announcement.** A disabled
+  `Pressable` does nothing, which is correct; the key is what announces, and
+  pressing it is what found `_announce`'s missing frame.
+- **`DEVELOPER_DIR` alone.** Enough for `flutter analyze` and the tool's git,
+  not for the native asset hook; see the learning above.
+- **Running the task 3 and 4 suites while Xcode 27.0 was being installed.**
+  Two intake tests sat at 0 percent CPU until the ten minute test timeout,
+  and every later `flutter test` failed at start with the license message.
+  Not a code defect: the same suites passed in 11 seconds once the tools
+  were routed.
+- **Claiming the identifier fits at 130 percent.** The goldens run at 1.0 and
+  2.0; the sentence in 13 section 4.1 says what the pictures show.
+
+### The machine, for the next slot
+
+Xcode 27.0 was installed on this machine at 09:54 on 2026-09-17 with its
+license unaccepted, mid slot. Every `git` through `/usr/bin` and every
+`xcrun` then fails with "You have not agreed to the Xcode license
+agreements", and flutter, which shells out to both, fails with rc 69 before
+running a test. What worked, without touching the license or `xcode-select`,
+which need the user's password: `export
+DEVELOPER_DIR=/Library/Developer/CommandLineTools` first in every shell, and
+a directory first on `PATH` holding an `xcrun` (and `git`) shim of the form
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools exec /usr/bin/xcrun "$@"`,
+because the hooks runner hands a native asset hook only `PATH`.
+
+### Follow-ups
+
+- **Integrator.** Regenerate the 48 record goldens and 3 workbench fixtures.
+  Decide the compact record bar's fourth disc: the identifier ellipsises at
+  200 percent with the account on the bar (13 section 4.1, polish 3); the
+  alternatives are the account off the compact record bar, or the record's
+  trigger taking the account rows at compact. State one inset rule in 13
+  section 5 (charge both or neither); the brief's description of the action
+  bar marker as including the bottom inset does not match `scaffold.dart`.
+  `isPinnedChromeWidget` in the harness still lists `WorkbenchDecisionBar`,
+  redundant as A2 said.
+- **Package, 0.4.0.** `UiStatusStrip` should build every provenance slot,
+  and the plain `facts`, under `MediaQuery.withNoTextScaling`, since the
+  paragraph scales the placeholder; and its first fit variant should measure
+  the first fact rather than reserving `labelMin`, since at 768 by 1024 at
+  200 percent the summary's words win the line and the fact is clipped to
+  "Versio". Remove `facts`.
+- **Not changed.** The `chrome_budget` gate still counts a `PinnedChrome` on
+  a route beneath the current one (P2's finding). The region editor's bar
+  still draws four discs at width inside its dialog (P2's follow-up).
+- No cloud command, no deploy, no dependency added, no SDK change, nothing
+  under `packages/specimen_ui` touched, no screen golden or fixture committed,
+  no backlog line raised or widened, no gate changed, and nothing owned by
+  another slot changed. The push is the integrator's if the permission
+  prompt refuses it; the final report says which.
