@@ -11,7 +11,6 @@
 library;
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -537,72 +536,30 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   /// photograph on its matte as the content, the view controls and the region
   /// toggle strip as the two rows riding its lower edge.
   ///
-  /// Two markers, and each says a different thing about the same band.
-  ///
-  /// `PrimaryRegion` is on the photograph, because the photograph is what the
-  /// screen exists to show and what 13 section 2.5 measures. Its minimum is
-  /// the height the header keeps once collapsed, less the one chrome row that
-  /// rides the edge at that point: the header holds the fraction and the row
-  /// is drawn inside it, so the pixels are the difference. It is on the
-  /// content rather than on the header itself because a `PrimaryRegion` around
-  /// a sliver has no box, and a rectangle is what the clause is about.
-  ///
-  /// `PinnedChrome` is on the header at nothing, which is what a source
-  /// header spends of the chrome budget. The package's own marker, inside
-  /// this one, declares the whole collapsed extent; the gates count the
-  /// outermost, so this is the answer and the package's is shadowed.
-  ///
-  /// Nothing, rather than the row of controls on its edge, because the
-  /// arithmetic decides it. 13 section 4.1 pins this header at 40 percent of
-  /// a phone and 13 section 2.3 gives the whole of the chrome 28, so the two
-  /// cannot both be read with the header inside the budget; 13 section 4.1's
-  /// own total of 152 dp counts the top bar, the band and the decision bar
-  /// and not this header. Nor is the chrome row a workable half measure: at
-  /// 200 percent text on a 390 by 844 phone the frame's own top bar is 69,
-  /// the one line band 52 and the action bar 80, which is 201 of the 236 the
-  /// budget allows, and the row riding this header's edge is 80 on its own.
-  /// A header that is the thing under review is measured by 13 section 2.5,
-  /// at the minimum it pins, and is counted once.
-  ///
-  /// fe/polish-3: `UiCollapsingHeader` should publish no `PinnedChrome` where
-  /// `primary` is true, and this marker goes with it. Integration note (slot
-  /// P2, 2026-09-17): slot P1 settles it in the pattern, a header built with
-  /// `primary: true` publishes `PrimaryRegion` and no `PinnedChrome`, and a
-  /// header without `primary` keeps its marker. This header passes no
-  /// `primary`, because the rectangle the fold clause reads has to be the
-  /// photograph's box and a `PrimaryRegion` around a sliver has none, so at
-  /// the merge either the call site moves to `primary: true` and P1's marker
-  /// declares the minimum this one does (the pinned extent less the chrome
-  /// row, floored at `sourceImageMinHeight`), and both wrappers come out; or
-  /// it stays as it is and this zero extent wrapper stays with it. Against
-  /// the package at 4735cfa the wrapper is what the gates read, and it stays.
-  Widget _header(BuildContext context, UiThemeData ui) {
-    final UiCollapsingHeaderStyle style = UiCollapsingHeaderStyle.resolve(
-      ui,
-      context,
-    );
-    final double viewport = MediaQuery.sizeOf(context).height;
-    final double chromeRow =
-        style.chromeRowHeight +
-        style.chromePadding.resolve(Directionality.of(context)).vertical;
-    final double pinned = math.max(
-      sourceHeaderMinFraction * viewport,
-      chromeRow,
-    );
-    return PinnedChrome(
-      region: UiPinnedRegion.header,
-      extent: 0,
-      child: UiCollapsingHeader(
-        maxFraction: sourceHeaderMaxFraction,
-        minFraction: sourceHeaderMinFraction,
-        content: PrimaryRegion(
-          minExtent: math.max(pinned - chromeRow, sourceImageMinHeight),
-          child: SourceMatte(child: _image(context)),
-        ),
-        chrome: <Widget>[_controlRow(context), _regionChips(context)],
-      ),
-    );
-  }
+  /// Built `primary: true`, because the photograph is what the screen exists
+  /// to show (13 section 2.5). The pattern then says what this pane used to
+  /// say with two markers of its own: it publishes `PrimaryRegion` on the
+  /// photograph's box, at the extent it pins less the one chrome row that
+  /// rides the edge to the end, and no `PinnedChrome` at all, because the
+  /// region under review is content and spends nothing of the chrome budget
+  /// (13 sections 2.3 and 3.1, polish 3). The arithmetic is the pattern's:
+  /// 13 section 4.1 pins this header at 40 percent of a phone and 13 section
+  /// 2.3 gives the whole of the chrome 28, and at 200 percent text the
+  /// frame's own top bar, band and action bar already spend 200.87 of the
+  /// 236.3 dp a 390 by 844 phone allows, with the row riding this edge 79.6
+  /// on its own. The minimum the pattern declares is the one this pane
+  /// declared: 273.6 dp on that phone at default type and 258 at 200 percent,
+  /// measured the same before and after. The floor at [sourceImageMinHeight]
+  /// this pane used to add to it applies only to a window under 460 dp tall,
+  /// which no class the gates run has; the pane keeps that floor for the
+  /// photograph it draws beside the evidence.
+  Widget _header(BuildContext context) => UiCollapsingHeader(
+    primary: true,
+    maxFraction: sourceHeaderMaxFraction,
+    minFraction: sourceHeaderMinFraction,
+    content: SourceMatte(child: _image(context)),
+    chrome: <Widget>[_controlRow(context), _regionChips(context)],
+  );
 
   static List<num>? _boxOf(Json region) {
     final List<num>? bbox = (region['bbox'] as List?)?.cast<num>();
@@ -646,7 +603,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    if (widget.asHeader) return _header(context, ui);
+    if (widget.asHeader) return _header(context);
     final double? band = widget.imageHeight;
 
     List<Widget> parts(Widget image) => <Widget>[
