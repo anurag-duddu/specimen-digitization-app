@@ -7,6 +7,12 @@
 /// summary that opens `UiBlockersSheet`, one row per blocker with the control
 /// that clears it (13 section 3.2).
 ///
+/// The version, the run and the step are the strip's provenance from medium
+/// up, each the product's own glossary term with its definition one tap from
+/// the word it is read on (13 section 3.2, polish 3; pass criterion 10.2); a
+/// phone states the disposition and what blocks clearance and nothing else
+/// (13 section 4.1).
+///
 /// The strip scrolls with the evidence, so it costs the chrome budget
 /// nothing. Two things are drawn above it and only when they exist, because
 /// each is a statement about this record rather than a part of the line: the
@@ -64,6 +70,18 @@ class WorkbenchStatusStrip extends StatefulWidget {
 
   /// Reloads the record so the reviewer can compare.
   final VoidCallback? onRefresh;
+
+  /// The glossary word the version fact is an instance of, so its definition
+  /// is one tap from the line it is read on (13 section 3.2, polish 3; pass
+  /// criterion 10.2). Drawn as the first word of the fact; the glossary reads
+  /// it case insensitively.
+  static const String versionTerm = 'Version';
+
+  /// The run fact's word.
+  static const String runTerm = 'Run';
+
+  /// The step fact's word.
+  static const String stepTerm = 'Step';
 
   @override
   State<WorkbenchStatusStrip> createState() => _WorkbenchStatusStripState();
@@ -195,14 +213,33 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
           // star says a count is never a colour or a glyph alone; the run and
           // the version are what a reviewer reads at leisure, and they are in
           // the Fields segment's processing disclosure either way.
-          facts: WindowClass.of(context).isCompact
-              ? const <String>[]
-              : <String>[
-                  'Version ${record.revision}',
+          //
+          // Each fact is a `TermText`: its first word is the product's own
+          // glossary term and opens its definition on the line it is read on,
+          // spoken whole with its value ("Version 17, term, double tap for
+          // definition") on a node of its own (13 section 3.2, polish 3).
+          // One line each, so a fact that does not fit leaves the paragraph
+          // whole rather than wrapping the strip to two.
+          provenance: WindowClass.of(context).isCompact
+              ? const <Widget>[]
+              : <Widget>[
+                  TermText(
+                    WorkbenchStatusStrip.versionTerm,
+                    trailing: ' ${record.revision}',
+                    maxLines: 1,
+                  ),
                   if (record.data['active_run_id'] != null)
-                    'Run ${textOf(record.data['active_run_id'])}',
+                    TermText(
+                      WorkbenchStatusStrip.runTerm,
+                      trailing: ' ${textOf(record.data['active_run_id'])}',
+                      maxLines: 1,
+                    ),
                   if (stage.isNotEmpty && stage != 'Not recorded')
-                    'Step $stage',
+                    TermText(
+                      WorkbenchStatusStrip.stepTerm,
+                      trailing: ' $stage',
+                      maxLines: 1,
+                    ),
                 ],
           blockers: blockers.isEmpty
               ? null
