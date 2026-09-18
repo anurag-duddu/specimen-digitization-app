@@ -218,28 +218,17 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
           // glossary term and opens its definition on the line it is read on,
           // spoken whole with its value ("Version 17, term, double tap for
           // definition") on a node of its own (13 section 3.2, polish 3).
-          // One line each, so a fact that does not fit leaves the paragraph
-          // whole rather than wrapping the strip to two.
           provenance: WindowClass.of(context).isCompact
               ? const <Widget>[]
               : <Widget>[
-                  TermText(
-                    WorkbenchStatusStrip.versionTerm,
-                    trailing: ' ${record.revision}',
-                    maxLines: 1,
-                  ),
+                  _fact(WorkbenchStatusStrip.versionTerm, '${record.revision}'),
                   if (record.data['active_run_id'] != null)
-                    TermText(
+                    _fact(
                       WorkbenchStatusStrip.runTerm,
-                      trailing: ' ${textOf(record.data['active_run_id'])}',
-                      maxLines: 1,
+                      textOf(record.data['active_run_id']),
                     ),
                   if (stage.isNotEmpty && stage != 'Not recorded')
-                    TermText(
-                      WorkbenchStatusStrip.stepTerm,
-                      trailing: ' $stage',
-                      maxLines: 1,
-                    ),
+                    _fact(WorkbenchStatusStrip.stepTerm, stage),
                 ],
           blockers: blockers.isEmpty
               ? null
@@ -261,6 +250,23 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     );
   }
 }
+
+/// One provenance fact: the glossary [term] and its [value], as the strip's
+/// paragraph draws it.
+///
+/// One line, so a fact that does not fit leaves the paragraph whole rather
+/// than wrapping the strip to two. And built with no text scaling of its own:
+/// the strip sets each fact as a placeholder in one paragraph, and a
+/// paragraph already scales a placeholder by the text scale (`WidgetSpan`
+/// wraps each child in the SDK's auto scaling inline widget), so a `Text`
+/// inside one that also read the scale drew at four times its size at 200
+/// percent, which is "Version 17" wrapped over four lines of display type in
+/// the record's goldens at 768 by 1024 before this. The fact takes the
+/// paragraph's scale once. The pattern should do this for every slot it is
+/// given, the plain `facts` form included; recorded for `UiStatusStrip` 0.4.0.
+Widget _fact(String term, String value) => MediaQuery.withNoTextScaling(
+  child: TermText(term, trailing: ' $value', maxLines: 1),
+);
 
 /// Where the record stands, and the check that marks a decision just made.
 ///

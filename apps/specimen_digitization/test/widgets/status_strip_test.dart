@@ -118,6 +118,40 @@ void main() {
     expect(find.byType(StatusChip), findsOneWidget);
   });
 
+  testWidgets('a fact scales with the text once, not twice', (
+    WidgetTester tester,
+  ) async {
+    // The strip sets each fact as a placeholder in one paragraph, and a
+    // paragraph scales a placeholder by the text scale itself, so a fact that
+    // also read the scale drew at four times its size at 200 percent: the
+    // record's goldens at 768 by 1024 carried "Version 17" over four lines of
+    // display type. A fact at 200 percent is twice its height at default type
+    // and no more.
+    await pumpComponent(tester, strip(record()), size: medium);
+    final Finder version = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is TermText && widget.term == WorkbenchStatusStrip.versionTerm,
+    );
+    final double atDefault = tester.getRect(version).height;
+
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpComponent(tester, strip(record()), size: medium);
+    final double atDouble = tester.getRect(version).height;
+    expect(
+      atDouble,
+      closeTo(atDefault * 2, 2),
+      reason:
+          'the version fact is $atDouble dp tall at 200 percent against '
+          '$atDefault at default type; it scales once with the paragraph',
+    );
+    // And it is still one line beside the chip, not a column of its own.
+    expect(
+      atDouble,
+      lessThanOrEqualTo(tester.getRect(find.byType(StatusChip)).height + 1),
+    );
+  });
+
   testWidgets('a fact opens its definition on the line it is read on', (
     WidgetTester tester,
   ) async {
