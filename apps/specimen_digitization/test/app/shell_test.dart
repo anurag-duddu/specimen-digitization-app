@@ -220,6 +220,15 @@ void main() {
           isFalse,
           reason: 'the pill hides on a screen that is inside a record',
         );
+        // Below large the account menu closes the record's bar in the slot
+        // the queue's bar gives it, so a reviewer inside a record can read
+        // which account they are using and sign out without leaving it
+        // (13 section 4.1, polish 3; 05 section 2).
+        expect(
+          uiMenuTrigger(RegExp('^Account menu')),
+          findsOneWidget,
+          reason: 'the account menu is not on the record bar below large',
+        );
       },
     );
 
@@ -239,6 +248,64 @@ void main() {
             'a sidebar is a column beside the body rather than chrome over '
             'it, so it spends width and the budget is a share of the height',
       );
+      // The sidebar's footer carries the account at large, so neither bar
+      // draws the menu inside a record (`AppShell.accountInBar`).
+      expect(
+        uiMenuTrigger(RegExp('^Account menu')),
+        findsNothing,
+        reason: 'the sidebar carries the account, so the bar does not',
+      );
+    });
+
+    testWidgets('a screen that names the bar through the frame is heard', (
+      WidgetTester tester,
+    ) async {
+      // 13 section 3.4, polish 3: `UiScaffoldSlots.setTitle` and `setLeading`
+      // are the one hook a routed screen names the frame's bar through, and
+      // `UiTopBar` reads the ask itself through `UiTopBarAsk`, so the shell
+      // holds no hook of its own. Published from inside the routed screen,
+      // which is where a screen publishes from.
+      await pumpAt(tester, 700);
+      final BuildContext inside = tester.element(find.byType(QueueScreen));
+      final UiScaffoldSlots slots = UiScaffoldSlots.of(inside)!;
+      final Object owner = Object();
+      const String named = 'Named by the screen';
+      List<String?> barLabels() => tester
+          .widgetList<UiLabel>(
+            find.descendant(
+              of: find.byType(UiTopBar),
+              matching: find.byType(UiLabel),
+            ),
+          )
+          .map((UiLabel label) => label.text)
+          .toList();
+      expect(barLabels(), contains(AppShell.markLabel));
+
+      slots.setTitle(named, owner: owner);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        barLabels(),
+        contains(named),
+        reason: 'the ask did not reach the bar the shell built',
+      );
+      expect(
+        barLabels(),
+        isNot(contains(AppShell.markLabel)),
+        reason: 'what the screen asked for wins over what the route derived',
+      );
+      expect(
+        find.byType(UiSelect<String>),
+        findsOneWidget,
+        reason: 'naming the bar keeps everything else the shell put on it',
+      );
+
+      slots.release(owner);
+      await tester.pump();
+      await tester.pump();
+      expect(barLabels(), contains(AppShell.markLabel));
+      expect(barLabels(), isNot(contains(named)));
+      await tester.pumpWidget(const SizedBox());
     });
 
     testWidgets('the band is one line on a phone and the full band above it', (

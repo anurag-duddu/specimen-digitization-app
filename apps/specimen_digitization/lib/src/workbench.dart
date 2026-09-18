@@ -122,6 +122,7 @@ class ReviewWorkbench extends StatefulWidget {
     this.previousBlockedReason,
     this.positionLabel,
     this.onBack,
+    this.account,
   });
   final Specimen specimen;
   final Future<Json> Function(Specimen, ArtifactRequest)?
@@ -201,6 +202,15 @@ class ReviewWorkbench extends StatefulWidget {
   /// (13 sections 2.3 and 2.4). Null where the host offers no way back, which
   /// is a component test pumping the workbench on its own.
   final VoidCallback? onBack;
+
+  /// The account menu the shell puts at the end of its own bars, drawn at the
+  /// end of this record's bar too (13 section 4.1, polish 3).
+  ///
+  /// The shell's, because the session it names and signs out of is the
+  /// shell's. Null where the frame's navigation already carries the account,
+  /// which is the sidebar's footer at large, and in a host with no shell,
+  /// which is a component test.
+  final Widget? account;
 
   @override
   State<ReviewWorkbench> createState() => _ReviewWorkbenchState();
@@ -437,6 +447,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     widget.busy,
     _pending.length,
     widget.onBack == null,
+    widget.account == null,
     widget.positionLabel,
     widget.onNext == null,
     widget.onPrevious == null,
@@ -859,7 +870,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// bar's own fit ladder: that ladder draws every declared action wherever
   /// there is width for it, which was seven discs across a 1440 dp window,
   /// two of them sharing a glyph. The menu rows carry the same labels,
-  /// glyphs, shortcuts and reasons the discs would.
+  /// glyphs, shortcuts and reasons the discs would. Below large the shell's
+  /// [ReviewWorkbench.account] menu closes the bar, in the slot every list
+  /// screen's bar gives it, so signing out is one tap from a record as it is
+  /// from the queue (13 section 4.1, polish 3).
   ///
   /// From `expanded` up the bar carries the decision as well
   /// ([decisionInTopBar]). The identifier and the decision bar share the
@@ -929,6 +943,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               command.menuItem,
           ],
         ),
+        ?widget.account,
       ],
     );
   }

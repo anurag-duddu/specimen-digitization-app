@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../app/routes.dart';
+import '../../app/shell.dart';
 import '../../models.dart';
 import '../../widgets/widgets.dart';
 import '../../workbench.dart';
@@ -183,6 +184,13 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
               onRetry: (String reason) => controller.mutate(null, reason),
               onRefresh: () => controller.refresh(),
               onBack: _backToQueue,
+              // The shell's account menu, at the end of the record's bar in
+              // the slot every list screen's bar gives it, below large; at
+              // large the sidebar's footer carries the account (13 section
+              // 4.1, polish 3).
+              account: AppShell.accountInBar(WindowClass.of(context))
+                  ? ShellAccountMenu(controller: controller)
+                  : null,
             ),
     );
   }
