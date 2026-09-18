@@ -303,6 +303,16 @@ motion state the test asked for rather than in the light fallback.
 | `Scrim` | `AnimatedOpacity` | `scrim` token behind modal glass | |
 | `Density` | `InheritedWidget`, `Listener` on the app root | Resolves `UiDensity` from the last `PointerDeviceKind` seen, defaulting from window width | `Density.of(context)`. |
 
+**Amendment, polish 3 (2026-09-17), `Popover`.** The pane fits the overlay it
+opens in horizontally as well as flipping vertically: it hangs from the
+trigger's leading edge, mirrors onto the trailing edge where the leading
+anchor would cross the overlay's trailing edge, and is clamped inside the
+overlay's padding, the safe area plus `space.s4`, where neither edge holds it,
+coming as close to an edge as its trigger does. Slot A3 measured a trigger at
+736 to 784 opening its menu at 788 to 1036 of an 800 dp window. `start` and
+`end` follow the reading direction. The account menu is back on the record's
+bar below large because of this (13 section 4.1).
+
 ```dart
 Pressable(
   semanticsLabel: 'Approve record',
@@ -894,6 +904,22 @@ under both the action bar and the navigation, which are one bottom column.
 And `UiScaffold.of` returns `UiScaffoldGeometry.none` rather than throwing
 when there is no frame above, the way `UiTheme` falls back, because a
 component test that pumps one control on its own is the normal case for it.
+
+Amended in polish 3, four ways (13 sections 2.2, 3.3 and 3.4). The action
+bar has two forms, as 13 section 3.3 now states them: above a pill it floats
+as a tile with the pill's gap under it, and where nothing floats under it,
+inside a record or beside a rail or a sidebar, it anchors to the window's
+bottom edge with the system inset as padding inside the pane below the bar;
+its marker is the bar and its padding, never the inset. The top bar is never
+a pane at any class: the frame wraps the slot in `UiTheme(quality: off)`, so
+the fill once content scrolls under it is `glass.flat` drawn solid, and
+medium spends its two panes on the action bar and a collapsed header's chrome.
+The frame owns a `UiModalScope` and draws every pane it owns solid while a
+sheet or a dialog shown from inside it is over it, from the end of the
+entrance to the start of the exit. And `UiScaffoldSlots` carries the bar's
+title and leading beside the whole bar, `setTitle` and `setLeading`, which the
+frame hands to the `UiTopBar` in the slot through `UiTopBarAsk`, an inherited
+widget the bar reads itself; the application's `ShellChrome` retired onto it.
 
 Three files hold the navigation family's shared parts and are not in the
 layout of section 1.2: `nav_destination.dart`, the one destination model all
