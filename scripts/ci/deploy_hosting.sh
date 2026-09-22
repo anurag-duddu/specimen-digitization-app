@@ -48,7 +48,20 @@ jq --exit-status --null-input --stream \
   ' "$metadata_file" >/dev/null 2>&1 \
   || fail 'artifact metadata does not match the exact workflow repository, SHA, run and attempt'
 
-npx --yes firebase-tools@15.8.0 deploy \
+# Installing with lifecycle scripts enabled would run arbitrary code from the
+# whole dependency tree while the short-lived Google credential file exists on
+# this runner. Install the pinned CLI with those scripts disabled into a private
+# prefix, exactly as the data plane does, and invoke its own binary rather than
+# resolving one at deploy time.
+tools_prefix="$(mktemp -d)"
+readonly tools_prefix
+trap 'rm -rf "$tools_prefix"' EXIT
+npm install --prefix "$tools_prefix" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0 \
+  || fail 'pinned Hosting CLI installation failed'
+readonly hosting_cli="$tools_prefix/node_modules/.bin/firebase"
+[[ -x "$hosting_cli" ]] || fail 'pinned Hosting CLI is missing after installation'
+
+"$hosting_cli" deploy \
   --only hosting \
   --project "$expected_project" \
   --non-interactive \

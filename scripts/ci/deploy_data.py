@@ -44,14 +44,24 @@ def catalog_fingerprint():
     return hashlib.sha256((ROOT / "scripts/ci/release_sql_catalog.sql").read_bytes()).hexdigest()
 
 
+def approved_tables():
+    """The committed application tables, derived from the schema that publishes them.
+
+    One source of truth: a table added to or removed from `schema.gql` changes
+    this set, and every count checked against it follows, instead of drifting
+    apart from a number written out by hand.
+    """
+    return {re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+            for name in re.findall(r"type (\w+) @table", (ROOT / "dataconnect/schema/schema.gql").read_text())}
+
+
 def validate_catalog(value):
     exact_keys(value, CATALOG_BOOLEANS | {"approved_tables", "public_table_count", "unapproved_table_count"}, "public catalog observations")
     require(all(type(value[k]) is bool for k in CATALOG_BOOLEANS), "catalog observations must be booleans")
     require(value["expected_database"] and value["expected_actor"], "wrong catalog database or maintenance identity")
     require(value["application_database_exists"] == value["application_catalog_observed"],
             "existing application database requires its own observed catalog")
-    expected_tables = {re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
-                       for name in re.findall(r"type (\w+) @table", (ROOT / "dataconnect/schema/schema.gql").read_text())}
+    expected_tables = approved_tables()
     require(isinstance(value["approved_tables"], list) and all(isinstance(name, str) for name in value["approved_tables"])
             and len(set(value["approved_tables"])) == len(value["approved_tables"])
             and set(value["approved_tables"]) <= expected_tables, "catalog output may contain only committed application table names")
@@ -485,7 +495,7 @@ def apply_compatible(google, plan, path, output, before):
     google.wait("data", google.request("data", "PATCH", connector["name"], body=connector, params={"allowMissing": "true"}))
     after = sql_inventory(path.parent, SOURCE, repair=True)
     verify_indexes(after)
-    require(len(after["rows"]) == 27, "unexpected application table count after schema publication")
+    require(len(after["rows"]) == len(approved_tables()), "unexpected application table count after schema publication")
     if plan["version"] == "data-initialize-missing/v1":
         from release_initialize import native
         native(path.parent, SOURCE, "post", files=plan["initialization"]["files"], deadline=google.packet["expires_at_unix"])

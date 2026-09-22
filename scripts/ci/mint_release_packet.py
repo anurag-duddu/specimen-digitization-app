@@ -33,6 +33,7 @@ from release_context import PLANES, PROJECT, REPOSITORY
 from validate_release_packet import CHECKS, DIGEST, IMAGE, SHA, validate
 
 from specimen_digitization.hub_models import SAM3_MODEL
+from specimen_digitization.application.worker_timing import CLEANUP_SECONDS
 from specimen_digitization.release_budget import (APPROVAL_SHA256, APPROVED_LIMIT_MICROS,
                                                   LEGACY_LIMIT_MICROS)
 
@@ -43,6 +44,29 @@ RUN_URL = re.compile(rf"https://github\.com/{re.escape(REPOSITORY)}/actions/runs
 LEDGER_DIALECTS = {"release-cost-ledger/v1", "release-cost-ledger/v2", "release-cost-ledger/v3"}
 APPROVED_DIALECT = "release-cost-ledger/v3"
 EVIDENCE_NAMES = ("independent_review", "authorization", "shared_budget_ledger")
+# Admission caps every authorization window at two hours (release_admission.py).
+WINDOW_MAX_SECONDS = 7200
+# Runtime activation does not fit inside the historical half-hour window. The
+# approved single worker execution runs until dispatch + CLEANUP_SECONDS, and
+# deploy_runtime.py refuses to dispatch it unless that instant is at or before
+# the packet deadline. Every other plane keeps the original short window.
+PLANE_WINDOW_SECONDS = {"runtime": WINDOW_MAX_SECONDS}
+DEFAULT_WINDOW_SECONDS = 1800
+# Only the runtime plane activates human review, so only it needs the authority.
+HUMAN_REVIEW_PLANES = {"runtime"}
+# The human-review release authority the protected runtime job compares its plan
+# against through RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256. Both digests are
+# recorded in docs/execution/APPROVED_RELEASE_BUDGET.md; a successor scope has to
+# be approved and named there before this tool will emit its fingerprint.
+HUMAN_REVIEW_SCOPES = {
+    "5c460d9ca7acc86ee0407584732d0cf1e27b1bc685a968f8094ce7ca133dfc15":  # pragma: allowlist secret (public scope digest)
+        "human-review-release-scope/v2",
+    "14f6b1140f7d45e46c022e4a1c4f60cd775bafbef73ca363a677f278e0eafd1a":  # pragma: allowlist secret (public scope digest)
+        "human-review-release-scope/v1",
+}
+VARIABLE_NAMES = ("RELEASE_INPUTS_SHA256", "RELEASE_PACKET_SHA256", "RELEASE_BUDGET_LEDGER_SHA256",
+                  "RELEASE_AUTHORIZED_SHA", "RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256")
+COUNT_WORDS = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six"}
 
 
 class Refused(ValueError):
@@ -84,9 +108,15 @@ class Inputs:
     pilot_manifest_sha256: str
     candidate_evidence: dict
     coordinator_session: str | None = None
-    window_seconds: int = 1800
+    human_review_scope_path: Path | None = None
+    window_seconds: int | None = None
     accept_legacy_budget: bool = False
     registry: object = None
+
+    def __post_init__(self) -> None:
+        """An unstated window follows the plane instead of one global guess."""
+        if self.window_seconds is None:
+            self.window_seconds = PLANE_WINDOW_SECONDS.get(self.plane, DEFAULT_WINDOW_SECONDS)
 
 
 @dataclass
@@ -129,8 +159,21 @@ def check_identity(inputs: Inputs) -> None:
            "the workload identity pool id is required and must be the observed pool")
     refuse(isinstance(inputs.pilot_manifest_sha256, str) and DIGEST.fullmatch(inputs.pilot_manifest_sha256),
            "the frozen pilot manifest digest is required as 64 hexadecimal characters")
-    refuse(type(inputs.window_seconds) is int and 60 <= inputs.window_seconds <= 7200,
-           "the authorization window must be between 60 and 7200 seconds")
+    refuse(type(inputs.window_seconds) is int and 60 <= inputs.window_seconds <= WINDOW_MAX_SECONDS,
+           f"the authorization window must be between 60 and {WINDOW_MAX_SECONDS} seconds")
+    if inputs.plane in HUMAN_REVIEW_PLANES:
+        refuse(inputs.window_seconds >= CLEANUP_SECONDS,
+               f"a {inputs.window_seconds}-second window is too short to release the runtime plane.\n"
+               f"  The approved worker execution runs for {CLEANUP_SECONDS} seconds from the moment it is\n"
+               "  dispatched, and the release job will not dispatch it unless that whole run finishes before\n"
+               "  this packet expires. A shorter window cannot be activated at all: it does not make the\n"
+               f"  release safer, it makes it impossible. Use at least {CLEANUP_SECONDS} seconds; the default\n"
+               f"  for this plane is {PLANE_WINDOW_SECONDS['runtime']}, the most admission allows.")
+        refuse(inputs.human_review_scope_path is not None,
+               "the human review scope artifact is required for a runtime release; no value was supplied.\n"
+               "  The runtime job checks its plan against RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256, which is\n"
+               "  the fingerprint of the approved human-review scope file. This tool reads that file and\n"
+               "  computes the fingerprint itself; it never defaults, guesses or invents one.")
 
 
 # ------------------------------------------------------- observed the facts ---
@@ -404,6 +447,35 @@ def build_candidate(source_sha: str, checks: dict, inputs: Inputs) -> dict:
     }
 
 
+# ------------------------------------------------- human review authority ---
+
+
+def human_review_authority(inputs: Inputs) -> tuple[str | None, str | None]:
+    """Fingerprint the approved human-review scope the runtime job will demand.
+
+    `deploy_runtime.py` requires the activation plan's
+    `human_review_authorization_sha256` to equal the environment variable
+    `RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256`. That comparison only proves the
+    two agree, so the digest is also checked here against the approved scopes
+    named in `docs/execution/APPROVED_RELEASE_BUDGET.md`. The file itself stays
+    private; only its fingerprint is emitted.
+    """
+    if inputs.human_review_scope_path is None:
+        return None, None
+    raw = read_private(inputs.human_review_scope_path, "the human review scope artifact")
+    digest = sha256(raw)
+    version = HUMAN_REVIEW_SCOPES.get(digest)
+    refuse(version,
+           f"the human review scope artifact fingerprints as {digest},\n"
+           "  which is neither approved human-review scope. The approved ones are:\n"
+           + "".join(f"    {value}  {key}\n" for key, value in sorted(HUMAN_REVIEW_SCOPES.items(),
+                                                                      key=lambda item: item[1]))
+           + "  Supply the exact approved artifact, unchanged, byte for byte. If a successor scope has\n"
+             "  genuinely been approved, record it in docs/execution/APPROVED_RELEASE_BUDGET.md first;\n"
+             "  this tool will not mint an authority nobody has approved.")
+    return digest, version
+
+
 # -------------------------------------------------------------------- mint ---
 
 
@@ -424,6 +496,9 @@ def mint(inputs: Inputs, *, github=gh_json, git=git_output, now=None) -> Minted:
     review_raw = read_private(inputs.review_report_path, "the independent review report")
     ledger_raw = read_private(inputs.ledger_path, "the shared budget ledger")
     cost_review_raw = read_private(inputs.cost_review_path, "the cost review artifact")
+    human_review_sha256, human_review_version = human_review_authority(inputs)
+    if human_review_version is not None:
+        notes.append(f"human review authority: {human_review_version}")
 
     ledger = strict_json(ledger_raw)
     refuse(isinstance(ledger, dict), "the shared budget ledger must be a JSON object")
@@ -489,13 +564,16 @@ def mint(inputs: Inputs, *, github=gh_json, git=git_output, now=None) -> Minted:
 
     confirm_unmoved(current_main(github)[0], source_sha)
 
+    variables = {"RELEASE_AUTHORIZED_SHA": source_sha,
+                 "RELEASE_PACKET_SHA256": sha256(packet_raw),
+                 "RELEASE_BUDGET_LEDGER_SHA256": packet["budget"]["ledger_sha256"],
+                 "RELEASE_INPUTS_SHA256": sha256(bundle_raw)}
+    if human_review_sha256 is not None:
+        variables["RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256"] = human_review_sha256
+
     return Minted(packet=packet, packet_raw=packet_raw, plan_raw=plan_raw, evidence=evidence,
                   bundle_raw=bundle_raw, secret=secret, candidate=candidate,
-                  candidate_raw=canonical(candidate), notes=notes,
-                  variables={"RELEASE_AUTHORIZED_SHA": source_sha,
-                             "RELEASE_PACKET_SHA256": sha256(packet_raw),
-                             "RELEASE_BUDGET_LEDGER_SHA256": packet["budget"]["ledger_sha256"],
-                             "RELEASE_INPUTS_SHA256": sha256(bundle_raw)})
+                  candidate_raw=canonical(candidate), notes=notes, variables=variables)
 
 
 # ------------------------------------------------------------------ output ---
@@ -536,6 +614,8 @@ def report(minted: Minted, secret_path: Path, candidate_path: Path | None = None
     print(f"  release run          {packet['release_run_id']} attempt {packet['release_run_attempt']}")
     print(f"  valid for            {packet['expires_at_unix'] - packet['issued_at_unix']} seconds "
           f"(until unix {packet['expires_at_unix']})")
+    if "RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256" in minted.variables:
+        print(f"  human review scope   {minted.variables['RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256']}")
     for note in minted.notes:
         print(f"  note                 {note}")
     print(f"\nThe secret value was written to {secret_path}, readable only by you.")
@@ -548,14 +628,18 @@ def report(minted: Minted, secret_path: Path, candidate_path: Path | None = None
     print("  One secret:")
     print(f"    gh secret set RELEASE_INPUTS_B64 --env {environment} \\")
     print(f"      --repo {REPOSITORY} < {secret_path}\n")
-    print("  Four variables:")
-    for name in ("RELEASE_INPUTS_SHA256", "RELEASE_PACKET_SHA256",
-                 "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_AUTHORIZED_SHA"):
+    names = [name for name in VARIABLE_NAMES if name in minted.variables]
+    print(f"  {COUNT_WORDS[len(names)]} variables:")
+    for name in names:
         print(f"    gh variable set {name} --env {environment} \\")
         print(f"      --repo {REPOSITORY} --body {minted.variables[name]}")
-    print("\nThe release workflow refuses this bundle unless all five values agree, unless the release\n"
-          f"run is exactly {packet['release_run_id']} attempt {packet['release_run_attempt']}, and\n"
-          "unless it starts before the deadline above. Installing these values deploys nothing by itself.")
+    if "RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256" in minted.variables:
+        print("\n  The last one is the fingerprint of the approved human review scope file. Runtime\n"
+              "  activation compares the deployment plan against it and stops if they differ.")
+    print(f"\nThe release workflow refuses this bundle unless every value above agrees, unless the\n"
+          f"release run is exactly {packet['release_run_id']} attempt {packet['release_run_attempt']},\n"
+          "and unless it starts before the deadline above. Installing these values deploys nothing\n"
+          "by itself.")
 
 
 # --------------------------------------------------------------------- CLI ---
@@ -568,6 +652,11 @@ PROMPTS = {
     "authorization_path": ("The authorization artifact file",
                            "The private record of the approval for this release. Its digest becomes the\n"
                            "packet's authorization anchor, so the exact original bytes are required."),
+    "human_review_scope_path": ("The human review scope artifact file",
+                                "The private file recording exactly what the human reviewers approved.\n"
+                                "Required for the runtime plane: its fingerprint becomes the\n"
+                                "RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256 variable that runtime\n"
+                                "activation checks its plan against. Press Enter to skip on other planes."),
     "review_report_path": ("The independent review report file",
                            "The report written by the reviewer who is not the coordinator, against this\n"
                            "exact source tree."),
@@ -628,14 +717,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-out", type=Path, help="where to write the public readiness candidate")
     parser.add_argument("--evidence-digests", type=Path, required=True,
                         help="JSON file of the release evidence digests this tool cannot observe")
-    parser.add_argument("--window-seconds", type=int, default=1800)
+    parser.add_argument("--window-seconds", type=int, default=None,
+                        help=f"how long the packet stays valid; defaults to {PLANE_WINDOW_SECONDS['runtime']} "
+                             f"for the runtime plane, which needs room for the approved {CLEANUP_SECONDS}-second "
+                             f"worker execution, and to {DEFAULT_WINDOW_SECONDS} elsewhere")
     parser.add_argument("--accept-legacy-budget", action="store_true",
                         help="deliberately mint under the legacy USD 5 authority")
     parser.add_argument("--from-registry", action="store_true",
                         help="read image references from Artifact Registry instead of the evidence file")
     parser.add_argument("--no-prompt", action="store_true", help="fail instead of asking for a missing value")
-    for name in PROMPTS:
-        parser.add_argument(f"--{name.replace('_', '-')}", type=Path if name.endswith("_path") else str)
+    for name, (title, _) in PROMPTS.items():
+        parser.add_argument(f"--{name.replace('_', '-')}", type=Path if name.endswith("_path") else str,
+                            help=title[0].lower() + title[1:])
     args = parser.parse_args(argv)
 
     try:
@@ -651,6 +744,8 @@ def main(argv: list[str] | None = None) -> int:
             cost_review_path=resolve(args, "cost_review_path"),
             reviewer_session=resolve(args, "reviewer_session"),
             coordinator_session=resolve(args, "coordinator_session", required=False),
+            human_review_scope_path=resolve(args, "human_review_scope_path",
+                                            required=args.plane in HUMAN_REVIEW_PLANES),
             project_number=resolve(args, "project_number"),
             pool_id=resolve(args, "pool_id"),
             pilot_manifest_sha256=resolve(args, "pilot_manifest_sha256"),

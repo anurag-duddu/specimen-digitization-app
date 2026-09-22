@@ -90,6 +90,80 @@ def test_generated_resources_have_exact_caps_and_no_worker_execution_or_public_i
     assert all("iam" not in key.lower() for body in bodies.values() for key in body)
 
 
+def test_the_worker_job_is_pinned_to_the_same_named_sql_endpoint_as_the_api():
+    """Both runtimes must read and write one service, not two defaults."""
+    p = plan()
+    images = {role: f"us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/{role}@sha256:" + "6" * 64
+              for role in ("api", "worker", "sam")}
+    bodies = M.resource_bodies(p, packet(), images, "123", "1", now=NOW)
+    worker_env = {v["name"]: v["value"] for v in bodies["worker"]["template"]["template"]["containers"][0]["env"]}
+    api_env = {v["name"]: v["value"] for v in bodies["api"]["template"]["containers"][0]["env"]}
+    for key in M.SQL_ENV:
+        assert worker_env[key] == api_env[key] == p["api"]["environment"][key]
+    assert worker_env["SPECIMEN_LAUNCH_POLICY_SHA256"] == p["worker"]["launch_sha256"]
+    # The worker still receives no credential, provider or inference switch here.
+    assert set(worker_env) == {*M.SQL_ENV, "SPECIMEN_LAUNCH_POLICY_SHA256"}
+
+
+def test_the_pinned_worker_endpoint_is_exactly_what_the_worker_process_accepts():
+    """The release pins values; the worker parses them. One contract, both ends."""
+    from specimen_digitization.application.production import sql_endpoint_from_env
+    p = plan()
+    images = {role: f"us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/{role}@sha256:" + "6" * 64
+              for role in ("api", "worker", "sam")}
+    bodies = M.resource_bodies(p, packet(), images, "123", "1", now=NOW)
+    worker_env = {v["name"]: v["value"] for v in bodies["worker"]["template"]["template"]["containers"][0]["env"]}
+    assert sql_endpoint_from_env(worker_env) == {
+        "location": p["api"]["environment"]["SPECIMEN_SQL_LOCATION"],
+        "service": p["api"]["environment"]["SPECIMEN_SQL_SERVICE"],
+        "connector": p["api"]["environment"]["SPECIMEN_SQL_CONNECTOR"],
+    }
+
+
+def public_api_policy(members=("allUsers",), role="roles/run.invoker", condition=None):
+    binding = {"role": role, "members": list(members)}
+    if condition is not None:
+        binding["condition"] = condition
+    return {"bindings": [{"role": "roles/viewer", "members": ["user:someone@example.invalid"]}, binding]}
+
+
+def google_with_policy(policy):
+    from types import SimpleNamespace
+    seen = []
+
+    def run_iam_policy(resource):
+        seen.append(resource)
+        return policy
+
+    return SimpleNamespace(run_iam_policy=run_iam_policy, seen=seen)
+
+
+def test_public_api_invocation_binding_is_verified_read_only_before_the_smoke():
+    google = google_with_policy(public_api_policy())
+    M.verify_public_api_invoker(google)
+    assert google.seen == [f"{M.PREFIX}/services/specimen-api"]
+
+
+@pytest.mark.parametrize("policy", [
+    public_api_policy(members=()),
+    public_api_policy(members=("allUsers", "allAuthenticatedUsers")),
+    public_api_policy(members=("allAuthenticatedUsers",)),
+    public_api_policy(members=(f"serviceAccount:specimen-worker-runtime@{M.PROJECT}.iam.gserviceaccount.com",)),
+    public_api_policy(role="roles/run.developer"),
+    {"bindings": []},
+    {},
+])
+def test_a_missing_or_widened_public_api_binding_fails_closed(policy):
+    with pytest.raises(ValueError, match="public API invocation binding"):
+        M.verify_public_api_invoker(google_with_policy(policy))
+
+
+def test_a_conditional_public_api_binding_is_refused():
+    policy = public_api_policy(condition={"title": "temporary", "expression": "request.time < timestamp('2026-01-01T00:00:00Z')"})
+    with pytest.raises(ValueError, match="unconditional"):
+        M.verify_public_api_invoker(google_with_policy(policy))
+
+
 def test_no_mutable_or_cross_role_images_and_no_previous_traffic_change():
     p = plan()
     p["api"].update(expected_etag="existing", previous_revision="specimen-api-old")

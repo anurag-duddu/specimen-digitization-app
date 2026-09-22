@@ -90,6 +90,7 @@ Each is asked once, with an explanation:
 | The **deployment plan** file | What will actually be built or changed, written against the live system as it stands | The coordinator writes it |
 | The **authorization artifact** file | The private record of your approval for this release | Kept with the coordinator |
 | The **independent review report** file | The report by the reviewer who is *not* the coordinator | The reviewer writes it |
+| The **human review scope** file | The record of exactly what the human reviewers approved. Runtime only | Kept with the coordinator |
 | The **shared budget ledger** file | The running total of every cost committed across every session and retry | The coordinator maintains it |
 | The **cost review** file | The reviewed basis for each cost ceiling | The coordinator maintains it |
 | The **reviewer's session id** | Who did the independent review | The reviewer's own session |
@@ -144,6 +145,17 @@ images, the model artifacts, the database schema, the approval records, and the
 rollback point. Each is produced by another step of the release. If any is
 missing, the command stops and names it rather than filling in a placeholder.
 
+### About the deadline
+
+Every envelope carries a deadline, and the release job refuses to start after it
+passes. You do not normally set it: the command picks the right one for the
+plane. Runtime gets two hours, the most the gate allows, because the approved
+single processing run takes 3,500 seconds and has to finish inside the envelope's
+life. The other planes get half an hour. If you override it with
+`--window-seconds` and choose a Runtime value too short for that run, the command
+refuses and explains why, rather than minting an envelope that could never be
+activated.
+
 ### About the spending limit
 
 Your approved ceiling is USD 12. That ceiling only applies if the cost ledger
@@ -162,10 +174,10 @@ cost is a spending decision, and this tool does not make spending decisions.
 ## Installing the values
 
 When it succeeds, the command prints exactly what to install and where. There
-are five values, and they belong to the **environment** for that plane — not to
-the repository as a whole. An **environment** is a named box in GitHub holding
-settings that only certain jobs can see. Each plane has its own, so each plane
-gets its own envelope.
+are six values for the Runtime plane and five for the others, and they belong to
+the **environment** for that plane — not to the repository as a whole. An
+**environment** is a named box in GitHub holding settings that only certain jobs
+can see. Each plane has its own, so each plane gets its own envelope.
 
 Go to:
 
@@ -179,13 +191,29 @@ Under **Environment secrets**, add one secret:
 
 - `RELEASE_INPUTS_B64` — paste the contents of the file the command wrote
 
-Under **Environment variables**, add four variables. The command prints all four
-values; they are fingerprints and commit ids, and none of them is a secret:
+Under **Environment variables**, add five variables for the Runtime plane, or the
+first four for any other plane. The command prints every value it produced; they
+are fingerprints and commit ids, and none of them is a secret:
 
 - `RELEASE_INPUTS_SHA256`
 - `RELEASE_PACKET_SHA256`
 - `RELEASE_BUDGET_LEDGER_SHA256`
 - `RELEASE_AUTHORIZED_SHA`
+- `RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256` — Runtime only
+
+The fifth one is new to this page because the Runtime job has always required it
+and nothing used to produce it. It is the fingerprint of the human review scope
+file — the record of exactly what the reviewers approved. When Runtime puts the
+servers into service, it compares the deployment plan against this value and
+stops if the two disagree, so a plan that quietly widened what the reviewers
+agreed to cannot run. Without the variable installed, Runtime activation fails
+closed every time, which is why the other four alone were never enough.
+
+The command works the fingerprint out from the file you give it, and refuses if
+the file is not one of the approved human review scopes recorded in
+[APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md). It never invents or
+defaults this value. The other three planes do not run human review, so they
+neither ask for the file nor print the variable.
 
 If you prefer the command line, the tool prints ready-to-run `gh secret set` and
 `gh variable set` commands with the right environment already filled in. Using
@@ -212,6 +240,9 @@ below it names the exact gate. The common ones:
 | no reserved rows for … | Cost has not been reserved for this run | The coordinator reserves it first |
 | not 'release-cost-ledger/v3' | The ledger cannot carry the USD 12 ceiling | Supply the approved v3 ledger |
 | the public readiness candidate is not complete | Some release evidence has not been produced yet | Record the named digests and mint again |
+| the human review scope artifact is required | Runtime was minted without the reviewers' scope file | Supply it with `--human-review-scope-path` |
+| neither approved human-review scope | The file supplied is not one of the approved scopes | Supply the exact approved artifact, unchanged |
+| too short to release the runtime plane | The chosen deadline cannot fit the approved processing run | Drop `--window-seconds` and take the default |
 
 **The release worked** is a separate and later question, and a successful mint
 is not evidence of it. A release is only complete when all of the following are

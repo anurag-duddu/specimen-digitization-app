@@ -48,6 +48,16 @@ def test_missing_or_example_packet_never_means_ready(tmp_path):
         MODULE.check(tmp_path / "candidate.example.json", context())
 
 
+def test_candidate_ci_actually_runs_the_strict_preflight():
+    """The strict check is worthless unless a workflow invokes it."""
+    workflow = (DIRECTORY.parents[1] / ".github/workflows/runtime-ci.yml").read_text()
+    assert "python3 scripts/ci/check_release_readiness.py" in workflow
+    # It must stay non-deploying and credential-free where it is wired.
+    assert "secrets." not in workflow and "google-github-actions" not in workflow
+    # A pull request that is not the integration branch reports Not run.
+    assert "Not run: release readiness is checked only on main" in workflow
+
+
 def test_self_consistent_stale_source_rejected(tmp_path):
     packet = json.loads((DIRECTORY.parents[1] / "infra/release/candidate.example.json").read_text())
     packet["source_sha"] = "b" * 40

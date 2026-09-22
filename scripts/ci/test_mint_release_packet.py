@@ -32,8 +32,19 @@ MANIFEST = "3" * 64
 RUN, ATTEMPT = 456, 1
 CI_RUN, CI_ATTEMPT = 123, 1
 
+# The real human review scope artifact is private and never reaches this suite.
+# Only its pin is substituted, exactly as the approved-budget rehearsals do; the
+# two real digests stay asserted below against the published contract.
+SCOPE_BYTES = b'{"version":"human-review-release-scope/v2","status":"synthetic-test-only"}'
+SCOPE_SHA256 = hashlib.sha256(SCOPE_BYTES).hexdigest()
+
 
 # ---------------------------------------------------------------- fixtures ---
+
+
+@pytest.fixture(autouse=True)
+def synthetic_human_review_scope(monkeypatch):
+    monkeypatch.setitem(MINT.HUMAN_REVIEW_SCOPES, SCOPE_SHA256, "human-review-release-scope/v2")
 
 
 def ledger_entries(categories, *, plane="runtime", run=RUN, attempt=ATTEMPT, ceiling=100000):
@@ -118,6 +129,7 @@ def inputs(tmp_path, *, cost_ledger=None, **overrides):
         "review_report": b'{"version":"independent-review/v1"}',
         "ledger": (json.dumps(cost_ledger, sort_keys=True, separators=(",", ":")) + "\n").encode(),
         "cost_review": b'{"version":"cohort-budget/v2"}',
+        "human_review_scope": SCOPE_BYTES,
     }
     paths = {}
     for name, raw in files.items():
@@ -131,9 +143,10 @@ def inputs(tmp_path, *, cost_ledger=None, **overrides):
         "review_report_path": paths["review_report"], "ledger_path": paths["ledger"],
         "cost_review_path": paths["cost_review"], "reviewer_session": REVIEWER,
         "coordinator_session": COORDINATOR,
+        "human_review_scope_path": paths["human_review_scope"],
         "project_number": PROJECT_NUMBER, "pool_id": "github-actions",
         "pilot_manifest_sha256": MANIFEST, "candidate_evidence": candidate_evidence(),
-        "window_seconds": 1800, "accept_legacy_budget": True,
+        "accept_legacy_budget": True,
     }
     values.update(overrides)
     return MINT.Inputs(**values)
@@ -181,7 +194,7 @@ def test_derived_facts_come_from_git_and_github_not_from_the_operator(tmp_path):
     assert packet["pull_request"] == 15
     assert packet["ci_run_id"] == CI_RUN and packet["ci_run_attempt"] == CI_ATTEMPT
     assert packet["issued_at_unix"] == int(NOW)
-    assert packet["expires_at_unix"] == int(NOW) + 1800
+    assert packet["expires_at_unix"] == int(NOW) + MINT.PLANE_WINDOW_SECONDS["runtime"]
 
 
 def test_every_required_check_is_recorded_from_the_observed_ci_jobs(tmp_path):
@@ -250,7 +263,7 @@ def test_a_missing_required_check_cannot_be_filled_in(tmp_path):
 
 
 @pytest.mark.parametrize("field", ["authorization_path", "review_report_path", "ledger_path",
-                                   "plan_path", "cost_review_path"])
+                                   "plan_path", "cost_review_path", "human_review_scope_path"])
 def test_an_absent_private_artifact_is_a_hard_stop_not_a_placeholder(tmp_path, field):
     with pytest.raises(MINT.Refused, match="required|missing|unreadable"):
         mint(tmp_path, **{field: tmp_path / "absent.json"})
@@ -353,3 +366,82 @@ def test_the_bundle_fits_the_single_github_secret(tmp_path):
     minted = mint(tmp_path)
     assert 0 < len(minted.secret) <= ADMISSION.INPUT_SECRET_MAX_BYTES
     assert base64.b64decode(minted.secret, validate=True)
+
+
+# ------------------------------------------- the fifth runtime environment ---
+
+
+def test_the_runtime_plane_emits_the_human_review_authority_the_job_demands(tmp_path, capsys):
+    minted = mint(tmp_path)
+    assert minted.variables["RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256"] == SCOPE_SHA256
+    assert "human review authority: human-review-release-scope/v2" in " ".join(minted.notes)
+    MINT.report(minted, tmp_path / "secret.b64")
+    printed = capsys.readouterr().out
+    assert "Five variables:" in printed
+    assert "gh variable set RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256" in printed
+    assert SCOPE_SHA256 in printed
+
+
+def test_a_runtime_release_is_never_minted_without_the_human_review_scope(tmp_path):
+    with pytest.raises(MINT.Refused, match="human review scope artifact is required"):
+        mint(tmp_path, human_review_scope_path=None)
+
+
+def test_an_unapproved_human_review_scope_never_becomes_an_authority(tmp_path):
+    other = tmp_path / "other-scope.json"
+    other.write_bytes(b'{"version":"human-review-release-scope/v9"}')
+    other.chmod(0o600)
+    with pytest.raises(MINT.Refused, match="neither approved human-review scope"):
+        mint(tmp_path, human_review_scope_path=other)
+
+
+def test_the_published_human_review_scope_digests_stay_pinned():
+    assert MINT.HUMAN_REVIEW_SCOPES[
+        "5c460d9ca7acc86ee0407584732d0cf1e27b1bc685a968f8094ce7ca133dfc15"  # pragma: allowlist secret (public scope digest)
+    ] == "human-review-release-scope/v2"
+    assert MINT.HUMAN_REVIEW_SCOPES[
+        "14f6b1140f7d45e46c022e4a1c4f60cd775bafbef73ca363a677f278e0eafd1a"  # pragma: allowlist secret (public scope digest)
+    ] == "human-review-release-scope/v1"
+
+
+def test_a_plane_without_human_review_neither_requires_nor_invents_the_authority(tmp_path, capsys):
+    minted = mint(tmp_path, plane="data", human_review_scope_path=None,
+                  cost_ledger=ledger(entries=ledger_entries(ADMISSION.CATEGORIES, plane="data")))
+    assert "RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256" not in minted.variables
+    MINT.report(minted, tmp_path / "secret.b64")
+    printed = capsys.readouterr().out
+    assert "Four variables:" in printed
+    assert "RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256" not in printed
+
+
+# ------------------------------------------- the window the runtime needs ---
+
+
+@pytest.mark.parametrize("plane,expected", [("runtime", 7200), ("data", 1800),
+                                            ("runtime-build", 1800), ("data-initialization", 1800)])
+def test_an_unstated_window_follows_the_plane(tmp_path, plane, expected):
+    assert inputs(tmp_path, plane=plane, window_seconds=None).window_seconds == expected
+
+
+def test_the_runtime_window_outlives_the_approved_worker_execution(tmp_path):
+    packet = mint(tmp_path).packet
+    from specimen_digitization.application.worker_timing import CLEANUP_SECONDS
+    assert packet["expires_at_unix"] - packet["issued_at_unix"] >= CLEANUP_SECONDS
+
+
+@pytest.mark.parametrize("window", [60, 1800, 3499])
+def test_a_runtime_window_too_short_to_activate_is_refused_with_a_reason(tmp_path, window):
+    with pytest.raises(MINT.Refused, match="too short to release the runtime plane"):
+        mint(tmp_path, window_seconds=window)
+
+
+def test_a_shorter_window_still_serves_the_planes_that_do_not_run_the_worker(tmp_path):
+    packet = mint(tmp_path, plane="data", window_seconds=1800, human_review_scope_path=None,
+                  cost_ledger=ledger(entries=ledger_entries(ADMISSION.CATEGORIES, plane="data"))).packet
+    assert packet["expires_at_unix"] == int(NOW) + 1800
+
+
+@pytest.mark.parametrize("window", [59, 7201])
+def test_the_two_hour_admission_cap_is_never_widened(tmp_path, window):
+    with pytest.raises(MINT.Refused, match="authorization window"):
+        mint(tmp_path, window_seconds=window)

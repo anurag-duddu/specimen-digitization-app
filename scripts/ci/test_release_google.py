@@ -193,3 +193,21 @@ def test_native_operation_same_project_alias_is_usable(project):
     operation["name"] = "projects/foreign/locations/us-east4/operations/abc"
     with pytest.raises(ValueError):
         google.wait("run", operation)
+
+
+def test_only_the_two_named_invocation_policies_are_ever_read():
+    """Read-only and exact: the release reads invoker policies, never sets one."""
+    google = transport()
+    calls = []
+    google.request = lambda *args, **kwargs: calls.append((args, kwargs)) or {"bindings": []}
+    for name in ("specimen-sam", "specimen-api"):
+        resource = f"projects/{M.PROJECT}/locations/us-east4/services/{name}"
+        assert google.run_iam_policy(resource) == {"bindings": []}
+        assert calls[-1][0] == ("run", "GET", resource + ":getIamPolicy")
+    for foreign in (f"projects/{M.PROJECT}/locations/us-east4/services/specimen-worker",
+                    f"projects/{M.PROJECT}/locations/us-east4/jobs/specimen-worker",
+                    f"projects/{M.PROJECT}/locations/us-central1/services/specimen-api",
+                    "projects/other/locations/us-east4/services/specimen-api"):
+        with pytest.raises(ValueError):
+            google.run_iam_policy(foreign)
+    assert len(calls) == 2

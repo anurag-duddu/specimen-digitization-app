@@ -250,6 +250,17 @@ def test_inventory_phase_needs_exact_committed_readonly_catalog_and_database_rev
             M.validate_plan({**p, key: value}, {"source_sha": SHA})
 
 
+def test_the_published_table_count_follows_the_committed_schema(tmp_path):
+    """The post-publication count is derived, so a schema change cannot drift."""
+    derived = M.approved_tables()
+    assert len(derived) == 27, "the committed schema no longer publishes 27 tables"
+    assert "specimen" in derived and all(name.islower() for name in derived)
+    source = (Path(M.ROOT) / "dataconnect/schema/schema.gql").read_text()
+    # The one place the number comes from is the schema itself.
+    assert source.count("@table") == len(derived)
+    assert "== 27" not in (Path(M.__file__).read_text())
+
+
 def test_catalog_inventory_never_creates_backup_schema_or_cleanup(tmp_path, monkeypatch):
     from types import SimpleNamespace
     requests = []

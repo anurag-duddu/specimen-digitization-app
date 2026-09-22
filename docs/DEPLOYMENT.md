@@ -71,7 +71,10 @@ below do not change that Hosting boundary. AWS is not part of this design.
 The only executable Hosting deploy command lives in
 `scripts/ci/deploy_hosting.sh`. That script fails closed unless GitHub provides
 the expected repository, `push` event, `main` ref, workflow identity, commit
-SHA, tested artifact marker, and keyless Google credential file. Tests reject
+SHA, tested artifact marker, and keyless Google credential file. It installs the
+pinned Firebase CLI into a private prefix with `npm install --ignore-scripts`,
+as the data plane does, and runs that binary directly: no dependency's install
+script executes while the short-lived Google credential file is on the runner. Tests reject
 deploy commands added to unapproved automation files. The only approved backend
 effect entrypoints are `scripts/ci/deploy_runtime.py` and
 `scripts/ci/deploy_data.py`, invoked exclusively by their respective main-push

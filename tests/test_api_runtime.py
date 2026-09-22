@@ -244,6 +244,44 @@ def test_readiness_only_queries_and_reads_pinned_metadata():
     assert not cloud_probe(repository, blobs, config)()
 
 
+@pytest.mark.parametrize("mode", ["production", "synthetic"])
+def test_api_boot_never_sends_telemetry_or_creates_a_project(monkeypatch, tmp_path, mode):
+    """The deployed API carries no Logfire credential, so it must never try to send.
+
+    Leaving `send_to_logfire` unset hands the decision to the SDK default, which
+    reaches out and can create a project while the service is starting. Only the
+    worker sends, through its own approved bounded transport.
+    """
+    from specimen_digitization import observability
+    from specimen_digitization.application import cli, runtime_server
+
+    for key, value in config_env().items():
+        monkeypatch.setenv(key, value)
+    for key in ("SPECIMEN_TRACE_EXPORT_MODE", "LOGFIRE_TOKEN", "LOGFIRE_SEND_TO_LOGFIRE",
+                "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN",
+                "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "SPECIMEN_APPROVED_INFERENCE",
+                "SPECIMEN_SQL_EMULATOR_HOST", "FIREBASE_AUTH_EMULATOR_HOST",
+                "FIREBASE_STORAGE_EMULATOR_HOST", "STORAGE_EMULATOR_HOST",
+                "FIRESTORE_EMULATOR_HOST", "FIREBASE_APPCHECK_DEBUG_TOKEN",
+                "SPECIMEN_SYNTHETIC_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    recorded: dict[str, object] = {}
+    monkeypatch.setattr(observability, "configure_observability", lambda **kw: recorded.update(kw))
+    monkeypatch.setattr(cli, "production_app", lambda config: FastAPI())
+    monkeypatch.setattr(cli, "local_app", lambda *a, **kw: FastAPI())
+    monkeypatch.setattr(runtime_server, "serve", lambda *a, **kw: None)
+    argv = ["specimen-api", "--mode", mode]
+    if mode == "synthetic":
+        monkeypatch.setenv("SPECIMEN_SYNTHETIC_TOKEN", "local-fixture-only")
+        argv += ["--state-dir", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    cli.main()
+
+    assert recorded["send_to_logfire"] is False
+    assert recorded["capture_mode"].value == "metadata"
+
+
 def test_real_http_subprocess_shutdown(tmp_path):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
