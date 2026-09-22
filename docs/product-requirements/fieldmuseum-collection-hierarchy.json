@@ -1,0 +1,71 @@
+{
+  "schema_version": "fieldmuseum-collection-hierarchy/v1",
+  "recorded": "2026-09-22",
+  "purpose": "Reference input for the data phase that adds the museum's departments and collections after the pilot. Public information; not a plan and not applied by anything.",
+  "levels": {
+    "department": "EMu CatDepartment. A main collection. Maps to a root collection row (no parent).",
+    "catalog": "EMu CatCatalog. Maps to a child collection row under the department. For Botany and Anthropology the catalog equals the department, so the level is skipped.",
+    "subset": "EMu CatCatalogSubset. Maps to a child collection row under the catalog where the museum manages it as a sub-collection; for Insects the subsets are taxonomic orders and stay as a field, not a collection."
+  },
+  "sources": [
+    {
+      "name": "Field Museum public collections search, JSON route",
+      "url": "https://www.fieldmuseum.org/api/collections-search?dept=Zoology&page=1&size=100",
+      "notes": "Filters by dept and catalog; returns results and total only, no facets. Values below were read from sampled records on 2026-09-22 and are not exhaustive."
+    },
+    {
+      "name": "Field Museum IPT resource feed",
+      "url": "https://fmipt.fieldmuseum.org/ipt/rss.do",
+      "notes": "Eighteen published datasets titled by department and collection on 2026-09-22."
+    },
+    {
+      "name": "GBIF dataset registry",
+      "url": "https://api.gbif.org/v1/dataset/search?q=Field%20Museum%20of%20Natural%20History&type=OCCURRENCE&limit=100",
+      "notes": "Seventeen occurrence datasets titled by department and collection on 2026-09-22."
+    },
+    {
+      "name": "EMu public search field map",
+      "url": "https://github.com/fieldmuseum/EMu-Documentation/wiki/admin-WEBSITE-COLLECTIONS-SEARCH-HELP",
+      "notes": "Names the three fields: Department (CatDepartment), Catalog (CatCatalog), Catalog Subset (CatCatalogSubset)."
+    }
+  ],
+  "departments": [
+    {
+      "name": "Zoology",
+      "catalogs": [
+        {"name": "Insects", "published_as": "Insect, Arachnid and Myriapod Collection", "subsets_seen": ["Coleoptera", "Lepidoptera", "Diptera", "Hymenoptera"], "subset_meaning": "taxonomic order; kept as a field on the specimen"},
+        {"name": "Mammals", "published_as": "Mammal Collection", "subsets_seen": []},
+        {"name": "Birds", "published_as": "Bird Collection", "subsets_seen": ["Specimen"], "related_published": ["Bird Egg Collection"]},
+        {"name": "Fishes", "published_as": "Fish Collection", "subsets_seen": []},
+        {"name": "Amphibians and Reptiles", "published_as": "Amphibian and Reptile Collection", "subsets_seen": []},
+        {"name": "Invertebrate Zoology", "published_as": "Invertebrate Collection", "subsets_seen": ["Molluscan"]}
+      ]
+    },
+    {
+      "name": "Botany",
+      "catalogs": [
+        {"name": "Botany", "same_as_department": true, "subsets_seen": ["Seed Plants", "Fungi"], "subsets_published": ["Seed Plant Collection", "Bryophyte Collection", "Lichen Collection", "Pteridophyte Collection", "Fungi Collection"], "subset_meaning": "the sub-collections the owner described; each becomes a child collection under Botany"}
+      ]
+    },
+    {
+      "name": "Geology",
+      "catalogs": [
+        {"name": "Fossil Invertebrates", "published_as": "Fossil Invertebrates Collection", "subsets_seen": ["Main Catalogue"]},
+        {"name": "Fossil Vertebrates", "published_as": "Fossil Vertebrates Collection", "subsets_seen": []},
+        {"name": "Paleobotany", "published_as": "Paleobotany Collection", "subsets_seen": []}
+      ],
+      "notes": "Meteorites and mineralogy holdings were not seen in the public data sampled and are not listed."
+    },
+    {
+      "name": "Anthropology",
+      "catalogs": [
+        {"name": "Anthropology", "same_as_department": true, "subsets_seen": ["Anthropology"]}
+      ],
+      "notes": "Not published through IPT or GBIF; seen only in the public search route."
+    }
+  ],
+  "not_collections": [
+    "Action: Birds Sightings, Mammals Sightings, Rapid Inventories are observation datasets, not specimen collections"
+  ],
+  "first_phase": ["Zoology / Insects", "Botany and its sub-collections"]
+}
