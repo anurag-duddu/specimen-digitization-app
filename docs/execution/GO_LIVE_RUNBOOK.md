@@ -42,18 +42,13 @@ then human review.
 
 Owner. Nothing else can start before this.
 
-1. Make the repository public and restore protection on `main`. The
-   protected planes read GitHub's `GITHUB_REF_PROTECTED` flag, and GitHub
-   sets it only when a protection rule or ruleset exists for the branch.
-
-   ```bash
-   gh repo edit anurag-duddu/specimen-digitization-app --visibility public --accept-visibility-change-consequences
-   ```
-
-   Then apply the protection `DEPLOYMENT.md` specifies (pull request
-   required, the three required checks strict and up to date, conversations
-   resolved, no force push, no deletion, administrators included). A ready
-   settings file is described in the readiness pull request; verify with:
+1. Confirm protection on `main`. The protected planes read GitHub's
+   `GITHUB_REF_PROTECTED` flag, and GitHub sets it only when a protection
+   rule or ruleset exists for the branch. Done on 2026-09-22: the owner made
+   the repository public and the dormant rule reactivated with the settings
+   `DEPLOYMENT.md` specifies (pull request required, the three required
+   checks strict and up to date, conversations resolved, no force push, no
+   deletion, administrators included). Re-verify before every release:
 
    ```bash
    gh api repos/anurag-duddu/specimen-digitization-app/branches/main --jq .protected

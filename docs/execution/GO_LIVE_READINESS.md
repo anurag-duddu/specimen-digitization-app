@@ -44,11 +44,15 @@ or job, no runtime secrets. The `runtime-production` and
 `runtime-build-production` environments are empty, so the protected runtime
 workflow fails at its first input check on every push.
 
-**Repository protection.** `main` reports `protected: false`. The protection
-and rulesets APIs answer "upgrade to GitHub Pro or make this repository
-public". The 2026-09-09 data run passed admission, which requires
-`GITHUB_REF_PROTECTED=true`, so protection existed then and has since lapsed.
-Only the owner has push access. No environment has required reviewers.
+**Repository protection.** At the start of the day `main` reported
+`protected: false` and the protection and rulesets APIs answered "upgrade to
+GitHub Pro or make this repository public". The 2026-09-09 data run passed
+admission, which requires `GITHUB_REF_PROTECTED=true`, so protection existed
+then and had lapsed with the plan. The owner made the repository public the
+same day; the dormant rule reactivated with exactly the contract's settings
+and `main` now reports `protected: true`. Only the owner has push access. No
+environment has required reviewers, which is now available and is proposed
+as a follow-up.
 
 **Cloud inventory.** `gcloud` on the coordinating workstation was signed out
 and pointed at a different project, so the existence of the WIF providers,
@@ -69,8 +73,8 @@ the USD 12 ceiling was never created. The ten pilot subjects are recorded in
 In the order they must be cleared.
 
 1. Branch protection on `main`, because both protected planes require it
-   at admission. Owner decision on 2026-09-22: make the repository public and
-   re-apply the documented rules.
+   at admission. Cleared on 2026-09-22: the owner made the repository public
+   and the documented rule is active again.
 2. A live cloud inventory, then the missing preconditions from the runbook's
    Phase 2 table. The workflows verify these and refuse to create them.
 3. The private artifacts in Phase 3, including a version 3 ledger with

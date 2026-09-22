@@ -546,8 +546,11 @@ release, and after any plan or visibility change, verify:
 gh api repos/anurag-duddu/specimen-digitization-app/branches/main --jq .protected
 ```
 
-The answer must be `true`. Restoring protection is an owner action and the
-applied settings must be recorded in the session log.
+The answer must be `true`. On 2026-09-22 the owner made the repository
+public; the dormant rule reactivated with exactly the settings above, which
+was verified through the same command. Restoring or changing protection is
+an owner action and the applied settings must be recorded in the session
+log.
 
 The GitHub `production` environment must accept deployments only from `main`.
 GitHub Actions' default token permission must remain read-only; only the deploy
