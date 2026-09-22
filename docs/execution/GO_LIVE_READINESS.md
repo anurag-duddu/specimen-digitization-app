@@ -105,18 +105,19 @@ release path, with a test.
 
 | Area | Defect | Fix |
 |---|---|---|
-| Minting | `mint_release_packet.py` printed four variables; runtime activation also requires `RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256` | A required scope-file option for the runtime plane and a fifth printed variable; `RELEASING.md` updated |
-| Minting | Default window of 1,800 s is shorter than the approved worker timing needs at activation | Plane-aware default and a mint-time check with a plain error |
-| Candidate CI | `check_release_readiness.py` was never executed | Wired into `runtime-ci.yml` as its own contract describes |
-| Runtime deploy | The API's public invocation binding was assumed and never verified; the activation smoke cannot pass without it | Read-only verification mirroring the SAM invoker check; documented as a bootstrap precondition |
-| Worker | Data Connect target hard-coded while the API reads it from the environment | Worker reads the same three variables; the deploy sets them from the plan |
-| API boot | Observability configured with no explicit send setting and no token in the deployed environment | The production API never sends; the worker's bounded path is unchanged |
-| Hosting deploy | `npx firebase-tools` ran dependency lifecycle scripts with the deploy credential present | Installed with `--ignore-scripts` into a temporary prefix, as the data plane already does |
-| Data deploy | Literal table count of 27 beside a derived table set | Derived count |
-| Hosting headers | No security headers | Content type, referrer, framing and permissions headers on every route; asserted by the route smoke |
-| Web bundle | Two Firebase SDKs declared and never imported | Removed with lockfile update, if the build proved them unused |
-| Public settings | `SPECIMEN_PILOT_SCOPE` unvalidated | Length, whitespace and control-character rules with tests |
-| Plans | No typed plan existed anywhere | Templates under `infra/release/` with observed values filled, owner placeholders, a drift test and an owner inputs table |
+| Minting | `mint_release_packet.py` printed four variables; runtime activation also requires `RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256`, and the deploy only proved plan and variable agree, never that either was an approved scope | A required scope-file option for the runtime plane whose digest must be one of the two approved scopes, a fifth printed variable, and `RELEASING.md` updated |
+| Minting | Default window of 1,800 s is shorter than the approved worker timing needs at activation | Plane-aware default (7,200 s for the runtime plane) and a mint-time refusal below the approved cleanup bound |
+| Candidate CI | `check_release_readiness.py` was never executed | Wired into `runtime-ci.yml` as its own contract describes: "Not run" on ordinary pull requests, strict on `main` when a generated candidate packet exists |
+| Runtime deploy | The API's public invocation binding was assumed and never verified; the activation smoke cannot pass without it | Read-only verification before the first smoke that `allUsers` is the only, unconditional invoker; documented as an owner bootstrap precondition in `RELEASE_RUNTIME.md` |
+| Runtime deploy | The SAM audience literal looked like an assumption | Judged not a defect: Cloud Run's deterministic URL form is a documented contract since 2024 and activation re-checks it against the live service; a comment cites the documentation |
+| Worker | Data Connect target hard-coded while the API reads it from the environment | The worker reads the same three variables, all or none; the deploy pins them onto the job from the API plan |
+| API boot | Observability configured with no explicit send setting and no token in the deployed environment | The API never sends telemetry in either mode; the worker's bounded path is unchanged |
+| Hosting deploy | `npx firebase-tools` ran dependency lifecycle scripts with the deploy credential present | The pinned CLI is installed with `--ignore-scripts` into a private temporary prefix and its own binary is invoked, as the data plane already does |
+| Data deploy | Literal table count of 27 beside a derived table set | Derived from the schema (still 27) |
+| Hosting headers | No security headers | Content type, referrer, framing, CSP frame-ancestors and a deny-all permissions policy on every route; the route smoke applies the declared headers and fails without them |
+| Web bundle | `firebase_storage` and `firebase_data_connect` declared and never imported | Removed with the lockfile; a new test requires every declared dependency to be imported; the release bundle builds without them |
+| Public settings | `SPECIMEN_PILOT_SCOPE` unvalidated | Trimmed, at most 80 printable characters, with tests |
+| Plans | No typed plan existed anywhere | Eight templates under `infra/release/`, each proven against the deploy scripts' own validators by a drift test, with 81 owner placeholders documented in `OWNER_INPUTS.md` |
 | Documents | Stale status pages, a checklist still calling the USD 12 decision pending, the wrong App Check provider name, a superseded human-review digest, a "not wired" finding already resolved, and a contract that assumed protection | Dated corrections in place; this page and the runbook added |
 
 ## 4. Design points recorded, not changed
@@ -140,6 +141,19 @@ release path, with a test.
 - The independent review is a session id that differs from the
   coordinator's, not a GitHub review. A follow-up could bind it to an
   approving review from a different login.
+- The runtime-build envelope keeps the 1,800-second default window while an
+  image build may take up to 3,600 seconds and the publication budget is
+  capped by the packet expiry. Widening a default is a deliberate loosening,
+  so it is left for the owner to set explicitly at mint time with
+  `--window-seconds`; the admission cap of 7,200 seconds still applies.
+- The worker's non-timing production path still leaves the telemetry send
+  setting unspecified; the bounded path the approval covers is unaffected.
+- No `runtime-build` plan version exists in the deploy script: the build
+  envelope carries a `runtime-prepare/v1` plan in its API-only form, which
+  is what the template provides.
+- The live-resources record names two runtime identities while the deploy
+  assigns a third to the SAM service; its validator pins the count, so the
+  record is corrected together with the validator in a later change.
 - The Cloud SQL instance has a public IP address and no private address.
   Access is IAM-authenticated and Data Connect reaches it through Google's
   connector, so this is not a go-live blocker, but restricting it to private
