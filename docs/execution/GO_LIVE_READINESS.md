@@ -54,11 +54,22 @@ and `main` now reports `protected: true`. Only the owner has push access. No
 environment has required reviewers, which is now available and is proposed
 as a follow-up.
 
-**Cloud inventory.** `gcloud` on the coordinating workstation was signed out
-and pointed at a different project, so the existence of the WIF providers,
-service accounts, registry, secrets, bucket settings and Cloud SQL backup
-state is unverified. A read-only inventory script is ready for the owner to
-run after signing in.
+**Cloud inventory.** `gcloud` on the coordinating workstation started the
+day signed out and pointed at a different project. After the owner signed in,
+a read-only inventory (list, describe and get-policy calls only) established
+the state recorded in the runbook's Phase 2 table. In short: every workload
+identity provider, every service account and every workload-identity binding
+the planes need already exists with exact conditions; the registry exists
+with immutable tags; the Cloud SQL instance has automated backups and
+point-in-time recovery on; the IAM SQL users exist; the Hugging Face secret
+exists with version 2 live and no accessor yet. What is missing: nine of the
+eleven data-plane role bindings expired on 2026-09-13 and need their
+timestamps renewed, the bootstrap role approved on 2026-09-14 was never
+created, the worker Logfire secret does not exist, the runtime identities
+hold no resource permissions, and public access prevention is not enforced
+on the bucket. The Data Connect schema's update time moved to 2026-09-22
+15:13Z during the inventory agent's schema diff, which performs a
+validate-only upsert; its source stayed empty and no table was created.
 
 **Private artifacts.** The frozen pilot manifest, the authorization record,
 the cost review and the independent review report were lost with the
@@ -75,8 +86,13 @@ In the order they must be cleared.
 1. Branch protection on `main`, because both protected planes require it
    at admission. Cleared on 2026-09-22: the owner made the repository public
    and the documented rule is active again.
-2. A live cloud inventory, then the missing preconditions from the runbook's
-   Phase 2 table. The workflows verify these and refuse to create them.
+2. The missing cloud preconditions from the runbook's Phase 2 table, now
+   known exactly: renewing the nine expired data-plane bindings and creating
+   the bootstrap role in the approved ten-minute window, creating the worker
+   Logfire secret or leaving tracing out of the first plan, granting the
+   runtime identities their resource permissions once the connector exists,
+   and enforcing public access prevention on the bucket. The workflows verify
+   these and refuse to create them.
 3. The private artifacts in Phase 3, including a version 3 ledger with
    reserved rows and a manifest re-frozen from the owner's ordered catalog.
 4. Fresh envelopes per environment, bound to the merged readiness commit and
@@ -124,6 +140,13 @@ release path, with a test.
 - The independent review is a session id that differs from the
   coordinator's, not a GitHub review. A follow-up could bind it to an
   approving review from a different login.
+- The Cloud SQL instance has a public IP address and no private address.
+  Access is IAM-authenticated and Data Connect reaches it through Google's
+  connector, so this is not a go-live blocker, but restricting it to private
+  connectivity is a hardening follow-up for the owner.
+- The raw inventory log stays outside the repository: it names the instance
+  address, the billing account and the organization id, none of which
+  belongs in a public repository.
 
 ## 5. External facts that change earlier assumptions
 

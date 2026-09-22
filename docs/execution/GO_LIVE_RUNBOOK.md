@@ -86,25 +86,33 @@ before going on. The merged commit is the source the first envelopes bind to.
 ## Phase 2. Cloud bootstrap
 
 Owner, inside the approved action packets. Every item is a precondition the
-protected workflows check and refuse to create. Discover first, create only
-what is missing, and verify effective access rather than role names.
+protected workflows check and refuse to create. The read-only inventory of
+2026-09-22 (run by the coordinator after the owner signed in) established
+the state column; verify effective access again before acting, and create
+only what is missing.
 
-| Precondition | Defined in | Notes |
+| Precondition | State on 2026-09-22 | Action |
 |---|---|---|
-| Workload Identity providers `specimen-data-release`, `specimen-data-initialize`, `specimen-runtime-build`, `specimen-runtime-release` in one pool, each bound to this repository's numeric ids, `push`, `refs/heads/main` and its environment | `DEPLOYMENT.md` "Approved runtime/data release contract", `scripts/ci/release_admission.py` | Hosting keeps its own pool and provider unchanged |
-| Service accounts `specimen-data-release`, `specimen-data-initialize`, `specimen-runtime-build`, `specimen-runtime-release`, `specimen-api-runtime`, `specimen-worker-runtime`, `specimen-sam-runtime` | `RUNTIME_PROPOSAL.md`, `RELEASE_DATA.md` | Least privilege, named resources only |
-| Cloud SQL IAM users for the DATA release identity and the Data Connect service agent, with no roles | `DATABASE_INITIALIZATION.md` | The initializer refuses elevated registrations |
-| Custom role `specimenDataOwnerBootstrap` and its two-hour conditional grant, applied in the one fresh ten-minute window | `RELEASE_AUTHORIZATION.md` amendment of 2026-09-14 | Prepare every input before the clock starts |
-| Create-only permission on the single held Storage claim object | `CLONE_ALLOWANCE.md` | One restore rehearsal, ever; see "If something fails" |
-| Artifact Registry repository `specimen-runtime` in `us-east4` with immutable tags | `scripts/ci/deploy_runtime.py` | Asserted, never created by the workflow |
-| Secret Manager versions: the Hugging Face inference token (rotate to a fine-grained token scoped to inference calls first) and the worker-only Logfire writer | `HUGGINGFACE_MODEL_ROUTING.md`, `APPROVED_LOGFIRE_TRACING.md` | Pin numeric versions; `latest` is rejected |
-| SAM 3 checkpoint pre-populated under the bucket's `sam3-cache` prefix for the exact source commit | `RELEASE_RUNTIME.md` | The SAM service runs offline and forbids a token |
-| Public invocation of the API service at the Cloud Run layer (`allUsers` as the only `roles/run.invoker` member) | `RELEASE_RUNTIME.md` | The application enforces auth itself; browser preflights cannot carry IAM |
-| Worker-only invocation of the SAM service | `scripts/ci/deploy_runtime.py` | Verified, never changed, by the release |
-| Live Storage ruleset equal to `storage.rules`, uniform bucket access and public access prevention on | `DATA.md`, `storage.rules` | The bucket already holds 1,000 real images |
-| Automated backups and point-in-time recovery on the existing instance | Owner decision | Not tier-gated; a few dollars a month; the release's own restore rehearsal still runs |
-| Firebase Authentication email-link sign-in enabled and `specimen-digitization.web.app` in the authorized domains | `../MAGIC_LINK_SIGN_IN.md` | Console state, not in the repository |
-| App Check enforcement for the registered web app, and a budget line for reCAPTCHA Enterprise assessments | `LIVE_API.md` | The organization-wide free quota is now 10,000 assessments a month |
+| Workload Identity pool `github-actions` with providers `specimen-data-release`, `specimen-data-initialize`, `specimen-runtime-build`, `specimen-runtime-release` (and `specimen-digitization` for Hosting), each conditioned on this repository's numeric ids, `push`, `refs/heads/main`, its environment and its workflow | All five exist and are active with exactly those conditions | None |
+| Workload identity user bindings on the five release service accounts | All five bound, each to its provider's release-plane attribute (Hosting to the repository id) | None |
+| Service accounts: five release identities plus `specimen-api-runtime`, `specimen-worker-runtime`, `specimen-sam-runtime` | All exist, none disabled | None |
+| The eleven data-plane custom roles bound to the DATA identities (`RELEASE_DATA.md`, `CLONE_ALLOWANCE.md`, `DATABASE_INITIALIZATION.md`) | All bound, but nine bindings carry time conditions that expired on 2026-09-13 between 21:40Z and 22:25Z (backup, clone create and control, restore claim, schema publish, Storage rules, runtime absence, initializer temporary and disposal). Only the two inventory roles remain effective | Owner: renew the 18 timestamps in the one fresh ten-minute window approved on 2026-09-14, with every other input prepared before the clock starts |
+| Custom role `specimenDataOwnerBootstrap` and its two-hour conditional grant to the DATA identity | Not created | Owner: create in that same window (the third approved effect) |
+| Cloud SQL instance `specimen-digitization-instance`, PostgreSQL 18, `us-east4`, `db-f1-micro`, 10 GB SSD | Exists and runnable. Automated backups are on (seven retained), point-in-time recovery is on with seven days of logs | None; the backup decision the docs left open is already made |
+| Database `specimen-digitization-database`; IAM SQL users for `specimen-data-release@` and the Data Connect service agent | Both exist; both users registered as IAM service accounts | None (their in-database roles are checked by the initializer) |
+| Data Connect service `specimen-digitization-service` with schema and connector | Service exists; schema `main` has no source files (the empty placeholder), strict validation, bound to the instance; no connector | Delivered by the data plane. The schema's update time moved on 2026-09-22 at 15:13Z because the read-only diff performs a validate-only upsert; source stayed empty |
+| Artifact Registry repository `specimen-runtime` in `us-east4` with immutable tags | Exists, immutable tags on, empty | None |
+| Secret `huggingface-runtime-token` | Exists; version 2 enabled, version 1 disabled; no accessor bindings | Owner: rotate to a fine-grained inference-only token as a new version if not already, pin that numeric version in the plans, and grant the accessor role to `specimen-worker-runtime` only |
+| Secret `specimen-worker-logfire` (`APPROVED_LOGFIRE_TRACING.md`) | Does not exist | Owner: create one version and grant its accessor to the worker identity only, or leave bounded tracing out of the first plan |
+| Resource permissions for the three runtime identities: connector impersonation, bucket prefix get and create, secret access, SAM invocation | None exist; the runtime identities hold no project role, the bucket policy holds only legacy project roles, and the SAM service does not exist yet | Owner bootstrap after the connector exists and before runtime prepare (`RUNTIME_PROPOSAL.md`) |
+| Public invocation of the API service (`allUsers` as the only invoker) | The service does not exist yet | Owner grants it as soon as runtime prepare creates the service and before activation; the release verifies it |
+| Worker-only invocation of the SAM service | The service does not exist yet | Owner grants it after prepare; the release verifies and never changes it |
+| SAM 3 checkpoint under the bucket's `application/sha256/<commit>/sam3-cache` prefix | The `application/sha256/` prefix holds 21 objects; their contents were not read | Owner populates the cache for the merged commit before activation |
+| Bucket `specimen-digitization.firebasestorage.app` (`us-east1`) | Uniform bucket-level access on; no public members; soft delete seven days; 1,004 objects under `microscopic-slides/`. Public access prevention is inherited and the effective organization policy is empty, so it is not enforced | Owner: enforce public access prevention on the bucket (nothing public is intended) |
+| Live Storage ruleset equal to `storage.rules` | Not visible from the CLI | Owner confirms in the console; the data plane publishes the deny-all rules |
+| Cloud Run services and job | None in `us-east4` or `us-central1` | Created by the runtime plane |
+| Required APIs (Cloud Run, Artifact Registry, Secret Manager, Cloud SQL Admin, Data Connect, reCAPTCHA Enterprise, Identity Toolkit, Storage for Firebase, IAM, STS) | All enabled. Billing is enabled on the "Firebase Payment" account; the Budget API is not enabled | None; a budget alert is optional |
+| Firebase Authentication email-link sign-in and the authorized domain; App Check enforcement and a budget line for reCAPTCHA Enterprise assessments | Not visible from the CLI | Owner confirms in the console. The organization-wide free quota is now 10,000 assessments a month |
 
 Evidence to keep: the recorded action packet, the inventory log after the
 changes, and the exact resource names and secret version numbers, which go
