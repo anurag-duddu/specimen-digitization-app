@@ -13,6 +13,44 @@ others. A collection can hold many sub-collections. Collection managers
 usually sit at the sub-collection level, though not as a hard rule; it
 depends on size. The first phase of this product covers Insects and Botany.
 
+## What the museum publishes
+
+The same hierarchy is visible in the museum's public data, which comes from
+EMu. Three EMu fields carry it, named in the public search field map:
+`CatDepartment` (Department), `CatCatalog` (Catalog) and `CatCatalogSubset`
+(Catalog Subset). The anonymous JSON route
+`https://www.fieldmuseum.org/api/collections-search` filters by `dept` and
+`catalog` and returns records and a total, but no facets, so the list below
+was assembled on 2026-09-22 from the museum's IPT feed (18 published
+datasets titled by department and collection), GBIF's registry (17
+occurrence datasets) and samples of that route. It is the published shape,
+not an exhaustive census; the machine-readable copy with sources is
+[`fieldmuseum-collection-hierarchy.json`](fieldmuseum-collection-hierarchy.json).
+
+| Department | Catalog | Subsets seen or published |
+|---|---|---|
+| Zoology | Insects (published as Insect, Arachnid and Myriapod Collection) | Coleoptera, Lepidoptera, Diptera, Hymenoptera: taxonomic orders, a field rather than a sub-collection |
+| Zoology | Mammals | |
+| Zoology | Birds (and a separate Bird Egg Collection) | Specimen |
+| Zoology | Fishes | |
+| Zoology | Amphibians and Reptiles | |
+| Zoology | Invertebrate Zoology | Molluscan |
+| Botany | Botany (the catalog equals the department) | Seed Plants, Bryophytes, Lichens, Pteridophytes, Fungi |
+| Geology | Fossil Invertebrates | Main Catalogue |
+| Geology | Fossil Vertebrates | |
+| Geology | Paleobotany | |
+| Anthropology | Anthropology (the catalog equals the department) | Anthropology |
+
+Two things follow for the product. For Zoology the owner's
+"sub-collection" is the EMu catalog (Insects), and the subset is a
+taxonomic order that stays a field on the specimen. For Botany the catalog
+is the department itself, so the owner's sub-collections (Seed Plants,
+Bryophytes, Lichens, Pteridophytes, Fungi) are the EMu subsets, and each
+becomes a child collection under Botany. The observation datasets published
+under "Action" (bird and mammal sightings, rapid inventories) are not
+specimen collections. Meteorites and mineralogy were not seen in the public
+data sampled.
+
 ## How the schema represents it
 
 - One `Organization` row is the museum
