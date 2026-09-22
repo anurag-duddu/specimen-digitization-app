@@ -23,6 +23,8 @@ ORIGINS = {"identity": "https://identitytoolkit.googleapis.com/v1/","run": "http
            "sql": "https://sqladmin.googleapis.com/sql/v1beta4/",
            "data": "https://firebasedataconnect.googleapis.com/v1/",
            "rules": "https://firebaserules.googleapis.com/v1/"}
+READABLE_RUN_IAM = frozenset(f"projects/{PROJECT}/locations/us-east4/services/{name}"
+                             for name in ("specimen-sam", "specimen-api"))
 
 
 class _DeadlineSignal(Exception):
@@ -349,7 +351,10 @@ class Google:
             require(result.returncode == 0, "registry authentication failed")
 
     def run_iam_policy(self, resource):
-        require(resource == f"projects/{PROJECT}/locations/us-east4/services/specimen-sam", "only the named SAM invocation policy is used")
+        # Read-only. The two named invocation policies the release verifies: the
+        # SAM service must stay worker-only, the API service must stay exactly
+        # the approved public binding. No caller may set an IAM policy here.
+        require(resource in READABLE_RUN_IAM, "only the named SAM and API invocation policies are read")
         return self.request("run", "GET", resource + ":getIamPolicy", params={"options.requestedPolicyVersion": 3})
 
     def cleanup_clone(self):

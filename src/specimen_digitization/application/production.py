@@ -46,6 +46,37 @@ def sql_emulator_host() -> str:
     return host
 
 
+SQL_ENDPOINT_KEYS = (
+    ("location", "SPECIMEN_SQL_LOCATION"),
+    ("service", "SPECIMEN_SQL_SERVICE"),
+    ("connector", "SPECIMEN_SQL_CONNECTOR"),
+)
+SQL_ENDPOINT_NAME = re.compile(r"[a-z][a-z0-9-]{1,62}")
+
+
+def sql_endpoint_from_env(env=None) -> dict[str, str]:
+    """Bind the worker to the same named SQL endpoint the API was pinned to.
+
+    The API reads these three variables in ``RuntimeConfig.from_env`` and the
+    release pins the same values on the worker job, so both processes reach one
+    endpoint. They are accepted here under the API's own validation, all three
+    together or not at all: a half-supplied endpoint would silently mix a
+    configured value with a built-in default, which is exactly the drift this
+    exists to prevent. Nothing set means the constructor defaults apply.
+    """
+    env = os.environ if env is None else env
+    supplied = {field: env.get(key) for field, key in SQL_ENDPOINT_KEYS if env.get(key)}
+    if not supplied:
+        return {}
+    if len(supplied) != len(SQL_ENDPOINT_KEYS) or not all(
+        SQL_ENDPOINT_NAME.fullmatch(value) for value in supplied.values()
+    ):
+        raise ValueError(
+            "Explicit SQL location, service and connector required together"
+        )
+    return supplied
+
+
 class SqlConnectRepository:
     def __init__(
         self,

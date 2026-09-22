@@ -63,14 +63,35 @@ read-only mounts into private UID-owned runtime files. No credentials, images,
 model weights or private packets belong in build context. API must not receive
 provider credentials. Worker/SAM require separate narrowly scoped identities.
 
-Worker SQL constructor currently uses fixed defaults: project
+Worker SQL construction now reads the same `SPECIMEN_SQL_LOCATION`,
+`SPECIMEN_SQL_SERVICE` and `SPECIMEN_SQL_CONNECTOR` the API reads, under the
+API's own validation, and the protected release pins those three onto the worker
+job from the one approved API environment. All three are required together or
+none at all: a half-supplied endpoint is refused rather than silently mixed with
+a default. Absent all three, the previous fixed defaults still apply (project
 `specimen-digitization`, location `us-east4`, service
 `specimen-digitization-service`, connector `specimen-server`, and the approved
-Firebase Storage bucket. Unlike the API, worker startup does not read API SQL
-environment overrides. Delivery must bind the same actual endpoint in both
-processes; a changed SQL endpoint requires an explicit worker configuration
-repair. Workflow initialization attaches graph blob storage, so large retained
-graphs do have storage in the production worker after construction.
+Firebase Storage bucket). A changed SQL endpoint therefore reaches both
+processes from one plan value instead of requiring a separate worker repair.
+Workflow initialization attaches graph blob storage, so large retained graphs do
+have storage in the production worker after construction.
+
+### Public API invocation is an owner bootstrap precondition
+
+Cloud Run's IAM layer decides who may reach `specimen-api` at all, before the
+application authenticates anything itself. The browser cannot present an IAM
+credential — a CORS preflight carries none — so the museum's web app reaches the
+API only while `roles/run.invoker` is granted to `allUsers` on that exact
+service, unconditionally. Application authentication, App Check and membership
+checks are unchanged by that grant and still decide every request.
+
+The owner grants this binding once, by hand, before the first runtime
+activation. No release script creates, widens or removes it. Activation reads
+the policy (`deploy_runtime.verify_public_api_invoker`) and fails closed before
+the public smoke if the binding is missing, conditional, or held by any
+principal other than `allUsers`, so a release can neither assume the binding nor
+quietly proceed without it. SAM keeps the opposite rule, also read-only: exactly
+the worker service account and nobody else.
 
 ## Audit of processing and persistence
 

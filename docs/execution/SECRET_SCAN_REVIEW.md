@@ -222,3 +222,35 @@ is a live credential or included in the repository.
 mode. A clean index can therefore report a passing hook while new unstaged files
 have not been scanned by that hook. Validate the actual staged candidate before
 committing; do not treat an unstaged invocation as proof of a candidate scan.
+
+## Release plan template fingerprints
+
+Reviewed 2026-09-22. `infra/release/` holds the reviewable release plan
+templates. Six of them carry committed source fingerprints: the seventeen
+`source_files` digests that `scripts/ci/deploy_data.py` recomputes from
+`dataconnect/` and `storage.rules`, the six `initialization_files` digests that
+`scripts/ci/release_initialize.py` recomputes from its own committed helpers,
+the pinned SAM3 revision, the trace approval digest already declared in
+`scripts/ci/deploy_runtime.py`, and the human review scope digest already
+published in `APPROVED_RELEASE_BUDGET.md`.
+
+Every one is a digest of committed repository bytes or of an already public
+approval record. None is an account, token or key. Each is regenerated and
+compared by `scripts/ci/test_release_plan_templates.py`, so a changed value
+fails that test rather than passing silently. Every owner supplied value in the
+templates is an `<OWNER:name>` placeholder, and that test also rejects any
+literal shaped like a credential, any pinned Secret Manager version and any
+64 hex value that is not one of these committed fingerprints.
+
+Detect-secrets 1.5.0 reports 66 Hex High Entropy String findings across those
+six files, all of that one shape. They are recorded in `.secrets.baseline` with
+`is_secret` unset, scoped to their exact paths and exact finding hashes. No
+filter, plugin, threshold or existing entry was changed, and no path exclusion
+was introduced.
+
+Gitleaks8.30.1 then flags the new `hashed_secret` scanner metadata lines in
+`.secrets.baseline`, exactly as it did for the earlier fixture digests. The
+additive rule-local AND exception lists the 26 distinct SHA-1 identifiers and
+applies only inside `.secrets.baseline`. Each identifier was independently
+confirmed to be SHA-1 of a digest that appears in one of those templates. The
+template files themselves stay fully scanned by both tools.

@@ -1,4 +1,4 @@
-"""Exercise real deploy admission offline; the only npx executable is synthetic."""
+"""Exercise real deploy admission offline; every executable here is synthetic."""
 import json
 import os
 from pathlib import Path
@@ -29,16 +29,35 @@ def run_deploy(tmp_path, *, body=None, overrides=None, credential=True):
     creds = tmp_path / 'synthetic-credential.json'
     if credential:
         creds.write_text('{}')
-    calls = tmp_path / 'npx-calls.json'
+    calls = tmp_path / 'hosting-cli-calls.json'
     binary = tmp_path / 'bin'
     binary.mkdir()
-    fake = binary / 'npx'
-    fake.write_text(f'#!{sys.executable}\n'
-                    'import json, os, pathlib, sys\n'
-                    'pathlib.Path(os.environ["FAKE_NPX_CALLS"]).write_text(json.dumps(sys.argv[1:]))\n')
-    fake.chmod(0o700)
+    # The recorder stands in for the installed firebase binary. It is copied into
+    # the private prefix by the synthetic npm below, so a deploy can only reach it
+    # through an install that actually happened.
+    recorder = tmp_path / 'recorder.py'
+    recorder.write_text(f'#!{sys.executable}\n'
+                        'import json, os, pathlib, sys\n'
+                        'pathlib.Path(os.environ["FAKE_CLI_CALLS"]).write_text(json.dumps(sys.argv[1:]))\n')
+    fake_npm = binary / 'npm'
+    fake_npm.write_text(f'#!{sys.executable}\n'
+                        'import json, os, pathlib, shutil, sys\n'
+                        'argv = sys.argv[1:]\n'
+                        'pathlib.Path(os.environ["FAKE_NPM_CALLS"]).write_text(json.dumps(argv))\n'
+                        'target = pathlib.Path(argv[argv.index("--prefix") + 1]) / "node_modules" / ".bin"\n'
+                        'target.mkdir(parents=True, exist_ok=True)\n'
+                        'shutil.copy(os.environ["FAKE_CLI_RECORDER"], target / "firebase")\n'
+                        '(target / "firebase").chmod(0o700)\n')
+    fake_npm.chmod(0o700)
+    # A reintroduced npx must fail the exact-command assertion rather than work.
+    fake_npx = binary / 'npx'
+    fake_npx.write_text(f'#!{sys.executable}\n'
+                        'import json, os, pathlib, sys\n'
+                        'pathlib.Path(os.environ["FAKE_CLI_CALLS"]).write_text(json.dumps(["npx", *sys.argv[1:]]))\n')
+    fake_npx.chmod(0o700)
     # Do not pass local cloud credentials or user configuration into this fixture.
-    env = {'PATH': str(binary) + os.pathsep + os.environ['PATH'], 'FAKE_NPX_CALLS': str(calls),
+    env = {'PATH': str(binary) + os.pathsep + os.environ['PATH'], 'FAKE_CLI_CALLS': str(calls),
+           'FAKE_NPM_CALLS': str(tmp_path / 'npm-calls.json'), 'FAKE_CLI_RECORDER': str(recorder),
            'GITHUB_ACTIONS': 'true', 'GITHUB_EVENT_NAME': 'push', 'GITHUB_REPOSITORY': REPOSITORY,
            'GITHUB_REF': 'refs/heads/main',
            'GITHUB_WORKFLOW_REF': REPOSITORY + '/.github/workflows/ci-cd.yml@refs/heads/main',
@@ -57,14 +76,26 @@ def run_deploy(tmp_path, *, body=None, overrides=None, credential=True):
 def test_exact_artifact_attempt_reaches_only_synthetic_hosting_command(tmp_path):
     result, calls = run_deploy(tmp_path)
     assert result.returncode == 0, result.stderr
-    assert calls == ['--yes', 'firebase-tools@15.8.0', 'deploy', '--only', 'hosting',
+    assert calls == ['deploy', '--only', 'hosting',
                      '--project', 'specimen-digitization', '--non-interactive',
                      '--message', 'GitHub Actions ' + SHA]
 
 
+def test_the_pinned_cli_is_installed_without_running_dependency_scripts(tmp_path):
+    result, calls = run_deploy(tmp_path)
+    assert result.returncode == 0, result.stderr
+    npm = json.loads((tmp_path / 'npm-calls.json').read_text())
+    assert npm[0] == 'install'
+    assert '--ignore-scripts' in npm
+    assert 'firebase-tools@15.8.0' in npm
+    # The install must land in a private prefix, never in the checkout.
+    prefix = npm[npm.index('--prefix') + 1]
+    assert Path(prefix).is_absolute() and not prefix.startswith(str(tmp_path) + os.sep + 'apps')
+
+
 @pytest.mark.parametrize('key', ['GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT'])
 @pytest.mark.parametrize('value', [None, '', 'unknown', '0', '01', '-1', '+1', '1.0', '1\n'])
-def test_invalid_workflow_identity_stops_before_credentials_or_npx(tmp_path, key, value):
+def test_invalid_workflow_identity_stops_before_credentials_or_any_cli(tmp_path, key, value):
     result, calls = run_deploy(tmp_path, overrides={key: value}, credential=False)
     assert result.returncode != 0
     assert 'run' in result.stderr.lower()
@@ -78,14 +109,14 @@ def test_invalid_workflow_identity_stops_before_credentials_or_npx(tmp_path, key
     ('runId', 123), ('runAttempt', True), ('schemaVersion', True), ('schemaVersion', 2),
     ('builtAt', '2026-02-31T18:32:38Z'), ('builtAt', None),
 ])
-def test_foreign_stale_or_invalid_marker_never_reaches_npx(tmp_path, field, value):
+def test_foreign_stale_or_invalid_marker_never_reaches_the_cli(tmp_path, field, value):
     result, calls = run_deploy(tmp_path, body={**marker(), field: value})
     assert result.returncode != 0
     assert calls == []
 
 
 @pytest.mark.parametrize('field', list(marker()))
-def test_missing_marker_field_never_reaches_npx(tmp_path, field):
+def test_missing_marker_field_never_reaches_the_cli(tmp_path, field):
     value = marker()
     del value[field]
     result, calls = run_deploy(tmp_path, body=value)

@@ -80,8 +80,13 @@ def main():
             parser.error("Production port must come from PORT")
     from ..observability import configure_observability, CaptureMode
 
+    # The API never sends telemetry anywhere. Its deployed environment carries
+    # no Logfire credential, and leaving this unset would let the SDK's own
+    # default try to reach Logfire — and create a project — while the service is
+    # starting. Only the worker sends, through the approved bounded transport
+    # (docs/execution/APPROVED_LOGFIRE_TRACING.md); the API and SAM never do.
     configure_observability(
-        send_to_logfire=False if args.mode == "synthetic" else None,
+        send_to_logfire=False,
         capture_mode=CaptureMode.METADATA,
     )
     if args.mode == "synthetic":

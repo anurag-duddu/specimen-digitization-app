@@ -16,6 +16,7 @@ from .api import SYNTHETIC_TEXT, SYNTHETIC_COLLECTION, SYNTHETIC_ORG
 from .domain import AuditEvent, Principal, Scope, now
 from .production import (
     sql_emulator_host,
+    sql_endpoint_from_env,
     SqlConnectRepository,
     GcsBlobs,
     ProductionAdapters,
@@ -789,7 +790,9 @@ def _run(args):
 
         user = os.environ["SPECIMEN_WORKER_ACTOR_UID"]
         actor_uid.set(user)
-        repository = SqlConnectRepository()
+        # The release pins the API's named SQL endpoint onto this job too, so
+        # both processes read and write one service. Absent, the defaults apply.
+        repository = SqlConnectRepository(**sql_endpoint_from_env())
         blobs = GcsBlobs()
         manifest = verify_source_manifest(args.source_manifest, launch)
         adapters = ProductionAdapters(

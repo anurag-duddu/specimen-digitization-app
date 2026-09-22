@@ -1,0 +1,47 @@
+{
+  "_template": {
+    "purpose": "The --evidence-digests file for scripts/ci/mint_release_packet.py.",
+    "consumed_by": "scripts/ci/mint_release_packet.py build_candidate; the result is checked by scripts/ci/validate_release_packet.py and scripts/ci/check_release_readiness.py.",
+    "notes": [
+      "mint_release_packet reads only the named keys, so this guidance block is ignored.",
+      "The plan templates carry no such block: their validators use exact key sets.",
+      "Replace every OWNER placeholder. A null or missing value is reported as a gap.",
+      "Pass --from-registry to read the three image references from Artifact Registry instead of this file."
+    ]
+  },
+  "images": {
+    "api": {
+      "reference": "<OWNER:api_image_reference>",
+      "provenance_sha256": "<OWNER:api_image_provenance_sha256>"
+    },
+    "worker": {
+      "reference": "<OWNER:worker_image_reference>",
+      "provenance_sha256": "<OWNER:worker_image_provenance_sha256>"
+    },
+    "sam": {
+      "reference": "<OWNER:sam_image_reference>",
+      "provenance_sha256": "<OWNER:sam_image_provenance_sha256>"
+    }
+  },
+  "sam_model": {
+    "repository": "facebook/sam3",
+    "revision": "3c879f39826c281e95690f02c7821c4de09afae7",
+    "artifacts_sha256": "<OWNER:sam_artifacts_sha256>",
+    "config_sha256": "<OWNER:sam_config_sha256>"
+  },
+  "data": {
+    "schema_sha256": "<OWNER:deployed_schema_sha256>",
+    "connector_sha256": "<OWNER:deployed_connector_sha256>",
+    "storage_rules_sha256": "<OWNER:deployed_storage_rules_sha256>",
+    "backup_restore_evidence_sha256": "<OWNER:backup_restore_evidence_sha256>",
+    "compatibility_evidence_sha256": "<OWNER:data_ready_receipt_sha256>"
+  },
+  "approvals": {
+    "contract_sha256": "<OWNER:contract_approval_sha256>",
+    "bootstrap_sha256": "<OWNER:bootstrap_artifact_sha256>",
+    "budget_sha256": "<OWNER:budget_approval_sha256>",
+    "provider_data_sha256": "<OWNER:provider_data_approval_sha256>"
+  },
+  "public_config_sha256": "<OWNER:public_config_sha256>",
+  "rollback_sha256": "<OWNER:rollback_sha256>"
+}

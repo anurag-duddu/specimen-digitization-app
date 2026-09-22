@@ -26,6 +26,35 @@ jobs:
         run: |
           python3 scripts/ci/validate_release_packet.py infra/release/candidate.example.json
           echo "Structure check only. Release readiness NOT established: the example intentionally lacks approval and live evidence." >> "$GITHUB_STEP_SUMMARY"
+      - name: Check release readiness against the workflow source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          READINESS_PACKET: infra/release/candidate.json
+        run: |
+          # Release completeness is separate from candidate structure CI. This
+          # step deploys nothing, needs no credential and reads no secret. It
+          # reports Not run wherever the strict preflight does not apply, and on
+          # main or the integration pull request it runs the untouched strict
+          # check, which derives the expected source SHA from this workflow's
+          # own context and rejects an example, incomplete or stale packet.
+          if [[ "$EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+            strict=true
+          elif [[ "$EVENT_NAME" == "pull_request" && "$HEAD_REF" == "codex/live-integration" ]]; then
+            strict=true
+          else
+            strict=false
+          fi
+          if [[ "$strict" != "true" ]]; then
+            echo "Not run: release readiness is checked only on main or the integration pull request. Release readiness NOT established." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ ! -f "$READINESS_PACKET" ]]; then
+            echo "Not run: no generated release candidate packet at $READINESS_PACKET. Release readiness NOT established." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 scripts/ci/check_release_readiness.py "$READINESS_PACKET"
+          echo "Source-bound release evidence structure is complete for $GITHUB_SHA. This is not authorization: evidence verification and cloud authorization remain separate gates." >> "$GITHUB_STEP_SUMMARY"
       - name: Install pinned uv for offline data plan checks
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:

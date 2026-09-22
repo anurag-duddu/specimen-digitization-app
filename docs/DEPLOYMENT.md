@@ -71,7 +71,10 @@ below do not change that Hosting boundary. AWS is not part of this design.
 The only executable Hosting deploy command lives in
 `scripts/ci/deploy_hosting.sh`. That script fails closed unless GitHub provides
 the expected repository, `push` event, `main` ref, workflow identity, commit
-SHA, tested artifact marker, and keyless Google credential file. Tests reject
+SHA, tested artifact marker, and keyless Google credential file. It installs the
+pinned Firebase CLI into a private prefix with `npm install --ignore-scripts`,
+as the data plane does, and runs that binary directly: no dependency's install
+script executes while the short-lived Google credential file is on the runner. Tests reject
 deploy commands added to unapproved automation files. The only approved backend
 effect entrypoints are `scripts/ci/deploy_runtime.py` and
 `scripts/ci/deploy_data.py`, invoked exclusively by their respective main-push
@@ -96,16 +99,39 @@ token and cannot deploy.
 
 `scripts/ci/smoke_web_routes.py` runs between the deployment stamp and the
 artifact upload, so a build that fails it is never uploaded and therefore can
-never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites
-`firebase.json` declares, reads the route table out of
-`apps/specimen_digitization/lib/src/app/app_router.dart`, and proves three
+never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites and
+the response headers `firebase.json` declares, reads the route table out of
+`apps/specimen_digitization/lib/src/app/app_router.dart`, and proves four
 things about the artifact: every declared location answers with the
-application shell rather than a 404, the design system gallery is absent from
+application shell rather than a 404, every response carries the security
+headers listed below, the design system gallery is absent from
 the release bundle, and `deployment.json` is the exact marker
 `scripts/ci/deploy_hosting.sh` and `scripts/ci/smoke_hosting.sh` accept. It
 contacts no host, holds no credential and deploys nothing. It says nothing
 about the public site: only `scripts/ci/smoke_hosting.sh` does that, after a
 deploy.
+
+#### The response headers Hosting sets
+
+`firebase.json` declares one `headers` block on `**` and one on
+`/deployment.json`. The `**` block sets `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`,
+`Content-Security-Policy: frame-ancestors 'none'; object-src 'none';
+base-uri 'self'` and `Permissions-Policy: camera=(), microphone=(),
+geolocation=()`. `SECURITY_HEADERS` in `scripts/ci/smoke_web_routes.py` is the
+same table, and the smoke asks every response for it, so a header dropped from
+the configuration fails the build rather than the site.
+
+Three omissions are deliberate. The policy names no `script-src` or
+`style-src`: Flutter web boots from an inline script the build writes into
+`index.html` and fetches CanvasKit and its wasm from `gstatic.com`, so a
+source list narrow enough to be worth having would have to track the engine's
+own hosts. There is no COOP or COEP: nothing this client does needs cross
+origin isolation, and it would break the reCAPTCHA Enterprise frame App Check
+uses. And `Permissions-Policy` grants nothing to `self`, because the web build
+asks for nothing: the in-app camera is behind `!kIsWeb`, so a web reviewer is
+offered the file picker rather than a capture button. Adding a web capture
+flow means revisiting the header and the test that holds it.
 
 ### Pushes to `main`
 
@@ -531,6 +557,26 @@ successful.
 - force pushes and branch deletion are disabled;
 - administrators are subject to the rules;
 - the branch must be up to date before merge.
+
+These protections are not self-sustaining. They lapsed while the repository
+was private on a GitHub plan that does not offer branch protection, and on
+2026-09-22 `main` reported `protected: false` while every earlier release
+had assumed otherwise. The protected data and runtime workflows depend on
+them directly: their admission requires GitHub's `GITHUB_REF_PROTECTED` flag
+to be `true`, which GitHub sets only when a protection rule or ruleset
+exists for the branch, so without protection those planes fail closed on
+their first context check regardless of any release envelope. Before any
+release, and after any plan or visibility change, verify:
+
+```bash
+gh api repos/anurag-duddu/specimen-digitization-app/branches/main --jq .protected
+```
+
+The answer must be `true`. On 2026-09-22 the owner made the repository
+public; the dormant rule reactivated with exactly the settings above, which
+was verified through the same command. Restoring or changing protection is
+an owner action and the applied settings must be recorded in the session
+log.
 
 The GitHub `production` environment must accept deployments only from `main`.
 GitHub Actions' default token permission must remain read-only; only the deploy

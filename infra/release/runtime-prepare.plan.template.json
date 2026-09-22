@@ -1,0 +1,44 @@
+{
+  "version": "runtime-prepare/v1",
+  "source_sha": "<OWNER:source_sha>",
+  "data_receipt": {
+    "sha256": "<OWNER:data_ready_receipt_sha256>",
+    "run_id": "<OWNER:data_ready_run_id>",
+    "run_attempt": "<OWNER:data_ready_run_attempt>",
+    "source_sha": "<OWNER:source_sha>"
+  },
+  "api": {
+    "expected_etag": null,
+    "previous_revision": null,
+    "environment": {
+      "SPECIMEN_FIREBASE_PROJECT": "specimen-digitization",
+      "SPECIMEN_FIREBASE_PROJECT_NUMBER": "716045864126",
+      "SPECIMEN_FIREBASE_APP_IDS": "1:716045864126:web:a193fa80c7a98bcac8e2ef,1:716045864126:android:6d2aeda8bc992e16c8e2ef,1:716045864126:ios:b4ae90c54b5beccac8e2ef",
+      "SPECIMEN_SQL_LOCATION": "us-east4",
+      "SPECIMEN_SQL_SERVICE": "specimen-digitization-service",
+      "SPECIMEN_SQL_CONNECTOR": "specimen-server",
+      "SPECIMEN_GCS_BUCKET": "specimen-digitization.firebasestorage.app",
+      "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
+      "SPECIMEN_READINESS_OBJECT": "<OWNER:readiness_object>",
+      "SPECIMEN_READINESS_GENERATION": "<OWNER:readiness_object_generation>"
+    }
+  },
+  "worker": {
+    "expected_etag": null,
+    "launch_secret": "<OWNER:worker_launch_secret_version>",
+    "manifest_secret": "<OWNER:pilot_manifest_secret_version>",
+    "launch_sha256": "<OWNER:worker_launch_sha256>",
+    "manifest_sha256": "<OWNER:ready_manifest_sha256>",
+    "timing_version": "approved-worker-timing/v1"
+  },
+  "sam": {
+    "expected_etag": null,
+    "previous_revision": null,
+    "expires_at_unix": "<OWNER:sam_expires_at_unix>",
+    "manifest_secret": "<OWNER:pilot_manifest_secret_version>",
+    "manifest_sha256": "<OWNER:ready_manifest_sha256>",
+    "checkpoint_prefix": "<OWNER:sam_checkpoint_prefix>",
+    "checkpoint_sha256": "<OWNER:sam_checkpoint_sha256>",
+    "audience": "https://specimen-sam-716045864126.us-east4.run.app"
+  }
+}

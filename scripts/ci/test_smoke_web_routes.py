@@ -12,6 +12,7 @@ port and the client speaks to that port only.
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -95,6 +96,10 @@ def test_hosting_config_is_read_rather_than_assumed():
     assert config.public == "apps/specimen_digitization/build/web"
     assert ("**", "/index.html") in config.rewrites
     assert "/deployment.json" in config.no_store
+    assert [source for source, _pairs in config.headers] == [
+        "**",
+        "/deployment.json",
+    ]
 
 
 def test_gallery_markers_are_strings_only_the_gallery_ships():
@@ -392,6 +397,183 @@ def test_a_path_outside_the_build_cannot_be_read(tmp_path):
         status, _headers, body = site.get("/../../firebase.json")
         assert status == 200
         assert MODULE.app_shell_problems(body) == []
+
+
+# ---------------------------------------------------------------------------
+# The security headers
+# ---------------------------------------------------------------------------
+
+
+def lowercased(pairs):
+    return {key.lower(): value for key, value in pairs.items()}
+
+
+def test_firebase_json_declares_every_header_the_gate_requires():
+    """The configuration and the required set are two files, and this is the
+    one place they have to agree. A header added to `SECURITY_HEADERS` without
+    a `firebase.json` entry fails here rather than on the public site."""
+    config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    applied = lowercased(MODULE.headers_for(config, "/"))
+    for name, value in MODULE.SECURITY_HEADERS.items():
+        assert applied.get(name) == value
+
+
+def test_the_policy_deliberately_names_no_script_or_style_source():
+    """Flutter web boots from an inline script and fetches CanvasKit from
+    gstatic, so a `script-src` or `style-src` narrow enough to be worth having
+    would break the engine. Cross origin isolation is not wanted either: COOP
+    and COEP would break the reCAPTCHA Enterprise frame App Check uses. This
+    is the decision, written down where a later edit has to argue with it."""
+    config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    applied = lowercased(MODULE.headers_for(config, "/"))
+    policy = applied["content-security-policy"]
+    for directive in ("script-src", "style-src", "default-src"):
+        assert directive not in policy
+    for header in ("cross-origin-opener-policy", "cross-origin-embedder-policy"):
+        assert header not in applied
+
+
+def test_the_permissions_policy_denies_what_the_web_client_never_asks_for():
+    """The header denies camera, microphone and geolocation, and the reason it
+    can is that the web build asks for none of them: the in-app camera is
+    behind `!kIsWeb`, so the capture button is not drawn on the web, and
+    nothing reads a microphone or a location. If a web capture flow is ever
+    added, this test is where the header has to be revisited."""
+    config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    applied = lowercased(MODULE.headers_for(config, "/"))
+    for feature in ("camera", "microphone", "geolocation"):
+        assert f"{feature}=()" in applied["permissions-policy"]
+
+    intake = (APP / "lib" / "src" / "intake.dart").read_text(encoding="utf-8")
+    assert re.search(r"_cameraAvailable\s*=>\s*!kIsWeb", intake), (
+        "the in-app camera is no longer web-excluded, so Permissions-Policy "
+        "camera=() would now deny something the client wants"
+    )
+    for root in (APP / "lib", APP / "web"):
+        for path in sorted(root.rglob("*")):
+            if path.suffix in (".dart", ".html", ".js"):
+                text = path.read_text(encoding="utf-8", errors="replace")
+                assert "getUserMedia" not in text, path
+                assert "navigator.geolocation" not in text, path
+
+
+@pytest.mark.parametrize(
+    "headers,expected",
+    [
+        ({}, "is missing"),
+        (
+            dict(MODULE.SECURITY_HEADERS, **{"x-frame-options": "SAMEORIGIN"}),
+            "rather than",
+        ),
+        # A directive dropped out of the policy leaves a prefix, which a
+        # containment test would accept and an exact comparison refuses.
+        (
+            dict(
+                MODULE.SECURITY_HEADERS,
+                **{"content-security-policy": "frame-ancestors 'none'"},
+            ),
+            "rather than",
+        ),
+    ],
+)
+def test_a_weakened_header_is_named(headers, expected):
+    problems = MODULE.security_header_problems(headers)
+    assert problems and any(expected in problem for problem in problems)
+
+
+def test_a_response_carrying_the_declared_headers_has_no_problems():
+    config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    applied = lowercased(MODULE.headers_for(config, "/"))
+    assert MODULE.security_header_problems(applied) == []
+
+
+def deepest_sample_location():
+    constants = MODULE.read_route_constants(ROUTES_DART)
+    routes = MODULE.parse_declared_routes(ROUTER_DART, constants)
+    deepest = max(routes, key=lambda route: route.location.count("/"))
+    return MODULE.sample_location(deepest)
+
+
+def test_the_headers_reach_the_root_and_a_deep_route(tmp_path):
+    """A deep route is served out of `index.html` by the `**` rewrite. Hosting
+    matches a header block against the URL that was asked for, not against the
+    file the rewrite resolved to, so the deep link has to carry them too."""
+    config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    deep = deepest_sample_location()
+    assert deep.count("/") >= 4
+    with MODULE.LoopbackSite(build_dir(tmp_path), config) as site:
+        for location in ("/", deep, "/main.dart.js"):
+            _status, headers, _body = site.get(location)
+            assert MODULE.security_header_problems(headers) == [], location
+
+
+def test_the_marker_carries_both_the_security_headers_and_no_store(tmp_path):
+    config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    root = build_dir(tmp_path, marker=json.dumps(MARKER))
+    with MODULE.LoopbackSite(root, config) as site:
+        _status, headers, _body = site.get("/deployment.json")
+        assert headers["cache-control"] == "no-store"
+        assert MODULE.security_header_problems(headers) == []
+
+
+def test_the_whole_gate_reports_the_headers(tmp_path):
+    code, report = run(build_dir(tmp_path))
+    assert code == 0, report
+    assert f"{len(MODULE.SECURITY_HEADERS)} security headers on" in report
+
+
+def test_a_header_dropped_from_the_configuration_fails_the_gate(
+    tmp_path, monkeypatch
+):
+    """The gate's teeth: with the `**` block gone from the configuration the
+    server stops sending the headers, and the sweep says so once per header
+    rather than once per location."""
+    real = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
+    stripped = MODULE.HostingConfig(
+        public=real.public,
+        rewrites=real.rewrites,
+        no_store=real.no_store,
+        headers=tuple(
+            (source, pairs) for source, pairs in real.headers if source != "**"
+        ),
+    )
+    monkeypatch.setattr(MODULE, "read_hosting_config", lambda _path: stripped)
+    code, report = run(build_dir(tmp_path))
+    assert code == 1
+    assert report.count("security header:") == len(MODULE.SECURITY_HEADERS)
+    assert "x-frame-options is missing" in report
+
+
+def test_an_unreadable_headers_block_fails_rather_than_being_skipped(tmp_path):
+    for broken in (
+        {"hosting": {"public": "x", "headers": [{"headers": []}]}},
+        {
+            "hosting": {
+                "public": "x",
+                "headers": [{"source": "**", "headers": [{"key": "A"}]}],
+            }
+        },
+    ):
+        path = tmp_path / "firebase.json"
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        with pytest.raises(MODULE.SmokeError):
+            MODULE.read_hosting_config(path)
+
+
+def test_a_later_block_wins_a_key_an_earlier_one_set():
+    config = MODULE.HostingConfig(
+        public="x",
+        rewrites=(),
+        no_store=frozenset(),
+        headers=(
+            ("**", (("X-Frame-Options", "SAMEORIGIN"),)),
+            ("/deployment.json", (("X-Frame-Options", "DENY"),)),
+        ),
+    )
+    assert MODULE.headers_for(config, "/")["X-Frame-Options"] == "SAMEORIGIN"
+    assert (
+        MODULE.headers_for(config, "/deployment.json")["X-Frame-Options"] == "DENY"
+    )
 
 
 # ---------------------------------------------------------------------------

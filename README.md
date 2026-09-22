@@ -25,9 +25,11 @@ reviewer works in: photographs come in through intake, a record is reviewed
 against its own evidence, and a decision is recorded with a reason. One
 codebase serves the web, Android and iOS. It initializes the registered
 Firebase Web, iOS and Android apps from the generated FlutterFire
-configuration; Authentication, Storage and SQL Connect packages are installed.
-The iOS deployment target is 15.0 because the current Firebase Data Connect
-dependency chain requires it.
+configuration; the Authentication and App Check packages are installed, and
+nothing else. Photographs and records travel over the scoped API, so the
+Storage and SQL Connect client packages are not in the bundle: they were
+declared and never imported, and were removed. The iOS deployment target is
+15.0 because the Firebase iOS SDK these packages resolve to requires it.
 
 ```bash
 cd apps/specimen_digitization
@@ -100,6 +102,7 @@ environments or production.
 
 ## Documentation
 
+- [Go-live readiness assessment](docs/execution/GO_LIVE_READINESS.md) and the [owner runbook](docs/execution/GO_LIVE_RUNBOOK.md)
 - [Runnable handoff, architecture and evidence index](docs/execution/HANDOFF.md)
 - [Product requirements](docs/product-requirements/PRD.md)
 - [Agent harness decision and alternatives](docs/product-requirements/HARNESS_OPTIONS.md)

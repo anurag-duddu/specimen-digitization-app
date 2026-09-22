@@ -2,6 +2,13 @@
 
 Updated 2026-09-14T00:31:10Z. Coordinator: `01a082b2-c2c3-70d2-be90-7bfb622c9102`.
 
+> Correction (2026-09-22): the combined decision this page calls pending
+> (USD 12 cumulative and daily, one 3,500-second worker, three IAM effects in
+> one fresh ten-minute window) was approved on 2026-09-14T02:03:08.382Z; see
+> [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md). The USD 5
+> affordability arithmetic below is historical. The current order of work is
+> in [GO_LIVE_RUNBOOK.md](GO_LIVE_RUNBOOK.md).
+
 **The live URL serves sign-in. The complete ten-specimen product is not yet accepted.**
 
 Current source gates: [PR32](https://github.com/anurag-duddu/specimen-digitization-app/pull/32) merged as `4c04a2a1de4ae273afab3e57fab1d411289c7183` after all five PR checks and four candidate jobs passed. Independent verification ran all 35 relevant Linux tests in both PID1 and subreaper contexts; the nested fixture correction preserves strict descendant/group absence and no-late-work assertions. Main CI/CD34792432281/1 passed all six jobs, including Hosting103819855436; the public deployment marker matches the merged commit/run/attempt and the canonical public smoke passed. Main candidate34792432260 passed all four jobs. Frozen release receipt3ecb2e3b records this source/Hosting completion, with app_review_ready=false. DATA34792432309 and runtime34792432307 stopped at admission; all seven privileged jobs were skipped. The pure owner-bootstrap/renewal integration successor also passed independent source review (67 focused tests plus five integration tests/seven subtests). Neither review changes operational authority. The combined decision below remains unanswered.

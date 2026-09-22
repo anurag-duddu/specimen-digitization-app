@@ -36,6 +36,9 @@ TRACE_WRITER_PARENT = f"projects/{PROJECT}/secrets/specimen-worker-logfire"
 API_ENV = {"SPECIMEN_FIREBASE_PROJECT", "SPECIMEN_FIREBASE_PROJECT_NUMBER", "SPECIMEN_FIREBASE_APP_IDS",
            "SPECIMEN_SQL_LOCATION", "SPECIMEN_SQL_SERVICE", "SPECIMEN_SQL_CONNECTOR", "SPECIMEN_GCS_BUCKET",
            "SPECIMEN_CORS_ORIGINS", "SPECIMEN_READINESS_OBJECT", "SPECIMEN_READINESS_GENERATION"}
+# The named SQL endpoint both runtimes must share. A subset of API_ENV, which
+# stays the exact set the API plan may carry.
+SQL_ENV = ("SPECIMEN_SQL_LOCATION", "SPECIMEN_SQL_SERVICE", "SPECIMEN_SQL_CONNECTOR")
 SAM_REVISION = SAM3_MODEL.revision
 
 
@@ -93,6 +96,16 @@ def validate_plan(plan: object, packet: dict, *, now=None):
     digest(sam["checkpoint_sha256"], "SAM checkpoint content")
     require(isinstance(sam["checkpoint_prefix"], str) and re.fullmatch(
         r"application/sha256/[a-f0-9]{64}/sam3-cache", sam["checkpoint_prefix"]), "approved immutable SAM cache prefix required")
+    # Cloud Run assigns every service a deterministic URL
+    # https://SERVICE-PROJECT_NUMBER.REGION.run.app alongside its random one (GA
+    # 2024-09-03), with the full region name and one documented condition: the
+    # service name, project number and any tag must fit one 63-character DNS
+    # label. "specimen-sam-" plus a numeric project number is far inside that,
+    # so the audience below is predictable rather than observed. See
+    # https://docs.cloud.google.com/run/docs/triggering/https-request ("Deterministic URL").
+    # Activation still re-checks this literal against the live service's own
+    # urls/uri before the worker may call it, so a service whose default URL was
+    # disabled fails closed there instead of being trusted here.
     require(sam["audience"] == f"https://specimen-sam-{packet['identity']['project_number']}.us-east4.run.app",
             "approved deterministic SAM audience required")
     now = time.time() if now is None else now
@@ -157,6 +170,11 @@ def resource_bodies(plan, packet, images, run_id, attempt, *, now=None):
     if plan["worker"] is None:
         return bodies
     worker = plan["worker"]
+    # The worker reaches the same named SQL endpoint as the API. Pin it from the
+    # one approved API environment rather than leaving the job on built-in
+    # defaults that no plan ever sees.
+    worker_env = {"SPECIMEN_LAUNCH_POLICY_SHA256": worker["launch_sha256"],
+                  **{key: plan["api"]["environment"][key] for key in SQL_ENV}}
     bodies["worker"] = {"name": f"{PREFIX}/jobs/specimen-worker", "labels": {"source-sha": packet["source_sha"], "release-run": run_id},
                         "template": {"taskCount": 1, "parallelism": 1, "template": {
                             "serviceAccount": f"specimen-worker-runtime@{PROJECT}.iam.gserviceaccount.com",
@@ -166,7 +184,7 @@ def resource_bodies(plan, packet, images, run_id, attempt, *, now=None):
                             "containers": [{"image": images["worker"], "resources": {"limits": {"cpu": "1", "memory": "1Gi"}},
                                             "args": ["--mode", "production", "--materialize-config", "--check-config", "--launch-policy", "/inputs/launch/launch.json",
                                                      "--source-manifest", "/inputs/manifest/manifest.json", "--max-seconds", "1500"],
-                                            "env": [{"name": "SPECIMEN_LAUNCH_POLICY_SHA256", "value": worker["launch_sha256"]}],
+                                            "env": [{"name": key, "value": value} for key, value in sorted(worker_env.items())],
                                             "volumeMounts": [{"name": "launch", "mountPath": "/inputs/launch"}, {"name": "manifest", "mountPath": "/inputs/manifest"}]}]}}}
     if worker["expected_etag"] is not None:
         bodies["worker"]["etag"] = worker["expected_etag"]
@@ -392,6 +410,30 @@ def validate_worker_trace(value, plan):
     return trace
 
 
+def verify_public_api_invoker(google):
+    """Read-only: the public API invocation binding must be exactly the approved one.
+
+    Cloud Run's IAM layer runs before the application's own authentication, and a
+    browser CORS preflight cannot carry an IAM credential, so `specimen-api` is
+    reachable by the museum's web app only when `roles/run.invoker` is granted to
+    `allUsers`, unconditionally. The application still authenticates every request
+    itself; this binding decides who may reach it at all.
+
+    That grant is an owner bootstrap precondition. No release script creates or
+    changes it, and this path never modifies an IAM policy: it reads the policy
+    and fails closed if the binding is missing, conditional, or held by any other
+    principal, rather than letting the public smoke below prove it by accident.
+    """
+    policy = google.run_iam_policy(f"{PREFIX}/services/specimen-api")
+    bindings = [binding for binding in policy.get("bindings", []) if binding.get("role") == "roles/run.invoker"]
+    members = {member for binding in bindings for member in binding.get("members", [])}
+    require(members == {"allUsers"},
+            "exact public API invocation binding required: specimen-api must grant roles/run.invoker "
+            "to allUsers and to no other principal; grant it once as an owner bootstrap step")
+    require(all(binding.get("condition") is None for binding in bindings),
+            "the public API invocation binding must remain unconditional")
+
+
 def verify_public_api(uri, source_sha):
     import requests
     require(isinstance(uri, str) and re.fullmatch(r"https://[a-z0-9.-]+\.run\.app", uri), "invalid observed API URL")
@@ -561,6 +603,7 @@ def activate(google, plan, output):
     require(revision.get("containers", [{}])[0].get("image") == receipt["images"]["api"], "native API revision image differs")
     statuses = api.get("trafficStatuses", [])
     uri = next((v["uri"] for v in statuses if v.get("tag") == "candidate" and v.get("uri")), api.get("uri"))
+    verify_public_api_invoker(google)
     verify_public_api(uri, packet["source_sha"])
     verify_imported_cohort(google, manifest, launch, plan["activation"]["actor_uid"])
     sam = bodies["sam"]

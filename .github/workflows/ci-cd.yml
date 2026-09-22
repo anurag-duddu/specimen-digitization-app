@@ -129,11 +129,12 @@ jobs:
 
       # The artifact is checked here, before it can be uploaded and therefore
       # before anything can deploy it: every route the router declares answers
-      # with the application shell under the rewrites firebase.json declares,
-      # the design system gallery is absent from the release bundle, and
-      # deployment.json is the exact marker the deploy guard and the public
-      # smoke accept. It serves the build on loopback, contacts no host, holds
-      # no credential and deploys nothing.
+      # with the application shell under the rewrites firebase.json declares
+      # and carries the security headers it declares, the design system
+      # gallery is absent from the release bundle, and deployment.json is the
+      # exact marker the deploy guard and the public smoke accept. It serves
+      # the build on loopback, contacts no host, holds no credential and
+      # deploys nothing.
       - name: Check the built web release over its routes
         run: python3 ../../scripts/ci/smoke_web_routes.py --require-marker
 

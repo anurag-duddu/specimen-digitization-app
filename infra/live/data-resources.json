@@ -92,7 +92,8 @@
   "privileged_maintenance": {
     "runtime_connector_contains_bootstrap": false,
     "bootstrap_preparation_script": "scripts/data/bootstrap_admin.py",
-    "bootstrap_apply_implemented": false,
+    "bootstrap_apply_script": "scripts/ci/bootstrap_release.py",
+    "bootstrap_apply_implemented": true,
     "separate_maintenance_identity_required": true,
     "hosting_identity_changes": false,
     "cloud_apply_authorized": false

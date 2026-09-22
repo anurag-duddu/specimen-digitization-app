@@ -1,0 +1,122 @@
+{
+  "version": "data-initialize-missing/v1",
+  "source_sha": "<OWNER:source_sha>",
+  "schema_mode": "initialize_missing",
+  "source_files": {
+    "dataconnect/dataconnect.yaml": "8355ece3fb4b1bebf920c05f2cb358229877cca9d0a0abc6e8cdc0da2756423a",
+    "dataconnect/connector/connector.yaml": "112dd6af54062562a6c76b7034b46a54635e13fdcc6b5441e738a3f0e3596ebe",
+    "storage.rules": "8d8bf2202a428894aaa46278bfc68c33dce0fd405e547b952a408e930d380893",
+    "dataconnect/schema/schema.gql": "69a08f92e62f0b70abb0a61b1575f7de31d098e0f7f75cc5b803bc0a1fc1df58",
+    "dataconnect/schema/search.gql": "a7ff0616ed6045d958f7a35eccffbe51671d395fa43a695ccdca7892e724b32a",
+    "dataconnect/connector/artifacts.gql": "4d4da17483f84409419323b44441dfde83719c337d48386e2bc451fb7dee3040",
+    "dataconnect/connector/auxiliary.gql": "859dec52ba7f4212da4728ab77634766115914a4c66d10df92d662be9c825114",
+    "dataconnect/connector/checksum.gql": "4717f7368643b67d1ac4300ed3a02b1679580e7ba63cb81c6f0eb080bc271633",
+    "dataconnect/connector/operations.gql": "65ac18159fbed968f058e86df1f7e62b6a6274da40e7a8639ac78efb1d221264",
+    "dataconnect/connector/paging.gql": "3a865305a181634874f2c8179d2e92fab26d20bcc733dd006c7c04278b225cf0",
+    "dataconnect/connector/readiness.gql": "ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9",
+    "dataconnect/connector/scheduling.gql": "c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef",
+    "dataconnect/connector/search.gql": "4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681",
+    "dataconnect/connector/sensitivity.gql": "521774b8dcef9e0c0c1c43481ae19ad808aafbe08b32c3111e2287313cf1db1f",
+    "dataconnect/sql/checksum-audit.sql": "4ba591e82873c5d829c07267447e792b01f32675575fa00bb2b0b3657c27301c",
+    "dataconnect/sql/paging-indexes.sql": "1fd9ab5a7d9048fc19c6edbaa0bc5081eca632f7b7961e06c5e7e7f714d85480",
+    "dataconnect/sql/search-indexes.sql": "4d9366222bc073273b2d5f9b3706c429bf5ddd15497229fdc994246110f0e88d"
+  },
+  "database_etag": "<OWNER:sql_settings_version>",
+  "schema_etag": "<OWNER:schema_placeholder_etag>",
+  "connector_etag": null,
+  "storage_release_etag": "<OWNER:storage_ruleset_name>",
+  "schema_placeholder": {
+    "name": "projects/specimen-digitization/locations/us-east4/services/specimen-digitization-service/schemas/main",
+    "uid": "<OWNER:schema_placeholder_uid>",
+    "createTime": "<OWNER:schema_placeholder_create_time>",
+    "updateTime": "<OWNER:schema_placeholder_update_time>",
+    "source": {},
+    "reconciling": false,
+    "datasources": [
+      {
+        "postgresql": {
+          "database": "specimen-digitization-database",
+          "cloudSql": {
+            "instance": "projects/specimen-digitization/locations/us-east4/instances/specimen-digitization-instance"
+          },
+          "schemaValidation": "NONE",
+          "ephemeral": true
+        }
+      }
+    ],
+    "etag": "<OWNER:schema_placeholder_etag>"
+  },
+  "recovery": {
+    "backup_id": null,
+    "clone": "specimen-digitization-restore-20260908-r1",
+    "recipe": {
+      "tier": "<OWNER:restore_clone_tier>",
+      "source_version": "POSTGRES_18",
+      "source_edition": "ENTERPRISE",
+      "source_disk_gb": "<OWNER:source_disk_gb>"
+    },
+    "expires_at_unix": "<OWNER:recovery_expires_at_unix>",
+    "allowance": {
+      "version": "first-production-restore/v1",
+      "bucket": "specimen-digitization.firebasestorage.app",
+      "object": "application/release-control/first-production-restore.json",
+      "authority_sha256": "<OWNER:authorization_sha256>",
+      "baseline_sha256": "<OWNER:clone_allowance_baseline_sha256>",
+      "manifest_sha256": "<OWNER:pilot_manifest_sha256>",
+      "iam_sha256": "<OWNER:clone_allowance_iam_sha256>",
+      "issued_at_unix": "<OWNER:clone_allowance_issued_at_unix>",
+      "expires_at_unix": "<OWNER:clone_allowance_expires_at_unix>"
+    },
+    "backup_retention": {
+      "expires_at_unix": "<OWNER:backup_retention_expires_at_unix>",
+      "max_chargeable_bytes": "<OWNER:backup_max_chargeable_bytes>"
+    }
+  },
+  "writers": "no_runtime_exists",
+  "bootstrap": null,
+  "catalog_recipient": {
+    "public_key_pem": "<OWNER:catalog_recipient_public_key_pem>",
+    "public_key_sha256": "<OWNER:catalog_recipient_public_key_sha256>"
+  },
+  "initialization": {
+    "files": {
+      "scripts/ci/release_initialize.py": "0eb5f3492344a249db25e8dee4c7e369496ce383d3b4f1def5b2fb18d1083434",
+      "scripts/ci/release_initialize.mjs": "d1c3d9d5e8b341215c2dce0694254451c199b85d75e84e34b44781a2cac00cd2",
+      "scripts/ci/initialize_database.sql": "18156d462c241b515dbf76a2a4128332d48e6e9b52f4f986c7748fb69b7120d6",
+      "scripts/ci/initialize_catalog.sql": "d7262f8fc62d823e0a27ad602035c4cd144b003cfb7efadfadc506c03e5083dd",
+      "scripts/ci/initialize_postconditions.sql": "34bcc38bea01dbfb7866dddb87db840ad88a39db196d8947c148b5495702fba1",
+      "scripts/ci/release_catalog_envelope.py": "59bb843ee485eedd1b0e627886c468349a6be76d00049031619ba025af9b3c1d"
+    },
+    "catalog_sha256": "<OWNER:native_source_catalog_sha256>",
+    "authority_sha256": "<OWNER:authorization_sha256>",
+    "review_sha256": "<OWNER:independent_review_sha256>",
+    "privilege_window_seconds": 600,
+    "identity": {
+      "project_number": "716045864126",
+      "pool_id": "<OWNER:pool_id>",
+      "provider": "<OWNER:data_initialize_wif_provider>"
+    },
+    "permissions": [
+      "cloudsql.databases.create",
+      "cloudsql.databases.get",
+      "cloudsql.databases.list",
+      "cloudsql.instances.connect",
+      "cloudsql.instances.get",
+      "cloudsql.instances.login",
+      "cloudsql.users.create",
+      "cloudsql.users.delete",
+      "cloudsql.users.get",
+      "cloudsql.users.list",
+      "cloudsql.users.update"
+    ],
+    "conditional_binding_sha256": "<OWNER:conditional_binding_sha256>",
+    "service_agent": "service-716045864126@gcp-sa-firebasedataconnect.iam",
+    "disposal_permissions": [
+      "cloudsql.users.delete",
+      "cloudsql.users.get",
+      "cloudsql.users.list",
+      "cloudsql.users.update"
+    ],
+    "disposal_binding_sha256": "<OWNER:disposal_binding_sha256>"
+  }
+}
