@@ -732,7 +732,13 @@ expansion requires user review and approval of end-to-end results.
   administrator only after verified identity/scope, with sensitive access off.
   The additive [first organization/collection contract](execution/FIRST_COLLECTION_BOOTSTRAP.md)
   uses the same protected DATA lane and a reviewed fixed UUID pair/names for one
-  four-insert transaction. Legacy existing-scope bootstrap remains available;
+  four-insert transaction. By the owner's decision of 2026-09-22
+  ([RELEASE_AUTHORIZATION.md](execution/RELEASE_AUTHORIZATION.md)), the
+  additive hierarchy mode of that contract inserts the organization, the
+  reviewed collection tree from `infra/reference/fieldmuseum-collection-tree.json`
+  in parent-first order and the same two memberships in one transaction,
+  binding the tree file's exact digest at the source commit. Legacy
+  existing-scope bootstrap remains available;
   neither mode creates a generic runtime signup or collection-creation API.
   First-scope plans additionally bind a reviewed public encryption key. The
   release job attests and retains only encrypted bootstrap evidence on ordinary

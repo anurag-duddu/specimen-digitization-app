@@ -109,3 +109,32 @@ replay a completed effect or consumed fence. Protected merged-main workflows
 still perform database/runtime deployments. This amendment does not itself
 establish credential access, free service quotas, managed database capability,
 trace delivery, actual complete region counts or live product acceptance.
+
+## Owner decision — 2026-09-22: bootstrap the whole collection tree
+
+The project owner decided on 2026-09-22, in the go-live session, that the
+first data release must create the museum's complete collection hierarchy
+rather than one flat collection, so that later phases never re-parent
+records: "lets build it right. They can all be there we shouldn't have to
+worry about jumping around everytime we update things." This is a new,
+explicit architecture decision by the owner and amends only the shape of
+the first-scope bootstrap.
+
+- The four-insert `first-scope-owner-bootstrap/v1` mode remains as approved
+  and unchanged; an additive `first-scope-hierarchy-bootstrap/v1` mode
+  inserts one organization, the reviewed collection tree in parent-first
+  order and the same two memberships in one transaction, verifying every
+  row exactly as the four-insert mode does.
+- The tree's keys, names and parents are reviewed in the repository at
+  `infra/reference/fieldmuseum-collection-tree.json` and recorded in
+  [`../product-requirements/COLLECTION_HIERARCHY.md`](../product-requirements/COLLECTION_HIERARCHY.md);
+  the collection identifiers are minted privately once and never
+  regenerated. The artifact binds the exact digest of the tree file at the
+  release's source commit.
+- The pilot's scope is the `Insects` collection beneath `Zoology`. The
+  administrator's memberships, sensitive access (off), the ten specimens,
+  the budget and every other boundary above are unchanged.
+
+Everything else in this record, including the protected data lane, the
+evidence recipient, the independent review and the private identity rule,
+applies to the new mode without change.

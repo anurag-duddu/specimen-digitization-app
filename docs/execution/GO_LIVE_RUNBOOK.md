@@ -125,7 +125,7 @@ Owner and coordinator, before any envelope is minted.
 | Artifact | How it comes to exist |
 |---|---|
 | Pilot manifest of the ten, frozen | `scripts/data/pilot_manifest.py freeze-metadata` over the reviewed ordered catalog the owner holds outside the repository. The earlier copy was lost with the workstation's temporary folder; regenerate it and record its digest |
-| Organization and collection identifiers and names, and the administrator's verified account | Owner decision; the administrator signs in once on the live site so the account exists before bootstrap |
+| The organization name, the private collection identifiers for the reviewed tree, and the administrator's verified account | The tree's keys, names and parents are reviewed in `infra/reference/fieldmuseum-collection-tree.json`; `scripts/data/prepare_hierarchy_request.py` mints the identifiers once into a private request; the administrator's account already exists and is verified |
 | Recipient keys for the catalog and evidence envelopes | Owner generates; the private half never enters CI |
 | Authorization artifact for this source commit | Owner's private record of approval, bound to the merged commit |
 | Cost review, and the shared ledger upgraded to `release-cost-ledger/v3` with `reserved` rows in all eleven categories for the exact run and attempt | Coordinator, from the surviving v2 ledger; reserving cost is a spending decision the mint refuses to make |
@@ -146,9 +146,13 @@ database exists and is empty ([`DATABASE_INITIALIZATION.md`](DATABASE_INITIALIZA
    new run and never re-run failed jobs only.
 4. Watch it through: recovery proof, initializer window, disposal, compatible
    apply, connector publication, Storage ruleset, clone cleanup.
-5. When the first-scope bootstrap plan is ready, mint and run the
-   `data-bootstrap/v1` phase the same way to create the organization, the root
-   collection and the administrator's two memberships in one transaction.
+5. When the bootstrap plan is ready, mint and run the `data-bootstrap/v1`
+   phase the same way. By the owner's decision of 2026-09-22 it uses the
+   hierarchy mode: one transaction inserts the organization, every
+   collection of the reviewed tree in parent-first order (the four
+   departments and their sub-collections, with `Insects` beneath `Zoology`
+   as the pilot's scope) and the administrator's two memberships, and the
+   release verifies every row before it writes its receipt.
 
 Evidence to keep: the attested `data-ready` and `native-recovery` artifacts,
 the receipts, the clone deletion time, and the encrypted bootstrap evidence.

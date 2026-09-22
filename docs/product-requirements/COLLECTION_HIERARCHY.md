@@ -75,48 +75,43 @@ data sampled.
   sub-collection can inherit label semantics and policy from its parent
   profile independently of the membership tree.
 
-## The pilot under the approved bootstrap
+## The pilot's scope and the bootstrap
 
-The approved first-scope bootstrap
+The owner decided on 2026-09-22 to create the whole tree in the first data
+release rather than one flat collection, so that nothing is re-parented
+later. The approved four-insert bootstrap
 ([`../execution/FIRST_COLLECTION_BOOTSTRAP.md`](../execution/FIRST_COLLECTION_BOOTSTRAP.md))
-creates exactly one organization, one root collection with no parent, and
-the administrator's two memberships in one four-insert transaction, with a
-reviewed fixed pair of ids and names. The runtime pins the collection name
-`Insects` for pilot runs (`application/production.py`, `pin_dependencies`).
-So the pilot's scope is the museum as the organization and `Insects` as a
-root collection, with the department layer above it not yet present.
+stays as it is, and an additive hierarchy mode inserts one organization,
+the reviewed tree in parent-first order and the administrator's two
+memberships in one transaction, verifying every row exactly as the
+four-insert mode does. The runtime pins the collection name `Insects` for
+pilot runs (`application/production.py`, `pin_dependencies`), so the
+pilot's scope is the `Insects` collection beneath `Zoology`.
 
-Proposed names, pending the owner's confirmation:
+The tree the release creates is reviewed in the repository at
+`infra/reference/fieldmuseum-collection-tree.json`: four departments as
+root collections (Zoology, Botany, Anthropology, Geology) and the
+sub-collections beneath them (Insects, Mammals, Birds, Fishes, Amphibians
+and Reptiles and Invertebrate Zoology under Zoology; Seed Plants,
+Bryophytes, Lichens, Pteridophytes and Fungi under Botany; Fossil
+Invertebrates, Fossil Vertebrates and Paleobotany under Geology). Keys and
+names are public; the collection identifiers are minted privately once by
+`scripts/data/prepare_hierarchy_request.py` and live only in the private
+request and artifact. The artifact binds the exact digest of the tree file
+at the release's source commit, so the tree cannot drift between review
+and application.
 
-| Row | Proposed value |
-|---|---|
-| Organization | `Field Museum` |
-| Root collection for the pilot | `Insects` |
+Adding a collection later (a Botany sub-collection, meteorites, a new
+department) is a reviewed insert through the protected data plane, with
+its parent already in place. Memberships for managers at the sub-collection
+level are rows on those collections, added the same way. Neither needs a
+runtime API, by design.
 
-## After the pilot
-
-Two shapes reach the full hierarchy. Both go through the protected data
-plane as reviewed changes; there is no runtime API that creates or moves
-collections, by design.
-
-1. Keep the pilot's `Insects` as it is, then insert `Zoology` as a new root
-   collection and set `Insects`'s parent to it. Specimens, memberships and
-   evidence do not move. Then insert `Botany` as a root and its
-   sub-collections beneath it, each with its own managers.
-2. Extend the bootstrap contract before the first data release so it
-   inserts `Zoology` and `Insects` together. That is a change to
-   `scripts/ci/bootstrap_release.py`, `scripts/data/bootstrap_admin.py`,
-   their tests and the contract document, plus an independent review,
-   ahead of a release that is otherwise ready.
-
-The first shape is recommended: it keeps the approved contract unchanged
-for the pilot and adds the hierarchy as data once the pilot has passed
-human review.
+The organization name is the owner's: the proposal is `Field Museum`.
 
 ## Open decisions
 
-- The exact organization name string, and whether the pilot collection is
-  named `Insects` or carries its department (for example `Zoology: Insects`).
+- The exact organization name string (proposal: `Field Museum`).
 - Which Botany sub-collections come first, and who their managers are.
 - Whether a person with a main-collection membership should be able to act
   in every sub-collection beneath it. Today that needs a row per
