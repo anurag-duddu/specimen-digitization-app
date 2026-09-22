@@ -96,14 +96,14 @@ only what is missing.
 | Workload Identity pool `github-actions` with providers `specimen-data-release`, `specimen-data-initialize`, `specimen-runtime-build`, `specimen-runtime-release` (and `specimen-digitization` for Hosting), each conditioned on this repository's numeric ids, `push`, `refs/heads/main`, its environment and its workflow | All five exist and are active with exactly those conditions | None |
 | Workload identity user bindings on the five release service accounts | All five bound, each to its provider's release-plane attribute (Hosting to the repository id) | None |
 | Service accounts: five release identities plus `specimen-api-runtime`, `specimen-worker-runtime`, `specimen-sam-runtime` | All exist, none disabled | None |
-| The eleven data-plane custom roles bound to the DATA identities (`RELEASE_DATA.md`, `CLONE_ALLOWANCE.md`, `DATABASE_INITIALIZATION.md`) | All bound, but nine bindings carry time conditions that expired on 2026-09-13 between 21:40Z and 22:25Z (backup, clone create and control, restore claim, schema publish, Storage rules, runtime absence, initializer temporary and disposal). Only the two inventory roles remain effective | Owner: renew the 18 timestamps in the one fresh ten-minute window approved on 2026-09-14, with every other input prepared before the clock starts |
-| Custom role `specimenDataOwnerBootstrap` and its two-hour conditional grant to the DATA identity | Not created | Owner: create in that same window (the third approved effect) |
+| The eleven data-plane custom roles bound to the DATA identities (`RELEASE_DATA.md`, `CLONE_ALLOWANCE.md`, `DATABASE_INITIALIZATION.md`) | All bound, but nine bindings carry time conditions that expired on 2026-09-13 between 21:40Z and 22:25Z (backup, clone create and control, restore claim, schema publish, Storage rules, runtime absence, initializer temporary and disposal). Only the two inventory roles remain effective | Coordinator records the exact packet with `scripts/ci/data_setup_window.py plan` (one read of the live policy; nothing changes); the owner approves the printed packet and runs `execute` inside the ten minutes. The renewed access lasts 75, 115 and 120 minutes, so this is the last step before Phase 4, taken only when Phase 3 is complete and both data envelopes are installed |
+| Custom role `specimenDataOwnerBootstrap` and its two-hour conditional grant to the DATA identity | Not created | The same packet: `execute` creates the role and its two-hour grant before it renews the bindings, six requests in all, and refuses to run if the policy moved since planning |
 | Cloud SQL instance `specimen-digitization-instance`, PostgreSQL 18, `us-east4`, `db-f1-micro`, 10 GB SSD | Exists and runnable. Automated backups are on (seven retained), point-in-time recovery is on with seven days of logs | None; the backup decision the docs left open is already made |
 | Database `specimen-digitization-database`; IAM SQL users for `specimen-data-release@` and the Data Connect service agent | Both exist; both users registered as IAM service accounts | None (their in-database roles are checked by the initializer) |
 | Data Connect service `specimen-digitization-service` with schema and connector | Service exists; schema `main` has no source files (the empty placeholder), strict validation, bound to the instance; no connector | Delivered by the data plane. The schema's update time moved on 2026-09-22 at 15:13Z because the read-only diff performs a validate-only upsert; source stayed empty |
 | Artifact Registry repository `specimen-runtime` in `us-east4` with immutable tags | Exists, immutable tags on, empty | None |
 | Secret `huggingface-runtime-token` | Exists; version 2 enabled, version 1 disabled; no accessor bindings | Owner: rotate to a fine-grained inference-only token as a new version if not already, pin that numeric version in the plans, and grant the accessor role to `specimen-worker-runtime` only |
-| Secret `specimen-worker-logfire` (`APPROVED_LOGFIRE_TRACING.md`) | Does not exist | Owner: create one version and grant its accessor to the worker identity only, or leave bounded tracing out of the first plan |
+| Secret `specimen-worker-logfire` (`APPROVED_LOGFIRE_TRACING.md`) | Does not exist | Owner decided on 2026-09-22 that bounded tracing is in the first plan. Owner mints a dedicated write token for the approved project in the Logfire console, saves it to an owner-only file outside the repository and runs `scripts/ci/worker_trace_setup.py store` (parent in `us-east4`, one version, readback compared byte for byte), then `identity` (the single approved identity request; prints `trace_project_id` and `trace_identity_receipt_sha256`). The accessor grant (`grant`) belongs to the runtime setup, bound to the runtime packet's expiration |
 | Resource permissions for the three runtime identities: connector impersonation, bucket prefix get and create, secret access, SAM invocation | None exist; the runtime identities hold no project role, the bucket policy holds only legacy project roles, and the SAM service does not exist yet | Owner bootstrap after the connector exists and before runtime prepare (`RUNTIME_PROPOSAL.md`) |
 | Public invocation of the API service (`allUsers` as the only invoker) | The service does not exist yet | Owner grants it as soon as runtime prepare creates the service and before activation; the release verifies it |
 | Worker-only invocation of the SAM service | The service does not exist yet | Owner grants it after prepare; the release verifies and never changes it |
@@ -114,9 +114,17 @@ only what is missing.
 | Required APIs (Cloud Run, Artifact Registry, Secret Manager, Cloud SQL Admin, Data Connect, reCAPTCHA Enterprise, Identity Toolkit, Storage for Firebase, IAM, STS) | All enabled. Billing is enabled on the "Firebase Payment" account; the Budget API is not enabled | None; a budget alert is optional |
 | Firebase Authentication email-link sign-in and the authorized domain; App Check enforcement and a budget line for reCAPTCHA Enterprise assessments | Not visible from the CLI | Owner confirms in the console. The organization-wide free quota is now 10,000 assessments a month |
 
-Evidence to keep: the recorded action packet, the inventory log after the
-changes, and the exact resource names and secret version numbers, which go
-into the plans.
+Evidence to keep: the recorded action packet and its receipt, the writer
+secret and identity receipts, the inventory log after the changes, and the
+exact resource names and secret version numbers, which go into the plans.
+
+Timing: the setup window's renewed access expires 120 minutes after it opens
+(the initializer's after 75, disposal's after 115) and the bootstrap grant
+with it, so the two data envelopes of Phase 4 must already be installed when
+`execute` runs, and the failed protected run is re-run the moment the
+receipt is written. The writer secret, its identity receipt, the bucket
+setting and the token rotation are persistent and can be done any time
+before.
 
 ## Phase 3. Private artifacts
 

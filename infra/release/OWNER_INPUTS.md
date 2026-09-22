@@ -286,9 +286,9 @@ curl -s -H "Authorization: Bearer $(token)" \
 | `collection_profile_secret_version` | Immutable resource name of the profile secret version. | `runtime-activate` | `gcloud secrets versions list <profile secret> --project=$PROJECT --format='value(name)'` |
 | `hf_secret_version` | Immutable resource name of the inference token secret version. Only the worker runtime reads it. Must equal the launch policy's `hf_secret_resource`. | `runtime-activate` | `gcloud secrets versions list <inference secret> --project=$PROJECT --format='value(name)'` |
 | `worker_actor_uid` | The verified Firebase UID the worker acts as. It needs a nonsensitive membership in the bootstrapped collection. | `runtime-activate` | The same Identity Toolkit lookup used for `admin_uid` |
-| `trace_project_id` | The reviewed existing trace destination project identity. | `runtime-activate` | Owner decision, from the reviewed trace destination record |
-| `worker_logfire_token_secret_version` | Immutable resource name under `projects/specimen-digitization/secrets/specimen-worker-logfire`, with a numeric version. | `runtime-activate` | `gcloud secrets versions list specimen-worker-logfire --project=$PROJECT --format='value(name)'` |
-| `trace_identity_receipt_sha256` | Digest of the reviewed trace destination identity receipt. | `runtime-activate` | `shasum -a 256 <trace identity receipt file>` |
+| `trace_project_id` | The reviewed existing trace destination project identity. | `runtime-activate` | Printed by `scripts/ci/worker_trace_setup.py identity` after the single identity request (`anuragduddu/specimen-digitization`, the approved destination) |
+| `worker_logfire_token_secret_version` | Immutable resource name under `projects/specimen-digitization/secrets/specimen-worker-logfire`, with a numeric version. | `runtime-activate` | Printed by `scripts/ci/worker_trace_setup.py store` (the writer receipt's `token_secret`); `gcloud secrets versions list specimen-worker-logfire --project=$PROJECT --format='value(name)'` shows the native form |
+| `trace_identity_receipt_sha256` | Digest of the reviewed trace destination identity receipt. | `runtime-activate` | Printed by `scripts/ci/worker_trace_setup.py identity`; equal to `shasum -a 256 <trace identity receipt file>` |
 
 `activation.human_review_authorization_sha256` is already filled with the
 approved `human-review-release-scope/v2` digest from

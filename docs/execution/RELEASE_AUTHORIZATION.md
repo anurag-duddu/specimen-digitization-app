@@ -138,3 +138,23 @@ the first-scope bootstrap.
 Everything else in this record, including the protected data lane, the
 evidence recipient, the independent review and the private identity rule,
 applies to the new mode without change.
+
+## Owner decision — 2026-09-22: bounded tracing is in the first plan
+
+The project owner decided on 2026-09-22, in the same session, that the
+worker's bounded Logfire tracing runs in the first runtime plan rather than
+being left out: "I want logfire to run, with tracing." This selects the
+already approved contract of
+[`APPROVED_LOGFIRE_TRACING.md`](APPROVED_LOGFIRE_TRACING.md) and changes
+nothing in it: metadata only, the existing US project, one worker-only writer
+secret with one version, one identity request, the accessor grant bound to
+the exact version and the runtime expiration. Content capture (prompts,
+label text, images, model responses) stays excluded and would need a new
+approval and a privacy review.
+
+The owner also asked for the IAM setup to proceed and offered approval. The
+bounded setup window of the 2026-09-14 amendment is unchanged; its exact
+action packet is recorded by `scripts/ci/data_setup_window.py plan` and the
+owner's approval attaches to that packet, not to a general statement. The
+helper performs the three approved effects only, inside the 600-second
+clock, and refuses if the live policy differs from the packet.
