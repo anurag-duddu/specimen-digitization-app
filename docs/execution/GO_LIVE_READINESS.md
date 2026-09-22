@@ -191,6 +191,11 @@ Checked against platform documentation current in 2026.
 - Scope is the first-ten human-review pilot, web only, one administrator.
 - The coordinator runs the read-only cloud inventory after the owner signs
   in.
+- Later the same day: the whole collection tree is bootstrapped in the first
+  data release, and the worker's bounded Logfire tracing (metadata only) is
+  in the first runtime plan rather than left out. The IAM setup window's
+  exact packet is recorded by `scripts/ci/data_setup_window.py` for the
+  owner's approval.
 
 ## 7. Still open for the owner
 
@@ -199,8 +204,8 @@ Checked against platform documentation current in 2026.
 - The independent reviewer session.
 - The current location of the SAM 3 checkpoint and the ordered catalog the
   manifest is frozen from.
-- Enabling automated backups and point-in-time recovery on the instance.
 - Rotating the Hugging Face token, and confirming data-processing approval
   for paid calls on real museum images.
-- The ongoing budget after the pilot, and whether Logfire stays in
-  metadata-only mode.
+- The ongoing budget after the pilot. Logfire stays metadata-only under the
+  2026-09-14 approval; content capture would need a new approval and a
+  privacy review.
