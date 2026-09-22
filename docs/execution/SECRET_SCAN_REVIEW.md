@@ -254,3 +254,34 @@ additive rule-local AND exception lists the 26 distinct SHA-1 identifiers and
 applies only inside `.secrets.baseline`. Each identifier was independently
 confirmed to be SHA-1 of a digest that appears in one of those templates. The
 template files themselves stay fully scanned by both tools.
+
+## Reviewed collection tree digest
+
+Reviewed 2026-09-22. The owner's hierarchy decision adds one committed digest to
+`infra/release/data-bootstrap.plan.template.json`: `bootstrap.payload.hierarchy`
+pins `infra/reference/fieldmuseum-collection-tree.json` by its path and by the
+SHA256 of that file's exact bytes,
+`4d68cbd5ce906a24ff2025322412db70f5be66986fb1a7d3073e92f8da7586c1`.
+The tree file itself is public, carries only stable keys, display names and
+parent keys, and holds no identifier or high entropy value of any kind.
+
+That digest is not an account, token or key. It is a hash of committed
+repository bytes, in the same shape as the seventeen `source_files` digests
+already recorded above for this file. `scripts/ci/test_release_plan_templates.py`
+recomputes it from the committed tree and fails if the two diverge, and
+`scripts/ci/bootstrap_release.py` recomputes it again from its own source
+checkout before the Auth lookup, so editing the tree without re-minting the
+identifiers and re-preparing the artifact fails closed rather than passing
+silently.
+
+Detect-secrets 1.5.0 reports it as one further Hex High Entropy String finding
+in that one file. It is recorded in `.secrets.baseline` with `is_secret` unset,
+scoped to that exact path and finding hash. No filter, plugin, threshold or
+existing entry was changed, and no path exclusion was introduced.
+
+Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata line in
+`.secrets.baseline`. One identifier, `e92bb27e51016b93a782721c94464a5a4a24cb54`,
+was appended to the existing rule-local AND exception for the release plan
+template fingerprints; it applies only inside `.secrets.baseline`, and it was
+independently confirmed to be SHA-1 of that SHA256 digest string. The template
+and the tree file stay fully scanned by both tools.

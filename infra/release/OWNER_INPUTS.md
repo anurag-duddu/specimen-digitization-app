@@ -56,7 +56,8 @@ it deploys from `.github/workflows/ci-cd.yml` on a merge to `main`.
    to the coordinator's key. It changes nothing.
 2. `data-initialize-missing/v1` creates the missing application database and
    continues into the compatible schema, connector, index and rules apply.
-3. `data-bootstrap/v1` inserts the first organization, collection and owner.
+3. `data-bootstrap/v1` inserts the first organization, its whole reviewed
+   collection tree and the owner.
 4. `runtime-build` publishes the three images; `runtime-prepare/v1` brings up
    the API in the same run. Leave `worker` and `sam` as `null` on that first
    preparation: the ready manifest does not exist until the cohort is imported
@@ -155,30 +156,66 @@ See `docs/execution/CLONE_ALLOWANCE.md` and
 `privilege_window_seconds` is already filled at 600, the approved maximum.
 Lower it if the review bounds it further; anything outside 120 to 600 fails.
 
-## Data: the first organization, collection and owner
+## Data: the first organization, its whole collection tree and the owner
+
+The committed template is in hierarchy mode, the owner's decision of 2026-09-22:
+one organization, every collection in
+[`../reference/fieldmuseum-collection-tree.json`](../reference/fieldmuseum-collection-tree.json)
+in that file's order, and the administrator's two memberships, in one
+transaction. The tree itself is public and reviewed in the repository; only the
+identifiers are private, and they are minted once, offline.
+
+Mint them first. This helper makes no cloud call and writes one private file
+holding the request skeleton, one fresh canonical UUID per reviewed entry:
+
+```bash
+uv run python scripts/data/prepare_hierarchy_request.py \
+  --organization-name '<the organization display name>' \
+  --requested-email <ADDRESS> --requested-uid <UID> \
+  --admin-collection-key insects --output <private request json outside git>
+```
 
 The whole `bootstrap.payload` block is machine generated. Do not hand edit it.
 Run the offline preparer, which makes no cloud calls and writes a private file:
 
 ```bash
-uv run python scripts/data/bootstrap_admin.py --first-scope \
+uv run python scripts/data/bootstrap_admin.py --hierarchy \
   --request <private request json> --auth-record <private admin record json> \
   --output <private artifact outside git>
 ```
 
 Then copy that artifact into `bootstrap.payload` unchanged. The values below are
 the ones you chose or that the preparer computed, listed so the plan can be
-reviewed field by field.
+reviewed field by field. `hierarchy.tree_path` and `hierarchy.tree_sha256` are
+already filled with the committed tree and its digest: the release recomputes
+that digest from this source checkout, so changing the tree without re-minting
+the identifiers and re-running the preparer fails CI and then fails the release.
 
 | Input | What it is | Consumed by | How to get it |
 |---|---|---|---|
 | `data_ready_source_sha` | The commit the signed schema readiness receipt was produced on. It may be older than `source_sha`. | `data-bootstrap` | `jq -r .source_sha data-ready.json` from the downloaded receipt |
 | `admin_uid` | The administrator's Firebase UID, verified and enabled. | `data-bootstrap` | `curl -s -H "Authorization: Bearer $(token)" -H "Content-Type: application/json" -d '{"email":["ADDRESS"]}' "https://identitytoolkit.googleapis.com/v1/projects/$PROJECT/accounts:lookup" \| jq -r .users[0].localId` |
 | `admin_email` | That account's exact email address. | `data-bootstrap` | Owner decision, confirmed by the same lookup: `jq -r .users[0].email` |
-| `org_uuid` | Owner decision: the organization's fixed UUID. It must not already exist. | `data-bootstrap` | Owner decision: `python3 -c 'import uuid; print(uuid.uuid4())'` |
-| `collection_uuid` | Owner decision: the first collection's fixed UUID. | `data-bootstrap` | Owner decision: `python3 -c 'import uuid; print(uuid.uuid4())'` |
-| `organization_name` | Owner decision: the organization's display name. Bounded text, at most 256 bytes. | `data-bootstrap` | Owner decision |
-| `collection_name` | Owner decision: the first collection's display name. | `data-bootstrap` | Owner decision |
+| `org_uuid` | Owner decision: the organization's fixed UUID. It must not already exist. | `data-bootstrap` | `jq -r .organization_id <private request json>`, minted by `prepare_hierarchy_request.py` |
+| `organization_name` | Owner decision: the organization's display name. Bounded text, at most 256 bytes. | `data-bootstrap` | Owner decision, passed to `prepare_hierarchy_request.py --organization-name` |
+| `uuid_zoology` | The private fixed UUID for the reviewed collection `zoology`. It must not already exist. | `data-bootstrap` | `jq -r '.collections[] \| select(.key=="zoology").id' <private request json>` |
+| `uuid_insects` | The same, for `insects`. It is also the administrator's collection, so it fills `request.variables.collectionId`. | `data-bootstrap` | `jq -r '.collections[] \| select(.key=="insects").id' <private request json>` |
+| `uuid_mammals` | The same, for `mammals`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_birds` | The same, for `birds`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_fishes` | The same, for `fishes`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_amphibians_and_reptiles` | The same, for `amphibians-and-reptiles`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_invertebrate_zoology` | The same, for `invertebrate-zoology`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_botany` | The same, for `botany`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_seed_plants` | The same, for `seed-plants`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_bryophytes` | The same, for `bryophytes`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_lichens` | The same, for `lichens`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_pteridophytes` | The same, for `pteridophytes`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_fungi` | The same, for `fungi`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_anthropology` | The same, for `anthropology`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_geology` | The same, for `geology`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_fossil_invertebrates` | The same, for `fossil-invertebrates`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_fossil_vertebrates` | The same, for `fossil-vertebrates`. | `data-bootstrap` | The same `jq`, with that key |
+| `uuid_paleobotany` | The same, for `paleobotany`. | `data-bootstrap` | The same `jq`, with that key |
 | `bootstrap_auth_record_sha256` | The preparer's digest of the four account fields. | `data-bootstrap` | `jq -r .auth_record_sha256 <prepared artifact>` |
 | `bootstrap_artifact_sha256` | The preparer's digest of the whole artifact. It also fills `bootstrap.sha256` and the candidate's `approvals.bootstrap_sha256`. | `data-bootstrap`, `evidence-digests` | `jq -r .artifact_sha256 <prepared artifact>` |
 

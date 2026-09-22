@@ -20,6 +20,13 @@ from uuid import UUID
 from specimen_digitization.application.pilot_manifest import read_private
 
 
+ROOT = Path(__file__).resolve().parents[2]
+
+# The reviewed public collection tree. It carries display names and stable keys
+# only; the canonical UUIDs stay in the owner's private request and artifact.
+TREE_PATH = "infra/reference/fieldmuseum-collection-tree.json"
+
+
 # The first UPDATE takes a row lock shared by all bootstrap attempts in this
 # organization. The following query runs after that lock, preventing two distinct
 # UIDs from both passing the first-admin predicate. No names or roles are updated.
@@ -74,6 +81,65 @@ def _identifier(value: Any) -> str:
     if not isinstance(value, str) or str(UUID(value)) != value:
         raise ValueError("Scope must be an explicit canonical UUID")
     return value
+
+
+def _bounded_name(value: Any) -> str:
+    """The existing scope-name rule: nonempty, trimmed, printable, 256 UTF-8 bytes."""
+    if (not isinstance(value, str) or not value or value != value.strip()
+            or len(value.encode("utf-8")) > 256
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)):
+        raise ValueError("Scope names must be explicit bounded text")
+    return value
+
+
+def tree_entries(tree: Any) -> list[dict[str, Any]]:
+    """Parse the reviewed public tree's exact bytes; the digest binds those bytes.
+
+    The reviewed tree is public and lives in the repository. Only its ordered
+    (key, name, parent) triples are authoritative here; no identifier is read
+    from it, so a review of this file never exposes a production UUID.
+    """
+    if not isinstance(tree, bytes):
+        raise ValueError("The reviewed collection tree must be supplied as its exact bytes")
+    document = json.loads(tree.decode("utf-8"))
+    if (not isinstance(document, dict) or document.get("schema_version") != "collection-tree/v1"
+            or not isinstance(document.get("collections"), list)):
+        raise ValueError("Unknown reviewed collection tree document")
+    return document["collections"]
+
+
+def hierarchy_mutation(parents: list[int | None]) -> str:
+    """Render the one @transaction deterministically from the reviewed tree shape.
+
+    Variable declarations follow only from the count, and each row's `parentId`
+    from its parent's earlier index, so the same reviewed tree always yields the
+    same bytes and a reviewer can regenerate them without the private values.
+    """
+    count = len(parents)
+    declared = [
+        "  $organizationId: UUID!, $organizationName: String!, $uid: String!, $canViewSensitive: Boolean!,",
+        "  $collectionId: UUID!,",
+    ]
+    declared += [f"  $c{index}Id: UUID!, $c{index}Name: String!," for index in range(count)]
+    declared[-1] = declared[-1].removesuffix(",")
+    identifiers = ", ".join(f"$c{index}Id" for index in range(count))
+    rows = [
+        f"  c{index}: collection_insert(data: {{organizationId: $organizationId, id: $c{index}Id,\n"
+        f"    name: $c{index}Name, parentId: {'null' if parent is None else '$c%dId' % parent}}})"
+        for index, parent in enumerate(parents)
+    ]
+    return (
+        "mutation PrepareFirstScopeHierarchy(\n" + "\n".join(declared) + "\n) @transaction {\n"
+        "  organization_insert(data: {id: $organizationId, name: $organizationName})\n"
+        "  query @redact {\n"
+        f"    matchingCollections: collections(where: {{id: {{in: [{identifiers}]}}}}, limit: 1)\n"
+        '      @check(expr: "this.size() == 0", message: "Collection identifier already exists") { id }\n'
+        "  }\n" + "\n".join(rows) + "\n"
+        "  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})\n"
+        "  collectionMember_insert(data: {organizationId: $organizationId, collectionId: $collectionId,\n"
+        '    uid: $uid, active: true, role: "admin", canViewSensitive: $canViewSensitive})\n'
+        "}\n"
+    )
 
 
 def prepare_bootstrap(
@@ -154,14 +220,96 @@ def prepare_first_scope(
     if can_view_sensitive is not False:
         raise ValueError("Initial sensitive access is not authorized")
     for name in (organization_name, collection_name):
-        if (not isinstance(name, str) or not name or name != name.strip()
-                or len(name.encode("utf-8")) > 256
-                or any(ord(character) < 32 or ord(character) == 127 for character in name)):
-            raise ValueError("Scope names must be explicit bounded text")
+        _bounded_name(name)
     artifact = prepare_bootstrap(**identity_scope, can_view_sensitive=False)
     artifact["schema_version"] = "first-scope-owner-bootstrap/v1"
     artifact["request"]["query"] = FIRST_SCOPE_MUTATION
     artifact["request"]["variables"].update(organizationName=organization_name, collectionName=collection_name)
+    del artifact["artifact_sha256"]
+    artifact["artifact_sha256"] = hashlib.sha256(_canonical(artifact)).hexdigest()
+    return artifact
+
+
+def prepare_first_scope_hierarchy(
+    *,
+    auth_record: dict[str, Any],
+    requested_email: str,
+    requested_uid: str,
+    organization_id: str,
+    organization_name: str,
+    collections: list[dict[str, Any]],
+    admin_collection_key: str,
+    tree: Any,
+    can_view_sensitive: bool = False,
+) -> dict[str, Any]:
+    """Prepare the owner's whole reviewed collection tree as one transaction.
+
+    `collections` is the private ordered list of {key, id, name, parent} carrying
+    the owner's already minted canonical UUIDs. `tree` is the exact bytes of the
+    reviewed public tree; the private list must repeat its (key, name, parent)
+    triples in the same order. Nothing is generated here and no ID is chosen.
+    """
+    if can_view_sensitive is not False:
+        raise ValueError("Initial sensitive access is not authorized")
+    _bounded_name(organization_name)
+    reviewed = tree_entries(tree)
+    if not isinstance(collections, list) or not 1 <= len(collections) <= 64:
+        raise ValueError("The hierarchy must carry between one and 64 explicit collections")
+    if len(reviewed) != len(collections):
+        raise ValueError("The private collections do not match the reviewed tree")
+    keys: list[str] = []
+    identifiers: set[str] = set()
+    siblings: set[tuple[Any, str]] = set()
+    parents: list[int | None] = []
+    for entry, public in zip(collections, reviewed):
+        if not isinstance(entry, dict) or set(entry) != {"key", "id", "name", "parent"}:
+            raise ValueError("Each collection must carry exactly key, id, name and parent")
+        if not isinstance(public, dict) or set(public) != {"key", "name", "parent"}:
+            raise ValueError("Unknown reviewed collection tree document")
+        if (entry["key"], entry["name"], entry["parent"]) != (public["key"], public["name"], public["parent"]):
+            raise ValueError("The private collections do not match the reviewed tree")
+        key = entry["key"]
+        if not isinstance(key, str) or not key or key in keys:
+            raise ValueError("Collection keys must be unique explicit text")
+        _bounded_name(entry["name"])
+        identifier = _identifier(entry["id"])
+        if identifier in identifiers:
+            raise ValueError("Collection identifiers must be unique canonical UUIDs")
+        identifiers.add(identifier)
+        parent = entry["parent"]
+        if parent is None:
+            parents.append(None)
+        elif parent in keys:
+            parents.append(keys.index(parent))
+        else:
+            raise ValueError("Every parent must appear earlier in the reviewed tree")
+        if (parent, entry["name"]) in siblings:
+            raise ValueError("One parent cannot hold two collections with the same name")
+        siblings.add((parent, entry["name"]))
+        keys.append(key)
+    if admin_collection_key not in keys:
+        raise ValueError("The administrator's collection must be one of the reviewed keys")
+    administrator = collections[keys.index(admin_collection_key)]
+    # The administrator's collection keeps the existing `collectionId` variable,
+    # so every existing reader of the membership rows continues to work unchanged.
+    artifact = prepare_bootstrap(
+        auth_record=auth_record, requested_email=requested_email, requested_uid=requested_uid,
+        organization_id=organization_id, collection_id=administrator["id"], can_view_sensitive=False,
+    )
+    artifact["schema_version"] = "first-scope-hierarchy-bootstrap/v1"
+    artifact["request"]["query"] = hierarchy_mutation(parents)
+    variables = artifact["request"]["variables"]
+    variables["organizationName"] = organization_name
+    for index, entry in enumerate(collections):
+        variables[f"c{index}Id"] = entry["id"]
+        variables[f"c{index}Name"] = entry["name"]
+    artifact["hierarchy"] = {
+        "tree_path": TREE_PATH,
+        "tree_sha256": hashlib.sha256(tree).hexdigest(),
+        "collections": [{"key": entry["key"], "id": entry["id"], "name": entry["name"],
+                         "parent": entry["parent"]} for entry in collections],
+        "admin_collection_key": admin_collection_key,
+    }
     del artifact["artifact_sha256"]
     artifact["artifact_sha256"] = hashlib.sha256(_canonical(artifact)).hexdigest()
     return artifact
@@ -188,13 +336,21 @@ def main() -> int:
     parser.add_argument("--request", type=Path, required=True, help="Private JSON with explicit requested fields")
     parser.add_argument("--auth-record", type=Path, required=True, help="Private exported Admin user record JSON")
     parser.add_argument("--output", type=Path, required=True, help="New private file outside Git; parent mode0700")
-    parser.add_argument("--first-scope", action="store_true", help="Explicit empty organization/collection and owner mode")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--first-scope", action="store_true", help="Explicit empty organization/collection and owner mode")
+    mode.add_argument("--hierarchy", action="store_true", help="Explicit empty organization and whole reviewed collection tree")
+    parser.add_argument("--tree", type=Path, default=ROOT / TREE_PATH,
+                        help="Reviewed public collection tree; defaults to the committed repository file")
     args = parser.parse_args()
     try:
         request = json.loads(read_private(args.request))
         auth_record = json.loads(read_private(args.auth_record))
-        prepare = prepare_first_scope if args.first_scope else prepare_bootstrap
-        artifact = prepare(auth_record=auth_record, **request)
+        if args.hierarchy:
+            artifact = prepare_first_scope_hierarchy(
+                auth_record=auth_record, tree=Path(args.tree).read_bytes(), **request)
+        else:
+            prepare = prepare_first_scope if args.first_scope else prepare_bootstrap
+            artifact = prepare(auth_record=auth_record, **request)
         write_private_artifact(args.output, artifact)
     except (ValueError, TypeError, OSError):
         # Do not echo private identity, record, path, or GraphQL variables.

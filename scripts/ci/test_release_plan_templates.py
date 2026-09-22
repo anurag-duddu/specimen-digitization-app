@@ -7,6 +7,7 @@ away from a validator's exact key set fails here, before a release run pays for
 the mistake. Nothing in this file contacts a cloud, mints a packet or deploys.
 """
 import copy
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -158,17 +159,29 @@ def bootstrap_identity():
         "requested_uid": "release-owner-uid-0000000000",
         "requested_email": "release.owner@example.invalid",
         "organization_id": "00000000-0000-4000-8000-000000000064",
-        "collection_id": "00000000-0000-4000-8000-0000000000c8",
         "organization_name": "Example Organization",
-        "collection_name": "Example Collection",
     }
 
 
-def prepared_first_scope():
+def reviewed_tree():
+    return (ROOT / bootstrap_release._prepared.TREE_PATH).read_bytes()
+
+
+def hierarchy_collections():
+    """One deterministic synthetic UUID per reviewed key, in reviewed order."""
+    entries = bootstrap_release._prepared.tree_entries(reviewed_tree())
+    return [{"key": entry["key"], "id": f"00000000-0000-4000-8000-0000000{index:05x}",
+             "name": entry["name"], "parent": entry["parent"]}
+            for index, entry in enumerate(entries, start=1)]
+
+
+def prepared_hierarchy():
     scope = bootstrap_identity()
     record = {"uid": scope["requested_uid"], "email": scope["requested_email"],
               "emailVerified": True, "disabled": False}
-    return bootstrap_release._prepared.prepare_first_scope(auth_record=record, **scope)
+    return bootstrap_release._prepared.prepare_first_scope_hierarchy(
+        auth_record=record, collections=hierarchy_collections(), admin_collection_key="insects",
+        tree=reviewed_tree(), **scope)
 
 
 # --------------------------------------------------------- documentation gate ---
@@ -310,13 +323,13 @@ def test_data_apply_template_also_validates_in_initialize_empty_mode():
 
 
 def bootstrap_plan():
-    expected = prepared_first_scope()
+    expected = prepared_hierarchy()
     scope = bootstrap_identity()
     table = {**common_dummies(),
              "admin_uid": scope["requested_uid"], "admin_email": scope["requested_email"],
-             "org_uuid": scope["organization_id"], "collection_uuid": scope["collection_id"],
+             "org_uuid": scope["organization_id"],
              "organization_name": scope["organization_name"],
-             "collection_name": scope["collection_name"],
+             **{"uuid_" + entry["key"].replace("-", "_"): entry["id"] for entry in hierarchy_collections()},
              "bootstrap_auth_record_sha256": expected["auth_record_sha256"],
              "bootstrap_artifact_sha256": expected["artifact_sha256"]}
     return fill(load("data-bootstrap.plan.template.json"), table), expected
@@ -334,6 +347,28 @@ def test_bootstrap_payload_is_byte_identical_to_the_preparer_output():
     payload = plan["bootstrap"]["payload"]
     assert bootstrap_release.canonical(payload) == bootstrap_release.canonical(expected)
     assert bootstrap_release.validate_prepared(payload, expected["artifact_sha256"]) == expected
+
+
+def test_bootstrap_template_creates_the_whole_reviewed_tree_with_private_ids():
+    """The owner's minted identifiers stay placeholders; the names are reviewed."""
+    payload = load("data-bootstrap.plan.template.json")["bootstrap"]["payload"]
+    entries = bootstrap_release._prepared.tree_entries(reviewed_tree())
+    assert payload["schema_version"] == "first-scope-hierarchy-bootstrap/v1"
+    assert payload["hierarchy"]["admin_collection_key"] == "insects"
+    assert payload["hierarchy"]["tree_path"] == bootstrap_release._prepared.TREE_PATH
+    assert [(row["key"], row["name"], row["parent"]) for row in payload["hierarchy"]["collections"]] == [
+        (entry["key"], entry["name"], entry["parent"]) for entry in entries]
+    minted = {row["id"] for row in payload["hierarchy"]["collections"]}
+    assert len(minted) == len(entries) and all(PLACEHOLDER.fullmatch(value) for value in minted)
+    assert payload["request"]["variables"]["collectionId"] == "<OWNER:uuid_insects>"
+
+
+def test_editing_the_reviewed_tree_without_reminting_fails_here():
+    """The template pins the committed tree's digest, not a placeholder."""
+    payload = load("data-bootstrap.plan.template.json")["bootstrap"]["payload"]
+    committed = hashlib.sha256(reviewed_tree()).hexdigest()
+    assert payload["hierarchy"]["tree_sha256"] == committed
+    assert bootstrap_release.reviewed_tree(payload["hierarchy"]) == reviewed_tree()
 
 
 # ------------------------------------------------------------------ runtime ---
@@ -494,6 +529,8 @@ def test_an_incomplete_evidence_file_is_reported_as_a_named_gap():
 def allowed_digests():
     return (set(data.source_fingerprints().values())
             | set(release_initialize.fingerprints().values())
+            # The bootstrap template pins the reviewed collection tree's digest.
+            | {hashlib.sha256(reviewed_tree()).hexdigest()}
             | {runtime.TRACE_APPROVAL_SHA256,
                "5c460d9ca7acc86ee0407584732d0cf1e27b1bc685a968f8094ce7ca133dfc15"})  # pragma: allowlist secret (approval digest)
 
