@@ -1,0 +1,66 @@
+{
+  "version": "data-bootstrap/v1",
+  "source_sha": "<OWNER:source_sha>",
+  "source_files": {
+    "dataconnect/dataconnect.yaml": "8355ece3fb4b1bebf920c05f2cb358229877cca9d0a0abc6e8cdc0da2756423a",
+    "dataconnect/connector/connector.yaml": "112dd6af54062562a6c76b7034b46a54635e13fdcc6b5441e738a3f0e3596ebe",
+    "storage.rules": "8d8bf2202a428894aaa46278bfc68c33dce0fd405e547b952a408e930d380893",
+    "dataconnect/schema/schema.gql": "69a08f92e62f0b70abb0a61b1575f7de31d098e0f7f75cc5b803bc0a1fc1df58",
+    "dataconnect/schema/search.gql": "a7ff0616ed6045d958f7a35eccffbe51671d395fa43a695ccdca7892e724b32a",
+    "dataconnect/connector/artifacts.gql": "4d4da17483f84409419323b44441dfde83719c337d48386e2bc451fb7dee3040",
+    "dataconnect/connector/auxiliary.gql": "859dec52ba7f4212da4728ab77634766115914a4c66d10df92d662be9c825114",
+    "dataconnect/connector/checksum.gql": "4717f7368643b67d1ac4300ed3a02b1679580e7ba63cb81c6f0eb080bc271633",
+    "dataconnect/connector/operations.gql": "65ac18159fbed968f058e86df1f7e62b6a6274da40e7a8639ac78efb1d221264",
+    "dataconnect/connector/paging.gql": "3a865305a181634874f2c8179d2e92fab26d20bcc733dd006c7c04278b225cf0",
+    "dataconnect/connector/readiness.gql": "ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9",
+    "dataconnect/connector/scheduling.gql": "c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef",
+    "dataconnect/connector/search.gql": "4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681",
+    "dataconnect/connector/sensitivity.gql": "521774b8dcef9e0c0c1c43481ae19ad808aafbe08b32c3111e2287313cf1db1f",
+    "dataconnect/sql/checksum-audit.sql": "4ba591e82873c5d829c07267447e792b01f32675575fa00bb2b0b3657c27301c",
+    "dataconnect/sql/paging-indexes.sql": "1fd9ab5a7d9048fc19c6edbaa0bc5081eca632f7b7961e06c5e7e7f714d85480",
+    "dataconnect/sql/search-indexes.sql": "4d9366222bc073273b2d5f9b3706c429bf5ddd15497229fdc994246110f0e88d"
+  },
+  "schema_receipt": {
+    "source_sha": "<OWNER:data_ready_source_sha>",
+    "sha256": "<OWNER:data_ready_receipt_sha256>",
+    "run_id": "<OWNER:data_ready_run_id>",
+    "run_attempt": "<OWNER:data_ready_run_attempt>"
+  },
+  "bootstrap": {
+    "payload": {
+      "schema_version": "first-scope-owner-bootstrap/v1",
+      "state": "prepared_not_applied",
+      "project_id": "specimen-digitization",
+      "auth_record": {
+        "uid": "<OWNER:admin_uid>",
+        "email": "<OWNER:admin_email>",
+        "emailVerified": true,
+        "disabled": false
+      },
+      "auth_record_sha256": "<OWNER:bootstrap_auth_record_sha256>",
+      "apply_requirements": [
+        "explicit maintenance authorization and artifact hash approval",
+        "fresh Firebase Admin account read in the pinned project matches auth_record",
+        "reviewed database backup and restore evidence",
+        "separately approved maintenance identity; never runtime connector or Hosting identity"
+      ],
+      "request": {
+        "query": "mutation PrepareFirstScopeAndOwner(\n  $organizationId: UUID!, $collectionId: UUID!, $uid: String!,\n  $organizationName: String!, $collectionName: String!, $canViewSensitive: Boolean!\n) @transaction {\n  organization_insert(data: {id: $organizationId, name: $organizationName})\n  query @redact {\n    matchingCollections: collections(where: {id: {eq: $collectionId}}, limit: 1)\n      @check(expr: \"this.size() == 0\", message: \"Collection identifier already exists\") { id }\n  }\n  collection_insert(data: {organizationId: $organizationId, id: $collectionId,\n    name: $collectionName, parentId: null})\n  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})\n  collectionMember_insert(data: {organizationId: $organizationId, collectionId: $collectionId,\n    uid: $uid, active: true, role: \"admin\", canViewSensitive: $canViewSensitive})\n}\n",
+        "variables": {
+          "organizationId": "<OWNER:org_uuid>",
+          "collectionId": "<OWNER:collection_uuid>",
+          "uid": "<OWNER:admin_uid>",
+          "canViewSensitive": false,
+          "organizationName": "<OWNER:organization_name>",
+          "collectionName": "<OWNER:collection_name>"
+        }
+      },
+      "artifact_sha256": "<OWNER:bootstrap_artifact_sha256>"
+    },
+    "sha256": "<OWNER:bootstrap_artifact_sha256>",
+    "evidence_recipient": {
+      "public_key_pem": "<OWNER:catalog_recipient_public_key_pem>",
+      "public_key_sha256": "<OWNER:catalog_recipient_public_key_sha256>"
+    }
+  }
+}

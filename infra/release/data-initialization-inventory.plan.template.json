@@ -1,0 +1,17 @@
+{
+  "version": "data-initialization-inventory/v1",
+  "source_sha": "<OWNER:source_sha>",
+  "database_etag": "<OWNER:sql_settings_version>",
+  "initialization_files": {
+    "scripts/ci/release_initialize.py": "0eb5f3492344a249db25e8dee4c7e369496ce383d3b4f1def5b2fb18d1083434",
+    "scripts/ci/release_initialize.mjs": "d1c3d9d5e8b341215c2dce0694254451c199b85d75e84e34b44781a2cac00cd2",
+    "scripts/ci/initialize_database.sql": "18156d462c241b515dbf76a2a4128332d48e6e9b52f4f986c7748fb69b7120d6",
+    "scripts/ci/initialize_catalog.sql": "d7262f8fc62d823e0a27ad602035c4cd144b003cfb7efadfadc506c03e5083dd",
+    "scripts/ci/initialize_postconditions.sql": "34bcc38bea01dbfb7866dddb87db840ad88a39db196d8947c148b5495702fba1",
+    "scripts/ci/release_catalog_envelope.py": "59bb843ee485eedd1b0e627886c468349a6be76d00049031619ba025af9b3c1d"
+  },
+  "catalog_recipient": {
+    "public_key_pem": "<OWNER:catalog_recipient_public_key_pem>",
+    "public_key_sha256": "<OWNER:catalog_recipient_public_key_sha256>"
+  }
+}
