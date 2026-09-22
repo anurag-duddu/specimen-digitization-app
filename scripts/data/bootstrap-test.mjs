@@ -222,8 +222,88 @@ assert.equal(winner.organizationMembers.length, 1);
 assert.equal(winner.collectionMembers.length, 1);
 assert.equal(winner.organizationMembers[0].uid, winner.collectionMembers[0].uid);
 console.log('PASS simultaneous first-scope transactions have exactly one owner winner');
+// A synthetic three-node tree proves the generated N-collection transaction: the
+// parent rows must be written before their children inside one @transaction, and
+// the reviewed parentId must come back from the protected readback query.
+const syntheticTree = {
+  schema_version: 'collection-tree/v1', recorded: '2026-09-22', source: 'synthetic',
+  collections: [
+    {key: 'zoology', name: 'Synthetic Zoology', parent: null},
+    {key: 'insects', name: 'Synthetic Insects', parent: 'zoology'},
+    {key: 'botany', name: 'Synthetic Botany', parent: null},
+  ],
+};
+function prepareHierarchy(organizationId, ids, uid = 'synthetic-tree-owner') {
+  const code = `import importlib.util,json,sys
+s=importlib.util.spec_from_file_location('bootstrap','scripts/data/bootstrap_admin.py')
+m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+args=json.load(sys.stdin)
+tree=json.dumps(args.pop('tree')).encode()
+print(json.dumps(m.prepare_first_scope_hierarchy(tree=tree,**args)['request']))`;
+  return JSON.parse(execFileSync(process.env.DATA_TEST_PYTHON || '.venv/bin/python', ['-c', code], {
+    encoding: 'utf8', input: JSON.stringify({
+      auth_record: {uid, email: 'synthetic@example.invalid', emailVerified: true, disabled: false},
+      requested_email: 'synthetic@example.invalid', requested_uid: uid,
+      organization_id: organizationId, organization_name: 'Synthetic tree organization',
+      admin_collection_key: 'insects', tree: syntheticTree,
+      collections: syntheticTree.collections.map((entry, index) => ({
+        key: entry.key, id: ids[index], name: entry.name, parent: entry.parent})),
+    }),
+  }));
+}
+const treeOrg = randomUUID(), treeIds = [randomUUID(), randomUUID(), randomUUID()];
+assert.deepEqual(await allScope(treeOrg), empty);
+const treeRequest = prepareHierarchy(treeOrg, treeIds);
+const treeResponse = ok(await apply(treeRequest));
+const bare = value => value.replaceAll('-', '');
+assert.deepEqual(treeResponse, {
+  organization_insert: {id: bare(treeOrg)},
+  c0: {organizationId: bare(treeOrg), id: bare(treeIds[0])},
+  c1: {organizationId: bare(treeOrg), id: bare(treeIds[1])},
+  c2: {organizationId: bare(treeOrg), id: bare(treeIds[2])},
+  organizationMember_insert: {organizationId: bare(treeOrg), uid: 'synthetic-tree-owner'},
+  collectionMember_insert: {organizationId: bare(treeOrg), collectionId: bare(treeIds[1]),
+    uid: 'synthetic-tree-owner'},
+});
+const hierarchyQuery = execFileSync(process.env.DATA_TEST_PYTHON || '.venv/bin/python', ['-c',
+  'import sys;sys.path.insert(0,"scripts/ci");import bootstrap_release;print(bootstrap_release.READ_FIRST_SCOPE_HIERARCHY)'],
+  {encoding: 'utf8'});
+const treeReadback = ok(await raw(hierarchyQuery,
+  {organizationId: treeOrg, ids: treeIds, limit: treeIds.length + 1}, true));
+const byName = rows => [...rows].sort((a, b) => a.name.localeCompare(b.name));
+const expectedRows = [
+  {id: bare(treeIds[0]), organizationId: bare(treeOrg), name: 'Synthetic Zoology', parentId: null},
+  {id: bare(treeIds[1]), organizationId: bare(treeOrg), name: 'Synthetic Insects', parentId: bare(treeIds[0])},
+  {id: bare(treeIds[2]), organizationId: bare(treeOrg), name: 'Synthetic Botany', parentId: null},
+];
+assert.deepEqual(treeReadback.organization, {id: bare(treeOrg), name: 'Synthetic tree organization'});
+assert.deepEqual(byName(treeReadback.collections), byName(expectedRows));
+assert.deepEqual(byName(treeReadback.matchingCollections), byName(expectedRows));
+assert.deepEqual(treeReadback.organizationMembers, [{uid: 'synthetic-tree-owner', active: true}]);
+assert.deepEqual(treeReadback.members, [{uid: 'synthetic-tree-owner', collectionId: bare(treeIds[1]),
+  active: true, role: 'admin', canViewSensitive: false}]);
+console.log('PASS reviewed tree creates every collection with its exact parent in one transaction');
+
+const treeRows = await allScope(treeOrg);
+denied(await apply(treeRequest));
+denied(await apply(prepareHierarchy(treeOrg, treeIds, 'synthetic-tree-second-owner')));
+denied(await apply(prepareHierarchy(randomUUID(), treeIds)));
+assert.deepEqual(await allScope(treeOrg), treeRows);
+console.log('PASS reviewed tree refuses replay, a second owner and a reused identifier');
+
+// A child whose parent row does not exist must roll the whole tree back, so no
+// partially built hierarchy can survive a rejected transaction.
+const orphanOrg = randomUUID(), orphanIds = [randomUUID(), randomUUID(), randomUUID()];
+const orphan = prepareHierarchy(orphanOrg, orphanIds);
+orphan.query = orphan.query.replace('name: $c1Name, parentId: $c0Id',
+  `name: $c1Name, parentId: "${randomUUID()}"`);
+denied(await apply(orphan));
+assert.deepEqual(await allScope(orphanOrg), empty);
+console.log('PASS an unknown parent rolls the whole reviewed tree back');
+
 if (process.env.DATA_TEST_DIR) {
   writeFileSync(`${process.env.DATA_TEST_DIR}/first-scope-proof.json`, JSON.stringify({
     firstResponse, firstRows, firstReadback, rollbackProof, partialRows, newRace, winner,
+    treeResponse, treeReadback, treeRows,
   }, null, 2) + '\n', {flag: 'wx', mode: 0o600});
 }

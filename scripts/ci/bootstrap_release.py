@@ -48,9 +48,44 @@ READ_FIRST_SCOPE = """query VerifyFirstScopeAndOwner($organizationId: UUID!, $co
 }
 """
 
+# One collection more than the reviewed tree is read back, so an extra row under
+# the new organization or an extra row bound to a reviewed identifier is visible
+# instead of being truncated away by the limit.
+READ_FIRST_SCOPE_HIERARCHY = """query VerifyFirstScopeHierarchy(
+  $organizationId: UUID!, $ids: [UUID!]!, $limit: Int!
+) {
+  organization(key: {id: $organizationId}) { id name }
+  collections(where: {organizationId: {eq: $organizationId}}, limit: $limit) { id organizationId name parentId }
+  matchingCollections: collections(where: {id: {in: $ids}}, limit: $limit) { id organizationId name parentId }
+  organizationMembers(where: {organizationId: {eq: $organizationId}}, limit: 2) { uid active }
+  members: collectionMembers(where: {organizationId: {eq: $organizationId}}, limit: 2) {
+    uid collectionId active role canViewSensitive
+  }
+}
+"""
+
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode()
+
+
+def reviewed_tree(hierarchy):
+    """Only the committed reviewed tree, at the exact digest the artifact bound.
+
+    The path is fixed, not taken from the artifact, so a prepared payload cannot
+    redirect regeneration at another file. The digest is recomputed from this
+    source checkout, so editing the tree after preparation fails closed instead
+    of silently bootstrapping a different set of collections.
+    """
+    require(isinstance(hierarchy, dict)
+            and set(hierarchy) == {"tree_path", "tree_sha256", "collections", "admin_collection_key"},
+            "invalid reviewed collection tree binding")
+    require(hierarchy["tree_path"] == _prepared.TREE_PATH, "unreviewed collection tree path")
+    digest(hierarchy["tree_sha256"], "reviewed collection tree")
+    tree = (ROOT / _prepared.TREE_PATH).read_bytes()
+    require(hashlib.sha256(tree).hexdigest() == hierarchy["tree_sha256"],
+            "reviewed collection tree changed after preparation")
+    return tree
 
 
 def validate_prepared(payload, expected_sha256):
@@ -60,18 +95,28 @@ def validate_prepared(payload, expected_sha256):
         identity, variables = payload["auth_record"], payload["request"]["variables"]
         require(variables["canViewSensitive"] is False, "initial sensitive access is not authorized")
         version = payload["schema_version"]
-        require(version in {"first-admin-bootstrap/v1", "first-scope-owner-bootstrap/v1"}, "unknown bootstrap mode")
-        extra = {}
-        prepare = _prepared.prepare_bootstrap
-        if version == "first-scope-owner-bootstrap/v1":
-            prepare = _prepared.prepare_first_scope
-            extra = {"organization_name": variables["organizationName"], "collection_name": variables["collectionName"]}
-        expected = prepare(
-            auth_record=identity, requested_email=identity["email"], requested_uid=identity["uid"],
-            organization_id=variables["organizationId"], collection_id=variables["collectionId"],
-            can_view_sensitive=False,
-            **extra,
-        )
+        require(version in {"first-admin-bootstrap/v1", "first-scope-owner-bootstrap/v1",
+                            "first-scope-hierarchy-bootstrap/v1"}, "unknown bootstrap mode")
+        if version == "first-scope-hierarchy-bootstrap/v1":
+            expected = _prepared.prepare_first_scope_hierarchy(
+                auth_record=identity, requested_email=identity["email"], requested_uid=identity["uid"],
+                organization_id=variables["organizationId"], organization_name=variables["organizationName"],
+                can_view_sensitive=False, tree=reviewed_tree(payload["hierarchy"]),
+                collections=payload["hierarchy"]["collections"],
+                admin_collection_key=payload["hierarchy"]["admin_collection_key"],
+            )
+        else:
+            extra = {}
+            prepare = _prepared.prepare_bootstrap
+            if version == "first-scope-owner-bootstrap/v1":
+                prepare = _prepared.prepare_first_scope
+                extra = {"organization_name": variables["organizationName"], "collection_name": variables["collectionName"]}
+            expected = prepare(
+                auth_record=identity, requested_email=identity["email"], requested_uid=identity["uid"],
+                organization_id=variables["organizationId"], collection_id=variables["collectionId"],
+                can_view_sensitive=False,
+                **extra,
+            )
         require(expected["artifact_sha256"] == expected_sha256 and canonical(payload) == canonical(expected),
                 "prepared first-admin artifact changed")
     except (KeyError, TypeError, AttributeError):
@@ -123,6 +168,23 @@ def read_first_scope(google, variables, observe=None):
     return data
 
 
+def read_first_scope_hierarchy(google, variables, identifiers, limit, observe=None):
+    response = google.request("data", "POST", SERVICE + ":executeGraphqlRead", body={
+        "query": READ_FIRST_SCOPE_HIERARCHY,
+        "variables": {"organizationId": variables["organizationId"], "ids": identifiers, "limit": limit},
+    })
+    if observe is not None:
+        observe(response)
+    data = graphql_data(response)
+    require(set(data) == {"organization", "collections", "matchingCollections", "organizationMembers", "members"}
+            and all(isinstance(data[key], list) and len(data[key]) <= limit
+                    for key in ("collections", "matchingCollections"))
+            and all(isinstance(data[key], list) and len(data[key]) <= 2
+                    for key in ("organizationMembers", "members")),
+            "first-scope hierarchy observation incomplete")
+    return data
+
+
 def retain_first_scope(directory, name, value):
     """Fixed attempt-local exclusive evidence; existing intent never resets."""
     descriptor = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -143,12 +205,8 @@ def validate_evidence_recipient(recipient):
     return validate_catalog_recipient(recipient)
 
 
-def apply_first_scope(google, payload, expected_sha256, evidence_recipient):
-    variables = payload["request"]["variables"]
-    before = read_first_scope(google, variables)
-    require(before == {"organization": None, "collections": [], "matchingCollections": [],
-                       "organizationMembers": [], "members": []},
-            "first-scope target is existing or partial; reconcile without adoption")
+def evidence_retainer(google, expected_sha256, evidence_recipient):
+    """The original exclusive local fence and its encrypted sibling, for both modes."""
     provenance = {"source_sha": google.packet["source_sha"], "run_id": google.packet["release_run_id"],
                   "run_attempt": google.packet["release_run_attempt"], "artifact_sha256": expected_sha256}
     directory = google.path.parent
@@ -163,6 +221,16 @@ def apply_first_scope(google, payload, expected_sha256, evidence_recipient):
                                    public_key_sha256=evidence_recipient["public_key_sha256"],
                                    provenance=envelope_provenance)
         retain_first_scope(directory, name.removesuffix(".json") + ".encrypted.json", envelope)
+    return provenance, retain
+
+
+def apply_first_scope(google, payload, expected_sha256, evidence_recipient):
+    variables = payload["request"]["variables"]
+    before = read_first_scope(google, variables)
+    require(before == {"organization": None, "collections": [], "matchingCollections": [],
+                       "organizationMembers": [], "members": []},
+            "first-scope target is existing or partial; reconcile without adoption")
+    provenance, retain = evidence_retainer(google, expected_sha256, evidence_recipient)
     retain("first-scope-owner.intent.json", {
         "version": "first-scope-owner-intent/v1", **provenance,
         "request_sha256": hashlib.sha256(canonical(payload["request"])).hexdigest(),
@@ -217,6 +285,96 @@ def apply_first_scope(google, payload, expected_sha256, evidence_recipient):
     return receipt
 
 
+def apply_first_scope_hierarchy(google, payload, expected_sha256, evidence_recipient):
+    """Create the whole reviewed tree once: one organization, N collections, two memberships.
+
+    Every gate the four-insert mode applies is applied here for every row: the
+    target must be entirely empty, the intent is durable before the single
+    dispatch, each insert returns its exact pinned key, and the readback must
+    show precisely the reviewed collections with their exact parents.
+    """
+    variables, hierarchy = payload["request"]["variables"], payload["hierarchy"]
+    collections = hierarchy["collections"]
+    count = len(collections)
+    identifiers = [entry["id"] for entry in collections]
+    limit = count + 1
+    before = read_first_scope_hierarchy(google, variables, identifiers, limit)
+    require(before == {"organization": None, "collections": [], "matchingCollections": [],
+                       "organizationMembers": [], "members": []},
+            "first-scope hierarchy target is existing or partial; reconcile without adoption")
+    provenance, retain = evidence_retainer(google, expected_sha256, evidence_recipient)
+    retain("first-scope-hierarchy.intent.json", {
+        "version": "first-scope-hierarchy-intent/v1", **provenance,
+        "request_sha256": hashlib.sha256(canonical(payload["request"])).hexdigest(),
+        "before_sha256": hashlib.sha256(canonical(before)).hexdigest(),
+    })
+    # Intent is durable before dispatch. Any exception, partial response or failed
+    # readback leaves it consumed. A new runner cannot adopt committed rows: the
+    # same pinned organization's insert still conflicts. No retry or new IDs.
+    response = google.request("data", "POST", SERVICE + ":executeGraphql", body=payload["request"])
+    retain("first-scope-hierarchy.response.json", response)
+    inserted = graphql_data(response)
+    keys = {
+        "organization_insert": {"id": "organizationId"},
+        "organizationMember_insert": {"organizationId": "organizationId", "uid": "uid"},
+        "collectionMember_insert": {"organizationId": "organizationId", "collectionId": "collectionId", "uid": "uid"},
+        **{f"c{index}": {"organizationId": "organizationId", "id": f"c{index}Id"} for index in range(count)},
+    }
+    require(set(inserted) == set(keys), "first-scope hierarchy mutation result incomplete")
+    for field, mapping in keys.items():
+        row = inserted[field]
+        require(isinstance(row, dict) and set(row) == set(mapping), "first-scope hierarchy inserted key incomplete")
+        for key, variable in mapping.items():
+            require(row[key] == variables[variable] if key == "uid" else same_uuid(row[key], variables[variable]),
+                    "first-scope hierarchy inserted key differs")
+    # Retain even a rejected GraphQL readback before interpreting its fields.
+    after = read_first_scope_hierarchy(google, variables, identifiers, limit,
+                                       lambda value: retain("first-scope-hierarchy.readback.json", value))
+    organization = after["organization"]
+    require(isinstance(organization, dict) and set(organization) == {"id", "name"}
+            and same_uuid(organization["id"], variables["organizationId"])
+            and organization["name"] == variables["organizationName"],
+            "first-scope hierarchy organization readback differs")
+    position = {entry["key"]: index for index, entry in enumerate(collections)}
+    expected = [{"id": entry["id"], "name": entry["name"],
+                 "parentId": None if entry["parent"] is None else collections[position[entry["parent"]]]["id"]}
+                for entry in collections]
+    # SQL Connect does not promise an order here, so each reviewed identifier must
+    # match exactly one observed row and the counts must agree: a missing row, a
+    # duplicate row and an unreviewed extra row are all rejected.
+    for key in ("collections", "matchingCollections"):
+        observed = after[key]
+        require(len(observed) == count, "first-scope hierarchy collection set differs")
+        for row in expected:
+            found = [seen for seen in observed
+                     if isinstance(seen, dict) and set(seen) == {"id", "organizationId", "name", "parentId"}
+                     and same_uuid(seen["id"], row["id"])]
+            require(len(found) == 1, "first-scope hierarchy collection set differs")
+            require(same_uuid(found[0]["organizationId"], variables["organizationId"])
+                    and found[0]["name"] == row["name"]
+                    and (found[0]["parentId"] is None if row["parentId"] is None
+                         else same_uuid(found[0]["parentId"], row["parentId"])),
+                    "first-scope hierarchy collection readback differs")
+    require(len(after["organizationMembers"]) == 1 and len(after["members"]) == 1,
+            "first-scope hierarchy owner set differs")
+    owner = after["organizationMembers"][0]
+    require(isinstance(owner, dict) and set(owner) == {"uid", "active"}
+            and owner["uid"] == variables["uid"] and owner["active"] is True,
+            "first-scope hierarchy owner differs")
+    member = after["members"][0]
+    require(isinstance(member, dict) and set(member) == {"uid", "collectionId", "active", "role", "canViewSensitive"}
+            and member["uid"] == variables["uid"] and member["active"] is True
+            and member["role"] == "admin" and member["canViewSensitive"] is False
+            and same_uuid(member["collectionId"], variables["collectionId"]),
+            "first-scope hierarchy owner readback differs")
+    receipt = {"version": "first-scope-hierarchy-applied/v1", **provenance,
+               "membership_sha256": hashlib.sha256(canonical(after)).hexdigest(),
+               "scope_verified": True, "membership_verified": True, "collections_verified": count,
+               "tree_sha256": hierarchy["tree_sha256"], "sensitive_access": False, "release_accepted": False}
+    retain("first-scope-hierarchy.verified.json", receipt)
+    return receipt
+
+
 def bootstrap(google, prepared_payload, expected_sha256, evidence_recipient=None):
     """Recheck identity, execute exact transaction once, then verify membership.
 
@@ -228,7 +386,8 @@ def bootstrap(google, prepared_payload, expected_sha256, evidence_recipient=None
     """
     require(google.plane == "data", "first-admin maintenance requires the data release identity")
     payload = validate_prepared(prepared_payload, expected_sha256)
-    first_scope = payload["schema_version"] == "first-scope-owner-bootstrap/v1"
+    version = payload["schema_version"]
+    first_scope = version in {"first-scope-owner-bootstrap/v1", "first-scope-hierarchy-bootstrap/v1"}
     if first_scope:
         validate_evidence_recipient(evidence_recipient)
     else:
@@ -244,6 +403,8 @@ def bootstrap(google, prepared_payload, expected_sha256, evidence_recipient=None
     require(user.get("localId") == identity["uid"] and user.get("email") == identity["email"]
             and user.get("emailVerified") is True and user.get("disabled", False) is False
             and not user.get("tenantId"), "fresh Auth identity differs, is unverified or disabled")
+    if version == "first-scope-hierarchy-bootstrap/v1":
+        return apply_first_scope_hierarchy(google, payload, expected_sha256, evidence_recipient)
     if first_scope:
         return apply_first_scope(google, payload, expected_sha256, evidence_recipient)
     before = read_scope(google, variables)

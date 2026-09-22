@@ -16,7 +16,7 @@ import bootstrap_release as B
 import deploy_data as D
 from release_catalog_envelope import decrypt_catalog
 from test_bootstrap_release import artifact  # noqa: F401
-from test_first_scope_bootstrap import FirstGoogle, first  # noqa: F401
+from test_first_scope_bootstrap import FirstGoogle, first, tree  # noqa: F401
 
 
 @lru_cache
@@ -143,22 +143,133 @@ def test_reviewed_recipient_survives_plan_and_deploy_call_chain(first, tmp_path,
 
 
 @pytest.mark.parametrize("encrypted", [False, True])
-def test_attestation_discovery_and_failure_path_cover_only_encrypted_records(tmp_path, encrypted):
+@pytest.mark.parametrize("mode", ["first-scope-owner", "first-scope-hierarchy"])
+def test_attestation_discovery_and_failure_path_cover_only_encrypted_records(tmp_path, encrypted, mode):
     workflow = yaml.safe_load((B.ROOT / ".github/workflows/data-release.yml").read_text())
     steps = workflow["jobs"]["release"]["steps"]
     discovery = next(s for s in steps if s.get("id") == "bootstrap_evidence")
     assert discovery["if"] == "always() && steps.auth.outcome == 'success'"
     directory = tmp_path / "data-release"
     directory.mkdir()
-    (directory / "first-scope-owner.response.json").write_text('{"private":"fixture-admin"}')
+    (directory / f"{mode}.response.json").write_text('{"private":"fixture-admin"}')
     if encrypted:
-        (directory / "first-scope-owner.response.encrypted.json").write_text('{"ciphertext":"synthetic"}')
+        (directory / f"{mode}.response.encrypted.json").write_text('{"ciphertext":"synthetic"}')
     output = tmp_path / "github-output"
     subprocess.run(["bash", "-e", "-c", discovery["run"]], check=True,
                    env={**os.environ, "RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)})
     assert (output.read_text() if output.exists() else "") == ("present=true\n" if encrypted else "")
     attest = next(s for s in steps if "actions/attest@" in s.get("uses", "")
-                  and "first-scope-owner" in s.get("with", {}).get("subject-path", ""))
+                  and "first-scope-" in s.get("with", {}).get("subject-path", ""))
     assert attest["if"] == "always() && steps.bootstrap_evidence.outputs.present == 'true'"
-    assert attest["with"]["subject-path"] == "${{ runner.temp }}/data-release/first-scope-owner.*.encrypted.json"
+    # One glob covers both empty-scope modes' evidence and neither mode's plaintext.
+    subject = attest["with"]["subject-path"]
+    assert subject == "${{ runner.temp }}/data-release/first-scope-*.encrypted.json"
+    prefix = "${{ runner.temp }}/data-release/"
+    assert fnmatch.fnmatch(prefix + f"{mode}.response.encrypted.json", subject)
+    assert not fnmatch.fnmatch(prefix + f"{mode}.response.json", subject)
     assert steps.index(discovery) < steps.index(attest)
+
+
+# ------------------------------------------- the whole reviewed hierarchy ---
+
+
+@pytest.mark.parametrize("outcome", ["success", "partial", "bad-readback", "unknown"])
+def test_hierarchy_evidence_is_retained_encrypted_under_its_own_names(tree, tmp_path, monkeypatch, outcome):
+    from test_first_scope_bootstrap import TreeGoogle
+    google = TreeGoogle(tree, tmp_path)
+    if outcome == "partial":
+        google.mutation_result = {"data": {}, "errors": [{"message": "private fixture-admin response"}]}
+    elif outcome == "bad-readback":
+        google.after_change = {"organization": {
+            "id": tree["request"]["variables"]["organizationId"], "name": "private wrong name"}}
+    elif outcome == "unknown":
+        google.mutation_result = TimeoutError("private unknown response")
+    if outcome == "success":
+        B.bootstrap(google, tree, tree["artifact_sha256"], recipient())
+    else:
+        with pytest.raises((ValueError, TimeoutError)):
+            B.bootstrap(google, tree, tree["artifact_sha256"], recipient())
+    raw_files = sorted(p for p in tmp_path.glob("first-scope-hierarchy.*.json") if ".encrypted." not in p.name)
+    assert [p.name.split(".")[1] for p in raw_files] == {
+        "success": ["intent", "readback", "response", "verified"],
+        "partial": ["intent", "response"],
+        "bad-readback": ["intent", "readback", "response"],
+        "unknown": ["intent"],
+    }[outcome]
+    workflow = yaml.safe_load((B.ROOT / ".github/workflows/data-release.yml").read_text())
+    uploads = [s for s in workflow["jobs"]["release"]["steps"]
+               if "actions/upload-artifact@" in s.get("uses", "") and "always()" in s.get("if", "")]
+    patterns = [line for s in uploads for line in s["with"]["path"].splitlines()]
+
+    def published(path):
+        return any(fnmatch.fnmatch("${{ runner.temp }}/data-release/" + path.name, pattern)
+                   for pattern in patterns)
+
+    for raw in raw_files:
+        encrypted = raw.with_suffix(".encrypted.json")
+        assert encrypted.exists() and published(encrypted)
+        assert not published(raw)
+        envelope = json.loads(encrypted.read_bytes())
+        arguments = {"public_key_sha256": recipient()["public_key_sha256"],
+                     "provenance": {"repository": "anurag-duddu/specimen-digitization-app",
+                                    "source_sha": "a" * 40, "run_id": 123, "run_attempt": 2}}
+        with monkeypatch.context() as context:
+            context.setenv("GITHUB_ACTIONS", "true")
+            with pytest.raises(ValueError):
+                decrypt_catalog(envelope, keys()[1], **arguments)
+            context.delenv("GITHUB_ACTIONS")
+            assert decrypt_catalog(envelope, keys()[1], **arguments) == raw.read_bytes()
+        for private in ("fixture-admin", "admin@example.invalid", "Synthetic organization",
+                        "private wrong name", "Invertebrate Zoology"):
+            assert private.encode() not in encrypted.read_bytes()
+        assert encrypted.stat().st_mode & 0o777 == 0o600
+    assert sum(call[2].endswith(":executeGraphql") for call in google.calls) == 1
+
+
+def test_hierarchy_encryption_failure_consumes_intent_without_dispatch(tree, tmp_path, monkeypatch):
+    from test_first_scope_bootstrap import TreeGoogle
+    import release_catalog_envelope as E
+
+    def fail(*args, **kwargs):
+        raise ValueError("synthetic encryption failure")
+
+    monkeypatch.setattr(E, "encrypt_catalog", fail)
+    google = TreeGoogle(tree, tmp_path)
+    with pytest.raises(ValueError, match="encryption"):
+        B.bootstrap(google, tree, tree["artifact_sha256"], recipient())
+    assert not google.applied and (tmp_path / "first-scope-hierarchy.intent.json").exists()
+    with pytest.raises(FileExistsError):
+        B.bootstrap(TreeGoogle(tree, tmp_path), tree, tree["artifact_sha256"], recipient())
+
+
+@pytest.mark.parametrize("change", ["absent", "digest", "private", "extra", "weak"])
+def test_hierarchy_bad_recipient_stops_before_auth_or_scope(tree, tmp_path, change):
+    from test_first_scope_bootstrap import TreeGoogle
+    value = recipient()
+    if change == "absent":
+        value = None
+    elif change == "digest":
+        value["public_key_sha256"] = "0" * 64
+    elif change == "private":
+        value["public_key_pem"] = keys()[1].decode()
+        value["public_key_sha256"] = hashlib.sha256(keys()[1]).hexdigest()
+    elif change == "extra":
+        value["destination"] = "unreviewed"
+    else:
+        weak = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        value = {"public_key_pem": weak.decode(), "public_key_sha256": hashlib.sha256(weak).hexdigest()}
+    google = TreeGoogle(tree, tmp_path)
+    with pytest.raises(ValueError):
+        B.bootstrap(google, tree, tree["artifact_sha256"], value)
+    assert not google.calls and not list(tmp_path.iterdir())
+
+
+def test_hierarchy_reviewed_recipient_survives_plan_and_deploy_call_chain(tree, tmp_path, monkeypatch):
+    from test_first_scope_bootstrap import TreeGoogle
+    plan = {**readiness_plan(tree), "bootstrap": {
+        "payload": tree, "sha256": tree["artifact_sha256"], "evidence_recipient": recipient()}}
+    assert D.validate_plan(plan, {"source_sha": "a" * 40}) == plan
+    monkeypatch.setattr(D, "verify_schema_receipt", lambda *args: {"version": "data-schema-ready/v1"})
+    D.verify_or_bootstrap(TreeGoogle(tree, tmp_path), plan, tmp_path / "data-ready.json")
+    assert (tmp_path / "first-scope-hierarchy.verified.encrypted.json").exists()

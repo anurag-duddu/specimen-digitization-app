@@ -28,7 +28,7 @@
   },
   "bootstrap": {
     "payload": {
-      "schema_version": "first-scope-owner-bootstrap/v1",
+      "schema_version": "first-scope-hierarchy-bootstrap/v1",
       "state": "prepared_not_applied",
       "project_id": "specimen-digitization",
       "auth_record": {
@@ -45,15 +45,165 @@
         "separately approved maintenance identity; never runtime connector or Hosting identity"
       ],
       "request": {
-        "query": "mutation PrepareFirstScopeAndOwner(\n  $organizationId: UUID!, $collectionId: UUID!, $uid: String!,\n  $organizationName: String!, $collectionName: String!, $canViewSensitive: Boolean!\n) @transaction {\n  organization_insert(data: {id: $organizationId, name: $organizationName})\n  query @redact {\n    matchingCollections: collections(where: {id: {eq: $collectionId}}, limit: 1)\n      @check(expr: \"this.size() == 0\", message: \"Collection identifier already exists\") { id }\n  }\n  collection_insert(data: {organizationId: $organizationId, id: $collectionId,\n    name: $collectionName, parentId: null})\n  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})\n  collectionMember_insert(data: {organizationId: $organizationId, collectionId: $collectionId,\n    uid: $uid, active: true, role: \"admin\", canViewSensitive: $canViewSensitive})\n}\n",
+        "query": "mutation PrepareFirstScopeHierarchy(\n  $organizationId: UUID!, $organizationName: String!, $uid: String!, $canViewSensitive: Boolean!,\n  $collectionId: UUID!,\n  $c0Id: UUID!, $c0Name: String!,\n  $c1Id: UUID!, $c1Name: String!,\n  $c2Id: UUID!, $c2Name: String!,\n  $c3Id: UUID!, $c3Name: String!,\n  $c4Id: UUID!, $c4Name: String!,\n  $c5Id: UUID!, $c5Name: String!,\n  $c6Id: UUID!, $c6Name: String!,\n  $c7Id: UUID!, $c7Name: String!,\n  $c8Id: UUID!, $c8Name: String!,\n  $c9Id: UUID!, $c9Name: String!,\n  $c10Id: UUID!, $c10Name: String!,\n  $c11Id: UUID!, $c11Name: String!,\n  $c12Id: UUID!, $c12Name: String!,\n  $c13Id: UUID!, $c13Name: String!,\n  $c14Id: UUID!, $c14Name: String!,\n  $c15Id: UUID!, $c15Name: String!,\n  $c16Id: UUID!, $c16Name: String!,\n  $c17Id: UUID!, $c17Name: String!\n) @transaction {\n  organization_insert(data: {id: $organizationId, name: $organizationName})\n  query @redact {\n    matchingCollections: collections(where: {id: {in: [$c0Id, $c1Id, $c2Id, $c3Id, $c4Id, $c5Id, $c6Id, $c7Id, $c8Id, $c9Id, $c10Id, $c11Id, $c12Id, $c13Id, $c14Id, $c15Id, $c16Id, $c17Id]}}, limit: 1)\n      @check(expr: \"this.size() == 0\", message: \"Collection identifier already exists\") { id }\n  }\n  c0: collection_insert(data: {organizationId: $organizationId, id: $c0Id,\n    name: $c0Name, parentId: null})\n  c1: collection_insert(data: {organizationId: $organizationId, id: $c1Id,\n    name: $c1Name, parentId: $c0Id})\n  c2: collection_insert(data: {organizationId: $organizationId, id: $c2Id,\n    name: $c2Name, parentId: $c0Id})\n  c3: collection_insert(data: {organizationId: $organizationId, id: $c3Id,\n    name: $c3Name, parentId: $c0Id})\n  c4: collection_insert(data: {organizationId: $organizationId, id: $c4Id,\n    name: $c4Name, parentId: $c0Id})\n  c5: collection_insert(data: {organizationId: $organizationId, id: $c5Id,\n    name: $c5Name, parentId: $c0Id})\n  c6: collection_insert(data: {organizationId: $organizationId, id: $c6Id,\n    name: $c6Name, parentId: $c0Id})\n  c7: collection_insert(data: {organizationId: $organizationId, id: $c7Id,\n    name: $c7Name, parentId: null})\n  c8: collection_insert(data: {organizationId: $organizationId, id: $c8Id,\n    name: $c8Name, parentId: $c7Id})\n  c9: collection_insert(data: {organizationId: $organizationId, id: $c9Id,\n    name: $c9Name, parentId: $c7Id})\n  c10: collection_insert(data: {organizationId: $organizationId, id: $c10Id,\n    name: $c10Name, parentId: $c7Id})\n  c11: collection_insert(data: {organizationId: $organizationId, id: $c11Id,\n    name: $c11Name, parentId: $c7Id})\n  c12: collection_insert(data: {organizationId: $organizationId, id: $c12Id,\n    name: $c12Name, parentId: $c7Id})\n  c13: collection_insert(data: {organizationId: $organizationId, id: $c13Id,\n    name: $c13Name, parentId: null})\n  c14: collection_insert(data: {organizationId: $organizationId, id: $c14Id,\n    name: $c14Name, parentId: null})\n  c15: collection_insert(data: {organizationId: $organizationId, id: $c15Id,\n    name: $c15Name, parentId: $c14Id})\n  c16: collection_insert(data: {organizationId: $organizationId, id: $c16Id,\n    name: $c16Name, parentId: $c14Id})\n  c17: collection_insert(data: {organizationId: $organizationId, id: $c17Id,\n    name: $c17Name, parentId: $c14Id})\n  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})\n  collectionMember_insert(data: {organizationId: $organizationId, collectionId: $collectionId,\n    uid: $uid, active: true, role: \"admin\", canViewSensitive: $canViewSensitive})\n}\n",
         "variables": {
           "organizationId": "<OWNER:org_uuid>",
-          "collectionId": "<OWNER:collection_uuid>",
+          "collectionId": "<OWNER:uuid_insects>",
           "uid": "<OWNER:admin_uid>",
           "canViewSensitive": false,
           "organizationName": "<OWNER:organization_name>",
-          "collectionName": "<OWNER:collection_name>"
+          "c0Id": "<OWNER:uuid_zoology>",
+          "c0Name": "Zoology",
+          "c1Id": "<OWNER:uuid_insects>",
+          "c1Name": "Insects",
+          "c2Id": "<OWNER:uuid_mammals>",
+          "c2Name": "Mammals",
+          "c3Id": "<OWNER:uuid_birds>",
+          "c3Name": "Birds",
+          "c4Id": "<OWNER:uuid_fishes>",
+          "c4Name": "Fishes",
+          "c5Id": "<OWNER:uuid_amphibians_and_reptiles>",
+          "c5Name": "Amphibians and Reptiles",
+          "c6Id": "<OWNER:uuid_invertebrate_zoology>",
+          "c6Name": "Invertebrate Zoology",
+          "c7Id": "<OWNER:uuid_botany>",
+          "c7Name": "Botany",
+          "c8Id": "<OWNER:uuid_seed_plants>",
+          "c8Name": "Seed Plants",
+          "c9Id": "<OWNER:uuid_bryophytes>",
+          "c9Name": "Bryophytes",
+          "c10Id": "<OWNER:uuid_lichens>",
+          "c10Name": "Lichens",
+          "c11Id": "<OWNER:uuid_pteridophytes>",
+          "c11Name": "Pteridophytes",
+          "c12Id": "<OWNER:uuid_fungi>",
+          "c12Name": "Fungi",
+          "c13Id": "<OWNER:uuid_anthropology>",
+          "c13Name": "Anthropology",
+          "c14Id": "<OWNER:uuid_geology>",
+          "c14Name": "Geology",
+          "c15Id": "<OWNER:uuid_fossil_invertebrates>",
+          "c15Name": "Fossil Invertebrates",
+          "c16Id": "<OWNER:uuid_fossil_vertebrates>",
+          "c16Name": "Fossil Vertebrates",
+          "c17Id": "<OWNER:uuid_paleobotany>",
+          "c17Name": "Paleobotany"
         }
+      },
+      "hierarchy": {
+        "tree_path": "infra/reference/fieldmuseum-collection-tree.json",
+        "tree_sha256": "4d68cbd5ce906a24ff2025322412db70f5be66986fb1a7d3073e92f8da7586c1",
+        "collections": [
+          {
+            "key": "zoology",
+            "id": "<OWNER:uuid_zoology>",
+            "name": "Zoology",
+            "parent": null
+          },
+          {
+            "key": "insects",
+            "id": "<OWNER:uuid_insects>",
+            "name": "Insects",
+            "parent": "zoology"
+          },
+          {
+            "key": "mammals",
+            "id": "<OWNER:uuid_mammals>",
+            "name": "Mammals",
+            "parent": "zoology"
+          },
+          {
+            "key": "birds",
+            "id": "<OWNER:uuid_birds>",
+            "name": "Birds",
+            "parent": "zoology"
+          },
+          {
+            "key": "fishes",
+            "id": "<OWNER:uuid_fishes>",
+            "name": "Fishes",
+            "parent": "zoology"
+          },
+          {
+            "key": "amphibians-and-reptiles",
+            "id": "<OWNER:uuid_amphibians_and_reptiles>",
+            "name": "Amphibians and Reptiles",
+            "parent": "zoology"
+          },
+          {
+            "key": "invertebrate-zoology",
+            "id": "<OWNER:uuid_invertebrate_zoology>",
+            "name": "Invertebrate Zoology",
+            "parent": "zoology"
+          },
+          {
+            "key": "botany",
+            "id": "<OWNER:uuid_botany>",
+            "name": "Botany",
+            "parent": null
+          },
+          {
+            "key": "seed-plants",
+            "id": "<OWNER:uuid_seed_plants>",
+            "name": "Seed Plants",
+            "parent": "botany"
+          },
+          {
+            "key": "bryophytes",
+            "id": "<OWNER:uuid_bryophytes>",
+            "name": "Bryophytes",
+            "parent": "botany"
+          },
+          {
+            "key": "lichens",
+            "id": "<OWNER:uuid_lichens>",
+            "name": "Lichens",
+            "parent": "botany"
+          },
+          {
+            "key": "pteridophytes",
+            "id": "<OWNER:uuid_pteridophytes>",
+            "name": "Pteridophytes",
+            "parent": "botany"
+          },
+          {
+            "key": "fungi",
+            "id": "<OWNER:uuid_fungi>",
+            "name": "Fungi",
+            "parent": "botany"
+          },
+          {
+            "key": "anthropology",
+            "id": "<OWNER:uuid_anthropology>",
+            "name": "Anthropology",
+            "parent": null
+          },
+          {
+            "key": "geology",
+            "id": "<OWNER:uuid_geology>",
+            "name": "Geology",
+            "parent": null
+          },
+          {
+            "key": "fossil-invertebrates",
+            "id": "<OWNER:uuid_fossil_invertebrates>",
+            "name": "Fossil Invertebrates",
+            "parent": "geology"
+          },
+          {
+            "key": "fossil-vertebrates",
+            "id": "<OWNER:uuid_fossil_vertebrates>",
+            "name": "Fossil Vertebrates",
+            "parent": "geology"
+          },
+          {
+            "key": "paleobotany",
+            "id": "<OWNER:uuid_paleobotany>",
+            "name": "Paleobotany",
+            "parent": "geology"
+          }
+        ],
+        "admin_collection_key": "insects"
       },
       "artifact_sha256": "<OWNER:bootstrap_artifact_sha256>"
     },

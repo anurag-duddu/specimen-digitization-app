@@ -25,6 +25,10 @@ SOURCE = "specimen-digitization-instance"
 CLONE = "specimen-digitization-restore-20260908-r1"
 DATABASE = "specimen-digitization-database"
 RULE_RELEASE = f"projects/{PROJECT}/releases/firebase.storage/{PROJECT}.firebasestorage.app"
+# Empty-scope creation modes. Each requires the reviewed evidence recipient and
+# publishes its own signed receipt; the legacy first-admin mode does neither.
+FIRST_SCOPE_MODES = {"first-scope-owner-bootstrap/v1", "first-scope-hierarchy-bootstrap/v1"}
+FIRST_SCOPE_RECEIPTS = {"first-scope-owner-applied/v1", "first-scope-hierarchy-applied/v1"}
 INDEXES = {"specimen_text_cursor", "auxiliary_text_cursor", "specimen_search_cursor", "snapshot_search_batch"}
 INDEX_SPECS = {
     "specimen_text_cursor": ("specimen", ["organization_id", "collection_id", "id::text COLLATE C"], ["created_at", "revision", "state", "disposition", "work_available_at", "active_run_id", "sensitive"]),
@@ -105,7 +109,7 @@ def source_fingerprints():
 
 def validate_bootstrap_plan(bootstrap):
     payload = bootstrap.get("payload") if isinstance(bootstrap, dict) else None
-    first_scope = isinstance(payload, dict) and payload.get("schema_version") == "first-scope-owner-bootstrap/v1"
+    first_scope = isinstance(payload, dict) and payload.get("schema_version") in FIRST_SCOPE_MODES
     exact_keys(bootstrap, {"payload", "sha256"} | ({"evidence_recipient"} if first_scope else set()), "bootstrap")
     digest(bootstrap["sha256"], "bootstrap artifact")
     if first_scope:
@@ -533,7 +537,7 @@ def apply_compatible(google, plan, path, output, before):
                                      "sha256": hashlib.sha256(native_raw).hexdigest()},
                                  "membership_bootstrapped": plan["bootstrap"] is not None,
                                  **({"bootstrap_receipt": bootstrap_receipt} if bootstrap_receipt
-                                    and bootstrap_receipt.get("version") == "first-scope-owner-applied/v1" else {}),
+                                    and bootstrap_receipt.get("version") in FIRST_SCOPE_RECEIPTS else {}),
                                  **{role: {"name": value["name"], "etag": value["etag"]} for role, value in observations.items()},
                                  "storage_ruleset": rules["name"], "release_accepted": False}, sort_keys=True) + "\n")
 
@@ -609,7 +613,7 @@ def verify_or_bootstrap(google, plan, output):
         from bootstrap_release import bootstrap
         bootstrap_receipt = bootstrap(google, plan["bootstrap"]["payload"], plan["bootstrap"]["sha256"],
                                       plan["bootstrap"].get("evidence_recipient"))
-        if bootstrap_receipt and bootstrap_receipt.get("version") == "first-scope-owner-applied/v1":
+        if bootstrap_receipt and bootstrap_receipt.get("version") in FIRST_SCOPE_RECEIPTS:
             receipt["bootstrap_receipt"] = bootstrap_receipt
         receipt["membership_bootstrapped"] = True
     receipt.update(source_sha=google.packet["source_sha"], run_id=google.packet["release_run_id"],

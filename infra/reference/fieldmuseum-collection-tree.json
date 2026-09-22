@@ -1,0 +1,25 @@
+{
+  "schema_version": "collection-tree/v1",
+  "recorded": "2026-09-22",
+  "source": "docs/product-requirements/COLLECTION_HIERARCHY.md",
+  "collections": [
+    {"key": "zoology", "name": "Zoology", "parent": null},
+    {"key": "insects", "name": "Insects", "parent": "zoology"},
+    {"key": "mammals", "name": "Mammals", "parent": "zoology"},
+    {"key": "birds", "name": "Birds", "parent": "zoology"},
+    {"key": "fishes", "name": "Fishes", "parent": "zoology"},
+    {"key": "amphibians-and-reptiles", "name": "Amphibians and Reptiles", "parent": "zoology"},
+    {"key": "invertebrate-zoology", "name": "Invertebrate Zoology", "parent": "zoology"},
+    {"key": "botany", "name": "Botany", "parent": null},
+    {"key": "seed-plants", "name": "Seed Plants", "parent": "botany"},
+    {"key": "bryophytes", "name": "Bryophytes", "parent": "botany"},
+    {"key": "lichens", "name": "Lichens", "parent": "botany"},
+    {"key": "pteridophytes", "name": "Pteridophytes", "parent": "botany"},
+    {"key": "fungi", "name": "Fungi", "parent": "botany"},
+    {"key": "anthropology", "name": "Anthropology", "parent": null},
+    {"key": "geology", "name": "Geology", "parent": null},
+    {"key": "fossil-invertebrates", "name": "Fossil Invertebrates", "parent": "geology"},
+    {"key": "fossil-vertebrates", "name": "Fossil Vertebrates", "parent": "geology"},
+    {"key": "paleobotany", "name": "Paleobotany", "parent": "geology"}
+  ]
+}
