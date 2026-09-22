@@ -7,7 +7,8 @@ codebase, and it is built from an in-repo design system rather than from
 Material.
 
 Firebase supplies identity, storage and the application database. The client
-calls the scoped API; it never connects to PostgreSQL directly.
+calls the scoped API; it never connects to PostgreSQL directly and carries no
+Storage or SQL Connect client package.
 
 ## The layers
 
@@ -80,6 +81,7 @@ only shrink.
 | `no_material_imports` | `test/theme/` | `material.dart` is imported only by the four named infrastructure files, and each still needs it | empty |
 | `icons_unique` | `test/theme/` | Every glyph comes from `UiIcons` on Phosphor, and no two registry entries are the same glyph | empty |
 | `fonts_bundled` | `test/theme/` | Geist and Geist Mono resolve to the bundled assets; `google_fonts` is absent from the lockfile | none |
+| `declared_dependencies` | `test/app/` | Every package in `dependencies:` is imported by a file under `lib/`, so nothing is in the bundle that no line of the product calls | none |
 | `no_dashes` | `test/theme/` | No em dash or en dash in a Dart string or in `design/*.md` | none |
 | `contrast_test` | `test/theme/` | The bridge `ColorScheme` and the product roles clear their floors | none |
 | `contrast_composite` | `packages/specimen_ui/test/foundation/` | Every text role on every surface and on each glass level over the lightest and darkest point of every field, in both modes | none |

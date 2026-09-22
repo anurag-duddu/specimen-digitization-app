@@ -31,10 +31,18 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Identity and attestation only. The client never writes to Firebase
+  # Storage and never opens a SQL Connect channel: photographs go up through
+  # the scoped API's `PUT /uploads/{id}/content` and every record is read and
+  # written through the same API (docs/execution/FLUTTER.md, "Upload
+  # transport"). `firebase_storage` and `firebase_data_connect` were declared
+  # and never imported, so they were shipped weight and attack surface for a
+  # capability the product does not use. The SQL Connect schema and its named
+  # operations are the server's, and `dataconnect/connector/connector.yaml`
+  # declares no `dartSdk` generate target, so nothing here is generated
+  # against them either.
   firebase_core: ^4.14.0
   firebase_auth: ^6.6.1
-  firebase_storage: ^13.5.0
-  firebase_data_connect: ^0.3.2
   http: ^1.6.0
   crypto: ^3.0.7
   file_selector: ^1.1.0

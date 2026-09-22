@@ -52,10 +52,47 @@ def validate_contact(env):
         raise ValueError("invalid administrator contact")
 
 
+PILOT_SCOPE_MAX = 80
+
+
+def validate_pilot_scope(env):
+    """The bounded pilot this deployment serves, in the reviewer's own words.
+
+    `scripts/ci/build_web.sh` forwards it to `pilotScopeDefine` in
+    lib/src/widgets/environment_banner.dart, where it is drawn straight into
+    the band's headline: "Bounded pilot: <scope>. Records here are real."
+
+    It is optional and stands alone: a pilot can be stamped on a build that
+    has no API URL yet, and the empty default is the honest state of a build
+    nobody stamped, which shows no band. What it may not be is a value the
+    band cannot draw. The band promises one line or two at every text scale,
+    so the scope is bounded at 80 characters. It is compared against its own
+    trimmed form because the client trims before deciding whether a pilot was
+    stamped at all: a value that is only whitespace would silently turn the
+    pilot band off, and a value with an accidental trailing newline from a
+    repository variable would be a stamp nobody can see is wrong. Control
+    characters cannot reach the band as anything a reviewer can read.
+
+    The value is public and non-secret, but it is never printed here: a
+    reason names the rule that failed, not the string that failed it.
+    """
+    scope = env.get("SPECIMEN_PILOT_SCOPE", "")
+    if not scope:
+        return
+    if scope != scope.strip():
+        raise ValueError("invalid pilot scope: leading or trailing whitespace")
+    if len(scope) > PILOT_SCOPE_MAX:
+        raise ValueError(
+            f"invalid pilot scope: longer than {PILOT_SCOPE_MAX} characters")
+    if not scope.isprintable():
+        raise ValueError("invalid pilot scope: unprintable character")
+
+
 if __name__ == "__main__":
     try:
         validate(os.environ)
         validate_contact(os.environ)
+        validate_pilot_scope(os.environ)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     print("Public build settings validated; values omitted.")

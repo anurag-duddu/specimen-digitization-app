@@ -40,6 +40,64 @@ def test_reject_malformed_administrator_contact(contact):
         MODULE.validate_contact({"SPECIMEN_ADMIN_CONTACT": contact})
 
 
+@pytest.mark.parametrize("scope", [
+    "",
+    "Ten original specimens",
+    "Ten original specimens, Hymenoptera drawer 4 (2026 pilot)",
+    "a",
+    "a" * 80,
+])
+def test_accept_pilot_scope_a_band_can_draw(scope):
+    MODULE.validate_pilot_scope({"SPECIMEN_PILOT_SCOPE": scope})
+
+
+def test_pilot_scope_stands_alone():
+    """It is not paired with the API URL. A bounded pilot can be stamped on a
+    build whose API address is still unset, and the client shows the band from
+    the build stamp alone."""
+    MODULE.validate_pilot_scope({"SPECIMEN_PILOT_SCOPE": "Ten original specimens"})
+    MODULE.validate({})
+
+
+@pytest.mark.parametrize("scope,reason", [
+    (" Ten original specimens", "whitespace"),
+    ("Ten original specimens ", "whitespace"),
+    # A repository variable that picked up a newline is the likeliest way this
+    # goes wrong, and the band would draw the stamp nobody can see is broken.
+    ("Ten original specimens\n", "whitespace"),
+    ("   ", "whitespace"),
+    ("a" * 81, "longer than 80"),
+    ("Ten original\nspecimens", "unprintable"),
+    ("Ten original\tspecimens", "unprintable"),
+    ("Ten original\x00specimens", "unprintable"),
+    ("Ten original\x7fspecimens", "unprintable"),
+])
+def test_reject_pilot_scope_the_band_cannot_draw(scope, reason):
+    with pytest.raises(ValueError) as raised:
+        MODULE.validate_pilot_scope({"SPECIMEN_PILOT_SCOPE": scope})
+    assert reason in str(raised.value)
+    # The reason names the rule, never the value: this file is the one gate
+    # that runs over public settings in a log anybody can read.
+    if scope.strip():
+        assert scope.strip() not in str(raised.value)
+
+
+def test_the_entry_point_runs_the_pilot_scope_gate():
+    """`validate` and `validate_contact` are both called from `__main__`, and
+    a third rule that nothing calls is not a gate."""
+    source = (Path(__file__).with_name("validate_public_settings.py")
+              .read_text(encoding="utf-8"))
+    entry = source.split('if __name__ == "__main__":', 1)[1]
+    assert "validate_pilot_scope(os.environ)" in entry
+
+
+def test_the_length_budget_is_the_one_the_band_promises():
+    """The band is one line or two at every text scale (finding V-15), and the
+    scope is drawn straight into its headline. The cap lives here because the
+    build is the only place that can refuse a value before it ships."""
+    assert MODULE.PILOT_SCOPE_MAX == 80
+
+
 @pytest.mark.parametrize("event,ref,live", [
     ("push", "refs/heads/main", True),
     ("pull_request", "refs/pull/1/merge", False),

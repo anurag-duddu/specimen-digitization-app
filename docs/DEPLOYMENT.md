@@ -96,16 +96,39 @@ token and cannot deploy.
 
 `scripts/ci/smoke_web_routes.py` runs between the deployment stamp and the
 artifact upload, so a build that fails it is never uploaded and therefore can
-never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites
-`firebase.json` declares, reads the route table out of
-`apps/specimen_digitization/lib/src/app/app_router.dart`, and proves three
+never be deployed. It serves `build/web` on 127.0.0.1 with the rewrites and
+the response headers `firebase.json` declares, reads the route table out of
+`apps/specimen_digitization/lib/src/app/app_router.dart`, and proves four
 things about the artifact: every declared location answers with the
-application shell rather than a 404, the design system gallery is absent from
+application shell rather than a 404, every response carries the security
+headers listed below, the design system gallery is absent from
 the release bundle, and `deployment.json` is the exact marker
 `scripts/ci/deploy_hosting.sh` and `scripts/ci/smoke_hosting.sh` accept. It
 contacts no host, holds no credential and deploys nothing. It says nothing
 about the public site: only `scripts/ci/smoke_hosting.sh` does that, after a
 deploy.
+
+#### The response headers Hosting sets
+
+`firebase.json` declares one `headers` block on `**` and one on
+`/deployment.json`. The `**` block sets `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: DENY`,
+`Content-Security-Policy: frame-ancestors 'none'; object-src 'none';
+base-uri 'self'` and `Permissions-Policy: camera=(), microphone=(),
+geolocation=()`. `SECURITY_HEADERS` in `scripts/ci/smoke_web_routes.py` is the
+same table, and the smoke asks every response for it, so a header dropped from
+the configuration fails the build rather than the site.
+
+Three omissions are deliberate. The policy names no `script-src` or
+`style-src`: Flutter web boots from an inline script the build writes into
+`index.html` and fetches CanvasKit and its wasm from `gstatic.com`, so a
+source list narrow enough to be worth having would have to track the engine's
+own hosts. There is no COOP or COEP: nothing this client does needs cross
+origin isolation, and it would break the reCAPTCHA Enterprise frame App Check
+uses. And `Permissions-Policy` grants nothing to `self`, because the web build
+asks for nothing: the in-app camera is behind `!kIsWeb`, so a web reviewer is
+offered the file picker rather than a capture button. Adding a web capture
+flow means revisiting the header and the test that holds it.
 
 ### Pushes to `main`
 

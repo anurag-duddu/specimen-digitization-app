@@ -95,10 +95,11 @@ mode are fixtures; no live inference is demonstrated.
 
 Production builds require generated Firebase client config,
 `SPECIMEN_API_BASE_URL=https://approved-api`, and on web
-`SPECIMEN_RECAPTCHA_SITE_KEY=<public reCAPTCHA v3 site key>`.
-The client uses ReCaptchaV3Provider, not Enterprise. Missing configuration shows
-an actionable setup screen. Mobile uses Firebase App Check default Play Integrity
-and DeviceCheck providers; registration/device attestation is an external gate.
+`SPECIMEN_RECAPTCHA_SITE_KEY=<public reCAPTCHA Enterprise site key>`.
+The client uses ReCaptchaEnterpriseProvider, not v3 (`lib/src/app_check.dart`).
+Missing configuration shows an actionable setup screen. Mobile uses Firebase App
+Check default Play Integrity and DeviceCheck providers; registration/device
+attestation is an external gate.
 An optional `SPECIMEN_AUTH_EMULATOR_HOST` points Firebase Auth at port 9099;
 production backend rejects emulator identities. No debug attestation fallback.
 

@@ -24,6 +24,12 @@ It serves `build/web` on the loopback interface with the rewrite rules
    and `scripts/ci/smoke_hosting.sh` verify, in the exact shape their streaming
    `jq` filters accept. A marker that fails here fails the deploy guard later,
    where the only way to learn about it is a refused production release.
+4. Every response carries the security headers `firebase.json` declares. The
+   local server applies the declared `headers` blocks the same way Hosting
+   does, and the sweep asks for them by name, so a header dropped from the
+   configuration fails here rather than on the public site. What the set must
+   contain is stated in `SECURITY_HEADERS` below; the values come out of
+   `firebase.json`, so the two have to agree.
 
 This script never contacts a live host. It binds 127.0.0.1 on an ephemeral
 port, serves files out of a directory, and makes no outbound request. It
@@ -68,6 +74,35 @@ GALLERY_LOCATION_ALLOWANCE = 1
 # A gallery marker has to be long enough and specific enough that its presence
 # in a bundle means gallery code was compiled into it.
 MARKER_MIN_LENGTH = 16
+
+# The headers every response from the deployed site has to carry, by lowercase
+# name and exact value. `firebase.json` is what actually sets them; this table
+# is what makes their absence a failure, so an entry deleted from the hosting
+# configuration is caught in the job that builds the artifact.
+#
+# There is deliberately no `script-src` or `style-src`. Flutter web boots from
+# an inline script the build writes into `index.html` and fetches CanvasKit and
+# its wasm from `gstatic.com`, so a source list narrow enough to be worth
+# having would have to name the engine's own hosts and would break on the next
+# engine revision. What is here is the part a document policy can state without
+# guessing: the page may not be framed, may embed no plugin, and may not have
+# its base URL rewritten. There is no COOP or COEP either: cross origin
+# isolation is not required by anything this client does, and turning it on
+# would break the reCAPTCHA Enterprise frame App Check depends on.
+#
+# `Permissions-Policy` denies all three: the web client asks for none of them.
+# The in app camera is behind `!kIsWeb` (`lib/src/intake.dart`,
+# `_cameraAvailable`), so the capture button is not drawn on the web at all,
+# and nothing under `lib/` or `web/` reads a microphone or a location.
+SECURITY_HEADERS: dict[str, str] = {
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "x-frame-options": "DENY",
+    "content-security-policy": (
+        "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+    ),
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+}
 
 
 class SmokeError(Exception):
@@ -379,6 +414,25 @@ class HostingConfig:
     public: str
     rewrites: tuple[tuple[str, str], ...]
     no_store: frozenset[str]
+    # Every declared `headers` block, in declaration order, as
+    # (source glob, ((key, value), ...)).
+    headers: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = ()
+
+
+def headers_for(config: HostingConfig, path: str) -> dict[str, str]:
+    """The headers Hosting would attach to a response for `path`.
+
+    Every block whose source matches contributes, in declaration order, and a
+    later block wins a key an earlier one already set. This repository's two
+    blocks set disjoint keys, so the precedence is not load bearing; it is
+    written down so a third block added later behaves the way the file reads.
+    """
+    applied: dict[str, str] = {}
+    for source, pairs in config.headers:
+        if matches_hosting_glob(source, path):
+            for key, value in pairs:
+                applied[key] = value
+    return applied
 
 
 def read_hosting_config(firebase_json: Path) -> HostingConfig:
@@ -401,17 +455,28 @@ def read_hosting_config(firebase_json: Path) -> HostingConfig:
         rewrites.append((source, destination))
 
     no_store: set[str] = set()
+    blocks: list[tuple[str, tuple[tuple[str, str], ...]]] = []
     for entry in hosting.get("headers", []):
         source = entry.get("source")
+        if not isinstance(source, str) or not source:
+            raise SmokeError("a hosting headers block names no source")
+        pairs: list[tuple[str, str]] = []
         for header in entry.get("headers", []):
-            if (
-                isinstance(source, str)
-                and header.get("key", "").lower() == "cache-control"
-                and "no-store" in header.get("value", "").lower()
-            ):
+            key = header.get("key")
+            value = header.get("value")
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise SmokeError(
+                    f"a header under {source!r} names no key and value pair"
+                )
+            pairs.append((key, value))
+            if key.lower() == "cache-control" and "no-store" in value.lower():
                 no_store.add(source)
+        blocks.append((source, tuple(pairs)))
     return HostingConfig(
-        public=public, rewrites=tuple(rewrites), no_store=frozenset(no_store)
+        public=public,
+        rewrites=tuple(rewrites),
+        no_store=frozenset(no_store),
+        headers=tuple(blocks),
     )
 
 
@@ -460,8 +525,12 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", kind or "application/octet-stream")
         self.send_header("Content-Length", str(len(body)))
-        if requested in self.config.no_store:
-            self.send_header("Cache-Control", "no-store")
+        # Attached to the requested location, not to the file the rewrite
+        # resolved to: Hosting matches a header block against the URL the
+        # browser asked for, so a deep link served from `/index.html` still
+        # gets whatever `**` declares.
+        for key, value in headers_for(self.config, requested).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -543,6 +612,23 @@ def app_shell_problems(body: str) -> list[str]:
         problems.append(f"no {EXPECTED_TITLE}")
     if EXPECTED_BOOTSTRAP not in body:
         problems.append(f"no {EXPECTED_BOOTSTRAP} reference")
+    return problems
+
+
+def security_header_problems(headers: dict[str, str]) -> list[str]:
+    """What `SECURITY_HEADERS` asks of a response that this one does not give.
+
+    The comparison is exact on the value, not a containment test: a policy
+    that has had a directive dropped out of it is a weaker policy, and a gate
+    that accepted a prefix would not say so.
+    """
+    problems: list[str] = []
+    for name, expected in SECURITY_HEADERS.items():
+        actual = headers.get(name)
+        if actual is None:
+            problems.append(f"{name} is missing")
+        elif actual != expected:
+            problems.append(f"{name} is {actual!r} rather than {expected!r}")
     return problems
 
 
@@ -682,14 +768,25 @@ def run(
     )
     failures: list[str] = []
 
-    print(f"Serving {root} with the rewrites {repo_root / 'firebase.json'} "
-          f"declares.", file=out)
+    print(f"Serving {root} with the rewrites and headers "
+          f"{repo_root / 'firebase.json'} declares.", file=out)
     print(f"{len(routes)} routes declared, {len(markers)} gallery markers "
           f"computed.", file=out)
 
+    # One entry per distinct problem, naming every location that had it. A
+    # header dropped from `firebase.json` is missing from every response, and a
+    # failure list with one line per location would bury the other checks.
+    header_problems: dict[str, list[str]] = {}
+    header_checked: list[str] = []
+
+    def check_headers(location: str, headers: dict[str, str]) -> None:
+        header_checked.append(location)
+        for problem in security_header_problems(headers):
+            header_problems.setdefault(problem, []).append(location)
+
     with LoopbackSite(root, config) as site:
         for location in ["/"] + [sample_location(route) for route in routes]:
-            status, _headers, body = site.get(location)
+            status, headers, body = site.get(location)
             problems = app_shell_problems(body) if status == 200 else ["no shell"]
             if status != 200 or problems:
                 failures.append(
@@ -699,9 +796,13 @@ def run(
                 print(f"  fail  {location}", file=out)
             else:
                 print(f"  shell {location}", file=out)
+            if status == 200:
+                check_headers(location, headers)
 
         for probe in STATIC_PROBES:
-            status, _headers, body = site.get(probe)
+            status, headers, body = site.get(probe)
+            if status == 200:
+                check_headers(probe, headers)
             if status != 200:
                 failures.append(f"{probe} answered {status}; the artifact is short "
                                 f"a file the shell loads")
@@ -730,6 +831,7 @@ def run(
                       file=out)
         else:
             _status, headers, body = site.get(f"/{MARKER_NAME}")
+            check_headers(f"/{MARKER_NAME}", headers)
             problems = marker_problems(body)
             if f"/{MARKER_NAME}" not in config.no_store:
                 problems.append(
@@ -744,6 +846,19 @@ def run(
                 print(f"  fail  /{MARKER_NAME}", file=out)
             else:
                 print(f"  ok    /{MARKER_NAME}", file=out)
+
+        for problem, locations in sorted(header_problems.items()):
+            failures.append(
+                f"security header: {problem} on {len(locations)} of "
+                f"{len(header_checked)} responses, first {locations[0]}"
+            )
+            print(f"  fail  header {problem}", file=out)
+        if not header_problems:
+            print(
+                f"  ok    {len(SECURITY_HEADERS)} security headers on "
+                f"{len(header_checked)} responses",
+                file=out,
+            )
 
     bundle = root / BUNDLE_NAME
     if not bundle.is_file():
@@ -786,8 +901,9 @@ def run(
     )
     print("", file=out)
     print(
-        f"Every declared route answers with the application shell, {gallery}, "
-        f"and the deployment marker is the one the deploy guard accepts.",
+        f"Every declared route answers with the application shell and carries "
+        f"the {len(SECURITY_HEADERS)} security headers, {gallery}, and the "
+        f"deployment marker is the one the deploy guard accepts.",
         file=out,
     )
     return 0
