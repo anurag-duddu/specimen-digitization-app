@@ -100,6 +100,7 @@ environments or production.
 
 ## Documentation
 
+- [Go-live readiness assessment](docs/execution/GO_LIVE_READINESS.md) and the [owner runbook](docs/execution/GO_LIVE_RUNBOOK.md)
 - [Runnable handoff, architecture and evidence index](docs/execution/HANDOFF.md)
 - [Product requirements](docs/product-requirements/PRD.md)
 - [Agent harness decision and alternatives](docs/product-requirements/HARNESS_OPTIONS.md)

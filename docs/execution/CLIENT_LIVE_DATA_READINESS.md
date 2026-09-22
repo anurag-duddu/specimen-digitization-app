@@ -3,6 +3,13 @@
 Written 2026-09-17 by the wave B slot `fe/release-client`
 (`docs/execution/FRONT_END_REFACTOR.md` section 3I, B3).
 
+> Corrections (2026-09-22): PR42 merged on 2026-09-14 as `461936d`, so item 1
+> of the quoted checklist is closed. The environment band's pilot state is
+> wired: `scripts/ci/build_web.sh` and `.github/workflows/ci-cd.yml` forward
+> `SPECIMEN_PILOT_SCOPE` on main pushes, so the "not wired" finding below is
+> resolved and only the repository variable remains unset. The current order
+> of work is in [GO_LIVE_RUNBOOK.md](GO_LIVE_RUNBOOK.md).
+
 **What this is.** An honest statement of what the Flutter client can be
 trusted to do when it meets real specimens, and of everything that still
 stands between the deployed client and the first real record. It covers the

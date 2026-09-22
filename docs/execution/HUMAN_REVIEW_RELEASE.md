@@ -1,5 +1,12 @@
 # Approved first release: human review
 
+> Amendment note (2026-09-22): the USD 5 ceiling and the version 1 scope
+> digest named below were superseded on 2026-09-14 by the USD 12 ceiling and
+> `human-review-release-scope/v2` (digest
+> `5c460d9ca7acc86ee0407584732d0cf1e27b1bc685a968f8094ce7ca133dfc15`); see
+> [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md). The selection
+> itself, the ten specimens and the human-review scope are unchanged.
+
 On 2026-09-08 the user selected:
 
 > Complete human review: process all 10, compare readings, correct and save

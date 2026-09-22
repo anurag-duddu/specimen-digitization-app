@@ -532,6 +532,23 @@ successful.
 - administrators are subject to the rules;
 - the branch must be up to date before merge.
 
+These protections are not self-sustaining. They lapsed while the repository
+was private on a GitHub plan that does not offer branch protection, and on
+2026-09-22 `main` reported `protected: false` while every earlier release
+had assumed otherwise. The protected data and runtime workflows depend on
+them directly: their admission requires GitHub's `GITHUB_REF_PROTECTED` flag
+to be `true`, which GitHub sets only when a protection rule or ruleset
+exists for the branch, so without protection those planes fail closed on
+their first context check regardless of any release envelope. Before any
+release, and after any plan or visibility change, verify:
+
+```bash
+gh api repos/anurag-duddu/specimen-digitization-app/branches/main --jq .protected
+```
+
+The answer must be `true`. Restoring protection is an owner action and the
+applied settings must be recorded in the session log.
+
 The GitHub `production` environment must accept deployments only from `main`.
 GitHub Actions' default token permission must remain read-only; only the deploy
 job receives `id-token: write`. Third-party actions remain pinned to immutable

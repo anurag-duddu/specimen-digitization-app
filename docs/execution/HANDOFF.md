@@ -1,5 +1,11 @@
 # Specimen product review handoff
 
+> Superseded (2026-09-22): this page is the 2026-09-08 snapshot and is kept
+> as history. Production Hosting is at the current `main` commit, the data
+> and runtime planes have never run live, and the current state, order and
+> owner steps are in [GO_LIVE_READINESS.md](GO_LIVE_READINESS.md) and
+> [GO_LIVE_RUNBOOK.md](GO_LIVE_RUNBOOK.md).
+
 > Current release update (2026-09-08): the user has authorized merging the
 > completed overnight work to main. [Branch reconciliation](BRANCH_RECONCILIATION.md)
 > documents the full audit. Earlier pending merge-authorization and CI statements
