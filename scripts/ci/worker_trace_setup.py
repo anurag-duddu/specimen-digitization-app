@@ -95,8 +95,9 @@ def store(token: bytes, gcloud: Gcloud, *, now: float) -> dict:
             "the writer secret parent already exists; the approval permits creation only when absent")
     parent = gcloud.json("secrets", "create", SECRET_ID, "--replication-policy=user-managed",
                          f"--locations={LOCATION}", "--format=json")
-    require(NATIVE_PARENT.fullmatch(parent.get("name", "")) is not None
-            and parent.get("replication", {}).get("userManaged", {}).get("replicas") == [{"location": LOCATION}],
+    replicas = parent.get("replication", {}).get("userManaged", {}).get("replicas")
+    require(NATIVE_PARENT.fullmatch(parent.get("name", "")) is not None and isinstance(replicas, list)
+            and [replica.get("location") for replica in replicas] == [LOCATION],
             "the created parent does not match the approved replication")
     workspace = Path(tempfile.mkdtemp(prefix="worker-trace-"))
     try:
