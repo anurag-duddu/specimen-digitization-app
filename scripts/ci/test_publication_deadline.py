@@ -1,4 +1,5 @@
 """Synthetic clocks, credentials and real owned processes; never cloud calls."""
+import hashlib
 import importlib
 import json
 import os
@@ -127,6 +128,35 @@ def test_original_packet_substitution_is_rejected(guard, tmp_path):
     packet.chmod(0o600)
     with pytest.raises(ValueError):
         guard.frozen_packet(packet, {"RELEASE_PACKET_SHA256": "0" * 64})
+
+
+@pytest.mark.parametrize("version,authorized,accepted", [
+    ("protected-release-gate/v1", None, True),  # G11: the gate record needs no owner-set commit
+    ("protected-release/v1", None, False),  # an envelope packet still does
+    ("protected-release/v1", "a" * 40, True),
+])
+def test_only_a_gate_record_is_supervised_without_the_retired_authorized_sha(guard, tmp_path, version, authorized, accepted):
+    context = importlib.import_module("release_context")
+    environment, workflow, identity = context.PLANES["runtime-build"]
+    packet = {"version": version, "plane": "runtime-build", "source_sha": "a" * 40, "expires_at_unix": 1790168400,
+              "release_run_id": 456, "release_run_attempt": 1}
+    path = tmp_path / "packet.json"
+    path.write_text(json.dumps(packet))
+    path.chmod(0o600)
+    env = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": context.REPOSITORY, "GITHUB_REPOSITORY_ID": "1360732425",
+           "GITHUB_REPOSITORY_OWNER_ID": "140138196", "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main",
+           "GITHUB_REF_PROTECTED": "true", "GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "456", "GITHUB_RUN_ATTEMPT": "1",
+           "GITHUB_WORKFLOW_REF": f"{context.REPOSITORY}/.github/workflows/{workflow}@refs/heads/main",
+           "DEPLOYMENT_ENVIRONMENT": environment, "RELEASE_PROJECT": context.PROJECT,
+           "RELEASE_SERVICE_ACCOUNT": f"{identity}@{context.PROJECT}.iam.gserviceaccount.com",
+           "RELEASE_PACKET_SHA256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    if authorized:
+        env["RELEASE_AUTHORIZED_SHA"] = authorized
+    if accepted:
+        assert guard.frozen_packet(path, env) == packet
+    else:
+        with pytest.raises(ValueError, match="RELEASE_AUTHORIZED_SHA"):
+            guard.frozen_packet(path, env)
 
 
 def test_workflow_auth_is_inside_one_guard_and_keeps_provenance():

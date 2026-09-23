@@ -16,13 +16,16 @@ import subprocess
 import stat
 import tempfile
 import time
+from types import SimpleNamespace
 
-from release_admission import (admit, digest, exact_keys, integer, materialize_inputs,
+from release_admission import (admit, digest, exact_keys, gh_json, integer, materialize_inputs,
                                private_bytes, read_bound_plan, read_packet, require, strict_json)
 from release_context import PROJECT, REPOSITORY
+import release_gate
 from release_google import Google
 import release_publication_deadline as publication
-from validate_release_packet import IMAGE
+import runtime_settings as committed
+from validate_release_packet import DIGEST, IMAGE, SHA
 from specimen_digitization.hub_models import SAM3_MODEL
 from specimen_digitization.release_budget import APPROVAL_SHA256
 from specimen_digitization.application.worker_timing import TIMING_VERSION, SAM_DISPATCH_REMAINING
@@ -668,6 +671,243 @@ def activate(google, plan, output):
             "worker_execution": observation.get("latestCreatedExecution"), "release_accepted": False,
             "native_reading_and_human_review_acceptance_pending": True}, sort_keys=True) + "\n")
 
+
+# The release from a gate record (owner decision G11, RELEASE.md section 3.2). The
+# envelope path above stays untouched until T2d removes it.
+LATEST, BY_REVISION = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST", "TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"
+SAM_INVOKER = "grant roles/run.invoker on specimen-sam to the worker runtime identity only"
+API_INVOKER = "grant roles/run.invoker on specimen-api to allUsers"
+
+
+def released_bodies(images, source_sha, run_id, attempt, roles):
+    """Cloud Run v2 bodies for the given roles, built only from the committed runtime settings."""
+    require(isinstance(source_sha, str) and SHA.fullmatch(source_sha), "invalid release source")
+    require(all(type(value) is int and 1 <= value <= 2**53 for value in (run_id, attempt)), "invalid release run")
+    labels = {"source-sha": source_sha, "release-run": str(run_id)}
+    bodies = {}
+    for role in roles:
+        spec = committed.ROLES[role]
+        require(not committed.pending(role), "a role with pending settings is never deployed")
+        require(isinstance(images.get(role), str) and IMAGE.fullmatch(images[role]) and f"/{role}@sha256:" in images[role],
+                "invalid immutable role image")
+        values = dict(spec["env"])
+        if role == "api":
+            generation = committed.READINESS_GENERATION
+            require(type(generation) is int and generation > 0, "invalid readiness generation")
+            values["SPECIMEN_READINESS_GENERATION"] = str(generation)
+        else:  # SAM 3 and the worker carry the same checkpoint digest.
+            digest_value = committed.SAM_CHECKPOINT_SHA256
+            require(isinstance(digest_value, str) and DIGEST.fullmatch(digest_value), "invalid SAM checkpoint digest")
+            values["SPECIMEN_SAM3_CHECKPOINT_SHA256"] = digest_value
+        if role == "sam":
+            extra = committed.SAM_SERVER_ENV
+            require(isinstance(extra, dict) and all(isinstance(value, str) for value in extra.values())
+                    and not {*extra} & {*values, *spec["secret_env"]}, "invalid SAM settings")
+            values.update(extra)
+        env = [{"name": name, "value": value} for name, value in values.items()]
+        for name, secret in spec["secret_env"].items():
+            version = committed.SECRET_VERSIONS[secret]
+            require(type(version) is int and version > 0, "pinned secret version required")
+            env.append(env_secret(name, f"{secret}/versions/{version}"))
+        container = {"image": images[role], "resources": {"limits": {"cpu": spec["cpu"], "memory": spec["memory"]}},
+                     "env": sorted(env, key=lambda item: item["name"])}
+        if role == "worker":
+            require(isinstance(spec["args"], list) and all(isinstance(arg, str) for arg in spec["args"]), "invalid worker arguments")
+            container["args"] = list(spec["args"])
+            bodies[role] = {"name": committed.WORKER_JOB, "labels": dict(labels), "template": {
+                "taskCount": 1, "parallelism": 1, "template": {"serviceAccount": spec["service_account"], "maxRetries": 0,
+                                                               "timeout": f"{spec['timeout_seconds']}s", "containers": [container]}}}
+            # The release defines the job and never starts it.
+            require(not {"runExecutionToken", "startExecutionToken"} & set(bodies[role]), "worker execution token forbidden")
+            continue
+        revision = f"specimen-{role}-{source_sha[:12]}-{run_id}-{attempt}"
+        require(len(revision) <= 63, "revision name too long")
+        container["ports"] = [{"containerPort": 8080}]
+        container["resources"].update(cpuIdle=True, startupCpuBoost=False)
+        scaling = {"minInstanceCount": 0, "maxInstanceCount": spec["max_instances"]}
+        template = {"revision": revision, "serviceAccount": spec["service_account"], "scaling": dict(scaling),
+                    "timeout": f"{spec['timeout_seconds']}s", "maxInstanceRequestConcurrency": spec["concurrency"],
+                    "executionEnvironment": "EXECUTION_ENVIRONMENT_GEN2", "containers": [container]}
+        if role == "sam":
+            template["volumes"] = [{"name": "checkpoint", "gcs": {"bucket": committed.BUCKET, "readOnly": True, "mountOptions": [
+                f"only-dir=application/sha256/{committed.SAM_CHECKPOINT_SHA256}/sam3-cache"]}}]
+            container["volumeMounts"] = [{"name": "checkpoint", "mountPath": "/model-cache"}]
+        bodies[role] = {"name": f"{committed.PREFIX}/services/specimen-{role}", "ingress": "INGRESS_TRAFFIC_ALL",
+                        "scaling": scaling, "labels": dict(labels), "template": template}
+    return bodies
+
+
+def rollback_guard(existing, source_sha, *, compare=None):
+    """Never replace a newer deployed commit: a labelled resource's commit must be this one or an ancestor."""
+    deployed = ((existing or {}).get("labels") or {}).get("source-sha")
+    if deployed is None or deployed == source_sha:
+        return
+    # Only full commit ids reach the GitHub API path.
+    require(isinstance(deployed, str) and SHA.fullmatch(deployed) and SHA.fullmatch(source_sha), "invalid deployed source label")
+    compared = (compare or gh_json)(f"repos/{REPOSITORY}/compare/{deployed}...{source_sha}")
+    require(isinstance(compared, dict) and compared.get("status") in {"ahead", "identical"}, "a newer commit is already deployed")
+
+
+def serving_revision(service):
+    """The one API revision that serves all traffic now, or None when none does; split traffic fails closed."""
+    live = [target for target in service.get("trafficStatuses") or [] if target.get("percent")]
+    if not live:
+        return None
+    require(len(live) == 1 and live[0].get("percent") == 100, "API traffic is split; reconcile before a release")
+    name = live[0].get("revision") or (service.get("latestReadyRevision") if live[0].get("type") == LATEST else None)
+    revision = name.split("/")[-1] if isinstance(name, str) else ""
+    require(re.fullmatch(r"specimen-api-[a-z0-9-]{1,50}", revision), "unknown serving API revision")
+    return revision
+
+
+def released_image(receipts, record, role):
+    """This run's build receipt for one role, checked as deploy() checks it, and its image attestation."""
+    raw = (receipts / f"runtime-image-{role}-{record['source_sha']}-{record['release_run_attempt']}" / f"{role}.json").read_text()
+    receipt = exact_keys(strict_json(raw), {"version", "role", "source_sha", "run_id", "run_attempt", "reference"}, "image receipt")
+    require(receipt["version"] == "runtime-image/v1" and receipt["role"] == role
+            and receipt["source_sha"] == record["source_sha"] and receipt["run_id"] == record["release_run_id"]
+            and receipt["run_attempt"] == record["release_run_attempt"], "stale build receipt")
+    require(isinstance(receipt["reference"], str) and IMAGE.fullmatch(receipt["reference"])
+            and f"/{role}@sha256:" in receipt["reference"], "invalid role image receipt")
+    verify_attestation("oci://" + receipt["reference"], record["source_sha"], "runtime-release.yml")
+    return receipt["reference"]
+
+
+def submit_released(google, body, role, source_sha):
+    """Create or replace one role and return the accepted operation. SAM 3 serves its latest ready revision; an
+    API revision that already serves keeps all traffic while the new one waits at 0% as `candidate`."""
+    existing = google.request("run", "GET", body["name"], missing=True)
+    rollback_guard(existing, source_sha)
+    if role != "worker":
+        serving = serving_revision(existing) if role == "api" and existing is not None else None
+        body["traffic"] = [{"type": LATEST, "percent": 100}] if serving is None else [
+            {"type": BY_REVISION, "revision": serving, "percent": 100},
+            {"type": BY_REVISION, "revision": body["template"]["revision"], "percent": 0, "tag": "candidate"}]
+    if existing is None:
+        parent, name = body["name"].rsplit("/", 1)
+        return google.request("run", "POST", parent, body=body, params={"jobId" if role == "worker" else "serviceId": name})
+    if existing.get("etag"):
+        body["etag"] = existing["etag"]
+    return google.request("run", "PATCH", body["name"], body=body)
+
+
+def observe_released(google, body, role, operation):
+    """Wait for one role and require it reconciled exactly as sent."""
+    google.wait("run", operation, maximum_seconds=900)
+    observed = google.request("run", "GET", body["name"])
+    require(observed.get("reconciling", False) is False
+            and (observed.get("terminalCondition") or {}).get("state") == "CONDITION_SUCCEEDED", f"{role} deployment did not reconcile")
+    verify_runtime_template(observed, body, role=role)
+    if role != "worker":
+        require((observed.get("latestReadyRevision") or "").split("/")[-1] == body["template"]["revision"],
+                f"{role} revision is not ready")
+    require(role != "sam" or committed.SAM_URL in (observed.get("urls") or []), "SAM URL differs from the committed audience")
+    return observed
+
+
+def invoker_problems(google, roles):
+    """Read-only: each deployed service's invoker policy must be exact. Every missing binding is named at once."""
+    problems = []
+    if "sam" in roles:
+        policy = google.run_iam_policy(f"{committed.PREFIX}/services/specimen-sam")
+        bindings = [binding for binding in policy.get("bindings", []) if binding.get("role") == "roles/run.invoker"]
+        if ({member for binding in bindings for member in binding.get("members", [])} != {f"serviceAccount:{committed.WORKER_EMAIL}"}
+                or any(binding.get("condition") is not None for binding in bindings)):
+            problems.append(SAM_INVOKER)
+    if "api" in roles:
+        policy = google.run_iam_policy(f"{committed.PREFIX}/services/specimen-api")
+        try:
+            # The envelope path's exact, unconditional allUsers rule, applied to the policy just read.
+            verify_public_api_invoker(SimpleNamespace(run_iam_policy=lambda resource: policy))
+        except ValueError:
+            problems.append(API_INVOKER)
+    return problems
+
+
+def route_all_traffic(google, api, revision, failure):
+    """One traffic-only PATCH that sends all traffic to `revision` and lists no tag; then wait and re-read."""
+    operation = google.request("run", "PATCH", api["name"], params={"updateMask": "traffic"}, body={
+        "name": api["name"], "etag": api["etag"], "traffic": [{"type": BY_REVISION, "revision": revision, "percent": 100}]})
+    google.wait("run", operation, maximum_seconds=900)
+    api = google.request("run", "GET", api["name"])
+    require(api.get("reconciling", False) is False and (api.get("terminalCondition") or {}).get("state") == "CONDITION_SUCCEEDED"
+            and serving_revision(api) == revision and not any(target.get("tag") for target in api.get("trafficStatuses") or []),
+            failure)
+    return api
+
+
+def promote_api(google, api, body, source_sha, receipt):
+    """Readiness on the candidate URL, then all traffic to the new revision, then readiness on the service URL.
+    `promoted` means the new revision passed readiness and serves all traffic, so a failed second check keeps it."""
+    revision = body["template"]["revision"]
+    if not any(target.get("tag") == "candidate" for target in body["traffic"]):
+        verify_public_api(api.get("uri"), source_sha)
+        require(serving_revision(api) == revision, "the new API revision does not serve all traffic")
+        receipt["promoted"] = True
+        return
+    verify_public_api(next((target.get("uri") for target in api.get("trafficStatuses") or []
+                            if target.get("tag") == "candidate"
+                            and (target.get("revision") or "").split("/")[-1] == revision), None), source_sha)
+    api = route_all_traffic(google, api, revision, "API promotion did not reconcile")
+    receipt["promoted"] = True
+    verify_public_api(api.get("uri"), source_sha)
+
+
+def remove_candidate(google, name, previous):
+    """On the way out of a failed release: the previous revision keeps all traffic and no tag is listed."""
+    try:
+        route_all_traffic(google, google.request("run", "GET", name), previous, "candidate tag removal did not reconcile")
+    except Exception:
+        raise ValueError("the API candidate failed a later check and its tag could not be removed; reconcile") from None
+
+
+def deploy_released(path: Path, receipts: Path, output: Path):
+    """Deploy, from a gate record, each role whose committed settings are complete: SAM 3, the worker job, the API.
+    IAM is read, never written; the worker job is defined, never run. The receipt holds names, revisions and
+    image digests only, never a secret or a private id."""
+    google = Google(path, "runtime")
+    record = google.packet
+    require(release_gate.is_gate_record(record), "a gate record is required")
+    sha, run_id, attempt = record["source_sha"], record["release_run_id"], record["release_run_attempt"]
+    missing = {role: committed.pending(role) for role in ("api", "worker", "sam")}
+    roles = [role for role in ("sam", "worker", "api") if not missing[role]]
+    receipt = {"version": "runtime-deployed/v1", "source_sha": sha, "run_id": run_id, "run_attempt": attempt,
+               "deployed": {}, "pending": missing, "promoted": False, "worker_executed": False}
+    for role in (role for role, names in missing.items() if names):
+        print(f"Runtime role {role} is not deployed; pending committed settings: {', '.join(missing[role])}.")
+    tagged = None  # The previous API revision, once a PATCH that tags the candidate has been accepted.
+    try:
+        if not roles:
+            return
+        google.registry_login()
+        images = {role: released_image(receipts, record, role) for role in roles}
+        bodies = released_bodies(images, sha, run_id, attempt, roles)
+        observed = {}
+        for role in roles:
+            operation = submit_released(google, bodies[role], role, sha)
+            if role == "api" and bodies["api"]["traffic"][-1].get("tag") == "candidate":
+                tagged = bodies["api"]["traffic"][0]["revision"]
+            observed[role] = observe_released(google, bodies[role], role, operation)
+            receipt["deployed"][role] = {"name": observed[role]["name"], "image": images[role], **(
+                {"generation": observed[role].get("generation"), "etag": observed[role].get("etag")} if role == "worker"
+                else {"revision": bodies[role]["template"]["revision"]})}
+        problems = invoker_problems(google, roles)
+        if problems:
+            # Fixed, value-free owner actions from T4's list; this release never changes IAM.
+            print("Runtime release needs owner action: " + "; ".join(problems) + ".")
+            raise ValueError("owner action required: " + "; ".join(problems))
+        if "api" in roles:
+            promote_api(google, observed["api"], bodies["api"], sha, receipt)
+    except BaseException:
+        # Any failure after the tag was accepted and before promotion removed it: no tag URL may keep reaching a
+        # revision that has not passed every check. A first release has no serving revision and so no tag.
+        if tagged is not None and not receipt["promoted"]:
+            remove_candidate(google, bodies["api"]["name"], tagged)
+        raise
+    finally:
+        output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plane", choices=["runtime", "runtime-build"], required=True)
@@ -686,12 +926,18 @@ def main():
         if args.publish_role:
             publication.bind_child(read_packet(args.packet, dict(os.environ)))
         packet = admit(args.packet, args.plane)
+        gate = release_gate.is_gate_record(packet)
         if args.publish_role:
             require(args.plane == "runtime-build" and args.output is not None, "build identity and output required")
             publish_role(args.packet, args.publish_role, args.output)
         elif args.deploy:
             require(args.plane == "runtime" and args.output is not None and args.receipts is not None, "release inputs required")
-            deploy(args.packet, args.receipts, args.output)
+            (deploy_released if gate else deploy)(args.packet, args.receipts, args.output)
+        elif gate and args.admit:
+            # A gate record has no plan; the publication supervisor's admission needs only the fixed provider.
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
+                handle.write(f"provider={packet['identity']['provider']}\n")
+            print("Protected admission passed; cloud readiness and product acceptance are separate gates.")
         else:
             plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
             with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:

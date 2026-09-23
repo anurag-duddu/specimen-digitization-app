@@ -238,8 +238,9 @@ and T2e the reuse of an unchanged SAM 3 image.
     traffic under the tag `candidate`. On the candidate URL, `/version`
     reports the merged commit, `/health/ready` passes and an anonymous
     `/v1/session` is refused. Only then does traffic move to 100%, and the same
-    three checks run on the service URL. Its invoker policy must be exactly
-    `allUsers`, unconditionally.
+    three checks run on the service URL. A candidate that fails any later
+    check loses its tag, and the previous revision keeps all traffic. Its
+    invoker policy must be exactly `allUsers`, unconditionally.
 - IAM is verified, never changed. The invoker policies are checked after
   every deployable role is deployed and before the API is promoted, and all
   missing bindings are reported together. The first release creates the

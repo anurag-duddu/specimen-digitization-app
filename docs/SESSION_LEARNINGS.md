@@ -11839,6 +11839,34 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The repository deletes merged branches (`delete_branch_on_merge`), so a PR stacked on another's branch retargets to `main` when that one merges.
 - Failed approaches: none.
 - Remaining follow-ups: in T2b, the publication supervisor must check the context without the retired variable, and its `--admit` step must accept a gate record without a plan. In T2c, the admission job's timeout must exceed the 3,300-second CI wait. If CI is re-run with "Re-run failed jobs" rather than "Re-run all jobs", the gate may fail closed; this is unverified.
+
+### 2026-09-23 — Go-live release workstream (S2), T2b: the runtime deploy from a gate record with pinned settings
+
+- Task: the S2 session, brief item T2, step two (`docs/execution/golive/RELEASE.md` section 3.2).
+- Branch/worktree: `golive/release-runtime-deploy`, stacked on #91's branch. An Opus subagent implemented it test-first in an isolated worktree, in six commits over three review rounds with this session.
+- Outcome:
+  - `scripts/ci/runtime_settings.py` commits every non-secret runtime value. That includes pinned secret versions (HF v2; Logfire, Maps, source registry, collection bindings and worker actor uid v1) and the public 50-byte readiness marker's name. A pending value keeps its role undeployed.
+  - `deploy_runtime.py --deploy` with a gate record deploys SAM 3, then the worker job definition (never run), then the API. The API is deployed as a 0% candidate, checked for readiness on the candidate URL, and then promoted.
+  - IAM is read, never written, and every missing invoker binding is named at once.
+  - The rollback guard refuses to replace a newer deployed commit.
+  - A candidate that fails any later check loses its tag, and the previous revision keeps all traffic.
+  - The receipt holds names and digests only.
+  - The publication supervisor accepts a gate record without the retired variable.
+  - The envelope path is untouched until T2d.
+- Commits/PRs: red `e584fec`; green `29c1b35`; pins and lab guard `3e6d5ad`; tag removal `7b11efd`; SAM 300 s and worker checkpoint digest `f4ab83a`; any-failure tag removal `84c3c1e`; this closeout.
+- Validation actually run:
+  - Red: the new module failed at collection, and the publication test failed on the retired variable.
+  - Green: 205 targeted tests passed on the integrated head. `scripts/` passed 1,685 with 50 skipped at `3e6d5ad`; the later commits were run targeted only, because the 1-minute load was 17-41.
+  - `test_deployment_policy` passed, and pre-commit passed at every commit.
+- Durable learnings:
+  - After a failed candidate, `latestReadyRevision` points at the failed revision. The revision to keep is the one `trafficStatuses` shows serving all traffic.
+  - Tag URLs inherit `allUsers`, so a candidate that never passed readiness must lose its tag on every failure path, not only a readiness failure.
+  - Committing pinned secret versions and marker generations turns every credential change into a reviewed pull request, and the release needs no permission to discover them.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - Pending settings: the readiness generation once the owner uploads the marker, the SAM checkpoint digest once uploaded, S3's per-run SAM server settings, and the worker's drain arguments.
+  - Unverified until the first live deploy: that Cloud Run echoes templates exactly, and that `urls` includes the deterministic SAM URL.
+  - Re-run all jobs after a failure, because the receipts are per attempt.
 ### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
