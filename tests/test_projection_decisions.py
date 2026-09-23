@@ -395,12 +395,12 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
     s.run.fields = {
         "city": TracedField(state=ValueState.SUPPORTED, literal="Chicago"),
         "county": TracedField(),
-        "habitat": TracedField(),
+        "label_notes": TracedField(),
     }
     assert "AppendRecordVersionV2" not in ops(writes(s, locate, size, "worker-uid"))
     s.run.disposition = Disposition.REVIEW
     s.run.reasons = ["mandatory_unresolved:county", "label_coverage_unconfirmed"]
-    s.run.field_groups = {"city": "mandatory", "county": "mandatory", "habitat": "optional"}
+    s.run.field_groups = {"city": "mandatory", "county": "mandatory", "label_notes": "optional"}
     s.run.disposition_summary = "Needs human review under insects-clearance-v1: county unresolved."
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
@@ -415,7 +415,7 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
     assert [(r["fieldKey"], r["state"], r["fieldGroup"], r["candidateId"]) for r in resolved] == [
         ("city", "supported", "mandatory", candidate["id"]),
         ("county", "unknown", "mandatory", None),
-        ("habitat", "unknown", "optional", None),
+        ("label_notes", "unknown", "optional", None),
     ]
     findings = rows(result, "AppendValidationFindingV2")
     assert [(f["ruleId"], f["fieldKey"], f["reasonCode"]) for f in findings] == [

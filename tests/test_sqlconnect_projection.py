@@ -168,3 +168,104 @@ def test_saves_project_every_stage_one_to_five_row_once(tmp_path, caplog):
         assert len(raw["t"]) == 2 and not raw["s"] & raw["t"]
     finally:
         actor_uid.reset(token)
+
+
+def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, caplog):
+    from test_projection_decisions import (
+        DecidedTranscript,
+        Difference,
+        Handoff,
+        HarnessRun,
+        ToolCallRecord,
+        TracedField,
+    )
+    from specimen_digitization.application.domain import (
+        AuditEvent,
+        Disposition,
+        Lookup,
+        LookupStatus,
+        ValueState,
+    )
+
+    token = actor_uid.set("synthetic-reviewer")
+    try:
+        scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+        principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+        blobs = LocalBlobs(tmp_path / "blobs")
+        repo = SqlConnectRepository(project="demo-specimen-data", emulator_host=sql_emulator_host(), graph_blobs=blobs)
+        s = specimen(blobs, scope, principal.user_id)
+        s.run = HarnessRun()
+        created = repo.create(principal, s, "ingest:" + s.id, digest({"create": s.id}))
+        run = processed(created, blobs).run
+        left, right = run.observations
+        region = run.regions[0]
+        call_raw = blobs.put(b'{"selected": "left"}')
+        call = left.model_copy(update={"id": Observation.model_fields["id"].default_factory(), "route_id": "first-pass", "literal_text": "", "raw_ref": call_raw, "raw_sha256": call_raw})
+        run.transcripts = [
+            DecidedTranscript(
+                **run.transcripts[0].model_dump(),
+                decision_kind="first_pass",
+                selected_observation_id=left.id,
+                first_pass_call=call,
+                differences=[Difference(number=1, spans={left.id: {"start": 11, "end": 12, "text": "l"}, right.id: {"start": 11, "end": 12, "text": "1"}}, verdict=left.id, material=True)],
+                handoffs=[
+                    Handoff(observation_id=left.id, role="decided_transcript", handed_text=left.literal_text),
+                    Handoff(observation_id=right.id, role="raw_reading", handed_text=right.literal_text, note="Reads the l as a one."),
+                ],
+            )
+        ]
+        record = blobs.put(b'{"place_id": "fixture-place", "outcome": "success", "response_sha256": "8888"}')
+        found = Lookup(provider="google-maps-geocoding", adapter_version="geocode-1", query={"address": "Chicago, Ill."}, status=LookupStatus.SUCCESS, metadata={"locator": "place/fixture-place"}, raw_ref=record, digest="8" * 64)
+        run.lookups = [found]
+        run.tool_calls = [
+            ToolCallRecord(call_key="lookup:geocode:decided_transcript:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"candidates": [{"place_id": "fixture-place"}]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
+        ]
+        run.fields = {
+            "city": TracedField(state=ValueState.SUPPORTED, literal="Chicago", authority_id="fixture-place", evidence_ids=[found.id], input_source="decided_transcript", source_region_id=region.id),
+            "date_visited_from": TracedField(state=ValueState.SUPPORTED, literal="VII-46", parsed="1946-07", input_source="raw_reading", source_region_id=region.id, source_observation_id=right.id, precision="month", century_rule="date-rules-v1:two_digit_year_century=1900"),
+            "county": TracedField(),
+        }
+        run.field_groups = {"city": "mandatory", "date_visited_from": "mandatory", "county": "mandatory"}
+        run.disposition, run.reasons = Disposition.REVIEW, ["mandatory_unresolved:county"]
+        run.disposition_summary = "Needs human review: county unresolved."
+        created.audit.append(AuditEvent(actor=principal.user_id, action="review_field", reason="Checked the label", after={"literal": "Cook"}))
+        with caplog.at_level(logging.WARNING):
+            saved = repo.save(principal, created, 1, "result:1:" + s.id, digest({"save": s.id}))
+        assert not [r for r in caplog.records if "Projection" in r.getMessage()], [r.getMessage() for r in caplog.records]
+        runid = saved.run.id
+        found_rows = admin(f"""query {{
+ modelObservations(where:{{runId:{{eq:"{runid}"}}}}) {{ id independent stepKey }}
+ transcriptionVersions(where:{{runId:{{eq:"{runid}"}}}}) {{ decisionKind selectedObservationId firstPassObservationId unresolved spans }}
+ harnessInputs(where:{{runId:{{eq:"{runid}"}}}}) {{ role handedText note }}
+ evidenceItems(where:{{runId:{{eq:"{runid}"}}}}) {{ id source locator responseSha256 }}
+ toolCalls(where:{{runId:{{eq:"{runid}"}}}}) {{ fieldKeys source outcome transcriptionVersionId evidenceId }}
+ fieldCandidates(where:{{runId:{{eq:"{runid}"}}}}) {{ fieldKey parsedValue inputSource sourceObservationId sourceTranscriptionId }}
+ recordVersions(where:{{runId:{{eq:"{runid}"}}}}) {{ id disposition summary reasonCodes }}
+ reviewDecisions(where:{{specimenId:{{eq:"{s.id}"}}}}) {{ baseRevision resultingRevision correction }}
+}}""")
+        assert sorted(o["independent"] for o in found_rows["modelObservations"]) == [False, True, True]
+        (decision,) = found_rows["transcriptionVersions"]
+        assert decision["decisionKind"] == "first_pass" and decision["unresolved"] is False
+        assert bare(decision["selectedObservationId"]) == bare(left.id)
+        assert bare(decision["firstPassObservationId"]) == bare(call.id)
+        assert sorted(h["role"] for h in found_rows["harnessInputs"]) == ["decided_transcript", "raw_reading"]
+        (evidence,) = found_rows["evidenceItems"]
+        assert (evidence["locator"], evidence["responseSha256"]) == ("place/fixture-place", "8" * 64)
+        (tool,) = found_rows["toolCalls"]
+        assert tool["fieldKeys"] == ["country", "city"] and bare(tool["evidenceId"]) == bare(found.id)
+        candidates = {c["fieldKey"]: c for c in found_rows["fieldCandidates"]}
+        assert candidates["date_visited_from"]["parsedValue"] == {"value": "1946-07", "precision": "month", "century_rule": "date-rules-v1:two_digit_year_century=1900"}
+        assert bare(candidates["date_visited_from"]["sourceObservationId"]) == bare(right.id)
+        (record_row,) = found_rows["recordVersions"]
+        assert record_row["disposition"] == "needs_human_review" and record_row["summary"] == "Needs human review: county unresolved."
+        (review,) = found_rows["reviewDecisions"]
+        assert (review["baseRevision"], review["resultingRevision"]) == (1, 2)
+        assert review["correction"]["action"] == "review_field"
+        counts_after = admin(f"""query {{
+ resolvedFields(where:{{recordVersionId:{{eq:"{record_row['id']}"}}}}) {{ fieldKey fieldGroup }}
+ validationFindings(where:{{recordVersionId:{{eq:"{record_row['id']}"}}}}) {{ ruleId fieldKey }}
+}}""")
+        assert sorted(r["fieldKey"] for r in counts_after["resolvedFields"]) == ["city", "county", "date_visited_from"]
+        assert counts_after["validationFindings"] == [{"ruleId": "mandatory_unresolved", "fieldKey": "county"}]
+    finally:
+        actor_uid.reset(token)

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .domain import Observation, Run, Specimen, Transcript
-from .storage import canonical_json
+from .storage import canonical_json, digest
 
 NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL, "urn:fieldmuseum:specimen-digitization:projection:v1"
@@ -55,6 +55,8 @@ class Write:
 
 Locate = Callable[[str], Blob]
 Size = Callable[[str], int]
+# A material difference with one of these verdicts leaves the region unresolved.
+OPEN_VERDICTS = ("neither", "uncertain")
 
 
 def _write(operation: str, variables: dict, *key_parts: object) -> Write:
@@ -62,8 +64,18 @@ def _write(operation: str, variables: dict, *key_parts: object) -> Write:
     return Write(operation, variables, key)
 
 
-def writes(specimen: Specimen, locate: Locate, size: Size, actor: str) -> list[Write]:
-    """Every row the specimen supports so far, each after the rows it references."""
+def writes(
+    specimen: Specimen,
+    locate: Locate,
+    size: Size,
+    actor: str,
+    reviewer: bool = False,
+) -> list[Write]:
+    """Every row the specimen supports so far, each after the rows it references.
+
+    Review decisions are included only for a reviewer's save: their operation
+    admits no other role.
+    """
     result = [_original(specimen, locate)]
     run = specimen.run
     if not run.profile_snapshot:
@@ -79,15 +91,44 @@ def writes(specimen: Specimen, locate: Locate, size: Size, actor: str) -> list[W
         )
     result += [_region(specimen, region) for region in run.regions]
     assets: set[str] = set()
+
+    def asset(ref: str, kind: str) -> str:
+        """Write a blob's asset row once, before the first row that refers to it."""
+        write = _blob_asset(specimen, ref, kind, locate, actor)
+        if write.key not in assets:
+            write.variables["byteSize"] = str(size(ref))
+            assets.add(write.key)
+            result.append(write)
+        return write.variables["id"]
+
     for observation in run.observations:
-        raw = _raw_asset(specimen, observation, locate, actor)
-        if raw.key not in assets:
-            raw.variables["byteSize"] = str(size(observation.raw_ref))
-            assets.add(raw.key)
-            result.append(raw)
-        result.append(_reading(run, observation, raw.variables["id"]))
+        result.append(_reading(run, observation, asset(observation.raw_ref, "raw_response")))
     result += [c for t in run.transcripts if (c := _comparison(run, t)) is not None]
+    decisions: dict[str, str] = {}
+    for transcript in run.transcripts:
+        result += _first_pass(run, transcript, asset, decisions)
+    evidence = _evidence(run, asset)
+    result += evidence
+    recorded = {w.variables["id"] for w in evidence}
+    result += [
+        _tool_call(run, record, decisions, recorded)
+        for record in getattr(run, "tool_calls", None) or []
+    ]
+    candidates: dict[str, str] = {}
+    result += _fields(run, decisions, recorded, candidates)
+    if run.disposition:
+        result += _record(run, candidates)
+    if reviewer:
+        result += _review_decisions(specimen)
     return result
+
+
+def _value(item):
+    return item.value if hasattr(item, "value") else item
+
+
+def _plain(item):
+    return item.model_dump(mode="json") if hasattr(item, "model_dump") else item
 
 
 def _original(specimen: Specimen, locate: Locate) -> Write:
@@ -191,10 +232,10 @@ def _region(specimen: Specimen, region) -> Write:
     )
 
 
-def _raw_asset(
-    specimen: Specimen, observation: Observation, locate: Locate, actor: str
+def _blob_asset(
+    specimen: Specimen, ref: str, kind: str, locate: Locate, actor: str
 ) -> Write:
-    blob = locate(observation.raw_ref)
+    blob = locate(ref)
     return _write(
         "AppendSourceAssetV2",
         {
@@ -203,23 +244,30 @@ def _raw_asset(
                 "asset", specimen.id, blob.bucket, blob.object_name, blob.generation
             ),
             "specimenId": specimen.id,
-            "kind": "raw_response",
+            "kind": kind,
             "parentAssetId": None,
             "bucket": blob.bucket,
             "objectName": blob.object_name,
             "generation": blob.generation,
-            "sha256": observation.raw_sha256,
+            # The stored bytes' own digest; a recorded response digest can differ (G26).
+            "sha256": ref.partition(":")[0],
             "mimeType": "application/json",
             "byteSize": None,
             "width": None,
             "height": None,
-            "acquisitionMethod": "model_response",
+            "acquisitionMethod": "model_response" if kind == "raw_response" else "lookup",
             "uploaderUid": actor,
         },
     )
 
 
-def _reading(run: Run, observation: Observation, raw_asset_id: str) -> Write:
+def _reading(
+    run: Run,
+    observation: Observation,
+    raw_asset_id: str,
+    independent: bool = True,
+    step_key: str | None = None,
+) -> Write:
     return _write(
         "AppendModelObservationV2",
         {
@@ -227,7 +275,8 @@ def _reading(run: Run, observation: Observation, raw_asset_id: str) -> Write:
             "runId": run.id,
             "regionId": _region_row(run.id, observation.region_id),
             "rawAssetId": raw_asset_id,
-            "stepKey": f"transcribe:{observation.region_id}:{observation.route_id}",
+            "stepKey": step_key
+            or f"transcribe:{observation.region_id}:{observation.route_id}",
             "provider": observation.provider,
             "modelVersion": observation.model_id,
             "promptVersion": observation.prompt_version,
@@ -244,7 +293,7 @@ def _reading(run: Run, observation: Observation, raw_asset_id: str) -> Write:
             "outcome": observation.completion_state
             or observation.finish_state
             or "unknown",
-            "independent": True,
+            "independent": independent,
             "routeId": observation.route_id,
             "unreadableSpans": list(observation.unreadable_spans),
         },
@@ -276,3 +325,310 @@ def _comparison(run: Run, transcript: Transcript) -> Write | None:
             "reasons": list(transcript.alignment_reasons),
         },
     )
+
+
+def _decision_kind(run: Run, transcript: Transcript) -> str | None:
+    kind = getattr(transcript, "decision_kind", None)
+    if kind:
+        return kind
+    if transcript.actor:
+        return "human"
+    readings = {o.id: o for o in run.observations}
+    texts = {readings[i].literal_text for i in transcript.observation_ids if i in readings}
+    if transcript.resolved and len(transcript.observation_ids) >= 2 and len(texts) == 1:
+        return "identical_readings"
+    return None
+
+
+def _first_pass(run: Run, transcript: Transcript, asset, decisions: dict) -> list[Write]:
+    """A region's decided transcript, the first pass's call and each handoff."""
+    kind = _decision_kind(run, transcript)
+    if kind is None:
+        return []
+    result = []
+    call = getattr(transcript, "first_pass_call", None) if kind == "first_pass" else None
+    if call is not None:
+        step = f"first_pass:{transcript.region_id}"
+        raw = asset(call.raw_ref, "raw_response")
+        result.append(_reading(run, call, raw, independent=False, step_key=step))
+    if hasattr(transcript, "selected_observation_id"):
+        selected = transcript.selected_observation_id
+    else:
+        # Today's domain: identical readings decide by any one of them.
+        selected = transcript.observation_ids[0] if kind == "identical_readings" else None
+    differences = [_plain(d) for d in getattr(transcript, "differences", None) or []]
+    still_open = [
+        d for d in differences if d.get("material") and d.get("verdict") in OPEN_VERDICTS
+    ]
+    if kind == "human":
+        unresolved = not transcript.resolved
+    else:
+        unresolved = selected is None or bool(still_open)
+    content = {
+        "kind": kind,
+        "selected": selected,
+        "text": transcript.text or "",
+        "differences": differences,
+        "unresolved": unresolved,
+        "rationale": transcript.reason,
+        "call": call.id if call else None,
+    }
+    decision = derived_id("transcription", run.id, transcript.region_id, digest(content))
+    decisions[transcript.region_id] = decision
+    result.append(
+        _write(
+            "AppendTranscriptionVersionV2",
+            {
+                "id": decision,
+                "runId": run.id,
+                "literalText": transcript.text or "",
+                "spans": differences,
+                "alternatives": still_open if differences else list(transcript.alternatives),
+                "unresolved": unresolved,
+                "regionId": transcript.region_id,
+                "decisionKind": kind,
+                "selectedObservationId": selected,
+                "firstPassObservationId": call.id if call else None,
+                "rationale": transcript.reason,
+            },
+        )
+    )
+    for handoff in getattr(transcript, "handoffs", None) or []:
+        if handoff.handed_text is None:
+            continue
+        result.append(
+            _write(
+                "AppendHarnessInputV1",
+                {
+                    "id": derived_id("handoff", decision, handoff.observation_id),
+                    "runId": run.id,
+                    "transcriptionVersionId": decision,
+                    "observationId": handoff.observation_id,
+                    "role": handoff.role,
+                    "handedText": handoff.handed_text,
+                    "note": handoff.note,
+                },
+            )
+        )
+    return result
+
+
+def _evidence(run: Run, asset) -> list[Write]:
+    """Lookups and evidence with a stored response; the rest stay in the snapshot."""
+    result = []
+    for found in run.lookups:
+        if not (found.raw_ref and found.digest):
+            continue
+        result.append(
+            _write(
+                "AppendEvidenceItemV2",
+                {
+                    "id": found.id,
+                    "runId": run.id,
+                    "source": found.provider,
+                    "sourceVersion": str(
+                        found.metadata.get("source_version") or found.adapter_version
+                    ),
+                    "adapterVersion": found.adapter_version,
+                    "query": dict(found.query),
+                    "outcome": _value(found.status),
+                    "locator": str(found.metadata.get("locator") or f"lookup/{found.id}"),
+                    "responseSha256": found.digest,
+                    "capturedAt": found.retrieved_at,
+                    "rawAssetId": asset(found.raw_ref, "lookup_response"),
+                },
+            )
+        )
+    for item in run.evidence:
+        if not (item.raw_ref and item.digest):
+            continue
+        result.append(
+            _write(
+                "AppendEvidenceItemV2",
+                {
+                    "id": item.id,
+                    "runId": run.id,
+                    "source": item.source,
+                    "sourceVersion": "unrecorded",
+                    "adapterVersion": item.kind,
+                    "query": {},
+                    "outcome": "recorded",
+                    "locator": item.locator,
+                    "responseSha256": item.digest,
+                    "capturedAt": item.created_at,
+                    "rawAssetId": asset(item.raw_ref, "evidence_record"),
+                },
+            )
+        )
+    return result
+
+
+def _tool_call(run: Run, record, decisions: dict, recorded: set) -> Write:
+    decided = record.input_source == "decided_transcript"
+    return _write(
+        "AppendToolCallV1",
+        {
+            "id": derived_id("tool-call", run.id, record.call_key),
+            "runId": run.id,
+            "callKey": record.call_key,
+            "phase": record.phase,
+            "tool": record.tool,
+            "toolVersion": record.tool_version,
+            "source": record.source,
+            "fieldKeys": list(record.field_keys),
+            "inputSource": record.input_source,
+            "transcriptionVersionId": decisions.get(record.region_id) if decided else None,
+            "observationId": None if decided else record.observation_id,
+            "attempt": record.attempt,
+            "arguments": _plain(record.arguments),
+            "outcome": _value(record.outcome),
+            "result": _plain(record.result),
+            "evidenceId": record.evidence_id if record.evidence_id in recorded else None,
+            "startedAt": record.started_at,
+            "completedAt": record.completed_at,
+        },
+    )
+
+
+def _derivation(value) -> str:
+    if value.authority_id:
+        return "lookup"
+    if value.normalized:
+        return "normalized"
+    return "parsed" if value.parsed else "literal"
+
+
+def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[Write]:
+    """A candidate for each field with a literal, and its supporting evidence."""
+    result = []
+    for key, value in run.fields.items():
+        if value.literal is None:
+            continue
+        source = getattr(value, "input_source", None)
+        region = getattr(value, "source_region_id", None)
+        precision = getattr(value, "precision", None)
+        century_rule = getattr(value, "century_rule", None)
+        parsed = (
+            {"value": value.parsed, "precision": precision, "century_rule": century_rule}
+            if precision or century_rule
+            else value.parsed
+        )
+        candidate = derived_id("candidate", run.id, key, digest(value.model_dump(mode="json")))
+        candidates[key] = candidate
+        result.append(
+            _write(
+                "AppendFieldCandidateV2",
+                {
+                    "id": candidate,
+                    "runId": run.id,
+                    "fieldKey": key,
+                    "state": _value(value.state),
+                    "literalValue": value.literal,
+                    "parsedValue": parsed,
+                    "normalizedValue": value.normalized,
+                    "authorityId": value.authority_id,
+                    "derivation": _derivation(value),
+                    "inputSource": source,
+                    "sourceTranscriptionId": decisions.get(region)
+                    if source == "decided_transcript"
+                    else None,
+                    "sourceObservationId": getattr(value, "source_observation_id", None)
+                    if source == "raw_reading"
+                    else None,
+                },
+            )
+        )
+        for evidence in value.evidence_ids:
+            if evidence in recorded:
+                result.append(
+                    _write(
+                        "AppendCandidateEvidenceV2",
+                        {
+                            "id": derived_id("candidate-evidence", candidate, evidence),
+                            "candidateId": candidate,
+                            "evidenceId": evidence,
+                            "relation": "supports",
+                        },
+                    )
+                )
+    return result
+
+
+def _record(run: Run, candidates: dict) -> list[Write]:
+    """The queue decision, every field's final state and a finding per reason."""
+    fields = {key: _value(value.state) for key, value in run.fields.items()}
+    reasons = list(run.reasons)
+    disposition = _value(run.disposition)
+    summary = getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition
+    content = {"disposition": disposition, "reasons": reasons, "summary": summary, "fields": fields}
+    record = derived_id("record", run.id, digest(content))
+    policy = run.profile.policy_version
+    result = [
+        _write(
+            "AppendRecordVersionV2",
+            {
+                "id": record,
+                "runId": run.id,
+                "predecessorId": None,
+                "disposition": disposition,
+                "policyVersion": policy,
+                "reasonCodes": reasons,
+                "summary": summary,
+            },
+        )
+    ]
+    groups = getattr(run, "field_groups", None) or {}
+    for key, state in fields.items():
+        group = groups.get(key) or (
+            "mandatory" if key in run.profile.mandatory_fields else "optional"
+        )
+        result.append(
+            _write(
+                "AppendResolvedFieldV2",
+                {
+                    "id": derived_id(record, "field", key),
+                    "recordVersionId": record,
+                    "candidateId": candidates.get(key),
+                    "fieldKey": key,
+                    "state": state,
+                    "fieldGroup": group,
+                },
+            )
+        )
+    for reason in reasons:
+        rule, _, rest = reason.partition(":")
+        result.append(
+            _write(
+                "AppendValidationFindingV2",
+                {
+                    "id": derived_id(record, "finding", reason),
+                    "recordVersionId": record,
+                    "ruleId": rule,
+                    "ruleVersion": policy,
+                    "severity": "hard",
+                    "outcome": "fail",
+                    "fieldKey": rest if rest in run.fields else None,
+                    "reasonCode": reason,
+                },
+            )
+        )
+    return result
+
+
+def _review_decisions(specimen: Specimen) -> list[Write]:
+    """Each reviewer decision, at the revisions of the save that first writes it."""
+    return [
+        _write(
+            "AppendReviewDecisionV1",
+            {
+                "id": event.id,
+                "specimenId": specimen.id,
+                "baseRevision": specimen.version - 1,
+                "resultingRevision": specimen.version,
+                "reason": event.reason,
+                "correction": {"action": event.action, "before": event.before, "after": event.after},
+            },
+        )
+        for event in specimen.audit
+        if event.action.startswith("review_")
+    ]
