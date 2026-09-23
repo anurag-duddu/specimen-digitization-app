@@ -80,7 +80,7 @@ def test_every_row_is_sent_once_in_order_with_scope_and_actor(tmp_path, actor):
     session = Session()
     repo, blobs = repository(tmp_path, session)
     s = stored(blobs, read(pinned(specimen())))
-    repo.project(s.scope, s)
+    repo.write_projection(s.scope, s)
     assert projected(session) == [
         "AppendSourceAssetV2",
         "AppendProfileVersionV2",
@@ -102,7 +102,7 @@ def test_every_row_is_sent_once_in_order_with_scope_and_actor(tmp_path, actor):
     raw = session.calls[4][1]
     assert raw["byteSize"] == str(len(b'{"reading": "handwriting-muse"}'))
     session.calls.clear()
-    repo.project(s.scope, s)
+    repo.write_projection(s.scope, s)
     assert session.calls == []
 
 
@@ -110,10 +110,10 @@ def test_a_primary_key_conflict_counts_as_written(tmp_path, actor):
     session = Session(lambda op: ALREADY_WRITTEN if op == "AppendLabelRegionV2" else None)
     repo, blobs = repository(tmp_path, session)
     s = stored(blobs, read(pinned(specimen())))
-    repo.project(s.scope, s)
+    repo.write_projection(s.scope, s)
     assert projected(session)[-1] == "AppendReadingComparisonV1"
     session.calls.clear()
-    repo.project(s.scope, s)
+    repo.write_projection(s.scope, s)
     assert session.calls == []
 
 
@@ -128,7 +128,7 @@ def test_a_failed_write_stops_the_pass_and_the_next_save_resumes_there(
     repo, blobs = repository(tmp_path, session)
     s = stored(blobs, read(pinned(specimen())))
     with caplog.at_level(logging.WARNING):
-        repo.project(s.scope, s)
+        repo.write_projection(s.scope, s)
     assert projected(session)[-1] == "AppendModelObservationV2"
     assert "AppendReadingComparisonV1" not in projected(session)
     assert any(
@@ -137,7 +137,7 @@ def test_a_failed_write_stops_the_pass_and_the_next_save_resumes_there(
     )
     failing.clear()
     session.calls.clear()
-    repo.project(s.scope, s)
+    repo.write_projection(s.scope, s)
     assert projected(session) == [
         "AppendModelObservationV2",
         "AppendSourceAssetV2",
@@ -163,8 +163,8 @@ def test_sizes_are_read_once_per_blob(tmp_path, actor):
     reads = []
     size = repo.blob_size
     repo.blob_size = lambda ref: reads.append(ref) or size(ref)
-    repo.project(s.scope, s)
-    repo.project(s.scope, s.model_copy(deep=True))
+    repo.write_projection(s.scope, s)
+    repo.write_projection(s.scope, s.model_copy(deep=True))
     assert len(reads) == len(set(reads)) == 2
 
 

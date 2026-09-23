@@ -713,13 +713,25 @@ the emulator. It does not compile the GraphQL, run the `@check`s, test replays,
 cursors or the migration from `main`. Those run locally, and each PR records
 the result.
 
+For the writer: `tests/test_projection.py` (the mapping) and
+`tests/test_projection_writer.py` (order, scope and actor, primary-key
+conflicts, stop-and-resume on any other failure, a save that survives the
+projection, sizes read once) run in CI; `tests/test_sqlconnect_projection.py`
+runs against the emulator (`SPECIMEN_TEST_SQL_EMULATOR=true` with
+`scripts/data/serve-local.sh`): stage 1 to 5 rows land once, and a fresh process
+replays without duplicates or warnings.
+
 ## 11. Projection writer (S5 T2)
 
 `application/projection.py` maps a specimen to the section 7 writes, in
 foreign-key order, with the section 5 ids. It is pure: the repository supplies
-the scope, the actor and a function that locates a blob by its ref (bucket,
-object, generation, size). `SqlConnectRepository` runs it after every
-successful `CreateSpecimenV3` or `SaveSpecimenV3`.
+the scope, the actor, a function that locates a blob by its ref and one that
+measures it. Cloud Storage refs (`sha256:generation`) locate to the bucket,
+`application/sha256/{sha256}` and the generation; local refs (a bare digest) to
+bucket `local`, the digest and generation `0`. A size is read once per blob
+per process, and only for raw responses: the original's size is on its asset.
+`SqlConnectRepository.write_projection` runs after every successful
+`CreateSpecimenV3` or `SaveSpecimenV3`, and after a replayed save.
 
 - A write whose primary key already exists counts as written. Any other error
   stops the projection for that save, because later rows may depend on the
@@ -737,8 +749,11 @@ successful `CreateSpecimenV3` or `SaveSpecimenV3`.
 - `Checkpoint` rows are not written: the domain keeps no input digest per
   attempt. Attempts stay in the snapshot, and the harness's attempts are
   `ToolCall` rows.
+- Without a blob store the pass is skipped and logged; the workflow supplies
+  the store before its first save, and the next save catches up.
 - The acceptance lab runs the same writer against the emulator
   (`--persistence sql-emulator`), so it sees the same rows as production.
+  `SQLiteRepository` writes no normalized rows.
 
 T2a mapping:
 
