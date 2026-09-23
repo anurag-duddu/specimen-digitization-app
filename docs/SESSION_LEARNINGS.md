@@ -11797,3 +11797,14 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) the release contract as written could not have shipped even its original scope (research report 02 section 7: the first data envelope needs evidence produced later; the default data window is shorter than recovery requires; activation's SAM caller check cannot pass on a freshly created service; a Hosting rebuild breaks the commit chain). (2) `data-apply/v1` refuses to run once the runtime exists, so schema growth after the first runtime deploy needs an additive-only path. (3) Every pipeline artifact is persisted today only inside the snapshot JSON; the normalized tables exist and are unused. (4) `gcloud` credentials on this workstation expired again; the owner re-authenticated.
 - Failed approaches: a first draft of the plan specified adjudication behaviour and routing conditions the owner had not asked for; the owner rejected new design decisions, and the plan now quotes the owner's rules and the existing specification instead.
 - Remaining follow-ups: the owner's field list; the owner actions queued in `~/specimen-golive/OWNER_ACTIONS.md`; launching and coordinating the seven sessions.
+
+### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
+
+- Task: the same S2 session as the T1a entry above, second half of brief item T1.
+- Branch/worktree: `golive/release-runbook-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated notes and banners in `GO_LIVE_RUNBOOK.md`, `GO_LIVE_READINESS.md`, `RELEASING.md`, `RELEASE_RUNTIME.md`, `RELEASE_DATA.md` and `PROTECTED_RELEASE_HARNESS.md`. Notes that keep a safeguard say so: post-merge reconciliation, the protected-branch and five-check admission, and the time-bounded initializer.
+- Commits/PRs: [PR #78](https://github.com/anurag-duddu/specimen-digitization-app/pull/78): amendments `7a83c61` and this closeout. It depends on [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76).
+- Validation actually run: pre-commit hooks at commit (all passed); `git diff --check` clean; a link and anchor check over the 92 added links (0 broken, with `golive/RELEASE.md` resolved from #76's branch).
+- Durable learnings: a documents-only amendment still needs a size budget. At about 1,060 lines, T1 exceeded the program's 600-line review limit, so it was split along the line other sessions care about: the contracts they code against first, the runbooks and histories second.
+- Failed approaches: none beyond those in the T1a entry.
+- Remaining follow-ups: as in the T1a entry.
