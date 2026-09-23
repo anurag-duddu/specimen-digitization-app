@@ -16,8 +16,8 @@ Novita passed an argument-less call to the model (observed 2026-09-23).
 
 ## 2. A step that fails after its external effect settled is a known block
 
-Issue #80, G6 and QUE-005. In a step that calls a model or a lookup, only a
-failure of that call leaves its outcome unknown. Once the call has returned,
+Issue #80, G6 and QUE-005. A failure during a step's model or lookup call can
+leave the call's outcome unknown. Once the call has returned,
 a later deterministic failure in the same step, such as the phase check
 `execute_phase` raising `EvidenceIntegrityError` after the extraction call in
 `parse`, is a known operational block: the run records the failure's code

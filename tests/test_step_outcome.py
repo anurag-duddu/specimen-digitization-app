@@ -69,7 +69,11 @@ def test_integrity_failure_after_extraction_is_a_known_retryable_block(
     retry = c.post(
         PREFIX + f"/runs/{result.run.id}/actions",
         headers=HEADERS,
-        json={"action": "retry", "reason": "integrity cause fixed"},
+        json={
+            "action": "retry",
+            "expected_revision": result.version,
+            "reason": "integrity cause fixed",
+        },
     )
     assert retry.status_code == 200, retry.text
 
