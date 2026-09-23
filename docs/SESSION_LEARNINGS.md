@@ -11827,3 +11827,29 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) The specification answered two of the review's questions (what counts as a successful taxonomy match; dates as literal plus a parsed value). Read the spec's own tables before taking a question to the owner.
 - Failed approaches: calling `set_auto_merge(false)` on a merged PR to reset the panel's switch; the app refuses it.
 - Remaining follow-ups: the owner's G21 setting, field list (with S7's field-coverage table), Hugging Face credits and secrets; S3's G15 coverage-check design.
+
+### 2026-09-23 — Go-live program: #87 fix round, owner decisions G23 to G26
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-2` (PR #87), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome: the PR steward's review of `442b860` (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5803654541) addressed:
+  - the date wording no longer settles an open item by itself, and the owner then decided G24;
+  - `unresolved_transcription` is named and aligned with G19 and G20;
+  - the stage 5 scores are named in S4's brief;
+  - the GBIF rank rule is quoted, and G25 settles it;
+  - G26 settles what may be kept from Google;
+  - the owner-action changes are reflected;
+  - the owning session's local merge is the update path;
+  - a change to another session's file needs that session's sign-off;
+  - provenance keys are named, with a checked-in allowlist;
+  - the standing roles are justified.
+  The worker also gets its own operator account, which the spec already requires. Docs only.
+- Owner decisions (chat, 2026-09-23):
+  - G23: GBIF decides taxonomy, and the other sources support it.
+  - G24: dates clear at the precision written, and two-digit years read as 19xx for Insects.
+  - G25: a confirmed, accepted genus satisfies a genus-only label.
+  - G26: from Google, only the place ID, the outcome and a response fingerprint are kept.
+- Durable learnings:
+  - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
+  - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
+- Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
