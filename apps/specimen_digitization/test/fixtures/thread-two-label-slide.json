@@ -1,5 +1,5 @@
 {
-  "_comment": "Synthetic thread response in the shape of docs/execution/golive/DATA_CONTRACT.md section 8 (S5, PR #88); a Google lookup keeps only its place ID (G26). Two label regions, as on pilot slides 324 to 328. Replaced by S5's canonical fixture when the thread route lands.",
+  "_comment": "Synthetic thread response in the shape of docs/execution/golive/DATA_CONTRACT.md section 8 (S5, PR #88); a Google lookup keeps only its place ID (G26); fields carry a verbatim list and an evidence list (#88 at 6b97508). Two label regions, as on pilot slides 324 to 328. Replaced by S5's canonical fixture when the thread route lands.",
   "specimen_id": "fixture-thread-001",
   "revision": 7,
   "run": {
@@ -81,7 +81,19 @@
           "reasons": [],
           "calibration": "uncalibrated review priority"
         }
-      ]
+      ],
+      "first_pass": {
+        "decision_kind": "identical_readings",
+        "selected_observation_id": "obs-left-qwen",
+        "decided_text": "12.v.1978 leg. R. Ortiz",
+        "unresolved": false,
+        "rationale": null,
+        "model_call": null,
+        "handoffs": [
+          {"observation_id": "obs-left-qwen", "role": "decided_transcript", "handed_text": "12.v.1978 leg. R. Ortiz", "note": null},
+          {"observation_id": "obs-left-muse", "role": "decided_transcript", "handed_text": "12.v.1978 leg. R. Ortiz", "note": null}
+        ]
+      }
     },
     {
       "region_id": "region-right",
@@ -124,7 +136,82 @@
           "reasons": [],
           "calibration": "uncalibrated review priority"
         }
-      ]
+      ],
+      "first_pass": {
+        "decision_kind": "first_pass",
+        "selected_observation_id": "obs-right-muse",
+        "decided_text": "GUATEMALA Zacapa Sa. de las Minas",
+        "unresolved": false,
+        "rationale": "The fourth word reads las in both the stroke count and the spacing; los would need a closed loop the pixels do not show.",
+        "model_call": {
+          "observation_id": "obs-right-first-pass",
+          "route_id": "first-pass-adjudication",
+          "model": "first-pass-fixture-model",
+          "provider": "hf-inference-fixture",
+          "prompt_version": "transcription-disagreement-adjudication-v1",
+          "outcome": "completed",
+          "raw_response": {"asset_id": "raw-right-first-pass", "sha256": "5555555555555555555555555555555555555555555555555555555555555555"}
+        },
+        "handoffs": [
+          {"observation_id": "obs-right-muse", "role": "decided_transcript", "handed_text": "GUATEMALA Zacapa Sa. de las Minas", "note": null},
+          {"observation_id": "obs-right-qwen", "role": "raw_reading", "handed_text": "GUATEMALA Zacapa Sa. de los Minas", "note": "Kept for the raw check if the decided transcript fails."}
+        ]
+      }
     }
-  ]
+  ],
+  "tool_calls": [
+    {
+      "call_key": "call-1", "phase": "lookup", "tool": "name_check", "tool_version": "1",
+      "source": "global-names-verifier", "field_keys": ["taxon"],
+      "input_source": "decided_transcript", "region_id": "region-left", "observation_id": null,
+      "attempt": 1, "arguments": {"name": "Tachinidae"}, "outcome": "success",
+      "result": {"matched": "Tachinidae"}, "error": null, "retry_after": null,
+      "evidence_id": "evidence-name-1",
+      "started_at": "2026-09-23T14:31:10Z", "completed_at": "2026-09-23T14:31:11Z"
+    },
+    {
+      "call_key": "call-2", "phase": "lookup", "tool": "geocode", "tool_version": "1",
+      "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
+      "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null,
+      "attempt": 1, "arguments": {"query": "GUATEMALA Zacapa Sa. de las Minas"}, "outcome": "timeout",
+      "result": null, "error": "The service did not answer within 30 seconds.", "retry_after": "2026-09-23T14:31:45Z",
+      "evidence_id": null,
+      "started_at": "2026-09-23T14:31:12Z", "completed_at": "2026-09-23T14:31:42Z"
+    },
+    {
+      "call_key": "call-3", "phase": "lookup", "tool": "geocode", "tool_version": "1",
+      "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
+      "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null,
+      "attempt": 2, "arguments": {"query": "GUATEMALA Zacapa Sa. de las Minas"}, "outcome": "success",
+      "result": {"candidates": [{"place_id": "fixture-place-id-zacapa"}]}, "error": null, "retry_after": null,
+      "evidence_id": "evidence-geo-1",
+      "started_at": "2026-09-23T14:31:45Z", "completed_at": "2026-09-23T14:31:46Z"
+    },
+    {
+      "call_key": "call-4", "phase": "lookup", "tool": "species_match", "tool_version": "1",
+      "source": "gbif-backbone", "field_keys": ["taxon"],
+      "input_source": "raw_reading", "region_id": "region-left", "observation_id": "obs-left-muse",
+      "attempt": 1, "arguments": {"name": "Tachinidae"}, "outcome": "no_match",
+      "result": {"matches": []}, "error": null, "retry_after": null,
+      "evidence_id": null,
+      "started_at": "2026-09-23T14:31:47Z", "completed_at": "2026-09-23T14:31:48Z"
+    }
+  ],
+  "fields": [
+    {"field_key": "country", "group": "mandatory", "state": "supported", "verbatim": [{"text": "GUATEMALA", "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null}], "parsed": "Guatemala", "precision": null, "century_rule": null, "normalized": null, "authority_id": "fixture-place-id-zacapa", "evidence": [{"evidence_id": "evidence-geo-1", "relation": "supports", "source": "google-maps-geocoding", "locator": "place/fixture-place-id-zacapa", "outcome": "success"}]},
+    {"field_key": "province_state", "group": "mandatory", "state": "supported", "verbatim": [{"text": "Zacapa", "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null}], "parsed": "Zacapa", "precision": null, "century_rule": null, "normalized": null, "authority_id": "fixture-place-id-zacapa", "evidence": [{"evidence_id": "evidence-geo-1", "relation": "supports", "source": "google-maps-geocoding", "locator": "place/fixture-place-id-zacapa", "outcome": "success"}]},
+    {"field_key": "collectors", "group": "mandatory", "state": "supported", "verbatim": [{"text": "R. Ortiz", "input_source": "decided_transcript", "region_id": "region-left", "observation_id": null}], "parsed": "R. Ortiz", "precision": null, "century_rule": null, "normalized": null, "authority_id": null, "evidence": []},
+    {"field_key": "date_visited_from", "group": "mandatory", "state": "supported", "verbatim": [{"text": "12.v.1978", "input_source": "decided_transcript", "region_id": "region-left", "observation_id": null}], "parsed": "1978-05-12", "precision": "day", "century_rule": null, "normalized": null, "authority_id": null, "evidence": []},
+    {"field_key": "habitat", "group": "mandatory", "state": "not_present", "verbatim": [], "parsed": null, "precision": null, "century_rule": null, "normalized": null, "authority_id": null, "evidence": []},
+    {"field_key": "identified_by_irn", "group": "optional", "state": "unresolved", "verbatim": [], "parsed": null, "precision": null, "century_rule": null, "normalized": null, "authority_id": null, "evidence": []}
+  ],
+  "decision": {
+    "disposition": "needs_human_review",
+    "policy_version": "slide-pilot-policy-1",
+    "reason_codes": ["mandatory_field_not_supported"],
+    "summary": "One mandatory field is not supported: habitat.",
+    "findings": [
+      {"rule_id": "mandatory-fields-supported", "severity": "hard", "field_key": "habitat", "reason_code": "mandatory_field_not_supported"}
+    ]
+  }
 }

@@ -152,3 +152,13 @@ a null the screen names.
 - The model lands in two parts: the envelope, the regions, the readings and
   their comparison first; the first pass with its handoffs, the harness's
   calls, the fields and the queue decision second.
+- A date field carries its precision (day, month or year, as written) and
+  the century rule that set a two-digit year (G24) beside its parsed text,
+  as S5 pins them for the thread; the stored object form is read too.
+- A field keeps what was written as a list, one entry for the decided
+  transcript or one per reader when the first pass chose none, each
+  attributed (G27, G28), and what was settled: the standardized value and
+  the authority record (a Google place ID, never a Google name, G26; GBIF's
+  accepted name may be shown, G28). Its evidence names each source's
+  relation to the value: decides, supports or contradicts (G23). The
+  decision carries its findings, hard, warning or info (#88 at `6b97508`).
