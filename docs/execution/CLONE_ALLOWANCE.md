@@ -1,10 +1,25 @@
 # First-production recovery allowance
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision.
+
 This source contract replaces the absent-clone CREATE-history admission check.
 The filtered operations request returned HTTP 403; omitting the instance returned
 HTTP 400. Neither result proves unused allowance. Existing-instance operation
 history, native ownership, temporary-principal lifecycle and clone disposal checks
 remain required. This contract does not issue authority or qualify native setup.
+
+> 2026-09-23: For the go-live program, under
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11 and the coordinator's ruling D1, this allowance guards only the first
+> apply's single restore clone. The on-demand backup before every apply needs
+> no claim. `authority_sha256` and `manifest_sha256` below bind the retired
+> action packet and its manifest, so the release workstream's T3d, specified
+> in [`golive/RELEASE.md`](golive/RELEASE.md), states what the first apply's
+> claim binds instead.
 
 ## Typed authority and baseline
 

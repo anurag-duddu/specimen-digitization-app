@@ -147,11 +147,12 @@ the release plan, a launch payload or the identity receipt.
 > program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3 and G11. The worker, SAM 3 and API runtime identities each hold a standing
-> `roles/secretmanager.secretAccessor` on this secret. These standing grants
-> carry no version condition; the runtime release pins the version it
-> references in `scripts/ci/runtime_settings.py`. Hosting, GitHub and every
-> other identity still gain no writer access, and the writer value still never
-> appears in Git or in any output.
+> `roles/secretmanager.secretAccessor` on this secret. Only the runtime
+> expiration is superseded: each grant keeps the exact immutable version
+> condition (coordinator ruling on #76's review), so IAM enforces the version
+> on every read. A version bump is an owner action that updates the condition.
+> Hosting, GitHub and every other identity still gain no writer access, and the
+> writer value still never appears in Git or in any output.
 
 The runtime completion successor preserves the original action set and adds four
 effects: create the new parent, add its immutable version, grant the bounded worker
@@ -217,7 +218,8 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 > G2 and G11. The PR steward's review of each pull request replaces the separate
 > independent review; all five checks on the exact merged commit and the
 > separate protected workflows stay; acceptance is the ten pilot specimens run
-> one at a time, in order (PLAN section 8).
+> one at a time, in order (PLAN section 8). Retention admission is not settled
+> by G2 or G11 and stays open.
 
 ## Go-live amendment, 2026-09-23 (G3)
 
@@ -249,7 +251,8 @@ specimen record." PLAN section 4.5 describes the instrumentation.
 - Writer access: the writer secret stays
   `projects/specimen-digitization/secrets/specimen-worker-logfire`. The worker,
   SAM 3 and API runtime identities hold a standing
-  `roles/secretmanager.secretAccessor` on it (G11); no other identity does.
+  `roles/secretmanager.secretAccessor` on it (G11), bound to its exact
+  version; no other identity does.
 - Bounds and cost: the bounded transport's ceilings and reservation ledger
   retire; Logfire usage counts against the USD 25 ceiling (G9).
 - Lab runs: local acceptance runs use the same instrumentation with

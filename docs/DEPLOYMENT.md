@@ -769,7 +769,8 @@ expansion requires user review and approval of end-to-end results.
   > and the supplemental SQL indexes are non-unique. So writers keep running.
   > The supplemental indexes are still restored and checked by definition
   > after every apply, and a backup with a verified restore path still precedes
-  > it. The isolated restore proof is now done once, on the first apply (D1).
+  > it. The isolated restore proof is now done once, on the first apply (the
+  > coordinator's ruling D1).
   > All of this is specified in
   > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1.
   Do not create or upgrade a source SQL instance as a side effect of deployment.
@@ -828,8 +829,9 @@ after verification evidence is retained. Existing data and source SQL remain.
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1 names
 > the five standing data-release roles. The one-time roles (the initializer
 > role, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`)
-> and the clone and claim roles stay in the bounded setup window with its
-> action packet. A restore clone is still removed by its two-hour expiry.
+> and the clone, claim and runtime-absence roles stay in the bounded setup
+> window with its action packet. A restore clone is still removed by its
+> two-hour expiry.
 > Existing data and source SQL still remain.
 
 Recovery admission additionally requires the original typed

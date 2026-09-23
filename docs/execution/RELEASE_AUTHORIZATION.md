@@ -177,15 +177,17 @@ and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_REL
   > `specimenDataInventoryProjectRead` stay standing with their conditions
   > unchanged. The rest of this item stands:
   > - the clone roles and `specimenDataRestoreAllowanceClaim` stay
-  >   time-bounded and open only for the first apply's single restore check;
+  >   time-bounded and open only for the first apply's single restore check
+  >   (the coordinator's ruling D1);
   > - `specimenDataRuntimeAbsence` stays time-bounded, unused by automatic
   >   applies;
   > - `specimenDataOwnerBootstrap`, the initializer role and
   >   `specimenDataInitializerDisposal` stay one-time and time-bounded through
   >   this setup window and are revoked after use.
   >
-  > Until T4 adapts `data_setup_window.py`, the window still renews the
-  > standing roles as well.
+  > Until T4 adapts `data_setup_window.py`, the window still renews three of
+  > the standing roles as well (`specimenDataSchemaPublish`,
+  > `specimenDataSourceBackup` and `specimenDataStorageRules`).
 
 This includes finishing, independently reviewing and using the bounded helpers
 for those effects with at most 187 metadata/IAM requests. Prepare all source,
@@ -254,8 +256,13 @@ approval and a privacy review.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3. Tracing now also covers system prompts and text inputs and outputs at
 > every VLM, LLM and SAM 3 level, SAM 3 parameters and the harness's tool
-> calls (geocoding keeps only what G26 allows), one trace per run linked from
-> the specimen record; images stay excluded. The amended scope is in
+> calls with their arguments and results (a Google geocoding result keeps only
+> what G26 allows), one trace per run linked from the specimen record; images
+> stay excluded. Secrets and the identities of the app's users never enter
+> prompts or tool arguments, and scrubbing is only the backstop. The accessor
+> grant keeps its exact-version condition, and only the runtime expiration is
+> superseded (G11). For this program, the PR steward's review replaces the
+> privacy review under G11. The amended scope is in
 > [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md).
 
 The owner also asked for the IAM setup to proceed and offered approval. The
@@ -273,7 +280,8 @@ clock, and refuses if the live policy differs from the packet.
 > `specimenDataStorageRules` and `specimenDataSourceBackup` become standing;
 > `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead`
 > stay standing with their conditions unchanged. These stay inside this
-> bounded window with its action packet and are revoked after use: the clone
-> roles, `specimenDataRestoreAllowanceClaim`, `specimenDataRuntimeAbsence`,
+> bounded window with its action packet, and their bindings expire when it
+> closes: the clone roles, `specimenDataRestoreAllowanceClaim` and
+> `specimenDataRuntimeAbsence`. The one-time roles,
 > `specimenDataOwnerBootstrap`, the initializer role and
-> `specimenDataInitializerDisposal`.
+> `specimenDataInitializerDisposal`, are also revoked after use.

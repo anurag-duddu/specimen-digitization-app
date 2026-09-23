@@ -117,11 +117,12 @@ Three documents gain more than notes:
 - [`APPROVED_LOGFIRE_TRACING.md`](../APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3):
   G3's content scope with G26 applied. System prompts, text inputs and
   outputs, SAM 3 parameters and the harness's tool calls with arguments and
-  results are permitted, except that geocoding keeps only the place ID, the
-  pipeline's outcome and a response fingerprint. Images are never captured.
-  Secrets and the identities of the app's users never enter prompts or tool
-  arguments, and scrubbing is only the backstop. The worker, SAM 3 and the API
-  hold standing read access to the writer secret.
+  results are permitted, except that a Google geocoding result keeps only the
+  place ID, the pipeline's outcome and a response fingerprint. Images are
+  never captured. Secrets and the identities of the app's users never enter
+  prompts or tool arguments, and scrubbing is only the backstop. The worker,
+  SAM 3 and the API hold standing read access to the writer secret, bound to
+  its exact version.
 - [`APPROVED_RELEASE_BUDGET.md`](../APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9):
   G9's USD 25 ceiling, cumulative, infrastructure and models together.
 
@@ -154,7 +155,7 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/policy.py` 31-34 and 138-139, for the lane | The institutional-approval and semantics gates, and the human-approval gate | G1 | S4 |
 | `scripts/ci/worker_trace_setup.py` `grant` | A worker-only writer-secret binding that expires within 24 hours | G3, G11 | S2 T4 (standing grants per identity and secret) |
 | `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
-| `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews the standing roles and the time-bounded ones alike as 120-minute bindings, and refuses any untimed binding | G11 | S2 T4 (narrows the renewals to the time-bounded roles) |
+| `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews three of the standing roles (`specimenDataSchemaPublish`, `specimenDataSourceBackup`, `specimenDataStorageRules`) together with the time-bounded ones, for 120 minutes (the initializer role for 75, `specimenDataInitializerDisposal` for 115), and refuses any untimed binding | G11 | S2 T4c (narrows the renewals to the time-bounded roles) |
 
 ## 3. Next pull requests
 
@@ -176,7 +177,8 @@ requires.
   grants and secrets T2 and T3 need, each bound to a named resource with its
   reason. It also prints the time-bounded windows for the one-time roles (the
   initializer role, `specimenDataOwnerBootstrap`,
-  `specimenDataInitializerDisposal`) and for the clone and claim roles.
+  `specimenDataInitializerDisposal`) and for the clone, claim and
+  runtime-absence roles.
 - T5, first releases: the first data and runtime releases; the repository
   variables as an owner action whose private values the owner fills in;
   Hosting rebuilt and connected (DoD-1 to DoD-3).
