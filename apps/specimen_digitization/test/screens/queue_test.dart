@@ -184,6 +184,40 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  // PLAN section 3, "Client": a record with no disposition is drawn from the
+  // `status` the search endpoint sends, and a record that sends nothing is a
+  // record state the client cannot name, never the field state "Unknown".
+  testWidgets('a row with no disposition shows the operational state', (
+    tester,
+  ) async {
+    final ScriptedRepository repository = ScriptedRepository()
+      ..results = <Specimen>[
+        const Specimen({
+          'specimen_id': 'SD-1',
+          'filename': 'Waiting record',
+          'status': 'retry_scheduled',
+          'disposition': null,
+        }),
+        const Specimen({
+          'specimen_id': 'SD-2',
+          'filename': 'Paused record',
+          'status': 'paused',
+          'disposition': null,
+        }),
+        const Specimen({'specimen_id': 'SD-3', 'filename': 'Silent record'}),
+      ];
+    await pumpQueue(tester, repository);
+    expect(find.text('Retry scheduled'), findsOneWidget);
+    expect(find.text('Paused'), findsOneWidget);
+    expect(find.text('State unknown'), findsOneWidget);
+    expect(
+      find.text('Unknown'),
+      findsNothing,
+      reason: 'a field state is never drawn as a record state',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('slash moves focus into the search field', (tester) async {
     await pumpQueue(tester, ScriptedRepository());
     await tester.sendKeyEvent(LogicalKeyboardKey.slash);

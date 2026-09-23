@@ -29,6 +29,9 @@ const List<SpecimenStatus> queueStatuses = <SpecimenStatus>[
   SpecimenStatus.deferred,
   SpecimenStatus.processing,
   SpecimenStatus.blocked,
+  SpecimenStatus.retryScheduled,
+  SpecimenStatus.paused,
+  SpecimenStatus.cancelled,
   SpecimenStatus.unknown,
 ];
 

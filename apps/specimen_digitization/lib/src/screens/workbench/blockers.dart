@@ -54,11 +54,15 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
 
   for (final Json t in objects(specimen.data['transcriptions'])) {
     if (t['resolved'] == true) continue;
+    final String region = _regionName(specimen, t['region_id']);
     blockers.add(
       ClearanceBlocker(
-        message:
-            'Two readings differ for '
-            '${_regionName(specimen, t['region_id'])}',
+        // "Differ" only when the readings do (02 section 2.3). An unresolved
+        // region whose readings agree still blocks clearance, because
+        // clearance needs a resolved transcription (PRD QUE-002).
+        message: readingsDiffer(t)
+            ? '${_countWord(distinctReadings(t))} readings differ for $region'
+            : 'Transcription not resolved for $region',
         detail: 'Resolve the transcription, or record why it cannot be read',
         segment: WorkbenchSegment.readings,
         regionId: t['region_id'] as String?,
@@ -85,8 +89,16 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
     );
   }
 
+  // The workspace publishes each run reason twice, in `reason_codes` and as
+  // a validation finding carrying the same code. A reason a finding already
+  // states is one blocker, not two.
+  final Set<String> stated = <String>{
+    for (final Json f in specimen.findings)
+      if (f['reason_code'] != null) f['reason_code'].toString(),
+  };
   for (final Object? code
       in specimen.data['reason_codes'] as List? ?? const <Object?>[]) {
+    if (stated.contains(code.toString())) continue;
     blockers.add(
       ClearanceBlocker(
         message: vocabularyLabel(code.toString()),
@@ -128,6 +140,16 @@ const String blockersSheetTitle = 'What blocks clearance';
 
 /// What the control that moves to one blocker is called.
 const String goToBlockerLabel = 'Go to';
+
+/// A count of readings as the first word of a sentence: "Two readings
+/// differ", as 02 section 2.3 writes it.
+String _countWord(int count) => switch (count) {
+  2 => 'Two',
+  3 => 'Three',
+  4 => 'Four',
+  5 => 'Five',
+  _ => '$count',
+};
 
 String _regionName(Specimen specimen, Object? regionId) {
   final int index = specimen.regions.indexWhere(

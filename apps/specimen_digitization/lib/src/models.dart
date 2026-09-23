@@ -25,6 +25,23 @@ List<Json> objects(dynamic value) => value is List
     ? value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
     : [];
 
+/// How many different texts a transcription's readers returned.
+///
+/// `alternatives` is the set of distinct reading texts for one label region
+/// (the adjudicate step and the pilot review stop both build it that way).
+int distinctReadings(Json transcription) {
+  final Object? alternatives = transcription['alternatives'];
+  return alternatives is List
+      ? alternatives.map((Object? a) => a.toString()).toSet().length
+      : 0;
+}
+
+/// True when a transcription's readings differ.
+///
+/// Unresolved is a different claim: the pilot leaves every transcription
+/// unresolved, including those whose readings are identical.
+bool readingsDiffer(Json transcription) => distinctReadings(transcription) > 1;
+
 /// The mechanical part of turning a server enum into words.
 ///
 /// User-facing text goes through `vocabularyLabel` instead, which renames

@@ -170,4 +170,34 @@ void main() {
       reason: 'pass criterion 10.2: the definition is reachable from the term',
     );
   });
+
+  // PLAN section 3, "Client": the strip read `operational_state`, which no
+  // response carries, so every record without a disposition, the ten pilot
+  // records among them, said "State unknown". The summary sends `status`.
+  testWidgets('a record with no disposition shows the state the server sent', (
+    WidgetTester tester,
+  ) async {
+    for (final (String wire, String word) in <(String, String)>[
+      ('processing_blocked', 'Processing blocked'),
+      ('running', 'Processing'),
+      ('retry_scheduled', 'Retry scheduled'),
+      ('paused', 'Paused'),
+      ('cancelled', 'Cancelled'),
+    ]) {
+      await pumpComponent(
+        tester,
+        strip(
+          Specimen(<String, dynamic>{
+            'specimen_id': 'pilot-$wire',
+            'revision': 2,
+            'status': wire,
+            'disposition': null,
+          }),
+        ),
+        size: medium,
+      );
+      expect(find.text(word), findsOneWidget, reason: wire);
+      expect(find.text('State unknown'), findsNothing, reason: wire);
+    }
+  });
 }
