@@ -1,21 +1,29 @@
 # Projection writes for the go-live data contract (docs/execution/golive/DATA_CONTRACT.md).
-# One row per operation, insert only. Authorization matches SaveSpecimenV3 for the same data:
-# an active member with a writing role, and the row's specimen is not sensitive or the member
-# can view sensitive records. The specimen is found through the row's run, never a variable.
+# One row per operation; every write is an insert except RecordRunTraceV1's set-once update.
+# Authorization matches SaveSpecimenV3 for the same data: an active member with a writing role,
+# and the anchor's specimen is not sensitive or the member can view sensitive records. The
+# anchor (the row's run, candidate, record version or specimen) is read from the database, and
+# every parent a row names must belong to the anchor's run, or to its specimen for assets.
 mutation AppendSourceAssetV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $specimenId: UUID!, $kind: String!, $parentAssetId: UUID, $bucket: String!, $objectName: String!, $generation: String!, $sha256: String!, $mimeType: String!, $byteSize: Int64!, $width: Int, $height: Int, $acquisitionMethod: String!, $uploaderUid: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.sha256.matches('^[a-f0-9]{64}$') && (!(vars.kind in ['original', 'crop', 'mask']) || (vars.width != null && vars.height != null))") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.sha256.matches('^[a-f0-9]{64}$') && vars.kind in ['original', 'crop', 'mask', 'raw_response', 'lookup_response', 'evidence_record'] && (!(vars.kind in ['original', 'crop', 'mask']) || (vars.width != null && vars.height != null && vars.width > 0 && vars.height > 0))") { active role canViewSensitive }
   }
   scope: query @redact {
-    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && (!this.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { sensitive }
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && (!this.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { id sensitive }
+  }
+  parents: query @redact {
+    parentAssets: sourceAssets(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $parentAssetId}}, limit: 2) @check(expr: "vars.parentAssetId == null || (this.size() == 1 && this[0].specimenId == response.scope.specimen.id)", message: "parent asset of another specimen") { specimenId }
   }
   sourceAsset_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, specimenId: $specimenId, kind: $kind, parentAssetId: $parentAssetId, bucket: $bucket, objectName: $objectName, generation: $generation, sha256: $sha256, mimeType: $mimeType, byteSize: $byteSize, width: $width, height: $height, acquisitionMethod: $acquisitionMethod, uploaderUid: $uploaderUid})
 }
+# The worker writes the profile snapshot each run used, with no approval claim. An approval
+# claim needs main's rule for it: a reviewer or above with sensitive access. No client-facing
+# API path passes user input into approvedBy.
 mutation AppendProfileVersionV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $profileKey: String!, $version: String!, $configObject: String!, $configSha256: String!, $approvedBy: String, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.configSha256.matches('^[a-f0-9]{64}$')") { active role }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.configSha256.matches('^[a-f0-9]{64}$') && (vars.approvedBy == null || (this.role in ['reviewer', 'manager', 'admin'] && this.canViewSensitive))") { active role canViewSensitive }
   }
   profileVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, profileKey: $profileKey, version: $version, configObject: $configObject, configSha256: $configSha256, approvedBy: $approvedBy})
 }
@@ -25,20 +33,24 @@ mutation AppendPipelineRunV2($organizationId: UUID!, $collectionId: UUID!, $id: 
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.traceId == null || (vars.traceId.matches('^[0-9a-f]{32}$') && !vars.traceId.matches('^0+$')))") { active role canViewSensitive }
   }
   scope: query @redact {
-    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && (!this.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { sensitive }
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && (!this.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { id sensitive }
+  }
+  parents: query @redact {
+    supersededRuns: pipelineRuns(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $supersedesRunId}}, limit: 2) @check(expr: "vars.supersedesRunId == null || (this.size() == 1 && this[0].specimenId == response.scope.specimen.id)", message: "superseded run of another specimen") { specimenId }
   }
   pipelineRun_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, specimenId: $specimenId, profileVersionId: $profileVersionId, supersedesRunId: $supersedesRunId, pinnedVersions: $pinnedVersions, inputSha256: $inputSha256, traceId: $traceId})
 }
-# The run row can exist before its trace starts; the trace id is set once, and repeating it is a no-op.
+# The run row can exist before its trace starts. The update applies only while the trace is
+# unset or already this one, so of two concurrent ids exactly one is recorded.
 mutation RecordRunTraceV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $traceId: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.traceId.matches('^[0-9a-f]{32}$') && !vars.traceId.matches('^0+$')") { active role canViewSensitive }
   }
-  current: query @redact {
-    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive) && (this.traceId == null || this.traceId == vars.traceId)", message: "run not found, access denied or trace already recorded") { traceId specimen { sensitive } }
+  scope: query @redact {
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "run not found or access denied") { specimen { sensitive } }
   }
-  pipelineRun_update(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}, data: {traceId: $traceId})
+  pipelineRun_updateMany(where: {_and: [{organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $id}}, {_or: [{traceId: {isNull: true}}, {traceId: {eq: $traceId}}]}]}, data: {traceId: $traceId}) @check(expr: "this == 1", message: "trace already recorded")
 }
 mutation AppendLabelRegionV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $sourceAssetId: UUID!, $cropAssetId: UUID, $geometry: Any!, $ordinal: Int!, $regionType: String!, $segmentationVersion: String!, $supersedesRegionId: UUID, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
@@ -46,7 +58,12 @@ mutation AppendLabelRegionV2($organizationId: UUID!, $collectionId: UUID!, $id: 
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
   }
   scope: query @redact {
-    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimenId specimen { sensitive } }
+  }
+  parents: query @redact {
+    sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $sourceAssetId}) @check(expr: "this != null && this.specimenId == response.scope.pipelineRun.specimenId", message: "source asset of another specimen") { specimenId }
+    cropAssets: sourceAssets(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $cropAssetId}}, limit: 2) @check(expr: "vars.cropAssetId == null || (this.size() == 1 && this[0].specimenId == response.scope.pipelineRun.specimenId)", message: "crop asset of another specimen") { specimenId }
+    supersededRegions: labelRegions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $supersedesRegionId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.supersedesRegionId == null || this.size() == 1", message: "superseded region of another run") { id }
   }
   labelRegion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, sourceAssetId: $sourceAssetId, cropAssetId: $cropAssetId, geometry: $geometry, ordinal: $ordinal, regionType: $regionType, segmentationVersion: $segmentationVersion, supersedesRegionId: $supersedesRegionId})
 }
@@ -57,10 +74,16 @@ mutation AppendModelObservationV2($organizationId: UUID!, $collectionId: UUID!, 
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
   }
   scope: query @redact {
-    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimenId specimen { sensitive } }
+  }
+  parents: query @redact {
+    regions: labelRegions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $regionId}, runId: {eq: $runId}}, limit: 1) @check(expr: "this.size() == 1", message: "region of another run") { id }
+    sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $rawAssetId}) @check(expr: "this != null && this.specimenId == response.scope.pipelineRun.specimenId", message: "raw asset of another specimen") { specimenId }
   }
   modelObservation_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, regionId: $regionId, rawAssetId: $rawAssetId, stepKey: $stepKey, provider: $provider, modelVersion: $modelVersion, promptVersion: $promptVersion, inputSha256: $inputSha256, parameters: $parameters, literalText: $literalText, outcome: $outcome, independent: $independent, routeId: $routeId, unreadableSpans: $unreadableSpans})
 }
+# Both readings are independent readings of the row's region, and the pair is not already
+# recorded in the other order.
 mutation AppendReadingComparisonV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $regionId: UUID!, $leftObservationId: UUID!, $rightObservationId: UUID!, $algorithm: String!, $ratio: Float, $editDistance: Int, $lengthBasis: Int, $status: String!, $reasons: [String!]!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
@@ -69,18 +92,32 @@ mutation AppendReadingComparisonV1($organizationId: UUID!, $collectionId: UUID!,
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
   }
+  parents: query @redact {
+    regions: labelRegions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $regionId}, runId: {eq: $runId}}, limit: 1) @check(expr: "this.size() == 1", message: "region of another run") { id }
+    left: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $leftObservationId}, runId: {eq: $runId}, regionId: {eq: $regionId}, independent: {eq: true}}, limit: 1) @check(expr: "this.size() == 1", message: "left reading not of this region") { id }
+    right: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $rightObservationId}, runId: {eq: $runId}, regionId: {eq: $regionId}, independent: {eq: true}}, limit: 1) @check(expr: "this.size() == 1", message: "right reading not of this region") { id }
+    reversed: readingComparisons(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, runId: {eq: $runId}, regionId: {eq: $regionId}, leftObservationId: {eq: $rightObservationId}, rightObservationId: {eq: $leftObservationId}}, limit: 1) @check(expr: "this.size() == 0", message: "pair already recorded in the other order") { id }
+  }
   readingComparison_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, regionId: $regionId, leftObservationId: $leftObservationId, rightObservationId: $rightObservationId, algorithm: $algorithm, ratio: $ratio, editDistance: $editDistance, lengthBasis: $lengthBasis, status: $status, reasons: $reasons})
 }
+# A first-pass decision names its model call; a resolved decision other than a reviewer's
+# names the reading it selected; both are of the row's region.
 mutation AppendTranscriptionVersionV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $literalText: String!, $spans: Any!, $alternatives: Any!, $unresolved: Boolean!, $regionId: UUID!, $decisionKind: String!, $selectedObservationId: UUID, $firstPassObservationId: UUID, $rationale: String, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.decisionKind in ['identical_readings', 'first_pass', 'human']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.decisionKind in ['identical_readings', 'first_pass', 'human'] && (vars.decisionKind != 'first_pass' || vars.firstPassObservationId != null) && (vars.unresolved || vars.selectedObservationId != null || vars.decisionKind == 'human')") { active role canViewSensitive }
   }
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
   }
+  parents: query @redact {
+    regions: labelRegions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $regionId}, runId: {eq: $runId}}, limit: 1) @check(expr: "this.size() == 1", message: "region of another run") { id }
+    selected: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $selectedObservationId}, runId: {eq: $runId}, regionId: {eq: $regionId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.selectedObservationId == null || this.size() == 1", message: "selected reading not of this region") { id }
+    firstPass: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $firstPassObservationId}, runId: {eq: $runId}, regionId: {eq: $regionId}, independent: {eq: false}}, limit: 2) @check(expr: "vars.firstPassObservationId == null || this.size() == 1", message: "first-pass call not of this region") { id }
+  }
   transcriptionVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, literalText: $literalText, spans: $spans, alternatives: $alternatives, unresolved: $unresolved, regionId: $regionId, decisionKind: $decisionKind, selectedObservationId: $selectedObservationId, firstPassObservationId: $firstPassObservationId, rationale: $rationale})
 }
+# A handoff joins a decision and one of its region's readings, in the row's run.
 mutation AppendHarnessInputV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $transcriptionVersionId: UUID!, $observationId: UUID!, $role: String!, $handedText: String!, $note: String, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
@@ -89,45 +126,69 @@ mutation AppendHarnessInputV1($organizationId: UUID!, $collectionId: UUID!, $id:
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
   }
+  parents: query @redact {
+    decisions: transcriptionVersions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $transcriptionVersionId}, runId: {eq: $runId}}, limit: 1) @check(expr: "this.size() == 1", message: "decision of another run") { regionId }
+  }
+  readings: query @redact {
+    readings: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $observationId}, runId: {eq: $runId}, independent: {eq: true}}, limit: 1) @check(expr: "this.size() == 1 && this[0].regionId == response.parents.decisions[0].regionId", message: "reading not of the decision's region") { regionId }
+  }
   harnessInput_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, transcriptionVersionId: $transcriptionVersionId, observationId: $observationId, role: $role, handedText: $handedText, note: $note})
 }
 mutation AppendEvidenceItemV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $source: String!, $sourceVersion: String!, $adapterVersion: String!, $query: Any!, $outcome: String!, $locator: String!, $responseSha256: String!, $capturedAt: Timestamp!, $rawAssetId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.source != 'google-maps-geocoding' || vars.locator.matches('^place/[^/]+$'))") { active role canViewSensitive }
   }
   scope: query @redact {
-    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimenId specimen { sensitive } }
+  }
+  parents: query @redact {
+    sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $rawAssetId}) @check(expr: "this != null && this.specimenId == response.scope.pipelineRun.specimenId", message: "raw asset of another specimen") { specimenId }
   }
   evidenceItem_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, source: $source, sourceVersion: $sourceVersion, adapterVersion: $adapterVersion, query: $query, outcome: $outcome, locator: $locator, responseSha256: $responseSha256, capturedAt: $capturedAt, rawAssetId: $rawAssetId})
 }
+# A call on the decided transcript names no reading, and a call on a raw reading names no
+# decision; whatever it names is in the row's run.
 mutation AppendToolCallV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $callKey: String!, $phase: String!, $tool: String!, $toolVersion: String!, $source: String, $fieldKeys: [String!]!, $inputSource: String!, $transcriptionVersionId: UUID, $observationId: UUID, $attempt: Int!, $arguments: Any!, $outcome: String!, $result: Any, $evidenceId: UUID, $startedAt: Timestamp, $completedAt: Timestamp, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.inputSource in ['decided_transcript', 'raw_reading'] && vars.attempt >= 1 && vars.outcome in ['success', 'no_match', 'ambiguous', 'empty_response', 'rate_limited', 'timeout', 'authentication_error', 'authorization_error', 'provider_error', 'malformed_response', 'policy_blocked']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.phase in ['parse', 'plan', 'lookup', 'resolve', 'normalize', 'validate', 'finalize'] && vars.inputSource in ['decided_transcript', 'raw_reading'] && (vars.inputSource == 'decided_transcript' ? vars.observationId == null : vars.transcriptionVersionId == null) && vars.attempt >= 1 && vars.outcome in ['success', 'no_match', 'ambiguous', 'empty_response', 'rate_limited', 'timeout', 'authentication_error', 'authorization_error', 'provider_error', 'malformed_response', 'policy_blocked']") { active role canViewSensitive }
   }
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
+  }
+  parents: query @redact {
+    decisions: transcriptionVersions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $transcriptionVersionId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.transcriptionVersionId == null || this.size() == 1", message: "decision of another run") { id }
+    readings: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $observationId}, runId: {eq: $runId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.observationId == null || this.size() == 1", message: "reading of another run") { id }
+    evidence: evidenceItems(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $evidenceId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.evidenceId == null || this.size() == 1", message: "evidence of another run") { id }
   }
   toolCall_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, callKey: $callKey, phase: $phase, tool: $tool, toolVersion: $toolVersion, source: $source, fieldKeys: $fieldKeys, inputSource: $inputSource, transcriptionVersionId: $transcriptionVersionId, observationId: $observationId, attempt: $attempt, arguments: $arguments, outcome: $outcome, result: $result, evidenceId: $evidenceId, startedAt: $startedAt, completedAt: $completedAt})
 }
 mutation AppendFieldCandidateV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $fieldKey: String!, $state: String!, $literalValue: String, $parsedValue: Any, $normalizedValue: Any, $authorityId: String, $derivation: String!, $inputSource: String, $sourceTranscriptionId: UUID, $sourceObservationId: UUID, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.inputSource == null || vars.inputSource in ['decided_transcript', 'raw_reading'])") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.inputSource == null || vars.inputSource in ['decided_transcript', 'raw_reading']) && (vars.inputSource != 'decided_transcript' || vars.sourceObservationId == null) && (vars.inputSource != 'raw_reading' || vars.sourceTranscriptionId == null)") { active role canViewSensitive }
   }
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
   }
+  parents: query @redact {
+    decisions: transcriptionVersions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $sourceTranscriptionId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.sourceTranscriptionId == null || this.size() == 1", message: "decision of another run") { id }
+    readings: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $sourceObservationId}, runId: {eq: $runId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.sourceObservationId == null || this.size() == 1", message: "reading of another run") { id }
+  }
   fieldCandidate_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, fieldKey: $fieldKey, state: $state, literalValue: $literalValue, parsedValue: $parsedValue, normalizedValue: $normalizedValue, authorityId: $authorityId, derivation: $derivation, inputSource: $inputSource, sourceTranscriptionId: $sourceTranscriptionId, sourceObservationId: $sourceObservationId})
 }
+# G23: the source that decides a value, one that supports it, or one that contradicts it.
 mutation AppendCandidateEvidenceV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $candidateId: UUID!, $evidenceId: UUID!, $relation: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.relation in ['decides', 'supports', 'contradicts']") { active role canViewSensitive }
   }
   scope: query @redact {
-    fieldCandidate(key: {organizationId: $organizationId, collectionId: $collectionId, id: $candidateId}) @check(expr: "this != null && (!this.run.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { run { specimen { sensitive } } }
+    fieldCandidate(key: {organizationId: $organizationId, collectionId: $collectionId, id: $candidateId}) @check(expr: "this != null && (!this.run.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { runId run { specimen { sensitive } } }
+  }
+  parents: query @redact {
+    evidenceItem(key: {organizationId: $organizationId, collectionId: $collectionId, id: $evidenceId}) @check(expr: "this != null && this.runId == response.scope.fieldCandidate.runId", message: "evidence of another run") { runId }
   }
   candidateEvidence_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, candidateId: $candidateId, evidenceId: $evidenceId, relation: $relation})
 }
@@ -139,6 +200,9 @@ mutation AppendRecordVersionV2($organizationId: UUID!, $collectionId: UUID!, $id
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
   }
+  parents: query @redact {
+    predecessors: recordVersions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $predecessorId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.predecessorId == null || this.size() == 1", message: "predecessor of another run") { id }
+  }
   recordVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, predecessorId: $predecessorId, disposition: $disposition, policyVersion: $policyVersion, reasonCodes: $reasonCodes, summary: $summary})
 }
 mutation AppendResolvedFieldV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $recordVersionId: UUID!, $candidateId: UUID, $fieldKey: String!, $state: String!, $fieldGroup: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
@@ -147,14 +211,18 @@ mutation AppendResolvedFieldV2($organizationId: UUID!, $collectionId: UUID!, $id
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.fieldGroup in ['mandatory', 'optional']") { active role canViewSensitive }
   }
   scope: query @redact {
-    recordVersion(key: {organizationId: $organizationId, collectionId: $collectionId, id: $recordVersionId}) @check(expr: "this != null && (!this.run.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { run { specimen { sensitive } } }
+    recordVersion(key: {organizationId: $organizationId, collectionId: $collectionId, id: $recordVersionId}) @check(expr: "this != null && (!this.run.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { runId run { specimen { sensitive } } }
+  }
+  parents: query @redact {
+    candidates: fieldCandidates(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $candidateId}}, limit: 2) @check(expr: "vars.candidateId == null || (this.size() == 1 && this[0].runId == response.scope.recordVersion.runId && this[0].fieldKey == vars.fieldKey)", message: "candidate of another run or field") { runId fieldKey }
   }
   resolvedField_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, recordVersionId: $recordVersionId, candidateId: $candidateId, fieldKey: $fieldKey, state: $state, fieldGroup: $fieldGroup})
 }
+# CONTRACTS.md 190: severity hard, warning or info; a warning never routes the record to review.
 mutation AppendValidationFindingV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $recordVersionId: UUID!, $ruleId: String!, $ruleVersion: String!, $severity: String!, $outcome: String!, $fieldKey: String, $reasonCode: String!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.severity in ['hard', 'warning', 'info'] && vars.outcome in ['pass', 'fail', 'unresolved', 'not_applicable']") { active role canViewSensitive }
   }
   scope: query @redact {
     recordVersion(key: {organizationId: $organizationId, collectionId: $collectionId, id: $recordVersionId}) @check(expr: "this != null && (!this.run.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { run { specimen { sensitive } } }
