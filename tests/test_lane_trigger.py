@@ -37,7 +37,7 @@ from specimen_digitization.application.storage import (
 )
 from specimen_digitization.application.workflow import SyntheticAdapters
 
-from test_application import HEADERS, PREFIX, intake
+from test_application import HEADERS, PREFIX, image_bytes
 
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
 USER = "lane-reviewer"
@@ -122,6 +122,50 @@ def lane_client(root, *, dispatcher=None, profiles=None):
     return TestClient(app, raise_server_exceptions=False)
 
 
+def intake(client, sensitive=False):
+    """Upload one image into a batch with an explicit sensitivity declaration."""
+    import hashlib
+
+    batch = client.post(
+        PREFIX + "/batches",
+        headers=dict(HEADERS, **{"Idempotency-Key": "lane-batch"}),
+        json={
+            "collection_id": SYNTHETIC_COLLECTION,
+            "display_name": "Lane",
+            "sensitive": sensitive,
+        },
+    )
+    assert batch.status_code == 200, batch.text
+    data = image_bytes()
+    item = client.post(
+        PREFIX + f"/batches/{batch.json()['batch_id']}/items",
+        headers=dict(HEADERS, **{"Idempotency-Key": "lane-item"}),
+        json={
+            "client_item_id": "one",
+            "filename": "slide.png",
+            "media_type": "image/png",
+            "size_bytes": len(data),
+            "width": 120,
+            "height": 80,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "sensitive": sensitive,
+        },
+    )
+    assert item.status_code == 200, item.text
+    upload = item.json()["upload_id"]
+    content = client.put(
+        PREFIX + f"/uploads/{upload}/content", headers=HEADERS, content=data
+    )
+    assert content.status_code == 200, content.text
+    done = client.post(
+        PREFIX + f"/uploads/{upload}/complete",
+        headers=dict(HEADERS, **{"Idempotency-Key": "lane-complete"}),
+        json={"expected_revision": content.json()["revision"]},
+    )
+    assert done.status_code == 200, done.text
+    return done.json()
+
+
 def stored(root, specimen_id):
     return SQLiteRepository(root / "state.sqlite3").get(SCOPE, specimen_id)
 
@@ -181,6 +225,23 @@ def test_every_upload_is_queued_with_its_budget_and_intake_selection(tmp_path):
         "reason": "Intake collection",
     }
     assert due_ids(tmp_path) == [row["specimen_id"]]
+
+
+def test_sensitive_records_are_never_queued(tmp_path):
+    dispatcher = RecordingDispatcher()
+    c = lane_client(tmp_path, dispatcher=dispatcher)
+    row = intake(c, sensitive=True)
+    assert row["status"] == "processing_blocked"
+    assert row["blocker"] == "sensitive_record_not_processed"
+    assert due_ids(tmp_path) == []
+    assert dispatcher.calls == 0
+    refused = process(c, row["specimen_id"])
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "sensitive_record_not_processed"
+    retried = action(c, row["specimen_id"], "retry", "retry-sensitive")
+    assert retried.status_code == 409, retried.text
+    assert retried.json()["error"]["code"] == "sensitive_record_not_processed"
+    assert dispatcher.calls == 0
 
 
 def test_upload_without_an_allowance_is_blocked_with_the_reason(tmp_path):
