@@ -5,7 +5,7 @@
     "dataconnect/dataconnect.yaml": "8355ece3fb4b1bebf920c05f2cb358229877cca9d0a0abc6e8cdc0da2756423a",
     "dataconnect/connector/connector.yaml": "112dd6af54062562a6c76b7034b46a54635e13fdcc6b5441e738a3f0e3596ebe",
     "storage.rules": "8d8bf2202a428894aaa46278bfc68c33dce0fd405e547b952a408e930d380893",
-    "dataconnect/schema/schema.gql": "8e9c6c2eb7a39c42c2cc2badd1577bb1c1b5c305088ddca095c6c1aa6794a4bb",
+    "dataconnect/schema/schema.gql": "26d291d0d229dc4da957477e431e25e0afbb34f5fcb5e9463b389b34f114ca2c",
     "dataconnect/schema/search.gql": "a7ff0616ed6045d958f7a35eccffbe51671d395fa43a695ccdca7892e724b32a",
     "dataconnect/connector/artifacts.gql": "4d4da17483f84409419323b44441dfde83719c337d48386e2bc451fb7dee3040",
     "dataconnect/connector/auxiliary.gql": "859dec52ba7f4212da4728ab77634766115914a4c66d10df92d662be9c825114",

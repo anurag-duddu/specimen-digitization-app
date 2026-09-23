@@ -25,6 +25,16 @@ def derived_id(*parts: object) -> str:
     return str(uuid.uuid5(NAMESPACE, "/".join(str(part) for part in parts)))
 
 
+def _region_row(run_id: str, region_id: str) -> str:
+    """A region row's id: the domain's region id repeats across runs (rule 1.5)."""
+    return derived_id("region", run_id, region_id)
+
+
+def _fixed_order(*ids: str) -> list[str]:
+    """Readings in the connector's order: ids as lowercase hex without dashes (section 3.1)."""
+    return sorted(ids, key=lambda i: i.replace("-", "").lower())
+
+
 @dataclass(frozen=True)
 class Blob:
     """Where the bytes behind a blob ref live, as `SourceAsset` records them."""
@@ -160,8 +170,9 @@ def _region(specimen: Specimen, region) -> Write:
     return _write(
         "AppendLabelRegionV2",
         {
-            "id": region.id,
+            "id": _region_row(specimen.run.id, region.id),
             "runId": specimen.run.id,
+            "domainRegionId": region.id,
             "sourceAssetId": region.asset_id,
             "cropAssetId": None,
             "geometry": {
@@ -187,7 +198,10 @@ def _raw_asset(
     return _write(
         "AppendSourceAssetV2",
         {
-            "id": derived_id("asset", blob.bucket, blob.object_name, blob.generation),
+            # Per specimen: a content-addressed object can hold several specimens' responses.
+            "id": derived_id(
+                "asset", specimen.id, blob.bucket, blob.object_name, blob.generation
+            ),
             "specimenId": specimen.id,
             "kind": "raw_response",
             "parentAssetId": None,
@@ -211,7 +225,7 @@ def _reading(run: Run, observation: Observation, raw_asset_id: str) -> Write:
         {
             "id": observation.id,
             "runId": run.id,
-            "regionId": observation.region_id,
+            "regionId": _region_row(run.id, observation.region_id),
             "rawAssetId": raw_asset_id,
             "stepKey": f"transcribe:{observation.region_id}:{observation.route_id}",
             "provider": observation.provider,
@@ -243,16 +257,7 @@ def _comparison(run: Run, transcript: Transcript) -> Write | None:
     readings = {o.id: o for o in run.observations}
     if not all(i in readings for i in transcript.observation_ids):
         return None
-    routes = list(run.profile.routes)
-    left, right = sorted(
-        transcript.observation_ids,
-        key=lambda i: (
-            routes.index(readings[i].route_id)
-            if readings[i].route_id in routes
-            else len(routes),
-            readings[i].route_id,
-        ),
-    )
+    left, right = _fixed_order(*transcript.observation_ids)
     ratio = transcript.disagreement_ratio
     length_basis = max(1, *(len(readings[i].literal_text) for i in (left, right)))
     return _write(
@@ -260,7 +265,7 @@ def _comparison(run: Run, transcript: Transcript) -> Write | None:
         {
             "id": derived_id("comparison", run.id, transcript.region_id, left, right),
             "runId": run.id,
-            "regionId": transcript.region_id,
+            "regionId": _region_row(run.id, transcript.region_id),
             "leftObservationId": left,
             "rightObservationId": right,
             "algorithm": transcript.alignment_algorithm,
