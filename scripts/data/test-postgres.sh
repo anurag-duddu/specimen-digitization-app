@@ -54,6 +54,7 @@ apply_supplemental_indexes() {
 }
 start_connector
 node scripts/data/connector-test.mjs
+node scripts/data/projection-test.mjs
 node scripts/data/bootstrap-test.mjs
 node scripts/data/pilot-ledger-test.mjs
 node scripts/data/sensitivity-test.mjs
