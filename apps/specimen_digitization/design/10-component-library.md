@@ -1073,6 +1073,43 @@ percent, or an image. Semantics `image` with the person's name.
 
 **`UiHairline`.** 1 dp `hairline`, inset-aware. Retires `Divider`.
 
+**`UiTimeline`.** Proposed by the go-live UI workstream on 2026-09-23
+(`docs/execution/golive/briefs/S6-record-thread-ui.md`, T2): an ordered record
+of what happened, one entry per event, in the order it happened. Its first use
+is the harness's lookups in a record's processing thread, where each tool call
+is an event with an outcome. The anatomy is the one the application already
+draws by hand for its phase steps (`evidence_panel.dart`, `_PhaseStep`), so
+the product keeps one picture of a sequence.
+
+Each entry is a row of two columns. The rail holds the marker: a disc of
+`space.iconAction` on `paper` with an emphasis stroke in the entry's tone,
+holding either the entry's position in `type.labelSmall` or a registry glyph
+at 16 (`UiIconSize.small`), both in the tone. A connector of the emphasis
+stroke in `hairline` runs from under the disc to the foot of the entry, and
+the last entry has none. The content column holds the title in `type.label`
+on `ink`, an optional trailing beside the title that moves under it when the
+line cannot hold both, an optional meta line in `type.bodySmall` on
+`inkSecondary`, and an optional child `space.s2` below. Entries are `space.s4`
+apart and the rail sits `space.s3` from the column.
+
+The tone is a status triple or none; none draws `inkSecondary`. The tone is
+never the only carrier: a caller pairs it with a glyph and with words, as a
+status chip does (02 section 4.13). The timeline is not interactive and takes
+no focus, so it does not run the control contract, the way a data tile does
+not; a child may hold controls, and they keep their own nodes. Semantics: the
+timeline is one `list` node, labelled when the caller names it, and each entry
+is a `listItem` container whose label is the caller's phrase or, when there is
+none, "N of M: title, meta". The marker is excluded, because the label says
+what it says. Nothing moves, so reduced motion changes nothing. In a
+right-to-left window the rail is on the right. At 200 percent text the title
+and the meta wrap and the disc keeps its size, top aligned with the title.
+The connector is positioned against the row rather than measured with
+`IntrinsicHeight`, because a child that carries a `UiLabel` measures itself
+with a `LayoutBuilder`, which has no intrinsic dimension to give (11 section
+3.3). An empty timeline draws nothing: the caller names the absence with an
+empty state. It retires no Material widget, since the product never used
+`Stepper`.
+
 ## 5. Patterns (L4): how the existing product widgets re-base
 
 | Pattern (app `lib/src/widgets/`) | Built from | Change |
