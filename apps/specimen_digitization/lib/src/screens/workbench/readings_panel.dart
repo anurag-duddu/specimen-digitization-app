@@ -1,5 +1,6 @@
-/// The readings segment (screen blueprints, 6.3).
+/// The readings segment (screen blueprints, 6.3; UI.md T2.2).
 ///
+/// One section per label region, so a two-label slide reads as two labels.
 /// Two readings are two readings. Each is a `ReadingCard` carrying a
 /// `DiffText` against the other reading for its region, so the difference is
 /// quantified in a sentence and marked with an underline and a symbol, never
@@ -106,6 +107,25 @@ class WorkbenchReadings extends StatelessWidget {
     final Map<String, int> firstOfRegion = _referenceIndex;
     final Json run = objectOf(specimen.data['run']);
     final List<Json> observations = specimen.observations;
+    final Set<Object?> listed = <Object?>{
+      for (final Json region in specimen.regions) region['region_id'],
+    };
+
+    // A reading with no region, or the first reading of its region, has
+    // nothing to be compared against.
+    Widget cardAt(int i, Json o) {
+      final int? first = firstOfRegion[o['region_id']];
+      final bool isFirst = first == null || first == i;
+      return Builder(
+        builder: (BuildContext context) =>
+            _card(context, o, isFirst ? null : _literalOf(observations[first])),
+      );
+    }
+
+    final List<Widget> unassigned = <Widget>[
+      for (final (int i, Json o) in observations.indexed)
+        if (!listed.contains(o['region_id'])) cardAt(i, o),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,42 +136,25 @@ class WorkbenchReadings extends StatelessWidget {
             icon: UiIcons.modelReading.defaultGlyph,
             title: 'No readings yet',
             body: 'No model has read this specimen. Refresh to check again.',
-          ),
-        LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints c) {
-            final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
-            final double cardWidth = sideBySide
-                ? (c.maxWidth - ui.space.s4) / 2
-                : c.maxWidth;
-            return Wrap(
-              spacing: ui.space.s4,
-              runSpacing: ui.space.s4,
-              children: <Widget>[
+          )
+        else ...<Widget>[
+          for (final Json region in specimen.regions)
+            KeyedSubtree(
+              key: _anchorFor(region['region_id']),
+              child: _section(region['region_id'], <Widget>[
                 for (final (int i, Json o) in observations.indexed)
-                  SizedBox(
-                    width: cardWidth,
-                    child: Builder(
-                      builder: (BuildContext context) {
-                        // A reading with no region, or the first reading of
-                        // its region, has nothing to be compared against.
-                        final int? first = firstOfRegion[o['region_id']];
-                        final bool isFirst = first == null || first == i;
-                        return KeyedSubtree(
-                          key: isFirst ? _anchorFor(o['region_id']) : null,
-                          child: _card(
-                            context,
-                            o,
-                            isFirst ? null : _literalOf(observations[first]),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-        SizedBox(height: ui.space.s6),
+                  if (o['region_id'] == region['region_id']) cardAt(i, o),
+              ]),
+            ),
+          if (unassigned.isNotEmpty)
+            ReadingsRegionSection(
+              regionId: null,
+              title: _regionName(null),
+              cards: unassigned,
+              unassigned: true,
+            ),
+        ],
+        SizedBox(height: ui.space.s2),
         _declarations(context, run),
         SizedBox(height: ui.space.s6),
         Semantics(
@@ -165,7 +168,28 @@ class WorkbenchReadings extends StatelessWidget {
     );
   }
 
-  /// The first card of a region carries that region's anchor.
+  /// One listed region's section: its heading and its cards.
+  Widget _section(Object? regionId, List<Widget> cards) =>
+      ReadingsRegionSection(
+        regionId: regionId is String ? regionId : null,
+        title: _regionName(regionId),
+        cards: cards,
+      );
+
+  /// The route and the prompt version a reading records, as one line.
+  String? _identity(Json o) {
+    String? present(Object? value) =>
+        value is String && value.trim().isNotEmpty ? value : null;
+    final String? route = present(o['route_id']);
+    final String? prompt = present(o['prompt_version']);
+    if (route == null && prompt == null) return null;
+    return <String>[
+      if (route != null) 'Route $route',
+      if (prompt != null) 'Prompt $prompt',
+    ].join(' · ');
+  }
+
+  /// A region's section carries that region's anchor.
   GlobalKey? _anchorFor(Object? regionId) {
     if (regionId is! String) return null;
     return anchors[regionId];
@@ -185,7 +209,8 @@ class WorkbenchReadings extends StatelessWidget {
       modelName: textOf(o['model_id'], 'Model'),
       provider: textOf(o['provider'], 'Not recorded'),
       literal: literal,
-      regionName: regionName,
+      // The section heading names the region; the card does not repeat it.
+      identity: _identity(o),
       // The first reading of a region has nothing before it to differ from.
       reference: reference,
       selected: selectedRegionId != null && selectedRegionId == o['region_id'],
@@ -446,6 +471,117 @@ class WorkbenchReadings extends StatelessWidget {
       choices: evidenceChoices(specimen),
     );
     if (change != null && context.mounted) await onChange(change);
+  }
+}
+
+/// One label region in the Readings segment (UI.md T2.2): its name as a
+/// heading, its reading cards, and, when the thread carries them, the
+/// comparison and the decision.
+class ReadingsRegionSection extends StatelessWidget {
+  /// The section for [regionId], titled [title].
+  const ReadingsRegionSection({
+    super.key,
+    required this.regionId,
+    required this.title,
+    required this.cards,
+    this.comparisons = const <Widget>[],
+    this.decision,
+    this.unassigned = false,
+  });
+
+  /// The region, or null for readings whose region the record does not list.
+  final String? regionId;
+
+  /// "Label K", or "Unassigned label".
+  final String title;
+
+  /// The region's reading cards, in the order they were recorded.
+  final List<Widget> cards;
+
+  /// The measured differences between the readings.
+  final List<Widget> comparisons;
+
+  /// How the region's transcript was decided.
+  final Widget? decision;
+
+  /// True for the section that collects readings with no listed region.
+  final bool unassigned;
+
+  /// What a region no reader read says.
+  static const String noReadings = 'No reading recorded for this label.';
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final Widget? decided = decision;
+    return Padding(
+      padding: EdgeInsetsDirectional.only(bottom: ui.space.s6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          // The weight the region's name had when each card carried it: a
+          // label, not a title, set without the leading above and below its
+          // line. On a phone the first reading has to stay on the first
+          // screen under the photograph and the strip (13 sections 0 and
+          // 2.5), and a title-sized heading pushed it off by 9 dp.
+          // Aligned rather than stretched, so the heading's node is the size
+          // of its words: a node the width of the pane is mostly background,
+          // and it is also what a focus highlight would outline.
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Semantics(
+              container: true,
+              header: true,
+              child: Text(
+                title,
+                style: ui.type.label,
+                textHeightBehavior: const TextHeightBehavior(
+                  applyHeightToFirstAscent: false,
+                  applyHeightToLastDescent: false,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: ui.space.s1),
+          if (cards.isEmpty)
+            // Its own node, read after the heading it belongs to rather than
+            // merged into the segment's label.
+            Semantics(
+              container: true,
+              child: Text(
+                noReadings,
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints c) {
+                final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
+                final double cardWidth = sideBySide
+                    ? (c.maxWidth - ui.space.s4) / 2
+                    : c.maxWidth;
+                return Wrap(
+                  spacing: ui.space.s4,
+                  runSpacing: ui.space.s4,
+                  children: <Widget>[
+                    for (final Widget card in cards)
+                      SizedBox(width: cardWidth, child: card),
+                  ],
+                );
+              },
+            ),
+          for (final Widget comparison in comparisons) ...<Widget>[
+            SizedBox(height: ui.space.s3),
+            comparison,
+          ],
+          if (decided != null) ...<Widget>[
+            SizedBox(height: ui.space.s3),
+            decided,
+          ],
+        ],
+      ),
+    );
   }
 }
 
