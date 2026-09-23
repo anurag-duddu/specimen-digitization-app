@@ -109,8 +109,9 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
     }
     assert (allowance.max_tokens, allowance.max_external_calls) == (480_000, 96)
     assert profile.date_rules == DateRules(
-        version="date-rules-v1", two_digit_year_century=1900
+        version="date-rules-v1", two_digit_year_century=1900, roman_numeral_months=True
     )
+    assert DateRules().roman_numeral_months is False
 
 
 @pytest.mark.parametrize("century", [1950, 0, -100, 10000])
