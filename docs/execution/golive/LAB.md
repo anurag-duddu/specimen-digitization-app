@@ -91,6 +91,19 @@ misses per subject. Slides 324 to 328 are from Mindanao with right-hand labels;
 328 to 330 are from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
 top edge are slide-preparation codes, not collection dates.
 
+### Expected outcome for the ten (G22)
+
+G22 keeps all four elevation fields mandatory and derives nothing. Every pilot
+label gives its elevation in feet only, with no metres and no range, so every
+one lacks at least one mandatory field. The correct outcome for each of the ten
+is therefore needs human review, with the right reasons: each mandatory field
+the label does not carry is unresolved, and no field the label does carry is.
+`identified_by_irn` is never on a label and does not block (G16). Most slides
+also lack a taxon and a determiner; only 328 names a taxon. What each label
+carries is tabled in `~/specimen-golive/reports/field-coverage.md`, outside the
+repository. Once the lane reaches the queue decision, a run that clears one of
+the ten, or sends it to review for a wrong or missing reason, fails stage 8.
+
 ### Files
 
 ```text
