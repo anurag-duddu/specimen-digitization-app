@@ -1,0 +1,265 @@
+"""The data plane's envelope-free release (RELEASE.md 4.2): its phase comes from live state, read with GETs only.
+
+Synthetic Google responses, gate records and merged trees; never network, credentials or cloud.
+"""
+import base64
+import binascii
+import copy
+import hashlib
+import json
+import sys
+
+import pytest
+
+import deploy_data as D
+import release_gate as G
+from release_diagnostics import HTTPFailure
+
+SHA = "a" * 40
+SCHEMA, CONNECTOR = f"{D.PREFIX}/schemas/main", f"{D.PREFIX}/connectors/specimen-server"
+INSTANCE = f"projects/{D.PROJECT}/instances/{D.SOURCE}"
+DATABASE = f"{INSTANCE}/databases/{D.DATABASE}"
+RULESET = f"projects/{D.PROJECT}/rulesets/0f6e2a57-1c3b-4d8e-9a70-5b2c4d6e8f10"
+UPDATED = "2026-09-23T08:00:00.123456789Z"
+KEYS = {"version", "source_sha", "run_id", "run_attempt", "phase", "schema_etag", "schema_update_time",
+        "connector_etag", "storage_ruleset"}
+T3D = "the additive apply arrives with T3d; this phase fails closed until then"
+# Private-looking values a live resource may carry; none may reach a receipt, a step output or the log.
+CANARIES = ("canary-uid-7f3a", "canary-account@example.invalid", "canary-fingerprint", "canary-address")
+MERGED_SCHEMA = "type Specimen @table {\n  id: UUID!\n  label: String\n}\n"
+OPERATIONS = ("query ListSpecimens($organizationId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) {\n"
+              "  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})"
+              ' @check(expr: "this != null") { uid }\n  specimens { id }\n}\n')
+RULES = "rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    allow read, write: if false;\n  }\n}\n"
+MERGED, OPS = {"schema.gql": MERGED_SCHEMA}, {"operations.gql": OPERATIONS}
+
+
+def record(plane="data", **changes):
+    return {"version": G.RECORD_VERSION, "plane": plane, "repository": "anurag-duddu/specimen-digitization-app",
+            "project": D.PROJECT, "source_sha": SHA, "source_tree_sha": "d" * 40, "pull_request": 15, "ci_run_id": 123,
+            "ci_run_attempt": 1, "release_run_id": 456, "release_run_attempt": 2, "issued_at_unix": 1790164800,
+            "expires_at_unix": 1790168400, "identity": G.identity(plane) if plane in G.GATE_PLANES else {}, **changes}
+
+
+def source(files):
+    return {"files": [{"path": path, "content": content} for path, content in files.items()]}
+
+
+def state(schema=None, connector=None, rules=RULES):
+    """Live resources by (api, resource). No schema files is the placeholder; None leaves the rest absent."""
+    datasource = {"database": D.DATABASE, "cloudSql": {"instance": f"projects/{D.PROJECT}/locations/us-east4/instances/{D.SOURCE}"}}
+    live = {("data", SCHEMA): {"name": SCHEMA, "uid": CANARIES[0], "etag": "schema-etag", "updateTime": UPDATED,
+                               "reconciling": False, "source": source(schema) if schema else {},
+                               "datasources": [{"postgresql": {**datasource, "schemaMigration": "MIGRATE_COMPATIBLE"}
+                                                if schema else {**datasource, "schemaValidation": "STRICT", "ephemeral": True}}]},
+            ("sql", INSTANCE): {"name": D.SOURCE, "project": D.PROJECT, "region": "us-east4", "state": "RUNNABLE",
+                                "serviceAccountEmailAddress": CANARIES[1], "ipAddresses": [{"ipAddress": CANARIES[3]}]},
+            ("sql", DATABASE): {"name": D.DATABASE, "instance": D.SOURCE, "project": D.PROJECT}}
+    if connector is not None:
+        live["data", CONNECTOR] = {"name": CONNECTOR, "uid": CANARIES[0], "etag": "connector-etag", "reconciling": False,
+                                   "source": source(connector)}
+    if rules is not None:
+        live["rules", D.RULE_RELEASE] = {"name": D.RULE_RELEASE, "rulesetName": RULESET}
+        live["rules", RULESET] = {"name": RULESET, "source": {"files": [
+            {"name": "storage.rules", "content": rules, "fingerprint": CANARIES[2]}]}}
+    return live
+
+
+class FakeGoogle:
+    def __init__(self, live, packet):
+        self.live, self.packet, self.calls, self.error = live, packet, [], None
+
+    def request(self, api, method, resource, *, body=None, params=None, missing=False):
+        self.calls.append((api, method, resource))
+        if method != "GET":
+            pytest.fail("choosing the data phase never changes live state")
+        if (api, resource) not in self.live:
+            if missing:
+                return None
+            raise HTTPFailure(404)
+        return copy.deepcopy(self.live[api, resource])
+
+
+@pytest.fixture
+def release(tmp_path, monkeypatch, capsys):
+    """Run the release against live resources; every exit keeps the receipt, the step output and the log public."""
+    root, output, steps = tmp_path / "merged", tmp_path / "data-released.json", tmp_path / "github-output"
+    for relative, text in (("dataconnect/schema/schema.gql", MERGED_SCHEMA), ("storage.rules", RULES),
+                           ("dataconnect/connector/operations.gql", OPERATIONS),
+                           ("dataconnect/connector/connector.yaml", "connectorId: specimen-server\n")):
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text(text)
+    steps.touch()
+    monkeypatch.setattr(D, "ROOT", root)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(steps))
+    monkeypatch.delenv("DATA_BOOTSTRAP_ARTIFACT_B64", raising=False)
+
+    def run(live, packet=None):
+        google = FakeGoogle(live, record() if packet is None else packet)
+        monkeypatch.setattr(D, "Google", lambda path, plane: google if plane == "data" else pytest.fail("data only"))
+        try:
+            D.deploy_released_data(tmp_path / "release" / "packet.json", output)
+        except ValueError as error:
+            google.error = str(error)
+        receipt = json.loads(output.read_text()) if output.exists() else None
+        google.log = capsys.readouterr().out
+        assert receipt is None or set(receipt) == KEYS
+        assert not any(value in text for value in CANARIES for text in (output.read_text() if receipt else "",
+                                                                         steps.read_text(), google.log))
+        return google, receipt, steps.read_text()
+    return run
+
+
+def receipt(phase, connector="connector-etag", ruleset=RULESET, schema="schema-etag"):
+    return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
+            "schema_etag": schema, "schema_update_time": UPDATED if schema else None, "connector_etag": connector,
+            "storage_ruleset": ruleset}
+
+
+def gets(*resources):
+    return [(api, "GET", resource) for api, resource in resources]
+
+
+def test_the_placeholder_without_a_connector_initializes_and_changes_nothing(release):
+    google, value, outputs = release(state(rules=None))
+    assert google.error is None and outputs == "phase=initialize\n"
+    assert value == receipt("initialize", connector=None, ruleset=None)
+    assert google.calls == gets(("data", SCHEMA), ("data", CONNECTOR), ("rules", D.RULE_RELEASE), ("sql", INSTANCE),
+                                ("sql", DATABASE))
+
+
+def test_live_sources_equal_to_the_merged_ones_verify_and_change_nothing(release):
+    google, value, outputs = release(state(MERGED, OPS))
+    assert google.error is None and outputs == "phase=verify\n" and value == receipt("verify")
+    assert google.calls == gets(("data", SCHEMA), ("data", CONNECTOR), ("rules", D.RULE_RELEASE), ("rules", RULESET),
+                                ("sql", INSTANCE), ("sql", DATABASE))
+
+
+@pytest.mark.parametrize("change,message", [
+    (lambda live: live["data", SCHEMA]["datasources"][0]["postgresql"].update(ephemeral=True), "persistent"),
+    (lambda live: live["data", SCHEMA]["datasources"][0]["postgresql"].update(database="other"), "persistent"),
+    (lambda live: live["data", SCHEMA]["datasources"][0]["postgresql"].pop("schemaMigration"), "persistent"),
+    (lambda live: live["data", CONNECTOR].update(reconciling=True), "reconcil"),
+])
+def test_verify_requires_a_persistent_schema_and_a_reconciled_connector(release, change, message):
+    live = state(MERGED, OPS)
+    change(live)
+    google, value, outputs = release(live)
+    assert message in google.error and outputs == "" and value == receipt("verify")
+
+
+@pytest.mark.parametrize("live", [
+    state({"schema.gql": "type Specimen @table {\n  id: UUID!\n}\n"}, OPS),
+    state(MERGED, OPS, rules="rules_version = '2';\n"), state(MERGED, OPS, rules=None),
+], ids=["new-nullable-field", "changed-rules", "no-rules-release"])
+def test_an_additive_change_chooses_apply_which_fails_closed_until_t3d(release, live):
+    google, value, outputs = release(live)
+    assert google.error == T3D and outputs == "phase=apply\n"
+    assert value == receipt("apply", ruleset=RULESET if ("rules", RULESET) in live else None)
+
+
+def test_a_non_additive_change_is_refused_by_count_with_value_free_lines(release):
+    live = state({"schema.gql": "type Specimen @table {\n  id: UUID!\n  label: String!\n  note: String\n}\n"}, OPS)
+    google, value, outputs = release(live)
+    assert google.error == "the additive-only gate refused 2 change(s)"
+    assert outputs == "phase=apply\n" and value == receipt("apply")
+    assert "Specimen.note: field removed or renamed" in google.log
+    assert "Specimen.label: NOT NULL dropped outside the named relaxations" in google.log
+
+
+def test_a_changed_operation_is_refused_too(release):
+    google, value, outputs = release(state(MERGED, {"operations.gql": OPERATIONS.replace("{ id }", "{ id label }")}))
+    assert google.error == "the additive-only gate refused 1 change(s)" and "ListSpecimens: operation changed" in google.log
+
+
+@pytest.mark.parametrize("live,connector", [
+    (state(MERGED), None), (state(None, OPS), "connector-etag"), (state({}, {}), "connector-etag"),
+    ({**state(MERGED, OPS), ("data", SCHEMA): {**state(MERGED)["data", SCHEMA], "reconciling": True}}, "connector-etag"),
+    ({**state(), ("data", SCHEMA): {**state()["data", SCHEMA], "reconciling": True}}, None),
+], ids=["schema-without-connector", "connector-without-schema", "connector-without-files", "schema-reconciling",
+        "placeholder-reconciling"])
+def test_any_other_combination_asks_to_reconcile(release, live, connector):
+    google, value, outputs = release(live)
+    assert "reconcile" in google.error and outputs == ""
+    assert value == receipt(None, connector=connector)
+    assert all(method == "GET" for _, method, _ in google.calls)
+
+
+@pytest.mark.parametrize("change", [
+    lambda live: live["sql", INSTANCE].update(state="SUSPENDED"), lambda live: live["sql", INSTANCE].update(state=None),
+    lambda live: live["sql", INSTANCE].update(name="other"), lambda live: live.pop(("sql", DATABASE)),
+    lambda live: live["sql", DATABASE].update(name="other"), lambda live: live.pop(("sql", INSTANCE)),
+], ids=["suspended", "no-state", "other-instance", "no-database", "other-database", "no-instance"])
+def test_the_sql_instance_must_run_and_the_application_database_exist(release, change):
+    live = state(MERGED, OPS)
+    change(live)
+    google, value, outputs = release(live)
+    assert google.error and outputs == "" and value == receipt(None)
+
+
+@pytest.mark.parametrize("change", [
+    lambda live: live.pop(("data", SCHEMA)), lambda live: live["data", SCHEMA].update(etag=None),
+    lambda live: live["data", SCHEMA].update(updateTime="yesterday"), lambda live: live["data", CONNECTOR].pop("etag"),
+    lambda live: live["rules", D.RULE_RELEASE].update(rulesetName="projects/other/rulesets/x"),
+    lambda live: live["rules", D.RULE_RELEASE].update(rulesetName=f"projects/{D.PROJECT}/rulesets/../releases"),
+    lambda live: live["rules", RULESET]["source"]["files"].append({"name": "storage.rules", "content": ""}),
+    lambda live: live["data", SCHEMA]["source"]["files"].append({"path": "schema.gql", "content": ""}),
+], ids=["no-schema", "no-schema-etag", "bad-update-time", "no-connector-etag", "foreign-ruleset", "ruleset-path",
+        "duplicate-rules-file", "duplicate-schema-file"])
+def test_missing_or_malformed_live_facts_fail_closed_before_a_phase(release, change):
+    live = state(MERGED, OPS)
+    change(live)
+    google, value, outputs = release(live)
+    assert google.error and outputs == "" and (value is None or value["phase"] is None)
+    assert all(method == "GET" for _, method, _ in google.calls)
+
+
+@pytest.mark.parametrize("packet", [
+    {"version": "protected-release/v1", "plane": "data", "source_sha": SHA},
+    record("data-initialization"), record("runtime"), record(plane="data", version="protected-release-gate/v2"),
+])
+def test_only_a_data_gate_record_releases_and_nothing_is_read_or_written_otherwise(release, packet):
+    google, value, outputs = release(state(), packet)
+    assert google.error and google.calls == [] and value is None and outputs == ""
+
+
+def test_a_present_bootstrap_artifact_is_announced_never_decoded_printed_or_written(release, monkeypatch):
+    artifact = "not base64 at all: canary-bootstrap-row"
+    monkeypatch.setenv("DATA_BOOTSTRAP_ARTIFACT_B64", artifact)
+    for module, name in ((base64, "b64decode"), (base64, "standard_b64decode"), (base64, "urlsafe_b64decode"),
+                         (base64, "decodebytes"), (binascii, "a2b_base64")):
+        monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("the bootstrap arrives with T3e"))
+    google, value, outputs = release(state(rules=None))
+    assert google.error is None and outputs == "phase=initialize\n" and "T3e" in google.log
+    assert artifact not in google.log + json.dumps(value) + outputs and "canary" not in google.log
+    monkeypatch.setenv("DATA_BOOTSTRAP_ARTIFACT_B64", "")
+    assert "T3e" not in release(state(rules=None))[0].log
+
+
+def test_the_committed_sources_are_exactly_what_the_envelope_path_sends():
+    schema, connector = D.data_bodies({"schema_mode": "validate_existing", "schema_etag": None, "connector_etag": None})
+    assert schema["source"] == D.committed_source("dataconnect/schema") and schema["source"]["files"]
+    assert connector["source"] == D.committed_source("dataconnect/connector") and connector["source"]["files"]
+    assert D.committed_rules() == {"files": [{"name": "storage.rules", "content": (D.ROOT / "storage.rules").read_text()}]}
+
+
+@pytest.mark.parametrize("action", ["--admit", "--prepare-inputs", "--prepare-clone-intent", "--complete-initialization"])
+def test_the_command_line_releases_a_gate_record_only_through_deploy(tmp_path, monkeypatch, action):
+    packet, output, steps, calls = tmp_path / "packet.json", tmp_path / "data-released.json", tmp_path / "out", []
+    steps.touch()
+    monkeypatch.setenv("GITHUB_OUTPUT", str(steps))
+    monkeypatch.setattr(D, "admit", lambda path, plane: record(plane))
+    monkeypatch.setattr(D, "materialize_inputs", lambda *args: None)
+    monkeypatch.setattr(D, "read_bound_plan", lambda *args: pytest.fail("a gate record has no plan"))
+    monkeypatch.setattr(D, "deploy", lambda *args: pytest.fail("a gate record never takes the envelope path"))
+    monkeypatch.setattr(D, "deploy_released_data", lambda *args: calls.append(args) or output.write_text("{}\n"))
+    arguments = ["--receipt", str(tmp_path / "receipt.json")] if action == "--complete-initialization" else []
+    monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(packet), "--deploy", "--output", str(output)])
+    D.main()
+    assert calls == [(packet, output)]
+    assert steps.read_text() == "receipt_sha256=" + hashlib.sha256(b"{}\n").hexdigest() + "\n"
+    monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(packet), action, "--output", str(output),
+                                      *arguments])
+    with pytest.raises(SystemExit, match=r"stage=data\.admission"):
+        D.main()
+    assert len(calls) == 1

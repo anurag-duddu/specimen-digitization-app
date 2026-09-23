@@ -120,7 +120,8 @@ def store(path, value):
     return hashlib.sha256(raw).hexdigest()
 
 
-@pytest.mark.parametrize("plane,role", [("runtime-build", "runtime-build"), ("runtime", "runtime-release")])
+@pytest.mark.parametrize("plane,role", [("runtime-build", "runtime-build"), ("runtime", "runtime-release"),
+                                        ("data", "data-release"), ("data-initialization", "data-initialize")])
 def test_the_record_binds_github_facts_and_the_planes_fixed_provider(tmp_path, steps, plane, role):
     record, path, env = admitted(tmp_path, steps, plane)
     assert record == {
@@ -171,12 +172,22 @@ def test_the_retired_owner_authorized_sha_is_neither_required_nor_consulted():
         assert M.admit_gate("runtime", env, wait_seconds=0, now=NOW, observe=watch(GitHub()))["source_sha"] == SHA
 
 
-@pytest.mark.parametrize("plane", ["data", "data-initialization"])
-def test_the_gate_admits_only_the_runtime_planes(plane):
+@pytest.mark.parametrize("plane", ["hosting", "production", "data-release", "Runtime", ""])
+def test_the_gate_refuses_an_unknown_plane_before_any_github_call(plane):
     github = GitHub()
-    with pytest.raises(ValueError, match="runtime planes"):
-        M.admit_gate(plane, environment(plane), wait_seconds=0, now=NOW, observe=watch(github))
+    with pytest.raises(ValueError, match="unknown gate plane"):
+        M.admit_gate(plane, environment(), wait_seconds=0, now=NOW, observe=watch(github))
     assert github.calls == []
+
+
+@pytest.mark.parametrize("plane", ["data", "data-initialization"])
+def test_a_data_job_never_waits_for_or_records_a_data_release(steps, plane):
+    """D3: only a runtime plane may wait for the same commit's data release; a data job is that release."""
+    github, clock = GitHub(), Clock()
+    record = M.admit_gate(plane, environment(plane, **steps), wait_seconds=600, now=NOW, observe=watch(github, clock))
+    assert M.GATE_PLANES[plane][0] == "data" and set(record) == M.RECORD_KEYS and clock.sleeps == []
+    assert not any("data_run" in key for key in record)
+    assert not any("data-release" in path for path in github.calls)
 
 
 @pytest.mark.parametrize("change", [lambda c: c.update(status="behind"), lambda c: c.update(status="diverged"),
@@ -287,7 +298,7 @@ def test_jobs_are_read_across_pages_until_the_count_reconciles():
         gate(answers)
 
 
-@pytest.mark.parametrize("plane", ["runtime-build", "runtime"])
+@pytest.mark.parametrize("plane", ["runtime-build", "runtime", "data", "data-initialization"])
 def test_readmission_observes_the_same_facts_again_without_waiting(tmp_path, steps, plane):
     record, path, env = admitted(tmp_path, steps, plane)
     answers, clock = responses(), Clock()
@@ -300,7 +311,7 @@ def test_readmission_observes_the_same_facts_again_without_waiting(tmp_path, ste
     ("runtime", {"RELEASE_PACKET_SHA256": "0" * 64}, NOW), ("runtime", {"RELEASE_PACKET_SHA256": "pinned"}, NOW),
     ("runtime", {"GITHUB_RUN_ATTEMPT": "2"}, NOW), ("runtime", {"GITHUB_RUN_ID": "457"}, NOW),
     ("runtime", {}, NOW + 3600), ("runtime", {}, NOW - 1), ("runtime", {"GITHUB_REF_PROTECTED": "false"}, NOW),
-    ("runtime-build", {}, NOW), ("data", {}, NOW),
+    ("runtime-build", {}, NOW), ("data", {}, NOW), ("data-initialization", {}, NOW),
 ])
 def test_readmission_rejects_a_changed_digest_run_window_context_or_plane(tmp_path, steps, plane, changes, now):
     record, path, env = admitted(tmp_path, steps)
@@ -308,6 +319,26 @@ def test_readmission_rejects_a_changed_digest_run_window_context_or_plane(tmp_pa
     with pytest.raises(ValueError):
         M.readmit(path, plane, {**env, **changes}, now=now, observe=watch(github))
     assert github.calls == []
+
+
+@pytest.mark.parametrize("plane,other", [("data", "data-initialization"), ("data-initialization", "data"),
+                                         ("data", "runtime"), ("data-initialization", "runtime-build")])
+def test_a_data_record_is_readmitted_for_its_own_plane_only(tmp_path, steps, plane, other):
+    record, path, env = admitted(tmp_path, steps, plane)
+    github = GitHub()
+    with pytest.raises(ValueError, match="plane"):
+        M.readmit(path, other, env, now=NOW, observe=watch(github))
+    assert github.calls == []
+
+
+@pytest.mark.parametrize("provider", ["specimen-data-initialize", "specimen-runtime-release", "specimen-hosting"])
+def test_a_data_record_bound_to_another_provider_is_refused(tmp_path, steps, provider):
+    record, path, env = admitted(tmp_path, steps, "data")
+    record["identity"]["provider"] = f"{PROVIDER}{provider}"
+    forged = tmp_path / "forged.json"
+    with pytest.raises(ValueError, match="provider"):
+        M.readmit(forged, "data", {**env, "RELEASE_PACKET_SHA256": store(forged, record)}, now=NOW,
+                  observe=watch(GitHub()))
 
 
 @pytest.mark.parametrize("change", [
@@ -342,18 +373,22 @@ def test_readmission_fails_without_waiting_when_github_facts_changed(tmp_path, s
     assert clock.sleeps == []
 
 
-def test_admission_hands_a_gate_record_to_readmission_for_the_runtime_planes_only(tmp_path, steps, monkeypatch):
+@pytest.mark.parametrize("plane", ["runtime-build", "runtime", "data", "data-initialization"])
+def test_admission_hands_a_gate_record_to_readmission_for_its_own_plane_only(tmp_path, steps, monkeypatch, plane):
     admission = importlib.import_module("release_admission")
-    record, path, env = admitted(tmp_path, steps)
+    record, path, env = admitted(tmp_path, steps, plane)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.delenv("RELEASE_AUTHORIZED_SHA", raising=False)
     monkeypatch.setattr(admission, "github_snapshot", lambda packet: pytest.fail("a gate record is not an envelope"))
-    readmit = M.readmit
-    monkeypatch.setattr(M, "readmit", lambda *args, **kwargs: readmit(*args, **kwargs, observe=watch(GitHub())))
-    assert admission.admit(path, "runtime", now=NOW + 60) == record
-    with pytest.raises(ValueError, match="runtime planes"):
-        admission.admit(path, "data", now=NOW + 60)
+    readmit, calls = M.readmit, []
+    monkeypatch.setattr(M, "readmit", lambda *args, **kwargs: calls.append(args[1]) or readmit(
+        *args, **kwargs, observe=watch(GitHub())))
+    assert admission.admit(path, plane, now=NOW + 60) == record
+    for other in sorted({*CONTEXT.PLANES, "hosting"} - {plane}):
+        with pytest.raises(ValueError, match="another plane"):
+            admission.admit(path, other, now=NOW + 60)
+    assert calls == [plane]
 
 
 def test_envelope_packets_keep_their_existing_admission(tmp_path, monkeypatch):
@@ -365,12 +400,14 @@ def test_envelope_packets_keep_their_existing_admission(tmp_path, monkeypatch):
         admission.admit(envelope, "runtime", now=NOW)
 
 
-def test_the_command_line_blocks_without_echoing_what_failed(tmp_path, monkeypatch):
+@pytest.mark.parametrize("plane,release", [("runtime", "Runtime"), ("data-initialization", "Data")])
+def test_the_command_line_blocks_without_echoing_what_failed(tmp_path, monkeypatch, plane, release):
     output = tmp_path / "release" / "packet.json"
-    monkeypatch.setattr(sys, "argv", ["release_gate.py", "--plane", "runtime", "--output", str(output)])
-    for key, value in environment(GITHUB_REF_PROTECTED="false").items():
+    monkeypatch.setattr(sys, "argv", ["release_gate.py", "--plane", plane, "--output", str(output)])
+    for key, value in environment(plane, GITHUB_REF_PROTECTED="false").items():
         monkeypatch.setenv(key, value)
     with pytest.raises(SystemExit) as blocked:
         M.main()
+    assert str(blocked.value).startswith(f"{release} release gate blocked (ValueError)")
     assert "GITHUB_REF_PROTECTED" not in str(blocked.value) and SHA not in str(blocked.value)
     assert not output.exists()
