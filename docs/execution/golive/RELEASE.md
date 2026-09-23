@@ -176,18 +176,23 @@ and T2e the reuse of an unchanged SAM 3 image.
 
 `scripts/ci/deploy_runtime.py --deploy` with a gate record:
 
-- Settings: non-secret values are committed in
-  `scripts/ci/runtime_settings.py`. Private values (the worker's actor uid and
-  the source registry, which holds collection ids) and credentials arrive only
-  as Secret Manager references. The worker drain arguments and the SAM 3
-  environment follow the processing lane's merged server code; until a value
-  is known, the deploy refuses and names the missing setting.
+- Settings: `scripts/ci/runtime_settings.py` commits every non-secret value.
+  That includes each secret's pinned version number and the API readiness
+  object's name and generation, so a new secret version or marker is a
+  reviewed pull request, and the release needs no permission to discover
+  them. Private values (the worker's actor uid, and the source registry, which
+  holds collection ids) and credentials arrive only as Secret Manager
+  references.
+- Pending settings: some values are not known yet. The worker's drain
+  arguments and SAM 3's environment follow the processing lane's merged server
+  code; the secret versions, the readiness marker and the SAM 3 checkpoint
+  digest follow the owner's T4 actions. A role with a pending setting is not
+  deployed. The receipt names the role and each missing setting, and the run
+  still verifies every role it did deploy, so the API can go live before SAM 3
+  and the worker.
 - Images: the three receipts from this run's build job. Each image's
   attestation is verified: signer workflow `runtime-release.yml`, source and
   signer digest equal to the commit, ref `main`, no self-hosted runners.
-- Pinning: each referenced secret is pinned to its newest enabled numeric
-  version by a read-only listing. The API's readiness object is pinned to its
-  current generation by a read-only metadata read.
 - Rollback guard: before changing a resource, its `source-sha` label must be
   this commit or an ancestor of it.
 - Order: SAM 3, then the worker job, then the API.
@@ -204,9 +209,11 @@ and T2e the reuse of an unchanged SAM 3 image.
     `/v1/session` is refused. Only then does traffic move to 100%, and the same
     three checks run on the service URL. Its invoker policy must be exactly
     `allUsers`, unconditionally.
-- IAM is verified, never changed. The first release creates the services, so
-  its invoker checks fail with the owner action they name; the owner grants
-  the two bindings from T4's list and re-runs the failed job.
+- IAM is verified, never changed. The invoker policies are checked after
+  every deployable role is deployed and before the API is promoted, and all
+  missing bindings are reported together. The first release creates the
+  services, so its check fails with the owner actions it names; the owner
+  grants both bindings from T4's list and re-runs the failed job once.
 - The deploy writes a `runtime-deployed/v1` receipt without private values,
   attests it and uploads it.
 
