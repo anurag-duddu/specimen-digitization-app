@@ -103,6 +103,9 @@ def test_a_run_writes_its_evidence_and_report_and_never_a_token(tmp_path):
     assert {p["status"] for p in summary["phases"]} == {"passed"}
     assert summary["source"]["sha256"] == hashlib.sha256(IMAGE).hexdigest()
     assert summary["costs"]["total_usd"] == pytest.approx(0.00083 + 0.0006)
+    # The lab's own running tally against its USD 5.00 share (G9, G30): production's ledger never sees it.
+    assert summary["lab_spend_usd"] == pytest.approx(0.00083 + 0.0006)
+    assert "Lab spend to date: USD 0.001430 of 5.00" in (path / "report.md").read_text()
     assert summary["actions"] == [{"action": "reviewed_region", "reason": "lab substitute"}]
     assert lane.calls[0] == ("ingest", SUBJECT + ".jpeg", "image/jpeg") and lane.closed
     assert "| 2 Label segmentation | substituted |" in (path / "report.md").read_text()
