@@ -47,6 +47,7 @@ def test_the_lane_ingests_processes_and_collects_through_the_app(tmp_path):
     run = evidence["snapshot"]["run"]
     assert actions == [] and run["stage"] == "finalized"
     assert evidence["snapshot"]["asset"]["filename"] == "subject_105526321.jpeg"
+    assert evidence["snapshot"]["asset"]["sensitive"] is False  # as the ten are imported
     assert evidence["workspace"]["stage"] == "finalized"
     assert {f"responses/{o['id']}.json" for o in run["observations"]} <= set(
         evidence["artifacts"]
