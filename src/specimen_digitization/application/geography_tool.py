@@ -41,7 +41,7 @@ TOOL_VERSION = "google-geocoding-v1"
 GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 GEOCODING_COST_MICROS = 5000  # Reserved per request, before it is sent.
 KEY_VARIABLE = "SPECIMEN_GOOGLE_MAPS_API_KEY"
-SOURCE = "google_geocoding"
+SOURCE = "google-maps-geocoding"  # Pinned by the data contract (#88, rule 1.6).
 # Assigned literals form the address from the most to the least precise field.
 ADDRESS_ORDER = ("precise_location", "city", "county", "province_state", "country")
 # The Google address component types that can confirm each field.
@@ -269,6 +269,10 @@ def geocode_locality(
             return call(number, LookupStatus.TIMEOUT, "geocoding_timeout")
         except httpx.HTTPError:
             return call(number, LookupStatus.PROVIDER, "geocoding_transport_error")
+        except Exception:  # noqa: BLE001 - deliberate, see below.
+            # Its text may quote the request URL and with it the key, so only
+            # a fixed code leaves (httpx.InvalidURL is outside HTTPError).
+            return call(number, LookupStatus.PROVIDER, "geocoding_unexpected_error")
         code = response.status_code
         try:
             payload = json.loads(response.content) if code == 200 else None
