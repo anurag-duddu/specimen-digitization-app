@@ -22,7 +22,7 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--segmentation` | `sam3` | `sam3` calls the endpoint in `SPECIMEN_SAM3_ENDPOINT`. `reviewed-region` leaves it unset, so segmentation blocks with the app's own `sam3_serving_contract_not_configured_use_reviewed_regions`; the runner then draws the label box (left 32 percent of the frame, full height) through the reviewer route `POST .../specimens/{id}/regions`, and the report marks segmentation as substituted |
+| `--segmentation` | `sam3` | `sam3` calls the endpoint in `SPECIMEN_SAM3_ENDPOINT`. `reviewed-region` leaves it unset, so segmentation blocks with the app's own `sam3_serving_contract_not_configured_use_reviewed_regions`; the runner then draws the slide's label boxes (below) through the reviewer route `POST .../specimens/{id}/regions`, and the report marks segmentation as substituted |
 | `--persistence` | `sql-emulator` | a fresh PostgreSQL-backed SQL Connect emulator per run (`scripts/data/serve-local.sh` on private ports), dumped after the run. `sqlite` keeps only the snapshot |
 | `--logfire` | on | lab traces with `APP_ENV=lab` through `configure_observability`; the SDK reads its own local credentials. `--no-logfire` sends nothing |
 | `--max-load` | 12 | refuse to start while the one-minute load average is at or above this (PLAN 7.4) |
@@ -57,7 +57,7 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | Stage | Passed when | Otherwise |
 |---|---|---|
 | 1 Images in storage | the asset's SHA-256 equals the fetched object's, and its file name is the subject's | failed |
-| 2 Label segmentation | the run has regions made by SAM 3, with its parameters on the run | blocked, with the app's blocker; substituted when the lab drew the region |
+| 2 Label segmentation | the run has regions made by SAM 3, with its parameters on the run, and for each of the ten some region covers at least half of every label box below | failed when a label is uncovered; blocked, with the app's blocker; substituted when the lab drew the regions |
 | 3 VLMs | every region has one reading per profile route, each with model, provider, prompt version, input hash and a stored raw response | failed, or blocked with the blocker |
 | 4 Raw transcripts to SQL | normalized observation rows exist, one per reading, keyed to specimen and run | absent when SQL holds only the snapshot |
 | 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed or absent |
@@ -68,9 +68,28 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | Tracing | the run stores its trace id (DoD-5) | absent; the lab's own root trace id is always recorded |
 
 Statuses are passed, failed, blocked, substituted, absent (the stage is not on
-this commit) and not checked. Checks for stages 4, 6 and 7 follow the contracts
-as S5 and S4 merge them. Until then the runner reports absent rather than guess
-at field names.
+this commit) and not checked. A blocked stage names the blocker and the steps
+the app attempted but never completed. Checks for stages 4, 6 and 7 follow the
+contracts as S5 and S4 merge them. Until then the runner reports absent rather
+than guess at field names.
+
+### Label layout of the ten pilot slides
+
+From S8's reading of the images and the lab's own look (2026-09-23). Boxes are
+fractions of the frame's width over its full height. The barcode's printed
+catalog number (`FMNHINS ...`) sits just outside the handwritten label, so the
+boxes include it.
+
+| Subjects | Labels | Boxes |
+|---|---|---|
+| `subject_105526321` to `323`, `329`, `330` | one label, locality included | 0 to 0.37 |
+| `subject_105526324` to `328` | notes on the left; locality, date, elevation and collector on the right, next to the barcode | 0 to 0.34 and 0.62 to 1 |
+
+The reviewed-region substitute draws these boxes. Under G15 they are also the
+ground truth for the lane's own coverage check: the lab reports its hits and
+misses per subject. Slides 324 to 328 are from Mindanao with right-hand labels;
+328 to 330 are from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
+top edge are slide-preparation codes, not collection dates.
 
 ### Files
 
@@ -117,9 +136,14 @@ without paid calls or network.
   accepts only `https://*.run.app`. Until then the lab uses `reviewed-region`.
 - Uploads in synthetic mode get the synthetic profile (`api.py` 1242-1246),
   whose approvals are a local fixture; the report says so. Under that profile
-  the finalize integrity check expects each reading's input hash to be the
-  image's rather than the crop's (`integrity.py` 112-116), so a run with real
-  readers ends at `evidence_integrity_failure`. That is a fixture artifact, not
-  a production defect.
+  the integrity check expects each reading's input hash to be the image's rather
+  than the crop's (`integrity.py` 112-116). A run with real readers therefore
+  stops at `parse`, where the evidence phase raises the integrity error and the
+  workflow records it as `external_outcome_unknown`. Specimen 1's first run
+  found both: the seam in #79 (S3) and the recording in #80 (S4). Profiles in
+  production are not affected. Synthetic mode stays a teaching fixture; the lab
+  moves to `create_app(mode="emulator", ...)`, which gives production run
+  semantics on local stores, once S3's on-demand trigger (T1a) and published
+  pilot profile (T4) merge.
 - The run stores no trace id and model spans carry metadata only, until S3's
   tracing work (S3 T5).

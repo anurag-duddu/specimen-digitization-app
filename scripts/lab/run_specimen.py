@@ -140,7 +140,7 @@ class Run:
 
     def __init__(self, options, path, redact, record):
         self.options, self.path, self.redact, self.record = options, path, redact, record
-        self.log = (path / "runner.log").open("a")
+        self.log = (path / "runner.log").open("a", buffering=1)  # line by line, for a live view
 
     def write(self, name, data):
         if Path(name).is_absolute() or ".." in Path(name).parts:

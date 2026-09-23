@@ -52,8 +52,14 @@ def verdict(phases, stages):
 
 def blocked_or_failed(run, detail):
     if run.get("stage") == "processing_blocked":
-        return "blocked", f"{run.get('blocker')}; {detail}"
+        return "blocked", f"{run.get('blocker')} at {stalled(run)}; {detail}"
     return "failed", detail
+
+
+def stalled(run):
+    """Steps the app attempted but never completed: where a blocked run stopped."""
+    done = set(run.get("completed_steps") or [])
+    return [step for step in run.get("attempts") or {} if step not in done]
 
 
 def images(asset, source, subject):
@@ -66,7 +72,7 @@ def images(asset, source, subject):
 def segmentation(run, runs, asset, subject, substituted):
     regions = run.get("regions") or []
     if substituted:
-        blockers = [r["blocker"] for r in runs if r.get("blocker")]
+        blockers = [r["blocker"] for r in runs[:-1] if r.get("blocker")]
         return "substituted", f"{len(regions)} reviewer region(s) drawn by the lab after {blockers}"
     seg = run.get("segmentation") or {}
     if not regions or seg.get("model_id") != SAM3_MODEL:
@@ -104,7 +110,7 @@ def readers(run):
             elif not all(o.get(k) for o in found for k in PROVENANCE):
                 partial.append(f"{region['id'][:8]}/{route}")
     if missing and not partial and run.get("stage") == "processing_blocked":
-        return "blocked", f"{run.get('blocker')}; missing {missing}"
+        return blocked_or_failed(run, f"missing {missing}")
     if missing or partial:
         return "failed", f"missing {missing}; incomplete provenance {partial}"
     return "passed", f"{len(observations)} readings over {len(regions)} region(s), routes {routes}"

@@ -98,13 +98,20 @@ def test_reviewed_region_is_reported_as_a_substitute_not_a_pass():
         id="run-1", stage="processing_blocked",
         blocker="sam3_serving_contract_not_configured_use_reviewed_regions",
     )
-    snap = snapshot(previous=[blocked], segmentation={})
+    snap = snapshot(
+        previous=[blocked], segmentation={}, stage="processing_blocked",
+        blocker="external_outcome_unknown", disposition=None, reasons=[],
+        attempts={"parse": 1}, completed_steps=["classify", "segment", "adjudicate"],
+    )
     result = lab_checks.check_stages(
         evidence(snap, actions=[{"action": "reviewed_region"}]), SOURCE, SUBJECT
     )
-    stage = next(s for s in result if s["stage"] == "2")
-    assert stage["status"] == "substituted"
-    assert "sam3_serving_contract_not_configured_use_reviewed_regions" in stage["detail"]
+    stage = {s["stage"]: s for s in result}
+    assert stage["2"]["status"] == "substituted"
+    assert "sam3_serving_contract_not_configured_use_reviewed_regions" in stage["2"]["detail"]
+    assert "external_outcome_unknown" not in stage["2"]["detail"]  # the later run's own block
+    assert stage["8"]["status"] == "blocked"
+    assert stage["8"]["detail"].startswith("external_outcome_unknown at ['parse']")
 
 
 def test_segmentation_must_cover_every_label_the_slide_carries():
