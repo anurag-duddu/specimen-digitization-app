@@ -162,3 +162,22 @@ a null the screen names.
   accepted name may be shown, G28). Its evidence names each source's
   relation to the value: decides, supports or contradicts (G23). The
   decision carries its findings, hard, warning or info (#88 at `6b97508`).
+
+### T2.2 Readings: one section per label region
+
+The Readings segment draws one section per label region, in the order the
+regions are numbered, so a two-label slide (324 to 328 among the pilot ten)
+has two. A reading whose region the record does not list goes into a last
+section, "Unassigned label". A region no reader read says so in its section.
+Each section, in order:
+
+1. The region's name, "Label K", as a heading at the weight the region's name
+   had in each card, so on a phone the first reading stays on the first
+   screen under the photograph and the strip (13 sections 0 and 2.5).
+2. Its reading cards: model and provider as today, and beneath them the
+   route and the prompt version when the reading records them. The card no
+   longer repeats the region's name the heading states.
+
+The thread's comparison and decision join each section in the next change
+(T2.2, part two). The declarations and the "Differences and resolution" list
+stay below the sections.
