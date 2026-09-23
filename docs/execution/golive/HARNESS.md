@@ -215,7 +215,9 @@ address is the reading's unassigned locality text when there is any, otherwise
 its assigned literals from the most to the least precise field. The key comes
 from `SPECIMEN_GOOGLE_MAPS_API_KEY`; a missing or rejected key is
 `authentication_error`, an operational block (QUE-005). Retries follow section
-6; an HTTP 401 or 403 is final at once.
+6; an HTTP 401 or 403 is final at once. Every call's source is exactly
+`google-maps-geocoding`, the string the data contract pins for Google (#88,
+rule 1.6).
 
 **The mapping from Google's response to our outcomes is one function**,
 `map_geocoding_response`, so that a pending owner decision changes only it. One
@@ -235,4 +237,9 @@ and coordinates are read in memory to compute the outcomes and are never
 returned to the agent, stored, traced or logged. The key travels as a URL
 parameter, the only form the Geocoding API accepts (a header key is refused,
 checked 2026-09-23); a filter redacts it from the `httpx` log, and the lane must
-not record raw request URLs in traces.
+not record raw request URLs in traces. An exception's text can quote the
+request URL, and the key with it, so no exception leaves the request: a timeout
+is `timeout`, any other `httpx` transport error is `provider_error`
+(`geocoding_transport_error`), and every other failure, including the `httpx`
+errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
+with the fixed code `geocoding_unexpected_error`.

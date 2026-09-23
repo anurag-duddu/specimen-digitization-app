@@ -218,7 +218,7 @@ def test_one_result_confirms_only_the_fields_whose_component_names_match():
     assert result.places == [
         PlaceCandidate(
             field_key=field_key,
-            source="google_geocoding",
+            source="google-maps-geocoding",
             source_record_id="place-davao-city",
         )
         for field_key in ("city", "county")
@@ -226,7 +226,7 @@ def test_one_result_confirms_only_the_fields_whose_component_names_match():
     assert result.georeferences == [] and result.checks == [] and result.taxa == []
     (call,) = result.sub_calls
     assert (call.source, call.query, call.attempt) == (
-        "google_geocoding",
+        "google-maps-geocoding",
         {"address": ADDRESS},
         1,
     )
@@ -483,6 +483,33 @@ def test_a_connection_failure_is_a_provider_error_and_stores_nothing():
     assert_keeps_only_place_id(seen, text=("connection refused",))
 
 
+KEYED_URL = f"https://maps.googleapis.com/maps/api/geocode/json?key={MAPS_KEY}"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError(f"cannot send {KEYED_URL}"),
+        httpx.InvalidURL(f"Invalid URL {KEYED_URL!r}"),  # Outside httpx.HTTPError.
+    ],
+    ids=["not-httpx", "invalid-url"],
+)
+def test_any_other_failure_is_a_fixed_provider_error_that_never_carries_the_key(
+    failure, caplog
+):
+    caplog.set_level(logging.DEBUG)
+
+    seen = geocode(QUERY, failure)
+
+    calls = seen.result.sub_calls
+    assert [c.outcome for c in calls] == [S.PROVIDER] * 3
+    assert {c.sanitized_error for c in calls} == {"geocoding_unexpected_error"}
+    assert len(seen.requests) == 3 and seen.blobs.puts == []
+    assert seen.result.field_outcomes == dict.fromkeys(FIELDS, S.PROVIDER)
+    assert_keeps_only_place_id(seen, text=("cannot send", "Invalid URL"))
+    assert MAPS_KEY not in caplog.text
+
+
 def test_a_body_that_is_not_json_is_malformed_and_not_retried():
     page = (200, b"<html>Service page text</html>", {})
 
@@ -519,7 +546,7 @@ def test_a_missing_key_is_an_authentication_outcome_without_any_request(
     assert seen.result.places == []
     (call,) = seen.result.sub_calls
     assert (call.source, call.query, call.outcome, call.sanitized_error) == (
-        "google_geocoding",
+        "google-maps-geocoding",
         {"address": ADDRESS},
         S.AUTHENTICATION,
         "maps_key_not_configured",
@@ -637,7 +664,7 @@ def test_a_field_is_confirmed_only_by_a_component_at_its_own_level(
     assert outcome == S.SUCCESS and fields == {field_key: expected}
     confirmed = PlaceCandidate(
         field_key=field_key,
-        source="google_geocoding",
+        source="google-maps-geocoding",
         source_record_id="place-sao-paulo",
     )
     assert places == ([confirmed] if expected == S.SUCCESS else [])
