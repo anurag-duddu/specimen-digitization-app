@@ -14,26 +14,22 @@ concurrency:
 
 jobs:
   admission:
-    name: Admit the exact data release without cloud credentials
+    name: Admit the merged commit after its checks
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # The gate waits up to 55 minutes for the CI/CD run, without any cloud
+    # credential. A data job never waits for a data release.
+    timeout-minutes: 60
     environment: data-production
     permissions:
       contents: read
       actions: read
       pull-requests: read
-    outputs:
-      cleanup_permit: ${{ steps.admit.outputs.cleanup_permit }}
-      phase: ${{ steps.admit.outputs.phase }}
     env:
       GH_TOKEN: ${{ github.token }}
       DEPLOYMENT_ENVIRONMENT: data-production
       RELEASE_PROJECT: specimen-digitization
       RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
-      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
-      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
     steps:
       - name: Check out the merged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,23 +40,19 @@ jobs:
           python-version: "3.12"
       - name: Install locked dependencies
         run: uv sync --frozen
-      - name: Verify merged source, all five successful checks, review and cumulative cost
-        id: admit
-        env:
-          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
-          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
-        run: uv run python scripts/ci/deploy_data.py --prepare-inputs --packet "$RUNNER_TEMP/data-release/packet.json"
+      - name: Verify the protected merged commit and its five checks
+        run: uv run python scripts/ci/release_gate.py --plane data --wait-seconds 3300 --output "$RUNNER_TEMP/data-release/packet.json"
 
   release:
-    name: Verify recovery and publish compatible data
+    name: Read the live data plane and release the merged files
     needs: admission
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 20
     environment: data-production
     outputs:
-      receipt_sha256: ${{ steps.apply.outputs.receipt_sha256 }}
-    # The runtime job never waits for data while holding this same mutation lock.
+      phase: ${{ steps.deploy.outputs.phase }}
+    # The runtime release job holds the same lock and never waits for data while holding it.
     concurrency:
       group: specimen-protected-mutation
       cancel-in-progress: false
@@ -75,423 +67,45 @@ jobs:
       DEPLOYMENT_ENVIRONMENT: data-production
       RELEASE_PROJECT: specimen-digitization
       RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
-      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
-      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
     steps:
       - name: Check out the merged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install locked Python tooling
+      - name: Install pinned uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.12.5"
           python-version: "3.12"
-      - name: Install locked application dependencies
+      - name: Install locked dependencies
         run: uv sync --frozen
-      - name: Verify exact source, all five checks, independent review and cumulative budget before OIDC
+      - name: Re-admit the exact merged commit before data credentials
         id: admission
-        env:
-          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
-          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
-        run: uv run python scripts/ci/deploy_data.py --prepare-inputs --packet "$RUNNER_TEMP/data-release/packet.json"
+        run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
       - name: Authenticate only the approved data identity
-        id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: specimen-digitization
           workload_identity_provider: ${{ steps.admission.outputs.provider }}
           service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install the pinned native IAM SQL connector dependencies
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Prepare the original one-time recovery claim intent
-        if: needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1'
-        run: uv run python scripts/ci/deploy_data.py --prepare-clone-intent --packet "$RUNNER_TEMP/data-release/packet.json"
-      - name: Attest the original recovery claim intent before any recovery liability
-        if: needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1'
+      - name: Read the live state, choose the phase and release it
+        id: deploy
+        run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-receipt.json"
+      - name: Attest the data receipt
+        if: success() && steps.deploy.outcome == 'success'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: ${{ runner.temp }}/data-release/clone-allowance-intent.json
-      - name: Publish the immutable recovery claim intent
-        if: needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1'
+          subject-path: ${{ runner.temp }}/data-receipt.json
+      - name: Retain the data receipt without private values
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: clone-allowance-intent-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/clone-allowance-intent.json
-          if-no-files-found: error
-          retention-days: 30
-      - name: Execute only the reviewed inventory, recovery, compatibility or bootstrap phase
-        id: apply
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-ready.json"
-      - name: Independently retry disposal of only this run's newly created clone
-        if: always() && steps.auth.outcome == 'success' && needs.admission.outputs.phase == 'data-apply/v1'
-        run: uv run python scripts/ci/deploy_data.py --cleanup --packet "$RUNNER_TEMP/data-release/packet.json"
-      - name: Preserve sanitized native creation and deletion receipt even on failure
-        if: always() && steps.auth.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ needs.admission.outputs.phase == 'data-initialize-missing/v1' && 'native-initialization-recovery' || 'native-recovery' }}-${{ github.sha }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/data-release/native-recovery.json
-            ${{ runner.temp }}/data-release/native-backup.json
-            ${{ runner.temp }}/data-release/clone-allowance-*.json
-            ${{ runner.temp }}/data-release/clone-allowance-*.body
-            ${{ runner.temp }}/data-release/clone-backup.json
-            ${{ runner.temp }}/data-release/clone-create.json
-            ${{ runner.temp }}/data-release/clone-restore.json
+          name: data-receipt-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-receipt.json
           if-no-files-found: warn
           retention-days: 30
-      - name: Locate encrypted bootstrap evidence without exposing private records
-        id: bootstrap_evidence
-        if: always() && steps.auth.outcome == 'success'
+      # T3c replaces this step with the first initialization. Until then the
+      # run fails, so the runtime's wait for it (D3) never passes over an empty database.
+      - name: Fail closed until the first initialization arrives
+        if: steps.deploy.outputs.phase == 'initialize'
         run: |
-          if compgen -G "$RUNNER_TEMP/data-release/first-scope-*.encrypted.json" > /dev/null; then
-            echo 'present=true' >> "$GITHUB_OUTPUT"
-          fi
-      - name: Attest encrypted bootstrap evidence including failed dispatches
-        if: always() && steps.bootstrap_evidence.outputs.present == 'true'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-release/first-scope-*.encrypted.json
-      - name: Preserve encrypted private observations only, including rejected results
-        if: always() && steps.auth.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: encrypted-initialization-catalog-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/*.encrypted.json
-          if-no-files-found: warn
-          retention-days: 30
-      - name: Attest the observed data-phase result
-        if: success() && steps.apply.outcome == 'success'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-ready.json
-      - name: Publish the signed schema receipt, never private specimens or credentials
-        if: success() && steps.apply.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ needs.admission.outputs.phase == 'data-initialize-missing/v1' && 'data-initialization-recovery' || 'data-ready' }}-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-ready.json
-          if-no-files-found: error
-          retention-days: 30
-
-  initialize:
-    name: Qualify and remove the one-time SQL initialization privilege
-    needs: [admission, release]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.admission.outputs.phase == 'data-initialize-missing/v1'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    environment: data-initialization-production
-    concurrency:
-      group: specimen-protected-mutation
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-      id-token: write
-      attestations: write
-    outputs:
-      receipt_sha256: ${{ steps.initialize.outputs.receipt_sha256 }}
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-initialization-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com
-      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
-      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
-      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
-      INITIALIZATION_RECEIPT_SHA256: ${{ needs.release.outputs.receipt_sha256 }}
-    steps:
-      - name: Check out only the merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install pinned native connector before the privilege window
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Download this attempt's signed native restore result
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: data-initialization-recovery-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/initialization-recovery
-      - name: Verify parity, consumed bytes, main-only environment, authority and deadline before OIDC
-        id: admission
-        env:
-          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
-          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
-        run: uv run python scripts/ci/deploy_data.py --prepare-initialization --packet "$RUNNER_TEMP/data-release/packet.json" --receipt "$RUNNER_TEMP/initialization-recovery/data-ready.json"
-      - name: Authenticate only the separately reviewed keyless initializer
-        id: auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com
-      - name: Observe both absent targets and prepare immutable creation intents
-        run: uv run python scripts/ci/deploy_data.py --prepare-initializer-intents --packet "$RUNNER_TEMP/data-release/packet.json" --receipt "$RUNNER_TEMP/initialization-recovery/data-ready.json"
-      - name: Sign both original creation intents before any privileged effect
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-release/initializer-create-*.json
-      - name: Publish durable creation intents before any privileged effect
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: initializer-intents-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/initializer-create-*.json
-          if-no-files-found: error
-          retention-days: 30
-      - name: Qualify identical fixed SQL and cleanup on clone before source
-        id: initialize
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --initialize --packet "$RUNNER_TEMP/data-release/packet.json" --receipt "$RUNNER_TEMP/initialization-recovery/data-ready.json" --output "$RUNNER_TEMP/data-initialized.json"
-      - name: Preserve native operation intents and partial outcomes
-        if: always() && steps.auth.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: native-initialization-${{ github.sha }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/data-release/initializer-*.json
-            ${{ runner.temp }}/data-release/database-create-*.json
-            ${{ runner.temp }}/data-release/roles-create-*.json
-            ${{ runner.temp }}/data-release/*-clean.json
-          if-no-files-found: warn
-          retention-days: 30
-      - name: Preserve encrypted native capability observations only
-        if: always() && steps.auth.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: encrypted-initialization-capability-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/*.encrypted.json
-          if-no-files-found: warn
-          retention-days: 30
-      - name: Attest initialization and completed privilege disposal
-        if: success() && steps.initialize.outcome == 'success'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-initialized.json
-      - name: Publish the signed initialization result
-        if: success() && steps.initialize.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: data-initialized-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-initialized.json
-          if-no-files-found: error
-          retention-days: 30
-
-  dispose-initializer:
-    name: Independently revoke and dispose only the owned temporary SQL principal
-    needs: [admission, release, initialize]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.release.result == 'success' && needs.admission.outputs.phase == 'data-initialize-missing/v1'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    environment: data-production
-    concurrency:
-      group: specimen-protected-mutation
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      RELEASE_AUTHORIZED_SHA: ${{ github.sha }}
-      RELEASE_CLEANUP_PERMIT: ${{ needs.admission.outputs.cleanup_permit }}
-    steps:
-      - name: Check out the original merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Download original signed recovery
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: data-initialization-recovery-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/initialization-recovery
-      - name: Download retained original creation intents
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: initializer-intents-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/owned-initializer-disposal
-      - name: Verify original main-only disposal context before credentials
-        id: admission
-        run: uv run python scripts/ci/deploy_data.py --prepare-cleanup --packet "$RUNNER_TEMP/owned-initializer-disposal/packet.json"
-      - name: Authenticate ordinary data identity for exact privilege disposal only
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install pinned native connector
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Verify signed ownership and reconcile without extending initializer authority
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --dispose-initializer --packet "$RUNNER_TEMP/owned-initializer-disposal/packet.json" --receipt "$RUNNER_TEMP/initialization-recovery/data-ready.json"
-      - name: Retain ordinary disposal and late-cleanup status even on failure
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: initializer-disposal-${{ github.sha }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/owned-initializer-disposal/initializer-disposal-*.json
-            ${{ runner.temp }}/owned-initializer-disposal/disposal-*.json
-            ${{ runner.temp }}/owned-initializer-disposal/*-disposal-*.json
-          if-no-files-found: warn
-          retention-days: 30
-
-  complete-initialization:
-    name: Continue compatible apply with ordinary SQL privileges and the same restore
-    needs: [admission, initialize, dispose-initializer]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.admission.outputs.phase == 'data-initialize-missing/v1'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: data-production
-    concurrency:
-      group: specimen-protected-mutation
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-      id-token: write
-      attestations: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      RELEASE_AUTHORIZED_SHA: ${{ vars.RELEASE_AUTHORIZED_SHA }}
-      RELEASE_PACKET_SHA256: ${{ vars.RELEASE_PACKET_SHA256 }}
-      RELEASE_BUDGET_LEDGER_SHA256: ${{ vars.RELEASE_BUDGET_LEDGER_SHA256 }}
-      INITIALIZATION_RECEIPT_SHA256: ${{ needs.initialize.outputs.receipt_sha256 }}
-    steps:
-      - name: Check out the same merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Re-admit ordinary data authority before credentials
-        id: admission
-        env:
-          RELEASE_INPUTS_B64: ${{ secrets.RELEASE_INPUTS_B64 }}
-          RELEASE_INPUTS_SHA256: ${{ vars.RELEASE_INPUTS_SHA256 }}
-        run: uv run python scripts/ci/deploy_data.py --prepare-inputs --packet "$RUNNER_TEMP/data-release/packet.json"
-      - name: Download the exact attempt's initialized result
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: data-initialized-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/initialized
-      - name: Authenticate ordinary data maintenance only
-        id: auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install the native connector
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Verify native cleanup and continue compatible apply without a second clone
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --complete-initialization --packet "$RUNNER_TEMP/data-release/packet.json" --receipt "$RUNNER_TEMP/initialized/data-initialized.json" --output "$RUNNER_TEMP/data-ready.json"
-      - name: Attest the compatible schema result
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-ready.json
-      - name: Preserve completed owned recovery and cleanup evidence
-        if: always() && steps.auth.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: native-recovery-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/native-recovery.json
-          if-no-files-found: warn
-          retention-days: 30
-      - name: Publish the schema-ready result separately from recovery
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: data-ready-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-ready.json
-          if-no-files-found: error
-          retention-days: 30
-
-  cleanup:
-    name: Dispose only the original run's independently verified restore clone
-    needs: [admission, release, initialize, dispose-initializer, complete-initialization]
-    if: always() && needs.admission.result == 'success' && (needs.admission.outputs.phase == 'data-apply/v1' || needs.admission.outputs.phase == 'data-initialize-missing/v1')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    environment: data-production
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      RELEASE_AUTHORIZED_SHA: ${{ github.sha }}
-      # Public, fixed ownership facts captured by the successful original
-      # admission. No private plan or newly mutable environment packet is needed.
-      RELEASE_CLEANUP_PERMIT: ${{ needs.admission.outputs.cleanup_permit }}
-    steps:
-      - name: Check out the original merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Verify original-run ownership context before cleanup credentials
-        id: admission
-        run: uv run python scripts/ci/deploy_data.py --prepare-cleanup --packet "$RUNNER_TEMP/owned-cleanup/packet.json"
-      - name: Authenticate the original minimum data identity for owned disposal
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Observe native create identity, run, attempt, source and time; delete only the owned clone
-        run: uv run python scripts/ci/deploy_data.py --cleanup --packet "$RUNNER_TEMP/owned-cleanup/packet.json"
-      - name: Preserve independent disposal evidence even when deletion is unconfirmed
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: native-cleanup-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/owned-cleanup/native-recovery.json
-          if-no-files-found: warn
-          retention-days: 30
+          echo "::error::Data release blocked: the first initialization arrives with T3c; this phase fails closed until then."
+          exit 1
