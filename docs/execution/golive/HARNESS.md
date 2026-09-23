@@ -155,3 +155,51 @@ request limit once; Gemma-4-31B failed every run.
 
 The measurement spent USD 0.106 of the program's USD 25 (G9): readers 0.016,
 first pass 0.068, harness probe 0.021.
+
+## 6. The harness's tools, and the taxonomy tool (stage 7, part 1)
+
+HAR-007, HAR-008, HAR-009, HAR-010; owner decisions G23, G25, G28. A profile
+maps each field to tool ids (S3's `CollectionProfile.field_tools`); the slide
+pilot maps `taxon` to `taxonomy_verifier`, the five locality fields to
+`geography_lookup`, `fmnh_ins_number` to `catalog_number_validator` and the
+three date fields to `date_parser`. Every other field is transcribed as seen.
+
+**Every tool** answers with a `ToolResult` (`application/harness_tools.py`):
+exactly one HAR-008 outcome, the candidates behind it, and one `SourceCall` per
+provider request with the query, the retrieval time, the outcome, the attempt,
+the stored response and its digest, and on failure `retry_after` and a
+sanitized error. The harness records one S5 `ToolCall` row per source call. A
+rate limit, a timeout or a provider error is retried inside the tool with
+backoff and jitter, never sooner than the provider's `Retry-After` and at most
+three attempts, every attempt recorded (HAR-009); a `Retry-After` longer than a
+step may wait ends the retries at once. No tool writes a field.
+
+**`taxonomy_verifier`** (`application/taxonomy_tool.py`). The query is the
+scientific name the literal writes: its first capitalized word and the
+lower-case epithets after it, ending at a qualifier ("Epipsocus sp. 1" asks
+for "Epipsocus"); a literal without one ("Sp. 30") is `no_match` with no
+request. GBIF species match v2 against the pinned COL XR checklist decides the
+outcome (G23), as GBIF.md 118-130 sets it:
+
+- `success` (row 1): an exact match whose usage is accepted, has a key, sits in
+  class Insecta, has the rank the label's name gives (a genus alone is genus
+  rank, G25; a binomial is a species; a trinomial a subspecies), and has no
+  plausible alternative.
+- A *plausible alternative* (row 4) is another exact match of the same name
+  whose status is accepted, provisionally accepted or doubtful and whose name
+  with authorship differs: a live homonym. Synonym records of the same name,
+  duplicates of the same name and authorship, and variant or fuzzy names stay
+  in the evidence but are not plausible alternatives.
+- `ambiguous`: an exact synonym (row 2: the label's name is kept and the
+  accepted usage is proposed separately), a fuzzy or variant match (rows 3, 4),
+  a higher-rank match (row 5), a plausible alternative, or a usage outside
+  Insecta. `no_match`: GBIF matched nothing. A matchType GBIF documents, VARIANT
+  included, is never `malformed_response`.
+
+Global Names Verifier (Catalogue of Life and GBIF sources) and the Catalogue of
+Life match API are asked as well, each its own source call. They never change
+the outcome. When one of them answers differently from GBIF (success against
+anything else) the result carries the warning
+`taxonomy_source_disagreement:{source}`; when one is unavailable after its
+retries, `taxonomy_support_unavailable:{source}`. BugGuide is not called. GBIF's
+names may be stored (G28).

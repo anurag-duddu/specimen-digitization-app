@@ -242,7 +242,12 @@ def test_lookup_http_failure_taxonomy(tmp_path, status, expected):
     [
         ("NONE", None, LookupStatus.NO_MATCH),
         ("HIGHERRANK", {"key": "1", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
-        ("EXACT", {"key": "x", "rank": "SPECIES"}, LookupStatus.SUCCESS),
+        (
+            "EXACT",
+            {"key": "x", "name": "Fixture", "rank": "GENUS", "status": "ACCEPTED"},
+            LookupStatus.SUCCESS,
+        ),
+        ("VARIANT", {"key": "x", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
     ],
 )
 def test_lookup_match_not_confidence(tmp_path, match, usage, expected):
@@ -254,6 +259,7 @@ def test_lookup_match_not_confidence(tmp_path, match, usage, expected):
             200,
             json={
                 "usage": usage,
+                "classification": [{"rank": "CLASS", "name": "Insecta"}],
                 "diagnostics": {"matchType": match, "confidence": 100},
             },
         )
