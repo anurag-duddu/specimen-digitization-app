@@ -17,6 +17,7 @@ import '../../reading_declarations.dart';
 import '../../review_context.dart';
 import '../../risk_assessment.dart';
 import '../../evidence_panel.dart';
+import '../../thread/thread.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
@@ -40,9 +41,14 @@ class WorkbenchReadings extends StatelessWidget {
     required this.transcriptionBlockedReason,
     required this.declarationsBlocked,
     this.loadArtifact,
+    this.thread,
   });
 
   final Specimen specimen;
+
+  /// The record's processing thread, when one has loaded: each region's
+  /// comparison and decision come from it (UI.md T2.2).
+  final SpecimenThread? thread;
 
   /// One key per region, so the blockers list and the source pane can scroll
   /// the reviewer to the right card.
@@ -168,26 +174,70 @@ class WorkbenchReadings extends StatelessWidget {
     );
   }
 
-  /// One listed region's section: its heading and its cards.
-  Widget _section(Object? regionId, List<Widget> cards) =>
-      ReadingsRegionSection(
-        regionId: regionId is String ? regionId : null,
-        title: _regionName(regionId),
-        cards: cards,
-      );
+  /// One listed region's section: its cards, and from the thread, its
+  /// comparison and its decision.
+  Widget _section(Object? regionId, List<Widget> cards) {
+    final SpecimenThread? loaded = thread;
+    final ThreadRegion? threaded = regionId is String
+        ? loaded?.regionOf(regionId)
+        : null;
+    return ReadingsRegionSection(
+      regionId: regionId is String ? regionId : null,
+      title: _regionName(regionId),
+      cards: cards,
+      comparisons: <Widget>[
+        for (final ThreadComparison comparison
+            in threaded?.comparisons ?? const <ThreadComparison>[])
+          ReadingComparisonView(comparison: comparison),
+      ],
+      decision: loaded == null
+          ? null
+          : FirstPassSummary(
+              firstPass: threaded?.firstPass,
+              readerName: _readerName,
+              run: loaded.run,
+            ),
+    );
+  }
+
+  /// The name a reader goes by here: the model its reading names, from the
+  /// workspace or else from the thread.
+  String _readerName(String? observationId) {
+    const String fallback = 'A reader';
+    if (observationId == null) return fallback;
+    for (final Json o in specimen.observations) {
+      if (textOf(o['id'], textOf(o['observation_id'], '')) == observationId) {
+        return textOf(o['model_id'], fallback);
+      }
+    }
+    final ThreadReading? reading = thread?.readingOf(observationId);
+    return reading?.model ?? reading?.routeId ?? fallback;
+  }
 
   /// The route and the prompt version a reading records, as one line.
   String? _identity(Json o) {
-    String? present(Object? value) =>
-        value is String && value.trim().isNotEmpty ? value : null;
-    final String? route = present(o['route_id']);
-    final String? prompt = present(o['prompt_version']);
+    final ThreadReading? threaded = thread?.readingOf(
+      textOf(o['id'], textOf(o['observation_id'], '')),
+    );
+    String? present(Object? value, String? fallback) =>
+        value is String && value.trim().isNotEmpty ? value : fallback;
+    final String? route = present(o['route_id'], threaded?.routeId);
+    final String? prompt = present(
+      o['prompt_version'],
+      threaded?.promptVersion,
+    );
     if (route == null && prompt == null) return null;
     return <String>[
       if (route != null) 'Route $route',
       if (prompt != null) 'Prompt $prompt',
     ].join(' · ');
   }
+
+  /// True when the thread states this region's comparison, so the row
+  /// below does not state the ratio a second time.
+  bool _threadCompares(Object? regionId) =>
+      regionId is String &&
+      (thread?.regionOf(regionId)?.comparisons.isNotEmpty ?? false);
 
   /// A region's section carries that region's anchor.
   GlobalKey? _anchorFor(Object? regionId) {
@@ -374,7 +424,9 @@ class WorkbenchReadings extends StatelessWidget {
         for (final Json t in transcriptions)
           _regionRow(
             t,
-            extra: t.containsKey('alignment_status')
+            extra:
+                t.containsKey('alignment_status') &&
+                    !_threadCompares(t['region_id'])
                 ? TranscriptionComparisonSummary(transcription: t)
                 : null,
           ),

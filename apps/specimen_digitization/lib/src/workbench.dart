@@ -33,6 +33,7 @@ import 'audit_history.dart';
 import 'evidence_panel.dart';
 import 'large_record.dart';
 import 'models.dart';
+import 'thread/thread.dart';
 import 'reason_codes.dart';
 import 'region_editor.dart';
 import 'review_context.dart';
@@ -120,8 +121,13 @@ class ReviewWorkbench extends StatefulWidget {
     this.positionLabel,
     this.onBack,
     this.account,
+    this.thread,
   });
   final Specimen specimen;
+
+  /// The record's processing thread, when one has loaded (UI.md T2.2). The
+  /// Readings segment draws each region's comparison and decision from it.
+  final SpecimenThread? thread;
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
@@ -1057,6 +1063,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     WorkbenchSegment.readings => WorkbenchReadings(
       key: const ValueKey<String>('readings'),
       specimen: widget.specimen,
+      thread: widget.thread,
       anchors: <String, GlobalKey>{
         for (final Json r in widget.specimen.regions)
           textOf(r['region_id'], ''): _anchor(
