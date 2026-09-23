@@ -13,3 +13,17 @@ model produced, on every later turn: after a tool result, and on a retry after
 invalid output (HAR-009). With pydantic-ai 2.40 and huggingface_hub 1.18 the
 arguments were dropped, so DeepInfra rejected the second turn with HTTP 422 and
 Novita passed an argument-less call to the model (observed 2026-09-23).
+
+## 2. A step that fails after its external effect settled is a known block
+
+Issue #80, G6 and QUE-005. In a step that calls a model or a lookup, only a
+failure of that call leaves its outcome unknown. Once the call has returned,
+a later deterministic failure in the same step, such as the phase check
+`execute_phase` raising `EvidenceIntegrityError` after the extraction call in
+`parse`, is a known operational block: the run records the failure's code
+(`evidence_integrity_failure`, as `finalize` already does) or
+`stage_failed_inspect_private_worker_logs`, releases the lease, does not charge
+the provider's circuit, and accepts retry and reprocess. It is never
+`external_outcome_unknown`, which retry and reprocess refuse. The exception's
+class name is logged to the trace; its message is not, because it may carry
+provider headers or label text.
