@@ -227,7 +227,11 @@
         "max_external_calls": 96,
         "external_timeout_seconds": 270,
         "reader_timeout_seconds": 120,
-        "lease_seconds": 300
+        "lease_seconds": 300,
+        "program_allowance": {
+          "allowance_micros": 5000000,
+          "ledger_collection": "insects"
+        }
       },
       "date_rules": {
         "version": "date-rules-v1",

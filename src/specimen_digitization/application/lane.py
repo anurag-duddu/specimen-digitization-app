@@ -96,6 +96,18 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
         )
         if getattr(policy, name) is not None
     }
+    # The program's allowance (T2b), cleared when the profile carries none.
+    allowance, ledger = policy.program_allowance, None
+    if allowance is not None:
+        ledgers = registry.bound_collections(allowance.ledger_collection)
+        if len(ledgers) != 1:
+            raise LaneConflict(
+                "program_allowance_unavailable",
+                "The program allowance's ledger collection must be bound to one collection",
+            )
+        ledger = ledgers[0]
+    limits["program_allowance_micros"] = allowance and allowance.allowance_micros
+    limits["program_ledger_collection"] = ledger
     run.profile.execution = run.profile.execution.model_copy(
         update={
             "approved_cost_limit_micros": policy.run_cost_limit_micros,

@@ -11952,3 +11952,24 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: the pilot's supervisor starts its worker in a new session and answers `SIGTERM` with `SIGKILL` for the whole group, so graceful work cannot run under it.
 - Failed approaches: routing the drain through `_supervise`. A stop would kill the group and strand the fence.
 - Remaining follow-ups: S2's settings PR gives the job its arguments, `SPECIMEN_WORKER_JOB` and the checkpoint digest once this merges. T2b (the program allowance) and T2c (per-call costs) follow.
+  1. S5's `SaveDocumentV2` requires `canViewSensitive` for any document whose payload does not say `"sensitive": false`. The worker's release membership has no sensitive access, so a fence without that flag would be refused in production while SQLite accepted it. The provider circuit's state documents had the same gap: every external step of the drain would have stopped at `provider_circuit:circuit_cas_contention`. Both now write `"sensitive": false`, and the tests use a repository that enforces the rule.
+  2. `ListDueWorkV2` checks `cutoff <= request.time`, so a worker cannot query for retries due later. Anything the next execution must wait for travels in the fence.
+  3. The pilot's supervisor starts its worker in a new session and answers `SIGTERM` with `SIGKILL` for the whole group, so graceful work cannot run under it.
+  4. Receipt keys that repeat across executions (`step:1`) make a later execution's save replay an earlier one's result. Key by revision.
+- Failed approaches: routing the drain through `_supervise` (a stop would kill the group and strand the fence); tracking retries only in memory (a retry after the window was stranded, because the next execution cannot see it until it is due).
+- Remaining follow-ups: S2 grants the worker's service account permission to run its own job and sets `SPECIMEN_WORKER_JOB` on it. T2b adds the program allowance ledger and per-call costs. S5 confirms whether production holds records never requested through the lane, since `ListDueWorkV2` returns any due non-sensitive run.
+
+### 2026-09-23 — Go-live lane T2b: the program's model allowance (G9, G30)
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the allowance part of topic T2 of `docs/execution/golive/LANE.md`. Per-call costs follow as T2c.
+- Branch/worktree: `golive/lane-program-allowance` from `golive/lane-drain-worker`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - The published pilot profile carries `processing.program_allowance`: 5,000,000 micro-dollars (the owner's USD 5, G30), with its ledger in the `insects` collection. Every profile that carries an allowance must carry the same one.
+  - At request time the run copies the allowance and the ledger's collection, resolved through the private bindings. A ledger key bound to anything but exactly one collection refuses the request with `program_allowance_unavailable`.
+  - `lane_allowance.reserve_step` adds each paid step's stage reservation to a non-sensitive `worker_cursor` ledger. It runs after the run's budget check and the circuit's admission, and before the intent is saved.
+  - A reservation that would cross the allowance blocks the run with `program_allowance_exhausted` and the call is not made. A ledger that stays busy or cannot be read blocks it with `program_allowance_ledger_unavailable`.
+  - `Run.program_allowance` records the program's position after every reservation. Reservations are never refunded.
+- Validation actually run: `tests/test_lane_allowance.py` (12 passed), including an emulator-mode drain whose ledger total equals the run's own reserved cost; the full gates as listed in the pull request.
+- Durable learnings: the reservation must come after the provider circuit's admission. During an outage the circuit refuses call after call, and reserving first would spend the allowance on calls that never happen.
+- Failed approaches: none.
+- Remaining follow-ups: T2c records each paid call's usage and computed cost (`Run.paid_calls`) from a pinned price list, with `record_tool_usage` for geocoding. The pilot's `parse` reservation rises to 30,000 there, with S4's harness.

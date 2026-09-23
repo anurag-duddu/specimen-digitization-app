@@ -124,6 +124,14 @@ class DateRules(FrozenRecord):
     roman_numeral_months: bool = False
 
 
+class ProgramAllowance(FrozenRecord):
+    """The program's model allowance across all runs (LANE.md T2b; G9, G30)."""
+
+    allowance_micros: int = Field(gt=0, le=2**53 - 1)
+    # The public tree key of the collection whose scope holds the ledger.
+    ledger_collection: str = Field(min_length=1, max_length=64)
+
+
 class ProcessingPolicy(FrozenRecord):
     """The collection's allowance for one run, copied into each requested run."""
 
@@ -145,6 +153,9 @@ class ProcessingPolicy(FrozenRecord):
     )
     lease_seconds: float | None = Field(
         default=None, gt=0, le=900, exclude_if=lambda value: value is None
+    )
+    program_allowance: ProgramAllowance | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
 
     @model_validator(mode="after")
@@ -328,7 +339,20 @@ class CollectionProfileRegistry(FrozenRecord):
             raise ValueError("profile collection missing")
         if any(not key or node not in nodes for key, node in self.bindings.items()):
             raise ValueError("collection binding names an unknown collection")
+        allowances = {
+            p.processing.program_allowance
+            for p in self.profiles
+            if p.processing and p.processing.program_allowance
+        }
+        if len(allowances) > 1:
+            raise ValueError("every profile must carry the same program allowance")
+        if any(a.ledger_collection not in nodes for a in allowances):
+            raise ValueError("program allowance ledger names an unknown collection")
         return self
+
+    def bound_collections(self, node_id: str) -> list[str]:
+        """The private collection identifiers bound to a published node."""
+        return sorted(key for key, node in self.bindings.items() if node == node_id)
 
     def resolve(
         self, collection_id: str, profile_version: str | None = None
