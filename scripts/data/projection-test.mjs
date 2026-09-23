@@ -64,7 +64,7 @@ async function chain(specimenId, actorUid) {
   w.decided = {...v, id: id(), runId: w.run.id, transcriptionVersionId: w.transcription.id, observationId: w.left.id, role: 'decided_transcript', handedText: w.left.literalText, note: null};
   w.fallback = {...w.decided, id: id(), observationId: w.right.id, role: 'raw_reading', handedText: w.right.literalText};
   w.evidence = {...v, id: id(), runId: w.run.id, source: 'google_geocoding', sourceVersion: 'v1', adapterVersion: 'a1', query: {address: 'Chicago, Ill.'}, outcome: 'success', locator: 'place/1', responseSha256: hex('e'), capturedAt: '2026-09-23T12:00:00Z', rawAssetId: w.envelope.id};
-  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: 'lookup:city:geocode:1', phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKey: 'city', inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {place: 'Chicago'}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
+  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: 'lookup:geocode:decided_transcript:-:0af70af70af70af7:1', phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {candidates: [{place_id: 'fixture-place', name: 'Chicago'}]}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
   w.candidate = {...v, id: id(), runId: w.run.id, fieldKey: 'city', state: 'supported', literalValue: 'Chicago', parsedValue: 'Chicago', normalizedValue: 'Chicago', authorityId: null, derivation: 'lookup', inputSource: 'decided_transcript', sourceTranscriptionId: w.transcription.id, sourceObservationId: null};
   w.link = {...v, id: id(), candidateId: w.candidate.id, evidenceId: w.evidence.id, relation: 'supports'};
   w.record = {...v, id: id(), runId: w.run.id, predecessorId: null, disposition: 'needs_human_review', policyVersion: 'insects-clearance-v1', reasonCodes: ['mandatory_unresolved:county'], summary: 'mandatory_unresolved:county'};
@@ -94,7 +94,7 @@ const thread = ok(await raw(`query {
  readingComparisons(where:{runId:{eq:"${work.run.id}"}}) { ratio editDistance lengthBasis leftObservationId rightObservationId }
  transcriptionVersions(where:{runId:{eq:"${work.run.id}"}}) { regionId decisionKind selectedObservationId firstPassObservationId }
  harnessInputs(where:{runId:{eq:"${work.run.id}"}}, orderBy:{role:ASC}) { role handedText observationId }
- toolCalls(where:{runId:{eq:"${work.run.id}"}}) { callKey source outcome inputSource evidenceId attempt }
+ toolCalls(where:{runId:{eq:"${work.run.id}"}}) { callKey source fieldKeys outcome inputSource evidenceId attempt }
  fieldCandidates(where:{runId:{eq:"${work.run.id}"}}) { inputSource sourceTranscriptionId }
  resolvedFields(where:{recordVersionId:{eq:"${work.record.id}"}}) { fieldKey fieldGroup }
  sourceAssets(where:{specimenId:{eq:"${open}"},kind:{eq:"raw_response"}}) { width height }
@@ -105,7 +105,7 @@ same(thread.modelObservations.map(o => [o.independent, o.routeId, o.unreadableSp
 same([thread.readingComparisons[0].ratio, thread.readingComparisons[0].editDistance, thread.readingComparisons[0].lengthBasis], [1 / 13, 1, 13]);
 same(thread.transcriptionVersions, [{regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id}]);
 same(thread.harnessInputs.map(h => [h.role, h.observationId]), [['decided_transcript', work.left.id], ['raw_reading', work.right.id]]);
-same(thread.toolCalls, [{callKey: 'lookup:city:geocode:1', source: 'google-maps-geocoding', outcome: 'success', inputSource: 'decided_transcript', evidenceId: work.evidence.id, attempt: 1}]);
+same(thread.toolCalls, [{callKey: 'lookup:geocode:decided_transcript:-:0af70af70af70af7:1', source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], outcome: 'success', inputSource: 'decided_transcript', evidenceId: work.evidence.id, attempt: 1}]);
 same(thread.fieldCandidates, [{inputSource: 'decided_transcript', sourceTranscriptionId: work.transcription.id}]);
 same(thread.resolvedFields, [{fieldKey: 'city', fieldGroup: 'mandatory'}]);
 same(thread.sourceAssets, [{width: null, height: null}]);
@@ -138,6 +138,8 @@ console.log('PASS the trace id is recorded once and well formed');
 denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.firstPassCall.id, role: 'decided'}));
 denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'x', inputSource: 'decided'}));
 denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'y', attempt: 0}));
+denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'z', outcome: 'unavailable'}));
+denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.firstPassCall.id, handedText: null}));
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'llm'}));
 denied(await op('AppendFieldCandidateV2', {...work.candidate, id: randomUUID(), inputSource: 'raw'}));
 denied(await op('AppendResolvedFieldV2', {...work.resolved, id: randomUUID(), fieldGroup: 'required'}));

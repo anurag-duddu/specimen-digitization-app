@@ -36,6 +36,11 @@ reads them.
    have several regions (slides 324-328 have two labels); everything from the
    readings to the first pass is per region, and a field records the region
    and reading its literal came from.
+6. No Google Geocoding latitude or longitude is stored anywhere (Google Maps
+   Platform Service Specific Terms 6.3.1): not in a column, a `result`, an
+   evidence row or a stored raw response. S4 redacts them before storage and
+   keeps the full response's digest; SQL holds the place id, the matched name
+   and components, and the outcome.
 
 ## 2. What SQL holds, stage by stage
 
@@ -74,19 +79,26 @@ review priority and uncalibrated (SCR-004, SCR-005); the thread API says so.
 
 `HarnessInput`: what the first pass handed to the harness from one reading.
 `runId`, `transcriptionVersionId`, `observationId` (the reading), `role`
-(`decided_transcript` or `raw_reading`), `handedText` (exactly the text the
-harness received from this reader), `note` (the first pass's statement about
-this reader, when its output has one). Unique per transcription version and
-reading.
+(`decided_transcript` or `raw_reading`), `handedText` (required: the reading's
+literal text, verbatim, exactly as the harness received it), `note` (the first
+pass's statement about this reader; null for identical readings). A row exists
+only for a reading actually handed to the harness. Unique per transcription
+version and reading.
 
 `ToolCall`: one attempt of one harness tool call. `runId`, `callKey` (unique per
-run, stable across replays), `phase` (HAR-003 phases), `tool`, `toolVersion`,
-`source` (the database the tool queried; null for local validators),
-`fieldKey`, `inputSource` (`decided_transcript` or `raw_reading`),
-`transcriptionVersionId` or `observationId` when the call ran on one region's
-text, `attempt` (1 based), `arguments: Any!`, `outcome` (the typed outcome,
-section 4.3), `result: Any` (bounded; never the raw response), `evidenceId`
-(the `EvidenceItem` the call produced), `startedAt`, `completedAt`.
+run, stable across replays; S4's format is
+`{phase}:{tool}:{input_source}:{observation_id}:{first 16 hex of the SHA-256 of
+the arguments' canonical JSON}:{attempt}`), `phase` (HAR-003 phases), `tool`,
+`toolVersion`, `source` (the database the tool queried; null for local
+validators), `fieldKeys: [String!]!` (the fields the call serves; one geography
+call serves several), `inputSource` (`decided_transcript` or `raw_reading`),
+`transcriptionVersionId` or `observationId` when the call's literal came from
+one region's text (null when it spans regions), `attempt` (1 based),
+`arguments: Any!`, `outcome` (exactly the 11 HAR-008 values, checked in the
+operation), `result: Any` (bounded: `candidates`, `retry_after` and the
+sanitized `error` of CONTRACTS.md's `LookupResult`; never the raw response),
+`evidenceId` (the `EvidenceItem` the call produced), `startedAt`,
+`completedAt`.
 
 ### 3.2 New nullable columns
 
@@ -134,22 +146,28 @@ whatever the owners settle on; the table columns above do not change.
 | `handoffs` | `list[ReaderHandoff]` | one per reading of the region |
 
 `ReaderHandoff`: `observation_id: str`, `role: Literal["decided_transcript",
-"raw_reading"]`, `handed_text: str | None`, `note: str | None`. A region with no
-recorded decision has no `TranscriptionVersion`; the run's stage and blocker
-say why.
+"raw_reading"]`, `handed_text: str`, `note: str | None`. For `first_pass`,
+`spans` holds one verdict per aligned difference with every reading's text for
+that span, `alternatives` the unresolved material differences, and `unresolved`
+is true when any material difference is unresolved. The rationale and the notes
+are null for `identical_readings`. A region with no recorded decision has no
+`TranscriptionVersion`; the run's stage and blocker say why.
 
 ### 4.3 From the harness (S4), in `Run.tool_calls: list[ToolCallRecord]`
 
 `ToolCallRecord`: `call_key`, `phase`, `tool`, `tool_version`, `source`,
-`field_key`, `input_source`, `region_id` and `observation_id` (when the call ran
+`field_keys`, `input_source`, `region_id` and `observation_id` (when the call ran
 on one region's text), `attempt`, `arguments: dict`, `outcome`,
 `result: dict | None`, `evidence_id` (the `Evidence` or `Lookup` it produced),
-`started_at`, `completed_at`. `outcome` takes the `LookupStatus` values
+`started_at`, `completed_at`. `outcome` takes exactly the `LookupStatus` values
 (`success`, `no_match`, `ambiguous`, `empty_response`, `rate_limited`,
 `timeout`, `authentication_error`, `authorization_error`, `provider_error`,
-`malformed_response`, `policy_blocked`) plus any value S4 adds for a tool with
-no configured source. For any outcome other than `success`, `result` carries
-`detail` (short, no secrets) and `retry_after_seconds` when known.
+`malformed_response`, `policy_blocked`). A missing or rejected Maps key is
+`authentication_error`; deterministic validators record `success` with their
+verdict in `result`. A paid call's cost is in S3's per-call cost record on the
+run, not in SQL. The queue decision's summary (QUE-006) is
+`Run.disposition_summary`, a deterministic sentence from the rule version and
+reason codes, mapped to `RecordVersion.summary`.
 
 Each `FieldValue` in `Run.fields` gains `input_source`, `source_region_id` and
 `source_observation_id`, so a field's literal traces to the decided transcript
@@ -252,9 +270,10 @@ active run unless `run_id` is given. Values in `…` are elided:
       "handoffs": [{"observation_id": "…", "role": "decided_transcript", "handed_text": "…", "note": null}]}
   }],
   "tool_calls": [{"call_key": "…", "phase": "lookup", "tool": "geocode", "tool_version": "…",
-    "source": "google-maps-geocoding", "field_key": "city", "input_source": "decided_transcript",
-    "region_id": "…", "observation_id": null, "attempt": 1, "arguments": {}, "outcome": "success",
-    "result": {}, "detail": null, "retry_after_seconds": null, "evidence_id": "…",
+    "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
+    "input_source": "decided_transcript", "region_id": "…", "observation_id": null, "attempt": 1,
+    "arguments": {}, "outcome": "success", "result": {"candidates": []}, "error": null,
+    "retry_after": null, "evidence_id": "…",
     "started_at": "…", "completed_at": "…"}],
   "fields": [{"field_key": "city", "group": "mandatory", "state": "supported",
     "literal": "…", "parsed": "…", "normalized": "…", "authority_id": null,
@@ -276,12 +295,10 @@ active run unless `run_id` is given. Values in `…` are elided:
 
 ## 9. Open questions
 
-For S4: the first pass's structured output (does it give a rationale and a
-per-reader note?), the `role` values, the `call_key` format, the outcome for a
-tool with no configured source, whether the queue decision produces a summary
-for `RecordVersion.summary` (QUE-006; without one the writer stores the reason
-codes joined), and whether a tool call runs on one region's text or on all
-regions together.
+None for the data contract. S4 and the coordinator are settling whether the
+harness still runs on the raw readings when the first pass selects no reading;
+either way the region has `raw_reading` rows or no `HarnessInput` rows, and the
+columns hold.
 
 ## 10. Tests
 
@@ -291,6 +308,7 @@ run; the worker allowed on a non-sensitive specimen and refused on a sensitive
 one, where the same write then succeeds for a sensitive-capable reviewer;
 cross-collection references refused; a replayed row refused with a primary-key
 conflict and a natural-key duplicate refused by its unique constraint; the trace
-recorded once; closed vocabularies, score bounds and image dimensions enforced;
+recorded once; closed vocabularies (including the 11 outcomes), a required
+handed text, score bounds and image dimensions enforced;
 `ListDueWorkV2` hiding sensitive rows from the worker and never listing
 finished runs. `scripts/ci/test_data_release.py` pins the table count at 30.
