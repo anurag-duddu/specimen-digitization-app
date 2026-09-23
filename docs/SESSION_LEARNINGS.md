@@ -11905,3 +11905,27 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T3a follow-up: the closed two-step unique exception
+
+- Task: the S2 session, T3a follow-up for #104's corrected PLAN 4.4 and the steward's review of #104, applied in #99's sync.
+- Branch/worktree: `golive/release-schema-gate` (#99). An Opus subagent implemented it test-first in an isolated worktree, and this session reviewed and integrated it.
+- Outcome:
+  - `schema_gate.py` admits exactly two steps for `SourceAsset`:
+    - step one adds `source_asset_specimen_object` on (organizationId, collectionId, specimenId, bucket, objectName, generation) while `specimen_unique_1` stays declared;
+    - step two, in a later merge, drops `specimen_unique_1` only once the live schema has the new unique and no live operation uses the old one.
+  - Both steps in one merge are refused, with a reason naming create-before-drop.
+  - Each added column must be an existing NOT NULL column. Neither constraint may be the key or hold a protected key.
+  - `PROTECTED` gains TRN-005's `rawAssetId`, `promptVersion` and `inputSha256`. `EvidenceItem.locator` joins the NOT NULL relaxations with the data contract's reason.
+- Commits/PRs:
+  - This session's earlier superset version was replaced before it was pushed. Its spec and code were squashed into one spec commit and one red/green pair.
+  - Spec `29763ba`, red `3d2917a`, green `38014da`, and this closeout.
+- Validation actually run:
+  - Red: 15 failed, 74 passed. Green: 89 gate tests.
+  - `scripts/` passed on the subagent's head: 1,745 passed, 50 skipped, at load 10.8. pre-commit passed.
+  - This session re-ran the CLI against #88's head `1163431` (step one): "additive", exit 0. The subagent's copy that goes straight to step two is refused with the create-before-drop reason, and is admitted once step one is the live tree.
+- Durable learnings:
+  - Data Connect's compatible migration drops an index before it creates the new one, each statement in autocommit (S5 measured it on the emulator). So a constraint swap is only safe as two applies, and the gate is the place to enforce that, not the release.
+  - A step rule that compares directive texts must keep the directive name in the text, or a same-argument `@index` could ride on a `@unique` exemption. The parser keeps it (`@unique(...)`).
+- Failed approaches: implementing the swap as one step with a superset check. One migration drops before it creates, so the apply would have had to build an unreviewed intermediate schema.
+- Remaining follow-ups: S5's writer PR (T2a) carries step two. It merges only after #88's data release has applied step one.
