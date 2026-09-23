@@ -58,6 +58,8 @@ Read before researching, so the plan fits the product that exists:
    document "Proposed, not accepted by the owner" at the top until the owner
    accepts it (G12). Tool outcomes are HAR-008's, as `LookupStatus` encodes
    them (`domain.py` 43-54); a missing credential is an operational block.
+   From Google geocoding the pipeline keeps only the place ID, the outcome and a
+   response fingerprint (G26).
 2. Optional, only if it helps the owner judge the plan: a prototype under
    `scripts/research/georeferencing/` exercising the public endpoints read-only
    on the pilot labels' place names, with its results summarized in the plan.

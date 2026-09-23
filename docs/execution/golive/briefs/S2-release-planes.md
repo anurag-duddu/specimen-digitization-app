@@ -103,7 +103,9 @@ Actions logs and artifacts, which are public in this repository. Tests.
 **T4. The owner's IAM and secret list.** A read-only script, in the style of
 `scripts/ci/data_setup_window.py plan`, that reads the live policies and prints
 the exact grants T2 and T3 need. Standing grants: the data release identity's
-ordinary apply roles, each named; the runtime build and release identities
+roles for automatic applies, each named and justified against that path (the
+other "ordinary access" roles of `data_setup_window.py` 55-65 stay
+time-bounded); the runtime build and release identities
 (Artifact Registry push, Cloud Run deploy, act-as on the runtime identities,
 attestations); the runtime identities (connector impersonation; object create
 and read on the application prefix and read on `microscopic-slides/`; secret
@@ -116,8 +118,15 @@ only, since running a job needs no act-as; Firebase user lookup for the API);
 initializer, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`
 stay one-time and time-bounded through the existing setup-window path
 (`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 809-815
-caps the initializer's privilege window after native parity at ten minutes. Also list the
-secrets to create (Logfire token, Maps key, a new Hugging Face token version),
+caps the initializer's privilege window after native parity at ten minutes. The
+setup-window path requires every binding to stay time-bound
+(`data_setup_window.py` 126-138): run the window first or adapt the path, never
+fall back to a grant without a time condition, and list the revocation
+commands. Also list the
+secrets (already stored: the Logfire token and the Maps key, version 1 each;
+the existing Hugging Face version is reused, since the owner withdrew the
+rotation; still to create: `specimen-source-registry` and
+`specimen-worker-actor-uid`),
 public access prevention on the bucket, and the Budget API with a USD 25 budget
 alert. Bind every grant to a named resource with a one-line reason; never Owner
 or Editor. Write the commands into `~/specimen-golive/OWNER_ACTIONS.md` and
@@ -132,7 +141,8 @@ Write the repository variables `SPECIMEN_API_BASE_URL`,
 `gh variable set` commands for the owner to run. Leave private values such as
 the administrator contact for the owner to fill in, and never put them in a
 message. `SPECIMEN_ADMIN_CONTACT` is compiled into the public web client, so the
-entry says its value becomes public. The next merge rebuilds
+entry says its value becomes public and recommends a role address rather than a
+person's. The next merge rebuilds
 Hosting; then check DoD-1 (sign-in resolves the collection).
 
 **T6. Deploy health.** For the rest of the program, fix any failed deploy the

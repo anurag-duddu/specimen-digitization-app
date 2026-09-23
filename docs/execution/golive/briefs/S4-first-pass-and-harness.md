@@ -7,12 +7,15 @@ model Opus 5.5 at high effort.
 
 Build stages 6, 7 and 8 exactly as the owner specified: the LLM first pass on a
 Hugging Face model, a fully functional agentic harness with graceful failures,
-and the queue decision. A strong harness comes later; a fully functional one
-comes first (G6).
+and the queue decision. Stage 5's scores also live in your steps: keep the
+disagreement ratio in `adjudicate` (`workflow.py` 390-395) and the risk refresh
+in `finalize` (534) when you change them. A strong harness comes later; a fully
+functional one comes first (G6).
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`: sections 1, 2 and 4.1 rows 6 to 8.
+1. `docs/execution/golive/PLAN.md`: sections 1, 2, 4.1 rows 5 to 8, and 6 (your
+   row).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
 3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (322-340), QUE-001 to
@@ -83,18 +86,24 @@ records into S5's contract.
 
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
 profile's registry: GBIF Species Match v2 (the existing adapter, `lookup.py`),
-Global Names Verifier and Catalogue of Life for taxonomy (a match succeeds as
-`GBIF.md` 126-130 defines: exact, accepted, at the label's own rank; synonym,
-fuzzy, variant and higher-rank matches are `ambiguous`); Google Maps geocoding
+Global Names Verifier and Catalogue of Life for taxonomy (G23: GBIF species
+match v2 against the pinned COL XR checklist decides, the other two are
+recorded as supporting evidence, a disagreement is a warning finding, and
+BugGuide is not called; a match succeeds as `GBIF.md` 126-130 defines, exact and
+accepted at the expected rank, which for a genus-only label is the genus (G25);
+synonym, fuzzy, variant and higher-rank matches are `ambiguous`, which changes
+today's adapter: `lookup.py` 105-118 returns `success` for an exact synonym and
+`malformed_response` for VARIANT); Google Maps geocoding
 for geography (G10; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
-`PRD.md` 679; coordinates are never stored, since the platform terms allow
-caching them for 30 days at most, so keep the place ID, matched names and
-components and the response digest); the deterministic validators for catalog
-numbers and dates (expect date-shaped slide-preparation codes on the pilot
-slides, which are not collection dates, PLAN section 3; a pilot-specific date
-rule needs the coordinator first). No Parties tool: `identified_by_irn` is optional for the
+`PRD.md` 679; keep only the place ID, the outcome and the response digest,
+everywhere including traces, and drop Google's names, address parts and
+coordinates (G26)); the deterministic validators for catalog numbers and dates
+(a Roman numeral I to XII in the month position is the month; a date clears at
+the precision written, and a two-digit year reads as 19xx for Insects,
+recorded as the profile's rule (G24); date-shaped slide-preparation codes on
+the pilot slides are not collection dates, PLAN section 3). No Parties tool: `identified_by_irn` is optional for the
 slide pilot (G16), and the other fields outside taxonomy and geography are
 transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
 encodes them (`domain.py` 43-54); add none. Phases as the specification lists
@@ -121,10 +130,15 @@ G15) satisfies it, and a failed check sends the record to needs human review.
 `pilot_clearance_forbidden` (`worker.py` 318-323) is in the evidence-only
 `PilotWorker`, off the lane's path; leave it. The reviewer's `capability_defer`
 action in `api.py` 1940-1967 stays; the queue decision may also return deferred
-under QUE-004. Validate the separately parsed dates, keeping partial precision,
-not the verbatim text (`policy.py` 119-126 parses the literal today;
-`CONTRACTS.md` 234-235). Keep the elevation gate (99-106): the four elevation
-fields stay mandatory and nothing is derived (G22). Tests cover every path: all mandatory fields resolved, cleared;
+under QUE-004. Validate the separately parsed date, not the verbatim text
+(`policy.py` 119-126 parses the literal today): a date clears at the precision
+written, and a two-digit year reads as 19xx for Insects (G24). Keep the
+elevation gate (99-106): the four elevation fields stay mandatory and nothing is
+derived (G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
+region whose first pass picked no reading passes when every field drawn from it
+resolved, on its own evidence or through a lookup that settled the
+disagreement; a field still left with conflicting readings sends the record to
+needs human review. Tests cover every path: all mandatory fields resolved, cleared;
 no data for a mandatory field, needs human review with the reason; no data for
 an optional field, still cleared; a failed coverage check, needs human review;
 capability limit, deferred; transient error, retried, then an operational block.

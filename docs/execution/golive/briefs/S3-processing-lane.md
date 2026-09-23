@@ -80,7 +80,8 @@ list arrives, with `identified_by_irn` optional (G16) and no Parties tool
 mapped to it, and the four elevation fields mandatory with nothing derived
 (G22); changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
-reference (S4). Optional fields must survive at runtime and reach the run as
+reference (S4); the Insects date rule of G24 (a two-digit year reads as 19xx),
+recorded as a versioned rule. Optional fields must survive at runtime and reach the run as
 `Run.field_groups`, a new field whose shape S5 decides (today they are dropped: `domain.py` 324-336,
 `collection_runtime.py` 106-118); S4 changes `parse` (`workflow.py` 685-719)
 to extract them.

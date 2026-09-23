@@ -26,7 +26,7 @@ Triggers: a message "PR #N ready" from a workstream session; a new push to an
 open go-live PR; and a fallback poll every 15 minutes:
 
 ```bash
-gh pr list --label golive --state open --json number,title,headRefName,headRefOid,isDraft,mergeable,updatedAt
+gh pr list --label golive --state open --json number,title,headRefName,headRefOid,isDraft,mergeable,updatedAt,autoMergeRequest
 ```
 
 Keep a ledger at `~/specimen-golive/status/S1-steward-ledger.md` (one line per
@@ -35,7 +35,8 @@ event: time, PR, head SHA, action, result) and your 30-line status file at
 
 For each head SHA you have not reviewed:
 
-1. **Preflight, yourself.** `gh pr view N --json files,additions,deletions,body,labels,commits`.
+1. **Preflight, yourself.** `gh pr view N --json files,additions,deletions,body,labels,commits,autoMergeRequest`
+   (auto-merge must be off).
    Check: title prefix and `golive` label; body sections Spec, Tests (red and
    green commits), Gates run locally, Risk, Depends on; a
    `docs/SESSION_LEARNINGS.md` closeout entry; size under about 600 changed
@@ -72,13 +73,11 @@ For each head SHA you have not reviewed:
      with `SendMessage`, first line "PR #N needs changes: <summary>". Wait for
      "PR #N ready" again, then review the new head with a new swarm.
    - Only should-fix and nits: post them as a comment and continue.
-   - Never push code to another session's branch. You may run
-     `gh pr update-branch N` to bring a PR up to date with `main`; do it only
-     for the pull request that is next to merge, since the new head needs a
-     fresh swarm (G18). GitHub's server-side merge ignores the `merge=union`
-     rule for `docs/SESSION_LEARNINGS.md`, so when it reports a conflict there,
-     ask the owning session to merge `origin/main` locally and push instead.
-     Otherwise tell the owning session to pull before its next push.
+   - Never push code to another session's branch. When a pull request is next
+     to merge and behind `main`, tell its owning session "your PR is next"; it
+     merges `origin/main` locally and pushes, because GitHub's server-side merge
+     (including `gh pr update-branch`) ignores the `merge=union` rule for
+     `docs/SESSION_LEARNINGS.md`. The new head gets a fresh swarm (G18).
 4. **CI.** Watch with a Monitor or a background
    `gh pr checks N --watch --interval 60 > <log>`. On a failure, save
    `gh run view <id> --log-failed` to a file and read at most 60 lines. An
