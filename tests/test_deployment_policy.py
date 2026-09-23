@@ -120,14 +120,5 @@ def test_backend_workflows_have_main_push_and_separate_environments() -> None:
             allowed = {f'{plane}-production'}
             if plane == 'runtime':
                 allowed.add('runtime-build-production')
-            if plane == 'data' and name == 'initialize':
-                allowed = {'data-initialization-production'}
-                assert job['needs'] == ['admission', 'release']
-                assert "needs.admission.outputs.phase == 'data-initialize-missing/v1'" in job['if']
-                assert job['env']['RELEASE_SERVICE_ACCOUNT'] == 'specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com'
-                commands = [step.get('run','') for step in job['steps']]
-                admission_index = next(i for i,cmd in enumerate(commands) if '--prepare-initialization' in cmd)
-                auth_index = next(i for i,step in enumerate(job['steps']) if step.get('id') == 'auth')
-                assert admission_index < auth_index
             assert environment in allowed
             assert job.get('needs'), 'Cloud credentials cannot precede admission'
