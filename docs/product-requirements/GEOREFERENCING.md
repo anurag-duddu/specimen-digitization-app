@@ -503,6 +503,8 @@ Other workstreams: S4 merges T3a with the additions in section 5, registers the 
 
 ## Owner decisions
 
+Every item below is proposed, not accepted by the owner (G12); the owner rules on them in this document's pull request. D14 is being asked ahead of the rest because S4 is building G20 now.
+
 | # | Decision | Options | S8 recommendation | What it blocks |
 |---|---|---|---|---|
 | D1 | Google's role, given its terms and G26 (G10) | a) an existence check that keeps only place ID, outcome and fingerprint (G26), with open sources supplying names, units and coordinates; b) drop Google from the retrospective tool; c) negotiate enterprise terms; and whether a Google-only `success` may clear a field (PRD 12.4, open) | a, and a Google-only `success` does not by itself clear a field whose label predates a jurisdiction change | tier 2; use of the Maps key; the PRD 12.4 source table |
