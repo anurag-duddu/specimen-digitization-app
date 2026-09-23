@@ -76,6 +76,9 @@ def work_available_at(specimen: Specimen) -> str | None:
         "waiting_for_review",
     }:
         return None
+    # A requested run waits its turn in request order (LANE.md T1, G13).
+    if run.stage == "pending" and run.queued_at:
+        return run.queued_at
     if run.blocker == "external_outcome_unknown" and run.lease_until:
         return run.lease_until
     if run.stage == "retry_scheduled" and run.next_retry_at:
