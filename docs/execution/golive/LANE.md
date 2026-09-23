@@ -420,3 +420,84 @@ policy gate (`policy.py` 35-36) sends it to needs human review.
   becomes 240 s and the request timeout 300 s. The pilot's allowance sets the
   worker's external-call timeout to 270 s with a 300 s lease, and keeps readers
   at 120 s. The allowance refuses timeouts that do not fit the lease.
+
+## T2. The worker drains the queue, within the budget
+
+Implements PLAN 4.3 and 4.6 (the worker's part) with G2, G6, G9 and G13. The
+coordinator approved the mechanism and the cost basis on 2026-09-23, and the
+owner set the model allowance (G30).
+
+### Drain mode
+
+`specimen-worker --mode production --drain` runs the lane's worker. The frozen
+pilot's worker is unchanged and still needs its launch files.
+
+- **Settings.** No launch policy, manifest or timing files. The worker needs
+  its actor (`SPECIMEN_WORKER_ACTOR_UID`), the SQL endpoint, the bucket, the
+  SAM 3 settings, the inference switch, and the collection bindings
+  (`SPECIMEN_COLLECTION_BINDINGS_JSON`). It resolves profiles with the same
+  published registries as the API.
+- **Collections.** The actor's operator-or-above memberships, one collection at
+  a time.
+- **Fence.** Two executions of the job must never process two runs of one
+  collection at once (G13). A snapshot's compare-and-set alone cannot prevent
+  that when both executions act as the same actor, because they replay each
+  other's receipts. So the worker first takes the collection's fence: a
+  compare-and-set document holding the execution's id, the run it is working on,
+  and a lease of 300 s renewed after every step. A live fence held by another
+  execution means that execution is draining the collection, and this one moves
+  on. An expired fence is taken over.
+- **Order.**
+  - The run a dead execution left under the fence is finished first.
+  - After that, the oldest due run, by `queued_at` through `ListDueWorkV2`
+    (never sensitive records), is stepped until it stops. It stops at a
+    disposition, a block, a pause, a cancellation, a scheduled retry or an
+    unknown outcome. Then the next one is taken.
+- **Retries.** A run that stops with a scheduled retry is waited for, once no
+  other run is due, if the retry falls inside the window. Nothing else would
+  start the job for it. Retry delays are at most 300 s plus jitter.
+- **Window.** The worker takes no new run 600 s before its task deadline
+  (3600 s). It exits 0 when nothing is due and no retry is pending in the
+  window. On `SIGTERM` it stops taking work, lets the current step's result
+  save, and releases the fence.
+
+### Program allowance (G9)
+
+The published profiles carry the program's model allowance in micro-dollars.
+The owner set it at USD 5 (G30): 5,000,000 micro-dollars for production's
+readers, SAM 3, first pass and harness. The lab's USD 5 share is separate, and
+the rest of G9's USD 25 is left for infrastructure. It rises only by the owner's
+decision, through a profile edit.
+
+The ledger is a compare-and-set document in the scope of the collection the
+setting names. It adds every paid step's reservation before the call, alongside
+the run's own budget check (`workflow.py` 191-231). A step whose reservation
+would cross the allowance is not called. The run blocks with
+`program_allowance_exhausted`, an operational block with no queue outcome
+(QUE-005).
+
+Reservations are never refunded. A retry reserves again, as the run budget
+already does (`domain.py` 222-227). With no allowance configured, the ledger is
+not consulted.
+
+Every reservation also records the program's position on the run: the
+allowance, the total reserved after this step, and what remains. The thread
+shows it, so a block is never a surprise.
+
+### Cost of every paid call
+
+`Run.paid_calls` records one entry per paid call:
+
+- the step key and attempt;
+- the reservation;
+- the usage: tokens for a model call, measured seconds for SAM 3;
+- the outcome;
+- a cost labelled `computed`, from the profile's pinned price list, with that
+  list's version and date. Where a provider returns a billed amount, it is
+  recorded instead and labelled `billed`.
+
+Model calls are priced per million input and output tokens for their route.
+SAM 3 is priced by its measured request seconds times the service's configured
+vCPUs and memory at the pinned Cloud Run rates. A price changes only through a
+reviewed profile edit. The run's `usage.actual_cost_micros` is the sum of its
+calls' costs.
