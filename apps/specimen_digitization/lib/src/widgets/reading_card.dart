@@ -74,6 +74,7 @@ class ReadingCard extends StatelessWidget {
     required this.provider,
     required this.literal,
     this.regionName,
+    this.identity,
     this.reference,
     this.executionDetails,
     this.footerActions,
@@ -95,6 +96,10 @@ class ReadingCard extends StatelessWidget {
   /// Which region of the photograph the reading was taken from, as the region
   /// list names it. Null where the caller has already said so nearby.
   final String? regionName;
+
+  /// The route and the prompt version the reading records, one line beneath
+  /// the model (UI.md T2.2). Null when it records neither.
+  final String? identity;
 
   /// The first reading for this region, if this is not it.
   final String? reference;
@@ -159,11 +164,17 @@ class ReadingCard extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: <Widget>[
                       Text(modelName, style: ui.type.title),
-                      TermText(
-                        'Provider',
-                        displayText: provider,
-                        style: ui.type.label.copyWith(
-                          color: ui.color.inkSecondary,
+                      // A node of its own, always: a term that opens its
+                      // definition must not merge into the card, or a double
+                      // tap on the card would open the provider's definition.
+                      Semantics(
+                        container: true,
+                        child: TermText(
+                          'Provider',
+                          displayText: provider,
+                          style: ui.type.label.copyWith(
+                            color: ui.color.inkSecondary,
+                          ),
                         ),
                       ),
                     ],
@@ -171,6 +182,22 @@ class ReadingCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (identity case final String line) ...<Widget>[
+              SizedBox(height: ui.space.s1),
+              // Under the model's name rather than under its glyph, so the
+              // line reads as the model's own detail.
+              Padding(
+                padding: EdgeInsetsDirectional.only(
+                  start: UiIconSize.inline.dimension + ui.space.s1,
+                ),
+                child: Text(
+                  line,
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+              ),
+            ],
             SizedBox(height: ui.space.s3),
             DiffText(text: literal, reference: reference),
             if (execution != null) ...<Widget>[
