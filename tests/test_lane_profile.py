@@ -23,6 +23,7 @@ from specimen_digitization.application.collection_profiles import (
 from specimen_digitization.application.collection_runtime import classify_and_select
 from specimen_digitization.application.domain import (
     MANDATORY,
+    FieldValue,
     Principal,
     Profile,
     Region,
@@ -302,3 +303,59 @@ def test_production_app_passes_the_published_registries(monkeypatch):
     registry = captured["profile_registry"]
     assert registry.resolve(COLLECTION_UUID).profile.id == "zoology_insects_slides"
     assert captured["risk_registry"].version == published_risk_registry().version
+
+
+def test_a_regions_correction_keeps_every_field_and_its_group(tmp_path):
+    from test_application import HEADERS, PREFIX
+
+    blobs = LocalBlobs(tmp_path / "blobs")
+    app = create_app(
+        mode="emulator",
+        repository=SQLiteRepository(tmp_path / "state.sqlite3"),
+        blobs=blobs,
+        adapters=ProductionLikeAdapters(blobs, SYNTHETIC_TEXT),
+        identity_verifier=lambda token, check: USER,
+        memberships=lambda user: [
+            {
+                "organization_id": SYNTHETIC_ORG,
+                "collection_id": SYNTHETIC_COLLECTION,
+                "role": "reviewer",
+                "can_view_sensitive": True,
+            }
+        ],
+        profile_registry=published_registry({SYNTHETIC_COLLECTION: "insects"}),
+        risk_registry=published_risk_registry(),
+        worker_dispatcher=RecordingDispatcher(),
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    row = intake(client)
+    principal = Principal(user_id=USER, scope=SCOPE, role="reviewer")
+    drained = app.state.workflow.drain(principal, row["specimen_id"])
+    assert drained.run.field_groups
+    response = client.post(
+        PREFIX + f"/specimens/{row['specimen_id']}/regions",
+        headers=dict(HEADERS, **{"Idempotency-Key": "regions-1"}),
+        json={
+            "expected_revision": drained.version,
+            "base_run_id": drained.run.id,
+            "reason": "Reviewer drew the label",
+            "regions": [
+                {
+                    "asset_id": drained.asset.id,
+                    "x": 0,
+                    "y": 0,
+                    "width": drained.asset.width,
+                    "height": drained.asset.height,
+                    "order": 0,
+                    "method": "reviewer_drawn",
+                    "version": "1",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    run = SQLiteRepository(tmp_path / "state.sqlite3").get(SCOPE, row["specimen_id"]).run
+    assert run.id != drained.run.id
+    assert run.field_groups == drained.run.field_groups
+    assert set(run.fields) == set(drained.run.field_groups)
+    assert all(value == FieldValue() for value in run.fields.values())

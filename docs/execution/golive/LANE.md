@@ -242,7 +242,8 @@ When classify binds the profile, the run gets a `FieldValue` for every mandatory
 and optional key. `Run.field_groups` maps each key to `mandatory` or `optional`,
 which is S5's shape. S4's `parse` extracts both groups, and only mandatory fields
 gate clearance. Synthetic profiles have no optional fields, so their runs are
-unchanged.
+unchanged. A regions correction starts a run that does not classify again, so it
+carries the bound profile's field groups, with every field reset.
 
 ### Wiring
 
