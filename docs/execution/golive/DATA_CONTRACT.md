@@ -258,7 +258,9 @@ active run unless `run_id` is given. Values in `…` are elided:
   "image": {"asset_id": "…", "sha256": "…", "width": 4000, "height": 3000,
     "pixel_basis": "original_pixel_edges"},
   "segmentation": {"model_revision": "…", "settings": {"concept_prompt": "label"}},
-  "coverage": {"outcome": "confirmed", "region_count": 2, "reason_codes": [], "evidence_id": "…"},
+  "coverage_check": {"status": "passed", "checks": [{"name": "region_count", "passed": true,
+    "detail": {}}, {"name": "full_image", "passed": true, "detail": {}}], "evidence_id": "…",
+    "checked_at": "…"},
   "regions": [{
     "region_id": "…", "ordinal": 0, "rotation_quarter_turns": 0,
     "geometry": {"x": 10, "y": 20, "width": 390, "height": 160},
@@ -292,6 +294,9 @@ active run unless `run_id` is given. Values in `…` are elided:
 
 - `run.status` uses the summary's `status` vocabulary; `decision` is null until
   the queue decides.
+- `coverage_check.status` is `passed`, `failed` or `not_run` (G15). A failed
+  check's reason code, `label_coverage_unconfirmed` today (`policy.py` 35-36),
+  is also in `decision.reason_codes`.
 - `first_pass` is null for a region with no recorded decision; the run's
   `stage` and `blocker` say why. `unresolved` is true when the first pass ran and
   chose no reading.
