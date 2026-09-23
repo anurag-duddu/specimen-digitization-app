@@ -65,6 +65,58 @@ abstract class _View {
       : List<T>.empty();
 }
 
+/// Where a field's literal, a handoff or a lookup's input came from.
+enum ThreadInputSource {
+  /// The transcript the first pass decided on.
+  decidedTranscript('decided_transcript'),
+
+  /// One reader's raw reading, handed over as it was read.
+  rawReading('raw_reading');
+
+  const ThreadInputSource(this.wire);
+
+  /// The value on the wire.
+  final String wire;
+
+  /// The source named by [value], or null for anything else.
+  static ThreadInputSource? fromWire(Object? value) =>
+      values.where((ThreadInputSource s) => s.wire == value).firstOrNull;
+}
+
+/// The profile group a field belongs to.
+enum ThreadFieldGroup {
+  /// Clearance needs a supported value.
+  mandatory,
+
+  /// Extracted and shown, and never a reason to hold a record.
+  optional;
+
+  /// The group named by [value], or null for anything else.
+  static ThreadFieldGroup? fromWire(Object? value) =>
+      values.where((ThreadFieldGroup g) => g.name == value).firstOrNull;
+}
+
+/// How a region's decided transcript was reached.
+enum ThreadDecisionKind {
+  /// Every reading was the same text.
+  identicalReadings('identical_readings'),
+
+  /// The LLM first pass chose among differing readings.
+  firstPass('first_pass'),
+
+  /// A reviewer resolved it.
+  human('human');
+
+  const ThreadDecisionKind(this.wire);
+
+  /// The value on the wire.
+  final String wire;
+
+  /// The kind named by [value], or null for anything else.
+  static ThreadDecisionKind? fromWire(Object? value) =>
+      values.where((ThreadDecisionKind k) => k.wire == value).firstOrNull;
+}
+
 /// A retained raw response: which evidence file, and its checksum.
 class ThreadAssetRef extends _View {
   const ThreadAssetRef._(super.json);
@@ -220,6 +272,11 @@ class ThreadReading extends _ModelOutput {
   List<String> get unreadableSpans => _texts('unreadable_spans');
 }
 
+/// The model call the first pass made.
+class ThreadModelCall extends _ModelOutput {
+  const ThreadModelCall._(super.json);
+}
+
 /// The measured difference between two readings of one region.
 class ThreadComparison extends _View {
   /// The comparison in [json].
@@ -246,6 +303,57 @@ class ThreadComparison extends _View {
   String? get calibration => _t('calibration');
 }
 
+/// What one reader handed to the harness.
+class ThreadHandoff extends _View {
+  /// The handoff in [json].
+  const ThreadHandoff.fromJson(super.json);
+
+  String? get observationId => _t('observation_id');
+
+  /// The role as sent.
+  String? get roleName => _t('role');
+
+  /// The role, or null when the server sent one this client does not know.
+  ThreadInputSource? get source => ThreadInputSource.fromWire(roleName);
+
+  /// What was handed over, exactly.
+  String? get handedText => _verbatim('handed_text');
+
+  /// The first pass's note about this reading.
+  String? get note => _t('note');
+}
+
+/// How one region's transcript was decided, and what went to the harness.
+class ThreadFirstPass extends _View {
+  /// The decision in [json].
+  const ThreadFirstPass.fromJson(super.json);
+
+  /// The decision kind as sent.
+  String? get kindName => _t('decision_kind');
+
+  /// The kind, or null when the server sent one this client does not know.
+  ThreadDecisionKind? get kind => ThreadDecisionKind.fromWire(kindName);
+  String? get selectedObservationId => _t('selected_observation_id');
+
+  /// The decided transcript, exactly.
+  String? get decidedText => _verbatim('decided_text');
+
+  /// True when no reading was chosen or a material difference is open.
+  bool? get unresolved => _b('unresolved');
+
+  /// The first pass's rationale, or the reviewer's reason.
+  String? get rationale => _t('rationale');
+
+  /// The model call, for a decision the first pass made.
+  ThreadModelCall? get modelCall {
+    final Json? call = _object(_json['model_call']);
+    return call == null ? null : ThreadModelCall._(call);
+  }
+
+  /// One per reading of the region.
+  List<ThreadHandoff> get handoffs => _each('handoffs', ThreadHandoff.fromJson);
+}
+
 /// One label region: its readings, their comparison and the decision.
 class ThreadRegion extends _View {
   /// The region in [json].
@@ -262,6 +370,129 @@ class ThreadRegion extends _View {
   List<ThreadReading> get readings => _each('readings', ThreadReading.fromJson);
   List<ThreadComparison> get comparisons =>
       _each('comparisons', ThreadComparison.fromJson);
+
+  /// How its transcript was decided; null when no decision is recorded, and
+  /// the run's stage and blocker say why.
+  ThreadFirstPass? get firstPass {
+    final Json? pass = _object(_json['first_pass']);
+    return pass == null ? null : ThreadFirstPass.fromJson(pass);
+  }
+}
+
+/// One call the harness made.
+class ThreadToolCall extends _View {
+  /// The call in [json].
+  const ThreadToolCall.fromJson(super.json);
+
+  String? get callKey => _t('call_key');
+  String? get phase => _t('phase');
+  String? get tool => _t('tool');
+  String? get toolVersion => _t('tool_version');
+
+  /// The database it asked, as an identifier (`google-maps-geocoding`).
+  String? get source => _t('source');
+
+  /// The fields it served; one geography call serves several.
+  List<String> get fieldKeys => _texts('field_keys');
+
+  /// The input source as sent.
+  String? get inputSourceName => _t('input_source');
+
+  /// The input source, or null when the server sent one this client does
+  /// not know.
+  ThreadInputSource? get inputSource =>
+      ThreadInputSource.fromWire(inputSourceName);
+  String? get regionId => _t('region_id');
+
+  /// The reading whose text it ran on, for a raw-reading call.
+  String? get observationId => _t('observation_id');
+
+  /// Which attempt this was, from one.
+  int? get attempt => _i('attempt');
+  Json get arguments => _map('arguments');
+
+  /// The typed outcome (HAR-008): the `LookupStatus` values.
+  String? get outcome => _t('outcome');
+  Json? get result => _object(_json['result']);
+
+  /// What went wrong. The contract names it at the call; a writer that
+  /// follows `LookupResult` puts it in the result.
+  String? get error => _t('error') ?? _text(result?['error']);
+
+  /// When it may be tried again, from the same two places.
+  String? get retryAfter => _t('retry_after') ?? _text(result?['retry_after']);
+  String? get evidenceId => _t('evidence_id');
+  String? get startedAt => _t('started_at');
+  String? get completedAt => _t('completed_at');
+}
+
+/// One profile field's result.
+class ThreadField extends _View {
+  /// The field in [json].
+  const ThreadField.fromJson(super.json);
+
+  String? get fieldKey => _t('field_key');
+
+  /// The group as sent.
+  String? get groupName => _t('group');
+
+  /// The group, or null when the server sent none this client knows.
+  ThreadFieldGroup? get group => ThreadFieldGroup.fromWire(groupName);
+
+  /// The value state: supported, unknown, unreadable and the rest.
+  String? get state => _t('state');
+
+  /// As written, read as and standardized, exactly as sent.
+  String? get literal => _verbatim('literal');
+
+  /// Read as. The thread sends it as text with the precision and the century
+  /// rule beside it (G24); the stored object form is read too, so a change
+  /// of shape never loses the value.
+  String? get parsed {
+    final Json? stored = _parsedObject;
+    if (stored == null) return _verbatim('parsed');
+    final Object? value = stored['value'];
+    return value is String ? value : null;
+  }
+
+  String? get normalized => _verbatim('normalized');
+
+  /// How precise a date is, as written: day, month or year (G24).
+  String? get precision =>
+      _t('precision') ?? _text(_parsedObject?['precision']);
+
+  /// The rule, with its version, that set a two-digit year's century (G24);
+  /// null for a four-digit year and for anything that is not a date.
+  String? get centuryRule =>
+      _t('century_rule') ?? _text(_parsedObject?['century_rule']);
+
+  Json? get _parsedObject => _object(_json['parsed']);
+  String? get authorityId => _t('authority_id');
+
+  /// The input source as sent.
+  String? get inputSourceName => _t('input_source');
+
+  /// The input source, or null when the server sent none this client knows.
+  ThreadInputSource? get inputSource =>
+      ThreadInputSource.fromWire(inputSourceName);
+  String? get sourceRegionId => _t('source_region_id');
+
+  /// The reading its literal came from, for a raw-reading literal (G20).
+  String? get sourceObservationId => _t('source_observation_id');
+  List<String> get evidenceIds => _texts('evidence_ids');
+}
+
+/// The queue decision and its reasons.
+class ThreadDecision extends _View {
+  const ThreadDecision._(super.json);
+
+  /// `cleared`, `needs_human_review` or `deferred`, as sent.
+  String? get disposition => _t('disposition');
+  String? get policyVersion => _t('policy_version');
+  List<String> get reasonCodes => _texts('reason_codes');
+
+  /// The one-sentence summary (QUE-006).
+  String? get summary => _t('summary');
 }
 
 /// One specimen run's whole thread.
@@ -282,6 +513,9 @@ class SpecimenThread extends _View {
   /// The automatic coverage check (G15).
   ThreadCoverageCheck? get coverageCheck =>
       _part('coverage_check', ThreadCoverageCheck._);
+
+  /// The queue decision, or null before the queue decides.
+  ThreadDecision? get decision => _part('decision', ThreadDecision._);
 
   /// The label regions: numbered ones in order, then any unnumbered one in
   /// the order it was sent. `List.sort` is not stable, so the index breaks
@@ -306,6 +540,26 @@ class SpecimenThread extends _View {
     );
   }
 
+  /// The harness's calls, in the order they ran.
+  List<ThreadToolCall> get toolCalls =>
+      _each('tool_calls', ThreadToolCall.fromJson);
+
+  /// Every field, in the profile's order.
+  List<ThreadField> get fields => _each('fields', ThreadField.fromJson);
+
+  /// The fields a supported value is needed for.
+  List<ThreadField> get mandatoryFields =>
+      _grouped((ThreadField f) => f.group == ThreadFieldGroup.mandatory);
+
+  /// The fields that are shown and never hold a record.
+  List<ThreadField> get optionalFields =>
+      _grouped((ThreadField f) => f.group == ThreadFieldGroup.optional);
+
+  /// The fields with no group this client knows: shown apart, never filed
+  /// into a group by guess.
+  List<ThreadField> get ungroupedFields =>
+      _grouped((ThreadField f) => f.group == null);
+
   /// The reading with [observationId], wherever it sits.
   ThreadReading? readingOf(String? observationId) => observationId == null
       ? null
@@ -323,4 +577,7 @@ class SpecimenThread extends _View {
     final Json? part = _object(_json[key]);
     return part == null ? null : read(part);
   }
+
+  List<ThreadField> _grouped(bool Function(ThreadField) test) =>
+      List<ThreadField>.unmodifiable(fields.where(test));
 }
