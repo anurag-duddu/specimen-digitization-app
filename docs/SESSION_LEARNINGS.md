@@ -11862,6 +11862,29 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Remaining follow-ups:
   - The gate checks that the membership `@check` is present, not what its expression says. `@check(expr: "true")` would pass, so the PR steward still reviews check expressions.
   - T3b must never call the gate with a live schema but a missing connector, because every operation would then count as new.
+
+### 2026-09-23 — Go-live release workstream (S2), T3b1: the data plane admits through the gate and chooses its phase
+
+- Task: the S2 session, brief item T3, step two, code half (`docs/execution/golive/RELEASE.md` section 4.2). T3b2, the workflow switch, follows as its own pull request.
+- Branch/worktree: `golive/release-data-gate`, stacked on #99's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed and integrated it.
+- Outcome:
+  - `release_gate.py` knows four planes, each with its release and fixed provider; the two data planes use `specimen-data-release` and `specimen-data-initialize`. `release_admission.admit` refuses a gate record issued for another plane before it re-admits.
+  - `deploy_data.py --deploy` with a data gate record reads the live schema, connector, Storage rules release, SQL instance and database with GETs only, then chooses `initialize`, `verify` or `apply`. Apply names the gate's refusals without values and otherwise fails closed until T3d. Every other combination asks to reconcile.
+  - Every exit after admission writes a `data-released/v1` receipt of public facts. A present `DATA_BOOTSTRAP_ARTIFACT_B64` is announced and never decoded; an empty one counts as absent, since GitHub renders an unset secret as `""`.
+  - No workflow calls this path yet, so merging changes no release behaviour.
+- Commits/PRs: spec `272a3cd`; red `2279841`; green `93f41c4`; the spec tightening and this closeout.
+- Validation actually run:
+  - Red: 63 failed, 101 passed, all for the missing code.
+  - Green: `scripts/` 1,789 passed, 50 skipped on the final head (subagent, load 10.9); pre-commit passed. This session re-ran the two focused files (166 passed) and the hooks after the spec edit.
+  - This session read the live schema and connector read-only: `schemas/main` carries `source: {}` with an etag and `reconciling: false`, and the connector returns 404, so the first gate-path run would choose `initialize`.
+- Durable learnings:
+  - Data Connect returns an explicitly empty `source: {}` for the placeholder, not a missing key, so a parser that insists on the key is safe against today's state.
+  - Choosing the phase from live state is only as complete as what it can read. Without SQL access, a change under `dataconnect/sql/` alone would read as `verify`; the spec now gives that check to T3d.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - T3b2 must make the `initialize` route fail closed until T3c, or the runtime's D3 wait would pass over an empty database.
+  - When #101 (T2c) and this branch meet, the data-run wait must apply only to runtime planes (`GATE_PLANES[plane][0] == "runtime"`); `test_a_data_job_never_waits_for_or_records_a_data_release` catches a naive merge.
+  - The data-release identity needs `firebaserules.rulesets.get` and `cloudsql.databases.get` among its reads; T4 checks the live roles and lists any missing permission for the owner.
 ### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Credential-free gate for the two runtime release planes (owner decision G11).
+"""Credential-free gate for the runtime and data release planes (owner decision G11).
 
 It replaces the owner-minted envelope with facts GitHub reports about the
 merged commit: the commit is on main, exactly one merged pull request of this
@@ -23,13 +23,17 @@ from release_admission import gh_json, read_packet, require
 from release_context import PROJECT, REPOSITORY, validate_context
 from validate_release_packet import CHECKS, SHA, exact_keys
 
-GATE_PLANES = {"runtime-build", "runtime"}
 RECORD_VERSION = "protected-release-gate/v1"
 PROJECT_NUMBER = "716045864126"
 POOL_ID = "github-actions"
 POOL = f"projects/{PROJECT_NUMBER}/locations/global/workloadIdentityPools/{POOL_ID}"
-PROVIDERS = {"runtime-build": f"{POOL}/providers/specimen-runtime-build",
-             "runtime": f"{POOL}/providers/specimen-runtime-release"}
+# Each gate plane: the release it belongs to, and its fixed Workload Identity provider. A job of the data
+# release never waits for a data release, because it is one; only a runtime plane may carry a data run (D3).
+GATE_PLANES = {"runtime-build": ("runtime", f"{POOL}/providers/specimen-runtime-build"),
+               "runtime": ("runtime", f"{POOL}/providers/specimen-runtime-release"),
+               "data": ("data", f"{POOL}/providers/specimen-data-release"),
+               "data-initialization": ("data", f"{POOL}/providers/specimen-data-initialize")}
+PROVIDERS = {plane: provider for plane, (_, provider) in GATE_PLANES.items()}
 WINDOW_SECONDS = 3600
 POLL_SECONDS = 30
 MAX_WAIT_SECONDS = 3300
@@ -149,8 +153,8 @@ def validate_facts(sha: str, observed: dict) -> dict:
 
 def admit_gate(plane: str, env: dict[str, str], *, wait_seconds: int, now: float | None = None,
                observe=observe) -> dict:
-    """Admit a runtime job from GitHub facts, before any cloud credential exists."""
-    require(plane in GATE_PLANES, "the gate admits only the runtime planes")
+    """Admit a release job from GitHub facts, before any cloud credential exists."""
+    require(plane in GATE_PLANES, "unknown gate plane")
     sha = env.get("GITHUB_SHA", "")
     # Reject the context before any GitHub request.
     validate_context(env, plane, sha, envelope=False)
@@ -216,13 +220,13 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--wait-seconds", type=int, default=0)
     args = parser.parse_args()
-    env = dict(os.environ)
+    env, release = dict(os.environ), GATE_PLANES[args.plane][0].capitalize()
     try:
         write_record(admit_gate(args.plane, env, wait_seconds=args.wait_seconds), args.output, env)
     except (ValueError, OSError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         # Never echo record values, identities or API bodies: workflow logs are public.
-        raise SystemExit(f"Runtime release gate blocked ({type(exc).__name__}); inspect the gate checks privately.") from None
-    print("Runtime release gate passed; deployment and readiness are separate gates.")
+        raise SystemExit(f"{release} release gate blocked ({type(exc).__name__}); inspect the gate checks privately.") from None
+    print(f"{release} release gate passed; deployment and readiness are separate gates.")
 
 
 if __name__ == "__main__":

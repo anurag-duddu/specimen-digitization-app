@@ -268,8 +268,8 @@ def admit(packet_path: Path, plane: str, *, now: float | None = None) -> dict:
     env = dict(os.environ)
     packet = read_packet(packet_path, env)
     if release_gate.is_gate_record(packet):
-        # G11: the runtime planes admit from GitHub facts; every other packet keeps the envelope path below.
-        require(plane in release_gate.GATE_PLANES, "gate records admit only the runtime planes until the data plane moves")
+        # G11: every gate plane admits from GitHub facts; every other packet keeps the envelope path below.
+        require(plane in release_gate.GATE_PLANES and packet.get("plane") == plane, "gate record is for another plane")
         return release_gate.readmit(packet_path, plane, env, now=now)
     require(packet.get("plane") == plane, "wrong release plane")
     # Reject context before any remote lookup. Rechecked immediately before every mutation.

@@ -18,6 +18,8 @@ from release_admission import (admit, digest, exact_keys, integer, materialize_i
 from release_context import PROJECT, REPOSITORY
 from release_google import Google, cleanup_packet, cleanup_permit
 from release_diagnostics import public_failure, stage
+import release_gate
+import schema_gate
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = f"projects/{PROJECT}/locations/us-east4/services/specimen-digitization-service"
@@ -25,6 +27,10 @@ SOURCE = "specimen-digitization-instance"
 CLONE = "specimen-digitization-restore-20260908-r1"
 DATABASE = "specimen-digitization-database"
 RULE_RELEASE = f"projects/{PROJECT}/releases/firebase.storage/{PROJECT}.firebasestorage.app"
+SCHEMA_NAME, CONNECTOR_NAME = f"{PREFIX}/schemas/main", f"{PREFIX}/connectors/specimen-server"
+RULESET = re.compile(rf"projects/{re.escape(PROJECT)}/rulesets/[A-Za-z0-9_-]{{1,100}}")
+# An etag is an opaque public revision: printable, without whitespace, bounded.
+REVISION = re.compile(r"[\x21-\x7e]{1,500}")
 # Empty-scope creation modes. Each requires the reviewed evidence recipient and
 # publishes its own signed receipt; the legacy first-admin mode does neither.
 FIRST_SCOPE_MODES = {"first-scope-owner-bootstrap/v1", "first-scope-hierarchy-bootstrap/v1"}
@@ -176,17 +182,25 @@ def validate_plan(plan, packet, *, now=None):
     return plan
 
 
+def committed_source(folder):
+    """One folder's committed *.gql files as a Data Connect source, exactly as a release sends them."""
+    return {"files": [{"path": path.name, "content": path.read_text()} for path in sorted((ROOT / folder).glob("*.gql"))]}
+
+
+def committed_rules():
+    """The committed Storage rules as a ruleset source, exactly as a release publishes them."""
+    return {"files": [{"name": "storage.rules", "content": (ROOT / "storage.rules").read_text()}]}
+
+
 def data_bodies(plan):
-    def source(folder):
-        return {"files": [{"path": path.name, "content": path.read_text()} for path in sorted((ROOT / folder).glob("*.gql"))]}
     postgres = {"database": DATABASE, "cloudSql": {
         "instance": f"projects/{PROJECT}/locations/us-east4/instances/{SOURCE}"}}
     if plan["schema_mode"] == "initialize_empty":
         postgres["schemaMigration"] = "MIGRATE_COMPATIBLE"
     else:
         postgres["schemaValidation"] = "COMPATIBLE"
-    schema = {"name": f"{PREFIX}/schemas/main", "source": source("dataconnect/schema"), "datasources": [{"postgresql": postgres}]}
-    connector = {"name": f"{PREFIX}/connectors/specimen-server", "source": source("dataconnect/connector")}
+    schema = {"name": f"{PREFIX}/schemas/main", "source": committed_source("dataconnect/schema"), "datasources": [{"postgresql": postgres}]}
+    connector = {"name": f"{PREFIX}/connectors/specimen-server", "source": committed_source("dataconnect/connector")}
     if plan["schema_etag"]:
         schema["etag"] = plan["schema_etag"]
     if plan["connector_etag"]:
@@ -507,7 +521,7 @@ def apply_compatible(google, plan, path, output, before):
         require(before["rows"] == after["rows"] and before["sequences"] == after["sequences"], "data or sequence values changed during compatible publication")
     release = google.request("rules", "GET", RULE_RELEASE, missing=True)
     require((release.get("rulesetName") if release else None) == plan["storage_release_etag"], "Storage release changed")
-    rules = google.request("rules", "POST", f"projects/{PROJECT}/rulesets", body={"source": {"files": [{"name": "storage.rules", "content": (ROOT / "storage.rules").read_text()}]}})
+    rules = google.request("rules", "POST", f"projects/{PROJECT}/rulesets", body={"source": committed_rules()})
     body = {"name": RULE_RELEASE, "rulesetName": rules["name"]}
     if release:
         google.request("rules", "PATCH", RULE_RELEASE, body={"release": body}, params={"updateMask": "ruleset_name"})
@@ -621,6 +635,121 @@ def verify_or_bootstrap(google, plan, output):
     output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
 
 
+def files_by(source, key):
+    """A source's files as {name: content} under the given name key; anything else fails closed."""
+    entries = source.get("files") if isinstance(source, dict) else None
+    require(isinstance(entries, list) and all(isinstance(entry, dict) and isinstance(entry.get(key), str)
+                                              and isinstance(entry.get("content"), str) for entry in entries),
+            "invalid source files")
+    files = {entry[key]: entry["content"] for entry in entries}
+    require(len(files) == len(entries), "duplicate source file")
+    return files
+
+
+def revision(resource):
+    value = resource.get("etag") if isinstance(resource, dict) else None
+    require(isinstance(value, str) and REVISION.fullmatch(value), "live resource lacks a public revision")
+    return value
+
+
+def live_rules(google):
+    """The live Storage rules release's ruleset name and source files; no release reads as (None, None)."""
+    release = google.request("rules", "GET", RULE_RELEASE, missing=True)
+    if release is None:
+        return None, None
+    name = release.get("rulesetName") if isinstance(release, dict) else None
+    require(isinstance(name, str) and RULESET.fullmatch(name), "invalid live Storage rules release")
+    ruleset = google.request("rules", "GET", name)
+    return name, files_by(ruleset.get("source") if isinstance(ruleset, dict) else None, "name")
+
+
+def blocked(reason):
+    """Print a fixed, value-free reason, since the command line's exit hides exception text, and return it."""
+    print(f"Data release blocked: {reason}.")
+    return ValueError(reason)
+
+
+def require_database(google):
+    """The SQL instance runs and the application database exists; both are read, never changed."""
+    instance = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+    if not (isinstance(instance, dict) and instance.get("name") == SOURCE and instance.get("project") == PROJECT
+            and instance.get("region") == "us-east4" and instance.get("state") == "RUNNABLE"):
+        raise blocked("the SQL instance is not runnable")
+    database = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}/databases/{DATABASE}", missing=True)
+    if not (isinstance(database, dict) and database.get("name") == DATABASE and database.get("instance") == SOURCE
+            and database.get("project") == PROJECT):
+        raise blocked("the application database is missing")
+
+
+def deploy_released_data(path, output):
+    """Release the data plane from a gate record (G11, RELEASE.md 4.2): read live state, never change it.
+
+    initialize: the placeholder schema and no connector; the initialization jobs (T3c) continue. verify: the
+    live schema, connector and Storage rules equal the merged files, the schema is persistent and both are
+    reconciled. apply: anything else the additive-only gate admits; the apply itself fails closed until T3d.
+    Every other combination asks to reconcile. Once a data gate record is admitted, every exit writes the
+    receipt, which holds the phase and public resource facts only.
+    """
+    targets = os.environ.get("GITHUB_OUTPUT")
+    require(targets and output is not None, "GitHub step output and receipt path required")
+    google = Google(path, "data")
+    record = google.packet
+    require(release_gate.is_gate_record(record) and record.get("plane") == "data", "a data gate record is required")
+    if os.environ.get("DATA_BOOTSTRAP_ARTIFACT_B64"):
+        # T3e reads the artifact; until then this release never decodes, prints or writes its value.
+        print("A bootstrap artifact is present; the bootstrap arrives with T3e, so this release leaves it unread.")
+    facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset"))
+
+    def choose(phase):
+        facts["phase"] = phase
+        print(f"Data release phase: {phase}.")
+
+    def publish():
+        with open(targets, "a", encoding="utf-8") as handle:
+            handle.write(f"phase={facts['phase']}\n")
+
+    try:
+        schema = google.request("data", "GET", SCHEMA_NAME)
+        etag, updated = revision(schema), schema.get("updateTime")
+        stamp(updated)
+        facts.update(schema_etag=etag, schema_update_time=updated)
+        connector = google.request("data", "GET", CONNECTOR_NAME, missing=True)
+        if connector is not None:
+            facts["connector_etag"] = revision(connector)
+        facts["storage_ruleset"], rules = live_rules(google)
+        require_database(google)
+        live_schema, live_connector = schema_gate.live_sources(schema, connector)
+        if schema.get("reconciling", False) is not False:
+            raise blocked("the live schema is still reconciling; reconcile it, then re-run this release")
+        if not live_schema and connector is None:
+            choose("initialize")
+            publish()
+            return
+        if not live_schema or connector is None:
+            raise blocked("the live schema and connector disagree; reconcile them, then re-run this release")
+        merged_schema, merged_connector = (files_by(committed_source(folder), "path")
+                                           for folder in ("dataconnect/schema", "dataconnect/connector"))
+        if (live_schema, live_connector, rules) == (merged_schema, merged_connector, files_by(committed_rules(), "name")):
+            choose("verify")
+            verify_persistent_schema(schema)
+            if connector.get("reconciling", False) is not False:
+                raise blocked("the live connector is still reconciling; reconcile it, then re-run this release")
+            publish()
+            return
+        choose("apply")
+        publish()
+        refusals = schema_gate.check_additive(live_schema, merged_schema, live_connector, merged_connector)
+        if refusals:
+            # Each line names a table, field or operation and the rule, never a value (RELEASE.md 4.1).
+            print("\n".join(f"Refused: {line}" for line in refusals))
+            raise blocked(f"the additive-only gate refused {len(refusals)} change(s)")
+        raise blocked("the additive apply arrives with T3d; this phase fails closed until then")
+    finally:
+        output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
+                                      "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
+                                      **facts}, sort_keys=True) + "\n")
+
+
 @stage("data.receipt")
 def emit_result_digest(path):
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
@@ -674,6 +803,14 @@ def main():
         plane = "data-initialization" if args.prepare_initialization or args.initialize or args.prepare_initializer_intents else "data"
         with stage("data.admission"):
             packet = admit(args.packet, plane)
+            gate = release_gate.is_gate_record(packet)
+            # G11: a gate record replaces the envelope, its plan and --prepare-inputs; release_gate.py writes it
+            # and only the data deploy reads it.
+            require(not gate or (args.deploy and args.output is not None), "a gate record releases only through --deploy")
+        if gate:
+            deploy_released_data(args.packet, args.output)
+            emit_result_digest(args.output)
+            return
         with stage("data.plan"):
             plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
         if args.prepare_clone_intent:

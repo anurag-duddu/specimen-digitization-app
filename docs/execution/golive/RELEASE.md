@@ -321,12 +321,46 @@ the release initializes instead (4.3).
 
 ### 4.2 The data gate and its phases (T3b)
 
+T3b lands in two pull requests: T3b1 adds the code and T3b2 switches the
+workflow.
+
 - The data jobs use the gate of section 3.1 for the `data` and
-  `data-initialization` planes, with their fixed providers.
-- The release job chooses the phase itself from live state read without
-  changing it: `initialize` when the schema is the empty placeholder and no
-  connector exists; `apply` when the merged schema, connector or Storage rules
-  differ from the live ones; `verify` otherwise.
+  `data-initialization` planes, with their fixed providers
+  (`specimen-data-release`, `specimen-data-initialize`). A data job does not
+  wait for a data release, because it is one; only the runtime planes carry
+  the data run in their record (D3).
+- `deploy_data.py --deploy` with a gate record reads the live state without
+  changing it: the Data Connect schema and connector, the Storage rules
+  release, the SQL instance and the application database. It then chooses the
+  phase:
+  - `initialize`: the schema is the empty placeholder and no connector exists.
+    The job writes `phase=initialize`, and the initialization jobs (T3c)
+    continue.
+  - `verify`: the live schema, connector and Storage rules equal the merged
+    files. The job checks the persistent, reconciled schema and the connector,
+    and succeeds. The SQL catalog and the supplemental indexes need SQL access,
+    which arrives with T3d. From then on verify also checks them, and a
+    missing supplemental index makes the phase `apply`.
+  - `apply`: anything else, if the gate of section 4.1 finds no refusal. The
+    apply itself arrives with T3d; until then this phase fails closed. Any
+    refusal fails and is named without values.
+  - Any other combination (a schema without a connector, or the reverse)
+    fails, asking to reconcile.
+- Once a data gate record is admitted, every exit writes a `data-released/v1`
+  receipt holding the phase and public resource facts only (names, etags,
+  the schema's update time). The workflow uploads it on every exit and
+  attests it on success.
+- The reads need `firebasedataconnect.schemas.get` and `connectors.get`,
+  `firebaserules.releases.get` and `rulesets.get`, and
+  `cloudsql.instances.get` and `databases.get` for `specimen-data-release`.
+  T4's list of the owner's standing grants names the role that grants each.
+- The workflow's admission job has no credentials. It runs the gate and waits
+  for CI. The release job re-admits, authenticates with the fixed provider and
+  deploys. It reads no `RELEASE_INPUTS_B64` secret and no `RELEASE_*`
+  variable. The envelope-era jobs and phases leave the workflow. Their code
+  stays until a later clean-up removes it with its tests. Until T3c lands, the
+  `initialize` route fails closed, so the runtime's wait (D3) never passes
+  over an uninitialized database.
 - The runtime gate waits for the same commit's data release to succeed (D3).
 
 ### 4.3 First initialization (T3c)
