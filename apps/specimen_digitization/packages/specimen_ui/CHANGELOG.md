@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Data
+- `UiTimeline` is new (`controls/data/timeline.dart`, 10 section 4.5): an ordered record of events, one `UiTimelineEntry` per event, in the order it happened. Each entry is a marker on a rail and a column of words: a disc of `space.iconAction` on `paper` with an emphasis stroke in the entry's tone (a status triple, or `inkSecondary` for none), holding the entry's position or a registry glyph at 16; a `hairline` connector to the next entry and none after the last; the title in `type.label`, an optional trailing beside it that wraps under it when the line cannot hold both, an optional meta line in `type.bodySmall`, and an optional child. It is one `list` node of `listItem` containers whose phrase is the caller's or "N of M: title, meta", with a trailing word read as part of it; the marker is excluded. Not interactive, so it does not run the control contract; a child's controls keep their own nodes. The connector is positioned against the entry rather than measured with `IntrinsicHeight`, for the reason the application's phase steps record. Reason: the go-live thread view lists the harness's lookups as a sequence (brief S6 T2), and the application already drew this anatomy by hand for its phase steps; one component keeps one picture of a sequence. Retires no Material widget. The data gallery shows it in the rows column, and the family golden grew to 2839 dp to hold it.
+
 ## 0.3.0 (2026-09-17)
 
 The fit and scale release. `design/11-fit-and-scale.md` read three defects seen
