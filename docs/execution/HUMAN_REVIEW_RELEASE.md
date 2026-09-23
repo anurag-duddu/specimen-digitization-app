@@ -58,12 +58,15 @@ end-to-end acceptance.
 
 > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1. Automated clearance is no longer deferred: the agentic harness runs
-> its lookups (including GBIF) on the decided transcript, and a record the
-> harness resolves is cleared without a human. Records the harness cannot
-> resolve still go to the human queue. Automated collection classification
-> stays deferred: under G14 the profile comes from the collection a specimen
-> was uploaded or imported into, and there is no classification stage.
+> G1, G14 and G19. Automated clearance is no longer deferred: the agentic
+> harness runs its lookups (including GBIF) on the transcript the LLM first
+> pass decides or, when the first pass picks no reading, on each reader's raw
+> reading (G19). A record the harness resolves is cleared without a human, and
+> human review and deferral otherwise stay as the specification defines them.
+> Automated collection classification stays deferred: under G14 the profile
+> comes from the collection a specimen was uploaded or imported into, resolved
+> down the collection tree; a reviewer can correct the collection, and there is
+> no classification stage.
 
 All infrastructure limits in [RELEASE_AUTHORIZATION.md](RELEASE_AUTHORIZATION.md)
 remain unchanged: the same ten specimens and one cumulative USD 5 ceiling across

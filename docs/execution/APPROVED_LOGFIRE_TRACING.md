@@ -74,12 +74,14 @@ approval does not authorize publishing raw specimen content, expanding the cohor
 skipping actual regions, changing readers, or substituting traces for save/reopen
 and the other retained product journeys.
 
-> 2026-09-23: The cohort limit in this paragraph is superseded for the go-live
+> 2026-09-23: Two clauses in this paragraph are superseded for the go-live
 > program by
-> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2: specimens are processed one at a time, on demand, including new uploads.
-> Recording text content in the project's own traces under G3 is not
-> publication; the rest of the paragraph stands.
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator):
+> the required human review, by G1 (a record the harness resolves is cleared
+> without a human), and the cohort limit, by G2 (specimens are processed one at
+> a time, on demand, including new uploads). Recording text content in the
+> project's own traces under G3 is not publication, and the paragraph's other
+> limits stand.
 
 ## Export and timing bounds
 
@@ -172,13 +174,15 @@ reissue or reset it. No source helper is qualified from an intermediate commit;
 all dependencies and exact inputs require independent review against the final
 merged source before issuance or use.
 
-> 2026-09-23: The setup ceilings, the runtime completion successor and the
-> bootstrap envelope in the two paragraphs above are superseded for the go-live
-> program by
+> 2026-09-23: The tracing setup ceilings and their runtime completion successor
+> above are superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The owner creates the secret and runs the standing grants from the
-> release workstream's reviewed list; no setup packet, envelope or independent
-> review report is issued.
+> G11: the owner creates the writer secret and grants the runtime identities
+> their standing read access from the release workstream's reviewed list, and
+> no tracing setup packet or independent review report is issued. The
+> separately approved bootstrap window stands: `specimenDataOwnerBootstrap` and
+> `specimenDataInitializerDisposal` stay one-time and time-bounded and are
+> revoked after use.
 
 ## Cost, retention and activation
 

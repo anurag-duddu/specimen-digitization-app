@@ -31,9 +31,10 @@ verification. Preserve Hosting isolation and every existing protection.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. Independent review is replaced by the PR steward's review of every pull
-> request; the required checks, keyless identities, main-only environments and
-> Hosting isolation stay, and a merge to main now deploys runtime code and
-> additive schema changes automatically.
+> request. The required checks, keyless identities, main-only environments,
+> immutable build provenance, verified data readiness, public end-to-end
+> verification and Hosting isolation stay, and a merge to `main` now deploys
+> runtime code and additive schema changes automatically.
 
 Workstation deployments, manual dispatch, weaker branch protection, broader
 Hosting permissions, service-account JSON keys and AWS resources remain forbidden.
@@ -53,12 +54,14 @@ Use only the existing `specimen-digitization` project; proposed region
 | SQL and Storage | Reuse existing services; no new persistent SQL instance or capacity upgrade |
 | Restore rehearsal | One isolated clone, at most 2 hours; proposed `specimen-digitization-restore-20260908-r1`; smallest compatible target after checking backup/source requirements and complete cost |
 
-> 2026-09-23: The "Worker" and "CPU SAM" rows are superseded for the go-live
-> program by
+> 2026-09-23: Two cells are superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2. The worker drains due work one specimen at a time, on demand, instead of
-> one bounded execution, and SAM 3 serves any run the worker authorizes and
-> scales to zero instead of expiring after an hour.
+> G2. In the "Worker" row, "One execution" and "30 minutes": the API starts an
+> execution whenever work is due, and each execution drains due work one
+> specimen at a time within the task timeout the release sets. In the "CPU
+> SAM" row, the absolute one-hour expiry: SAM 3 serves any run the worker
+> authorizes and scales to zero. The CPU, memory, instance and no-retry limits
+> stand.
 
 Remove only the newly created rehearsal clone by its expiry after preserving
 verification evidence. Never delete the source instance or original data. Preserve
@@ -69,9 +72,13 @@ after verifying identity and collection scope; keep sensitive-data access disabl
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. Independent review is replaced by the PR steward's review; the data
-> plane applies additive schema changes automatically once required checks
-> pass and the steward approves.
+> G11. "Independently reviewed" is superseded: the PR steward's review of each
+> pull request replaces it, and the data plane applies additive schema changes
+> automatically once the required checks pass and the steward approves. The
+> rest of the paragraph stands: only the rehearsal clone may be removed, the
+> source instance and original data are never deleted, originals, generations
+> and history are preserved, and only the supplied administrator is
+> bootstrapped, with sensitive access off.
 
 Create only missing APIs, image registry, secret versions and separate build,
 release and runtime identities needed by these services. Permissions must be
@@ -117,8 +124,10 @@ belongs in this public record.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The private authority artifact and execution packet are retired;
-> release evidence no longer needs to be retained or matched against them.
+> G11. The private authority artifact and execution packet are retired, so
+> nothing is retained or matched against them. The rest stands: those findings
+> are facts to verify rather than approvals, and no private identity or object
+> path belongs in this public record.
 
 ## Approved combined amendment — 2026-09-14
 
@@ -152,6 +161,13 @@ and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_REL
   access expires after 75/115/120 minutes respectively. The role definition
   persists after the conditional grant expires. Reviewed bootstrap code binds
   the approved owner and service; sensitive access stays disabled.
+  > 2026-09-23: The expiry of the ordinary DATA access in this item is
+  > superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G11: the ordinary data-release access becomes standing, from the release
+  > workstream's reviewed list. The rest stands: `specimenDataOwnerBootstrap`,
+  > the initializer role and `specimenDataInitializerDisposal` stay one-time and
+  > time-bounded through this setup window and are revoked after use.
 
 This includes finishing, independently reviewing and using the bounded helpers
 for those effects with at most 187 metadata/IAM requests. Prepare all source,
@@ -187,8 +203,10 @@ the first-scope bootstrap.
   the budget and every other boundary above are unchanged.
   > 2026-09-23: Superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G9. The budget this bullet points back to is retired; the cumulative
-  > spending ceiling is now USD 25, infrastructure and models together.
+  > G2 and G9. The ten specimens are now the acceptance cohort, processed one
+  > at a time on demand alongside new uploads, and the budget this bullet points
+  > back to is replaced by the cumulative USD 25 ceiling, infrastructure and
+  > models together. The memberships and sensitive access (off) stand.
 
 Everything else in this record, including the protected data lane, the
 evidence recipient, the independent review and the private identity rule,
@@ -226,3 +244,11 @@ action packet is recorded by `scripts/ci/data_setup_window.py plan` and the
 owner's approval attaches to that packet, not to a general statement. The
 helper performs the three approved effects only, inside the 600-second
 clock, and refuses if the live policy differs from the packet.
+
+> 2026-09-23: This paragraph stands for the one-time roles. Under
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11, the ordinary data-release access this window renews becomes standing,
+> from the release workstream's reviewed list, while
+> `specimenDataOwnerBootstrap`, the initializer role and
+> `specimenDataInitializerDisposal` stay inside this bounded window and are
+> revoked after use.
