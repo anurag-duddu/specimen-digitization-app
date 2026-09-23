@@ -49,6 +49,12 @@ class WorkbenchFields extends StatefulWidget {
   /// Why correcting a field is unavailable, or null when it is not.
   final String? fieldBlockedReason;
 
+  /// The heading over the fields the record cannot be cleared without.
+  static const String requiredTitle = 'Required fields';
+
+  /// The heading over the rest.
+  static const String optionalTitle = 'Optional fields';
+
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
 }
@@ -106,6 +112,25 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final List<Json> fields = widget.specimen.fields;
+    // Grouped by the flag each row's "(required)" marker reads, so a heading
+    // and its rows never disagree, in the record's order within each group
+    // (UI.md T2.3).
+    final List<(String, List<Json>)> groups = <(String, List<Json>)>[
+      (
+        WorkbenchFields.requiredTitle,
+        <Json>[
+          for (final Json f in fields)
+            if (f['required'] == true) f,
+        ],
+      ),
+      (
+        WorkbenchFields.optionalTitle,
+        <Json>[
+          for (final Json f in fields)
+            if (f['required'] != true) f,
+        ],
+      ),
+    ].where(((String, List<Json>) group) => group.$2.isNotEmpty).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -132,7 +157,14 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             label: 'No fields recorded yet.',
             why: 'Required field checks have not run for this record.',
           ),
-        for (final Json field in fields) _field(context, field),
+        // The space goes above a heading and none below it: a row carries its
+        // own padding, so the heading sits nearer its rows than the text
+        // before it.
+        for (final (String title, List<Json> group) in groups) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          GroupHeading(title),
+          for (final Json field in group) _field(context, field),
+        ],
       ],
     );
   }
