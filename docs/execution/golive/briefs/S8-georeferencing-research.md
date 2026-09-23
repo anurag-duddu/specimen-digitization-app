@@ -1,0 +1,122 @@
+# S8 brief: retrospective georeferencing research
+
+Session title: **Research retrospective georeferencing for the harness**.
+Recommended model Opus 5.5 at high effort; web research tools
+(`WebSearch`, `WebFetch`) are needed.
+
+## Why this exists
+
+The owner, 2026-09-23: "for location parts in the harness a different approach
+might be needed, spin this off as a new task". The owner supplied the research
+charter below. Its output is a plan for the owner to review; it does not change
+the production harness by itself. Until the owner accepts a plan, the harness
+workstream (S4) keeps geography behind its typed tool interface with the Google
+Maps tool of owner decision G10 as the initial, fully functional version (G6).
+
+## Grounding in this repository
+
+Read before researching, so the plan fits the product that exists:
+
+1. `docs/execution/golive/PLAN.md` (sections 1, 2 and 4.1 row 7) and the S4
+   brief (`briefs/S4-first-pass-and-harness.md`), which defines the harness,
+   its typed tools and outcomes, and the owner's rules: never invent values
+   (`PRD.md` HAR-019); no data found goes to the human queue; errors retry;
+   "something that harness was able to resolve is cleared".
+2. `docs/product-requirements/PRD.md` section 12.4 (484-564): the Insects field
+   keys `country`, `province_state`, `county`, `city`, `precise_location`
+   (verbatim, never replaced by a geocoder result), the four elevation fields
+   (no invented conversions), and the named geography sources; the typed lookup
+   outcomes (HAR-008) and the failure table (673-685).
+3. `docs/GBIF.md` (GADM as supporting evidence only, 256-274) and
+   `docs/execution/CONTRACTS.md` 210-260 (field value states; only `supported`
+   satisfies a mandatory field).
+4. `docs/product-requirements/COLLECTION_HIERARCHY.md`: the collections span
+   Anthropology, Botany, Geology and Zoology, so the plan must say how profiles
+   per collection and subcollection select geography behaviour.
+5. `~/specimen-golive/research/06-product-spec-and-approvals.md` section 4 (the
+   pilot field profile).
+6. The pilot labels themselves (PLAN section 3): four localities on ten slides
+   from two collecting events. Mindanao, Philippines, 1946 (CNHM; F.G. Werner,
+   H. Hoogstraal): "E. slope Mt. McKinley, Davao Prov." at 6400 ft and at 3300
+   ft, and "E. slope Mt. Apo, Davao Prov.", written "P.I." or "Philippine
+   Islands". Yepocapa, Chimaltenango, Guatemala, 1948 (R.D. Mitchell), at 4800
+   ft; the label misspells "Chimaltenago". Davao Province was later divided
+   into several provinces and "P.I." is the pre-independence name, so the set
+   tests historical resolution in two countries. Images:
+   `gs://specimen-digitization.firebasestorage.app/microscopic-slides/subject_105526321.jpeg`
+   to `...330.jpeg` (application default credentials work on this Mac). The
+   acceptance lab (S7) produces transcripts of them; ask it for the ones it has.
+
+## Deliverables
+
+1. `docs/product-requirements/GEOREFERENCING.md`: the implementation plan in the
+   charter's six sections, grounded in the repository (field keys, typed
+   outcomes, the harness tool interface, the queue rule, profiles per
+   collection). Cite sources for every external API claim, with the date you
+   checked it. Mark every design choice the owner must confirm, and mark the
+   document "Proposed, not accepted by the owner" at the top until the owner
+   accepts it (G12). Tool outcomes are HAR-008's, as `LookupStatus` encodes
+   them (`domain.py` 43-54); a missing credential is an operational block.
+2. Optional, only if it helps the owner judge the plan: a prototype under
+   `scripts/research/georeferencing/` exercising the public endpoints read-only
+   on the pilot labels' place names, with its results summarized in the plan.
+   No production code, no secrets in the repository, no paid calls without the
+   coordinator's go-ahead. GeoNames needs a free account username; if you need
+   one, put that request in `~/specimen-golive/OWNER_ACTIONS.md`.
+3. One docs pull request through the PR steward, following PLAN section 7.
+
+## Research charter (supplied by the owner, verbatim)
+
+# Role & Objective
+You are an expert Geospatial Engineer and AI Solutions Architect specializing in Biodiversity Informatics, Semantics, and Automated Data Pipelines.
+
+Your objective is to conduct exhaustive research and generate a comprehensive architecture plan for an autonomous "Retrospective Georeferencing and Location Validation Pipeline." This pipeline will ingest legacy, multi-disciplinary natural history collections data (spanning Anthropology, Geology, Zoology, and Botany) with location records that are 100+ years old, handle evolved/colonial toponyms, and output Darwin Core (DwC) compliant spatial data.
+
+---
+
+# Architectural Constraints & Logic
+You must NOT build a pipeline that relies solely on modern commercial geocoders (e.g., standard Google Maps or Mapbox APIs), as they fail on historical boundaries, lack spatial uncertainty calculations, and cause false-positive hallucinations. Instead, design a Multi-Tiered Hybrid Routing Architecture:
+
+1. Tier 1: Historical Resolution & Semantic Expansion (Wikidata SPARQL, GeoNames Historical/Alternate Dumps, Getty TGN).
+2. Tier 2: Modern Coordinate Pinpointing (Using modernized strings verified in Tier 1 to query Google Maps API / Mapbox Geocoding API with strict Component Filtering).
+3. Tier 3: Ecological Validation & Uncertainty Calculation (Cross-referencing GBIF/iDigBio distribution data and calculating Point-Radius uncertainty bounds using GEOLocate Web Services or standard minimum bounding circles).
+
+---
+
+# Tasks for the Agent
+
+## Task 1: Comprehensive API & Dataset Deep Dive
+Research the capabilities, authentication, and endpoint structures for the following services. Provide a concise technical assessment of how each will be utilized within the pipeline code:
+- Wikidata SPARQL Endpoint (Specifically querying properties P625 coordinate location, P582 end time, and P1365 replaced by).
+- GeoNames API & Historical Datasets (Filtering by PCLH and ADMDH feature codes).
+- Getty TGN (Hierarchical spatial validation).
+- GEOLocate Web Services API (Parsing verbatim descriptions into point-radius metadata).
+- GBIF / iDigBio API (Validating coordinates against known species density distributions).
+- Google Maps Platform / Mapbox APIs (Used strictly for modern precision mapping via component-restricted lookups).
+
+## Task 2: Pipeline State Machine & Agent Flow Design
+Outline the step-by-step logic gates for the autonomous pipeline. Explain how the pipeline handles:
+- Ambiguous names (e.g., "Siberia" or "Jones Farm").
+- Anachronism Filtering (Ensuring a resolved city wasn't founded *after* the specimen collection date).
+- Confidence Scoring (How the pipeline calculates an algorithmic reliability metric for each record).
+- Human-in-the-loop (HITL) fallback conditions (When a record should be flagged for museum curator review instead of auto-committing).
+
+## Task 3: Data Schema & Target Integration Planning
+Define how the pipeline maps outputs directly into the Darwin Core (DwC) standard and the extended Access to Biological Collection Data (ABCDG) format for geological data. Detail the exact target columns (e.g., verbatimLocality, locality, decimalLatitude, decimalLongitude, coordinateUncertaintyInMeters, geodeticDatum, georeferenceRemarks).
+
+## Task 4: Concrete Code Blueprint
+Provide a robust Python code framework illustrating the core orchestration. This blueprint must include:
+- A pipeline class with async workers.
+- The structured fallback/routing logic from Tier 1 to Tier 2.
+- A functional example of a Wikidata SPARQL query payload that pulls historical names and coordinate windows based on a target year constraint.
+
+---
+
+# Expected Output Format
+Deliver your response as an extensive, production-ready implementation plan broken into clean Markdown headers:
+1. Executive Summary & Core Paradigm Shift
+2. Comprehensive Technical Analysis of API Endpoints
+3. Algorithmic Flowchart & State Machine Logic (using clear text or Mermaid notation)
+4. Darwin Core & Data Integrity Schema Mapping
+5. Python Code Blueprint & Orchestration Framework
+6. Immediate Next Steps for Phase 1 Prototyping
