@@ -121,3 +121,34 @@ A value that is not a UUID cannot name a record, so the repository answers an
 empty page without a request, and the queue shows its existing filtered empty
 state ("No records match these filters", with "Clear all"). A UUID is sent in
 canonical form, accepting the spellings the API accepts.
+
+## T2. The record's thread
+
+Sources: PLAN 4.7; brief T2; the thread response in
+`docs/execution/golive/DATA_CONTRACT.md` section 8 (S5, PR #88); the owner's
+decisions G15 (automatic coverage check), G16 (`identified_by_irn` optional),
+G19 (the harness runs on each raw reading when the first pass selects none)
+and G20 (a lookup-confirmed raw literal keeps `raw_reading` as its source).
+
+### T2.1 One typed thread per run
+
+The client reads the thread response into a typed `SpecimenThread`
+(`lib/src/thread/thread.dart`), unlike the workspace's untyped `Specimen`
+map, so every part the record screen draws has a type and an absent part is
+a null the screen names.
+
+- Parsing is lenient in one direction only: a missing or malformed value is
+  absent, and absent never becomes a value. An unmeasured ratio stays null,
+  never zero. An unknown decision kind, group or input source stays unknown,
+  never a guess. A field with no group is kept apart from both groups rather
+  than filed into one.
+- The trace link is kept only when it is an absolute `https` URL, because it
+  opens in the reviewer's browser.
+- A synthetic two-label fixture (`test/fixtures/thread-two-label-slide.json`)
+  stands in for the endpoint until S5's T3 serves it, then gives way to S5's
+  canonical fixture so the client and the server test one file. The fetch
+  itself, and its entry in the wire contract test, arrive with the route: the
+  contract test admits a route only with the backend line that declares it.
+- The model lands in two parts: the envelope, the regions, the readings and
+  their comparison first; the first pass with its handoffs, the harness's
+  calls, the fields and the queue decision second.
