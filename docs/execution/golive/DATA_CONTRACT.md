@@ -143,20 +143,25 @@ whatever the owners settle on; the table columns above do not change.
 |---|---|---|
 | `decision_kind` | `identical_readings`, `first_pass`, `human` | how the decided transcript was reached |
 | `selected_observation_id` | `str \| None` | the reading chosen; `text` is its `literal_text`, verbatim |
-| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations; set only for `first_pass` |
+| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass` |
+| `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading of the region |
 
 `ReaderHandoff`: `observation_id: str`, `role: Literal["decided_transcript",
-"raw_reading"]`, `handed_text: str`, `note: str | None`. For `first_pass`,
-`spans` holds one verdict per aligned difference with every reading's text for
-that span, `alternatives` the unresolved material differences, and `unresolved`
-is true when any material difference is unresolved. The rationale and the notes
-are null for `identical_readings`. When the first pass selects no reading, the
-decision is `first_pass` with `selected_observation_id` null and `unresolved`
-true, and every reading of the region is handed over as a `raw_reading` (G19).
-A region with no recorded decision has no `TranscriptionVersion`; the run's
-stage and blocker say why.
+"raw_reading"]`, `handed_text: str`, `note: str | None`.
+
+The writer maps `TranscriptionVersion.spans` from `differences`, `alternatives`
+from the material differences whose verdict is `neither` or `uncertain`, and
+derives `unresolved` as no selected reading or any such material difference
+(the domain's `resolved` means only that a reading was selected). The rationale
+and the notes are null for `identical_readings`, which also covers identical
+readings that stay unresolved (unreadable spans or an unmeasured alignment):
+there no reading is selected and every reading is a `raw_reading` handoff. When
+the first pass selects no reading, every reading of the region is handed over as
+a `raw_reading` (G19). A region with fewer than two readings, or with no
+recorded decision, has no `TranscriptionVersion`; the run's stage and blocker
+say why.
 
 ### 4.3 From the harness (S4), in `Run.tool_calls: list[ToolCallRecord]`
 
