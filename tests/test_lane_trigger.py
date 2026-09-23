@@ -448,6 +448,7 @@ def test_sql_connect_rows_carry_the_lane_state(monkeypatch, stage):
 
 def asset():
     return Asset(
+        sensitive=False,
         sha256="0" * 64,
         blob_ref="0" * 64,
         media_type="image/png",

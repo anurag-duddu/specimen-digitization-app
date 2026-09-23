@@ -38,6 +38,15 @@ def run_status(run: Run) -> str:
     return "running"
 
 
+def refuse_sensitive(specimen: Specimen) -> None:
+    """Sensitive records never reach a model provider (PRD principle 9)."""
+    if specimen.asset.sensitive:
+        raise LaneConflict(
+            "sensitive_record_not_processed",
+            "A record marked sensitive is not sent to model providers",
+        )
+
+
 def processable(run: Run) -> bool:
     """True when a process request may leave the run as it is and start the worker."""
     return not run.disposition and run.stage not in ACTION_OWNED
@@ -49,6 +58,7 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
     The budget is the allowance of the collection whose profile the run will use:
     the reviewer's selection when one exists, otherwise the intake collection (G14).
     """
+    refuse_sensitive(specimen)
     run = specimen.run
     collection_id = (
         run.classification_selection["collection_id"]
