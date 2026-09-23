@@ -224,9 +224,15 @@ def test_connector_changes_outside_the_rules_are_refused_by_name(connector, expe
 
 
 def test_keys_uniques_and_provenance_keys_keep_not_null_even_when_named(monkeypatch):
-    assert set(M.NAMED_RELAXATIONS) == {("SourceAsset", "width"), ("SourceAsset", "height"), ("LabelRegion", "cropAssetId")}
+    assert set(M.NAMED_RELAXATIONS) == {("SourceAsset", "width"), ("SourceAsset", "height"), ("LabelRegion", "cropAssetId"),
+                                        ("EvidenceItem", "locator")}
     assert all(isinstance(reason, str) and reason for reason in M.NAMED_RELAXATIONS.values())
-    assert M.PROTECTED == {("ModelObservation", f) for f in ("runId", "regionId", "provider", "modelVersion", "stepKey")}
+    assert M.PROTECTED == {("ModelObservation", f) for f in ("runId", "regionId", "provider", "modelVersion", "stepKey",
+                                                             "rawAssetId", "promptVersion", "inputSha256")}
+    types = M.parse_schema(SCHEMA)  # every named and protected field is a NOT NULL field of the committed schema
+    assert all(types[table]["fields"][field]["non_null"] for table, field in M.PROTECTED | set(M.NAMED_RELAXATIONS))
+    locator = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], "  locator: String!", "  locator: String")}
+    assert M.check_additive(SCHEMA, locator, CONNECTOR, CONNECTOR) == []
     named = {("SourceAsset", "id"), ("SourceAsset", "bucket"), ("ModelObservation", "code"), ("ModelObservation", "provider")}
     monkeypatch.setattr(M, "NAMED_RELAXATIONS", {**M.NAMED_RELAXATIONS, **dict.fromkeys(named, "test")})
     merged = BASE
@@ -234,6 +240,90 @@ def test_keys_uniques_and_provenance_keys_keep_not_null_even_when_named(monkeypa
         merged = edit(merged, old, old.replace("!", ""))
     assert check(merged) == [f"{field}: NOT NULL dropped on a key, unique or provenance field" for field in (
         "ModelObservation.code", "ModelObservation.provider", "SourceAsset.bucket", "SourceAsset.id")]
+
+
+# PLAN 4.4's one closed @unique exception (#104): create before drop, over two merges.
+UNIQUE = '@unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName", "generation"])'
+SIX = ("organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation")
+WHY, REMOVED, NEW_OVER = ("SourceAsset: @unique specimen_unique_1 ", "SourceAsset: type-level @unique removed or changed",
+                          "SourceAsset: new type-level @unique over an existing field")
+
+
+def unique(base=SCHEMA, old=True, new=SIX, index="source_asset_specimen_object", extra=""):
+    """base with SourceAsset's committed unique kept or dropped, beside a new unique over these fields, if any."""
+    names = ", ".join(f'"{field}"' for field in new or ())
+    added = f' @unique(indexName: "{index}", fields: [{names}])' if new else ""
+    return {**base, "schema.gql": edit(base["schema.gql"], UNIQUE, (UNIQUE if old else "") + added + extra)}
+
+
+STEP1 = unique()
+STEP2 = unique(STEP1, old=False, new=None)
+KEYED = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], 'type SourceAsset @table(key: ["organizationId", "collectionId", "id"])',
+                                      'type SourceAsset @table(key: ["bucket", "objectName", "generation"])')}
+SPECIMEN_ID = '  specimenId: UUID!\n  specimen: Specimen! @ref(constraintName: "scope_ref_8"'
+NULLABLE = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SPECIMEN_ID, SPECIMEN_ID.replace("UUID!", "UUID"))}
+MISSING = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SPECIMEN_ID, SPECIMEN_ID.split("\n")[1])}
+USES = {
+    "a key lookup by its fields": 'query FindAsset @auth(level: NO_ACCESS) {\n  sourceAsset(key: {generation: "1", '
+                                  'objectName: "o", bucket_expr: "\'b\'"}) { id }\n}\n',
+    "a key it cannot see": "query FindAsset($key: SourceAsset_Key!) @auth(level: NO_ACCESS) {\n  sourceAsset(key: $key) { id }\n}\n",
+    "an upsert": 'mutation FindAsset @auth(level: NO_ACCESS) {\n  sourceAsset_upsertMany(data: [{bucket: "b"}])\n}\n',
+    "an onConflict naming it": 'mutation FindAsset @auth(level: NO_ACCESS) {\n  sourceAsset_insert(data: {bucket: "b"}, '
+                               'onConflict: {constraint: "specimen_unique_1"})\n}\n',
+    "an onConflict over its fields": 'mutation FindAsset @auth(level: NO_ACCESS) {\n  sourceAsset_insert(data: {bucket: "b"}, '
+                                     'onConflict: {fields: ["objectName", "generation", "bucket"]})\n}\n',
+}
+
+
+def test_the_one_unique_exception_is_closed_and_takes_two_merges():
+    assert M.NAMED_UNIQUE_RELAXATIONS == {("SourceAsset", "specimen_unique_1", ("bucket", "objectName", "generation")): (
+        ("source_asset_specimen_object", SIX),
+        "the blob store is content-addressed, so byte-identical assets of different specimens are one stored object")}
+    # Only AppendSourceAsset writes the table, inserting by id; a lookup by the primary key does not use the old unique.
+    by_key = {**CONNECTOR, "key.gql": "query GetAsset($organizationId: UUID!, $collectionId: UUID!, $id: UUID!) @auth(level: "
+              "NO_ACCESS) {\n  sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) { id }\n}\n"}
+    for connector in (CONNECTOR, by_key):
+        assert M.check_additive(SCHEMA, STEP1, connector, connector) == []
+        assert M.check_additive(STEP1, STEP2, connector, connector) == []
+    lookup = {**CONNECTOR, "uses.gql": USES["a key lookup by its fields"]}  # a use matters only to the drop
+    assert M.check_additive(SCHEMA, STEP1, lookup, lookup) == []
+
+
+@pytest.mark.parametrize(("live", "merged", "expected"), [
+    (SCHEMA, unique(old=False), [WHY + "dropped in the change that adds source_asset_specimen_object; create before drop takes "
+                                       "two merges", REMOVED, NEW_OVER]),
+    (SCHEMA, unique(old=False, new=SIX[2:]), [WHY + "dropped in the change that adds source_asset_specimen_object; create "
+                                                    "before drop takes two merges", REMOVED, NEW_OVER]),
+    (SCHEMA, unique(new=SIX[2:]), [NEW_OVER]),
+    (SCHEMA, unique(old=False, new=None), [REMOVED]),
+    (STEP1, unique(old=False, new=SIX[2:]), [REMOVED, NEW_OVER]),
+    (SCHEMA, unique(old=False, index="source_asset_object"), [REMOVED, NEW_OVER]),
+    (SCHEMA, unique(extra=' @unique(indexName: "asset_kind", fields: ["kind", "specimenId"])'), [NEW_OVER]),
+    (KEYED, unique(KEYED), [WHY + "is the primary key", NEW_OVER]),
+    (unique(KEYED), unique(unique(KEYED), old=False, new=None), [WHY + "is the primary key", REMOVED]),
+    (NULLABLE, unique(NULLABLE), ["SourceAsset: @unique source_asset_specimen_object adds nullable or missing column specimenId",
+                                  NEW_OVER]),
+    (MISSING, unique(NULLABLE), ["SourceAsset: @unique source_asset_specimen_object adds nullable or missing column specimenId",
+                                 NEW_OVER]),
+], ids=["one merge", "one merge to other fields", "step one over other fields", "drop before the new unique is live",
+        "step two changing the new unique", "unlisted replacement", "another new uniqueness", "primary key in step one",
+        "primary key in step two", "nullable added column", "brand-new added column"])
+def test_everything_else_about_the_unique_exception_stays_refused(live, merged, expected):
+    assert M.check_additive(live, merged, CONNECTOR, CONNECTOR) == expected
+
+
+@pytest.mark.parametrize(("column", "live", "merged", "standard"), [
+    ("generation", SCHEMA, STEP1, NEW_OVER), ("specimenId", STEP1, STEP2, REMOVED)], ids=["step one", "step two"])
+def test_the_unique_exception_never_covers_a_protected_key(monkeypatch, column, live, merged, standard):
+    monkeypatch.setattr(M, "PROTECTED", M.PROTECTED | {("SourceAsset", column)})
+    assert M.check_additive(live, merged, CONNECTOR, CONNECTOR) == [
+        f"SourceAsset: @unique specimen_unique_1 to source_asset_specimen_object covers protected key {column}", standard]
+
+
+@pytest.mark.parametrize("operation", USES.values(), ids=USES)
+def test_the_old_unique_is_not_dropped_while_an_existing_operation_uses_it(operation):
+    connector = {**CONNECTOR, "uses.gql": operation}
+    assert M.check_additive(STEP1, STEP2, connector, connector) == [WHY + "is used by existing operation FindAsset", REMOVED]
 
 
 def test_schema_parser_keeps_values_and_normalizes_layout():
