@@ -490,8 +490,9 @@ def _tool_call(run: Run, record, decisions: dict, recorded: set) -> Write:
     )
 
 
-def _derivation(value) -> str:
-    if value.authority_id:
+def _derivation(value, relations: dict) -> str:
+    """Lookup only when a source decides the value; Google supports, never decides (G26)."""
+    if value.normalized and "decides" in relations.values():
         return "lookup"
     if value.normalized:
         return "normalized"
@@ -499,12 +500,19 @@ def _derivation(value) -> str:
 
 
 def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[Write]:
-    """A candidate for each field with a literal, and its supporting evidence."""
+    """A candidate per verbatim value, each with the field's settled value and evidence."""
     result = []
     for key, value in run.fields.items():
-        if value.literal is None:
-            continue
+        verbatim = getattr(value, "verbatim_by_observation", None) or {}
         source = getattr(value, "input_source", None)
+        if verbatim:
+            # G27, G28: no reading was selected, so each reader's literal is kept.
+            entries = [(text, "raw_reading", reading) for reading, text in verbatim.items()]
+        elif value.literal is not None:
+            reading = getattr(value, "source_observation_id", None)
+            entries = [(value.literal, source, reading if source == "raw_reading" else None)]
+        else:
+            continue
         region = getattr(value, "source_region_id", None)
         precision = getattr(value, "precision", None)
         century_rule = getattr(value, "century_rule", None)
@@ -513,44 +521,49 @@ def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[
             if precision or century_rule
             else value.parsed
         )
-        candidate = derived_id("candidate", run.id, key, digest(value.model_dump(mode="json")))
-        candidates[key] = candidate
-        result.append(
-            _write(
-                "AppendFieldCandidateV2",
-                {
-                    "id": candidate,
-                    "runId": run.id,
-                    "fieldKey": key,
-                    "state": _value(value.state),
-                    "literalValue": value.literal,
-                    "parsedValue": parsed,
-                    "normalizedValue": value.normalized,
-                    "authorityId": value.authority_id,
-                    "derivation": _derivation(value),
-                    "inputSource": source,
-                    "sourceTranscriptionId": decisions.get(region)
-                    if source == "decided_transcript"
-                    else None,
-                    "sourceObservationId": getattr(value, "source_observation_id", None)
-                    if source == "raw_reading"
-                    else None,
-                },
-            )
-        )
-        for evidence in value.evidence_ids:
-            if evidence in recorded:
-                result.append(
-                    _write(
-                        "AppendCandidateEvidenceV2",
-                        {
-                            "id": derived_id("candidate-evidence", candidate, evidence),
-                            "candidateId": candidate,
-                            "evidenceId": evidence,
-                            "relation": "supports",
-                        },
-                    )
+        relations = getattr(value, "evidence_relations", None) or {}
+        content = digest(value.model_dump(mode="json"))
+        written = []
+        for text, entry_source, reading in entries:
+            candidate = derived_id("candidate", run.id, key, reading or "-", content)
+            written.append((candidate, text))
+            result.append(
+                _write(
+                    "AppendFieldCandidateV2",
+                    {
+                        "id": candidate,
+                        "runId": run.id,
+                        "fieldKey": key,
+                        "state": _value(value.state),
+                        "literalValue": text,
+                        "parsedValue": parsed,
+                        "normalizedValue": value.normalized,
+                        "authorityId": value.authority_id,
+                        "derivation": _derivation(value, relations),
+                        "inputSource": entry_source,
+                        "sourceTranscriptionId": decisions.get(region)
+                        if entry_source == "decided_transcript"
+                        else None,
+                        "sourceObservationId": reading,
+                    },
                 )
+            )
+            for evidence in value.evidence_ids:
+                if evidence in recorded:
+                    result.append(
+                        _write(
+                            "AppendCandidateEvidenceV2",
+                            {
+                                "id": derived_id("candidate-evidence", candidate, evidence),
+                                "candidateId": candidate,
+                                "evidenceId": evidence,
+                                "relation": relations.get(evidence, "supports"),
+                            },
+                        )
+                    )
+        # The resolved candidate is the reader whose literal is the settled value, else the first.
+        settled = [c for c, text in written if text == value.normalized]
+        candidates[key] = settled[0] if settled else written[0][0]
     return result
 
 
@@ -558,9 +571,16 @@ def _record(run: Run, candidates: dict) -> list[Write]:
     """The queue decision, every field's final state and a finding per reason."""
     fields = {key: _value(value.state) for key, value in run.fields.items()}
     reasons = list(run.reasons)
+    findings = list(getattr(run, "findings", None) or [])
     disposition = _value(run.disposition)
     summary = getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition
-    content = {"disposition": disposition, "reasons": reasons, "summary": summary, "fields": fields}
+    content = {
+        "disposition": disposition,
+        "reasons": reasons,
+        "summary": summary,
+        "findings": [_plain(finding) for finding in findings],
+        "fields": fields,
+    }
     record = derived_id("record", run.id, digest(content))
     policy = run.profile.policy_version
     result = [
@@ -609,6 +629,23 @@ def _record(run: Run, candidates: dict) -> list[Write]:
                     "outcome": "fail",
                     "fieldKey": rest if rest in run.fields else None,
                     "reasonCode": reason,
+                },
+            )
+        )
+    # Warnings and info never route the record to review (G23, G27); they sit beside it.
+    for finding in findings:
+        result.append(
+            _write(
+                "AppendValidationFindingV2",
+                {
+                    "id": derived_id(record, "finding", finding.reason_code),
+                    "recordVersionId": record,
+                    "ruleId": finding.rule_id,
+                    "ruleVersion": finding.rule_version,
+                    "severity": finding.severity,
+                    "outcome": "fail",
+                    "fieldKey": finding.field_key,
+                    "reasonCode": finding.reason_code,
                 },
             )
         )
