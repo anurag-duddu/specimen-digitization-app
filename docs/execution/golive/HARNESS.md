@@ -251,3 +251,43 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 (`geocoding_transport_error`), and every other failure, including the `httpx`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
+
+## 8. The date and catalog-number validators (stage 7, part 3)
+
+HAR-006; owner decisions G24 and G29 and the date rules the coordinator
+approved on 2026-09-23. Both tools are deterministic (`application/
+field_validators.py`), call no provider and never change the literal; each
+answers only for a literal that occurs in the reading it was copied from
+(otherwise `policy_blocked`, `literal_not_in_source`).
+
+**`date_parser`** returns every reading a date's notation allows, and the
+harness settles which one the evidence supports (G29):
+
+- Notations: a Roman-numeral month (I to XII, only when the profile's
+  `date_rules.roman_numeral_months` is on; lowercase only between a day and a
+  year joined by `.` or `-`, so `12 x 46` stays a possible measurement) with day
+  and year, with day only, or with a four-digit year; day, Roman month, year
+  (`12.VI.1946`); day, month name, year (`3 sept. '46`, `6-Sept-1946`); month
+  name, day, year (`Sept. 3, 1946`); month name and year; a year alone; and a
+  numeric date, which gives both the month-day and the day-month reading unless
+  a component over 12 fixes the order.
+- A two-digit year becomes 19xx only under the profile's
+  `date_rules.two_digit_year_century` (G24; `century_rule` records it); without
+  the rule the year is missing. A bare number after a month is its day, or under
+  the century rule also its year (`IV-25`: April 25, or April 1925).
+- Readings outside the calendar or outside 1750 to the current year are
+  dropped (`invalid_calendar_date`, `implausible_year`); identical readings are
+  one.
+- A slide-preparation code (`IV-29-68-4`, `10-6-78-1a`, four or more
+  hyphen-joined parts whose first three are date-shaped), or a date-shaped part
+  of one, is never a date (`slide_code`); any other part of a hyphen-joined
+  token is not read either (`part_of_hyphenated_token`).
+- Outcome: `success` for exactly one reading with a year, at the precision
+  written (day, month or year; month and year is enough, G24); `ambiguous` for
+  several readings (`several_readings`) or one without a year (`year_missing`,
+  `century_unresolved`); `no_match` otherwise. Each reading records the profile
+  rules it used.
+
+**`catalog_number_validator`**: an optional `FMNH INS` prefix (any spacing,
+`-` or `#`, including a line break) and five to nine digits, nothing else; the
+digits are the catalog number. Anything else is `no_match`.
