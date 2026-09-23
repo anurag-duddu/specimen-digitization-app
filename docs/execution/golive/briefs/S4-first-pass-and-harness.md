@@ -84,6 +84,13 @@ fallback; retries with backoff; a budget check per paid call; every tool call
 recorded for S5 and traced with Pydantic AI instrumentation, content on (G3;
 coordinate with S3's tracing topic).
 
+Geography is being researched separately (owner decision G12, session S8,
+`briefs/S8-georeferencing-research.md`): historical toponyms, tiered
+resolution and uncertainty. Build geography as one typed tool behind the same
+interface as the others, with the Google Maps implementation of G10 as the
+initial version, so that an accepted S8 plan replaces the tool without touching
+the harness. Share the tool interface with S8 when it exists.
+
 **T4. The queue decision (stage 8).** The policy applies G1. For the lane,
 remove the gates that contradict it: `policy.py` 31-34 (institutional approval
 and semantics) and 138-139 (`human_approval_required`), and `worker.py` 318-323

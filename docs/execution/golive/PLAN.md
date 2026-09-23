@@ -60,6 +60,7 @@ first pull request records that in each affected document with a dated entry.
 | G9 | Spending ceiling USD 25, cumulative, infrastructure and models together | `APPROVED_RELEASE_BUDGET.md` USD 12 |
 | G10 | Geography lookups use Google Maps as `PRD.md` 12.4 specifies; the owner creates the Maps Platform key | nothing |
 | G11 | Data and runtime releases deploy automatically on merge, like Hosting: once the required checks pass and the PR steward approves, a merge to `main` deploys runtime code and additive schema changes. Branch protection, the required checks, keyless identities and main-only environments stay. Envelopes, cost ledgers, independent-review reports and authorization artifacts retire for this program | `AGENTS.md` deployment paragraph (envelope, independent review), `DEPLOYMENT.md`, `RELEASING.md`, `RELEASE_AUTHORIZATION.md`, `RELEASE_DATA.md`, `RELEASE_RUNTIME.md`, `PROTECTED_RELEASE_HARNESS.md` |
+| G12 | "for location parts in the harness a different approach might be needed, spin this off as a new task". A research session (S8) produces a retrospective georeferencing plan from the owner's charter for the owner to review. Until the owner accepts a plan, the harness keeps geography behind its typed tool interface with the Google Maps tool of G10 as the initial version | nothing; G10 stands until the owner accepts S8's plan |
 
 `AGENTS.md`'s security rules are unchanged: nobody deploys from a workstation
 or an agent shell, and nobody weakens branch protection, required checks,
@@ -243,6 +244,7 @@ requests labelled `golive` with the title prefix `[golive:<ws>]`.
 | S5 | Build the pipeline data model and thread API | Data contract, schema additions, normalized projection, thread API, contract snapshots | `dataconnect/`, `storage.py`, `active_graph.py`, `production.py` repository section, a new thread-route module, `scripts/ci/release_sql_catalog.sql`, `docs/execution/backend-*.json` | Opus 5.5, high |
 | S6 | Build the record thread UI | Client defects, thread view, queue, processing status, trace link | `apps/specimen_digitization/` (sole owner of goldens) | Opus 5.5, high |
 | S7 | Run the acceptance lab one specimen at a time | Local and production runs one specimen at a time, run reports, defect routing | new `scripts/lab/`, `~/specimen-golive/runs/`, `~/specimen-golive/reports/` | Opus 5.5, high |
+| S8 | Research retrospective georeferencing for the harness | The owner's georeferencing charter (G12): historical toponyms, tiered resolution, uncertainty, Darwin Core mapping; a plan for the owner, optionally a read-only prototype | `docs/product-requirements/GEOREFERENCING.md`, `scripts/research/georeferencing/` | Opus 5.5, high |
 
 Shared files (`domain.py`, `workflow.py`, `api.py`, `production.py`) take
 additive, small changes; new behaviour goes in new modules where possible.
