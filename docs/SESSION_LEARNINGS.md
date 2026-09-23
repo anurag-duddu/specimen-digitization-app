@@ -11904,7 +11904,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - `SIGTERM` finishes the current step and releases the fence.
 - Validation actually run: `tests/test_lane_drain.py` and `tests/test_lane_drain_cli.py` (36 passed); the full gates as listed in the pull request.
 - Durable learnings:
-  1. S5's `SaveDocumentV2` requires `canViewSensitive` for any document whose payload does not say `"sensitive": false`. The worker's release membership has no sensitive access, so a fence without that flag would be refused in production while SQLite accepted it. The tests now use a repository that enforces the rule.
+  1. S5's `SaveDocumentV2` requires `canViewSensitive` for any document whose payload does not say `"sensitive": false`. The worker's release membership has no sensitive access, so a fence without that flag would be refused in production while SQLite accepted it. The provider circuit's state documents had the same gap: every external step of the drain would have stopped at `provider_circuit:circuit_cas_contention`. Both now write `"sensitive": false`, and the tests use a repository that enforces the rule.
   2. `ListDueWorkV2` checks `cutoff <= request.time`, so a worker cannot query for retries due later. Anything the next execution must wait for travels in the fence.
   3. The pilot's supervisor starts its worker in a new session and answers `SIGTERM` with `SIGKILL` for the whole group, so graceful work cannot run under it.
   4. Receipt keys that repeat across executions (`step:1`) make a later execution's save replay an earlier one's result. Key by revision.

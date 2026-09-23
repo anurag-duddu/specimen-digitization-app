@@ -466,7 +466,10 @@ pilot's worker is unchanged and still needs its launch files.
   - A live fence held by another execution means that execution is draining the
     collection, and this one moves on. An expired fence is taken over.
   - The document is marked not sensitive, since the worker's membership cannot
-    view sensitive records.
+    view sensitive records. The provider circuit's state documents, which the
+    worker also writes, are marked not sensitive for the same reason. A
+    circuit document left sensitive by an earlier worker can be neither read
+    nor replaced by this one.
   - The holder is the Cloud Run execution and task index. A retried attempt of
     the same task takes over at once, because its predecessor has exited.
   - A worker that stalls past its lease and loses the fence leaves the

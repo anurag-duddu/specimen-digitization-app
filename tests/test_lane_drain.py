@@ -197,6 +197,27 @@ def test_the_fence_is_written_as_not_sensitive(lane):
     assert stored["holder"] == "exec-b"
 
 
+def test_the_provider_circuit_state_is_written_as_not_sensitive(lane):
+    from specimen_digitization.application.circuit_runtime import RepositoryCircuitStore
+    from specimen_digitization.application.provider_circuit import (
+        CircuitKey,
+        ProviderCircuit,
+    )
+
+    key = CircuitKey(
+        organization_id=ORG,
+        collection_id=COLLECTION,
+        provider="fixture",
+        config_sha256="1" * 64,
+    )
+    circuit = ProviderCircuit(RepositoryCircuitStore(lane.repository, SCOPE), lane.clock)
+    admission = circuit.admit(key, 20)
+    assert admission.status == "permitted"
+    assert circuit.record_success(admission.token).status == "recorded"
+    [stored] = lane.repository.documents(SCOPE, "worker_cursor")
+    assert stored["sensitive"] is False
+
+
 def test_a_collection_another_execution_is_draining_is_left_to_it(lane):
     queued(lane.repository, "a-oldest", minutes=30)
     assert fence(lane, "exec-other").acquire() is not None
