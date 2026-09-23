@@ -107,6 +107,41 @@ void main() {
     });
   });
 
+  group('disagreements without alternatives', () {
+    test(
+      'a region is judged by its readings when the list is missing',
+      () async {
+        final ScriptedServer server = ScriptedServer(<String, dynamic>{
+          ...workspace(
+            transcriptions: <Json>[
+              <String, dynamic>{'region_id': 'r1', 'resolved': false},
+            ],
+          ),
+          'observations': <Json>[
+            <String, dynamic>{
+              'region_id': 'r1',
+              'literal_text': 'Chicago 1912',
+            },
+            <String, dynamic>{
+              'region_id': 'r1',
+              'literal_text': 'Chicago 1917',
+            },
+          ],
+        });
+        final Specimen specimen = await server.repository.specimen(
+          scope,
+          'pilot-1',
+        );
+        expect(
+          objects(
+            specimen.data['disagreements'],
+          ).map((Json d) => d['region_id']),
+          <String>['r1'],
+        );
+      },
+    );
+  });
+
   group('the photograph', () {
     test('a reload of the same asset reuses the bytes it has', () async {
       final ScriptedServer server = ScriptedServer(workspace());

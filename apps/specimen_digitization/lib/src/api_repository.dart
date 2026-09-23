@@ -952,6 +952,7 @@ class ApiSpecimenRepository
     final run = result['run'] is Map
         ? Map<String, dynamic>.from(result['run'])
         : <String, dynamic>{};
+    final observations = objects(result['observations']);
     final fieldMap = result['fields'] is Map
         ? Map<String, dynamic>.from(result['fields'])
         : <String, dynamic>{};
@@ -984,9 +985,11 @@ class ApiSpecimenRepository
       ).map((e) => <String, dynamic>{...e, 'actor_id': e['actor']}).toList(),
       // The regions whose readings differ and are not resolved. Unresolved
       // alone is not a difference: the pilot resolves nothing (UI.md T1.3).
-      'disagreements': objects(
-        result['transcriptions'],
-      ).where((t) => t['resolved'] != true && readingsDiffer(t)).toList(),
+      'disagreements': objects(result['transcriptions'])
+          .where(
+            (t) => t['resolved'] != true && readingsDiffer(t, observations),
+          )
+          .toList(),
       'evidence': [
         ...objects(result['evidence']),
         ...objects(run['lookups']).map(
