@@ -99,8 +99,9 @@ type SourceAsset @table(key: ["organizationId", "collectionId", "id"]) @unique(i
   sha256: String!
   mimeType: String!
   byteSize: Int64!
-  width: Int!
-  height: Int!
+  # Null only for assets without pixels, such as raw provider responses (DATA_CONTRACT.md).
+  width: Int
+  height: Int
   acquisitionMethod: String!
   uploaderUid: String!
   createdAt: Timestamp! @default(expr: "request.time")
@@ -118,6 +119,8 @@ type PipelineRun @table(key: ["organizationId", "collectionId", "id"]) {
   supersedesRunId: UUID
   pinnedVersions: Any!
   inputSha256: String!
+  # W3C trace id of the run's single Logfire trace; recorded once.
+  traceId: String
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
@@ -130,8 +133,8 @@ type LabelRegion @table(key: ["organizationId", "collectionId", "id"]) {
   run: PipelineRun! @ref(constraintName: "scope_ref_14", fields: ["organizationId", "collectionId", "runId"])
   sourceAssetId: UUID!
   sourceAsset: SourceAsset! @ref(constraintName: "scope_ref_15", fields: ["organizationId", "collectionId", "sourceAssetId"])
-  cropAssetId: UUID!
-  cropAsset: SourceAsset! @ref(constraintName: "scope_ref_16", fields: ["organizationId", "collectionId", "cropAssetId"])
+  cropAssetId: UUID
+  cropAsset: SourceAsset @ref(constraintName: "scope_ref_16", fields: ["organizationId", "collectionId", "cropAssetId"])
   geometry: Any!
   ordinal: Int!
   regionType: String!
@@ -174,6 +177,54 @@ type TranscriptionVersion @table(key: ["organizationId", "collectionId", "id"]) 
   spans: Any!
   alternatives: Any!
   unresolved: Boolean!
+  # The first pass's decision for one region (DATA_CONTRACT.md); null on legacy rows.
+  regionId: UUID
+  region: LabelRegion @ref(constraintName: "transcription_region", fields: ["organizationId", "collectionId", "regionId"])
+  decisionKind: String
+  selectedObservationId: UUID
+  selectedObservation: ModelObservation @ref(constraintName: "transcription_selected", fields: ["organizationId", "collectionId", "selectedObservationId"])
+  firstPassObservationId: UUID
+  firstPassObservation: ModelObservation @ref(constraintName: "transcription_first_pass", fields: ["organizationId", "collectionId", "firstPassObservationId"])
+  rationale: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# One pairwise disagreement score for a region's readings (DATA_CONTRACT.md).
+type ReadingComparison @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "reading_comparison_pair", fields: ["organizationId", "collectionId", "runId", "regionId", "leftObservationId", "rightObservationId"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "readingcomparison_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "comparison_run")
+  regionId: UUID!
+  region: LabelRegion! @ref(fields: ["organizationId", "collectionId", "regionId"], constraintName: "comparison_region")
+  leftObservationId: UUID!
+  leftObservation: ModelObservation! @ref(fields: ["organizationId", "collectionId", "leftObservationId"], constraintName: "comparison_left")
+  rightObservationId: UUID!
+  rightObservation: ModelObservation! @ref(fields: ["organizationId", "collectionId", "rightObservationId"], constraintName: "comparison_right")
+  algorithm: String!
+  ratio: Float
+  status: String!
+  reasons: [String!]!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# What the first pass handed to the harness from one reader (DATA_CONTRACT.md).
+type HarnessInput @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "harness_input_reader", fields: ["organizationId", "collectionId", "transcriptionVersionId", "observationId"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "harnessinput_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "harness_input_run")
+  transcriptionVersionId: UUID!
+  transcriptionVersion: TranscriptionVersion! @ref(fields: ["organizationId", "collectionId", "transcriptionVersionId"], constraintName: "harness_input_transcription")
+  observationId: UUID!
+  observation: ModelObservation! @ref(fields: ["organizationId", "collectionId", "observationId"], constraintName: "harness_input_observation")
+  role: String!
+  handedText: String
+  note: String
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
@@ -197,6 +248,35 @@ type EvidenceItem @table(key: ["organizationId", "collectionId", "id"]) {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
+# One attempt of one harness tool call, with its typed outcome (DATA_CONTRACT.md).
+type ToolCall @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "tool_call_key", fields: ["organizationId", "collectionId", "runId", "callKey"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "toolcall_scope")
+  id: UUID! @default(expr: "uuidV4()")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "tool_call_run")
+  callKey: String!
+  phase: String!
+  tool: String!
+  toolVersion: String!
+  fieldKey: String
+  inputSource: String!
+  transcriptionVersionId: UUID
+  transcriptionVersion: TranscriptionVersion @ref(fields: ["organizationId", "collectionId", "transcriptionVersionId"], constraintName: "tool_call_transcription")
+  observationId: UUID
+  observation: ModelObservation @ref(fields: ["organizationId", "collectionId", "observationId"], constraintName: "tool_call_observation")
+  attempt: Int!
+  arguments: Any!
+  outcome: String!
+  result: Any
+  evidenceId: UUID
+  evidence: EvidenceItem @ref(fields: ["organizationId", "collectionId", "evidenceId"], constraintName: "tool_call_evidence")
+  startedAt: Timestamp
+  completedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
 type FieldCandidate @table(key: ["organizationId", "collectionId", "id"]) {
   organizationId: UUID!
   collectionId: UUID!
@@ -211,6 +291,12 @@ type FieldCandidate @table(key: ["organizationId", "collectionId", "id"]) {
   normalizedValue: Any
   authorityId: String
   derivation: String!
+  # Which harness input the literal came from (DATA_CONTRACT.md); null on legacy rows.
+  inputSource: String
+  sourceTranscriptionId: UUID
+  sourceTranscription: TranscriptionVersion @ref(constraintName: "candidate_transcription", fields: ["organizationId", "collectionId", "sourceTranscriptionId"])
+  sourceObservationId: UUID
+  sourceObservation: ModelObservation @ref(constraintName: "candidate_observation", fields: ["organizationId", "collectionId", "sourceObservationId"])
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
@@ -350,6 +436,8 @@ type ResolvedField @table(key: ["organizationId", "collectionId", "id"]) {
   candidate: FieldCandidate @ref(fields: ["organizationId", "collectionId", "candidateId"], constraintName: "resolved_candidate")
   fieldKey: String!
   state: String!
+  # mandatory or optional, as pinned on the run's profile; null on legacy rows.
+  fieldGroup: String
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
