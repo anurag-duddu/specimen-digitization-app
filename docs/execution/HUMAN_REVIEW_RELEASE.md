@@ -62,7 +62,8 @@ end-to-end acceptance.
 > its lookups (including GBIF) on the decided transcript, and a record the
 > harness resolves is cleared without a human. Records the harness cannot
 > resolve still go to the human queue. Automated collection classification
-> is not part of the PLAN section 1 pipeline and stays deferred.
+> stays deferred: under G14 the profile comes from the collection a specimen
+> was uploaded or imported into, and there is no classification stage.
 
 All infrastructure limits in [RELEASE_AUTHORIZATION.md](RELEASE_AUTHORIZATION.md)
 remain unchanged: the same ten specimens and one cumulative USD 5 ceiling across
