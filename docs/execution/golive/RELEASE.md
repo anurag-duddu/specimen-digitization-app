@@ -343,14 +343,62 @@ afterwards (D2).
 Nothing prints a value from the artifact, and evidence stays encrypted as
 today. The envelope phases stay until T3's last step removes them.
 
-## 5. Next pull requests
+## 5. T4: the owner's standing grants
+
+`scripts/ci/owner_grants.py plan` is read-only, in the style of
+`scripts/ci/data_setup_window.py plan`. It reads the live IAM policies of the
+project, the bucket, the image registry, the three runtime service accounts,
+the six runtime secrets and, once they exist, the Cloud Run services and job.
+It compares them with the committed table below and prints, for the owner:
+- each missing grant as one exact command with its one-line reason;
+- each custom role to create;
+- each grant these identities hold beyond the table, so it can be reviewed;
+- the steps that must wait: the two invoker grants after the first runtime
+  release creates the services, and the SAM 3 checkpoint's listing grant once
+  its digest is known.
+
+Every grant names its resource. No identity receives Owner or Editor, and no
+grant carries a time condition except the one-time roles, which stay in
+`scripts/ci/data_setup_window.py`. The script never writes IAM and never prints
+a secret or a private id.
+
+| Identity | Grant | Resource | Reason |
+|---|---|---|---|
+| `specimen-runtime-build` | `roles/artifactregistry.writer` | repository `specimen-runtime` | push the three images |
+| `specimen-runtime-build` | `specimenDataInventoryProjectRead` (`resourcemanager.projects.get`) | project | the release client confirms its project |
+| `specimen-runtime-release` | new custom `specimenRuntimeRelease`: `run.services.{create,get,update,getIamPolicy}`, `run.jobs.{create,get,update}`, `run.operations.get`, `run.revisions.get` | project | define the services and the job, read their invoker policies; no delete, no `jobs.run`, no `setIamPolicy` |
+| `specimen-runtime-release` | `roles/iam.serviceAccountUser` | each of the three runtime service accounts | deploy revisions that run as them |
+| `specimen-runtime-release` | `roles/artifactregistry.reader` | repository `specimen-runtime` | verify each image's attestation |
+| `specimen-runtime-release` | `specimenDataInventoryProjectRead` | project | the release client confirms its project |
+| API and worker runtime | new custom `specimenRuntimeConnector`: `firebasedataconnect.connectors.{impersonateQuery,impersonateMutation}` | project | call the connector's named operations only, never arbitrary GraphQL |
+| API, worker and SAM 3 runtime | `roles/storage.objectViewer` and `roles/storage.objectCreator`, conditioned on objects under `application/sha256/` | bucket | read and write the application's content-addressed objects; no delete |
+| API runtime | `roles/storage.objectViewer`, conditioned on objects and listings under `microscopic-slides/` | bucket | source import (S3) |
+| SAM 3 runtime | `roles/storage.objectViewer`, conditioned on listings under `application/sha256/<checkpoint digest>/sam3-cache` | bucket | mount the checkpoint read-only; waits for the digest |
+| API runtime | `roles/firebaseauth.viewer` | project | look up the Firebase user behind a verified ID token |
+| API runtime | `roles/run.invoker` | job `specimen-worker` | start executions (G2); after the first runtime release |
+| worker runtime | `roles/run.invoker` | service `specimen-sam` | call SAM 3; after the first runtime release |
+| `allUsers` | `roles/run.invoker` | service `specimen-api` | the web client reaches the API, which authenticates every request itself; after the first runtime release |
+| runtime identities | `roles/secretmanager.secretAccessor` | each secret its role reads (`runtime_settings.py`) | per identity and per secret: the API reads the Logfire token, the source registry and the collection bindings; the worker reads the Hugging Face token, the Logfire token, the Maps key, its actor uid and the collection bindings; SAM 3 reads the Logfire token |
+| `specimen-data-release` | `specimenDataSchemaPublish`, `specimenDataStorageRules`, `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`, `specimenDataInventoryProjectRead` | project, with the existing resource conditions and no time condition | apply the schema, the connector and the rules; back up before an apply (D1); read the catalog |
+| `specimen-data-release` | `specimenDataCloneCreate`, `specimenDataCloneControl` | project, conditioned on the restore-clone name prefix | the first apply's restore check (D1) |
+
+The data release's two retired roles, `specimenDataRuntimeAbsence` and
+`specimenDataRestoreAllowanceClaim`, get no new grant. The initializer role,
+`specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
+one-time, through the setup window.
+
+The script also prints the other owner steps:
+- public access prevention on the bucket;
+- the Budget API and a USD 25 budget alert (the owner fills in the billing
+  account);
+- uploading the readiness marker;
+- uploading the SAM 3 checkpoint.
+
+## 6. Next pull requests
 
 Each adds its own section here, with failing tests first, as PLAN section 7.2
 requires.
 
-- T4, the owner's list: a read-only script that prints the exact standing IAM
-  grants and secrets T2 and T3 need, each bound to a named resource with its
-  reason, plus the initializer's one-time window.
 - T5, first releases: the first data and runtime releases; the repository
   variables as an owner action whose private values the owner fills in;
   Hosting rebuilt and connected (DoD-1 to DoD-3).
