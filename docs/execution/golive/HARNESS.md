@@ -96,3 +96,59 @@ difference left `neither` or `uncertain` stays on the record for the harness and
 the queue decision (G19, G20). The disagreement score and the alignment fields
 of stage 5 are unchanged. The run keeps each region's decision in
 `first_pass_decisions`. Synthetic runs use a fixture that selects no reading.
+
+## 5. The Hugging Face routes for the first pass and the harness (T1)
+
+G7 runs the first pass and the harness on Hugging Face models through the
+existing gateway. Two routes are registered, pinned like the readers' (model
+and provider; routed inference exposes no model revision, and the preflight
+checks each route is live with the capabilities it needs), and approved by the
+coordinator on 2026-09-23:
+
+| Route | Model | Provider | Input | Use |
+|---|---|---|---|---|
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | text, image | the first pass (sections 3 and 4) |
+| `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness |
+
+Both use DeepInfra, which the `handwriting-muse` reader already uses, so no
+new provider enters the data-policy review; neither shares a model family
+with a reader.
+
+**How they were chosen.** The ten pilot slides, cropped by hand to their left
+label, were read by both readers (19 of 20 readings; 9 labels disagree). Each
+candidate ran the first pass as section 3 specifies (the managed prompt
+unchanged, readers shown as A and B with the order alternating). Its verdicts
+were scored against a full-resolution reading of the crops: 11 material
+disagreements, 1 ambiguous span, 2 fluent traps (the label's "Chimaltenago",
+which one reader corrected to "Chimaltenango") and 7 capitalization-only
+differences. Candidates were ranked, as the coordinator set, by the fewest
+confidently wrong verdicts, then the fewest failed traps, then the most
+correct. The top three ran twice, the second time with the reader order
+flipped.
+
+| First-pass candidate (DeepInfra) | Valid answers | Confidently wrong | Traps failed | Correct | Abstained | Median seconds | USD per call |
+|---|---|---|---|---|---|---|---|
+| GLM-5.3-Flash | 16 of 16 | 2 and 2 | 0 and 0 | 6 and 6 | 3 and 3 | 11 | 0.0003 |
+| Qwen3.5-397B-A17B | 6 of 8 (2 timed out at the router's 120 s) | 2 | 0 of 1 | 5 | 1 | 45 | 0.0058 |
+| DeepSeek-V4.1-Flash | 16 of 16 | 3 and 4 | 2 and 1 | 6 and 5 | 2 and 2 | 10 | 0.0004 |
+| MiniMax-M3 | 8 of 8 | 3 | 0 | 4 | 4 | 29 | 0.002 |
+| Qwen3-VL-235B-A22B | 8 of 8 | 6 | 1 | 3 | 2 | 16 | 0.0004 |
+
+Gemma-4-31B produced valid output once in eight calls; Kimi-K2.6 and Inkling
+timed out at the router's 120 s limit on every call, which production would
+record as an unknown outcome. GLM's two confident errors ("la" for "1a" and
+"a" for "2") are in slide-preparation codes, not in fields.
+
+The harness candidates ran four real scenarios with typed tools (live GBIF, a
+geography tool answering `authentication_error`, a date parser and a catalog
+validator), one of them the decided taxon "Epipocous" with "Epipsocus" as the
+raw fallback. DeepSeek-V4.1-Flash completed all four, got all 9 key field
+literals right, never looped, and took 16 s and USD 0.0017 per run; its misses
+(three literals joined across label lines, one slide code taken as a date) are
+the kinds the harness's deterministic checks turn into unresolved fields
+(HAR-019). GLM-5.3-Flash took slide codes as dates three times; Qwen3-VL-235B
+was slowest (71 s) and looped once; DeepSeek-V4-Flash-0731 looped to the
+request limit once; Gemma-4-31B failed every run.
+
+The measurement spent USD 0.106 of the program's USD 25 (G9): readers 0.016,
+first pass 0.068, harness probe 0.021.

@@ -201,3 +201,53 @@ def test_replayed_tool_calls_keep_their_arguments(
 def test_pydantic_ai_still_maps_tool_calls_through_the_overridden_hook() -> None:
     """If pydantic-ai renames the hook, the argument fix silently stops applying."""
     assert isinstance(vars(HuggingFaceModel)["_map_tool_call"], staticmethod)
+
+
+def test_first_pass_and_harness_routes_are_pinned_on_the_reader_provider() -> None:
+    gateway = HuggingFaceModelGateway(token="hf_test")
+
+    first_pass = gateway.route("first-pass-glm")
+    harness = gateway.route("harness-deepseek")
+
+    assert (first_pass.model_id, first_pass.provider) == (
+        "zai-org/GLM-5.3-Flash",
+        "deepinfra",
+    )
+    assert first_pass.required_input_modalities == ("text", "image")
+    assert (harness.model_id, harness.provider) == (
+        "deepseek-ai/DeepSeek-V4.1-Flash",
+        "deepinfra",
+    )
+    assert harness.required_input_modalities == ("text",)
+    readers = {
+        route.model_id
+        for route in gateway.routes_for_capability("handwriting_transcriber")
+    }
+    assert {first_pass.model_id, harness.model_id}.isdisjoint(readers)
+    assert gateway.routes_for_capability("transcription_first_pass") == (first_pass,)
+    assert gateway.routes_for_capability("field_harness") == (harness,)
+
+
+def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None:
+    from specimen_digitization.huggingface_preflight import validate_route
+
+    def served(model_id, modalities):
+        return {
+            "id": model_id,
+            "architecture": {"input_modalities": list(modalities)},
+            "providers": [
+                {
+                    "provider": "deepinfra",
+                    "status": "live",
+                    "supports_structured_output": True,
+                }
+            ],
+        }
+
+    catalog = [
+        served("zai-org/GLM-5.3-Flash", ("text", "image")),
+        served("deepseek-ai/DeepSeek-V4.1-Flash", ("text", "image")),
+    ]
+
+    for route_id in ("first-pass-glm", "harness-deepseek"):
+        assert validate_route(INITIAL_HUGGINGFACE_ROUTES[route_id], catalog)["ready"]
