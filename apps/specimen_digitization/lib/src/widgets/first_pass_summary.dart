@@ -44,8 +44,13 @@ class FirstPassSummary extends StatelessWidget {
   /// The first pass ran and chose none of the readings.
   static const String choseNone = 'The first pass chose no reading';
 
-  /// A reviewer resolved it.
-  static const String reviewer = 'Resolved by a reviewer';
+  /// A reviewer decided it, which need not resolve it.
+  static const String reviewer = 'Decided by a reviewer';
+
+  /// The decision leaves the transcript unresolved (DATA_CONTRACT.md section
+  /// 4.2). The workspace's `resolved` flag cannot say this: it means only
+  /// that a reading was selected.
+  static const String notResolved = 'Transcription not resolved';
 
   /// The first pass chose [reader]'s reading.
   static String chose(String reader) => 'The first pass chose $reader';
@@ -117,6 +122,8 @@ class FirstPassSummary extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(_title(pass), style: ui.type.label),
+              if (pass.unresolved == true)
+                Text(notResolved, style: ui.type.bodySmall),
               if (decided != null) ...<Widget>[
                 SizedBox(height: ui.space.s1),
                 Text(decidedLabel, style: secondary),
