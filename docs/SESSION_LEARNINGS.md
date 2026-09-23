@@ -11853,3 +11853,22 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-3` (PR #104), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Records owner decisions G27 to G29.
+  - Records two coordinator rulings from #88's review: sensitive uploads are never processed by the worker, as the spec requires; `approvedBy` is null unless the caller is a reviewer with sensitive access.
+  - Addresses the steward's merge review of #87 (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5804177173). The worker's membership step is specified. G26 now reaches traces, fixtures, lab folders and the request URL. The two gates that read only the last lookup are named. G21 is standing. The steward no longer updates branches. The TRN-005 keys join the never-drop list. `search.py` gets an owner.
+  - One nit is declined with its reason: a separate lab read token (the owner reuses existing credentials). Docs only.
+- Owner decisions (chat, 2026-09-23):
+  - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
+  - G28: taxon names work the same way.
+  - G29: a Roman-numeral month is the month. The harness works through every reading a notation allows and settles with evidence; each subcollection has its own harness, Insects first.
+- Durable learnings:
+  - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
+  - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 43 and HAR-013 made explicit, so check a new format question against it before asking the owner.
+  - (3) An owner can answer a narrow question with a broader principle (G27, G29). Record the answer verbatim, then write the engineering reading separately, so reviewers can check one against the other.
+- Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
