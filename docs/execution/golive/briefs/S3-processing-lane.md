@@ -1,0 +1,98 @@
+# S3 brief: processing lane
+
+Session title: **Build the on-demand processing lane**. Recommended model Opus
+5.5 at high effort.
+
+## Mission
+
+One specimen at a time runs on demand in production through stages 1 to 5 of
+PLAN section 4.1, with the profile, budget and tracing that the rest of the
+pipeline needs, and with clean seams for the first pass and harness (S4) and
+for persistence (S5).
+
+## Read first
+
+1. `docs/execution/golive/PLAN.md`, all of it.
+2. `~/specimen-golive/research/01-backend-pipeline-stages.md` (all),
+   `04-observability-and-prompts.md` (all), `02-release-and-deploy-planes.md`
+   section 3, `06-product-spec-and-approvals.md` section 1.
+3. `docs/execution/ARCHITECTURE.md`, `PROCESSING_ENGINE_COMPARISON.md`,
+   `CONTRACTS.md`.
+
+Line numbers below come from the research at `709ae3c`; reverify them.
+
+## Pull requests, in order
+
+Each starts with its spec delta in `docs/execution/golive/LANE.md` and failing
+tests, then the implementation.
+
+**T1. On-demand trigger.** `POST /specimens/{id}/process` works in production
+for reviewers and administrators (synthetic only today, `api.py` 2387-2396):
+it creates the run with a budget from the collection's allowance, marks it due,
+and starts one execution of the worker job through the Cloud Run Admin API (an
+injected client, faked in tests). Processing starts on intake when the profile
+says so (synthetic only today, `api.py` 1292-1293). At most one active run per
+collection. Wire source import in production over `microscopic-slides/`
+(`cli.py` 45-53 passes no source registry or reader today) so the ten can be
+imported from Storage.
+
+**T2. Worker drain mode in production.** The general polling worker
+(`worker.py` 45-194, synthetic only today) becomes the production mode for the
+lane: it claims due runs one at a time, runs each to a final disposition or an
+operational block, and exits when nothing is due. The exactly-ten pilot worker
+and launch contract are not used by the lane; do not break their tests without
+replacing them. Enforce the per-run budget and the program allowance (G9) with
+the existing cost fields (`domain.py` 286; `workflow.py` 208-213) and record
+the actual cost of every paid call.
+
+**T3. SAM 3 per run.** The client binding (`production.py` 851-852) and the
+server (`sam3_server.py` 358-380, 590-622) authorize each run the worker sends
+instead of the frozen manifest, and the server no longer shuts itself down after
+an hour. Keep the pinned revision and offline checkpoint. Record the concept
+prompt, thresholds, revision, region count and scores, and continue the trace
+from the `traceparent` header. The release workstream (S2) builds and deploys
+the service; agree its shape with S2 before you finish.
+
+**T4. Profile.** `zoology_insects_slides` as configuration, published for the
+pilot (G1), mapped to `Insects` beneath `Zoology`, with inheritance down the
+collection tree (`collection_profiles.py` 198-224 does not walk parents). It
+carries the segmentation settings (`label`, thresholds 0.5, at most 64
+regions); the readers (the type must allow more than two: `domain.py` 332 is
+`tuple[str, str]`); the tools per field (S4 implements the tools); the
+mandatory and optional groups (G8: the specification's 20 mandatory until the
+owner's list arrives, and changing it must be one configuration edit); the
+existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
+reference (S4). Optional fields must survive at runtime and be created for
+extraction (today they are dropped: `domain.py` 324-336,
+`collection_runtime.py` 106-118, `workflow.py` 688).
+
+**T5. Tracing (G3).** The lane uses the standard path's `approved-content` mode
+(`observability.py` 232-276), content on and binary content off. Remove the
+metadata forcing for the lane (`worker.py` 751-754, `cli.py` 88-91,
+`observability.py` 314) and the per-agent content overrides
+(`provider_privacy.py` 24-29, `transcription.py` 75; `harness.py` 80 is S4's,
+coordinate). One root span per run with specimen, run, collection and profile
+ids (helpers exist unused in `tracing.py` 48-68); a span per stage carrying
+`specimen.step`; SAM 3 spans on both sides; the trace id stored on the run (S5
+adds the column) and exposed to the thread API; identities and secrets scrubbed.
+Update the leak tests to the new approval instead of deleting them. Wire the
+Logfire project and token with S2. The unmerged branch `codex/reader-trace-linkage`
+(four commits) may have reusable pieces.
+
+## Local mode
+
+The acceptance lab (S7) runs your lane locally with real models. Keep that
+working: `create_app(adapters=...)` in `application/api.py` is the seam, and
+`ProductionAdapters` runs under `mode="synthetic"`. Tell S7 when a topic merges.
+
+## Coordination
+
+S5's data contract (its T1) comes first; code against it. S2 deploys what you
+build and grants what it needs. S4 consumes the profile, the tools per field
+and the optional fields.
+
+## Done
+
+A specimen imported or uploaded in production is processed on request, one at a
+time, through segment, transcribe and compare, within budget and fully traced,
+and hands off to S4's steps.
