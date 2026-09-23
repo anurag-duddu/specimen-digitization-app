@@ -1,5 +1,5 @@
 {
-  "_comment": "Synthetic thread response in the shape of docs/execution/golive/DATA_CONTRACT.md section 8 (S5, PR #88); a Google lookup keeps only its place ID (G26). Two label regions, as on pilot slides 324 to 328. Replaced by S5's canonical fixture when the thread route lands.",
+  "_comment": "Synthetic thread response in the shape of docs/execution/golive/DATA_CONTRACT.md section 8 (S5, PR #88); a Google lookup keeps only its place ID (G26); fields carry a verbatim list and an evidence list (#88 at 6b97508). Two label regions, as on pilot slides 324 to 328. Replaced by S5's canonical fixture when the thread route lands.",
   "specimen_id": "fixture-thread-001",
   "revision": 7,
   "run": {
@@ -183,7 +183,7 @@
       "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
       "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null,
       "attempt": 2, "arguments": {"query": "GUATEMALA Zacapa Sa. de las Minas"}, "outcome": "success",
-      "result": {"place_id": "fixture-place-id-zacapa"}, "error": null, "retry_after": null,
+      "result": {"candidates": [{"place_id": "fixture-place-id-zacapa"}]}, "error": null, "retry_after": null,
       "evidence_id": "evidence-geo-1",
       "started_at": "2026-09-23T14:31:45Z", "completed_at": "2026-09-23T14:31:46Z"
     },
@@ -198,36 +198,20 @@
     }
   ],
   "fields": [
-    {"field_key": "country", "group": "mandatory", "state": "supported",
-     "literal": "GUATEMALA", "parsed": "Guatemala", "normalized": null, "authority_id": null,
-     "input_source": "decided_transcript", "source_region_id": "region-right", "source_observation_id": null,
-     "evidence_ids": ["evidence-geo-1"]},
-    {"field_key": "province_state", "group": "mandatory", "state": "supported",
-     "literal": "Zacapa", "parsed": "Zacapa", "normalized": null, "authority_id": null,
-     "input_source": "decided_transcript", "source_region_id": "region-right", "source_observation_id": null,
-     "evidence_ids": ["evidence-geo-1"]},
-    {"field_key": "collectors", "group": "mandatory", "state": "supported",
-     "literal": "R. Ortiz", "parsed": "R. Ortiz", "normalized": null, "authority_id": null,
-     "input_source": "decided_transcript", "source_region_id": "region-left", "source_observation_id": null,
-     "evidence_ids": []},
-    {"field_key": "date_visited_from", "group": "mandatory", "state": "supported",
-     "literal": "12.v.1978", "parsed": "1978-05-12", "normalized": null, "authority_id": null,
-     "precision": "day", "century_rule": null,
-     "input_source": "decided_transcript", "source_region_id": "region-left", "source_observation_id": null,
-     "evidence_ids": []},
-    {"field_key": "habitat", "group": "mandatory", "state": "not_present",
-     "literal": null, "parsed": null, "normalized": null, "authority_id": null,
-     "input_source": null, "source_region_id": null, "source_observation_id": null,
-     "evidence_ids": []},
-    {"field_key": "identified_by_irn", "group": "optional", "state": "unresolved",
-     "literal": null, "parsed": null, "normalized": null, "authority_id": null,
-     "input_source": null, "source_region_id": null, "source_observation_id": null,
-     "evidence_ids": []}
+    {"field_key": "country", "group": "mandatory", "state": "supported", "verbatim": [{"text": "GUATEMALA", "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null}], "parsed": "Guatemala", "precision": null, "century_rule": null, "normalized": null, "authority_id": "fixture-place-id-zacapa", "evidence": [{"evidence_id": "evidence-geo-1", "relation": "supports", "source": "google-maps-geocoding", "locator": "place/fixture-place-id-zacapa", "outcome": "success"}]},
+    {"field_key": "province_state", "group": "mandatory", "state": "supported", "verbatim": [{"text": "Zacapa", "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null}], "parsed": "Zacapa", "precision": null, "century_rule": null, "normalized": null, "authority_id": "fixture-place-id-zacapa", "evidence": [{"evidence_id": "evidence-geo-1", "relation": "supports", "source": "google-maps-geocoding", "locator": "place/fixture-place-id-zacapa", "outcome": "success"}]},
+    {"field_key": "collectors", "group": "mandatory", "state": "supported", "verbatim": [{"text": "R. Ortiz", "input_source": "decided_transcript", "region_id": "region-left", "observation_id": null}], "parsed": "R. Ortiz", "precision": null, "century_rule": null, "normalized": null, "authority_id": null, "evidence": []},
+    {"field_key": "date_visited_from", "group": "mandatory", "state": "supported", "verbatim": [{"text": "12.v.1978", "input_source": "decided_transcript", "region_id": "region-left", "observation_id": null}], "parsed": "1978-05-12", "precision": "day", "century_rule": null, "normalized": null, "authority_id": null, "evidence": []},
+    {"field_key": "habitat", "group": "mandatory", "state": "not_present", "verbatim": [], "parsed": null, "precision": null, "century_rule": null, "normalized": null, "authority_id": null, "evidence": []},
+    {"field_key": "identified_by_irn", "group": "optional", "state": "unresolved", "verbatim": [], "parsed": null, "precision": null, "century_rule": null, "normalized": null, "authority_id": null, "evidence": []}
   ],
   "decision": {
     "disposition": "needs_human_review",
     "policy_version": "slide-pilot-policy-1",
     "reason_codes": ["mandatory_field_not_supported"],
-    "summary": "One mandatory field is not supported: habitat."
+    "summary": "One mandatory field is not supported: habitat.",
+    "findings": [
+      {"rule_id": "mandatory-fields-supported", "severity": "hard", "field_key": "habitat", "reason_code": "mandatory_field_not_supported"}
+    ]
   }
 }

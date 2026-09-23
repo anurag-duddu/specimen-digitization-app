@@ -175,12 +175,20 @@ void main() {
       expect(thread.ungroupedFields, isEmpty);
       final ThreadField country = thread.mandatoryFields.first;
       expect(country.state, 'supported');
-      expect(country.literal, 'GUATEMALA');
+      final ThreadVerbatim written = country.verbatim.single;
+      expect(written.text, 'GUATEMALA');
+      expect(written.inputSource, ThreadInputSource.decidedTranscript);
+      expect(written.regionId, 'region-right');
+      expect(written.observationId, isNull);
       expect(country.parsed, 'Guatemala');
       expect(country.normalized, isNull, reason: 'G26: no Google names');
-      expect(country.inputSource, ThreadInputSource.decidedTranscript);
-      expect(country.sourceRegionId, 'region-right');
-      expect(country.evidenceIds, <String>['evidence-geo-1']);
+      expect(country.authorityId, 'fixture-place-id-zacapa');
+      final ThreadEvidence geo = country.evidence.single;
+      expect(geo.evidenceId, 'evidence-geo-1');
+      expect(geo.relation, 'supports');
+      expect(geo.source, 'google-maps-geocoding');
+      expect(geo.locator, 'place/fixture-place-id-zacapa');
+      expect(geo.outcome, 'success');
     });
 
     test('carries the queue decision and its reasons', () {
@@ -190,6 +198,11 @@ void main() {
         'mandatory_field_not_supported',
       ]);
       expect(thread.decision?.summary, contains('habitat'));
+      final ThreadFinding finding = thread.decision!.findings.single;
+      expect(finding.ruleId, 'mandatory-fields-supported');
+      expect(finding.severity, 'hard');
+      expect(finding.fieldKey, 'habitat');
+      expect(finding.reasonCode, 'mandatory_field_not_supported');
     });
 
     test('finds a reading and a region by id', () {
@@ -333,6 +346,84 @@ void main() {
         <String>['b', 'c'],
       );
       expect(thread.ungroupedFields.last.groupName, 'sometimes');
+    });
+  });
+
+  // G27 and G28: a place or taxon field keeps what was written and what was
+  // settled; when the first pass chose no reading, each reader's text is
+  // kept, attributed to its reader.
+  group('two values per field (G27, G28)', () {
+    test('each reader keeps its own reading when none was chosen', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'province_state',
+        'verbatim': <Json>[
+          <String, dynamic>{
+            'text': 'Chimaltenago',
+            'input_source': 'raw_reading',
+            'region_id': 'r1',
+            'observation_id': 'o-a',
+          },
+          <String, dynamic>{
+            'text': 'Chimaltenango',
+            'input_source': 'raw_reading',
+            'region_id': 'r1',
+            'observation_id': 'o-b',
+          },
+        ],
+        'authority_id': 'fixture-place-id',
+      });
+      expect(field.verbatim.map((ThreadVerbatim v) => v.text), <String>[
+        'Chimaltenago',
+        'Chimaltenango',
+      ]);
+      expect(
+        field.verbatim.map((ThreadVerbatim v) => v.observationId),
+        <String>['o-a', 'o-b'],
+      );
+      expect(
+        field.verbatim.every(
+          (ThreadVerbatim v) => v.inputSource == ThreadInputSource.rawReading,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a written text is kept exactly, spaces and all', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'taxon',
+        'verbatim': <Json>[
+          <String, dynamic>{'text': ' Tachinidae  sp.'},
+        ],
+      });
+      expect(field.verbatim.single.text, ' Tachinidae  sp.');
+    });
+
+    test('evidence says whether a source decides, supports or contradicts', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'taxon',
+        'normalized': 'Tachinidae',
+        'evidence': <Json>[
+          <String, dynamic>{
+            'evidence_id': 'e1',
+            'relation': 'decides',
+            'source': 'gbif-backbone',
+          },
+          <String, dynamic>{
+            'evidence_id': 'e2',
+            'relation': 'contradicts',
+            'source': 'catalogue-of-life',
+          },
+        ],
+      });
+      expect(
+        field.normalized,
+        'Tachinidae',
+        reason: 'G28: GBIF names can be shown',
+      );
+      expect(field.evidence.map((ThreadEvidence e) => e.relation), <String>[
+        'decides',
+        'contradicts',
+      ]);
     });
   });
 
