@@ -184,6 +184,7 @@ At minimum, permissions cover:
 
 1. The platform evaluates image quality and predicts collection/subcollection candidates.
 2. It selects a profile or pauses for classification review when policy requires.
+   > 2026-09-23: The collection prediction in step 1 and the profile selection in step 2 are superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G14: the profile comes from the collection a specimen was uploaded or imported into, resolved down the collection tree; a reviewer can correct the collection, and there is no classification stage. The image-quality evaluation in step 1 is unaffected.
 3. It segments relevant regions and transcribes all label regions independently with the configured models.
 4. It calculates disagreements and performs adjudication.
 5. The harness extracts fields, performs lookups, proposes normalized values, and executes deterministic validations.
@@ -523,6 +524,8 @@ Field Museum's currently published active Darwin Core mapping, together with its
 | Taxon | `taxon` | Verbatim scientific name plus separately resolved name, authorship, status, rank, and source identifier. |
 | Identified by IRN | `identified_by_irn` | Internal Record Number of the resolved `eparties` record. Qualify it with source system, tenant/environment, and module; the current production column, expected serialization, and approved lookup path require confirmation. |
 | Date Identified | `date_identified` | Literal text plus a separately parsed date or partial date. |
+
+> 2026-09-23: The "Identified by IRN" row's mandatory status is superseded for the slide pilot by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G16: `identified_by_irn` is recorded as not resolved and does not block clearance until EMu Parties is connected.
 
 The proposed internal keys are implementation candidates, not approved Field Museum mappings. They must be reconciled with the target collection-management schema before development.
 
