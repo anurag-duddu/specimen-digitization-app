@@ -1,7 +1,5 @@
 """The runtime plane deploys from a gate record with committed settings (RELEASE.md 3.2).
-
-Cloud Run, GitHub, attestation and readiness are fakes: no network, no credentials.
-"""
+Cloud Run, GitHub, attestation and readiness are fakes: no network, no credentials."""
 import copy
 import importlib
 import json
@@ -105,14 +103,13 @@ class FakeGoogle:
 
 @pytest.fixture
 def ready(monkeypatch):
-    """Every pending setting filled with a synthetic value, as T4 and the processing lane will fill them."""
-    for name, version in (("specimen-source-registry", 3), ("specimen-collection-bindings", 4),
-                          ("specimen-worker-actor-uid", 5)):
-        monkeypatch.setitem(S.SECRET_VERSIONS, name, version)
-    monkeypatch.setattr(S, "READINESS_GENERATION", 1790000000000001)
-    monkeypatch.setattr(S, "SAM_CHECKPOINT_SHA256", "4" * 64)
-    monkeypatch.setattr(S, "SAM_SERVER_ENV", {"SPECIMEN_SAM3_MAX_REQUEST_BYTES": "1048576"})
-    monkeypatch.setitem(S.WORKER, "args", ["--drain", "--max-seconds", "3300"])
+    """Fill each setting still PENDING with a synthetic value, as T4 and the processing lane will; committed ones stay."""
+    for name, value in (("READINESS_GENERATION", 1790000000000001), ("SAM_CHECKPOINT_SHA256", "4" * 64),
+                        ("SAM_SERVER_ENV", {"SPECIMEN_SAM3_MAX_REQUEST_BYTES": "1048576"})):
+        if getattr(S, name) is S.PENDING:
+            monkeypatch.setattr(S, name, value)
+    if S.WORKER["args"] is S.PENDING:
+        monkeypatch.setitem(S.WORKER, "args", ["--drain", "--max-seconds", "3300"])
 
 
 def deploy(tmp_path, monkeypatch, google, *, status="ahead", failing=None):
@@ -129,11 +126,7 @@ def deploy(tmp_path, monkeypatch, google, *, status="ahead", failing=None):
         if uri == failing:
             raise ValueError("synthetic readiness failure")
 
-    def connect(path, plane):
-        assert plane == "runtime"
-        return google
-
-    monkeypatch.setattr(M, "Google", connect)
+    monkeypatch.setattr(M, "Google", lambda path, plane: google if plane == "runtime" else pytest.fail("wrong plane"))
     monkeypatch.setattr(M, "gh_json", compare)
     monkeypatch.setattr(M, "verify_public_api", probe)
     monkeypatch.setattr(M, "verify_attestation", lambda subject, sha, flow: seen["attested"].append((subject, sha, flow)))
@@ -159,10 +152,8 @@ def env_of(container):
 
 
 def test_committed_settings_name_each_pending_value_and_nothing_is_touched(tmp_path, monkeypatch):
-    assert S.pending("api") == ['SECRET_VERSIONS["specimen-source-registry"]',
-                                'SECRET_VERSIONS["specimen-collection-bindings"]', "READINESS_GENERATION"]
-    assert S.pending("worker") == ['WORKER["args"]', 'SECRET_VERSIONS["specimen-worker-actor-uid"]',
-                                   'SECRET_VERSIONS["specimen-collection-bindings"]']
+    assert S.pending("api") == ["READINESS_GENERATION"]
+    assert S.pending("worker") == ['WORKER["args"]']
     assert S.pending("sam") == ["SAM_SERVER_ENV", "SAM_CHECKPOINT_SHA256"]
     assert {secret for role in S.ROLES.values() for secret in role["secret_env"].values()} == set(S.SECRET_VERSIONS)
     with pytest.raises(ValueError):
@@ -198,8 +189,8 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
         "SPECIMEN_READINESS_OBJECT": "application/sha256/a1c115b623cdc43c1b062e5431c8ca8cb6411aa08057885e3b44a9238747818e",  # pragma: allowlist secret (public marker digest)
         "SPECIMEN_READINESS_GENERATION": "1790000000000001", "SPECIMEN_WORKER_JOB": NAMES["worker"]}
     assert api_secrets == {"LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),
-                           "SPECIMEN_SOURCE_REGISTRY_JSON": ("specimen-source-registry", "3"),
-                           "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "4")}
+                           "SPECIMEN_SOURCE_REGISTRY_JSON": ("specimen-source-registry", "1"),
+                           "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
     assert RuntimeConfig.from_env(api_env).readiness_generation == 1790000000000001
     for role, cpu, memory, cap, concurrency, timeout in (("api", "1", "1Gi", 2, 8, "600s"), ("sam", "4", "16Gi", 1, 1, "130s")):
         body, template = bodies[role], bodies[role]["template"]
@@ -232,11 +223,23 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
                           "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true"}
     assert worker_secrets == {"HF_TOKEN": ("huggingface-runtime-token", "2"), "LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),
                               "SPECIMEN_GOOGLE_MAPS_API_KEY": ("specimen-google-maps-key", "1"),
-                              "SPECIMEN_WORKER_ACTOR_UID": ("specimen-worker-actor-uid", "5"),
-                              "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "4")}
+                              "SPECIMEN_WORKER_ACTOR_UID": ("specimen-worker-actor-uid", "1"),
+                              "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
     assert sql_endpoint_from_env(worker_env) == {"location": "us-east4", "service": "specimen-digitization-service",
                                                  "connector": "specimen-server"}
     assert "ExecutionToken" not in json.dumps(worker)
+
+
+def test_no_deployed_setting_ever_carries_a_lab_only_value(ready):
+    """Lab switches never reach a deployed role, as a plain or a secret variable, including values committed later."""
+    bodies = M.released_bodies({role: image(role) for role in NAMES}, SHA, RUN, ATTEMPT, list(NAMES))
+    assert set(bodies) == set(NAMES)
+    for role, body in bodies.items():
+        env = body["template"].get("template", body["template"])["containers"][0]["env"]
+        names = {item["name"] for item in env}
+        assert set(S.ROLES[role]["secret_env"]) <= names  # the secret env is scanned too
+        assert not names & {"SPECIMEN_SAM3_LAB_TOKEN", "SPECIMEN_SAM3_LAB_DIR"}
+        assert all(item.get("value") not in (None, "lab") for item in env if item["name"] == "SPECIMEN_SAM3_ENABLE")
 
 
 def test_the_first_release_creates_each_role_and_names_both_owner_grants(tmp_path, monkeypatch, ready):

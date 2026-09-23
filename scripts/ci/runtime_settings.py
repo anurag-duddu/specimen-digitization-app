@@ -26,9 +26,9 @@ SECRET_VERSIONS = {
     "huggingface-runtime-token": 2,
     "specimen-worker-logfire": 1,
     "specimen-google-maps-key": 1,
-    "specimen-source-registry": PENDING,
-    "specimen-collection-bindings": PENDING,
-    "specimen-worker-actor-uid": PENDING,
+    "specimen-source-registry": 1,
+    "specimen-collection-bindings": 1,
+    "specimen-worker-actor-uid": 1,
 }
 
 # The API's public 50-byte readiness marker, which the owner uploads; its content is
