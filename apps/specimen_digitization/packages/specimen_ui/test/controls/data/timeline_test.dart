@@ -50,6 +50,12 @@ Future<UiThemeData> _pump(
   final UiThemeData ui = brightness == Brightness.dark
       ? UiThemeData.dark()
       : UiThemeData.light();
+  // `uiHarness` sets `MediaQueryData.size`, but the test view keeps its own
+  // surface; a geometry assertion measures against the rectangle the layout
+  // used, so the surface is made the size the window claims to be.
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(
     uiHarness(
       brightness: brightness,
@@ -238,10 +244,16 @@ void main() {
       '3 of 3: Place lookup, Google Maps, Attempt 2',
     ]) {
       final SemanticsNode item = tester.getSemantics(
-        find.bySemanticsLabel(phrase),
+        find.bySemanticsLabel(RegExp('^${RegExp.escape(phrase)}')),
       );
       expect(item.getSemanticsData().role, SemanticsRole.listItem);
     }
+    // A trailing word is not a node of its own, so it is read with the
+    // entry rather than after it: the outcome is part of the phrase.
+    expect(
+      tester.getSemantics(find.bySemanticsLabel(RegExp('^3 of 3: '))).label,
+      contains('Timed out'),
+    );
     handle.dispose();
   });
 

@@ -1099,8 +1099,9 @@ no focus, so it does not run the control contract, the way a data tile does
 not; a child may hold controls, and they keep their own nodes. Semantics: the
 timeline is one `list` node, labelled when the caller names it, and each entry
 is a `listItem` container whose label is the caller's phrase or, when there is
-none, "N of M: title, meta". The marker is excluded, because the label says
-what it says. Nothing moves, so reduced motion changes nothing. In a
+none, "N of M: title, meta". A trailing word is read as part of that phrase,
+so an outcome is heard with its entry. The marker is excluded, because the
+label says what it says. Nothing moves, so reduced motion changes nothing. In a
 right-to-left window the rail is on the right. At 200 percent text the title
 and the meta wrap and the disc keeps its size, top aligned with the title.
 The connector is positioned against the row rather than measured with
