@@ -6,7 +6,8 @@ Session title: **Build the on-demand processing lane**. Recommended model Opus
 ## Mission
 
 One specimen at a time runs on demand in production through stages 1 to 5 of
-PLAN section 4.1, with the profile, budget and tracing that the rest of the
+PLAN section 4.1 (stage 5's scores are computed in S4's `adjudicate` and
+`finalize` steps), with the profile, budget and tracing that the rest of the
 pipeline needs, and with clean seams for the first pass and harness (S4) and
 for persistence (S5).
 
@@ -24,7 +25,9 @@ Line numbers below come from the research at `709ae3c`; reverify them.
 ## Pull requests, in order
 
 Each starts with its spec delta in `docs/execution/golive/LANE.md` and failing
-tests, then the implementation.
+tests, then the implementation. Order, approved by the coordinator on
+2026-09-23 to unblock the acceptance lab: T1 (as T1a and T1b), T4, T3, T2, T5.
+Production needs all five.
 
 **T1. On-demand trigger.** `POST /specimens/{id}/process` works in production
 with the endpoint's existing authorization (synthetic only today, `api.py`
@@ -33,7 +36,10 @@ marks it due, and starts one execution of the worker job through the Cloud Run
 Admin API (an injected client, faked in tests). Processing starts on intake for
 every upload (`PRD.md` 9.1 step 6; synthetic only today, `api.py` 1292-1293). A
 request during an active run in the same collection waits and runs in request
-order (G13), and the intake collection selects the profile (G14). Wire source
+order (G13), and the intake collection selects the profile (G14): set
+`run.classification_selection` from it, which the `classify` step requires
+(`workflow.py` 308-331); a reviewer corrects it through the existing endpoint
+(`api.py` 2243). Wire source
 import in production over `microscopic-slides/`
 (`cli.py` 45-53 passes no source registry or reader today) so the ten can be
 imported from Storage.
@@ -53,9 +59,10 @@ instead of the frozen manifest, and the server no longer shuts itself down after
 an hour. Keep the pinned revision and offline checkpoint. Record the concept
 prompt, thresholds, revision, region count and scores, and continue the trace
 from the `traceparent` header. The release workstream (S2) builds and deploys
-the service; agree its shape with S2 before you finish. Segmentation must find
-every label on the slide: five pilot slides carry two, with the locality on the
-right-hand one (PLAN section 3). Then confirm coverage automatically (G15):
+the service; agree its shape with S2 before you finish. Expect two labels on
+five pilot slides, with the locality on the right-hand one (PLAN section 3); a
+missed label goes to human review under G15, and retuning the pinned SAM 3
+settings needs the coordinator first. Confirm coverage automatically (G15):
 check the segmentation result with the specification's region-count and
 full-image cross-checks (`PRD.md` 871), set `run.coverage_confirmed` from the
 result, record the evidence, and let a failed check send the record to the
@@ -70,10 +77,12 @@ carries the segmentation settings (`label`, thresholds 0.5, at most 64
 regions); the two readers; the tools per field (S4 implements the tools); the
 mandatory and optional groups (G8: the specification's list until the owner's
 list arrives, with `identified_by_irn` optional (G16) and no Parties tool
-mapped to it; changing the groups must be one configuration edit); the
+mapped to it, and the four elevation fields mandatory with nothing derived
+(G22); changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
-reference (S4). Optional fields must survive at runtime and reach the run as
-`Run.field_groups` (today they are dropped: `domain.py` 324-336,
+reference (S4); the Insects date rule of G24 (a two-digit year reads as 19xx),
+recorded as a versioned rule. Optional fields must survive at runtime and reach the run as
+`Run.field_groups`, a new field whose shape S5 decides (today they are dropped: `domain.py` 324-336,
 `collection_runtime.py` 106-118); S4 changes `parse` (`workflow.py` 685-719)
 to extract them.
 
