@@ -1,0 +1,228 @@
+{
+  "version": "fieldmuseum-published-profiles-v1",
+  "nodes": [
+    {
+      "id": "zoology",
+      "name": "Zoology"
+    },
+    {
+      "id": "insects",
+      "parent_id": "zoology",
+      "name": "Insects"
+    },
+    {
+      "id": "mammals",
+      "parent_id": "zoology",
+      "name": "Mammals"
+    },
+    {
+      "id": "birds",
+      "parent_id": "zoology",
+      "name": "Birds"
+    },
+    {
+      "id": "fishes",
+      "parent_id": "zoology",
+      "name": "Fishes"
+    },
+    {
+      "id": "amphibians-and-reptiles",
+      "parent_id": "zoology",
+      "name": "Amphibians and Reptiles"
+    },
+    {
+      "id": "invertebrate-zoology",
+      "parent_id": "zoology",
+      "name": "Invertebrate Zoology"
+    },
+    {
+      "id": "botany",
+      "name": "Botany"
+    },
+    {
+      "id": "seed-plants",
+      "parent_id": "botany",
+      "name": "Seed Plants"
+    },
+    {
+      "id": "bryophytes",
+      "parent_id": "botany",
+      "name": "Bryophytes"
+    },
+    {
+      "id": "lichens",
+      "parent_id": "botany",
+      "name": "Lichens"
+    },
+    {
+      "id": "pteridophytes",
+      "parent_id": "botany",
+      "name": "Pteridophytes"
+    },
+    {
+      "id": "fungi",
+      "parent_id": "botany",
+      "name": "Fungi"
+    },
+    {
+      "id": "anthropology",
+      "name": "Anthropology"
+    },
+    {
+      "id": "geology",
+      "name": "Geology"
+    },
+    {
+      "id": "fossil-invertebrates",
+      "parent_id": "geology",
+      "name": "Fossil Invertebrates"
+    },
+    {
+      "id": "fossil-vertebrates",
+      "parent_id": "geology",
+      "name": "Fossil Vertebrates"
+    },
+    {
+      "id": "paleobotany",
+      "parent_id": "geology",
+      "name": "Paleobotany"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "zoology_insects_slides",
+      "version": "1.0.0",
+      "collection_id": "insects",
+      "state": "active",
+      "synthetic": false,
+      "schema_version": "insects-v1",
+      "mandatory_fields": [
+        "fmnh_ins_number",
+        "collection_code",
+        "country",
+        "province_state",
+        "county",
+        "city",
+        "precise_location",
+        "elevation_from_m",
+        "elevation_to_m",
+        "elevation_from_ft",
+        "elevation_to_ft",
+        "habitat",
+        "collection_method",
+        "date_visited_from",
+        "date_visited_to",
+        "collectors",
+        "verbatim_dts",
+        "taxon",
+        "date_identified"
+      ],
+      "optional_fields": [
+        "identified_by_irn"
+      ],
+      "not_applicable_fields": [],
+      "prompt_set": "fmnh_insects_transcription_v1",
+      "model_routes": [
+        "handwriting-qwen",
+        "handwriting-muse"
+      ],
+      "segmentation_policy": "sam3-v1",
+      "segmentation_settings": {
+        "version": "sam3-settings-v1",
+        "adapter_version": "sam3-http-v1",
+        "model_id": "facebook/sam3",
+        "prompt": "label"
+      },
+      "tools": [
+        "taxonomy_verifier",
+        "geography_lookup",
+        "catalog_number_validator",
+        "date_parser"
+      ],
+      "field_tools": {
+        "fmnh_ins_number": [
+          "catalog_number_validator"
+        ],
+        "country": [
+          "geography_lookup"
+        ],
+        "province_state": [
+          "geography_lookup"
+        ],
+        "county": [
+          "geography_lookup"
+        ],
+        "city": [
+          "geography_lookup"
+        ],
+        "precise_location": [
+          "geography_lookup"
+        ],
+        "date_visited_from": [
+          "date_parser"
+        ],
+        "date_visited_to": [
+          "date_parser"
+        ],
+        "taxon": [
+          "taxonomy_verifier"
+        ],
+        "date_identified": [
+          "date_parser"
+        ]
+      },
+      "data_sources": [
+        "gbif-col-xr"
+      ],
+      "validators": [
+        "insects-rules-v1"
+      ],
+      "scoring_policy": "insects-review-risk-v1",
+      "scoring_policy_ref": {
+        "id": "review-risk-draft",
+        "version": "review-risk-draft-1",
+        "digest": "626c0321ca5464eb2be5842606f6ffabacb62335044f9f29efb4c04f7ed707aa"
+      },
+      "clearance_policy": "insects-clearance-v1",
+      "allowed_input_formats": [
+        "JPEG",
+        "PNG"
+      ],
+      "classification_confirmation_required": true,
+      "institutional_policy_approved": false,
+      "semantics_confirmed": false,
+      "language_handling": {
+        "version": "language-handling-v1",
+        "unknown": "unmeasured",
+        "mixed": "review",
+        "conflicting": "review"
+      },
+      "processing": {
+        "run_cost_limit_micros": 500000,
+        "stage_cost_micros": {
+          "version": "stage-cost-reservations-v1",
+          "cost_micros": {
+            "segment": 15000,
+            "transcribe:handwriting-qwen": 20000,
+            "transcribe:handwriting-muse": 20000,
+            "parse": 20000
+          }
+        },
+        "max_tokens": 480000,
+        "max_external_calls": 96
+      },
+      "date_rules": {
+        "version": "date-rules-v1",
+        "two_digit_year_century": 1900,
+        "roman_numeral_months": true
+      }
+    }
+  ],
+  "mappings": [
+    {
+      "collection_id": "insects",
+      "profile_id": "zoology_insects_slides",
+      "profile_version": "1.0.0"
+    }
+  ]
+}

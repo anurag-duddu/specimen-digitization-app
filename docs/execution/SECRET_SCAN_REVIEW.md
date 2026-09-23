@@ -285,3 +285,30 @@ was appended to the existing rule-local AND exception for the release plan
 template fingerprints; it applies only inside `.secrets.baseline`, and it was
 independently confirmed to be SHA-1 of that SHA256 digest string. The template
 and the tree file stay fully scanned by both tools.
+
+## Published slide pilot profile
+
+`src/specimen_digitization/application/profiles/published.json` holds the
+published collection profiles as configuration (`docs/execution/golive/LANE.md`,
+T4). Its one high entropy value is the profile's reference to the risk policy it
+uses, the `digest` of `scoring_policy_ref`:
+`626c0321ca5464eb2be5842606f6ffabacb62335044f9f29efb4c04f7ed707aa`.
+
+That digest is not an account, token or key. It is the SHA256 of the canonical
+JSON of the existing uncalibrated `RiskPolicy` defaults (`review_risk.py`
+125-147), the value `RiskPolicy().sha256` computes. `tests/test_lane_profile.py`
+recomputes it and fails if the profile's reference and the policy diverge. The
+risk registry refuses a reference whose digest does not match, so editing
+either without the other fails closed. The pinned SAM 3 revision is left to the
+schema's pinned default and does not appear in the file.
+
+Detect-secrets 1.5.0 reports it as one Hex High Entropy String finding in that
+one file. It is recorded in `.secrets.baseline` with `is_secret` false, scoped
+to that exact path and finding hash. No filter, plugin, threshold or existing
+entry was changed, and no path exclusion was introduced.
+
+Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata line in
+`.secrets.baseline`. One identifier, `85bbfc9f0ba3dd340ba8673222718c03b82eb520`,
+confirmed to be the SHA-1 of that digest string, is allowed by a new rule-local
+AND exception that applies only inside `.secrets.baseline`. The profile file
+stays fully scanned by both tools.
