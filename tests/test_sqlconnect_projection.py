@@ -20,6 +20,7 @@ from specimen_digitization.application.domain import (
     Specimen,
     Transcript,
 )
+from specimen_digitization.application.projection import derived_id
 from specimen_digitization.application.production import (
     SqlConnectRepository,
     actor_uid,
@@ -109,7 +110,7 @@ def rows(s: Specimen) -> dict:
     run = s.run.id
     return admin(f"""query {{
  pipelineRun(key:{{organizationId:"{SYNTHETIC_ORG}",collectionId:"{SYNTHETIC_COLLECTION}",id:"{run}"}}) {{ specimenId profileVersionId }}
- labelRegions(where:{{runId:{{eq:"{run}"}}}}) {{ id sourceAssetId }}
+ labelRegions(where:{{runId:{{eq:"{run}"}}}}) {{ id domainRegionId sourceAssetId }}
  modelObservations(where:{{runId:{{eq:"{run}"}}}}) {{ id stepKey routeId independent rawAssetId }}
  readingComparisons(where:{{runId:{{eq:"{run}"}}}}) {{ ratio editDistance lengthBasis }}
  sourceAssets(where:{{specimenId:{{eq:"{s.id}"}}}}) {{ id kind byteSize width }}
@@ -134,7 +135,9 @@ def test_saves_project_every_stage_one_to_five_row_once(tmp_path, caplog):
         assert not [r for r in caplog.records if "Projection" in r.getMessage()]
         found = rows(saved)
         assert bare(found["pipelineRun"]["specimenId"]) == bare(s.id)
-        assert [bare(r["id"]) for r in found["labelRegions"]] == [bare(saved.run.regions[0].id)]
+        region = saved.run.regions[0]
+        assert [bare(r["id"]) for r in found["labelRegions"]] == [bare(derived_id("region", saved.run.id, region.id))]
+        assert found["labelRegions"][0]["domainRegionId"] == region.id
         assert bare(found["labelRegions"][0]["sourceAssetId"]) == bare(s.asset.id)
         observations = sorted(found["modelObservations"], key=lambda o: o["routeId"])
         assert [o["routeId"] for o in observations] == ["handwriting-muse", "handwriting-qwen"]
@@ -151,5 +154,17 @@ def test_saves_project_every_stage_one_to_five_row_once(tmp_path, caplog):
             fresh.write_projection(scope, saved)
         assert not [r for r in caplog.records if "Projection" in r.getMessage()]
         assert counts(rows(saved)) == counts(found)
+        # A second specimen whose readers returned byte-identical responses: the content-addressed
+        # store keeps one object, and each specimen records it as its own asset.
+        t = specimen(blobs, scope, principal.user_id)
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            created = repo.create(principal, t, "ingest:" + t.id, digest({"create": t.id}))
+            other = repo.save(principal, processed(created, blobs), 1, "result:1:" + t.id, digest({"save": t.id}))
+        assert not [r for r in caplog.records if "Projection" in r.getMessage()]
+        theirs = rows(other)
+        assert len(theirs["modelObservations"]) == 2
+        raw = {x: {bare(a["id"]) for a in f["sourceAssets"] if a["kind"] == "raw_response"} for x, f in (("s", found), ("t", theirs))}
+        assert len(raw["t"]) == 2 and not raw["s"] & raw["t"]
     finally:
         actor_uid.reset(token)

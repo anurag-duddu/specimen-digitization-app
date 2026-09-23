@@ -309,20 +309,20 @@ ok(await op('AppendRecordVersionV2', {...work.record, id: rid(), predecessorId: 
 ok(await op('AppendToolCallV1', {...work.toolCall, id: rid(), callKey: rid(), inputSource: 'raw_reading', transcriptionVersionId: null, observationId: work.right.id}));
 console.log('PASS parents of another run or specimen, sensitive ones included, and readings of another region are refused');
 
-// SourceAsset's object uniqueness becomes per specimen in two applies (DATA_CONTRACT.md 3.3). This is
-// step 1: the per-specimen constraint is declared beside specimen_unique_1, which still refuses a second
-// specimen's row for one stored object until T2a drops it.
+// SourceAsset's object uniqueness is per specimen (DATA_CONTRACT.md 3.3, step 2): each specimen records
+// a shared stored object once, and specimen_unique_1 is gone.
 const stored = {objectName: `application/sha256/${rid()}`, generation: '7'};
 ok(await op('AppendSourceAssetV2', {...work.envelope, id: rid(), ...stored}));
-conflict(await op('AppendSourceAssetV2', {...b.envelope, id: rid(), ...stored}), 'specimen_unique_1');
+ok(await op('AppendSourceAssetV2', {...b.envelope, id: rid(), ...stored}));
+conflict(await op('AppendSourceAssetV2', {...work.envelope, id: rid(), ...stored}), 'source_asset_specimen_object');
 if (process.env.PSQL_BIN) {
   const {execFileSync} = await import('node:child_process');
   assert.match(process.env.SPECIMEN_TEST_PG_PORT, /^\d+$/);
   const sql = "SELECT indexname || ' ' || regexp_replace(indexdef, '^.* USING btree ', '') FROM pg_indexes WHERE tablename = 'source_asset' AND indexdef LIKE 'CREATE UNIQUE%' AND indexname <> 'source_asset_pkey' ORDER BY 1";
   const unique = execFileSync(process.env.PSQL_BIN, ['-h', '127.0.0.1', '-p', process.env.SPECIMEN_TEST_PG_PORT, '-d', 'specimen-digitization-database', '-qAt', '-v', 'ON_ERROR_STOP=1', '-c', sql], {encoding: 'utf8'}).trim().split('\n');
-  assert.deepEqual(unique, ['source_asset_specimen_object (organization_id, collection_id, specimen_id, bucket, object_name, generation)', 'specimen_unique_1 (bucket, object_name, generation)']);
+  assert.deepEqual(unique, ['source_asset_specimen_object (organization_id, collection_id, specimen_id, bucket, object_name, generation)']);
 }
-console.log('PASS step 1 of per-specimen object uniqueness: both constraints exist, and specimen_unique_1 still governs');
+console.log('PASS each specimen records a shared stored object once, and specimen_unique_1 is gone (step 2)');
 
 // The writes the pipeline makes are accepted.
 const again = {...work.run, id: rid(), supersedesRunId: work.run.id, traceId: null};

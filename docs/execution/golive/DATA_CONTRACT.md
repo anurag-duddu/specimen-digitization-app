@@ -32,9 +32,8 @@ reads them.
    projection of it, written by `SqlConnectRepository` after each successful
    `SaveSpecimenV3`, and caught up on the next save if a write was lost.
 2. Additive only: three new tables, new nullable columns, four dropped `NOT
-   NULL` constraints, a second unique constraint on `SourceAsset` over a strict
-   superset of an existing one's columns (step 1 of the section 3.3 swap), new
-   operations. Nothing is dropped, renamed or retyped, and no existing operation
+   NULL` constraints, `SourceAsset`'s object uniqueness made per specimen in the
+   two applies of section 3.3, new operations. Nothing is dropped, renamed or retyped, and no existing operation
    changes. The emulator migrates a database holding `main`'s schema to this
    one in place with its rows intact.
 3. One row per mutation. Data Connect rejects table input types as variables
@@ -192,7 +191,7 @@ the same list, with these reasons.
 | `SourceAsset.width`, `SourceAsset.height` | drop `NOT NULL` | Raw provider responses and check evidence are assets without pixels, and `ModelObservation.rawAssetId` and `EvidenceItem.rawAssetId` point at them. The operation still requires both, positive, for image kinds (`original`, `crop`, `mask`). |
 | `LabelRegion.cropAssetId` | drop `NOT NULL` | SAM regions carry no crop (`Region.crop_ref` is always null from SAM), so a region is written as soon as segmentation finishes. The crop each reader saw is identified by `ModelObservation.inputSha256`. |
 | `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match (`no_match`, `ambiguous`, an error) has nothing to locate, and G26 allows no Google value but a place id (rule 1.6). The operation keeps the locator set on every `recorded` row, and on a lookup exactly when its outcome is `success`, so it is optional nowhere else. |
-| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: this PR declares the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Every column the new constraint adds (`organizationId`, `collectionId`, `specimenId`) is `NOT NULL`, as the exception requires. Two applies, because within one the compatible migration drops the old index before it creates the new one, each statement in its own transaction, so writers running during the apply would meet no constraint; created first, the new constraint cannot fail on existing rows, since it is weaker. |
+| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: #88 declares the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` once the first apply is live | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Every column the new constraint adds (`organizationId`, `collectionId`, `specimenId`) is `NOT NULL`, as the exception requires. Two applies, because within one the compatible migration drops the old index before it creates the new one, each statement in its own transaction, so writers running during the apply would meet no constraint; created first, the new constraint cannot fail on existing rows, since it is weaker. |
 
 ## 4. Domain fields the writer reads
 
@@ -681,9 +680,9 @@ against real PostgreSQL and the Data Connect emulator. It checks:
 - cross-collection references are refused;
 - a replayed row is refused with a primary-key conflict, and a natural-key
   duplicate by its unique constraint;
-- step 1 of the `SourceAsset` swap: both unique constraints exist with their
-  columns, and `specimen_unique_1` still refuses a second specimen's row for
-  one stored object (T2a's step 2 flips this test);
+- the `SourceAsset` swap's step 2: two specimens each record one stored object,
+  one specimen cannot record it twice, and only `source_asset_specimen_object`
+  remains (read from PostgreSQL);
 - a second run of the same specimen writes its own row for a region id the
   first run used, and a new run superseding the first is accepted;
 - the writes the pipeline makes are accepted:
@@ -762,7 +761,7 @@ T2a mapping:
 | `SourceAsset` original | id `Asset.id`; object from `Asset.blob_ref`; `mimeType`, `byteSize`, `width`, `height` from the asset; `acquisitionMethod` `intake`; `uploaderUid` `Asset.uploader` |
 | `ProfileVersion` | `Run.profile.id` and `.version`; `configObject` the canonical JSON of `Run.profile_snapshot`; `configSha256` `Run.dependencies["profile_snapshot_sha256"]` |
 | `PipelineRun` | id `Run.id`; `supersedesRunId` the previous run's id; `pinnedVersions` the profile's key, version, registry version and digest, its routes, schema and policy versions, its segmentation settings, and `Run.dependencies`; `inputSha256` the original's SHA-256; `traceId` `Run.trace_id` |
-| `LabelRegion` | id `Region.id`; `sourceAssetId` the original; `geometry` `{x, y, width, height, rotation_quarter_turns, pixel_basis}`; `ordinal` `Region.order`; `regionType` `label`; `segmentationVersion` `{method}:{version}` |
-| `SourceAsset` raw response | kind `raw_response`, `application/json`, no dimensions, `acquisitionMethod` `model_response`, `uploaderUid` the writing actor |
-| `ModelObservation` reading | id `Observation.id`; `modelVersion` `model_id`; `parameters` `{model_settings, provider_model_id, input_tokens, output_tokens, latency_seconds, latency_basis}`; `outcome` `completion_state`, else `finish_state`; `independent` true; `routeId`; `unreadableSpans` |
-| `ReadingComparison` | for a region's transcript with exactly two readings and an alignment algorithm; readings in the profile's route order; `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |
+| `LabelRegion` | id `region/{run}/{Region.id}` (section 5); `domainRegionId` `Region.id`; `sourceAssetId` the original; `geometry` `{x, y, width, height, rotation_quarter_turns, pixel_basis}`; `ordinal` `Region.order`; `regionType` `label`; `segmentationVersion` `{method}:{version}` |
+| `SourceAsset` raw response | id `asset/{specimen}/{bucket}/{object}/{generation}`, so byte-identical responses of two specimens are two rows of one stored object; kind `raw_response`, `application/json`, no dimensions, `acquisitionMethod` `model_response`, `uploaderUid` the writing actor |
+| `ModelObservation` reading | id `Observation.id`; `regionId` the region row's id, while `stepKey` keeps the domain region id; `modelVersion` `model_id`; `parameters` `{model_settings, provider_model_id, input_tokens, output_tokens, latency_seconds, latency_basis}`; `outcome` `completion_state`, else `finish_state`; `independent` true; `routeId`; `unreadableSpans` |
+| `ReadingComparison` | for a region's transcript with exactly two readings and an alignment algorithm; `regionId` the region row's id; readings in the fixed id order (section 3.1); `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |

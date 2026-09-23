@@ -115,7 +115,7 @@ def read(s: Specimen) -> Specimen:
     left = reading(region, "handwriting-qwen", "Chicago, Ill.", "c")
     right = reading(region, "handwriting-muse", "Chicago, Il1.", "d")
     s.run.regions = [region]
-    # The muse reading comes first to show comparisons follow the profile's route order.
+    # The muse reading comes first; a comparison still names its readings in the fixed id order.
     s.run.observations = [right, left]
     s.run.transcripts = [
         Transcript(
@@ -216,7 +216,9 @@ def test_regions_readings_and_comparisons_follow_their_parents():
     region = s.run.regions[0]
     right, left = s.run.observations
     written_region = result[3].variables
-    assert written_region["id"] == region.id
+    # The domain's region id repeats across runs, so the row's id is per run (section 5).
+    assert written_region["id"] == derived_id("region", s.run.id, region.id)
+    assert written_region["domainRegionId"] == region.id
     assert written_region["runId"] == s.run.id
     assert written_region["sourceAssetId"] == s.asset.id
     assert written_region["cropAssetId"] is None
@@ -231,12 +233,13 @@ def test_regions_readings_and_comparisons_follow_their_parents():
     assert written_region["segmentationVersion"] == "sam3:rev-1"
     raw, observation = result[4].variables, result[5].variables
     assert raw["kind"] == "raw_response"
-    assert raw["id"] == derived_id("asset", "demo-bucket", f"application/sha256/{'d' * 64}", "7")
+    assert raw["id"] == derived_id("asset", s.id, "demo-bucket", f"application/sha256/{'d' * 64}", "7")
     assert (raw["width"], raw["height"], raw["byteSize"]) == (None, None, "321")
     assert raw["mimeType"] == "application/json"
     assert raw["uploaderUid"] == "worker-uid"
     assert observation["id"] == right.id
     assert observation["rawAssetId"] == raw["id"]
+    assert observation["regionId"] == written_region["id"]
     assert observation["stepKey"] == f"transcribe:{region.id}:handwriting-muse"
     assert observation["routeId"] == "handwriting-muse"
     assert observation["modelVersion"] == "model/handwriting-muse"
@@ -252,11 +255,11 @@ def test_regions_readings_and_comparisons_follow_their_parents():
         "latency_basis": "validated_agent_call_wall_seconds",
     }
     comparison = result[8].variables
-    assert (comparison["leftObservationId"], comparison["rightObservationId"]) == (
-        left.id,
-        right.id,
-    )
-    assert comparison["id"] == derived_id("comparison", s.run.id, region.id, left.id, right.id)
+    # One fixed order, the ids as lowercase hex without dashes (section 3.1).
+    first, second = sorted((left.id, right.id), key=lambda i: i.replace("-", "").lower())
+    assert (comparison["leftObservationId"], comparison["rightObservationId"]) == (first, second)
+    assert comparison["regionId"] == written_region["id"]
+    assert comparison["id"] == derived_id("comparison", s.run.id, region.id, first, second)
     assert comparison["ratio"] == 1 / 13
     assert (comparison["editDistance"], comparison["lengthBasis"]) == (1, 13)
     assert comparison["status"] == "difference"
@@ -271,6 +274,29 @@ def test_one_raw_response_shared_by_two_readings_is_one_asset():
     assert ops(result).count("AppendSourceAssetV2") == 2
     observations = [w.variables for w in result if w.operation == "AppendModelObservationV2"]
     assert observations[0]["rawAssetId"] == observations[1]["rawAssetId"]
+
+
+def test_specimens_with_one_stored_response_each_record_their_own_asset():
+    # The blob store is content-addressed: byte-identical responses are one object.
+    s, t = read(pinned(specimen())), read(pinned(specimen()))
+    raw = [
+        [w.variables for w in writes(x, locate, size, "worker-uid") if w.variables.get("kind") == "raw_response"]
+        for x in (s, t)
+    ]
+    assert [a["objectName"] for a in raw[0]] == [a["objectName"] for a in raw[1]]
+    assert not {a["id"] for a in raw[0]} & {a["id"] for a in raw[1]}
+    assert {a["specimenId"] for a in raw[1]} == {t.id}
+
+
+def test_a_region_id_a_later_run_reuses_is_a_new_row():
+    s = read(pinned(specimen()))
+    region = s.run.regions[0]
+    first = next(w for w in writes(s, locate, size, "worker-uid") if w.operation == "AppendLabelRegionV2")
+    s.previous_runs = [s.run]
+    s.run = read(pinned(specimen())).run.model_copy(update={"regions": [region]})
+    second = next(w for w in writes(s, locate, size, "worker-uid") if w.operation == "AppendLabelRegionV2")
+    assert first.variables["domainRegionId"] == second.variables["domainRegionId"] == region.id
+    assert first.variables["id"] != second.variables["id"]
 
 
 def test_unmeasured_or_incomplete_pairs_have_no_invented_components():
