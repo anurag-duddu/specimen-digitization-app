@@ -12,7 +12,7 @@
     "dataconnect/connector/checksum.gql": "4717f7368643b67d1ac4300ed3a02b1679580e7ba63cb81c6f0eb080bc271633",
     "dataconnect/connector/operations.gql": "65ac18159fbed968f058e86df1f7e62b6a6274da40e7a8639ac78efb1d221264",
     "dataconnect/connector/paging.gql": "e1b9a90c5989cb602aaccddd2f19994b73aa0965cc5b28bea5282d59ced5b4bb",
-    "dataconnect/connector/projection.gql": "9c6089f374b8a279d03cdf769e1b56d3bb94804d876e7dca1e830595a28e3eb8",
+    "dataconnect/connector/projection.gql": "4ad3b3ee9139f18860893f37c9a66e9e9314e82bafd47b4d50d06402776480fb",
     "dataconnect/connector/readiness.gql": "ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9",
     "dataconnect/connector/scheduling.gql": "c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef",
     "dataconnect/connector/search.gql": "4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681",
