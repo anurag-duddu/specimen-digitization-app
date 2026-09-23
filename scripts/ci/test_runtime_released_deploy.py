@@ -60,11 +60,11 @@ class FakeGoogle:
     run_iam_policy = M.Google.run_iam_policy  # the real read-only guard; it issues GET <service>:getIamPolicy
     real_wait = M.Google.wait  # the real operation-name and deadline checks
 
-    def __init__(self, existing=(), policies=None, fail_traffic=False):
+    def __init__(self, existing=(), policies=None, fail_traffic=False, fail_operation=False):
         self.packet = gate_record()
         self.state = {item["name"]: copy.deepcopy(item) for item in existing}
         self.policies = {"specimen-sam": policy(WORKER), "specimen-api": policy("allUsers")} if policies is None else policies
-        self.calls, self.bodies, self.fail_traffic = [], [], fail_traffic
+        self.calls, self.bodies, self.fail_traffic, self.fail_operation = [], [], fail_traffic, fail_operation
 
     def registry_login(self):
         self.calls.append("login")
@@ -96,7 +96,10 @@ class FakeGoogle:
                              {"uri": f"https://{target['tag']}---{service}-x7-uk.a.run.app"} if "tag" in target else {})}
                              for target in state["traffic"]])
         self.state[name] = state
-        return {"name": f"{PREFIX}/operations/operation-{len(self.bodies)}", "done": True, "response": {}}
+        # fail_operation: Cloud Run accepts the API's full PATCH, then its rollout fails.
+        failed = self.fail_operation and name == NAMES["api"] and "template" in body
+        return {"name": f"{PREFIX}/operations/operation-{len(self.bodies)}", "done": True,
+                **({"error": {"code": 13}} if failed else {"response": {}})}
 
     def wait(self, api, operation, *, maximum_seconds=600):
         self.calls.append(f"wait {maximum_seconds}")
@@ -286,21 +289,25 @@ def test_a_release_checks_the_api_candidate_before_moving_traffic_to_it(tmp_path
     assert not any(":run" in call for call in google.calls) and "ExecutionToken" not in json.dumps(google.bodies)
 
 
-@pytest.mark.parametrize("untag_fails", [False, True])
-def test_an_api_candidate_that_fails_readiness_loses_its_tag_and_never_receives_traffic(tmp_path, monkeypatch, ready,
-                                                                                         untag_fails):
-    google = FakeGoogle(existing=[previous(role) for role in NAMES], fail_traffic=untag_fails)
+@pytest.mark.parametrize("failure,message", [
+    ("readiness", "synthetic readiness failure"),
+    ("invoker check", "owner action required: " + SAM_ACTION),
+    ("operation wait", "cloud operation failed"),
+    ("tag removal", "the API candidate failed a later check and its tag could not be removed; reconcile"),
+])
+def test_an_api_candidate_that_fails_any_later_check_loses_its_tag(tmp_path, monkeypatch, ready, failure, message):
+    google = FakeGoogle(existing=[previous(role) for role in NAMES], fail_traffic=failure == "tag removal",
+                        fail_operation=failure == "operation wait", policies={"specimen-sam": policy(WORKER, "allUsers"),
+                        "specimen-api": policy("allUsers")} if failure == "invoker check" else None)
     receipt, error, seen = deploy(tmp_path, monkeypatch, google, failing=CANDIDATE)
-    assert seen["probed"] == [CANDIDATE] and receipt["promoted"] is False
+    # The original failure propagates unless the removal fails too; `promoted` stays false either way.
+    assert str(error) == message and receipt["promoted"] is False
+    assert seen["probed"] == ([CANDIDATE] if failure in {"readiness", "tag removal"} else [])
     # Exactly one traffic-only PATCH: all traffic stays on the previous revision, and no tag is listed.
     assert google.calls.count("PATCH specimen-api traffic") == 1
     assert google.bodies[-1] == {"name": NAMES["api"], "etag": "etag-3",
                                  "traffic": [{"type": REVISION, "revision": "specimen-api-old", "percent": 100}]}
-    if untag_fails:
-        assert str(error) == "the API candidate failed readiness and its tag could not be removed; reconcile"
-        assert google.calls[-1] == "PATCH specimen-api traffic"
-    else:
-        assert str(error) == "synthetic readiness failure"  # the readiness failure itself propagates
+    if failure != "tag removal":
         assert google.calls[-3:] == ["PATCH specimen-api traffic", "wait 900", "GET specimen-api"]
         assert google.state[NAMES["api"]]["trafficStatuses"] == [{"type": REVISION, "revision": "specimen-api-old",
                                                                    "percent": 100}]

@@ -773,9 +773,9 @@ def released_image(receipts, record, role):
     return receipt["reference"]
 
 
-def apply_released(google, body, role, source_sha):
-    """Create or replace one role and require it reconciled exactly as sent. SAM 3 serves its latest ready
-    revision; an API revision that already serves keeps all traffic while the new one waits at 0% as `candidate`."""
+def submit_released(google, body, role, source_sha):
+    """Create or replace one role and return the accepted operation. SAM 3 serves its latest ready revision; an
+    API revision that already serves keeps all traffic while the new one waits at 0% as `candidate`."""
     existing = google.request("run", "GET", body["name"], missing=True)
     rollback_guard(existing, source_sha)
     if role != "worker":
@@ -785,11 +785,14 @@ def apply_released(google, body, role, source_sha):
             {"type": BY_REVISION, "revision": body["template"]["revision"], "percent": 0, "tag": "candidate"}]
     if existing is None:
         parent, name = body["name"].rsplit("/", 1)
-        operation = google.request("run", "POST", parent, body=body, params={"jobId" if role == "worker" else "serviceId": name})
-    else:
-        if existing.get("etag"):
-            body["etag"] = existing["etag"]
-        operation = google.request("run", "PATCH", body["name"], body=body)
+        return google.request("run", "POST", parent, body=body, params={"jobId" if role == "worker" else "serviceId": name})
+    if existing.get("etag"):
+        body["etag"] = existing["etag"]
+    return google.request("run", "PATCH", body["name"], body=body)
+
+
+def observe_released(google, body, role, operation):
+    """Wait for one role and require it reconciled exactly as sent."""
     google.wait("run", operation, maximum_seconds=900)
     observed = google.request("run", "GET", body["name"])
     require(observed.get("reconciling", False) is False
@@ -842,20 +845,20 @@ def promote_api(google, api, body, source_sha, receipt):
         require(serving_revision(api) == revision, "the new API revision does not serve all traffic")
         receipt["promoted"] = True
         return
-    try:
-        verify_public_api(next((target.get("uri") for target in api.get("trafficStatuses") or []
-                                if target.get("tag") == "candidate"
-                                and (target.get("revision") or "").split("/")[-1] == revision), None), source_sha)
-    except Exception:
-        # No tag URL may keep reaching a revision that never passed readiness; the previous revision keeps all traffic.
-        try:
-            route_all_traffic(google, api, body["traffic"][0]["revision"], "candidate tag removal did not reconcile")
-        except Exception:
-            raise ValueError("the API candidate failed readiness and its tag could not be removed; reconcile") from None
-        raise
+    verify_public_api(next((target.get("uri") for target in api.get("trafficStatuses") or []
+                            if target.get("tag") == "candidate"
+                            and (target.get("revision") or "").split("/")[-1] == revision), None), source_sha)
     api = route_all_traffic(google, api, revision, "API promotion did not reconcile")
     receipt["promoted"] = True
     verify_public_api(api.get("uri"), source_sha)
+
+
+def remove_candidate(google, name, previous):
+    """On the way out of a failed release: the previous revision keeps all traffic and no tag is listed."""
+    try:
+        route_all_traffic(google, google.request("run", "GET", name), previous, "candidate tag removal did not reconcile")
+    except Exception:
+        raise ValueError("the API candidate failed a later check and its tag could not be removed; reconcile") from None
 
 
 def deploy_released(path: Path, receipts: Path, output: Path):
@@ -872,6 +875,7 @@ def deploy_released(path: Path, receipts: Path, output: Path):
                "deployed": {}, "pending": missing, "promoted": False, "worker_executed": False}
     for role in (role for role, names in missing.items() if names):
         print(f"Runtime role {role} is not deployed; pending committed settings: {', '.join(missing[role])}.")
+    tagged = None  # The previous API revision, once a PATCH that tags the candidate has been accepted.
     try:
         if not roles:
             return
@@ -880,7 +884,10 @@ def deploy_released(path: Path, receipts: Path, output: Path):
         bodies = released_bodies(images, sha, run_id, attempt, roles)
         observed = {}
         for role in roles:
-            observed[role] = apply_released(google, bodies[role], role, sha)
+            operation = submit_released(google, bodies[role], role, sha)
+            if role == "api" and bodies["api"]["traffic"][-1].get("tag") == "candidate":
+                tagged = bodies["api"]["traffic"][0]["revision"]
+            observed[role] = observe_released(google, bodies[role], role, operation)
             receipt["deployed"][role] = {"name": observed[role]["name"], "image": images[role], **(
                 {"generation": observed[role].get("generation"), "etag": observed[role].get("etag")} if role == "worker"
                 else {"revision": bodies[role]["template"]["revision"]})}
@@ -891,6 +898,12 @@ def deploy_released(path: Path, receipts: Path, output: Path):
             raise ValueError("owner action required: " + "; ".join(problems))
         if "api" in roles:
             promote_api(google, observed["api"], bodies["api"], sha, receipt)
+    except BaseException:
+        # Any failure after the tag was accepted and before promotion removed it: no tag URL may keep reaching a
+        # revision that has not passed every check. A first release has no serving revision and so no tag.
+        if tagged is not None and not receipt["promoted"]:
+            remove_candidate(google, bodies["api"]["name"], tagged)
+        raise
     finally:
         output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
 
