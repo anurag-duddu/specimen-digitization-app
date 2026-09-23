@@ -203,3 +203,36 @@ anything else) the result carries the warning
 `taxonomy_source_disagreement:{source}`; when one is unavailable after its
 retries, `taxonomy_support_unavailable:{source}`. BugGuide is not called. GBIF's
 names may be stored (G28).
+
+## 7. The geography tool on Google (stage 7, part 2)
+
+G10, G12, G26, G29. `geography_lookup` (`application/geography_tool.py`) is the
+first version of the geography tool behind the interface of section 6; an
+accepted S8 plan replaces this module, not the interface.
+
+**One call per reading** carries every locality literal of that reading. The
+address is the reading's unassigned locality text when there is any, otherwise
+its assigned literals from the most to the least precise field. The key comes
+from `SPECIMEN_GOOGLE_MAPS_API_KEY`; a missing or rejected key is
+`authentication_error`, an operational block (QUE-005). Retries follow section
+6; an HTTP 401 or 403 is final at once.
+
+**The mapping from Google's response to our outcomes is one function**,
+`map_geocoding_response`, so that a pending owner decision changes only it. One
+result without `partial_match` is `success`; a partial match or several results
+is `ambiguous`; `ZERO_RESULTS` is `no_match`. Per field, a success needs every
+literal of the field to equal, after folding (case, accents, punctuation and
+label notations such as "Prov.", G29), the name of an address component at one
+of the field's levels, or a name the profile's aliases give for it ("P.I." as
+the Philippines); otherwise that field is `no_match`. `precise_location` is
+never replaced and is not compared: it holds only when at least one sibling
+field matched and none contradicted the result; otherwise it is `ambiguous`, so
+a result in the wrong place (Denali for a Mindanao label) never vouches for it.
+
+**What is kept** (G26, Google's terms): per request only the place ID, our
+outcome and the sha256 of the full response. Google's names, address components
+and coordinates are read in memory to compute the outcomes and are never
+returned to the agent, stored, traced or logged. The key travels as a URL
+parameter, the only form the Geocoding API accepts (a header key is refused,
+checked 2026-09-23); a filter redacts it from the `httpx` log, and the lane must
+not record raw request URLs in traces.
