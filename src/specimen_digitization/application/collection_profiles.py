@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from .domain import MANDATORY, StageCostReservations
+from .domain import MANDATORY, ExecutionPolicy, StageCostReservations
 
 
 class FrozenRecord(BaseModel):
@@ -75,6 +75,25 @@ class ProcessingPolicy(FrozenRecord):
     max_external_calls: int | None = Field(
         default=None, ge=1, le=1000, exclude_if=lambda value: value is None
     )
+    # Segmentation's two concepts need longer than a reader (LANE.md T3).
+    external_timeout_seconds: float | None = Field(
+        default=None, gt=0, le=600, exclude_if=lambda value: value is None
+    )
+    reader_timeout_seconds: float | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
+    lease_seconds: float | None = Field(
+        default=None, gt=0, le=900, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def timeouts_fit_the_lease(self):
+        defaults = ExecutionPolicy()
+        external = self.external_timeout_seconds or defaults.external_timeout_seconds
+        lease = self.lease_seconds or defaults.lease_seconds
+        if lease < external + 30 or (self.reader_timeout_seconds or 0) > external:
+            raise ValueError("allowance timeouts must fit the run's lease")
+        return self
 
 
 class CollectionProfile(FrozenRecord):

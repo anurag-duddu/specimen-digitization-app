@@ -11856,3 +11856,13 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: a loopback caller check cannot work for a service in Docker Desktop, because the container sees the bridge gateway as the peer. A shared secret, with the port published on host loopback only, is the workable lab perimeter.
 - Failed approaches: a first lab design bound 127.0.0.1 with a loopback check (see the learning).
 - Remaining follow-ups: the worker half of T3a (response binding, retryable failures, lab endpoint, checkpoint pin, timeouts), then T3b.
+
+### 2026-09-23 — Go-live lane T3a (worker): SAM 3 per run from the worker, retryable failures
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the worker half of topic T3a of `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-sam-client` from `golive/lane-sam-server`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome: the worker pins `SPECIMEN_SAM3_CHECKPOINT_SHA256` on the run next to the endpoint and revision. `Sam3Service.segment_per_run` sends the run's request and validates the response against its own request and that pin (`validate_sam3_run_response`, with LocalBlobs references in the lab). A SAM timeout, 429, busy answer or 5xx error is now a retryable `AdapterFailure`, because the service's per-run claim makes a repeat safe; other refusals block. A lab endpoint (`http://127.0.0.1:<port>`) is accepted only with `SPECIMEN_SAM3_LAB=true` outside production, and the worker then sends `SPECIMEN_SAM3_LAB_TOKEN`. The pilot allowance gives external calls 270 s with a 300 s lease, keeps readers at 120 s, and refuses timeouts that do not fit the lease. The pilot's manifest path is unchanged.
+- Validation actually run: the lane, SAM, evidence-pilot, worker-launch and application tests (245 passed); the full gates as listed in the pull request.
+- Durable learnings: a server-side create-only claim with a stored response turns "outcome unknown" into "safe to retry". A retry either returns the finished inference or takes over an attempt whose process provably died at the hard deadline, so the worker can treat transport failures as ordinary retryable failures.
+- Failed approaches: none.
+- Remaining follow-ups: T3b (parameters in the profile, recorded detections, the G15 coverage check). S2 sets the worker's `SPECIMEN_SAM3_CHECKPOINT_SHA256` and deploys once T3a and T3b are both on `main`.

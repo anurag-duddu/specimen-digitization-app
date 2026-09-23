@@ -79,7 +79,13 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
         )
     limits = {
         name: getattr(policy, name)
-        for name in ("max_tokens", "max_external_calls")
+        for name in (
+            "max_tokens",
+            "max_external_calls",
+            "external_timeout_seconds",
+            "reader_timeout_seconds",
+            "lease_seconds",
+        )
         if getattr(policy, name) is not None
     }
     run.profile.execution = run.profile.execution.model_copy(

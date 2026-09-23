@@ -649,10 +649,7 @@ class ProductionAdapters:
             "adapter_version": "production-v2",
             "sam3_expected_sha256": digest(getattr(self, "sam3_expected", {})),
             "classifier": self.classifier.pin(run) if self.classifier else None,
-            "segmentation": {
-                "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
-                "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
-            },
+            "segmentation": segmentation_pins(),
             "policy": run.profile.execution.model_dump(mode="json"),
         }
 
@@ -664,10 +661,7 @@ class ProductionAdapters:
         # A deployment-specific SAM3 endpoint must implement the reviewed adapter.
         # No rectangle substitution, no hidden Hub download or paid execution.
         endpoint = os.getenv("SPECIMEN_SAM3_ENDPOINT")
-        if specimen.run.dependencies.get("segmentation") != {
-            "endpoint": endpoint,
-            "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
-        }:
+        if specimen.run.dependencies.get("segmentation") != segmentation_pins():
             raise OperationalBlock(
                 "segmentation_configuration_changed_requires_new_run"
             )
@@ -675,8 +669,18 @@ class ProductionAdapters:
             raise OperationalBlock(
                 "sam3_serving_contract_not_configured_use_reviewed_regions"
             )
+        lab = (
+            os.getenv("SPECIMEN_SAM3_LAB") == "true"
+            and os.getenv("APP_ENV") != "production"
+        )
+        lab_token = os.getenv("SPECIMEN_SAM3_LAB_TOKEN") if lab else None
+        if lab and not lab_token:
+            raise OperationalBlock("sam3_lab_token_required")
         return Sam3Service(
-            endpoint, self.blobs, expected=self.sam3_expected.get(specimen.id)
+            endpoint,
+            self.blobs,
+            expected=self.sam3_expected.get(specimen.id),
+            lab_token=lab_token,
         ).segment(specimen)
 
     def transcribe(self, specimen, region, route):
@@ -790,6 +794,16 @@ class ProductionAdapters:
         return self.taxonomy.lookup(name)
 
 
+def segmentation_pins():
+    """The SAM 3 service a run is pinned to, and the checkpoint it must serve."""
+    pins = {
+        "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
+        "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
+    }
+    checkpoint = os.getenv("SPECIMEN_SAM3_CHECKPOINT_SHA256")
+    return dict(pins, checkpoint_sha256=checkpoint) if checkpoint else pins
+
+
 class Sam3Service:
     """Pinned remote SAM3 activity contract. Service must return original pixel regions.
 
@@ -797,27 +811,37 @@ class Sam3Service:
     service is provisioned by the application or substituted by a fixture.
     """
 
-    def __init__(self, endpoint: str, blobs, effect=None, *, expected=None):
+    def __init__(
+        self, endpoint: str, blobs, effect=None, *, expected=None, lab_token=None
+    ):
         from urllib.parse import urlparse
 
         parsed = urlparse(endpoint)
-        if (
-            parsed.scheme != "https"
-            or not parsed.hostname
-            or not parsed.hostname.endswith(".run.app")
-            or parsed.username
-            or parsed.query
-            or parsed.fragment
-        ):
+        if lab_token is not None:
+            # The lab (LANE.md T3): the service on host loopback, never elsewhere.
+            approved = (
+                parsed.scheme == "http"
+                and parsed.hostname == "127.0.0.1"
+                and parsed.port is not None
+                and parsed.path in {"", "/"}
+            )
+        else:
+            approved = (
+                parsed.scheme == "https"
+                and bool(parsed.hostname)
+                and parsed.hostname.endswith(".run.app")
+            )
+        if not approved or parsed.username or parsed.query or parsed.fragment:
             raise ValueError(
                 "SAM3 endpoint must be an approved HTTPS Cloud Run service"
             )
         self.endpoint = endpoint.rstrip("/")
         self.blobs = blobs
         self.expected = expected
-        from .sam3_effect import sam3_request
+        self.lab_token = lab_token
+        from .sam3_effect import sam3_request, sam3_run_request
 
-        self.effect = effect or sam3_request
+        self.effect = effect or (sam3_request if expected else sam3_run_request)
 
     def segment(self, specimen):
         from .collection_profiles import SegmentationSettings
@@ -831,7 +855,104 @@ class Sam3Service:
             )
         except (KeyError, ValueError) as exc:
             raise OperationalBlock("segmentation_settings_unresolved") from exc
+        if not self.expected:
+            return self.segment_per_run(specimen)
         return self._segment_with_settings(specimen, settings)
+
+    def segment_per_run(self, specimen):
+        """One claimed inference per run; failures retry safely (LANE.md T3)."""
+        import base64
+        from . import bounded_effect
+        from .collection_profiles import SegmentationSettings
+        from .domain import LookupStatus, Region
+        from .reliability import AdapterFailure
+        from .sam3_effect import canonical_sha256
+        from ..hub_models import SAM3_MODEL
+
+        try:
+            settings = SegmentationSettings.model_validate(
+                specimen.run.profile_rules["segmentation_settings"]
+            )
+        except (KeyError, ValueError) as exc:
+            raise OperationalBlock("segmentation_settings_unresolved") from exc
+        if settings.model_revision != SAM3_MODEL.revision:
+            raise OperationalBlock("segmentation_model_revision_unsupported")
+        checkpoint = specimen.run.dependencies.get("segmentation", {}).get(
+            "checkpoint_sha256"
+        )
+        if not checkpoint:
+            raise OperationalBlock("sam3_checkpoint_pin_required")
+        request = {
+            "run_id": specimen.run.id,
+            "specimen_id": specimen.id,
+            "organization_id": specimen.scope.organization_id,
+            "collection_id": specimen.scope.collection_id,
+            "asset_id": specimen.asset.id,
+            "blob_ref": specimen.asset.blob_ref,
+            "sha256": specimen.asset.sha256,
+            "width": specimen.asset.width,
+            "height": specimen.asset.height,
+            "model_id": settings.model_id,
+            "model_revision": settings.model_revision,
+            "prompt": settings.prompt,
+            "parameters": settings.parameters.model_dump(),
+            "adapter_version": settings.adapter_version,
+            "settings_version": settings.version,
+        }
+        timeout = specimen.run.profile.execution.effect_timeout_for_step("segment")
+        result = bounded_effect.run_isolated(
+            self.effect,
+            {
+                "endpoint": self.endpoint,
+                "request": request,
+                "pins": {
+                    "checkpoint_sha256": checkpoint,
+                    "lab": self.lab_token is not None,
+                },
+                "lab_token": self.lab_token,
+                "timeout_seconds": timeout,
+                "max_response_bytes": 1024 * 1024,
+            },
+            timeout,
+            2 * 1024 * 1024,
+        )
+        # The service's per-run claim makes a repeat safe: it returns a finished
+        # inference instead of running it again, so these failures retry (G6).
+        if result.status == "deadline_exceeded":
+            raise AdapterFailure("sam3_timeout", LookupStatus.TIMEOUT)
+        if result.status == "worker_failed":
+            raise AdapterFailure("sam3_unavailable", LookupStatus.PROVIDER)
+        if result.status != "completed":
+            raise OperationalBlock("sam3_" + result.reason)
+        envelope = json.loads(result.value)
+        raw = base64.b64decode(envelope["body_base64"], validate=True)
+        status = envelope["http_status"]
+        if status != 200:
+            try:
+                detail = json.loads(raw).get("detail")
+            except (ValueError, AttributeError):
+                detail = None
+            if status == 429 or (status == 409 and detail == "sam3_busy"):
+                raise AdapterFailure("sam3_busy", LookupStatus.RATE_LIMITED)
+            if status >= 500:
+                raise AdapterFailure("sam3_unavailable", LookupStatus.PROVIDER)
+            raise OperationalBlock(f"sam3_http_{status}")
+        specimen.run.segmentation = {
+            "blob_ref": self.blobs.put(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "model_id": settings.model_id,
+            "model_revision": settings.model_revision,
+            "checkpoint_sha256": checkpoint,
+            "input_sha256": specimen.asset.sha256,
+            "http_status": status,
+            "validation": envelope["validation"],
+            "settings": settings.model_dump(mode="json"),
+            "request_sha256": canonical_sha256(request),
+            "elapsed_seconds": result.elapsed_seconds,
+        }
+        if envelope["validation"] != "valid":
+            raise OperationalBlock("sam3_" + envelope["validation"])
+        return [Region.model_validate(item) for item in json.loads(raw)["regions"]]
 
     def _segment_with_settings(self, specimen, settings):
         # Private transport shared with the explicitly guarded evidence pilot.
