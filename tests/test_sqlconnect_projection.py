@@ -208,21 +208,19 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
                 selected_observation_id=left.id,
                 first_pass_call=call,
                 differences=[Difference(number=1, spans={left.id: {"start": 11, "end": 12, "text": "l"}, right.id: {"start": 11, "end": 12, "text": "1"}}, verdict=left.id, material=True)],
-                handoffs=[
-                    Handoff(observation_id=left.id, role="decided_transcript", handed_text=left.literal_text),
-                    Handoff(observation_id=right.id, role="raw_reading", handed_text=right.literal_text, note="Reads the l as a one."),
-                ],
+                # A picked decision hands over its decided transcript only (G19).
+                handoffs=[Handoff(observation_id=left.id, role="decided_transcript", handed_text=left.literal_text)],
             )
         ]
         record = blobs.put(b'{"place_id": "fixture-place", "outcome": "success", "response_sha256": "8888"}')
         found = Lookup(provider="google-maps-geocoding", adapter_version="geocode-1", query={"address": "Chicago, Ill."}, status=LookupStatus.SUCCESS, metadata={"locator": "place/fixture-place"}, raw_ref=record, digest="8" * 64)
         run.lookups = [found]
         run.tool_calls = [
-            ToolCallRecord(call_key="lookup:geocode:decided_transcript:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"candidates": [{"place_id": "fixture-place"}]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
+            ToolCallRecord(call_key=f"lookup:geocode:decided_transcript:{region.id}:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"candidates": [{"place_id": "fixture-place"}]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
         ]
         run.fields = {
-            "city": TracedField(state=ValueState.SUPPORTED, literal="Chicago", authority_id="fixture-place", evidence_ids=[found.id], input_source="decided_transcript", source_region_id=region.id),
-            "date_visited_from": TracedField(state=ValueState.SUPPORTED, literal="VII-46", parsed="1946-07", input_source="raw_reading", source_region_id=region.id, source_observation_id=right.id, precision="month", century_rule="date-rules-v1:two_digit_year_century=1900"),
+            "city": TracedField(state=ValueState.SUPPORTED, literal="Chicago", authority_id="fixture-place", evidence_ids=[found.id], evidence_relations={found.id: "supports"}, input_source="decided_transcript", source_region_id=region.id),
+            "date_visited_from": TracedField(state=ValueState.SUPPORTED, literal="VII-46", parsed="1946-07", input_source="decided_transcript", source_region_id=region.id, precision="month", century_rule="date-rules-v1:two_digit_year_century=1900"),
             "county": TracedField(),
         }
         run.field_groups = {"city": "mandatory", "date_visited_from": "mandatory", "county": "mandatory"}
@@ -235,11 +233,12 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         runid = saved.run.id
         found_rows = admin(f"""query {{
  modelObservations(where:{{runId:{{eq:"{runid}"}}}}) {{ id independent stepKey }}
- transcriptionVersions(where:{{runId:{{eq:"{runid}"}}}}) {{ decisionKind selectedObservationId firstPassObservationId unresolved spans }}
+ transcriptionVersions(where:{{runId:{{eq:"{runid}"}}}}) {{ id decisionKind selectedObservationId firstPassObservationId unresolved spans }}
  harnessInputs(where:{{runId:{{eq:"{runid}"}}}}) {{ role handedText note }}
  evidenceItems(where:{{runId:{{eq:"{runid}"}}}}) {{ id source locator responseSha256 }}
  toolCalls(where:{{runId:{{eq:"{runid}"}}}}) {{ fieldKeys source outcome transcriptionVersionId evidenceId }}
- fieldCandidates(where:{{runId:{{eq:"{runid}"}}}}) {{ fieldKey parsedValue inputSource sourceObservationId sourceTranscriptionId }}
+ fieldCandidates(where:{{runId:{{eq:"{runid}"}}}}) {{ id fieldKey parsedValue inputSource sourceObservationId sourceTranscriptionId }}
+ candidateEvidences(where:{{evidenceId:{{eq:"{found.id}"}}}}) {{ candidateId relation }}
  recordVersions(where:{{runId:{{eq:"{runid}"}}}}) {{ id disposition summary reasonCodes }}
  reviewDecisions(where:{{specimenId:{{eq:"{s.id}"}}}}) {{ baseRevision resultingRevision correction }}
 }}""")
@@ -248,14 +247,17 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         assert decision["decisionKind"] == "first_pass" and decision["unresolved"] is False
         assert bare(decision["selectedObservationId"]) == bare(left.id)
         assert bare(decision["firstPassObservationId"]) == bare(call.id)
-        assert sorted(h["role"] for h in found_rows["harnessInputs"]) == ["decided_transcript", "raw_reading"]
+        assert [h["role"] for h in found_rows["harnessInputs"]] == ["decided_transcript"]
         (evidence,) = found_rows["evidenceItems"]
         assert (evidence["locator"], evidence["responseSha256"]) == ("place/fixture-place", "8" * 64)
         (tool,) = found_rows["toolCalls"]
         assert tool["fieldKeys"] == ["country", "city"] and bare(tool["evidenceId"]) == bare(found.id)
         candidates = {c["fieldKey"]: c for c in found_rows["fieldCandidates"]}
         assert candidates["date_visited_from"]["parsedValue"] == {"value": "1946-07", "precision": "month", "century_rule": "date-rules-v1:two_digit_year_century=1900"}
-        assert bare(candidates["date_visited_from"]["sourceObservationId"]) == bare(right.id)
+        assert bare(candidates["date_visited_from"]["sourceTranscriptionId"]) == bare(decision["id"])
+        assert candidates["date_visited_from"]["sourceObservationId"] is None
+        (link,) = found_rows["candidateEvidences"]
+        assert (bare(link["candidateId"]), link["relation"]) == (bare(candidates["city"]["id"]), "supports")
         (record_row,) = found_rows["recordVersions"]
         assert record_row["disposition"] == "needs_human_review" and record_row["summary"] == "Needs human review: county unresolved."
         (review,) = found_rows["reviewDecisions"]

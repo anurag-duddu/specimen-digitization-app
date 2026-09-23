@@ -55,8 +55,12 @@ class Write:
 
 Locate = Callable[[str], Blob]
 Size = Callable[[str], int]
-# A material difference with one of these verdicts leaves the region unresolved.
+# A material difference with one of these verdicts stays among the decision's alternatives.
 OPEN_VERDICTS = ("neither", "uncertain")
+# The one source string Google's evidence may carry (rule 1.6); the connector refuses any other.
+GOOGLE = "google-maps-geocoding"
+# Evidence that may back a candidate: a successful lookup, or recorded evidence (section 6).
+LINKABLE = ("success", "recorded")
 
 
 def _write(operation: str, variables: dict, *key_parts: object) -> Write:
@@ -73,8 +77,8 @@ def writes(
 ) -> list[Write]:
     """Every row the specimen supports so far, each after the rows it references.
 
-    Review decisions are included only for a reviewer's save: their operation
-    admits no other role.
+    Review decisions and reviewers' transcript decisions are included only for a
+    reviewer's save: their operations admit no other role.
     """
     result = [_original(specimen, locate)]
     run = specimen.run
@@ -106,18 +110,19 @@ def writes(
     result += [c for t in run.transcripts if (c := _comparison(run, t)) is not None]
     decisions: dict[str, str] = {}
     for transcript in run.transcripts:
-        result += _first_pass(run, transcript, asset, decisions)
+        result += _first_pass(run, transcript, asset, decisions, reviewer)
     evidence = _evidence(run, asset)
     result += evidence
     recorded = {w.variables["id"] for w in evidence}
+    linkable = {w.variables["id"] for w in evidence if w.variables["outcome"] in LINKABLE}
     result += [
         _tool_call(run, record, decisions, recorded)
         for record in getattr(run, "tool_calls", None) or []
     ]
-    candidates: dict[str, str] = {}
-    result += _fields(run, decisions, recorded, candidates)
+    candidates: dict[str, str | None] = {}
+    result += _fields(run, decisions, linkable, candidates)
     if run.disposition:
-        result += _record(run, candidates)
+        result += _record(run, candidates, recorded)
     if reviewer:
         result += _review_decisions(specimen)
     return result
@@ -340,7 +345,9 @@ def _decision_kind(run: Run, transcript: Transcript) -> str | None:
     return None
 
 
-def _first_pass(run: Run, transcript: Transcript, asset, decisions: dict) -> list[Write]:
+def _first_pass(
+    run: Run, transcript: Transcript, asset, decisions: dict, reviewer: bool
+) -> list[Write]:
     """A region's decided transcript, the first pass's call and each handoff."""
     kind = _decision_kind(run, transcript)
     if kind is None:
@@ -360,10 +367,8 @@ def _first_pass(run: Run, transcript: Transcript, asset, decisions: dict) -> lis
     still_open = [
         d for d in differences if d.get("material") and d.get("verdict") in OPEN_VERDICTS
     ]
-    if kind == "human":
-        unresolved = not transcript.resolved
-    else:
-        unresolved = selected is None or bool(still_open)
+    # Unresolved means no reading was selected (G19); a reviewer says so explicitly.
+    unresolved = not transcript.resolved if kind == "human" else selected is None
     content = {
         "kind": kind,
         "selected": selected,
@@ -375,6 +380,9 @@ def _first_pass(run: Run, transcript: Transcript, asset, decisions: dict) -> lis
     }
     decision = derived_id("transcription", run.id, transcript.region_id, digest(content))
     decisions[transcript.region_id] = decision
+    if kind == "human" and not reviewer:
+        # The reviewer's own save writes it; later rows may still name it.
+        return result
     result.append(
         _write(
             "AppendTranscriptionVersionV2",
@@ -385,7 +393,7 @@ def _first_pass(run: Run, transcript: Transcript, asset, decisions: dict) -> lis
                 "spans": differences,
                 "alternatives": still_open if differences else list(transcript.alternatives),
                 "unresolved": unresolved,
-                "regionId": transcript.region_id,
+                "regionId": _region_row(run.id, transcript.region_id),
                 "decisionKind": kind,
                 "selectedObservationId": selected,
                 "firstPassObservationId": call.id if call else None,
@@ -419,6 +427,11 @@ def _evidence(run: Run, asset) -> list[Write]:
     for found in run.lookups:
         if not (found.raw_ref and found.digest):
             continue
+        outcome = _value(found.status)
+        # A lookup has a locator exactly when it succeeded (section 6).
+        locator = found.metadata.get("locator") or f"lookup/{found.id}"
+        # G26: Google's stored record is our reduced record, never its response.
+        kind = "evidence_record" if found.provider == GOOGLE else "lookup_response"
         result.append(
             _write(
                 "AppendEvidenceItemV2",
@@ -431,11 +444,11 @@ def _evidence(run: Run, asset) -> list[Write]:
                     ),
                     "adapterVersion": found.adapter_version,
                     "query": dict(found.query),
-                    "outcome": _value(found.status),
-                    "locator": str(found.metadata.get("locator") or f"lookup/{found.id}"),
+                    "outcome": outcome,
+                    "locator": str(locator) if outcome == "success" else None,
                     "responseSha256": found.digest,
                     "capturedAt": found.retrieved_at,
-                    "rawAssetId": asset(found.raw_ref, "lookup_response"),
+                    "rawAssetId": asset(found.raw_ref, kind),
                 },
             )
         )
@@ -499,8 +512,8 @@ def _derivation(value, relations: dict) -> str:
     return "parsed" if value.parsed else "literal"
 
 
-def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[Write]:
-    """A candidate per verbatim value, each with the field's settled value and evidence."""
+def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[Write]:
+    """A candidate per verbatim value; the settling one carries the value and evidence."""
     result = []
     for key, value in run.fields.items():
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
@@ -523,10 +536,14 @@ def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[
         )
         relations = getattr(value, "evidence_relations", None) or {}
         content = digest(value.model_dump(mode="json"))
-        written = []
+        # With no pick, the settled value belongs to the reader a lookup confirmed (G20).
+        confirmed = getattr(value, "source_observation_id", None) if verbatim else None
+        candidates[key] = None
         for text, entry_source, reading in entries:
             candidate = derived_id("candidate", run.id, key, reading or "-", content)
-            written.append((candidate, text))
+            settles = not verbatim or (confirmed is not None and reading == confirmed)
+            if settles:
+                candidates[key] = candidate
             result.append(
                 _write(
                     "AppendFieldCandidateV2",
@@ -536,10 +553,10 @@ def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[
                         "fieldKey": key,
                         "state": _value(value.state),
                         "literalValue": text,
-                        "parsedValue": parsed,
-                        "normalizedValue": value.normalized,
-                        "authorityId": value.authority_id,
-                        "derivation": _derivation(value, relations),
+                        "parsedValue": parsed if settles else None,
+                        "normalizedValue": value.normalized if settles else None,
+                        "authorityId": value.authority_id if settles else None,
+                        "derivation": _derivation(value, relations) if settles else "literal",
                         "inputSource": entry_source,
                         "sourceTranscriptionId": decisions.get(region)
                         if entry_source == "decided_transcript"
@@ -548,8 +565,11 @@ def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[
                     },
                 )
             )
+            if not settles:
+                continue
             for evidence in value.evidence_ids:
-                if evidence in recorded:
+                # Only a success or recorded evidence, and only with its relation: no default (G23).
+                if evidence in linkable and relations.get(evidence):
                     result.append(
                         _write(
                             "AppendCandidateEvidenceV2",
@@ -557,17 +577,14 @@ def _fields(run: Run, decisions: dict, recorded: set, candidates: dict) -> list[
                                 "id": derived_id("candidate-evidence", candidate, evidence),
                                 "candidateId": candidate,
                                 "evidenceId": evidence,
-                                "relation": relations.get(evidence, "supports"),
+                                "relation": relations[evidence],
                             },
                         )
                     )
-        # The resolved candidate is the reader whose literal is the settled value, else the first.
-        settled = [c for c, text in written if text == value.normalized]
-        candidates[key] = settled[0] if settled else written[0][0]
     return result
 
 
-def _record(run: Run, candidates: dict) -> list[Write]:
+def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
     """The queue decision, every field's final state and a finding per reason."""
     fields = {key: _value(value.state) for key, value in run.fields.items()}
     reasons = list(run.reasons)
@@ -621,8 +638,12 @@ def _record(run: Run, candidates: dict) -> list[Write]:
             _write(
                 "AppendValidationFindingV2",
                 {
-                    "id": derived_id(record, "finding", reason),
+                    "id": derived_id(
+                        record, "finding", "hard", rule, rest if rest in run.fields else "-", reason
+                    ),
                     "recordVersionId": record,
+                    "runId": run.id,
+                    "evidenceIds": None,
                     "ruleId": rule,
                     "ruleVersion": policy,
                     "severity": "hard",
@@ -638,8 +659,21 @@ def _record(run: Run, candidates: dict) -> list[Write]:
             _write(
                 "AppendValidationFindingV2",
                 {
-                    "id": derived_id(record, "finding", finding.reason_code),
+                    "id": derived_id(
+                        record,
+                        "finding",
+                        finding.severity,
+                        finding.rule_id,
+                        finding.field_key or "-",
+                        finding.reason_code,
+                    ),
                     "recordVersionId": record,
+                    "runId": run.id,
+                    # Only evidence the run recorded; the operation checks each is of the run.
+                    "evidenceIds": [
+                        e for e in getattr(finding, "evidence_ids", None) or [] if e in recorded
+                    ]
+                    or None,
                     "ruleId": finding.rule_id,
                     "ruleVersion": finding.rule_version,
                     "severity": finding.severity,
