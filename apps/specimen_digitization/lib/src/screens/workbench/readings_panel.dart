@@ -572,29 +572,8 @@ class ReadingsRegionSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          // The weight the region's name had when each card carried it: a
-          // label, not a title, set without the leading above and below its
-          // line. On a phone the first reading has to stay on the first
-          // screen under the photograph and the strip (13 sections 0 and
-          // 2.5), and a title-sized heading pushed it off by 9 dp.
-          // Aligned rather than stretched, so the heading's node is the size
-          // of its words: a node the width of the pane is mostly background,
-          // and it is also what a focus highlight would outline.
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: Semantics(
-              container: true,
-              header: true,
-              child: Text(
-                title,
-                style: ui.type.label,
-                textHeightBehavior: const TextHeightBehavior(
-                  applyHeightToFirstAscent: false,
-                  applyHeightToLastDescent: false,
-                ),
-              ),
-            ),
-          ),
+          // The weight the region's name had when each card carried it.
+          GroupHeading(title),
           SizedBox(height: ui.space.s1),
           if (cards.isEmpty)
             // Its own node, read after the heading it belongs to rather than

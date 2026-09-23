@@ -15,6 +15,7 @@ export 'environment_banner.dart';
 export 'evidence_drawer.dart';
 export 'field_row.dart';
 export 'first_pass_summary.dart';
+export 'group_heading.dart';
 export 'in_flight_glyph.dart';
 export 'measured_height.dart';
 export 'motion_reveal.dart';
