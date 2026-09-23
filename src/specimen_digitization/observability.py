@@ -309,7 +309,7 @@ def isolated_model_span(
     existing run_isolated deadline. The parent can terminate a stalled exporter;
     this helper does not grant additional time or retry the model operation.
     """
-    if operation not in {"classify", "transcribe", "extract"}:
+    if operation not in {"classify", "transcribe", "first_pass", "extract"}:
         raise ValueError("Unknown trusted model operation")
     configure_observability(capture_mode=CaptureMode.METADATA)
     attributes = {"specimen.model.operation": operation}
