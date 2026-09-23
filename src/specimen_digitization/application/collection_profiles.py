@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from .domain import MANDATORY
+from .domain import MANDATORY, StageCostReservations
 
 
 class FrozenRecord(BaseModel):
@@ -48,6 +48,13 @@ class SegmentationSettings(FrozenRecord):
     parameters: Sam3Parameters = Field(default_factory=Sam3Parameters)
 
 
+class ProcessingPolicy(FrozenRecord):
+    """The collection's allowance for one run, copied into each requested run."""
+
+    run_cost_limit_micros: int = Field(gt=0, le=2**53 - 1)
+    stage_cost_micros: StageCostReservations
+
+
 class CollectionProfile(FrozenRecord):
     id: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -81,6 +88,10 @@ class CollectionProfile(FrozenRecord):
     )
     scoring_policy_ref: PolicyReference | None = None
     segmentation_settings: SegmentationSettings | None = None
+    # Absent from every definition that has none, so their bytes and digests hold.
+    processing: ProcessingPolicy | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_serializer(mode="wrap")
     def preserve_legacy_serialization(self, handler):

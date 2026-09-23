@@ -383,6 +383,8 @@ class Run(Record):
     dead_letter: bool = False
     lease_until: str | None = None
     created_at: str = Field(default_factory=now)
+    # When processing was requested (LANE.md T1). Omitted until then.
+    queued_at: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class AuditEvent(Record):

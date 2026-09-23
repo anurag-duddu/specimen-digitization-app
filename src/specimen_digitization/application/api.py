@@ -45,6 +45,15 @@ from .active_graph import (
 )
 from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
+from .lane import (
+    LaneConflict,
+    processable,
+    queue,
+    queue_on_intake,
+    refuse_sensitive,
+    run_status,
+)
+from .lane_dispatch import UNCONFIGURED
 from .policy import finalize
 from .reliability import has_active_lease
 from .production import actor_uid
@@ -55,6 +64,7 @@ from .storage import (
     SQLiteRepository,
     SnapshotTooLarge,
     digest,
+    work_available_at,
 )
 from .workflow import OperationalBlock, SyntheticAdapters, Workflow
 
@@ -260,6 +270,8 @@ def classify_error(exc) -> tuple[int, str, str, str]:
             "conflict",
             str(exc),
         )
+        if isinstance(exc, LaneConflict):
+            code = exc.code
     elif isinstance(exc, (ValueError, UnidentifiedImageError)):
         status, code, category, message = (
             422,
@@ -290,16 +302,7 @@ def classify_error(exc) -> tuple[int, str, str, str]:
 
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
     run = specimen.run
-    status = (
-        "completed"
-        if run.disposition
-        else (
-            run.stage
-            if run.stage
-            in {"processing_blocked", "retry_scheduled", "paused", "cancelled"}
-            else "running"
-        )
-    )
+    status = run_status(run)
     result = {
         "specimen_id": specimen.id,
         "asset_id": specimen.asset.id,
@@ -430,6 +433,7 @@ def create_app(
     codec_policy=None,
     source_registry=None,
     source_reader=None,
+    worker_dispatcher=None,
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -521,6 +525,17 @@ def create_app(
             "cancelled",
         }:
             background_tasks.add_task(process_background, p, s.id)
+        elif mode != "synthetic" and work_available_at(s) is not None:
+            start_worker()
+
+    # Outside synthetic mode the worker job does the processing (LANE.md T1).
+    def start_worker():
+        return worker_dispatcher.start() if worker_dispatcher else UNCONFIGURED
+
+    def request_processing(s, actor):
+        """Leave a new or resumed run pending; synthetic runs drain in-process."""
+        if mode != "synthetic":
+            queue(s, registry, actor)
 
     @app.exception_handler(Exception)
     async def errors(request, exc):
@@ -1270,6 +1285,8 @@ def create_app(
                 actor=user, action="ingest", reason="Verified immutable original"
             )
         )
+        if mode != "synthetic":
+            queue_on_intake(specimen, registry, user)
         duplicate = None
         try:
             specimen = repository.create(
@@ -1291,6 +1308,8 @@ def create_app(
         repository.put_document(p.scope, "upload", upload_id, doc, doc["revision"])
         if mode == "synthetic" and not duplicate:
             background_tasks.add_task(process_background, p, specimen.id)
+        elif not duplicate and specimen.run.stage == "pending":
+            start_worker()
         return response
 
     def history_access(user, organization_id, specimen_id):
@@ -2230,6 +2249,7 @@ def create_app(
                 after={"run_id": s.run.id},
             )
         )
+        request_processing(s, user)
         saved = repository.save(
             p,
             s,
@@ -2286,6 +2306,7 @@ def create_app(
                 },
             )
         )
+        request_processing(s, user)
         saved = repository.save(
             p,
             s,
@@ -2346,6 +2367,8 @@ def create_app(
                     )
                 else:
                     raise ValueError("Unsupported action")
+                if body.action in {"retry", "resume", "reprocess"}:
+                    request_processing(s, user)
                 s.audit.append(
                     AuditEvent(actor=user, action=body.action, reason=body.reason)
                 )
@@ -2384,16 +2407,39 @@ def create_app(
                     }
         raise Missing(run_id)
 
-    # Explicit worker endpoint in synthetic mode allows deterministic UI demo; production
-    # dispatch is a separate authenticated worker process, never arbitrary client inference.
-    if mode == "synthetic":
-
-        @app.post(prefix + "/specimens/{specimen_id}/process")
-        def process(organization_id: str, specimen_id: str, user=Depends(identity)):
-            p, s = find(user, organization_id, specimen_id)
-            if "evidence_pilot" in s.run.dependencies:
-                raise Conflict("Evidence pilot permits retained-evidence corrections only")
+    # Synthetic mode drains inside the request for the deterministic UI demo. Every
+    # other mode queues the run and starts the worker job, which does the processing
+    # (LANE.md T1); the API never runs inference.
+    @app.post(prefix + "/specimens/{specimen_id}/process")
+    def process(
+        organization_id: str,
+        specimen_id: str,
+        response: Response,
+        user=Depends(identity),
+        idempotency_key: str = Header(default=""),
+    ):
+        p, s = find(user, organization_id, specimen_id)
+        if "evidence_pilot" in s.run.dependencies:
+            raise Conflict("Evidence pilot permits retained-evidence corrections only")
+        if mode == "synthetic":
             return render_workspace(workflow.drain(p, s.id), p, mutation_committed=True)
+        request_key = key(idempotency_key)
+        refuse_sensitive(s)
+        if s.run.stage == "ingested":
+            request_processing(s, user)
+            s.audit.append(
+                AuditEvent(actor=user, action="process", reason="Processing requested")
+            )
+            s = repository.save(
+                p, s, s.version, "process:" + request_key, digest({"process": s.run.id})
+            )
+        elif not processable(s.run):
+            raise LaneConflict(
+                "run_action_required",
+                f"The run is {run_status(s.run)}; a run action continues it",
+            )
+        response.status_code = 202
+        return dict(summary(s, p.role), dispatch=start_worker().model_dump())
 
     app.state.workflow = workflow
     return app
