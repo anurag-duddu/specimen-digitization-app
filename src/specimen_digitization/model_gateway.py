@@ -59,6 +59,30 @@ INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingPro
         ),
     }
 )
+# The reader routes above stay the whole initial set: the pilot launch, its
+# stage list and the release check compare a profile's readers against it.
+# The first pass and the harness were approved 2026-09-23 on the T1
+# measurements (docs/execution/golive/HARNESS.md section 5).
+STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        "first-pass-glm": HuggingFaceInferenceRoute(
+            route_id="first-pass-glm",
+            logical_capability="transcription_first_pass",
+            model_id="zai-org/GLM-5.3-Flash",
+            provider="deepinfra",
+        ),
+        "harness-deepseek": HuggingFaceInferenceRoute(
+            route_id="harness-deepseek",
+            logical_capability="field_harness",
+            model_id="deepseek-ai/DeepSeek-V4.1-Flash",
+            provider="deepinfra",
+            required_input_modalities=("text",),
+        ),
+    }
+)
+HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {**INITIAL_HUGGINGFACE_ROUTES, **STAGE_HUGGINGFACE_ROUTES}
+)
 
 
 class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
@@ -103,7 +127,7 @@ class HuggingFaceModelGateway:
         self._timeout_seconds = timeout_seconds
         self._token = SecretStr(resolved_token)
         self._bill_to = bill_to if bill_to is not None else os.getenv("HF_BILL_TO")
-        selected_routes = INITIAL_HUGGINGFACE_ROUTES if routes is None else routes
+        selected_routes = HUGGINGFACE_ROUTES if routes is None else routes
         self._routes = MappingProxyType(dict(selected_routes))
 
     @property

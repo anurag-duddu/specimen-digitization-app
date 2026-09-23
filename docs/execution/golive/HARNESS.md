@@ -113,6 +113,9 @@ coordinator on 2026-09-23:
 Both use DeepInfra, which the `handwriting-muse` reader already uses, so no
 new provider enters the data-policy review; neither shares a model family
 with a reader.
+They are a separate stage route set: the reader routes stay the gateway's
+initial set, which the pilot launch, its stage list and the release check
+compare a profile's readers against; the gateway resolves either set.
 
 **How they were chosen.** The ten pilot slides, cropped by hand to their left
 label, were read by both readers (19 of 20 readings; 9 labels disagree). Each

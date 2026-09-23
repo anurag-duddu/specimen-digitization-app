@@ -16,7 +16,11 @@ from google.cloud import storage
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 
-from ..model_gateway import HuggingFaceModelGateway, INITIAL_HUGGINGFACE_ROUTES
+from ..model_gateway import (
+    HUGGINGFACE_ROUTES,
+    STAGE_HUGGINGFACE_ROUTES,
+    HuggingFaceModelGateway,
+)
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, WorkItem, WorkPage, now
@@ -646,11 +650,11 @@ class ProductionAdapters:
         first_pass = run.profile.first_pass_route
         routes = {
             route: {
-                "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
-                "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
+                "model_id": HUGGINGFACE_ROUTES[route].model_id,
+                "provider": HUGGINGFACE_ROUTES[route].provider,
             }
             for route in run.profile.routes
-            + ((first_pass,) if first_pass in INITIAL_HUGGINGFACE_ROUTES else ())
+            + ((first_pass,) if first_pass in STAGE_HUGGINGFACE_ROUTES else ())
         }
         return {
             "prompts": prompts,

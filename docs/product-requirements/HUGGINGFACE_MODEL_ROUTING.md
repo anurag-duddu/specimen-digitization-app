@@ -32,6 +32,18 @@ use different model families and infrastructure providers. They are candidates,
 not approved production models, until the representative Field Museum
 handwriting benchmark and data-policy review pass.
 
+## First-pass and harness routes
+
+| Route | Model | Provider | Intended use |
+|---|---|---|---|
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | The LLM first pass: which reader's raw transcript the harness runs on (text and image) |
+| `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | The agentic harness's tool calling (text); provisional |
+
+Chosen on 2026-09-23 from measurements on the ten pilot slides, recorded in
+`docs/execution/golive/HARNESS.md` section 5, and approved for the go-live
+program (G7). They share the `handwriting-muse` reader's provider and no
+reader's model family.
+
 Automatic provider policies such as `auto`, `fastest`, `cheapest`, and
 `preferred` are rejected by the gateway. A provider outage must produce a typed
 operational failure or an explicit, recorded application fallback; it must not

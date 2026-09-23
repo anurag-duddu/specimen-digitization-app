@@ -16,7 +16,7 @@ from pydantic_ai import Agent, BinaryContent
 
 from .hub_models import SAM3_MODEL
 from .model_gateway import (
-    INITIAL_HUGGINGFACE_ROUTES,
+    HUGGINGFACE_ROUTES,
     HuggingFaceInferenceRoute,
     HuggingFaceModelGateway,
 )
@@ -183,7 +183,7 @@ def run_preflight(
     token_report = inspect_runtime_token(token)
     catalog = fetch_router_catalog(token)
     route_reports = [
-        validate_route(route, catalog) for route in INITIAL_HUGGINGFACE_ROUTES.values()
+        validate_route(route, catalog) for route in HUGGINGFACE_ROUTES.values()
     ]
     report: dict[str, Any] = {
         "token": token_report,
@@ -226,7 +226,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--live-route",
-        choices=sorted(INITIAL_HUGGINGFACE_ROUTES),
+        choices=sorted(HUGGINGFACE_ROUTES),
         help="Optionally run one paid synthetic image request through this route.",
     )
     parser.add_argument(

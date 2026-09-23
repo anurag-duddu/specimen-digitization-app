@@ -14,6 +14,7 @@ from pydantic_ai.models.huggingface import HuggingFaceModel
 
 from specimen_digitization import model_gateway
 from specimen_digitization.model_gateway import (
+    HUGGINGFACE_ROUTES,
     INITIAL_HUGGINGFACE_ROUTES,
     HuggingFaceInferenceRoute,
     HuggingFaceModelGateway,
@@ -250,4 +251,6 @@ def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None
     ]
 
     for route_id in ("first-pass-glm", "harness-deepseek"):
-        assert validate_route(INITIAL_HUGGINGFACE_ROUTES[route_id], catalog)["ready"]
+        assert validate_route(HUGGINGFACE_ROUTES[route_id], catalog)["ready"]
+    # The pilot launch and the release check read the initial set as the readers.
+    assert set(INITIAL_HUGGINGFACE_ROUTES) == {"handwriting-qwen", "handwriting-muse"}
