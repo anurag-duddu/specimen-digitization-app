@@ -63,6 +63,8 @@ class RuntimeConfig:
     # LANE.md T1. Absent means no worker start and no sources, as before.
     worker_job: str | None = None
     sources: tuple[RegisteredSource, ...] = ()
+    # LANE.md T4: private collection identifiers to published collection keys.
+    collection_bindings: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_env(cls, env=None):
@@ -144,7 +146,22 @@ class RuntimeConfig:
             int(generation),
             worker_job=worker_job,
             sources=sources,
+            collection_bindings=collection_bindings(env),
         )
+
+
+def collection_bindings(env):
+    """`SPECIMEN_COLLECTION_BINDINGS_JSON`: a JSON object from identifier to key."""
+    try:
+        value = json.loads(env.get("SPECIMEN_COLLECTION_BINDINGS_JSON") or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("SPECIMEN_COLLECTION_BINDINGS_JSON must be a JSON object") from exc
+    if not isinstance(value, dict) or any(
+        not isinstance(key, str) or not key or not isinstance(node, str) or not node
+        for key, node in value.items()
+    ):
+        raise ValueError("SPECIMEN_COLLECTION_BINDINGS_JSON must map identifiers to keys")
+    return tuple(sorted(value.items()))
 
 
 def lane_settings(env, project, bucket):

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from hashlib import sha256
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
@@ -48,11 +51,28 @@ class SegmentationSettings(FrozenRecord):
     parameters: Sam3Parameters = Field(default_factory=Sam3Parameters)
 
 
+class DateRules(FrozenRecord):
+    """Versioned date interpretation (G24); the date parser stamps what it applied."""
+
+    version: Literal["date-rules-v1"] = "date-rules-v1"
+    # A two-digit year reads as this century; None keeps such a year partial.
+    two_digit_year_century: int | None = Field(
+        default=None, ge=100, le=9900, multiple_of=100
+    )
+
+
 class ProcessingPolicy(FrozenRecord):
     """The collection's allowance for one run, copied into each requested run."""
 
     run_cost_limit_micros: int = Field(gt=0, le=2**53 - 1)
     stage_cost_micros: StageCostReservations
+    # Optional overrides of the run's token and weighted-call limits (LANE.md T4).
+    max_tokens: int | None = Field(
+        default=None, ge=1, exclude_if=lambda value: value is None
+    )
+    max_external_calls: int | None = Field(
+        default=None, ge=1, le=1000, exclude_if=lambda value: value is None
+    )
 
 
 class CollectionProfile(FrozenRecord):
@@ -92,6 +112,19 @@ class CollectionProfile(FrozenRecord):
     processing: ProcessingPolicy | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # Tool ids per field, in call order; a field with none is transcribed as seen.
+    field_tools: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+    first_pass_route: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    harness_route: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    date_rules: DateRules | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_serializer(mode="wrap")
     def preserve_legacy_serialization(self, handler):
@@ -116,6 +149,10 @@ class CollectionProfile(FrozenRecord):
             raise ValueError("field groups must be nonblank and disjoint")
         if len(set(self.model_routes)) < 2:
             raise ValueError("two independent model routes required")
+        if not set(self.field_tools) <= set(fields) or any(
+            tool not in self.tools for tools in self.field_tools.values() for tool in tools
+        ):
+            raise ValueError("field tools must name profile fields and profile tools")
         return self
 
 
@@ -185,6 +222,9 @@ class CollectionProfileRegistry(FrozenRecord):
     nodes: tuple[CollectionNode, ...]
     profiles: tuple[CollectionProfile, ...]
     mappings: tuple[ProfileMapping, ...]
+    # Deployment-private collection identifiers to node ids (LANE.md T4). Never
+    # serialized, so they reach no response, pin or run.
+    bindings: dict[str, str] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
     def validate_registry(self):
@@ -204,6 +244,8 @@ class CollectionProfileRegistry(FrozenRecord):
             raise ValueError("published profile version cannot be replaced")
         if any(p.collection_id not in nodes for p in self.profiles):
             raise ValueError("profile collection missing")
+        if any(not key or node not in nodes for key, node in self.bindings.items()):
+            raise ValueError("collection binding names an unknown collection")
         return self
 
     def resolve(
@@ -212,9 +254,15 @@ class CollectionProfileRegistry(FrozenRecord):
         def review(reason):
             return ProfileResolution(status="review", reason=reason)
 
-        if collection_id not in {n.id for n in self.nodes}:
+        nodes = {n.id: n for n in self.nodes}
+        node = nodes.get(self.bindings.get(collection_id, collection_id))
+        if node is None:
             return review("unknown_collection")
-        mappings = [m for m in self.mappings if m.collection_id == collection_id]
+        # A collection without a mapping of its own uses its nearest mapped ancestor's.
+        mappings = [m for m in self.mappings if m.collection_id == node.id]
+        while not mappings and node.parent_id is not None:
+            node = nodes[node.parent_id]
+            mappings = [m for m in self.mappings if m.collection_id == node.id]
         if len(mappings) != 1:
             return review("missing_mapping" if not mappings else "ambiguous_mapping")
         mapping = mappings[0]
@@ -225,7 +273,7 @@ class CollectionProfileRegistry(FrozenRecord):
             for p in self.profiles
             if (p.id, p.version) == (mapping.profile_id, mapping.profile_version)
         ]
-        if not profiles or profiles[0].collection_id != collection_id:
+        if not profiles or profiles[0].collection_id != mapping.collection_id:
             return review("missing_or_mismatched_profile")
         profile = profiles[0]
         if profile.state != "active":
@@ -284,4 +332,16 @@ def insects_registry(*, synthetic: bool = False) -> CollectionProfileRegistry:
                 profile_version=profile.version,
             ),
         ),
+    )
+
+
+PUBLISHED_PROFILES = Path(__file__).with_name("profiles") / "published.json"
+
+
+def published_registry(
+    bindings: Mapping[str, str] | None = None,
+) -> CollectionProfileRegistry:
+    """The published profiles (LANE.md T4) with the deployment's private bindings."""
+    return CollectionProfileRegistry.model_validate(
+        dict(json.loads(PUBLISHED_PROFILES.read_text()), bindings=dict(bindings or {}))
     )

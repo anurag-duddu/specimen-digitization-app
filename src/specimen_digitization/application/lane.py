@@ -67,10 +67,16 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
                 else "no_allowance"
             ),
         )
+    limits = {
+        name: getattr(policy, name)
+        for name in ("max_tokens", "max_external_calls")
+        if getattr(policy, name) is not None
+    }
     run.profile.execution = run.profile.execution.model_copy(
         update={
             "approved_cost_limit_micros": policy.run_cost_limit_micros,
             "stage_cost_reservations": policy.stage_cost_micros,
+            **limits,
         }
     )
     if run.classification_selection is None:

@@ -3,11 +3,24 @@
 from .collection_profiles import CollectionProfile, resolve_profile_rules
 from .reading_declarations import LanguageHandling
 from .review_risk import (
+    RiskPolicy,
+    RiskPolicyEntry,
     RiskPolicyRegistry,
     RiskPolicyReference,
     RiskPolicyResolution,
     synthetic_risk_policies,
 )
+
+
+def published_risk_registry():
+    """The existing uncalibrated policy, published for the slide pilot (LANE.md T4).
+
+    Its scores stay labelled uncalibrated and carry no clearance authority.
+    """
+    return RiskPolicyRegistry(
+        version="fieldmuseum-risk-registry-v1",
+        entries=(RiskPolicyEntry(policy=RiskPolicy(), status="published"),),
+    )
 
 
 def bind_profile_rules(specimen, published, registry=None):

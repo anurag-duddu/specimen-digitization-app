@@ -13,7 +13,7 @@ from .classification import (
     select_profile,
 )
 from .collection_profiles import insects_registry
-from .domain import Profile
+from .domain import FieldValue, Profile
 from .image_quality import ImageLimits, diagnose_image
 
 
@@ -116,6 +116,14 @@ def classify_and_select(specimen, registry, classifier, blobs, risk_registry=Non
         institutional_policy_approved=published.institutional_policy_approved,
         semantics_confirmed=published.semantics_confirmed,
     )
+    # Optional fields survive at run time and are extracted too (LANE.md T4).
+    groups = {key: "mandatory" for key in published.mandatory_fields} | {
+        key: "optional" for key in published.optional_fields
+    }
+    specimen.run.fields = {
+        key: specimen.run.fields.get(key, FieldValue()) for key in groups
+    }
+    specimen.run.field_groups = groups
     return None
 
 

@@ -457,3 +457,12 @@ regexes = [
   '''^\s*"hashed_secret": "cef383153813f0853ed250d2dd689a2486ffb30c",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "e92bb27e51016b93a782721c94464a5a4a24cb54",?\s*$''', # pragma: allowlist secret
 ]
+
+[[rules.allowlists]]
+description = "Exact SHA-1 finding identifier for the published uncalibrated risk policy digest in the slide pilot profile; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''(?:^|/)\.secrets\.baseline$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"hashed_secret": "85bbfc9f0ba3dd340ba8673222718c03b82eb520",?\s*$''', # pragma: allowlist secret
+]

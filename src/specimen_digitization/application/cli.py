@@ -4,8 +4,10 @@ import argparse
 import os
 from pathlib import Path
 from .api import local_app, create_app
+from .collection_profiles import published_registry
 from .lane_dispatch import dispatcher_from_value
 from .production import GcsBlobs, ProductionAdapters, SqlConnectRepository
+from .profile_runtime import published_risk_registry
 from .source_reader import GcsSourceReader
 from .source_registry import SourceRegistry
 
@@ -18,6 +20,9 @@ def lane_wiring(config):
         if config.sources
         else None,
         "worker_dispatcher": dispatcher_from_value(config.worker_job),
+        # LANE.md T4; a binding to an unknown collection stops the API at start.
+        "profile_registry": published_registry(dict(config.collection_bindings)),
+        "risk_registry": published_risk_registry(),
     }
 
 
