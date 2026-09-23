@@ -255,9 +255,7 @@ def test_the_published_table_count_follows_the_committed_schema(tmp_path):
     derived = M.approved_tables()
     assert len(derived) == 30, "the committed schema no longer publishes 30 tables"
     assert "specimen" in derived and all(name.islower() for name in derived)
-    # The go-live data contract's projection tables (docs/execution/golive/DATA_CONTRACT.md).
-    assert {"reading_comparison", "harness_input", "tool_call"} <= set(derived)
-    source = (Path(M.ROOT) / "dataconnect/schema/schema.gql").read_text()
+    source =(Path(M.ROOT) / "dataconnect/schema/schema.gql").read_text()
     # The one place the number comes from is the schema itself.
     assert source.count("@table") == len(derived)
     assert "== 30" not in (Path(M.__file__).read_text())

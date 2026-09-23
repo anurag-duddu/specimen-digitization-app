@@ -11,6 +11,7 @@ async function call(path, body) {
 }
 const raw = query => call(':executeGraphql', {query});
 const op = (operationName, variables) => call('/connectors/specimen-server:impersonateMutation', {operationName, variables, extensions: {}});
+const query = (operationName, variables) => call('/connectors/specimen-server:impersonateQuery', {operationName, variables, extensions: {}});
 function ok(r) { assert.ok(!r.errors?.length && !r.code, JSON.stringify(r)); return r.data; }
 function denied(r) { assert.ok(r.errors?.length || r.code, JSON.stringify(r)); return r; }
 function conflict(r, constraint) {
@@ -19,8 +20,11 @@ function conflict(r, constraint) {
   assert.match(r.errors[0].message, new RegExp(constraint), JSON.stringify(r));
 }
 const hex = c => c.repeat(64);
+// Data Connect returns UUID fields without dashes; compare both sides in that form.
+const bare = value => JSON.parse(JSON.stringify(value).replace(/\b([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\b/g, '$1$2$3$4$5'));
+const same = (actual, expected) => assert.deepEqual(bare(actual), bare(expected));
 
-const org = randomUUID(), coll = randomUUID(), otherColl = randomUUID(), open = randomUUID(), closed = randomUUID();
+const org = randomUUID(), coll = randomUUID(), otherColl = randomUUID(), open = randomUUID(), closed = randomUUID(), idle = randomUUID();
 const sc = `organizationId:"${org}",collectionId:"${coll}"`;
 ok(await raw(`mutation @transaction {
  o: organization_insert(data:{id:"${org}",name:"Synthetic museum"})
@@ -35,6 +39,7 @@ ok(await raw(`mutation @transaction {
  cm4: collectionMember_insert(data:{organizationId:"${org}",collectionId:"${otherColl}",uid:"reviewer",active:true,role:"reviewer",canViewSensitive:true})
  s1: specimen_insert(data:{${sc},id:"${open}",revision:1,state:"running",sensitive:false,createdBy:"worker"})
  s2: specimen_insert(data:{${sc},id:"${closed}",revision:1,state:"running",sensitive:true,createdBy:"reviewer"})
+ s3: specimen_insert(data:{${sc},id:"${idle}",revision:1,state:"completed",sensitive:false,createdBy:"worker"})
 }`));
 const scope = {organizationId: org, collectionId: coll};
 const profileId = randomUUID();
@@ -50,16 +55,16 @@ async function chain(specimenId, actorUid) {
   w.envelope = {...w.original, id: id(), kind: 'raw_response', parentAssetId: null, objectName: `application/sha256/${randomUUID()}`, mimeType: 'application/json', width: null, height: null, acquisitionMethod: 'model_response'};
   w.run = {...v, id: id(), specimenId, profileVersionId: profileId, supersedesRunId: null, pinnedVersions: {segmentation: {model_revision: 'fixture', settings: {concept_prompt: 'label'}}}, inputSha256: hex('a'), traceId: null};
   w.region = {...v, id: id(), runId: w.run.id, sourceAssetId: w.original.id, cropAssetId: null, geometry: {bbox: [10, 20, 400, 180]}, ordinal: 0, regionType: 'label', segmentationVersion: 'fixture', supersedesRegionId: null};
-  const reading = (route, text) => ({...v, id: id(), runId: w.run.id, regionId: w.region.id, rawAssetId: w.envelope.id, stepKey: `transcribe:${w.region.id}:${route}`, provider: 'fixture', modelVersion: route, promptVersion: 'p1', inputSha256: hex('b'), parameters: {}, literalText: text, outcome: 'stop', independent: true});
+  const reading = (route, text) => ({...v, id: id(), runId: w.run.id, regionId: w.region.id, rawAssetId: w.envelope.id, stepKey: `transcribe:${w.region.id}:${route}`, provider: 'fixture', modelVersion: route, promptVersion: 'p1', inputSha256: hex('b'), parameters: {}, literalText: text, outcome: 'stop', independent: true, routeId: route, unreadableSpans: []});
   w.left = reading('handwriting-qwen', 'Chicago, Ill.');
-  w.right = reading('handwriting-muse', 'Chicago, Il1.');
+  w.right = {...reading('handwriting-muse', 'Chicago, Il1.'), unreadableSpans: ['Il1.']};
   w.firstPassCall = {...reading('first-pass', 'Chicago, Ill.'), stepKey: `first_pass:${w.region.id}`, independent: false};
-  w.comparison = {...v, id: id(), runId: w.run.id, regionId: w.region.id, leftObservationId: w.left.id, rightObservationId: w.right.id, algorithm: 'bounded-levenshtein-fraction-v1', ratio: 0.0714, status: 'difference', reasons: []};
+  w.comparison = {...v, id: id(), runId: w.run.id, regionId: w.region.id, leftObservationId: w.left.id, rightObservationId: w.right.id, algorithm: 'bounded-levenshtein-fraction-v1', ratio: 1 / 13, editDistance: 1, lengthBasis: 13, status: 'difference', reasons: []};
   w.transcription = {...v, id: id(), runId: w.run.id, literalText: w.left.literalText, spans: [], alternatives: [w.left.literalText, w.right.literalText], unresolved: false, regionId: w.region.id, decisionKind: 'first_pass', selectedObservationId: w.left.id, firstPassObservationId: w.firstPassCall.id, rationale: 'The crop shows a lowercase l.'};
   w.decided = {...v, id: id(), runId: w.run.id, transcriptionVersionId: w.transcription.id, observationId: w.left.id, role: 'decided_transcript', handedText: w.left.literalText, note: null};
   w.fallback = {...w.decided, id: id(), observationId: w.right.id, role: 'raw_reading', handedText: w.right.literalText};
   w.evidence = {...v, id: id(), runId: w.run.id, source: 'google_geocoding', sourceVersion: 'v1', adapterVersion: 'a1', query: {address: 'Chicago, Ill.'}, outcome: 'success', locator: 'place/1', responseSha256: hex('e'), capturedAt: '2026-09-23T12:00:00Z', rawAssetId: w.envelope.id};
-  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: 'lookup:city:geocode:1', phase: 'lookup', tool: 'geocode', toolVersion: 't1', fieldKey: 'city', inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {place: 'Chicago'}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
+  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: 'lookup:city:geocode:1', phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKey: 'city', inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {place: 'Chicago'}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
   w.candidate = {...v, id: id(), runId: w.run.id, fieldKey: 'city', state: 'supported', literalValue: 'Chicago', parsedValue: 'Chicago', normalizedValue: 'Chicago', authorityId: null, derivation: 'lookup', inputSource: 'decided_transcript', sourceTranscriptionId: w.transcription.id, sourceObservationId: null};
   w.link = {...v, id: id(), candidateId: w.candidate.id, evidenceId: w.evidence.id, relation: 'supports'};
   w.record = {...v, id: id(), runId: w.run.id, predecessorId: null, disposition: 'needs_human_review', policyVersion: 'insects-clearance-v1', reasonCodes: ['mandatory_unresolved:county'], summary: 'mandatory_unresolved:county'};
@@ -85,25 +90,25 @@ await writeAll(work);
 const thread = ok(await raw(`query {
  pipelineRun(key:{${sc},id:"${work.run.id}"}) { specimenId traceId }
  labelRegions(where:{runId:{eq:"${work.run.id}"}}) { sourceAssetId cropAssetId }
- modelObservations(where:{runId:{eq:"${work.run.id}"}}, orderBy:{stepKey:ASC}) { stepKey independent literalText }
- readingComparisons(where:{runId:{eq:"${work.run.id}"}}) { ratio leftObservationId rightObservationId }
+ modelObservations(where:{runId:{eq:"${work.run.id}"}}, orderBy:{stepKey:ASC}) { stepKey independent literalText routeId unreadableSpans }
+ readingComparisons(where:{runId:{eq:"${work.run.id}"}}) { ratio editDistance lengthBasis leftObservationId rightObservationId }
  transcriptionVersions(where:{runId:{eq:"${work.run.id}"}}) { regionId decisionKind selectedObservationId firstPassObservationId }
  harnessInputs(where:{runId:{eq:"${work.run.id}"}}, orderBy:{role:ASC}) { role handedText observationId }
- toolCalls(where:{runId:{eq:"${work.run.id}"}}) { callKey outcome inputSource evidenceId attempt }
+ toolCalls(where:{runId:{eq:"${work.run.id}"}}) { callKey source outcome inputSource evidenceId attempt }
  fieldCandidates(where:{runId:{eq:"${work.run.id}"}}) { inputSource sourceTranscriptionId }
  resolvedFields(where:{recordVersionId:{eq:"${work.record.id}"}}) { fieldKey fieldGroup }
  sourceAssets(where:{specimenId:{eq:"${open}"},kind:{eq:"raw_response"}}) { width height }
 }`));
-assert.equal(thread.pipelineRun.specimenId, open);
-assert.deepEqual(thread.labelRegions, [{sourceAssetId: work.original.id, cropAssetId: null}]);
-assert.deepEqual(thread.modelObservations.map(o => o.independent), [false, true, true]);
-assert.equal(thread.readingComparisons[0].ratio, 0.0714);
-assert.deepEqual(thread.transcriptionVersions, [{regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id}]);
-assert.deepEqual(thread.harnessInputs.map(h => [h.role, h.observationId]), [['decided_transcript', work.left.id], ['raw_reading', work.right.id]]);
-assert.deepEqual(thread.toolCalls, [{callKey: 'lookup:city:geocode:1', outcome: 'success', inputSource: 'decided_transcript', evidenceId: work.evidence.id, attempt: 1}]);
-assert.deepEqual(thread.fieldCandidates, [{inputSource: 'decided_transcript', sourceTranscriptionId: work.transcription.id}]);
-assert.deepEqual(thread.resolvedFields, [{fieldKey: 'city', fieldGroup: 'mandatory'}]);
-assert.deepEqual(thread.sourceAssets, [{width: null, height: null}]);
+same(thread.pipelineRun.specimenId, open);
+same(thread.labelRegions, [{sourceAssetId: work.original.id, cropAssetId: null}]);
+same(thread.modelObservations.map(o => [o.independent, o.routeId, o.unreadableSpans]), [[false, 'first-pass', []], [true, 'handwriting-muse', ['Il1.']], [true, 'handwriting-qwen', []]]);
+same([thread.readingComparisons[0].ratio, thread.readingComparisons[0].editDistance, thread.readingComparisons[0].lengthBasis], [1 / 13, 1, 13]);
+same(thread.transcriptionVersions, [{regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id}]);
+same(thread.harnessInputs.map(h => [h.role, h.observationId]), [['decided_transcript', work.left.id], ['raw_reading', work.right.id]]);
+same(thread.toolCalls, [{callKey: 'lookup:city:geocode:1', source: 'google-maps-geocoding', outcome: 'success', inputSource: 'decided_transcript', evidenceId: work.evidence.id, attempt: 1}]);
+same(thread.fieldCandidates, [{inputSource: 'decided_transcript', sourceTranscriptionId: work.transcription.id}]);
+same(thread.resolvedFields, [{fieldKey: 'city', fieldGroup: 'mandatory'}]);
+same(thread.sourceAssets, [{width: null, height: null}]);
 console.log('PASS the worker writes a whole non-sensitive run, linked to its specimen, image and run');
 
 // A replay hits the primary key; a second row for the same natural key hits its unique constraint.
@@ -136,6 +141,9 @@ denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'llm'}));
 denied(await op('AppendFieldCandidateV2', {...work.candidate, id: randomUUID(), inputSource: 'raw'}));
 denied(await op('AppendResolvedFieldV2', {...work.resolved, id: randomUUID(), fieldGroup: 'required'}));
+denied(await op('AppendReadingComparisonV1', {...work.comparison, id: randomUUID(), leftObservationId: work.firstPassCall.id, editDistance: -1}));
+denied(await op('AppendReadingComparisonV1', {...work.comparison, id: randomUUID(), leftObservationId: work.firstPassCall.id, lengthBasis: 0}));
+denied(await op('AppendReadingComparisonV1', {...work.comparison, id: randomUUID(), rightObservationId: work.left.id}));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), width: null}));
 ok(await op('AppendFieldCandidateV2', {...work.candidate, id: randomUUID(), derivation: 'human', inputSource: null, sourceTranscriptionId: null}));
 console.log('PASS closed vocabularies and image dimensions are enforced');
@@ -144,15 +152,17 @@ console.log('PASS closed vocabularies and image dimensions are enforced');
 const kept = await chain(closed, 'reviewer');
 await writeAll(kept);
 // Each write is refused for the worker, then the same write succeeds for the reviewer.
+const created = {};
 for (const [name, key] of writes) {
   const variables = {...kept[key], id: randomUUID(), actorUid: 'worker'};
   if ('callKey' in variables) variables.callKey = randomUUID();
   if ('stepKey' in variables) variables.stepKey = randomUUID();
   if ('objectName' in variables) variables.objectName = randomUUID();
-  if (name === 'AppendHarnessInputV1') variables.observationId = kept.firstPassCall.id;
+  if (name === 'AppendHarnessInputV1') variables.transcriptionVersionId = created.transcription;
   if (name === 'AppendReadingComparisonV1') variables.leftObservationId = kept.firstPassCall.id;
   denied(await op(name, variables));
   ok(await op(name, {...variables, actorUid: 'reviewer'}));
+  created[key] = variables.id;
 }
 denied(await op('RecordRunTraceV1', {...scope, actorUid: 'worker', id: kept.run.id, traceId: trace}));
 ok(await op('RecordRunTraceV1', {...scope, actorUid: 'reviewer', id: kept.run.id, traceId: trace}));
@@ -166,3 +176,15 @@ const foreign = {...work.region, id: randomUUID(), collectionId: otherColl, acto
 denied(await op('AppendLabelRegionV2', foreign));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), collectionId: otherColl, actorUid: 'reviewer'}));
 console.log('PASS composite keys refuse cross-collection references');
+
+// The lane's worker lists due work without sensitive-record access (ListDueWorkV2).
+const cutoff = new Date().toISOString();
+const due = (actorUid, includeSensitive) => query('ListDueWorkV2', {...scope, actorUid, cutoff, afterId: '', limit: 100, includeSensitive});
+const ids = r => ok(r).items.map(item => item.id).sort();
+same(ids(await due('worker', false)), [open]);
+denied(await due('worker', true));
+same(ids(await due('reviewer', true)), [open, closed].sort());
+same(ids(await due('reviewer', false)), [open]);
+denied(await due('viewer', false));
+denied(await query('ListDueWorkV2', {...scope, actorUid: 'worker', cutoff, afterId: 'not-a-cursor', limit: 100, includeSensitive: false}));
+console.log('PASS due work hides sensitive rows from members who cannot view them and never lists finished runs');
