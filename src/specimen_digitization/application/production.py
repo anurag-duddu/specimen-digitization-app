@@ -794,6 +794,11 @@ class ProductionAdapters:
         return self.taxonomy.lookup(name)
 
 
+def cross_check_override(*, lab):
+    """The lab may name another cross-check concept, for calibration only."""
+    return os.getenv("SPECIMEN_SAM3_LAB_CROSS_CHECK_CONCEPT") or None if lab else None
+
+
 def segmentation_pins():
     """The SAM 3 service a run is pinned to, and the checkpoint it must serve."""
     pins = {
@@ -882,6 +887,10 @@ class Sam3Service:
         )
         if not checkpoint:
             raise OperationalBlock("sam3_checkpoint_pin_required")
+        parameters = settings.parameters.model_dump()
+        override = cross_check_override(lab=self.lab_token is not None)
+        if override:
+            parameters["cross_check_concept"] = override
         request = {
             "run_id": specimen.run.id,
             "specimen_id": specimen.id,
@@ -895,7 +904,7 @@ class Sam3Service:
             "model_id": settings.model_id,
             "model_revision": settings.model_revision,
             "prompt": settings.prompt,
-            "parameters": settings.parameters.model_dump(),
+            "parameters": parameters,
             "adapter_version": settings.adapter_version,
             "settings_version": settings.version,
         }
@@ -952,7 +961,15 @@ class Sam3Service:
         }
         if envelope["validation"] != "valid":
             raise OperationalBlock("sam3_" + envelope["validation"])
-        return [Region.model_validate(item) for item in json.loads(raw)["regions"]]
+        response = json.loads(raw)
+        # The evidence the lab calibrates from and the coverage check reads.
+        specimen.run.segmentation.update(
+            parameters=response["parameters"],
+            region_scores=[mask["score"] for mask in response["masks"]],
+            label_detections=response["detections"]["label"],
+            cross_check=response["cross_check"],
+        )
+        return [Region.model_validate(item) for item in response["regions"]]
 
     def _segment_with_settings(self, specimen, settings):
         # Private transport shared with the explicitly guarded evidence pilot.

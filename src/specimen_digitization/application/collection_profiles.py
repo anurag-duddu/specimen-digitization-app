@@ -37,7 +37,45 @@ class PolicyReference(FrozenRecord):
 
 
 class Sam3Parameters(FrozenRecord):
-    """The current HTTP contract supports no extra parameter knobs."""
+    """What the SAM 3 service applies (LANE.md T3). Unset values keep the previous
+    contract and are omitted, so older settings keep their bytes."""
+
+    label_threshold: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    mask_threshold: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    # Detections are recorded down to this score, for calibration; only those at
+    # or above the label threshold become regions.
+    record_floor: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    max_detections: int | None = Field(
+        default=None, ge=1, le=64, exclude_if=lambda value: value is None
+    )
+    cross_check_concept: str | None = Field(
+        default=None, min_length=1, max_length=100, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def floor_below_threshold(self):
+        if self.record_floor is not None and self.record_floor > (
+            self.label_threshold or 0.5
+        ):
+            raise ValueError("the recording floor cannot exceed the label threshold")
+        return self
+
+    def applied(self) -> dict:
+        """The values the service applies, with the previous contract's defaults."""
+        label = self.label_threshold or 0.5
+        return {
+            "label_threshold": label,
+            "mask_threshold": self.mask_threshold or 0.5,
+            "record_floor": self.record_floor or label,
+            "max_detections": self.max_detections or 64,
+            "cross_check_concept": self.cross_check_concept,
+        }
 
 
 class SegmentationSettings(FrozenRecord):

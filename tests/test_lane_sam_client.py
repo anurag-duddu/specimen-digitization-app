@@ -26,8 +26,7 @@ from specimen_digitization.application.sam3_server import (
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.hub_models import SAM3_MODEL
 
-from test_lane_sam_server import TOKEN, image_bytes, post, run_request, served
-from test_sam3_server import FixtureEngine
+from test_lane_sam_server import RunEngine, TOKEN, image_bytes, post, run_request, served
 
 __all__ = ["served"]  # The shared fixture, imported for pytest.
 
@@ -48,7 +47,7 @@ def test_a_lab_response_passes_the_worker_binding(tmp_path):
     blobs = LocalBlobs(tmp_path / "blobs")
     raw = image_bytes()
     ref = blobs.put(raw)
-    engine = FixtureEngine()
+    engine = RunEngine()
     engine.checkpoint_sha256 = canonical_sha256(engine.checkpoint_files)
     client = TestClient(
         create_app(

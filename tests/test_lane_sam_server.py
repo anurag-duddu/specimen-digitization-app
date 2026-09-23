@@ -27,6 +27,14 @@ from test_sam3_server import FixtureEngine, MemoryObjects
 TOKEN = "fixture-lab-token-" + "x" * 20
 
 
+class RunEngine(FixtureEngine):
+    """The pilot fixture engine, answering the per-run detect call (LANE.md T3b)."""
+
+    def detect(self, image, prompt, *, threshold, mask_threshold, limit):
+        found = [pair for pair in self.predict(image, prompt) if pair[1] >= threshold]
+        return found[:limit]
+
+
 class RunObjects(MemoryObjects):
     """The pilot fixture store plus the per-run source read and mask reference."""
 
@@ -70,7 +78,7 @@ def run_request(raw, run_id="run-a", **changes):
 @pytest.fixture
 def served():
     raw = image_bytes()
-    objects, engine = RunObjects(raw), FixtureEngine()
+    objects, engine = RunObjects(raw), RunEngine()
     engine.checkpoint_sha256 = canonical_sha256(engine.checkpoint_files)
     clock = SimpleNamespace(now=1000.0)
     segmenter = RunSegmenter(objects, engine, clock=lambda: clock.now)
@@ -180,7 +188,7 @@ def test_lab_mode_serves_a_run_end_to_end_over_local_blobs(tmp_path):
     blobs = LocalBlobs(tmp_path / "blobs")
     raw = image_bytes()
     ref = blobs.put(raw)
-    engine = FixtureEngine()
+    engine = RunEngine()
     engine.checkpoint_sha256 = canonical_sha256(engine.checkpoint_files)
     segmenter = RunSegmenter(LocalObjects(tmp_path / "blobs"), engine)
     client = TestClient(create_app(segmenter, lab_authenticator(TOKEN)))
