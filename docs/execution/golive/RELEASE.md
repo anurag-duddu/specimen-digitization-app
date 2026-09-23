@@ -296,11 +296,31 @@ offline. It parses only the SDL this repository uses. It accepts:
   enforce a foreign key on rows whose new, nullable column is null;
 - removing `!` only from a field on the gate's checked-in list, each named
   with its reason from the data contract (`SourceAsset.width`,
-  `SourceAsset.height`, `LabelRegion.cropAssetId`). A relation field whose
-  `@ref(fields:)` covers a listed column may follow it, since they are the
-  same SQL column. The gate never removes `!` from a key field, a `@unique`
-  field, or a provenance or idempotency key (`ModelObservation` `runId`,
-  `regionId`, `provider`, `modelVersion`, `stepKey`);
+  `SourceAsset.height`, `LabelRegion.cropAssetId`, `EvidenceItem.locator`). A
+  relation field whose `@ref(fields:)` covers a listed column may follow it,
+  since they are the same SQL column. The gate never removes `!` from a key
+  field, a `@unique` field, or a provenance or idempotency key
+  (`ModelObservation` `runId`, `regionId`, `provider`, `modelVersion`,
+  `stepKey`, and the TRN-005 provenance `rawAssetId`, `promptVersion` and
+  `inputSha256`), even when the list names it;
+- one closed exception for a unique constraint (PLAN section 4.4,
+  coordinator ruling on #88). `SourceAsset`'s `specimen_unique_1` on
+  (bucket, objectName, generation) gives way to `source_asset_specimen_object`
+  on (organizationId, collectionId, specimenId, bucket, objectName,
+  generation), because the content-addressed blob store makes identical bytes
+  one object across specimens. One migration drops before it creates, each
+  statement in autocommit, so the swap takes two merges. The gate admits
+  exactly these two steps from its checked-in entry:
+  1. adding exactly `source_asset_specimen_object` while `specimen_unique_1`
+     is still declared in both schemas. Every column it adds must be an
+     existing NOT NULL column, since PostgreSQL treats NULLs as distinct;
+  2. in a later merge, dropping exactly `specimen_unique_1`, only when the
+     live schema already has `source_asset_specimen_object` and no live
+     operation uses the old constraint (a lookup, upsert or `onConflict` on
+     its fields).
+
+  Both steps in one merge, and any other change to a unique constraint, are
+  refused. Neither constraint may be the table's key or hold a never-list key;
 - a new type-level `@unique` or `@index` whose fields are all new;
 - new connector operations whose header carries `@auth(level: NO_ACCESS)` and
   whose body checks `organizationMember(key: {organizationId: $organizationId,
@@ -311,7 +331,7 @@ It refuses everything else, and names each refusal without values:
 - a changed `@table` key or name, field type, default or reference;
 - an added `!`, or a new non-null field on an existing table;
 - a new `@unique` or `@index` over an existing field, or a removed or changed
-  type-level constraint;
+  type-level constraint, other than the two steps above;
 - a changed or removed `@view`;
 - a removed or changed operation, compared with whitespace normalized;
 - a new operation at another auth level or without the membership check.
@@ -348,7 +368,9 @@ with point-in-time recovery are on. The ordinary identity then:
    catalog is checked and the clone is deleted (D1).
 2. The gate of section 4.1 must pass.
 3. The schema is applied with `MIGRATE_COMPATIBLE`: validate-only first, then
-   conditional on the live etag.
+   conditional on the live etag. The apply sends the merged sources unchanged
+   and never builds a schema of its own. A change one migration would order
+   unsafely, like the unique swap in 4.1, spans two merges instead.
 4. The supplemental indexes are created concurrently, then the connector and
    the Storage rules are applied.
 5. The catalog must list exactly the declared tables.
