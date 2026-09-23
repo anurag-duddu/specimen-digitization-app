@@ -1,16 +1,19 @@
 """Opt-in SAM 3 CPU service. No checkpoint is loaded on module import.
 
-Cloud Run IAM must allow only the worker identity. Durable create-only GCS
-claims fence one inference per manifest specimen, including unknown outcomes.
+Cloud Run IAM must allow only the worker identity. Durable create-only claims
+fence one inference per manifest specimen (the frozen pilot) or per run (the
+processing lane, docs/execution/golive/LANE.md T3), including unknown outcomes.
 """
 
 from __future__ import annotations
 
 import hashlib
+import hmac
 import io
 import json
 import math
 import os
+import re
 import stat
 from pathlib import Path
 import threading
@@ -139,7 +142,8 @@ class SegmentRequest(Strict):
     specimen_id: str
     organization_id: str
     collection_id: str
-    blob_ref: str = Field(pattern=r"^[a-f0-9]{64}:[1-9][0-9]*$")
+    # A generation pins a Cloud Storage copy; the lab's LocalBlobs refs are bare digests.
+    blob_ref: str = Field(pattern=r"^[a-f0-9]{64}(:[1-9][0-9]*)?$")
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     width: int = Field(gt=0, le=20000)
     height: int = Field(gt=0, le=20000)
@@ -201,6 +205,15 @@ class GCSObjects:
     def source(self, obj: SourceObject):
         return self._media(obj.bucket, obj.object_name, obj.generation, obj.size_bytes)
 
+    def application_source(self, request):
+        """The application copy a per-run request names, at its exact generation."""
+        sha256, _, generation = request.blob_ref.partition(":")
+        if not generation:
+            raise HTTPException(422, "application_generation_required")
+        return self._media(
+            self.output_bucket, "application/sha256/" + sha256, generation, MAX_BYTES
+        )
+
     def put_mask(self, raw):
         name = "application/sha256/" + digest(raw)
         result = self.create(name, raw)
@@ -254,6 +267,22 @@ class GCSObjects:
         return self._media(self.output_bucket, name, blob.generation, 1024 * 1024)
 
 
+def checkpoint_files_digest(checkpoint: Path):
+    """The digest of the checkpoint's artifact digests, as the engine pins it."""
+    artifacts = sorted(
+        path
+        for path in Path(checkpoint).iterdir()
+        if path.suffix in {".safetensors", ".json", ".txt"}
+    )
+    if len(artifacts) > 64:
+        raise RuntimeError("sam3_checkpoint_artifact_limit")
+    files = {}
+    for path in artifacts:
+        with path.open("rb") as stream:
+            files[path.name] = hashlib.file_digest(stream, "sha256").hexdigest()
+    return files, digest(encoded(files))
+
+
 def offline_checkpoint_digest():
     """Only the worker owns inference credentials; SAM consumes pinned files."""
     import re
@@ -296,20 +325,9 @@ class Sam3Engine:
         weights = sorted(checkpoint.glob("*.safetensors"))
         if not weights:
             raise RuntimeError("sam3_checkpoint_missing")
-        self.checkpoint_files = {}
-        artifacts = sorted(
-            path
-            for path in checkpoint.iterdir()
-            if path.suffix in {".safetensors", ".json", ".txt"}
+        self.checkpoint_files, self.checkpoint_sha256 = checkpoint_files_digest(
+            checkpoint
         )
-        if len(artifacts) > 64:
-            raise RuntimeError("sam3_checkpoint_artifact_limit")
-        for path in artifacts:
-            with path.open("rb") as stream:
-                self.checkpoint_files[path.name] = hashlib.file_digest(
-                    stream, "sha256"
-                ).hexdigest()
-        self.checkpoint_sha256 = digest(encoded(self.checkpoint_files))
         if expected_digest is not None and self.checkpoint_sha256 != expected_digest:
             raise RuntimeError("sam3_checkpoint_digest_mismatch")
         torch.set_num_threads(4)
@@ -414,60 +432,15 @@ class Segmenter:
         ))
         if len(raw) != source.size_bytes or digest(raw) != source.sha256:
             raise HTTPException(409, "pilot_source_integrity_mismatch")
-        with Image.open(io.BytesIO(raw)) as decoded:
-            if (
-                decoded.size != (request.width, request.height)
-                or decoded.width * decoded.height > MAX_PIXELS
-            ):
-                raise HTTPException(422, "source_dimensions_mismatch")
-            if getattr(decoded, "n_frames", 1) != 1:
-                raise HTTPException(422, "multi_frame_source_unsupported")
-            image = decoded.convert("RGB")
-        masks = self.engine.predict(image, request.prompt)
-        if not 0 < len(masks) <= 64:
-            raise HTTPException(422, "sam3_no_usable_regions")
-        regions, evidence = [], []
-        total_bytes = 0
-        for index, (mask, score) in enumerate(masks):
-            if (
-                mask.size != image.size
-                or mask.mode != "L"
-                or not math.isfinite(score)
-                or not 0 <= score <= 1
-            ):
-                raise HTTPException(422, "sam3_invalid_mask")
-            if set(mask.tobytes()) - {0, 255}:
-                raise HTTPException(422, "sam3_nonbinary_mask")
-            bounds = mask.getbbox()
-            if bounds is None:
-                raise HTTPException(422, "sam3_empty_mask")
-            out = io.BytesIO()
-            mask.save(out, format="PNG")
-            mask_raw = out.getvalue()
-            total_bytes += len(mask_raw)
-            if len(mask_raw) > MAX_MASK_BYTES or total_bytes > 16_000_000:
-                raise HTTPException(422, "sam3_mask_byte_limit")
-            stored = self.objects.put_mask(mask_raw)
-            if stored is None:
-                raise HTTPException(409, "sam3_mask_collision")
-            x, y, right, bottom = bounds
-            regions.append(
-                Region(
-                    id=str(uuid5(NAMESPACE_URL, prefix + f"/{index}")),
-                    asset_id=request.asset_id,
-                    x=x,
-                    y=y,
-                    width=right - x,
-                    height=bottom - y,
-                    order=index,
-                    method="sam3",
-                    version=SAM3_MODEL.revision,
-                    mask_ref=f"{stored['sha256']}:{stored['generation']}",
-                ).model_dump()
-            )
-            evidence.append(
-                dict(stored, score=score, encoding="binary-png-original-pixels")
-            )
+        image = decode_source(raw, request)
+        regions, evidence = mask_regions(
+            self.objects,
+            self.engine.predict(image, request.prompt),
+            image,
+            request,
+            prefix,
+            lambda stored: f"{stored['sha256']}:{stored['generation']}",
+        )
         response = {
             "model_id": SAM3_MODEL.repo_id,
             "model_revision": SAM3_MODEL.revision,
@@ -487,7 +460,236 @@ class Segmenter:
         return response
 
 
-def create_app(segmenter, authenticate, *, hard_deadline=False):
+def decode_source(raw, request):
+    with Image.open(io.BytesIO(raw)) as decoded:
+        if (
+            decoded.size != (request.width, request.height)
+            or decoded.width * decoded.height > MAX_PIXELS
+        ):
+            raise HTTPException(422, "source_dimensions_mismatch")
+        if getattr(decoded, "n_frames", 1) != 1:
+            raise HTTPException(422, "multi_frame_source_unsupported")
+        return decoded.convert("RGB")
+
+
+def mask_regions(objects, masks, image, request, prefix, mask_ref):
+    """Binary original-pixel masks to stored masks and their bounding regions."""
+    if not 0 < len(masks) <= 64:
+        raise HTTPException(422, "sam3_no_usable_regions")
+    regions, evidence = [], []
+    total_bytes = 0
+    for index, (mask, score) in enumerate(masks):
+        if (
+            mask.size != image.size
+            or mask.mode != "L"
+            or not math.isfinite(score)
+            or not 0 <= score <= 1
+        ):
+            raise HTTPException(422, "sam3_invalid_mask")
+        if set(mask.tobytes()) - {0, 255}:
+            raise HTTPException(422, "sam3_nonbinary_mask")
+        bounds = mask.getbbox()
+        if bounds is None:
+            raise HTTPException(422, "sam3_empty_mask")
+        out = io.BytesIO()
+        mask.save(out, format="PNG")
+        mask_raw = out.getvalue()
+        total_bytes += len(mask_raw)
+        if len(mask_raw) > MAX_MASK_BYTES or total_bytes > 16_000_000:
+            raise HTTPException(422, "sam3_mask_byte_limit")
+        stored = objects.put_mask(mask_raw)
+        if stored is None:
+            raise HTTPException(409, "sam3_mask_collision")
+        x, y, right, bottom = bounds
+        regions.append(
+            Region(
+                id=str(uuid5(NAMESPACE_URL, prefix + f"/{index}")),
+                asset_id=request.asset_id,
+                x=x,
+                y=y,
+                width=right - x,
+                height=bottom - y,
+                order=index,
+                method="sam3",
+                version=SAM3_MODEL.revision,
+                mask_ref=mask_ref(stored),
+            ).model_dump()
+        )
+        evidence.append(dict(stored, score=score, encoding="binary-png-original-pixels"))
+    return regions, evidence
+
+
+# A run id names storage paths, so it may not contain a separator or a dot.
+RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
+MAX_RUN_ATTEMPTS = 10
+
+
+class RunSegmenter:
+    """Per-run mode (LANE.md T3): the authenticated worker authorizes each run.
+
+    One create-only claim per attempt fences inference; the stored response
+    answers any repeat of the same request. A claim with no response older than
+    the process's hard deadline belongs to an attempt that died with it.
+    """
+
+    def __init__(self, objects, engine, *, clock=time.time, hard_deadline_seconds=240):
+        self.objects, self.engine, self.clock = objects, engine, clock
+        self.hard_deadline_seconds = hard_deadline_seconds
+        self.lock = threading.Lock()
+
+    def segment(self, request: SegmentRequest):
+        if not RUN_ID.fullmatch(request.run_id):
+            raise HTTPException(422, "invalid_run_id")
+        if not self.lock.acquire(blocking=False):
+            raise HTTPException(429, "sam3_busy")
+        try:
+            return self._segment(request)
+        finally:
+            self.lock.release()
+
+    def _stored(self, prefix, request_sha256):
+        previous = self.objects.read(prefix + "/response.json")
+        if previous is None:
+            return None
+        result = json.loads(previous)
+        if result["request_sha256"] != request_sha256:
+            raise HTTPException(409, "sam3_run_request_mismatch")
+        return result
+
+    def _claim(self, prefix, request_sha256):
+        for attempt in range(1, MAX_RUN_ATTEMPTS + 1):
+            name = f"{prefix}/claim-{attempt}.json"
+            claim = {"request_sha256": request_sha256, "claimed_at": self.clock()}
+            if self.objects.create(name, encoded(claim)) is not None:
+                return
+            existing = json.loads(self.objects.read(name))
+            if existing["request_sha256"] != request_sha256:
+                raise HTTPException(409, "sam3_run_request_mismatch")
+            if self.clock() - existing["claimed_at"] <= self.hard_deadline_seconds:
+                raise HTTPException(409, "sam3_busy")
+        raise HTTPException(409, "sam3_run_attempts_exhausted")
+
+    def _segment(self, request):
+        request_sha256 = digest(encoded(request.model_dump()))
+        prefix = f"application/sha256/sam3-runs/{request.run_id}"
+        stored = self._stored(prefix, request_sha256)
+        if stored is not None:
+            return stored
+        raw = self.objects.application_source(request)
+        if digest(raw) != request.sha256:
+            raise HTTPException(409, "source_integrity_mismatch")
+        image = decode_source(raw, request)
+        self._claim(prefix, request_sha256)
+        regions, evidence = mask_regions(
+            self.objects,
+            self.engine.predict(image, request.prompt),
+            image,
+            request,
+            f"sam3-run/{request.run_id}",
+            lambda stored: stored.get("ref")
+            or f"{stored['sha256']}:{stored['generation']}",
+        )
+        evidence = [
+            dict(item, ref=region["mask_ref"])
+            for item, region in zip(evidence, regions, strict=True)
+        ]
+        response = {
+            "model_id": SAM3_MODEL.repo_id,
+            "model_revision": SAM3_MODEL.revision,
+            "implementation": SAM3_IMPLEMENTATION,
+            "checkpoint_sha256": self.engine.checkpoint_sha256,
+            "checkpoint_files": self.engine.checkpoint_files,
+            "request_sha256": request_sha256,
+            "run_id": request.run_id,
+            "source": {
+                "blob_ref": request.blob_ref,
+                "sha256": request.sha256,
+                "size_bytes": len(raw),
+            },
+            "threshold": 0.5,
+            "mask_threshold": 0.5,
+            "regions": regions,
+            "masks": evidence,
+        }
+        if self.objects.create(prefix + "/response.json", encoded(response)) is None:
+            stored = self._stored(prefix, request_sha256)
+            if stored is None:
+                raise HTTPException(409, "sam3_response_collision")
+            return stored
+        return response
+
+
+class LocalObjects:
+    """Lab storage in the application's LocalBlobs layout (LANE.md T3)."""
+
+    def __init__(self, root):
+        from .storage import LocalBlobs
+
+        self.root = Path(root)
+        self.blobs = LocalBlobs(self.root)
+
+    def application_source(self, request):
+        return self.blobs.get_bounded(request.blob_ref.split(":")[0], MAX_BYTES)
+
+    def put_mask(self, raw):
+        ref = self.blobs.put(raw)
+        return {"ref": ref, "sha256": digest(raw), "size_bytes": len(raw)}
+
+    def _path(self, name):
+        parts = name.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("invalid lab object name")
+        return self.root.joinpath(*parts)
+
+    def create(self, name, raw):
+        import tempfile
+
+        path = self._path(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix=".object-", dir=path.parent)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, path)  # Create-only: never replaces a claim.
+            except FileExistsError:
+                return None
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+        return {"object_name": name, "sha256": digest(raw), "size_bytes": len(raw)}
+
+    def read(self, name):
+        path = self._path(name)
+        return path.read_bytes() if path.exists() else None
+
+
+def lab_authenticator(token):
+    """The lab's shared secret replaces the identity token; Docker hides loopback."""
+    if len(token) < 32:
+        raise ValueError("lab token must be at least 32 characters")
+    expected = ("Bearer " + token).encode()
+
+    def authenticate(header):
+        if not hmac.compare_digest(header.encode(), expected):
+            raise ValueError("unapproved caller")
+
+    return authenticate
+
+
+def serving_mode(env):
+    mode = env.get("SPECIMEN_SAM3_ENABLE")
+    if mode in {"authorized-pilot", "authorized-run"} and env.get("K_SERVICE"):
+        return mode
+    if mode == "lab":
+        if env.get("K_SERVICE") or env.get("APP_ENV") == "production":
+            raise RuntimeError("sam3_lab_mode_refused_in_production")
+        return mode
+    raise RuntimeError("sam3_requires_authorized_cloud_run_launch")
+
+
+def create_app(segmenter, authenticate, *, hard_deadline=False, deadline_seconds=120):
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.exception_handler(RequestValidationError)
@@ -525,7 +727,11 @@ def create_app(segmenter, authenticate, *, hard_deadline=False):
     def segment(request: SegmentRequest):
         # A hosting request timeout does not stop model execution. A hard process
         # deadline does; durable claims ensure that restart cannot replay it.
-        timer = threading.Timer(120, lambda: os._exit(70)) if hard_deadline else None
+        timer = (
+            threading.Timer(deadline_seconds, lambda: os._exit(70))
+            if hard_deadline
+            else None
+        )
         if timer:
             timer.start()
         try:
@@ -559,6 +765,68 @@ def read_runtime_manifest(*, materialize=False):
         raise RuntimeError("sam3_private_manifest_unavailable") from None
 
 
+def offline_checkpoint_path():
+    """The pinned checkpoint in the local Hub cache; never a download."""
+    from huggingface_hub import constants, snapshot_download
+
+    if not constants.HF_HUB_OFFLINE:
+        raise RuntimeError("sam3_offline_checkpoint_required")
+    return Path(
+        snapshot_download(
+            repo_id=SAM3_MODEL.repo_id,
+            revision=SAM3_MODEL.revision,
+            allow_patterns=["*.json", "*.safetensors", "*.txt"],
+            token=False,
+            local_files_only=True,
+        )
+    )
+
+
+def serve_runs(mode):
+    """Per-run serving: Cloud Run behind the worker identity, or the local lab."""
+    import uvicorn
+
+    offline_checkpoint_digest()
+    if mode == "lab":
+        authenticate = lab_authenticator(os.environ["SPECIMEN_SAM3_LAB_TOKEN"])
+        objects = LocalObjects(os.environ["SPECIMEN_SAM3_LAB_DIR"])
+    else:
+        from google.auth.transport.requests import Request as GoogleRequest
+        from google.cloud import storage
+        from google.oauth2.id_token import verify_oauth2_token
+
+        audience, caller = (
+            os.environ["SPECIMEN_SAM3_AUDIENCE"],
+            os.environ["SPECIMEN_SAM3_CALLER_EMAIL"],
+        )
+
+        def authenticate(header):
+            if not header.startswith("Bearer "):
+                raise ValueError("missing token")
+            claims = verify_oauth2_token(header[7:], GoogleRequest(), audience=audience)
+            if claims.get("email") != caller or claims.get("email_verified") is not True:
+                raise ValueError("unapproved caller")
+
+        objects = GCSObjects(
+            storage.Client(project="specimen-digitization"),
+            os.environ["SPECIMEN_SAM3_OUTPUT_BUCKET"],
+        )
+    # No launch window: the service scales to zero between runs instead.
+    uvicorn.run(
+        create_app(
+            RunSegmenter(objects, Sam3Engine(), hard_deadline_seconds=240),
+            authenticate,
+            hard_deadline=True,
+            deadline_seconds=240,
+        ),
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8080")),
+        workers=1,
+        access_log=False,
+        timeout_graceful_shutdown=5,
+    )
+
+
 def main():
     import argparse
 
@@ -567,7 +835,15 @@ def main():
     )
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--materialize-config", action="store_true")
+    parser.add_argument(
+        "--checkpoint-digest",
+        action="store_true",
+        help="print the offline checkpoint's digest without loading the model",
+    )
     args = parser.parse_args()
+    if args.checkpoint_digest:
+        print(checkpoint_files_digest(offline_checkpoint_path())[1])
+        return
     if args.version:
         print(
             json.dumps(
@@ -587,10 +863,10 @@ def main():
     from google.oauth2.id_token import verify_oauth2_token
     from google.cloud import storage
 
-    if os.getenv("SPECIMEN_SAM3_ENABLE") != "authorized-pilot" or not os.getenv(
-        "K_SERVICE"
-    ):
-        raise RuntimeError("sam3_requires_authorized_cloud_run_launch")
+    mode = serving_mode(os.environ)
+    if mode != "authorized-pilot":
+        serve_runs(mode)
+        return
     if not os.getenv("SPECIMEN_SAM3_BUDGET_AUTHORIZATION"):
         raise RuntimeError("sam3_budget_authorization_required")
     offline_checkpoint_digest()
