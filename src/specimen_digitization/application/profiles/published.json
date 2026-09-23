@@ -209,7 +209,10 @@
           }
         },
         "max_tokens": 480000,
-        "max_external_calls": 96
+        "max_external_calls": 96,
+        "external_timeout_seconds": 270,
+        "reader_timeout_seconds": 120,
+        "lease_seconds": 300
       },
       "date_rules": {
         "version": "date-rules-v1",
