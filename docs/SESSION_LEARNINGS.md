@@ -11879,3 +11879,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T1a follow-up: #76's should-fixes
+
+- Task: the S2 session, the should-fix list from the PR steward's approval of #76 (comment 5804769771), carried in #78.
+- Branch/worktree: `golive/release-runbook-amendments` (#78), in this session's worktree.
+- Outcome:
+  - The owner-approved exact-version condition on the standing `secretAccessor` grants is restored, per the coordinator's ruling. Only the runtime expiration is superseded, and a version bump is an owner action.
+  - The never-in-prompts rule and the steward's replacement of the privacy review now stand in both restated trace scopes.
+  - G26 reads "a Google geocoding result keeps only…" throughout.
+  - `specimenDataRuntimeAbsence` is named in the time-bounded lists.
+  - D1 is labelled as the coordinator's ruling.
+  - Retention stays open in the Logfire approval.
+  - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
+- Commits/PRs: `876fc53` and this closeout, on #78.
+- Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
+- Durable learnings: a note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
+- Failed approaches: none.
+- Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
