@@ -285,3 +285,29 @@ was appended to the existing rule-local AND exception for the release plan
 template fingerprints; it applies only inside `.secrets.baseline`, and it was
 independently confirmed to be SHA-1 of that SHA256 digest string. The template
 and the tree file stay fully scanned by both tools.
+
+## Go-live data contract source fingerprints
+
+Reviewed 2026-09-23. The go-live data contract
+(`docs/execution/golive/DATA_CONTRACT.md`) changes `dataconnect/schema/schema.gql`
+and `dataconnect/connector/paging.gql` and adds
+`dataconnect/connector/projection.gql`, so the `source_files` digests in the
+three data plan templates (`data-apply`, `data-bootstrap` and
+`data-initialize-missing`) change for those files and gain one entry for the new
+file. They are the same shape as the seventeen digests recorded above: SHA256 of
+committed repository bytes, recomputed and compared by
+`scripts/ci/test_release_plan_templates.py`.
+
+Detect-secrets 1.5.0 reports them as Hex High Entropy String findings in those
+three files. Only those three files' entries in `.secrets.baseline` were
+regenerated, with `is_secret` unset and the existing key order; no filter,
+plugin, threshold or other entry was changed, and no path exclusion was
+introduced.
+
+Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata lines. Three
+identifiers, `13e213c179ae29e4f138e146bef8844829e67aaa`,
+`52da3e611b70c6e6c45e56fefcbbf377dc66c2f1` and
+`f372f6b892bb51b1a1989b5c462909946b98e969`, were appended to the existing
+rule-local AND exception for the release plan template fingerprints. Each was
+independently confirmed to be SHA-1 of the new digest of one of those three
+source files. The templates stay fully scanned by both tools.
