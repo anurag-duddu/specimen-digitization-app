@@ -456,7 +456,7 @@ regexes = [
   '''^\s*"hashed_secret": "b94a5975bd6830b7f824e6858adf744e24617e2b",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "cef383153813f0853ed250d2dd689a2486ffb30c",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "e92bb27e51016b93a782721c94464a5a4a24cb54",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "21278b4f11c26d6df13314ba601efef30119af89",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "48f7d26658cf6c48e8fb72ea19d629afc7f613f4",?\s*$''', # pragma: allowlist secret
-  '''^\s*"hashed_secret": "52da3e611b70c6e6c45e56fefcbbf377dc66c2f1",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "6f80a5aa0733513c6326b3f97d7c4f0a8e4ba2f9",?\s*$''', # pragma: allowlist secret
 ]

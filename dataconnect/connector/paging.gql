@@ -67,10 +67,12 @@ query ListDueWork(
 }
 
 # The lane's worker has no sensitive-record access (DATA_CONTRACT.md section 6): members without it
-# must pass includeSensitive false and see only non-sensitive rows. Otherwise the same as ListDueWork.
+# must pass includeSensitive false and see only non-sensitive rows. Due work comes oldest due time
+# first, ties by id, paged by (afterAt, afterId) from 1970-01-01T00:00:00Z and ''; a row without a
+# due time is not listed.
 query ListDueWorkV2(
   $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!,
-  $cutoff: Timestamp!, $afterId: String!, $limit: Int!, $includeSensitive: Boolean!
+  $cutoff: Timestamp!, $afterAt: Timestamp!, $afterId: String!, $limit: Int!, $includeSensitive: Boolean!
 ) @auth(level: NO_ACCESS) {
   organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
     @check(expr: "this.active") { active }
@@ -78,9 +80,9 @@ query ListDueWorkV2(
     @check(expr: "this.active && (!vars.includeSensitive || this.canViewSensitive) && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.limit > 0 && vars.limit <= 100 && (vars.afterId == '' || vars.afterId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')) && vars.cutoff <= request.time") { active role canViewSensitive }
   items: specimenListings(
     where: {_and: [
-      {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, createdAt: {le: $cutoff}, id: {gt: $afterId}, state: {in: ["pending", "running", "retry_scheduled"]}},
-      {_or: [{workAvailableAt: {le: $cutoff}}, {workAvailableAt: {isNull: true}}]},
-      {_or: [{sensitive: {eq: false}}, {sensitive: {eq: $includeSensitive}}]}
-    ]}, orderBy: {id: ASC}, limit: $limit
+      {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, createdAt: {le: $cutoff}, workAvailableAt: {le: $cutoff}, state: {in: ["pending", "running", "retry_scheduled"]}},
+      {_or: [{sensitive: {eq: false}}, {sensitive: {eq: $includeSensitive}}]},
+      {_or: [{workAvailableAt: {gt: $afterAt}}, {workAvailableAt: {eq: $afterAt}, id: {gt: $afterId}}]}
+    ]}, orderBy: [{workAvailableAt: ASC}, {id: ASC}], limit: $limit
   ) { id revision state activeRunId workAvailableAt createdAt }
 }
