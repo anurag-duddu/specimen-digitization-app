@@ -178,6 +178,20 @@ Each section, in order:
    route and the prompt version when the reading records them. The card no
    longer repeats the region's name the heading states.
 
-The thread's comparison and decision join each section in the next change
-(T2.2, part two). The declarations and the "Differences and resolution" list
-stay below the sections.
+Part two adds, from the thread, to each section:
+
+3. The comparison: "Difference 0.03" beside its components ("1 edit over 33
+   characters") and the "Not calibrated" chip, a measured zero as "No edits
+   over 23 characters", or "Difference not measured" with the server's reason
+   behind "Why" (02 section 4.15; north star: a score is shown beside the
+   components that produced it).
+4. The decision: "The readings match", "The first pass chose <reader>", "The
+   first pass chose no reading", "Resolved by a reviewer", or "No decision
+   recorded" with where the run stands. Then the decided transcript, the
+   rationale, the first pass's model and prompt, and "Handed to the
+   harness": each reader, whether it handed the decided transcript or its
+   own raw reading, and the text it handed.
+
+The declarations and the "Differences and resolution" list stay below the
+sections. Where the thread gives a region's comparison, that region's row
+no longer repeats the ratio, so the score appears once.
