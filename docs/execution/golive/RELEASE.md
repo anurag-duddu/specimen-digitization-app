@@ -37,7 +37,8 @@ traded for a passing release:
   defines them: new tables; new nullable columns; dropping NOT NULL, but only
   on columns the data contract names with a reason and never on provenance or
   idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
-  `modelVersion`, `stepKey`); new indexes, unique constraints and foreign keys
+  `modelVersion`, `stepKey`), the gate reading a checked-in list of the
+  allowed columns; new indexes, unique constraints and foreign keys
   over new columns only; and new connector operations, each
   `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73). The
   gate refuses everything else: dropped or renamed tables and columns, type
