@@ -21,10 +21,15 @@ carries, so every record without a disposition, all ten pilot records
 included, said "State unknown".
 
 - A record's chip is its disposition when it has one, otherwise its
-  operational state. Both the queue row and the status strip use one mapping,
-  so they cannot disagree.
-- An absent or unrecognised value is still "State unknown", and a field state
-  (`unknown`, `supported`, ...) is never drawn as a record's state.
+  operational state. The queue row, the status strip and the history view's
+  version line use one mapping, so they cannot disagree.
+- A disposition that is present decides: an unrecognised one is "State
+  unknown", never hidden behind the run state. An absent or unrecognised
+  value is "State unknown", and a field state (`unknown`, `supported`, ...) is
+  never drawn as a record's state.
+- The strip shows the live state, so a change the poll brings (processing to
+  blocked, paused or cancelled) is announced once, in the chip's words; a
+  decision is still announced as "Saved" (CLAUDE.md, 02 section 4.16).
 
 ### T1.2 Every operational state has its own word
 
@@ -34,23 +39,36 @@ operational states, not final data-quality queues." `CONTRACTS.md` 209-210
 lists the same run statuses. The client drew the first three as "State
 unknown".
 
-| Wire value | Chip word (PRD 10.1) | Colour triple | Glyph (registry meaning) |
+| Wire value | Chip word (PRD 10.1) | Colour triple | Glyph (registry entry) |
 |---|---|---|---|
 | `retry_scheduled` | Retry scheduled | `state.blocked` | `UiIcons.time`, "Waiting time and timestamps" |
-| `paused` | Paused | `state.blocked` | `UiIcons.blocked`, "Processing blocked" |
-| `cancelled` | Cancelled | `state.blocked` | `UiIcons.stop`, "Cancel processing" |
+| `paused` | Paused | `state.blocked` | `UiIcons.blocked`, shared with Processing blocked |
+| `cancelled` | Cancelled | `state.blocked` | `UiIcons.stop`, the "Cancel processing" action's glyph |
 
 No new colour or glyph is introduced. The three stopped states use the one
 operational triple the design system defines (03 section 3.4, `state.blocked`:
 "Operational, not evidentiary"), because PRD QUE-005 makes them operational
 blocks and never a queue, and 02 section 2.4 gives operational state one colour
-role. Each draws an existing registry glyph whose documented meaning matches.
+role. Retry scheduled draws the registry's waiting glyph. Paused shares the
+glyph and the colours of Processing blocked, because in both processing has
+stopped until someone acts; the word tells them apart. Cancelled draws the
+glyph of the action that caused it. 03 section 3.5 and 09 section 7 carry the
+three rows. A screen reader hears each as the run's state ("Run: paused"),
+never as a queue, and so are Processing and Processing blocked.
+
+Decided 2026-09-23: the coordinator confirmed this mapping under G5 (message
+to S6, 2026-09-23). The confirmation covers exactly the three PRD 10.1 words,
+the `state.blocked` colours and the clock, prohibit and stop circle glyphs, and
+extends to the G13 waiting state (`pending`) when S3 names it, with existing
+tokens only.
 
 `completed` is deliberately not a chip. The backend sends it only together
 with a disposition (`api.py` `summary()`, `production.py` `_commit`,
 `search.py`), and the chip shows the disposition, which is the queue. A
 completed run with no disposition has no queue, so its chip stays "State
-unknown", which is the truth about it.
+unknown", which is the truth about it. This departs on purpose from the
+wording of brief T1's last bullet, which lists `completed` among the states
+drawn as "State unknown".
 
 ### T1.3 Readings are said to differ only when they differ
 
@@ -64,10 +82,14 @@ differing, twice (a synthesised disagreement row and a transcription row).
   is unresolved and carries two or more distinct alternatives (02 section 2.3,
   data ambiguity pattern).
 - An unresolved region whose readings agree says "Transcription not resolved
-  for Label K". It still blocks clearance (PRD QUE-002: completed
+  for Label K". It still blocks clearance (CONTRACTS.md 239-240: completed
   adjudication), with the same instruction to resolve it.
-- The Readings segment draws one row per region: resolved, the readings
-  differ, or unresolved.
+- Distinct means exactly distinct, as the server counts it: readings that
+  differ only in case or spacing differ. A transcription without a list of
+  alternatives is judged by its region's own readings.
+- The Readings segment draws one row per region, older records' difference
+  rows included, by the same rule: resolved, the readings differ, or
+  unresolved. A resolved region whose readings differed keeps them in view.
 
 ### T1.4 Each reason blocks clearance once
 

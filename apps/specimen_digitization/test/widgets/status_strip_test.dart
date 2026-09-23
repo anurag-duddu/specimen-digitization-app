@@ -200,4 +200,61 @@ void main() {
       expect(find.text('State unknown'), findsNothing, reason: wire);
     }
   });
+
+  // CLAUDE.md: status changes are announced once. The strip shows the live
+  // run state, so a move the poll brings is heard, in the chip's own words
+  // and without the "Saved" that belongs to a decision.
+  group('announcements', () {
+    Specimen live(String status, {String? disposition}) =>
+        Specimen(<String, dynamic>{
+          'specimen_id': 'pilot-live',
+          'revision': 3,
+          'status': status,
+          'disposition': disposition,
+        });
+
+    Widget announcing(Specimen specimen) => Builder(
+      builder: (BuildContext context) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
+        child: strip(specimen),
+      ),
+    );
+
+    List<String> heard(WidgetTester tester) => tester
+        .takeAnnouncements()
+        .map((CapturedAccessibilityAnnouncement a) => a.message)
+        .toList();
+
+    testWidgets('a run state change is announced once', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(tester, announcing(live('running')), size: medium);
+      expect(heard(tester), isEmpty, reason: 'opening a record is not news');
+      await pumpComponent(
+        tester,
+        announcing(live('processing_blocked')),
+        size: medium,
+      );
+      expect(heard(tester), <String>['Run: processing blocked']);
+      await pumpComponent(
+        tester,
+        announcing(live('processing_blocked')),
+        size: medium,
+      );
+      expect(heard(tester), isEmpty, reason: 'once, not on every poll');
+    });
+
+    testWidgets('a decision is announced as saved', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(tester, announcing(live('running')), size: medium);
+      heard(tester);
+      await pumpComponent(
+        tester,
+        announcing(live('completed', disposition: 'needs_human_review')),
+        size: medium,
+      );
+      expect(heard(tester), <String>['Saved. Queue: needs review']);
+    });
+  });
 }

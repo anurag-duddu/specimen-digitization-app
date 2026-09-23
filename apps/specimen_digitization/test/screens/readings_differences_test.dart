@@ -28,11 +28,13 @@ Specimen record({
   required List<String> texts,
   bool withTranscription = true,
   bool withDisagreement = true,
+  bool resolved = false,
 }) {
   final List<String> alternatives = texts.toSet().toList();
   final Json transcription = <String, dynamic>{
     'region_id': 'r1',
-    'resolved': false,
+    'resolved': resolved,
+    if (resolved) 'text': texts.first,
     'alternatives': alternatives,
     'alignment_status': 'policy_blocked',
     'alignment_reasons': <String>['pilot_risk_unmeasured'],
@@ -108,5 +110,33 @@ void main() {
       ),
     );
     expect(find.text('Label 1: the readings differ'), findsOneWidget);
+  });
+
+  testWidgets('a resolved region keeps the readings it chose between', (
+    WidgetTester tester,
+  ) async {
+    await pumpReadings(
+      tester,
+      record(texts: <String>['Chicago 1912', 'Chicago 1917'], resolved: true),
+    );
+    expect(find.text('Label 1: resolved'), findsOneWidget);
+    expect(
+      find.text('Readings: Chicago 1912 · Chicago 1917', findRichText: true),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an older difference row follows the same rule', (
+    WidgetTester tester,
+  ) async {
+    await pumpReadings(
+      tester,
+      record(
+        texts: <String>['Chicago 1912', 'Chicago 1912'],
+        withTranscription: false,
+      ),
+    );
+    expect(find.text('Label 1: unresolved'), findsOneWidget);
+    expect(find.textContaining(claimsDifference), findsNothing);
   });
 }

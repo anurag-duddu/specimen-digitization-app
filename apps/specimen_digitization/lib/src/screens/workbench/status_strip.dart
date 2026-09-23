@@ -97,31 +97,62 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
   /// versioned decision about a museum record (motion catalog, row 50).
   bool _settled = false;
 
+  /// The status the chip last drew, so a change the poll brings (processing
+  /// to blocked, paused or cancelled) is heard once, like a decision is.
+  ///
+  /// Taken in `initState`, not by a lazy initialiser: the first read would
+  /// otherwise happen in `didUpdateWidget`, after `widget` is already the
+  /// new record, and no change would ever be seen.
+  late SpecimenStatus _lastStatus;
+
+  static SpecimenStatus _statusOf(Specimen record) => SpecimenStatus.ofRecord(
+    disposition: record.disposition,
+    state: record.state,
+  );
+
   @override
   void initState() {
     super.initState();
     _lastDisposition = widget.specimen.disposition;
+    _lastStatus = _statusOf(widget.specimen);
   }
 
   @override
   void didUpdateWidget(covariant WorkbenchStatusStrip oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final SpecimenStatus status = _statusOf(widget.specimen);
     if (oldWidget.specimen.id != widget.specimen.id) {
       _lastDisposition = widget.specimen.disposition;
+      _lastStatus = status;
       _settled = false;
       return;
     }
+    final bool statusChanged = status != _lastStatus;
+    _lastStatus = status;
     final String? next = widget.specimen.disposition;
-    if (next == _lastDisposition) return;
+    if (next == _lastDisposition) {
+      // Not a decision: the run moved on its own, and the chip says so. Heard
+      // once, in the chip's own words, without the settle or the haptic that
+      // belong to a decision (02 section 4.16: a blocked run announces
+      // itself).
+      if (statusChanged) _announce(status.semanticsLabel);
+      return;
+    }
     _lastDisposition = next;
-    if (next == null) return;
+    if (next == null) {
+      if (statusChanged) _announce(status.semanticsLabel);
+      return;
+    }
     setState(() => _settled = true);
     // Three channels, because motion is never the only one: the chip, this
     // announcement, and one medium impact on the two platforms that have
     // haptics. The reviewer is looking at the screen, so the haptic is
     // redundancy rather than the message.
-    final String spoken =
-        'Saved. ${SpecimenStatus.fromWire(next).semanticsLabel}';
+    _announce('Saved. ${status.semanticsLabel}');
+    SpecimenHaptics.decisionLanded();
+  }
+
+  void _announce(String spoken) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !MediaQuery.supportsAnnounceOf(context)) return;
       SemanticsService.sendAnnouncement(
@@ -130,7 +161,6 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
         Directionality.of(context),
       );
     });
-    SpecimenHaptics.decisionLanded();
   }
 
   @override
@@ -138,10 +168,7 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     final UiThemeData ui = context.ui;
     final Specimen record = widget.specimen;
     final Json run = objectOf(record.data['run']);
-    final SpecimenStatus status = SpecimenStatus.ofRecord(
-      disposition: record.disposition,
-      state: record.state,
-    );
+    final SpecimenStatus status = _statusOf(record);
     final String stage = vocabularyLabel(
       textOf(run['stage'], textOf(record.data['stage'], '')),
     );

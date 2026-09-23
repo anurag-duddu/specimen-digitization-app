@@ -145,6 +145,27 @@ void main() {
     test('nothing sent is state unknown', () {
       expect(SpecimenStatus.ofRecord(), SpecimenStatus.unknown);
     });
+
+    // An unmapped value is shown, not swallowed: a disposition the client
+    // cannot name is never hidden behind the run state.
+    test('an unrecognised disposition is state unknown, not the run', () {
+      expect(
+        SpecimenStatus.ofRecord(disposition: 'escalated', state: 'running'),
+        SpecimenStatus.unknown,
+      );
+      expect(
+        SpecimenStatus.ofRecord(disposition: 'running', state: 'running'),
+        SpecimenStatus.unknown,
+        reason: 'a run state is not a queue, even in the disposition slot',
+      );
+    });
+
+    test('a blank disposition is no disposition', () {
+      expect(
+        SpecimenStatus.ofRecord(disposition: '  ', state: 'running'),
+        SpecimenStatus.processing,
+      );
+    });
   });
 
   group('words', () {
@@ -169,6 +190,19 @@ void main() {
       expect(SpecimenStatus.cleared.semanticsLabel, 'Queue: cleared');
       expect(SpecimenStatus.unknownValue.semanticsLabel, 'Field: unknown');
       expect(SpecimenStatus.unknown.semanticsLabel, 'Queue: state unknown');
+    });
+
+    // PRD 10.1: the operational states are "not final data-quality queues",
+    // so a screen reader hears them as the run's state.
+    test('an operational state is heard as the run, never a queue', () {
+      expect(SpecimenStatus.processing.semanticsLabel, 'Run: processing');
+      expect(SpecimenStatus.blocked.semanticsLabel, 'Run: processing blocked');
+      expect(
+        SpecimenStatus.retryScheduled.semanticsLabel,
+        'Run: retry scheduled',
+      );
+      expect(SpecimenStatus.paused.semanticsLabel, 'Run: paused');
+      expect(SpecimenStatus.cancelled.semanticsLabel, 'Run: cancelled');
     });
 
     test('every semantics phrase is 100 characters or fewer', () {

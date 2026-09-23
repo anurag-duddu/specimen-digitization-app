@@ -258,98 +258,99 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     );
   }
 
-  Widget _historicalRecord(Specimen record) =>
-      _card('Version ${record.revision} · read only', <Widget>[
-        Text(
-          'This is a past version. It is read only.',
-          style: context.ui.type.body,
-        ),
-        SizedBox(height: context.ui.space.s1),
-        Text(
-          'Your current review is on version ${widget.specimen.revision}. '
-          'This version: ${record.status}.',
-          style: _line,
-        ),
-        Text(
-          'Profile ${record.profile} · Record '
-          '${textOf(record.data['record_version_id'])}',
-          style: _line,
-        ),
-        if (record.data['history_through_revision'] != null)
-          Text(
-            'Earlier history through version '
-            '${record.data['history_through_revision']} is in the version '
-            'browser below.',
-            style: _line,
-          ),
-        if (record.data['artifact_receipt'] is Map)
-          LargeRecordEvidence(
-            key: ValueKey<String>('historical:${record.id}:${record.revision}'),
-            specimen: record,
-            load: widget.loadArtifact == null
-                ? null
-                : (ArtifactRequest request) =>
-                      widget.loadArtifact!(record, request),
-          )
-        else ...<Widget>[
-          EvidenceDrawer(
-            title: 'Source asset and pinned run evidence',
-            payload: <String, dynamic>{
-              'asset': record.data['asset'],
-              'run': record.data['run'],
-            },
-          ),
-          EvidenceDrawer(
-            title: 'Independent readings and transcriptions',
-            payload: <String, dynamic>{
-              'observations': record.observations,
-              'transcriptions': record.data['transcriptions'],
-            },
-          ),
-          EvidenceDrawer(
-            title: 'Fields, authority evidence and validation',
-            payload: <String, dynamic>{
-              'fields': record.fields,
-              'evidence': record.evidence,
-              'validations': record.findings,
-            },
-          ),
-          EvidenceDrawer(
-            title: 'Complete retained workspace',
-            payload: record.data,
-          ),
-        ],
-        SizedBox(height: context.ui.space.s3),
-        Text(
-          'Audit events · version ${record.revision}',
-          style: context.ui.type.label,
-        ),
-        if (record.audit.isEmpty)
-          Text(
-            'No events in this version. Open earlier versions to see more '
-            'history.',
-            style: context.ui.type.body,
-          ),
-        ...record.audit.indexed.map(
-          ((int, Json) entry) => _event(
-            entry.$2,
-            (record.data['audit_offset'] as int? ?? 0) + entry.$1 + 1,
-          ),
-        ),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: UiButton(
-            label: closeVersionLabel,
-            variant: UiButtonVariant.ghost,
-            leading: UiIcons.close,
-            onPressed: () => setState(() {
-              _historical = null;
-              _requestedRevision = null;
-              ++_generation;
-            }),
-          ),
-        ),
-      ]);
+  Widget _historicalRecord(
+    Specimen record,
+  ) => _card('Version ${record.revision} · read only', <Widget>[
+    Text(
+      'This is a past version. It is read only.',
+      style: context.ui.type.body,
+    ),
+    SizedBox(height: context.ui.space.s1),
+    Text(
+      'Your current review is on version ${widget.specimen.revision}. '
+      'This version: ${SpecimenStatus.ofRecord(disposition: record.disposition, state: record.state).label}.',
+      style: _line,
+    ),
+    Text(
+      'Profile ${record.profile} · Record '
+      '${textOf(record.data['record_version_id'])}',
+      style: _line,
+    ),
+    if (record.data['history_through_revision'] != null)
+      Text(
+        'Earlier history through version '
+        '${record.data['history_through_revision']} is in the version '
+        'browser below.',
+        style: _line,
+      ),
+    if (record.data['artifact_receipt'] is Map)
+      LargeRecordEvidence(
+        key: ValueKey<String>('historical:${record.id}:${record.revision}'),
+        specimen: record,
+        load: widget.loadArtifact == null
+            ? null
+            : (ArtifactRequest request) =>
+                  widget.loadArtifact!(record, request),
+      )
+    else ...<Widget>[
+      EvidenceDrawer(
+        title: 'Source asset and pinned run evidence',
+        payload: <String, dynamic>{
+          'asset': record.data['asset'],
+          'run': record.data['run'],
+        },
+      ),
+      EvidenceDrawer(
+        title: 'Independent readings and transcriptions',
+        payload: <String, dynamic>{
+          'observations': record.observations,
+          'transcriptions': record.data['transcriptions'],
+        },
+      ),
+      EvidenceDrawer(
+        title: 'Fields, authority evidence and validation',
+        payload: <String, dynamic>{
+          'fields': record.fields,
+          'evidence': record.evidence,
+          'validations': record.findings,
+        },
+      ),
+      EvidenceDrawer(
+        title: 'Complete retained workspace',
+        payload: record.data,
+      ),
+    ],
+    SizedBox(height: context.ui.space.s3),
+    Text(
+      'Audit events · version ${record.revision}',
+      style: context.ui.type.label,
+    ),
+    if (record.audit.isEmpty)
+      Text(
+        'No events in this version. Open earlier versions to see more '
+        'history.',
+        style: context.ui.type.body,
+      ),
+    ...record.audit.indexed.map(
+      ((int, Json) entry) => _event(
+        entry.$2,
+        (record.data['audit_offset'] as int? ?? 0) + entry.$1 + 1,
+      ),
+    ),
+    Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: UiButton(
+        label: closeVersionLabel,
+        variant: UiButtonVariant.ghost,
+        leading: UiIcons.close,
+        onPressed: () => setState(() {
+          _historical = null;
+          _requestedRevision = null;
+          ++_generation;
+        }),
+      ),
+    ),
+  ]);
 
   /// One line saying what a version changed, built from the event the server
   /// already returned rather than from the hash.

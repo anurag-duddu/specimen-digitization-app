@@ -103,4 +103,50 @@ void main() {
     });
     expect(blockersFor(specimen), hasLength(1));
   });
+
+  // The safety property: distinct means exactly distinct, as the server
+  // counts it. A client that normalised case or spacing would hide real
+  // disagreements, and nothing else would notice.
+  test('readings that differ only in case or spacing still differ', () {
+    for (final List<String> pair in <List<String>>[
+      <String>['Chicago 1912', 'chicago 1912'],
+      <String>['Chicago 1912', 'Chicago  1912'],
+      <String>['Chicago 1912', 'Chicago 1912 '],
+    ]) {
+      expect(
+        messages(pilotRecord(alternatives: pair)),
+        contains('Two readings differ for Label 1'),
+        reason: pair.join(' | '),
+      );
+    }
+  });
+
+  test('three distinct readings are counted in words', () {
+    expect(
+      messages(
+        pilotRecord(
+          alternatives: <String>[
+            'Chicago 1912',
+            'Chicago 1917',
+            'Chicago 1911',
+          ],
+        ),
+      ),
+      contains('Three readings differ for Label 1'),
+    );
+  });
+
+  test('a transcription with no alternatives is judged by its readings', () {
+    final Specimen specimen = Specimen(<String, dynamic>{
+      ...pilotRecord(alternatives: const <String>[]).data,
+      'transcriptions': <Json>[
+        <String, dynamic>{'region_id': 'r1', 'resolved': false},
+      ],
+      'observations': <Json>[
+        <String, dynamic>{'region_id': 'r1', 'literal_text': 'Chicago 1912'},
+        <String, dynamic>{'region_id': 'r1', 'literal_text': 'Chicago 1917'},
+      ],
+    });
+    expect(messages(specimen), contains('Two readings differ for Label 1'));
+  });
 }

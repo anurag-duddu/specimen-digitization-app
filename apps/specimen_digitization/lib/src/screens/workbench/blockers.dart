@@ -59,9 +59,10 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
       ClearanceBlocker(
         // "Differ" only when the readings do (02 section 2.3). An unresolved
         // region whose readings agree still blocks clearance, because
-        // clearance needs a resolved transcription (PRD QUE-002).
-        message: readingsDiffer(t)
-            ? '${_countWord(distinctReadings(t))} readings differ for $region'
+        // clearance needs completed adjudication (CONTRACTS.md 239-240).
+        message: readingsDiffer(t, specimen.observations)
+            ? '${_countWord(distinctReadings(t, specimen.observations))} '
+                  'readings differ for $region'
             : 'Transcription not resolved for $region',
         detail: 'Resolve the transcription, or record why it cannot be read',
         segment: WorkbenchSegment.readings,

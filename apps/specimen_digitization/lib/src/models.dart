@@ -29,18 +29,36 @@ List<Json> objects(dynamic value) => value is List
 ///
 /// `alternatives` is the set of distinct reading texts for one label region
 /// (the adjudicate step and the pilot review stop both build it that way).
-int distinctReadings(Json transcription) {
+/// Distinct means exactly distinct, as the server counts them: a difference
+/// of case or of spacing is a difference. A transcription without a list of
+/// alternatives falls back to the region's own [observations], so a missing
+/// or malformed list can never hide a disagreement.
+int distinctReadings(
+  Json transcription, [
+  List<Json> observations = const <Json>[],
+]) {
   final Object? alternatives = transcription['alternatives'];
-  return alternatives is List
-      ? alternatives.map((Object? a) => a.toString()).toSet().length
-      : 0;
+  if (alternatives is List) {
+    return alternatives.map((Object? a) => a.toString()).toSet().length;
+  }
+  final Object? region = transcription['region_id'];
+  return observations
+      .where((Json o) => o['region_id'] == region)
+      .map(
+        (Json o) => textOf(o['literal_text'], textOf(o['verbatim_text'], '')),
+      )
+      .toSet()
+      .length;
 }
 
 /// True when a transcription's readings differ.
 ///
 /// Unresolved is a different claim: the pilot leaves every transcription
 /// unresolved, including those whose readings are identical.
-bool readingsDiffer(Json transcription) => distinctReadings(transcription) > 1;
+bool readingsDiffer(
+  Json transcription, [
+  List<Json> observations = const <Json>[],
+]) => distinctReadings(transcription, observations) > 1;
 
 /// The mechanical part of turning a server enum into words.
 ///

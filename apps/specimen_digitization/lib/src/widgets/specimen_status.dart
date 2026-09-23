@@ -176,20 +176,33 @@ enum SpecimenStatus {
   /// otherwise the state of its run.
   ///
   /// The queue row and the status strip both call this, so the two cannot
-  /// disagree about a record. A value that is not a record status, a field
-  /// state such as `unknown` or `supported` included, is never drawn as one:
-  /// it is "State unknown", as is a record that sends neither. So is a
-  /// `completed` run with no disposition, because a completed run's queue is
-  /// its disposition and this one has none.
+  /// disagree about a record. A disposition that is present decides: one of
+  /// the three queues is drawn as itself, and anything else is "State
+  /// unknown" rather than hidden behind the run state, because an unmapped
+  /// value is shown, not swallowed. Only a record with no disposition shows
+  /// its run state. A value that is not a record status, a field state such
+  /// as `unknown` or `supported` included, is never drawn as one. A
+  /// `completed` run with no disposition is "State unknown" too, because a
+  /// completed run's queue is its disposition and this one has none.
   static SpecimenStatus ofRecord({String? disposition, String? state}) {
-    for (final String? wire in <String?>[disposition, state]) {
-      final SpecimenStatus status = fromWire(wire);
-      if (status.isRecordStatus && status != SpecimenStatus.unknown) {
-        return status;
-      }
+    if (disposition != null && disposition.trim().isNotEmpty) {
+      final SpecimenStatus queue = fromWire(disposition);
+      return queue.isQueue ? queue : SpecimenStatus.unknown;
     }
-    return SpecimenStatus.unknown;
+    final SpecimenStatus run = fromWire(state);
+    return run.isRecordStatus && !run.isQueue ? run : SpecimenStatus.unknown;
   }
+
+  /// True for the three final queues: cleared, needs review and deferred.
+  bool get isQueue =>
+      this == SpecimenStatus.cleared ||
+      this == SpecimenStatus.needsReview ||
+      this == SpecimenStatus.deferred;
+
+  /// True for the operational run states, which PRD 10.1 says are "not final
+  /// data-quality queues".
+  bool get isRunState =>
+      isRecordStatus && !isQueue && this != SpecimenStatus.unknown;
 
   /// The visible chip word.
   String get label => switch (this) {
@@ -247,9 +260,16 @@ enum SpecimenStatus {
   ///
   /// Where a chip carries meaning through color, the label carries it through
   /// words, and it names which vocabulary the word came from, so "Unknown"
-  /// spoken on a field is not mistaken for a queue state (UX writing, 4.16).
-  String get semanticsLabel =>
-      '${isRecordStatus ? 'Queue' : 'Field'}: ${label.toLowerCase()}';
+  /// spoken on a field is not mistaken for a queue state (UX writing, 4.16),
+  /// and a paused run is not heard as a queue (PRD 10.1).
+  String get semanticsLabel {
+    final String vocabulary = isRunState
+        ? 'Run'
+        : isRecordStatus
+        ? 'Queue'
+        : 'Field';
+    return '$vocabulary: ${label.toLowerCase()}';
+  }
 
   /// Resolves the colour triple from the token layer and pairs it with the
   /// glyph and the word.
