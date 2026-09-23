@@ -191,6 +191,15 @@ class FirstPassDecision(Record):
     call: Observation
 
 
+class ReaderHandoff(Record):
+    """What one reading handed to the harness (HARNESS.md section 4)."""
+
+    observation_id: str
+    role: Literal["decided_transcript", "raw_reading"]
+    handed_text: str
+    note: str | None = None
+
+
 class Transcript(Record):
     value_state: ValueState | None = None
     region_id: str
@@ -206,6 +215,11 @@ class Transcript(Record):
     alignment_status: str | None = None
     alignment_algorithm: str | None = None
     alignment_reasons: list[str] = Field(default_factory=list)
+    decision_kind: Literal["identical_readings", "first_pass", "human"] | None = None
+    selected_observation_id: str | None = None
+    first_pass_call: Observation | None = None
+    differences: list[FirstPassDifference] = Field(default_factory=list)
+    handoffs: list[ReaderHandoff] = Field(default_factory=list)
 
 
 class Evidence(Record):
@@ -397,6 +411,7 @@ class Run(Record):
     completed_steps: list[str] = Field(default_factory=list)
     regions: list[Region] = Field(default_factory=list)
     observations: list[Observation] = Field(default_factory=list)
+    first_pass_decisions: list[FirstPassDecision] = Field(default_factory=list)
     transcripts: list[Transcript] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     fields: dict[str, FieldValue] = Field(

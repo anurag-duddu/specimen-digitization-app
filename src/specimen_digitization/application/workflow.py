@@ -10,6 +10,7 @@ from .domain import (
     AuditEvent,
     Evidence,
     FieldValue,
+    FirstPassDecision,
     Lookup,
     LookupStatus,
     Observation,
@@ -51,6 +52,9 @@ class PipelineAdapters(Protocol):
     def transcribe(
         self, specimen: Specimen, region: Region, route: str
     ) -> Observation: ...
+    def first_pass(
+        self, specimen: Specimen, region: Region, readings: list[Observation]
+    ) -> FirstPassDecision: ...
     def lookup(self, name: str) -> Lookup: ...
 
 
@@ -157,7 +161,7 @@ class Workflow:
                 digest({"unknown": step}),
             )
         external = (
-            step.startswith("transcribe:")
+            step.startswith(("transcribe:", "first_pass:"))
             or step in {"segment", "lookup"}
             or step.startswith("authority:")
             or (step == "parse" and hasattr(self.adapters, "extract"))
@@ -171,12 +175,13 @@ class Workflow:
         effect_timeout = policy.effect_timeout_for_step(step)
         external_weight = (
             2
-            if (step.startswith("transcribe:") or step == "parse")
+            if (step.startswith(("transcribe:", "first_pass:")) or step == "parse")
             and not run.profile.synthetic
             else 1
         )
         billable = external and (
-            step.startswith("transcribe:") or step in {"parse", "segment", "classify"}
+            step.startswith(("transcribe:", "first_pass:"))
+            or step in {"parse", "segment", "classify"}
         )
         reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
         cost = (
@@ -353,11 +358,30 @@ class Workflow:
                 if observation.region_id != region.id or observation.route_id != route:
                     raise OperationalBlock("observation_contract_invalid")
                 run.observations.append(observation)
+            elif step.startswith("first_pass:"):
+                region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
+                readings = [o for o in run.observations if o.region_id == region.id]
+                decision = self.adapters.first_pass(specimen, region, readings)
+                ids = {o.id for o in readings}
+                if (
+                    decision.region_id != region.id
+                    or decision.call.region_id != region.id
+                    or decision.selected_observation_id not in ids | {None}
+                    or any(set(d.spans) != ids for d in decision.differences)
+                ):
+                    raise OperationalBlock("first_pass_contract_invalid")
+                run.first_pass_decisions = [
+                    d for d in run.first_pass_decisions if d.region_id != region.id
+                ] + [decision]
+                call = decision.call
+                run.usage.tokens += call.input_tokens + call.output_tokens
             elif step == "adjudicate":
                 run.transcripts = []
+                decisions = {d.region_id: d for d in run.first_pass_decisions}
                 for region in run.regions:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
+                    from .first_pass import adjudication_record
                     from .reading_evidence import ReadingEvidenceInput, align_readings
 
                     alignment = None
@@ -383,10 +407,13 @@ class Workflow:
                         and bool(texts[0].strip())
                         and not any(o.unreadable_spans for o in readings)
                     )
+                    text, resolved, record = adjudication_record(
+                        readings, texts, resolved, decisions.get(region.id)
+                    )
                     run.transcripts.append(
                         Transcript(
                             region_id=region.id,
-                            text=texts[0] if resolved else None,
+                            text=text,
                             observation_ids=[o.id for o in readings],
                             alternatives=texts,
                             resolved=resolved,
@@ -403,6 +430,7 @@ class Workflow:
                             alignment_reasons=list(alignment.reasons)
                             if alignment
                             else ["independent_pair_incomplete"],
+                            **record,
                         )
                     )
             elif step == "parse":
@@ -675,6 +703,15 @@ class Workflow:
                 key = f"transcribe:{region.id}:{route}"
                 if key not in run.completed_steps:
                     return key
+        if "adjudicate" not in run.completed_steps:
+            # Differing readings get the LLM first pass (HARNESS.md section 3).
+            for region in run.regions:
+                texts = {
+                    o.literal_text for o in run.observations if o.region_id == region.id
+                }
+                key = f"first_pass:{region.id}"
+                if len(texts) > 1 and key not in run.completed_steps:
+                    return key
         for step in (
             "adjudicate",
             "parse",
@@ -795,6 +832,13 @@ class SyntheticAdapters:
             raw_ref=ref,
             raw_sha256=hashlib.sha256(raw).hexdigest(),
         )
+
+    def first_pass(self, specimen, region, readings):
+        if not specimen.run.profile.synthetic:
+            raise OperationalBlock("synthetic_adapter_forbidden")
+        from .first_pass import synthetic_decision
+
+        return synthetic_decision(self.blobs, region, readings)
 
     def lookup(self, name):
         raw = (

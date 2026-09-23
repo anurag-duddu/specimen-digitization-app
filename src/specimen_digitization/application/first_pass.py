@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import json
 import os
 import re
 import string
@@ -27,11 +28,13 @@ from .domain import (
     FirstPassDecision,
     FirstPassDifference,
     Observation,
+    ReaderHandoff,
     ReadingSpan,
 )
 
 _TOKEN = re.compile(r"\w+|[^\w\s]")
 UNRESOLVED_VERDICTS = frozenset({"neither", "uncertain"})
+SYNTHETIC_RATIONALE = "Synthetic fixture: no visual evidence."
 _PREAMBLE = (
     "Independent readers transcribed the attached label image. Their raw "
     "transcripts follow, unchanged."
@@ -281,3 +284,69 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
             output_tokens=result.usage.output_tokens,
         ),
     )
+
+
+def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
+    """Deterministic fixture: without visual evidence no reading is selected."""
+    first, second = readings
+    differences = reading_differences(first.literal_text, second.literal_text)
+    summary = {"region_id": region.id, "selected_observation_id": None}
+    detail = dict(summary, differences=len(differences), rationale=SYNTHETIC_RATIONALE)
+    raw = b"SYNTHETIC FIXTURE\n" + json.dumps(detail).encode()
+    texts = "\0".join(reading.literal_text for reading in readings)
+    return FirstPassDecision(
+        **summary,
+        rationale=SYNTHETIC_RATIONALE,
+        notes={reading.id: "Synthetic fixture reading." for reading in readings},
+        differences=[
+            FirstPassDifference(
+                number=number,
+                spans={first.id: a, second.id: b},
+                verdict="uncertain",
+                material=True,
+            )
+            for number, (a, b) in enumerate(differences, 1)
+        ],
+        call=Observation(
+            region_id=region.id,
+            route_id="synthetic-first-pass",
+            model_id="synthetic-first-pass",
+            provider="synthetic",
+            prompt_version="fixture-v1",
+            input_sha256=hashlib.sha256(texts.encode()).hexdigest(),
+            literal_text="",
+            raw_ref=blobs.put(raw),
+            raw_sha256=hashlib.sha256(raw).hexdigest(),
+        ),
+    )
+
+
+def adjudication_record(readings, texts, resolved, decision):
+    """The region's transcript text, whether it is resolved, and its first-pass
+    fields: identical readings keep the existing rule; differing readings take
+    the first pass's selected reading verbatim, or no text."""
+    if len(readings) > 1 and len(texts) == 1:
+        selected, notes = readings[0].id if resolved else None, {}
+        record = {"decision_kind": "identical_readings"}
+    elif len(texts) > 1 and decision is not None:
+        selected, notes = decision.selected_observation_id, decision.notes
+        record = {
+            "decision_kind": "first_pass",
+            "first_pass_call": decision.call,
+            "differences": decision.differences,
+            "reason": decision.rationale,
+        }
+    else:
+        return None, False, {}
+    record["selected_observation_id"] = selected
+    record["handoffs"] = [
+        ReaderHandoff(
+            observation_id=reading.id,
+            role="decided_transcript" if reading.id == selected else "raw_reading",
+            handed_text=reading.literal_text,
+            note=notes.get(reading.id),
+        )
+        for reading in readings
+    ]
+    text = next((r.literal_text for r in readings if r.id == selected), None)
+    return text, text is not None, record
