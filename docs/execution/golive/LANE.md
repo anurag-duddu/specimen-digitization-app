@@ -475,11 +475,19 @@ pilot's worker is unchanged and still needs its launch files.
   - A worker that stalls past its lease and loses the fence leaves the
     collection to the new holder.
 - **Order.**
-  - The run a dead execution left under the fence is finished first.
-  - After that, the oldest due run, by `queued_at` through `ListDueWorkV2`
-    (never sensitive records), is stepped until it stops. It stops at a
-    disposition, a block, a pause, a cancellation, a scheduled retry or an
-    unknown outcome. Then the next one is taken.
+  - The run a dead execution left under the fence is finished first, once it
+    is due. Its step's own lease can outlive the fence's, so a run still
+    leased is waited for like a retry.
+  - After that, the oldest due run is stepped until it stops. It comes by
+    `queued_at` through `ListDueWorkV2`: never sensitive, and only `pending`,
+    `running` or `retry_scheduled`. The SQLite store lists the same states. The
+    run stops at a disposition, a block, a pause, a cancellation, a scheduled
+    retry or an unknown outcome. Then the next one is taken.
+  - A save that conflicts with a concurrent edit is read again and stepped
+    again, up to three times in a row.
+  - A due run whose step changes nothing would be taken again and again. It is
+    blocked with `lane_run_not_progressing`, where people can see it, and the
+    queue moves on. Its resume action requests it again.
 - **Retries.** A run that stops with a scheduled retry is waited for, once no
   other run is due, if the retry falls inside the window. Nothing else would
   start the job for it. Retry delays are at most 300 s plus jitter. A retry
@@ -490,16 +498,35 @@ pilot's worker is unchanged and still needs its launch files.
   (3600 s). It exits 0 when nothing is due and no retry is pending in the
   window. On `SIGTERM` it stops taking work, lets the current step's result
   save, and releases the fence.
-- **Hand-over.** The worker starts the next execution in two cases: the window
-  closes, or a retry falls after the window but inside the next execution's
-  window. It releases its fences first and uses the same job start as the API
-  (T1). A drained queue or a stop signal starts none. A failed start leaves the
-  work queued for the next request, as in T1. The worker's service account
-  needs permission to run its own job.
+- **Hand-over.** The coordinator approved it on 2026-09-23 with three bounds.
+  - The worker starts the next execution only when requested work is due as
+    its window closes (in a collection it drained, or one it did not reach), or
+    when a retry it hands over through the fence falls within the next
+    execution's window. A drained queue or a stop signal starts none.
+  - It releases its fences first, so the next execution takes them (G13). It
+    uses T1's job start: the job as deployed, with no changed arguments,
+    environment or task count. The worker's service account may run that job
+    only (S2 grants `run.invoker` on it, never overrides or project-wide).
+  - The fence counts consecutive hand-overs without progress. On the third,
+    the worker stops handing over. It blocks the waiting run with
+    `lane_handover_without_progress`, an operational block, and G30 caps model
+    spend but not Cloud Run time.
+
+  A failed start leaves the work queued for the next request, as in T1.
 - **Output.** One JSON summary: the status (`drained`, `window_closed` or
-  `stopped`), the specimens processed, the collections skipped, the retries
-  pending, and the hand-over's outcome (`requested`, `failed`, `unconfigured`
-  or none).
+  `stopped`), the specimens processed, the collections skipped, the
+  collections whose hand-over stopped, the retries pending, and the hand-over's
+  outcome (`requested`, `failed`, `unconfigured` or none).
+- **Readiness before the first drain.** On 2026-09-23 S2 confirmed, read-only,
+  that the production Data Connect schema is the empty placeholder, and the
+  first initialization applies the schema to an empty database. Before the
+  first drain, the owner or S2 runs three read-only counts on the protected
+  path. Each must be zero:
+  1. `worker_cursor` documents marked sensitive, which the worker could neither
+     read nor replace;
+  2. specimens in `pending`, `running` or `retry_scheduled` with a due time
+     that no lane request set (`queued_at` absent);
+  3. rows in those states with no due time (#88, section 9).
 
 ### Program allowance (G9)
 

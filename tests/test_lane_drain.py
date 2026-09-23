@@ -26,6 +26,7 @@ from specimen_digitization.hub_models import SAM3_MODEL
 
 ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
+OTHER = "00000000-0000-4000-8000-000000000003"
 SCOPE = Scope(organization_id=ORG, collection_id=COLLECTION)
 WORKER = "worker-actor"
 START = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
@@ -70,16 +71,16 @@ class NonSensitiveMember(SQLiteRepository):
         return super().put_document(scope, kind, ident, payload, expected)
 
 
-def principal():
-    return Principal(user_id=WORKER, scope=SCOPE, role="operator")
+def principal(scope=SCOPE):
+    return Principal(user_id=WORKER, scope=scope, role="operator")
 
 
-def queued(repository, ident, minutes, *, sensitive=False, stage="pending"):
+def queued(repository, ident, minutes, *, sensitive=False, stage="pending", scope=SCOPE):
     run = Run(profile=Profile(synthetic=False), stage=stage)
     run.queued_at = (START - timedelta(minutes=minutes)).isoformat()
     specimen = Specimen(
         id=ident,
-        scope=SCOPE,
+        scope=scope,
         run=run,
         asset=Asset(
             sensitive=sensitive,
@@ -94,7 +95,7 @@ def queued(repository, ident, minutes, *, sensitive=False, stage="pending"):
         ),
         created_at=(START - timedelta(hours=1)).isoformat(),
     )
-    repository.create(principal(), specimen, "queue:" + ident, ident)
+    repository.create(principal(scope), specimen, "queue:" + ident, ident)
 
 
 class ScriptedWorkflow:
@@ -127,8 +128,24 @@ class ScriptedWorkflow:
         )
 
 
+class SlowWorkflow(ScriptedWorkflow):
+    """Each step takes 30 s."""
+
+    def step(self, principal, ident):
+        self.clock.sleep(30)
+        return super().step(principal, ident)
+
+
 def worker(
-    repository, workflow, clock, *, execution="exec-a", role="operator", continuation=None
+    repository,
+    workflow,
+    clock,
+    *,
+    execution="exec-a",
+    role="operator",
+    continuation=None,
+    deadline_seconds=3600,
+    collections=(COLLECTION,),
 ):
     return DrainWorker(
         repository,
@@ -137,15 +154,17 @@ def worker(
         lambda user: [
             {
                 "organization_id": ORG,
-                "collection_id": COLLECTION,
+                "collection_id": collection,
                 "role": role,
                 "can_view_sensitive": False,
             }
+            for collection in collections
         ],
         execution_id=execution,
         clock=clock,
         sleep=clock.sleep,
         continuation=continuation,
+        deadline_seconds=deadline_seconds,
     )
 
 
@@ -172,6 +191,27 @@ def test_due_work_comes_oldest_request_first_and_never_sensitive(lane):
     cutoff = START.isoformat()
     due = lane.repository.oldest_due(SCOPE, cutoff, limit=10)
     assert [item.specimen_id for item in due] == ["a-oldest", "b-middle", "c-newest"]
+
+
+def test_due_work_lists_only_the_states_production_lists(lane):
+    queued(lane.repository, "a-blocked", minutes=30)
+    queued(lane.repository, "b-done", minutes=20)
+    queued(lane.repository, "c-due", minutes=10)
+    for ident, stage, disposition in (
+        ("a-blocked", "processing_blocked", None),
+        ("b-done", "finalized", Disposition.REVIEW),
+    ):
+        specimen = lane.repository.get(SCOPE, ident)
+        specimen.run.stage, specimen.run.disposition = stage, disposition
+        lane.repository.save(principal(), specimen, specimen.version, "end:" + ident, ident)
+    # An older write path left their due times behind.
+    with lane.repository.connect() as db:
+        db.execute(
+            "UPDATE records SET work_available_at=? WHERE id IN ('a-blocked','b-done')",
+            ((START - timedelta(hours=1)).isoformat(),),
+        )
+    due = lane.repository.oldest_due(SCOPE, START.isoformat(), limit=10)
+    assert [item.specimen_id for item in due] == ["c-due"]
 
 
 def test_the_worker_drains_one_run_at_a_time_in_request_order(lane):
@@ -310,12 +350,6 @@ def test_no_new_run_starts_in_the_last_ten_minutes(lane):
     queued(lane.repository, "a-oldest", minutes=30)
     queued(lane.repository, "b-next", minutes=10)
     lane.workflow.scripts = {"a-oldest": ["progress"] * 100 + ["finalized"]}
-
-    class SlowWorkflow(ScriptedWorkflow):
-        def step(self, principal, ident):
-            self.clock.sleep(30)
-            return super().step(principal, ident)
-
     slow = SlowWorkflow(lane.repository, lane.clock, lane.workflow.scripts)
     continuation = Continuation()
     summary = worker(
@@ -325,6 +359,134 @@ def test_no_new_run_starts_in_the_last_ten_minutes(lane):
     assert summary["status"] == "window_closed"
     # The rest of the queue is handed to the next execution.
     assert (continuation.calls, summary["continuation"]) == (1, "requested")
+
+
+def test_a_closed_window_with_nothing_due_starts_no_execution(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    slow = SlowWorkflow(
+        lane.repository, lane.clock, {"a-oldest": ["progress"] * 100 + ["finalized"]}
+    )
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, slow, lane.clock, continuation=continuation
+    ).run(stop=None)
+    assert summary["status"] == "window_closed"
+    assert (continuation.calls, summary["continuation"]) == (0, None)
+
+
+def test_requested_work_in_a_collection_not_reached_is_handed_over(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    queued(
+        lane.repository,
+        "z-other",
+        minutes=5,
+        scope=Scope(organization_id=ORG, collection_id=OTHER),
+    )
+    slow = SlowWorkflow(
+        lane.repository, lane.clock, {"a-oldest": ["progress"] * 100 + ["finalized"]}
+    )
+    continuation = Continuation()
+    summary = worker(
+        lane.repository,
+        slow,
+        lane.clock,
+        continuation=continuation,
+        collections=(COLLECTION, OTHER),
+    ).run(stop=None)
+    assert "z-other" not in slow.steps
+    assert summary["status"] == "window_closed"
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+
+
+def test_handing_over_stops_after_three_executions_without_progress(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    continuation = Continuation()
+    for index in range(3):
+        # A window too short to start anything makes no progress.
+        summary = worker(
+            lane.repository,
+            lane.workflow,
+            lane.clock,
+            execution=f"exec-{index}",
+            continuation=continuation,
+            deadline_seconds=600,
+        ).run(stop=None)
+        if index < 2:
+            assert fence(lane).read()["handovers_without_progress"] == index + 1
+    assert lane.workflow.steps == []
+    assert continuation.calls == 2
+    assert summary["continuation"] is None
+    assert summary["withheld_collections"] == [COLLECTION]
+    run = lane.repository.get(SCOPE, "a-oldest").run
+    assert (run.stage, run.blocker) == (
+        "processing_blocked",
+        "lane_handover_without_progress",
+    )
+    assert fence(lane).read()["handovers_without_progress"] == 0
+
+
+def test_a_run_whose_step_saves_nothing_is_blocked_and_the_queue_moves_on(lane):
+    queued(lane.repository, "a-stuck", minutes=30)
+    queued(lane.repository, "b-next", minutes=10)
+
+    class StuckWorkflow(ScriptedWorkflow):
+        def step(self, principal, ident):
+            if ident == "a-stuck":
+                self.steps.append(ident)
+                return self.repository.get(principal.scope, ident)  # Saves nothing.
+            return super().step(principal, ident)
+
+    stuck = StuckWorkflow(lane.repository, lane.clock)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, stuck, lane.clock, continuation=continuation
+    ).run(stop=None)
+    assert stuck.steps == ["a-stuck", "b-next"]
+    run = lane.repository.get(SCOPE, "a-stuck").run
+    assert (run.stage, run.blocker) == ("processing_blocked", "lane_run_not_progressing")
+    assert summary["status"] == "drained"
+    assert continuation.calls == 0
+
+
+def test_a_concurrent_edit_is_read_again_and_the_run_continues(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+
+    class EditedWorkflow(ScriptedWorkflow):
+        edited = False
+
+        def step(self, principal, ident):
+            if not self.edited:
+                # A reviewer saves first, so this step's save conflicts.
+                self.edited = True
+                specimen = self.repository.get(principal.scope, ident)
+                self.repository.save(
+                    principal, specimen, specimen.version, "review:edit", "edit"
+                )
+                raise Conflict("Stale revision")
+            return super().step(principal, ident)
+
+    edited = EditedWorkflow(
+        lane.repository, lane.clock, {"a-oldest": ["progress", "finalized"]}
+    )
+    summary = worker(lane.repository, edited, lane.clock).run(stop=None)
+    assert edited.steps == ["a-oldest", "a-oldest"]
+    assert lane.repository.get(SCOPE, "a-oldest").run.disposition == Disposition.REVIEW
+    assert summary["status"] == "drained"
+
+
+def test_a_dead_holders_run_still_leased_is_waited_for(lane):
+    queued(lane.repository, "b-interrupted", minutes=10, stage="transcribe")
+    specimen = lane.repository.get(SCOPE, "b-interrupted")
+    specimen.run.blocker = "external_outcome_unknown"
+    specimen.run.lease_until = (START + timedelta(seconds=400)).isoformat()
+    lane.repository.save(principal(), specimen, specimen.version, "intent:1", "intent")
+    dead = fence(lane, "exec-dead")
+    dead.acquire()
+    dead.hold("b-interrupted", "run-b")
+    lane.clock.sleep(301)
+    worker(lane.repository, lane.workflow, lane.clock).run(stop=None)
+    assert lane.workflow.steps == ["b-interrupted"]
+    assert lane.clock.now >= START + timedelta(seconds=400)
 
 
 def test_a_stop_signal_ends_the_drain_and_releases_the_fence(lane):

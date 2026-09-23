@@ -11900,13 +11900,16 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Outcome:
   - `specimen-worker --mode production --drain` runs `lane_worker.DrainWorker` in the job's own process. `--max-seconds` is the task deadline (3600 by default). The worker checks its settings first and fails closed.
   - Per collection it takes a compare-and-set fence (`worker_cursor`, not sensitive, 300 s lease renewed after every step). It finishes a dead holder's run first, then steps the oldest due run through `ListDueWorkV2` until it stops. It waits for retries inside its window and starts no new run in the last 600 s.
-  - At the end it releases the fence, writing any retry that falls after the window into it. It starts the next execution when the window closed, or when such a retry is within the next execution's reach.
+  - At the end it releases the fence, writing any retry that falls after the window into it. It starts the next execution when requested work is due as the window closes, or when such a retry is within the next execution's reach. After three consecutive hand-overs without progress it stops and blocks the waiting run visibly (the coordinator's bounds).
+  - A due run whose step saves nothing is blocked with `lane_run_not_progressing` and the queue moves on. A conflicting concurrent edit is read again, up to three times in a row.
   - `SIGTERM` finishes the current step and releases the fence.
-- Validation actually run: `tests/test_lane_drain.py` and `tests/test_lane_drain_cli.py` (36 passed); the full gates as listed in the pull request.
+- Validation actually run: `tests/test_lane_drain.py` and `tests/test_lane_drain_cli.py` (44 passed); the full gates as listed in the pull request.
 - Durable learnings:
   1. S5's `SaveDocumentV2` requires `canViewSensitive` for any document whose payload does not say `"sensitive": false`. The worker's release membership has no sensitive access, so a fence without that flag would be refused in production while SQLite accepted it. The provider circuit's state documents had the same gap: every external step of the drain would have stopped at `provider_circuit:circuit_cas_contention`. Both now write `"sensitive": false`, and the tests use a repository that enforces the rule.
   2. `ListDueWorkV2` checks `cutoff <= request.time`, so a worker cannot query for retries due later. Anything the next execution must wait for travels in the fence.
   3. The pilot's supervisor starts its worker in a new session and answers `SIGTERM` with `SIGKILL` for the whole group, so graceful work cannot run under it.
   4. Receipt keys that repeat across executions (`step:1`) make a later execution's save replay an earlier one's result. Key by revision.
+  5. The SQLite `state` column holds the raw stage while PostgreSQL's holds the wire status, so SQLite mirrors `ListDueWorkV2`'s state filter with `lane.SQLITE_STATUS`, which search shares.
+  6. A dead holder's run can still be leased after the fence expires, because the step's lease starts after the fence's last renewal. Resuming it at once would read as a stall.
 - Failed approaches: routing the drain through `_supervise` (a stop would kill the group and strand the fence); tracking retries only in memory (a retry after the window was stranded, because the next execution cannot see it until it is due).
 - Remaining follow-ups: S2 grants the worker's service account permission to run its own job and sets `SPECIMEN_WORKER_JOB` on it. T2b adds the program allowance ledger and per-call costs. S5 confirms whether production holds records never requested through the lane, since `ListDueWorkV2` returns any due non-sensitive run.
