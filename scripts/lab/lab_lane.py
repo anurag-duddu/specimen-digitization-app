@@ -32,6 +32,9 @@ PG_BIN = Path(os.getenv("POSTGRES_BIN", "/opt/homebrew/opt/postgresql@18/bin"))
 PREFIX = f"/v1/organizations/{SYNTHETIC_ORG}"
 CHUNK = 4 * 1024 * 1024
 USE_REVIEWED_REGIONS = "sam3_serving_contract_not_configured_use_reviewed_regions"
+# G31: the owner classified these ten pilot slides not sensitive against PRD 715 (2026-09-23), as
+# CONTRACTS.md 169-170 requires. Every other slide stays Sensitive, and the lane never processes those.
+NOT_SENSITIVE = frozenset(f"subject_1055263{n}" for n in range(21, 31))
 READER = "synthetic-reviewer"
 
 
@@ -46,6 +49,7 @@ class AppLane:
         self.root, self.adapters_factory = Path(root), adapters_factory
         self.persistence, self.segmentation, self.subject = persistence, segmentation, subject
         self.token, self.nonce, self.emulator = secrets.token_urlsafe(24), uuid.uuid4().hex[:12], None
+        self.sensitive = subject not in NOT_SENSITIVE  # G31
 
     def __enter__(self):
         self.root.mkdir(parents=True, exist_ok=True)
@@ -82,9 +86,9 @@ class AppLane:
         width, height = Image.open(io.BytesIO(data)).size
         batch = self.call("POST", "/batches", key="batch", json={
             "collection_id": SYNTHETIC_COLLECTION, "display_name": "Acceptance lab " + self.subject,
-            "sensitive": False})  # the ten are imported as not sensitive; the lane skips sensitive records
+            "sensitive": self.sensitive})
         item = self.call("POST", f"/batches/{batch['batch_id']}/items", key="item", json={
-            "client_item_id": self.subject, "filename": filename, "media_type": media_type, "sensitive": False,
+            "client_item_id": self.subject, "filename": filename, "media_type": media_type, "sensitive": self.sensitive,
             "size_bytes": len(data), "width": width, "height": height,
             "sha256": hashlib.sha256(data).hexdigest()})
         if item["state"] != "uploading":
