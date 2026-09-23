@@ -219,14 +219,16 @@ idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
 `promptVersion` and `inputSha256`), the gate reading a checked-in list of the
 allowed columns and refusing these keys even when that list names them;
 one closed exception, by coordinator ruling (#88): `SourceAsset`'s
-`specimen_unique_1` on (bucket, objectName, generation) is replaced by a unique
-constraint on (organizationId, collectionId, specimenId, bucket, objectName,
-generation), because the blob store is content-addressed and identical bytes
-are one object across specimens; every added column is an existing NOT NULL
-column, since PostgreSQL treats NULLs as distinct; the new constraint is
-created before the old one is dropped, since writers run during the apply; the
-gate admits exactly this replacement from its checked-in list, and any other
-change to a unique constraint needs its own ruling; new indexes, unique constraints and
+`specimen_unique_1` on (bucket, objectName, generation) is replaced by
+`source_asset_specimen_object` on (organizationId, collectionId, specimenId,
+bucket, objectName, generation), because the blob store is content-addressed
+and identical bytes are one object across specimens; every added column is an
+existing NOT NULL column, since PostgreSQL treats NULLs as distinct; it takes
+two applies, because one apply drops before it creates, each statement in
+autocommit, while writers run: the first adds the new constraint beside the
+old, which keeps governing, and a later one drops the old; the gate admits
+exactly these two steps from its checked-in list, and any other change to a
+unique constraint needs its own ruling; new indexes, unique constraints and
 foreign keys over new columns only; new connector operations, each `@auth(level: NO_ACCESS)` with the
 membership `@check`s (`DATA.md` 73). The data plane's gate refuses everything
 else: dropped or renamed tables and columns, type changes, adding NOT NULL, key
