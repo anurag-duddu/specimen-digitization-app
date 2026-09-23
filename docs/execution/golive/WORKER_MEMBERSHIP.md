@@ -13,13 +13,18 @@ hardcoded". Automation is marked by that uid; no new audit action is added.
 
 The API admits any enabled account with a verified museum email and App Check
 (`runtime_auth.py` 45-55), so the worker's Firebase account must not be one a
-person can sign in with. It has no password and no sign-in provider, or it is
-disabled, and it is not a person's mailbox. Its uid is private: the owner holds
-it in the secret `specimen-worker-actor-uid`, and the data release receives it
-only for the bootstrap run. Before T3e, the owner, who creates the account,
-confirms with a read-only Identity Toolkit `accounts:lookup` of that uid that
-the account exists and meets these conditions, and only then provides the uid
-for the run.
+person can sign in with: it is disabled or has no sign-in provider, and it has
+no email. Its uid is private: the owner holds it in the secret
+`specimen-worker-actor-uid`, and the data release receives it only for the
+bootstrap run.
+
+Before T3e writes the membership, its bootstrap run looks the uid up read-only
+with Identity Toolkit `accounts:lookup`, as `bootstrap_release.py` 396-405
+already does for the administrator. It refuses unless the account exists, is
+disabled or has no sign-in provider, and has no email (coordinator ruling,
+2026-09-23). The check runs exactly when the membership is written, uses a
+lookup the bootstrap identity already makes, and catches any later change to
+the account. The owner-side evidence is recorded in `OWNER_INPUTS.md` 288.
 
 ## Rows
 
