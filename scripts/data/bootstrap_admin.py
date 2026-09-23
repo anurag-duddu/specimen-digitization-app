@@ -142,6 +142,63 @@ def hierarchy_mutation(parents: list[int | None]) -> str:
     )
 
 
+# The worker's own account (docs/execution/golive/WORKER_MEMBERSHIP.md). The organization
+# member and every collection member commit or roll back together. A replay, or a uid that is
+# already a member, stops on the organization member's primary key; an unknown collection stops
+# on the composite foreign key. Role and sensitivity are literals, never variables.
+WORKER_MEMBERSHIP_MODE = "worker-membership-bootstrap/v1"
+WORKER_COLLECTIONS_MAX = 64
+
+
+def worker_membership_mutation(count: int) -> str:
+    """Render the one @transaction for `count` processing collections, deterministically."""
+    if type(count) is not int or not 1 <= count <= WORKER_COLLECTIONS_MAX:
+        raise ValueError("A bounded, explicit number of processing collections is required")
+    declared = ["  $organizationId: UUID!, $uid: String!,"]
+    declared += [f"  $c{index}: UUID!," for index in range(count)]
+    declared[-1] = declared[-1].removesuffix(",")
+    rows = [
+        f"  m{index}: collectionMember_insert(data: {{organizationId: $organizationId, collectionId: $c{index},\n"
+        '    uid: $uid, active: true, role: "operator", canViewSensitive: false})'
+        for index in range(count)
+    ]
+    return (
+        "mutation PrepareWorkerMembership(\n" + "\n".join(declared) + "\n) @transaction {\n"
+        "  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})\n"
+        + "\n".join(rows) + "\n}\n"
+    )
+
+
+def worker_membership_request(
+    *, organization_id: str, uid: str, collection_ids: list[str]
+) -> dict[str, Any]:
+    """The reviewed worker-membership request; the release job supplies the private values."""
+    # The first-admin rule for an explicit Firebase UID.
+    if (
+        not isinstance(uid, str)
+        or not 1 <= len(uid) <= 128
+        or uid != uid.strip()
+        or any(ord(character) < 32 for character in uid)
+    ):
+        raise ValueError("An explicit Firebase UID is required")
+    if (
+        not isinstance(collection_ids, list)
+        or not collection_ids
+        or len(collection_ids) > WORKER_COLLECTIONS_MAX
+    ):
+        raise ValueError("Processing collections must be an explicit, bounded list")
+    identifiers = [_identifier(value) for value in collection_ids]
+    if len(set(identifiers)) != len(identifiers):
+        raise ValueError("Processing collections must be distinct")
+    variables = {"organizationId": _identifier(organization_id), "uid": uid}
+    variables.update({f"c{index}": value for index, value in enumerate(identifiers)})
+    return {
+        "mode": WORKER_MEMBERSHIP_MODE,
+        "query": worker_membership_mutation(len(identifiers)),
+        "variables": variables,
+    }
+
+
 def prepare_bootstrap(
     *,
     auth_record: dict[str, Any],
