@@ -90,8 +90,9 @@ Tests for every validator you change.
 `scripts/ci/deploy_data.py` and the initialization modules: a first
 initialization that matches the real state (database exists and is empty); then,
 on every push to `main` that changes `dataconnect/`, an additive-only check (PLAN
-section 4.4's expand-only definition, including its NOT NULL, unique-constraint
-relaxation and `NO_ACCESS` rules; refuse anything else) and a `COMPATIBLE`
+section 4.4's expand-only definition, including its NOT NULL rule, its one
+closed unique-constraint exception and its `NO_ACCESS` rule; refuse anything
+else) and a `COMPATIBLE`
 apply, the
 supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
@@ -101,8 +102,8 @@ the same window (T3e) by the worker's membership from S5's reviewed document
 pilot collection (Insects) only, role `operator`, `canViewSensitive: false`,
 with the UID from the temporary environment secret `DATA_WORKER_ACTOR_UID`,
 which the owner sets for that run and deletes afterwards; read back, skip if
-identical, fail if different. Never `scripts/data/bootstrap_admin.py`, which
-hard-codes role `admin`. Retire the
+identical, fail if different. Never the admin membership document of
+`scripts/data/bootstrap_admin.py`, which hard-codes role `admin`. Retire the
 envelope admission for this plane, but keep the checks that live inside it:
 `GITHUB_REF_PROTECTED=true` and the five required checks successful on the
 exact merged commit, as in T2. Take a backup with a verified restore path

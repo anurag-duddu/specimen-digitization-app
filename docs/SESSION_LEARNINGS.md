@@ -11863,13 +11863,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Records two coordinator rulings from #88's review: sensitive uploads are never processed by the worker, as the spec requires; `approvedBy` is null unless the caller is a reviewer with sensitive access.
   - Addresses the steward's merge review of #87 (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5804177173). The worker's membership step is specified. G26 now reaches traces, fixtures, lab folders and the request URL. The two gates that read only the last lookup are named. G21 is standing. The steward no longer updates branches. The TRN-005 keys join the never-drop list. `search.py` gets an owner.
   - One nit is declined with its reason: a separate lab read token (the owner reuses existing credentials). Docs only.
-  - Adds a coordinator ruling for #88: replacing a unique constraint with one over a strict superset of its columns counts as expand, on the same terms as a dropped NOT NULL. The first case is `SourceAsset`'s object uniqueness, which becomes per specimen because identical bytes share one content-addressed object.
+  - Adds a coordinator ruling for #88, narrowed in the fix round to one closed exception. `SourceAsset`'s object uniqueness becomes per specimen on (organizationId, collectionId, specimenId, bucket, objectName, generation), because identical bytes share one content-addressed object. The added columns are NOT NULL, and the new constraint is created before the old one is dropped.
+  - The fix round for the security review (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804585044):
+    - the ten's not-sensitive declaration rests on the owner's verified classification (G31);
+    - S4's G20 line points at G27;
+    - the upload-screen notice is part of the ruling;
+    - an unmatched place keeps the place ID with no name until the owner decides S8's D2;
+    - "the admin document" wording is fixed;
+    - S5 owns `scripts/data/`.
 - Owner decisions (chat, 2026-09-23):
   - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
   - G28: taxon names work the same way.
   - G29: a Roman-numeral month is the month. The harness works through every reading a notation allows and settles with evidence; each subcollection has its own harness, Insects first.
+  - G30: production model calls may spend USD 5 of the USD 25; the lab's USD 5 is separate.
+  - G31: the owner checked the ten pilot slides and classified them not sensitive.
 - Durable learnings:
   - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
   - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 43 and HAR-013 made explicit, so check a new format question against it before asking the owner.
   - (3) An owner can answer a narrow question with a broader principle (G27, G29). Record the answer verbatim, then write the engineering reading separately, so reviewers can check one against the other.
+  - (4) A rule that relaxes a safety property must be a closed exception. "No existing operation uses it" cannot see idempotency uniques enforced by plain inserts (`ModelObservation` (runId, stepKey), `Checkpoint`, `OutboxEvent`). A column added to a unique constraint must also be NOT NULL.
+  - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.

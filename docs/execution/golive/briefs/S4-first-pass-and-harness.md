@@ -61,8 +61,10 @@ functional one comes first (G6).
   lookups on each reader's raw reading; fields that resolve clear on their own
   evidence, and a field still left with conflicting readings goes to needs human
   review. G20: when the readers disagree and a lookup confirms exactly one
-  reader's literal, that literal is used with its provenance and the field can
-  clear; it counts as a resolved critical disagreement for QUE-002.
+  reader's literal, that settles the disagreement, with its provenance, and the
+  field can clear; it counts as a resolved critical disagreement for QUE-002.
+  For places and taxon names that literal does not become the verbatim (G27,
+  G28, below).
 - G27 and G28: for places and taxon names the verbatim keeps the text as written
   and the final value is what the lookup settled; both are stored. When the
   first pass picked no reading and the readers' literals differ, each reader's

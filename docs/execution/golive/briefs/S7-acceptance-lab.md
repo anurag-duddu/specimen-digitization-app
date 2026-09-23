@@ -74,8 +74,8 @@ the workstream; no secrets or identities) and a message to the owning session
 and the coordinator. Rerun after the fix merges. Offer recorded real responses
 to S4 as test fixtures, never a Google geocoding response beyond the place ID,
 the outcome and the fingerprint (G26). Declare the pilot's import not
-sensitive: the worker never sees a record declared Sensitive (PLAN section
-2.2).
+sensitive, on the owner's verified classification of the ten (G31); the
+worker never sees a record declared Sensitive (PLAN section 2.2).
 
 **T4. Production acceptance,** once DoD-1 to DoD-3 hold, following PLAN section
 8 through the app. The owner signs in; agree with the coordinator how you drive
