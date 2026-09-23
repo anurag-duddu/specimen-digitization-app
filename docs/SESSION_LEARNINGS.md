@@ -11840,3 +11840,19 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) The default execution budget admits only ten billable steps per run (160,000 tokens at 16,000 reserved each). A three-label slide already uses eight, so any added model stage needs the profile's limits raised, not only a cost reservation. (2) The hex-entropy secret scanner flags a policy digest in JSON, where no inline allowlist comment is possible; the audited baseline entry is the established fix. Leaving the SAM revision to the schema's pinned default keeps it out of the file. (3) Synthetic mode's integrity rule expects a reading of the whole asset, and a non-synthetic run expects a reading of the region crop (`integrity.py` 107-112). A lab with real readers therefore has to run non-synthetic profiles; that is #79.
 - Failed approaches: none.
 - Remaining follow-ups: S2 adds `SPECIMEN_COLLECTION_BINDINGS_JSON` from Secret Manager to the API and worker. S4 adds `first_pass_route`/`harness_route` values and the `first_pass` reservation, moves the clearance policy to v2 with a new profile version, and changes `parse` to extract optional fields. The worker gets both registries in T2. T3 makes the SAM thresholds and G15's values explicit.
+
+### 2026-09-23 — Go-live lane T3a (server): SAM 3 serves each run, and the lab
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the service half of topic T3a of `docs/execution/golive/LANE.md`; the worker half follows in the next pull request.
+- Branch/worktree: `golive/lane-sam-server` from `golive/lane-profile-config` (T4, #93), in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - `sam3_server.RunSegmenter` (`SPECIMEN_SAM3_ENABLE=authorized-run`) serves any well-formed request from the authenticated worker, beside the frozen pilot's manifest mode, which is unchanged.
+  - Numbered create-only claims under `application/sha256/sam3-runs/{run_id}/` fence one inference per run. The stored response answers any repeat of the same request, and a claim older than the 240 s hard deadline is taken over.
+  - Run ids that could name a path are refused. There is no launch window or self-shutdown.
+  - Lab mode (`SPECIMEN_SAM3_ENABLE=lab`, refused on Cloud Run or with `APP_ENV=production`) authenticates with a shared secret and stores objects in the application's `LocalBlobs` layout.
+  - `--checkpoint-digest` prints the pinned checkpoint's digest without loading the model.
+  - The pilot's decode and mask-to-region code moved into helpers that both modes share.
+- Validation actually run: the per-run server tests and every existing SAM, SAM-binding and evidence-pilot test (123 passed); the full gates as listed in the pull request.
+- Durable learnings: a loopback caller check cannot work for a service in Docker Desktop, because the container sees the bridge gateway as the peer. A shared secret, with the port published on host loopback only, is the workable lab perimeter.
+- Failed approaches: a first lab design bound 127.0.0.1 with a loopback check (see the learning).
+- Remaining follow-ups: the worker half of T3a (response binding, retryable failures, lab endpoint, checkpoint pin, timeouts), then T3b.
