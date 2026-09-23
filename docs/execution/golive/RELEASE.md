@@ -243,18 +243,107 @@ attested SAM 3 image when its inputs (`containers/worker/sam3.Dockerfile`, its
 lock file and `src/specimen_digitization`) are unchanged, and rebuilds it
 otherwise.
 
-## 4. Next pull requests
+## 4. T3: data plane on merge
+
+T3 retires the data plane's envelope in steps that each keep `main` green: T3a
+the additive-only gate, T3b the data gate and automatic phases, T3c the first
+initialization, T3d the apply while the runtime runs, and T3e the bootstrap.
+The coordinator settled the three open choices on 2026-09-23 (D1 to D3 below).
+Live state, read on 2026-09-23:
+- The Data Connect schema is a `STRICT` placeholder with no source files, and
+  no connector exists.
+- The application database exists.
+- Cloud SQL takes daily automated backups (seven retained) with
+  point-in-time recovery on.
+
+### 4.1 The additive-only gate (T3a)
+
+`scripts/ci/schema_gate.py` compares the live schema and connector sources with
+the merged `dataconnect/schema/*.gql` and `dataconnect/connector/*.gql`,
+offline. It parses only the SDL this repository uses. It accepts:
+
+- new `@table` types, whatever their fields;
+- new nullable fields on existing tables, including a `@ref` over the new
+  field;
+- removing `!` only from a field the gate names with its reason from the data
+  contract (`SourceAsset.width`, `SourceAsset.height`,
+  `LabelRegion.cropAssetId`). The gate never removes `!` from a key field, a
+  `@unique` field, or a provenance or idempotency key (`ModelObservation`
+  `runId`, `regionId`, `provider`, `modelVersion`, `stepKey`);
+- a new type-level `@unique` or `@index` whose fields are all new;
+- new connector operations whose header carries `@auth(level: NO_ACCESS)` and
+  whose body checks `organizationMember(key: {organizationId: $organizationId,
+  uid: $actorUid})` with `@check`.
+
+It refuses everything else, and names each refusal without values:
+- a removed or renamed table or field;
+- a changed `@table` key or name, field type, default or reference;
+- an added `!`, or a new non-null field on an existing table;
+- a new `@unique` or `@index` over an existing field, or a removed or changed
+  type-level constraint;
+- a changed or removed `@view`;
+- a removed or changed operation, compared with whitespace normalized;
+- a new operation at another auth level or without the membership check.
+
+When the live schema is the empty placeholder there is nothing to compare, and
+the release initializes instead (4.3).
+
+### 4.2 The data gate and its phases (T3b)
+
+- The data jobs use the gate of section 3.1 for the `data` and
+  `data-initialization` planes, with their fixed providers.
+- The release job chooses the phase itself from live state read without
+  changing it: `initialize` when the schema is the empty placeholder and no
+  connector exists; `apply` when the merged schema, connector or Storage rules
+  differ from the live ones; `verify` otherwise.
+- The runtime gate waits for the same commit's data release to succeed (D3).
+
+### 4.3 First initialization (T3c)
+
+The one-time initializer creates the Data Connect roles and grants in one
+transaction with postconditions, through the existing time-bounded window. It
+skips the clone rehearsal: the database holds nothing to restore, and backups
+with point-in-time recovery are on. The ordinary identity then:
+1. applies the schema with `MIGRATE_COMPATIBLE`;
+2. applies the supplemental indexes, the connector and the Storage rules;
+3. checks that the catalog lists exactly the tables the merged schema
+   declares.
+
+### 4.4 Apply while the runtime runs (T3d)
+
+1. Before every apply, an on-demand backup must reach `SUCCESSFUL`, and
+   point-in-time recovery must be on. On the first apply after the plane goes
+   live, that backup is also restored into a short-lived clone; the clone's
+   catalog is checked and the clone is deleted (D1).
+2. The gate of section 4.1 must pass.
+3. The schema is applied with `MIGRATE_COMPATIBLE`: validate-only first, then
+   conditional on the live etag.
+4. The supplemental indexes are created concurrently, then the connector and
+   the Storage rules are applied.
+5. The catalog must list exactly the declared tables.
+
+No writer is quiesced and no row hash is compared, because the runtime keeps
+running.
+
+### 4.5 Bootstrap (T3e)
+
+The private artifact reaches the job only through the `data-production`
+environment secret `DATA_BOOTSTRAP_ARTIFACT_B64`. The owner sets it for the
+bootstrap run, with the one-time bootstrap window open, and deletes it
+afterwards (D2).
+- If the secret is absent, the job skips the bootstrap.
+- If it is present and the rows already match exactly, the job verifies and
+  skips.
+- If it is present and the rows differ, the job fails.
+
+Nothing prints a value from the artifact, and evidence stays encrypted as
+today. The envelope phases stay until T3's last step removes them.
+
+## 5. Next pull requests
 
 Each adds its own section here, with failing tests first, as PLAN section 7.2
 requires.
 
-- T3, data plane on merge: the protected-ref check and the five-checks check
-  move out of the retired admission into the plane's own gate; a first
-  initialization that matches the real state; then, on every change to
-  `dataconnect/`, a backup with a verified restore path, an additive-only check
-  and a compatible apply that works while the runtime runs; a one-time,
-  idempotent hierarchy bootstrap whose identities never reach a log or
-  artifact.
 - T4, the owner's list: a read-only script that prints the exact standing IAM
   grants and secrets T2 and T3 need, each bound to a named resource with its
   reason, plus the initializer's one-time window.
