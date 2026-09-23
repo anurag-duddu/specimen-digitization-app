@@ -380,12 +380,14 @@ a secret or a private id.
 | `allUsers` | `roles/run.invoker` | service `specimen-api` | the web client reaches the API, which authenticates every request itself; after the first runtime release |
 | runtime identities | `roles/secretmanager.secretAccessor` | each secret its role reads (`runtime_settings.py`) | per identity and per secret: the API reads the Logfire token, the source registry and the collection bindings; the worker reads the Hugging Face token, the Logfire token, the Maps key, its actor uid and the collection bindings; SAM 3 reads the Logfire token |
 | `specimen-data-release` | `specimenDataSchemaPublish`, `specimenDataStorageRules`, `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`, `specimenDataInventoryProjectRead` | project, with the existing resource conditions and no time condition | apply the schema, the connector and the rules; back up before an apply (D1); read the catalog |
-| `specimen-data-release` | `specimenDataCloneCreate`, `specimenDataCloneControl` | project, conditioned on the restore-clone name prefix | the first apply's restore check (D1) |
 
 The data release's two retired roles, `specimenDataRuntimeAbsence` and
-`specimenDataRestoreAllowanceClaim`, get no new grant. The initializer role,
-`specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
-one-time, through the setup window.
+`specimenDataRestoreAllowanceClaim`, get no new grant. Only the roles automatic
+applies need are standing. The clone roles, `specimenDataCloneCreate` and
+`specimenDataCloneControl`, stay time-bounded: the owner opens them through
+the setup window only for the first apply's restore check (D1). The
+initializer role, `specimenDataOwnerBootstrap` and
+`specimenDataInitializerDisposal` stay one-time, through the setup window.
 
 The script also prints the other owner steps:
 - public access prevention on the bucket;
