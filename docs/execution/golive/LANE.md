@@ -360,6 +360,15 @@ floor, the 64 highest-scoring, each with box and score, and it returns the
 parameters it applied. It stores masks only for label detections at or above the
 label threshold. Those become the regions, as today.
 
+Settings without these values keep the service's previous contract: a 0.5 label
+threshold that is also the floor, 64 detections and no cross-check. In per-run
+mode, no label detection at or above the threshold is an empty result, not a
+service error; the coverage check then fails it.
+
+The worker checks that the response applied exactly the requested parameters,
+that every detection lies inside the image at or above the floor, and that the
+regions are the label detections at or above the threshold, in order.
+
 The worker keeps the whole response as the segmentation evidence, so the lab can
 sweep thresholds offline. `Run.segmentation` summarises it: concept, thresholds,
 floor, revision, checkpoint digest, region count and per-region scores.
