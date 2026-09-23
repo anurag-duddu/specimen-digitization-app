@@ -432,11 +432,29 @@ owner set the model allowance (G30).
 `specimen-worker --mode production --drain` runs the lane's worker. The frozen
 pilot's worker is unchanged and still needs its launch files.
 
-- **Settings.** No launch policy, manifest or timing files. The worker needs
-  its actor (`SPECIMEN_WORKER_ACTOR_UID`), the SQL endpoint, the bucket, the
-  SAM 3 settings, the inference switch, and the collection bindings
-  (`SPECIMEN_COLLECTION_BINDINGS_JSON`). It resolves profiles with the same
-  published registries as the API.
+- **Command.** `--max-seconds` is the job's task deadline: 3600 by default, more
+  than 600 and at most 3600. The command refuses `--once` and the pilot's inputs
+  (`--launch-policy`, `--source-manifest`, `--evidence-only`,
+  `--evidence-profile`, `--materialize-config`). `--check-config` checks the
+  settings and exits.
+- **Process.** The drain runs in the job's own process, not under the pilot's
+  supervisor. The supervisor hard-stops its worker group on `SIGTERM`, which
+  would leave the fence held until its lease expired. Each external call keeps
+  its own bounded effect and deadline.
+- **Settings.** No launch policy, manifest or timing files. Before it takes any
+  work, the worker checks its settings and exits 2 if any of these is missing
+  or wrong:
+  - its actor (`SPECIMEN_WORKER_ACTOR_UID`);
+  - the inference switch;
+  - the SAM 3 service on Cloud Run (`SPECIMEN_SAM3_ENDPOINT`), pinned at the
+    reviewed revision (`SPECIMEN_SAM3_REVISION`);
+  - the readers' `HF_TOKEN`.
+
+  It also refuses emulator settings and SAM 3 lab mode. The collection bindings
+  (`SPECIMEN_COLLECTION_BINDINGS_JSON`) and the worker job
+  (`SPECIMEN_WORKER_JOB`, for the hand-over) are optional. An error names the
+  setting, never its value. The SQL endpoint and the bucket are the API's. The
+  worker resolves profiles with the same published registries as the API.
 - **Collections.** The actor's operator-or-above memberships, one collection at
   a time.
 - **Fence.** Two executions of the job must never process two runs of one
@@ -444,9 +462,15 @@ pilot's worker is unchanged and still needs its launch files.
   that when both executions act as the same actor, because they replay each
   other's receipts. So the worker first takes the collection's fence: a
   compare-and-set document holding the execution's id, the run it is working on,
-  and a lease of 300 s renewed after every step. A live fence held by another
-  execution means that execution is draining the collection, and this one moves
-  on. An expired fence is taken over.
+  and a lease of 300 s renewed after every step.
+  - A live fence held by another execution means that execution is draining the
+    collection, and this one moves on. An expired fence is taken over.
+  - The document is marked not sensitive, since the worker's membership cannot
+    view sensitive records.
+  - The holder is the Cloud Run execution and task index. A retried attempt of
+    the same task takes over at once, because its predecessor has exited.
+  - A worker that stalls past its lease and loses the fence leaves the
+    collection to the new holder.
 - **Order.**
   - The run a dead execution left under the fence is finished first.
   - After that, the oldest due run, by `queued_at` through `ListDueWorkV2`
@@ -455,11 +479,24 @@ pilot's worker is unchanged and still needs its launch files.
     unknown outcome. Then the next one is taken.
 - **Retries.** A run that stops with a scheduled retry is waited for, once no
   other run is due, if the retry falls inside the window. Nothing else would
-  start the job for it. Retry delays are at most 300 s plus jitter.
+  start the job for it. Retry delays are at most 300 s plus jitter. A retry
+  after the window is written into the fence when it is released, and the next
+  holder waits for it as it would for its own. `ListDueWorkV2` cannot look
+  ahead, because its cutoff may not pass the database's clock.
 - **Window.** The worker takes no new run 600 s before its task deadline
   (3600 s). It exits 0 when nothing is due and no retry is pending in the
   window. On `SIGTERM` it stops taking work, lets the current step's result
   save, and releases the fence.
+- **Hand-over.** The worker starts the next execution in two cases: the window
+  closes, or a retry falls after the window but inside the next execution's
+  window. It releases its fences first and uses the same job start as the API
+  (T1). A drained queue or a stop signal starts none. A failed start leaves the
+  work queued for the next request, as in T1. The worker's service account
+  needs permission to run its own job.
+- **Output.** One JSON summary: the status (`drained`, `window_closed` or
+  `stopped`), the specimens processed, the collections skipped, the retries
+  pending, and the hand-over's outcome (`requested`, `failed`, `unconfigured`
+  or none).
 
 ### Program allowance (G9)
 

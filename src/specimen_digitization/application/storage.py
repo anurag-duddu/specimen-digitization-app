@@ -321,6 +321,26 @@ class SQLiteRepository:
 
         return unpack(json.loads(row[0]), self.graph_blobs)
 
+    def oldest_due(self, scope, cutoff, limit=1):
+        """Due, non-sensitive work, oldest request first (LANE.md T2, G13)."""
+        if not 1 <= limit <= 100:
+            raise ValueError("Work page limit must be 1..100")
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id,revision,state,work_available_at,created_at FROM records WHERE org=? AND collection=? AND created_at<=? AND work_available_at<=? AND COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0 ORDER BY work_available_at,id LIMIT ?",
+                (scope.organization_id, scope.collection_id, cutoff, cutoff, limit),
+            ).fetchall()
+        return [
+            WorkItem(
+                specimen_id=r[0],
+                revision=r[1],
+                state=r[2],
+                work_available_at=r[3],
+                created_at=r[4],
+            )
+            for r in rows
+        ]
+
     def due_page(self, scope, cutoff, after_id=None, limit=50):
         if not 1 <= limit <= 100:
             raise ValueError("Work page limit must be 1..100")
