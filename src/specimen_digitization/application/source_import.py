@@ -7,10 +7,10 @@ live object must still be on that generation when it is read, and the bytes must
 digest to the value the server itself recorded at capture. The snapshot is the
 one declaration a client can neither supply nor alter.
 
-Importing is not running. This module dispatches no processing in any mode:
-running a selection is workstream C of SOURCE_BROWSE_AND_RUN.md and is blocked
-on an ongoing budget. Dispatching N specimens as a side effect of importing them
-would be that workstream, arriving without the allowance meant to bound it.
+This module dispatches nothing itself. Outside synthetic mode the caller passes
+`on_intake`, which queues each new specimen within its collection's allowance
+before it is created: adding a source photograph is intake, and intake
+processes (docs/execution/golive/LANE.md, T1).
 """
 
 from __future__ import annotations
@@ -143,6 +143,7 @@ def import_objects(
     sensitive,
     synthetic,
     duplicate_of,
+    on_intake=None,
 ):
     """Two passes: prove every generation first, then create."""
     resolved = verify_selection(source, entries, selections)
@@ -192,6 +193,7 @@ def import_objects(
                 sensitive=sensitive,
                 synthetic=synthetic,
                 duplicate_of=duplicate_of,
+                on_intake=on_intake,
             )
         except SourceObjectChanged as exc:
             # A change racing the import. Name what already exists; conceal nothing.
@@ -242,6 +244,7 @@ def create_from_object(
     sensitive,
     synthetic,
     duplicate_of,
+    on_intake=None,
 ):
     data = reader.read(
         source.bucket, source_object.object_name, source_object.generation
@@ -311,6 +314,8 @@ def create_from_object(
     request_digest = hashlib.sha256(
         f"{key}:{batch_id}:{checksum}:{sensitive}".encode()
     ).hexdigest()
+    if on_intake is not None:
+        on_intake(specimen)
     try:
         specimen = repository.create(principal, specimen, key, request_digest)
     except Conflict:

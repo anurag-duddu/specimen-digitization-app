@@ -1052,17 +1052,17 @@ def create_app(
         from .source_import import import_objects
         from .source_inventory import load
 
-        registry = configured_sources()
+        sources = configured_sources()
         p, batch = find_document(user, organization_id, "batch", batch_id)
         principal(user, organization_id, p.scope.collection_id, write=True)
         key(idempotency_key)
         if body.sensitive != batch.get("sensitive", True):
             raise ValueError("Item sensitivity must match its retained batch")
-        source = registry.get(body.source_id, {p.scope.collection_id})
+        source = sources.get(body.source_id, {p.scope.collection_id})
         inventory, entries = load(repository, p.scope, source, blobs)
         sensitivity_access(user, p, inventory.sensitive)
-        # No dispatch: importing a selection and running one are separate decisions.
-        return import_objects(
+        # Importing is intake: outside synthetic mode each new specimen is queued.
+        result = import_objects(
             principal=p,
             user=user,
             source=source,
@@ -1075,7 +1075,13 @@ def create_app(
             sensitive=body.sensitive,
             synthetic=mode == "synthetic",
             duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
+            on_intake=None
+            if mode == "synthetic"
+            else lambda specimen: queue_on_intake(specimen, registry, user),
         )
+        if mode != "synthetic" and result["imported"]:
+            start_worker()
+        return result
 
     @app.get(prefix + "/uploads/{upload_id}")
     def upload(organization_id: str, upload_id: str, user=Depends(identity)):

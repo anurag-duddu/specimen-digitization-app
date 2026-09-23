@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
+from .lane_dispatch import JOB_NAME
+from .source_registry import RegisteredSource, SourceRegistry
+
 BUILD_FILE = Path(__file__).with_name("_build.json")
 
 
@@ -57,6 +60,9 @@ class RuntimeConfig:
     readiness_object: str
     readiness_generation: int
     shutdown_seconds: int = 8
+    # LANE.md T1. Absent means no worker start and no sources, as before.
+    worker_job: str | None = None
+    sources: tuple[RegisteredSource, ...] = ()
 
     @classmethod
     def from_env(cls, env=None):
@@ -125,6 +131,7 @@ class RuntimeConfig:
             or not re.fullmatch(r"[1-9][0-9]{0,19}", generation)
         ):
             raise ValueError("Frozen readiness object and generation required")
+        worker_job, sources = lane_settings(env, project, bucket)
         return cls(
             port,
             project,
@@ -135,4 +142,27 @@ class RuntimeConfig:
             origins,
             readiness_object,
             int(generation),
+            worker_job=worker_job,
+            sources=sources,
         )
+
+
+def lane_settings(env, project, bucket):
+    """The worker job the API starts and the sources it imports from (LANE.md T1)."""
+    job = env.get("SPECIMEN_WORKER_JOB") or None
+    if job is not None and (
+        not JOB_NAME.fullmatch(job) or job.split("/")[1] != project
+    ):
+        raise ValueError("SPECIMEN_WORKER_JOB must name a job in the configured project")
+    try:
+        items = json.loads(env.get("SPECIMEN_SOURCE_REGISTRY_JSON") or "[]")
+    except json.JSONDecodeError as exc:
+        raise ValueError("SPECIMEN_SOURCE_REGISTRY_JSON must be a JSON list") from exc
+    if not isinstance(items, list):
+        raise ValueError("SPECIMEN_SOURCE_REGISTRY_JSON must be a JSON list")
+    # A validation error names the field, never the private value.
+    sources = tuple(RegisteredSource.model_validate(item) for item in items)
+    if any(source.bucket != bucket for source in sources):
+        raise ValueError("Every source must be in the approved bucket")
+    SourceRegistry(sources)  # Each source and each collection prefix once.
+    return job, sources
