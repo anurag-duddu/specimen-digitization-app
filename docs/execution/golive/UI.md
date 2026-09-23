@@ -200,3 +200,19 @@ Part two adds, from the thread, to each section:
 The declarations and the "Differences and resolution" list stay below the
 sections. Where the thread gives a region's comparison, that region's row
 no longer repeats the ratio, so the score appears once.
+
+### T2.3 Fields: required and optional
+
+The Fields segment lists the required fields under "Required fields" and
+the rest under "Optional fields" (PLAN 4.7: the thread shows "mandatory and
+optional fields"; G16: `identified_by_irn` is optional).
+
+- The groups follow the record's own `required` flag, the one each row's
+  "(required)" marker already reads, so a heading and its rows never
+  disagree, and the groups are there before the thread is. A field the
+  run's profile does not classify counts as required, as its marker does.
+- Within a group the fields keep the record's order. A group with no fields
+  is left out, and a record with no fields keeps its one caveat.
+- A group heading has the weight and treatment of a Readings region
+  heading, from one shared `GroupHeading`: a label, not a title, set without
+  leading, whose node is the size of its words.
