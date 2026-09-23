@@ -11839,3 +11839,26 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The repository deletes merged branches (`delete_branch_on_merge`), so a PR stacked on another's branch retargets to `main` when that one merges.
 - Failed approaches: none.
 - Remaining follow-ups: in T2b, the publication supervisor must check the context without the retired variable, and its `--admit` step must accept a gate record without a plan. In T2c, the admission job's timeout must exceed the 3,300-second CI wait. If CI is re-run with "Re-run failed jobs" rather than "Re-run all jobs", the gate may fail closed; this is unverified.
+
+### 2026-09-23 — Go-live release workstream (S2), T3a: the additive-only gate for Data Connect changes
+
+- Task: the S2 session, brief item T3, step one (`docs/execution/golive/RELEASE.md` section 4.1), with the coordinator's D1 to D3 recorded in the T3 spec.
+- Branch/worktree: `golive/release-schema-gate`, stacked on #91's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed and integrated it.
+- Outcome:
+  - `scripts/ci/schema_gate.py` parses exactly the SDL this repository uses. It compares the live schema and connector sources with the merged ones, offline.
+  - It accepts new tables, new nullable fields, new foreign keys covering a new field, and dropping NOT NULL only on the checked-in list (`SourceAsset.width`, `SourceAsset.height`, `LabelRegion.cropAssetId`, plus relation fields over them). It also accepts new type-level constraints over new fields only, and new `NO_ACCESS` operations with the membership `@check`.
+  - It refuses everything else, naming each refusal without values. An empty live schema raises rather than admitting everything as new.
+  - No workflow calls the gate yet; T3b wires it.
+- Commits/PRs: spec `ef5eee9`; red `02066b0`; green `ab8e7cc`; the spec clarification and this closeout.
+- Validation actually run:
+  - Red: collection failed (no module).
+  - Green: 70 gate tests; `scripts/` 1,726 passed, 50 skipped (subagent, load 10.8); pre-commit passed.
+  - This session re-ran the CLI against #88's real files (`origin/golive/data-contract`): "additive", exit 0. In reverse it refuses, and the subagent counted all 43 of #88's changes flagged that way.
+- Durable learnings:
+  - A Data Connect relation field and its `@ref` column are one SQL column, so a named NOT NULL relaxation must carry its relation field with it.
+  - Scoped foreign keys always include the existing scope columns, so "foreign keys over new columns only" has to mean "covering at least one new column". That is safe, because PostgreSQL skips a foreign key on rows whose new column is null.
+  - Tokenizing, rather than matching lines, makes the membership-check rule immune to checks hidden in strings or comments.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - The gate checks that the membership `@check` is present, not what its expression says. `@check(expr: "true")` would pass, so the PR steward still reviews check expressions.
+  - T3b must never call the gate with a live schema but a missing connector, because every operation would then count as new.

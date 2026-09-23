@@ -263,13 +263,17 @@ the merged `dataconnect/schema/*.gql` and `dataconnect/connector/*.gql`,
 offline. It parses only the SDL this repository uses. It accepts:
 
 - new `@table` types, whatever their fields;
-- new nullable fields on existing tables, including a `@ref` over the new
-  field;
-- removing `!` only from a field the gate names with its reason from the data
-  contract (`SourceAsset.width`, `SourceAsset.height`,
-  `LabelRegion.cropAssetId`). The gate never removes `!` from a key field, a
-  `@unique` field, or a provenance or idempotency key (`ModelObservation`
-  `runId`, `regionId`, `provider`, `modelVersion`, `stepKey`);
+- new nullable fields on existing tables, including a new foreign key that
+  covers at least one new field. Scoped foreign keys always include the
+  existing `organizationId` and `collectionId`, and PostgreSQL does not
+  enforce a foreign key on rows whose new, nullable column is null;
+- removing `!` only from a field on the gate's checked-in list, each named
+  with its reason from the data contract (`SourceAsset.width`,
+  `SourceAsset.height`, `LabelRegion.cropAssetId`). A relation field whose
+  `@ref(fields:)` covers a listed column may follow it, since they are the
+  same SQL column. The gate never removes `!` from a key field, a `@unique`
+  field, or a provenance or idempotency key (`ModelObservation` `runId`,
+  `regionId`, `provider`, `modelVersion`, `stepKey`);
 - a new type-level `@unique` or `@index` whose fields are all new;
 - new connector operations whose header carries `@auth(level: NO_ACCESS)` and
   whose body checks `organizationMember(key: {organizationId: $organizationId,
