@@ -26,8 +26,9 @@ every stage works on real data, until specimen 10 passes the first time
   `--platform linux/amd64` emulation. Cached images such as
   `specimen-pr23-root-20260910-sam:f542604dc67ae12a6579b3dfe0d01d1e4b5b2e46`
   (3 GB) need no rebuild. Entrypoint
-  `python -m specimen_digitization.application.sam3_server`; the checkpoint
-  downloads at runtime with `HF_TOKEN` into `HF_HOME=/tmp/huggingface`. The
+  `python -m specimen_digitization.application.sam3_server`. The server forbids
+  `HF_TOKEN` and loads an offline, digest-pinned checkpoint (the cached one in
+  `~/.cache/huggingface`, mounted read-only with `HF_HUB_OFFLINE=1`). The
   server refuses to start outside Cloud Run (it checks `K_SERVICE`); work out a
   local mode with S3 rather than patching around it. The Docker VM has 8 GB and
   12 CPUs; SAM 3 on CPU takes about 25 s per image.
@@ -37,9 +38,13 @@ every stage works on real data, until specimen 10 passes the first time
 - Images: `gs://specimen-digitization.firebasestorage.app/microscopic-slides/subject_105526321.jpeg`
   to `...330.jpeg`, about 300 KB, 1780 by 590 px. Application default
   credentials work on this Mac.
-- The label is roughly the left 30 percent of the frame, with a DataMatrix
-  barcode reading `FMNHINS <catalog>`; the labels are from the 1946 expedition to
-  Mindanao (CNHM; F.G. Werner, H. Hoogstraal).
+- Slides 321-323 and 329-330 carry one label on the left; with the barcode
+  (reading `FMNHINS <catalog>`) it spans about the left 37 percent. Slides
+  324-328 carry two labels, and the locality, date, elevation and collector are
+  on the right-hand one. 321-327 are from Mindanao, Philippines, 1946 (CNHM;
+  F.G. Werner, H. Hoogstraal); 328-330 are from Yepocapa, Guatemala, 1948 (R.D.
+  Mitchell). Codes on the top edge such as `IX-17-66-2` are slide-preparation
+  codes, not collection dates (PLAN section 3).
 - `application_registry(synthetic=True)` force-sets approvals. For real runs use
   the pilot profile from S3, or record plainly that approvals are a local
   fixture.
@@ -75,7 +80,11 @@ owner's Chrome with permission). Check the SQL rows (read-only), the Logfire
 trace (every stage, prompts visible) and the thread in the app; write the
 report; rerun until the run is flawless; then the next specimen.
 
-Record every run's cost in its report and keep the program within G9.
+Record every run's cost in its report and keep the program within G9; the
+lab's share is USD 5. Your expected label boxes for the ten are the ground
+truth for the lane's automatic coverage check (G15): report its hits and misses
+per subject. Where the specification is silent or contradictory, stop and ask
+the coordinator; do not decide (G5).
 
 ## Done
 

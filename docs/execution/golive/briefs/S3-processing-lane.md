@@ -27,12 +27,14 @@ Each starts with its spec delta in `docs/execution/golive/LANE.md` and failing
 tests, then the implementation.
 
 **T1. On-demand trigger.** `POST /specimens/{id}/process` works in production
-for reviewers and administrators (synthetic only today, `api.py` 2387-2396):
-it creates the run with a budget from the collection's allowance, marks it due,
-and starts one execution of the worker job through the Cloud Run Admin API (an
-injected client, faked in tests). Processing starts on intake when the profile
-says so (synthetic only today, `api.py` 1292-1293). At most one active run per
-collection. Wire source import in production over `microscopic-slides/`
+with the endpoint's existing authorization (synthetic only today, `api.py`
+2387-2396): it creates the run with a budget from the collection's allowance,
+marks it due, and starts one execution of the worker job through the Cloud Run
+Admin API (an injected client, faked in tests). Processing starts on intake for
+every upload (`PRD.md` 9.1 step 6; synthetic only today, `api.py` 1292-1293). A
+request during an active run in the same collection waits and runs in request
+order (G13), and the intake collection selects the profile (G14). Wire source
+import in production over `microscopic-slides/`
 (`cli.py` 45-53 passes no source registry or reader today) so the ten can be
 imported from Storage.
 
@@ -51,20 +53,29 @@ instead of the frozen manifest, and the server no longer shuts itself down after
 an hour. Keep the pinned revision and offline checkpoint. Record the concept
 prompt, thresholds, revision, region count and scores, and continue the trace
 from the `traceparent` header. The release workstream (S2) builds and deploys
-the service; agree its shape with S2 before you finish.
+the service; agree its shape with S2 before you finish. Segmentation must find
+every label on the slide: five pilot slides carry two, with the locality on the
+right-hand one (PLAN section 3). Then confirm coverage automatically (G15):
+check the segmentation result with the specification's region-count and
+full-image cross-checks (`PRD.md` 871), set `run.coverage_confirmed` from the
+result, record the evidence, and let a failed check send the record to the
+human queue with `label_coverage_unconfirmed`. The segment step's body in
+`workflow.py` is yours. Write the concrete check into `LANE.md` and send it to
+the coordinator before building it.
 
 **T4. Profile.** `zoology_insects_slides` as configuration, published for the
 pilot (G1), mapped to `Insects` beneath `Zoology`, with inheritance down the
 collection tree (`collection_profiles.py` 198-224 does not walk parents). It
 carries the segmentation settings (`label`, thresholds 0.5, at most 64
-regions); the readers (the type must allow more than two: `domain.py` 332 is
-`tuple[str, str]`); the tools per field (S4 implements the tools); the
-mandatory and optional groups (G8: the specification's 20 mandatory until the
-owner's list arrives, and changing it must be one configuration edit); the
+regions); the two readers; the tools per field (S4 implements the tools); the
+mandatory and optional groups (G8: the specification's list until the owner's
+list arrives, with `identified_by_irn` optional (G16) and no Parties tool
+mapped to it; changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
-reference (S4). Optional fields must survive at runtime and be created for
-extraction (today they are dropped: `domain.py` 324-336,
-`collection_runtime.py` 106-118, `workflow.py` 688).
+reference (S4). Optional fields must survive at runtime and reach the run as
+`Run.field_groups` (today they are dropped: `domain.py` 324-336,
+`collection_runtime.py` 106-118); S4 changes `parse` (`workflow.py` 685-719)
+to extract them.
 
 **T5. Tracing (G3).** The lane uses the standard path's `approved-content` mode
 (`observability.py` 232-276), content on and binary content off. Remove the
@@ -73,7 +84,8 @@ metadata forcing for the lane (`worker.py` 751-754, `cli.py` 88-91,
 (`provider_privacy.py` 24-29, `transcription.py` 75; `harness.py` 80 is S4's,
 coordinate). One root span per run with specimen, run, collection and profile
 ids (helpers exist unused in `tracing.py` 48-68); a span per stage carrying
-`specimen.step`; SAM 3 spans on both sides; the trace id stored on the run (S5
+`specimen.processing.stage` (the existing helper's attribute, `tracing.py` 65);
+SAM 3 spans on both sides; the trace id stored on the run (S5
 adds the column) and exposed to the thread API; identities and secrets scrubbed.
 Update the leak tests to the new approval instead of deleting them. Wire the
 Logfire project and token with S2. The unmerged branch `codex/reader-trace-linkage`
@@ -89,7 +101,10 @@ working: `create_app(adapters=...)` in `application/api.py` is the seam, and
 
 S5's data contract (its T1) comes first; code against it. S2 deploys what you
 build and grants what it needs. S4 consumes the profile, the tools per field
-and the optional fields.
+and the optional fields. `domain.py` has no single owner: add to it additively,
+list your additions in the pull request body, and let S5 decide any shape that
+S4 also needs. Where the specification is silent or contradictory, stop and ask
+the coordinator; do not decide (G5).
 
 ## Done
 
