@@ -7,8 +7,10 @@ connect against original image with tracking back to which VLM gave what -
 scoring for level of disagreement - LLM does first pass at which final RAW
 transcript should run against (it should also give at a VLM level what was
 returned to the harness) ... obviously everything should link back to the
-specimen record/id". Owner decisions G15 (automatic coverage check) and G16
-(`identified_by_irn` optional) are included.
+specimen record/id". Owner decisions G15 (automatic coverage check), G16
+(`identified_by_irn` optional), G19 (the harness runs on each raw reading when
+the first pass selects none) and G20 (a lookup confirming exactly one reader's
+literal resolves the disagreement) are included.
 
 This page fixes what SQL holds for every run, which domain fields each row comes
 from, and the exact schema and connector additions. The lane (S3) and the first
@@ -150,8 +152,11 @@ whatever the owners settle on; the table columns above do not change.
 `spans` holds one verdict per aligned difference with every reading's text for
 that span, `alternatives` the unresolved material differences, and `unresolved`
 is true when any material difference is unresolved. The rationale and the notes
-are null for `identical_readings`. A region with no recorded decision has no
-`TranscriptionVersion`; the run's stage and blocker say why.
+are null for `identical_readings`. When the first pass selects no reading, the
+decision is `first_pass` with `selected_observation_id` null and `unresolved`
+true, and every reading of the region is handed over as a `raw_reading` (G19).
+A region with no recorded decision has no `TranscriptionVersion`; the run's
+stage and blocker say why.
 
 ### 4.3 From the harness (S4), in `Run.tool_calls: list[ToolCallRecord]`
 
@@ -171,7 +176,8 @@ reason codes, mapped to `RecordVersion.summary`.
 
 Each `FieldValue` in `Run.fields` gains `input_source`, `source_region_id` and
 `source_observation_id`, so a field's literal traces to the decided transcript
-or to the raw reading it came from.
+or to the raw reading it came from. When a lookup confirms exactly one reader's
+literal (G20), the field records `raw_reading` and that reading's observation.
 
 ## 5. Identifiers
 
@@ -295,10 +301,7 @@ active run unless `run_id` is given. Values in `…` are elided:
 
 ## 9. Open questions
 
-None for the data contract. S4 and the coordinator are settling whether the
-harness still runs on the raw readings when the first pass selects no reading;
-either way the region has `raw_reading` rows or no `HarnessInput` rows, and the
-columns hold.
+None.
 
 ## 10. Tests
 
