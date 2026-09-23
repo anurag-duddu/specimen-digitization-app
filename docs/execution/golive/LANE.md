@@ -174,7 +174,7 @@ deadline, so the API's request timeout is 600 s.
 
 ## T4. The slide pilot profile as configuration
 
-Implements PLAN 4.2 with G8, G14, G16, G22 and G24, and fixes issue #79.
+Implements PLAN 4.2 with G8, G14, G16, G22, G24 and G29, and fixes issue #79.
 
 ### The published registry
 
@@ -235,7 +235,7 @@ clearance authority (`review_risk.py` 165, 329-331).
 | Clearance policy | `insects-clearance-v1`. S4's G1 change moves it to v2 with a new profile version | S4 |
 | Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 15,000; each reader 20,000; `parse` 20,000. `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
 | Routes for the first pass and the harness | `first_pass_route` and `harness_route` fields exist, unset until S4's routes are approved | S4 |
-| Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900). S4's date parser stamps the rule, its version and the profile on each parsed date that uses it, so the century stays visibly derived (`CONTRACTS.md` 234-235) | G24 |
+| Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900), and a Roman numeral I to XII in the month position is that month (`roman_numeral_months`). S4's date parser stamps each rule, its version and the profile on every parsed date that uses it, so the reading stays visibly derived (`CONTRACTS.md` 234-235) | G24, G29 |
 
 `max_tokens` and `max_external_calls` join the allowance because the defaults
 (160,000 tokens, 32 weighted calls) admit only ten billable steps per run. A

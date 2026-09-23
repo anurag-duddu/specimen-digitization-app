@@ -97,6 +97,8 @@ class DateRules(FrozenRecord):
     two_digit_year_century: int | None = Field(
         default=None, ge=100, le=9900, multiple_of=100
     )
+    # G29: a Roman numeral I to XII in the month position is that month.
+    roman_numeral_months: bool = False
 
 
 class ProcessingPolicy(FrozenRecord):
