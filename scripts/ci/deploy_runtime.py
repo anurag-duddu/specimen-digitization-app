@@ -695,12 +695,15 @@ def released_bodies(images, source_sha, run_id, attempt, roles):
             generation = committed.READINESS_GENERATION
             require(type(generation) is int and generation > 0, "invalid readiness generation")
             values["SPECIMEN_READINESS_GENERATION"] = str(generation)
-        elif role == "sam":
-            digest_value, extra = committed.SAM_CHECKPOINT_SHA256, committed.SAM_SERVER_ENV
-            require(isinstance(digest_value, str) and DIGEST.fullmatch(digest_value) and isinstance(extra, dict)
-                    and all(isinstance(value, str) for value in extra.values())
-                    and not {*extra} & {*values, *spec["secret_env"], "SPECIMEN_SAM3_CHECKPOINT_SHA256"}, "invalid SAM settings")
-            values.update(extra, SPECIMEN_SAM3_CHECKPOINT_SHA256=digest_value)
+        else:  # SAM 3 and the worker carry the same checkpoint digest.
+            digest_value = committed.SAM_CHECKPOINT_SHA256
+            require(isinstance(digest_value, str) and DIGEST.fullmatch(digest_value), "invalid SAM checkpoint digest")
+            values["SPECIMEN_SAM3_CHECKPOINT_SHA256"] = digest_value
+        if role == "sam":
+            extra = committed.SAM_SERVER_ENV
+            require(isinstance(extra, dict) and all(isinstance(value, str) for value in extra.values())
+                    and not {*extra} & {*values, *spec["secret_env"]}, "invalid SAM settings")
+            values.update(extra)
         env = [{"name": name, "value": value} for name, value in values.items()]
         for name, secret in spec["secret_env"].items():
             version = committed.SECRET_VERSIONS[secret]

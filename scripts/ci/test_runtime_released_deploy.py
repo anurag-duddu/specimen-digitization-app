@@ -155,7 +155,7 @@ def env_of(container):
 
 def test_committed_settings_name_each_pending_value_and_nothing_is_touched(tmp_path, monkeypatch):
     assert S.pending("api") == ["READINESS_GENERATION"]
-    assert S.pending("worker") == ['WORKER["args"]']
+    assert S.pending("worker") == ['WORKER["args"]', "SAM_CHECKPOINT_SHA256"]
     assert S.pending("sam") == ["SAM_SERVER_ENV", "SAM_CHECKPOINT_SHA256"]
     assert {secret for role in S.ROLES.values() for secret in role["secret_env"].values()} == set(S.SECRET_VERSIONS)
     with pytest.raises(ValueError):
@@ -194,7 +194,7 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
                            "SPECIMEN_SOURCE_REGISTRY_JSON": ("specimen-source-registry", "1"),
                            "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
     assert RuntimeConfig.from_env(api_env).readiness_generation == 1790000000000001
-    for role, cpu, memory, cap, concurrency, timeout in (("api", "1", "1Gi", 2, 8, "600s"), ("sam", "4", "16Gi", 1, 1, "130s")):
+    for role, cpu, memory, cap, concurrency, timeout in (("api", "1", "1Gi", 2, 8, "600s"), ("sam", "4", "16Gi", 1, 1, "300s")):
         body, template = bodies[role], bodies[role]["template"]
         assert (body["name"], body["ingress"], body["labels"]) == (NAMES[role], "INGRESS_TRAFFIC_ALL", labels)
         assert body["scaling"] == template["scaling"] == {"minInstanceCount": 0, "maxInstanceCount": cap}
@@ -222,7 +222,8 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
     assert container["resources"] == {"limits": {"cpu": "1", "memory": "1Gi"}}
     worker_env, worker_secrets = env_of(container)
     assert worker_env == {**sql, "SPECIMEN_GCS_BUCKET": bucket, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
-                          "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true"}
+                          "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true",
+                          "SPECIMEN_SAM3_CHECKPOINT_SHA256": "4" * 64}
     assert worker_secrets == {"HF_TOKEN": ("huggingface-runtime-token", "2"), "LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),
                               "SPECIMEN_GOOGLE_MAPS_API_KEY": ("specimen-google-maps-key", "1"),
                               "SPECIMEN_WORKER_ACTOR_UID": ("specimen-worker-actor-uid", "1"),
@@ -360,14 +361,19 @@ def test_a_newer_deployed_commit_stops_the_release_before_any_change(tmp_path, m
     assert google.calls == ["login", "GET specimen-sam"] and google.bodies == [] and receipt["deployed"] == {}
 
 
-def test_a_role_with_a_pending_setting_is_not_deployed_and_the_others_are(tmp_path, monkeypatch, ready):
-    monkeypatch.setitem(S.WORKER, "args", S.PENDING)
+@pytest.mark.parametrize("setting,skipped", [('WORKER["args"]', {"worker"}), ("SAM_CHECKPOINT_SHA256", {"worker", "sam"})])
+def test_a_role_with_a_pending_setting_is_not_deployed_and_the_others_are(tmp_path, monkeypatch, ready, setting, skipped):
+    if setting == "SAM_CHECKPOINT_SHA256":  # the worker carries the same digest as SAM 3, so both wait for it
+        monkeypatch.setattr(S, "SAM_CHECKPOINT_SHA256", S.PENDING)
+    else:
+        monkeypatch.setitem(S.WORKER, "args", S.PENDING)
     google = FakeGoogle()
     receipt, error, seen = deploy(tmp_path, monkeypatch, google)
-    assert error is None and not any("worker" in call or "jobs" in call for call in google.calls)
-    assert receipt["pending"] == {"api": [], "worker": ['WORKER["args"]'], "sam": []}
-    assert set(receipt["deployed"]) == {"sam", "api"} and receipt["promoted"] is True and seen["probed"] == [SERVICE]
-    assert [subject for subject, _, _ in seen["attested"]] == ["oci://" + image("sam"), "oci://" + image("api")]
+    deployed = [role for role in NAMES if role not in skipped]
+    assert error is None and not any(NAMES[role].rsplit("/", 1)[1] in call for role in skipped for call in google.calls)
+    assert receipt["pending"] == {role: [setting] if role in skipped else [] for role in ("api", "worker", "sam")}
+    assert set(receipt["deployed"]) == set(deployed) and receipt["promoted"] is True and seen["probed"] == [SERVICE]
+    assert [subject for subject, _, _ in seen["attested"]] == ["oci://" + image(role) for role in deployed]
 
 
 @pytest.mark.parametrize("action", ["--admit", "--deploy"])

@@ -62,6 +62,7 @@ API = {
 WORKER = {
     "service_account": WORKER_EMAIL, "cpu": "1", "memory": "1Gi", "timeout_seconds": 3600,
     "args": PENDING,  # The processing lane's drain argv, once its server code merges.
+    # SPECIMEN_SAM3_CHECKPOINT_SHA256, the same digest SAM 3 serves, joins these once SAM_CHECKPOINT_SHA256 is known.
     "env": {**SQL, "SPECIMEN_GCS_BUCKET": BUCKET, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
             "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true"},
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
@@ -72,7 +73,8 @@ WORKER = {
 
 SAM = {
     "service_account": f"specimen-sam-runtime@{PROJECT}.iam.gserviceaccount.com",
-    "cpu": "4", "memory": "16Gi", "max_instances": 1, "concurrency": 1, "timeout_seconds": 130,
+    # 300 s: two concepts per image plus a cold start; the server stops at 240 s, the worker's segment call at 270 s.
+    "cpu": "4", "memory": "16Gi", "max_instances": 1, "concurrency": 1, "timeout_seconds": 300,
     # SPECIMEN_SAM3_CHECKPOINT_SHA256 and the read-only /model-cache mount follow SAM_CHECKPOINT_SHA256.
     "env": {"HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_AUDIENCE": SAM_URL,
             "SPECIMEN_SAM3_CALLER_EMAIL": WORKER_EMAIL, "SPECIMEN_SAM3_OUTPUT_BUCKET": BUCKET},
@@ -87,6 +89,7 @@ def pending(role: str) -> list[str]:
     """Names, never values, of every PENDING setting the role needs; it deploys only when there are none."""
     own = {"api": [], "worker": [('WORKER["args"]', WORKER["args"])], "sam": [("SAM_SERVER_ENV", SAM_SERVER_ENV)]}[role]
     secrets = [(f'SECRET_VERSIONS["{name}"]', SECRET_VERSIONS[name]) for name in ROLES[role]["secret_env"].values()]
-    marker = {"api": [("READINESS_GENERATION", READINESS_GENERATION)], "worker": [],
+    marker = {"api": [("READINESS_GENERATION", READINESS_GENERATION)],
+              "worker": [("SAM_CHECKPOINT_SHA256", SAM_CHECKPOINT_SHA256)],
               "sam": [("SAM_CHECKPOINT_SHA256", SAM_CHECKPOINT_SHA256)]}[role]
     return [name for name, value in own + secrets + marker if value is PENDING]
