@@ -1,5 +1,5 @@
 /// The data family (10 section 4.5): list rows, progress, skeletons, empty
-/// states, data tiles, arc indicators, avatars and hairlines.
+/// states, data tiles, arc indicators, avatars, hairlines and timelines.
 ///
 /// Between them these retire `ListTile`, `CheckboxListTile`,
 /// `CircularProgressIndicator`, `LinearProgressIndicator`, `Divider` and
@@ -15,3 +15,4 @@ export 'list_row.dart';
 export 'progress.dart';
 export 'skeleton.dart';
 export 'status_strip.dart';
+export 'timeline.dart';

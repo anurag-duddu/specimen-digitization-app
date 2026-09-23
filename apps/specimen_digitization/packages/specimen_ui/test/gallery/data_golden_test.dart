@@ -16,7 +16,10 @@
 // variant that puts its trailing under the title and the 200 dp specimen
 // grew by a line, and when the tile gained the paper surface a list header
 // can hold: measured at 2458, taken at 2460, which is the first height with
-// nothing left to scroll.
+// nothing left to scroll. And again at go-live (2026-09-23), when the rows
+// column gained `UiTimeline`, which carries lines of text and a trailing slot
+// the way a row does: measured with the page's scroll extent, 2839 is the
+// first height with nothing left to scroll in either density.
 //
 // The page is rendered on its own rather than inside the whole gallery, so
 // these four files hold still when the other family slots register theirs.
@@ -29,7 +32,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../harness/control_contract.dart';
 
 /// Tall enough for the whole page, at the width every family golden uses.
-const Size dataGalleryWindow = Size(1180, 2460);
+const Size dataGalleryWindow = Size(1180, 2839);
 
 void main() {
   // The focus ring is drawn only under `FocusHighlightMode.traditional`

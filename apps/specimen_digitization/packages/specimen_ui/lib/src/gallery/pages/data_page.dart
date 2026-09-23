@@ -4,8 +4,9 @@
 /// leading slot, progress as a ring at three sizes and as a bar, placeholders
 /// in the three shapes they stand in for, an empty state, the numeral tiles
 /// with their unit, footer and child slot, gauges with and without a value,
-/// avatars and rules. The page is the taste review for the family, and its
-/// golden is the diff a change to any of them shows up in first.
+/// avatars, rules, and timelines with and without glyphs. The page is the
+/// taste review for the family, and its golden is the diff a change to any of
+/// them shows up in first.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -28,7 +29,7 @@ const GalleryPage dataPage = GalleryPage(
   title: 'Data',
   summary:
       'Rows, progress, placeholders, empty states, numeral tiles, gauges, '
-      'avatars and rules, in every variant, size and state.',
+      'avatars, rules and timelines, in every variant, size and state.',
   builder: buildDataPage,
   maxGlassPanes: 8,
 );
@@ -309,6 +310,66 @@ class _DataPageState extends State<_DataPage> {
             body: 'No records match the current search and filters.',
             action: UiButton(label: 'Clear filters', onPressed: _noop),
           ),
+        ),
+      ),
+      _Section(
+        title: 'UiTimeline',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            const GallerySpecimen(
+              label: 'positions',
+              note: 'no glyph and no tone, so the number stands in',
+              child: UiTimeline(
+                semanticsLabel: 'Steps',
+                entries: <UiTimelineEntry>[
+                  UiTimelineEntry(title: 'Label detection', meta: '2 regions'),
+                  UiTimelineEntry(
+                    title: 'Readings',
+                    meta: '2 readers for each region',
+                  ),
+                  UiTimelineEntry(title: 'Comparison', meta: 'Not measured'),
+                ],
+              ),
+            ),
+            SizedBox(height: ui.space.s4),
+            GallerySpecimen(
+              label: 'glyphs, tones and slots',
+              note: 'a tone always travels with a glyph and a word',
+              child: UiTimeline(
+                semanticsLabel: 'Lookups',
+                entries: <UiTimelineEntry>[
+                  UiTimelineEntry(
+                    title: 'Species match, GBIF Backbone',
+                    meta: 'Attempt 1 · decided transcript',
+                    glyph: UiIcons.authority,
+                    tone: ui.color.status.authority,
+                    trailing: const UiChip(label: 'Match found'),
+                  ),
+                  UiTimelineEntry(
+                    title: 'Place lookup, Google Maps',
+                    meta: 'Attempt 2 · retry at 14:40 CDT',
+                    glyph: UiIcons.time,
+                    tone: ui.color.status.blocked,
+                    trailing: const UiChip(label: 'Timed out'),
+                    // A child stays quieter than the entry it belongs to: a
+                    // ghost control, never a heading that outranks the title.
+                    child: const UiButton(
+                      label: 'Show the response',
+                      variant: UiButtonVariant.ghost,
+                      leading: UiIcons.show,
+                      onPressed: _noop,
+                    ),
+                  ),
+                  const UiTimelineEntry(
+                    title: 'Collector name',
+                    meta: 'Transcribed as seen',
+                    glyph: UiIcons.modelReading,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     ],
