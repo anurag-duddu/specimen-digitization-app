@@ -60,11 +60,11 @@ class FakeGoogle:
     run_iam_policy = M.Google.run_iam_policy  # the real read-only guard; it issues GET <service>:getIamPolicy
     real_wait = M.Google.wait  # the real operation-name and deadline checks
 
-    def __init__(self, existing=(), policies=None):
+    def __init__(self, existing=(), policies=None, fail_traffic=False):
         self.packet = gate_record()
         self.state = {item["name"]: copy.deepcopy(item) for item in existing}
         self.policies = {"specimen-sam": policy(WORKER), "specimen-api": policy("allUsers")} if policies is None else policies
-        self.calls, self.bodies = [], []
+        self.calls, self.bodies, self.fail_traffic = [], [], fail_traffic
 
     def registry_login(self):
         self.calls.append("login")
@@ -78,6 +78,8 @@ class FakeGoogle:
             assert missing or resource in self.state
             return copy.deepcopy(self.state.get(resource))
         self.bodies.append(copy.deepcopy(body))
+        if self.fail_traffic and (params or {}).get("updateMask") == "traffic":
+            raise ConnectionError("synthetic transport failure")
         name = resource if method == "PATCH" else f"{resource}/{next(iter(params.values()))}"
         current = self.state.get(name)
         assert (current is None) == (method == "POST") and body.get("etag") == (current or {}).get("etag")
@@ -283,12 +285,24 @@ def test_a_release_checks_the_api_candidate_before_moving_traffic_to_it(tmp_path
     assert not any(":run" in call for call in google.calls) and "ExecutionToken" not in json.dumps(google.bodies)
 
 
-def test_an_api_candidate_that_fails_readiness_never_receives_traffic(tmp_path, monkeypatch, ready):
-    google = FakeGoogle(existing=[previous(role) for role in NAMES])
+@pytest.mark.parametrize("untag_fails", [False, True])
+def test_an_api_candidate_that_fails_readiness_loses_its_tag_and_never_receives_traffic(tmp_path, monkeypatch, ready,
+                                                                                         untag_fails):
+    google = FakeGoogle(existing=[previous(role) for role in NAMES], fail_traffic=untag_fails)
     receipt, error, seen = deploy(tmp_path, monkeypatch, google, failing=CANDIDATE)
-    assert isinstance(error, ValueError) and seen["probed"] == [CANDIDATE]
-    assert "PATCH specimen-api traffic" not in google.calls and receipt["promoted"] is False
-    assert google.state[NAMES["api"]]["traffic"][0] == {"type": REVISION, "revision": "specimen-api-old", "percent": 100}
+    assert seen["probed"] == [CANDIDATE] and receipt["promoted"] is False
+    # Exactly one traffic-only PATCH: all traffic stays on the previous revision, and no tag is listed.
+    assert google.calls.count("PATCH specimen-api traffic") == 1
+    assert google.bodies[-1] == {"name": NAMES["api"], "etag": "etag-3",
+                                 "traffic": [{"type": REVISION, "revision": "specimen-api-old", "percent": 100}]}
+    if untag_fails:
+        assert str(error) == "the API candidate failed readiness and its tag could not be removed; reconcile"
+        assert google.calls[-1] == "PATCH specimen-api traffic"
+    else:
+        assert str(error) == "synthetic readiness failure"  # the readiness failure itself propagates
+        assert google.calls[-3:] == ["PATCH specimen-api traffic", "wait 900", "GET specimen-api"]
+        assert google.state[NAMES["api"]]["trafficStatuses"] == [{"type": REVISION, "revision": "specimen-api-old",
+                                                                   "percent": 100}]
 
 
 def test_a_failed_check_on_the_service_url_fails_the_run_and_the_receipt_says_traffic_moved(tmp_path, monkeypatch, ready):

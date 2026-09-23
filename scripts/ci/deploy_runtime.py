@@ -818,27 +818,41 @@ def invoker_problems(google, roles):
     return problems
 
 
+def route_all_traffic(google, api, revision, failure):
+    """One traffic-only PATCH that sends all traffic to `revision` and lists no tag; then wait and re-read."""
+    operation = google.request("run", "PATCH", api["name"], params={"updateMask": "traffic"}, body={
+        "name": api["name"], "etag": api["etag"], "traffic": [{"type": BY_REVISION, "revision": revision, "percent": 100}]})
+    google.wait("run", operation, maximum_seconds=900)
+    api = google.request("run", "GET", api["name"])
+    require(api.get("reconciling", False) is False and (api.get("terminalCondition") or {}).get("state") == "CONDITION_SUCCEEDED"
+            and serving_revision(api) == revision and not any(target.get("tag") for target in api.get("trafficStatuses") or []),
+            failure)
+    return api
+
+
 def promote_api(google, api, body, source_sha, receipt):
     """Readiness on the candidate URL, then all traffic to the new revision, then readiness on the service URL.
     `promoted` means the new revision passed readiness and serves all traffic, so a failed second check keeps it."""
     revision = body["template"]["revision"]
-    candidate = any(target.get("tag") == "candidate" for target in body["traffic"])
-    if candidate:
+    if not any(target.get("tag") == "candidate" for target in body["traffic"]):
+        verify_public_api(api.get("uri"), source_sha)
+        require(serving_revision(api) == revision, "the new API revision does not serve all traffic")
+        receipt["promoted"] = True
+        return
+    try:
         verify_public_api(next((target.get("uri") for target in api.get("trafficStatuses") or []
                                 if target.get("tag") == "candidate"
                                 and (target.get("revision") or "").split("/")[-1] == revision), None), source_sha)
-        operation = google.request("run", "PATCH", api["name"], params={"updateMask": "traffic"}, body={
-            "name": api["name"], "etag": api["etag"], "traffic": [{"type": BY_REVISION, "revision": revision, "percent": 100}]})
-        google.wait("run", operation, maximum_seconds=900)
-        api = google.request("run", "GET", api["name"])
-        require(api.get("reconciling", False) is False
-                and (api.get("terminalCondition") or {}).get("state") == "CONDITION_SUCCEEDED", "API promotion did not reconcile")
-    else:
-        verify_public_api(api.get("uri"), source_sha)
-    require(serving_revision(api) == revision, "the new API revision does not serve all traffic")
+    except Exception:
+        # No tag URL may keep reaching a revision that never passed readiness; the previous revision keeps all traffic.
+        try:
+            route_all_traffic(google, api, body["traffic"][0]["revision"], "candidate tag removal did not reconcile")
+        except Exception:
+            raise ValueError("the API candidate failed readiness and its tag could not be removed; reconcile") from None
+        raise
+    api = route_all_traffic(google, api, revision, "API promotion did not reconcile")
     receipt["promoted"] = True
-    if candidate:
-        verify_public_api(api.get("uri"), source_sha)
+    verify_public_api(api.get("uri"), source_sha)
 
 
 def deploy_released(path: Path, receipts: Path, output: Path):
