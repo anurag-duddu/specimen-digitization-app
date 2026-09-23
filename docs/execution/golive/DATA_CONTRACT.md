@@ -246,7 +246,7 @@ The projection writes are in `dataconnect/connector/projection.gql`, all
 | `AppendValidationFindingV2` | `ValidationFinding` |
 | `AppendCheckpointV2` | `Checkpoint` |
 | `AppendReviewDecisionV1` | `ReviewDecision` |
-| `ListDueWorkV2` (in `paging.gql`) | due work for the lane's worker: `includeSensitive` must be false for members who cannot view sensitive records, and then only non-sensitive rows are listed |
+| `ListDueWorkV2` (in `paging.gql`) | due work for the lane's worker, oldest due time first: rows due at or before the cutoff in `(workAvailableAt, id)` order, paged by the cursor `(afterAt, afterId)`, starting from `1970-01-01T00:00:00Z` and `''`. A row without a due time is not listed. `includeSensitive` must be false for members who cannot view sensitive records, and then only non-sensitive rows are listed |
 
 ## 8. Thread API response (S5 T3, draft agreed with S6)
 
@@ -323,5 +323,6 @@ cross-collection references refused; a replayed row refused with a primary-key
 conflict and a natural-key duplicate refused by its unique constraint; the trace
 recorded once; closed vocabularies (including the 11 outcomes), a required
 handed text, score bounds and image dimensions enforced;
-`ListDueWorkV2` hiding sensitive rows from the worker and never listing
-finished runs. `scripts/ci/test_data_release.py` pins the table count at 30.
+`ListDueWorkV2` listing the oldest due time first (ties by id), paging by that
+cursor, hiding sensitive rows from the worker, and skipping finished and undated
+runs. `scripts/ci/test_data_release.py` pins the table count at 30.

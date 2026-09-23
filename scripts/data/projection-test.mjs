@@ -24,7 +24,9 @@ const hex = c => c.repeat(64);
 const bare = value => JSON.parse(JSON.stringify(value).replace(/\b([0-9a-f]{8})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{4})-([0-9a-f]{12})\b/g, '$1$2$3$4$5'));
 const same = (actual, expected) => assert.deepEqual(bare(actual), bare(expected));
 
-const org = randomUUID(), coll = randomUUID(), otherColl = randomUUID(), open = randomUUID(), closed = randomUUID(), idle = randomUUID();
+const org = randomUUID(), coll = randomUUID(), otherColl = randomUUID(), open = randomUUID(), closed = randomUUID(), idle = randomUUID(), undated = randomUUID();
+// Sorts after every random id, so due-time order and id order disagree.
+const early = 'ffffffff-ffff-4fff-bfff-' + randomUUID().slice(-12);
 const sc = `organizationId:"${org}",collectionId:"${coll}"`;
 ok(await raw(`mutation @transaction {
  o: organization_insert(data:{id:"${org}",name:"Synthetic museum"})
@@ -37,9 +39,11 @@ ok(await raw(`mutation @transaction {
  cm2: collectionMember_insert(data:{${sc},uid:"reviewer",active:true,role:"reviewer",canViewSensitive:true})
  cm3: collectionMember_insert(data:{${sc},uid:"viewer",active:true,role:"viewer",canViewSensitive:true})
  cm4: collectionMember_insert(data:{organizationId:"${org}",collectionId:"${otherColl}",uid:"reviewer",active:true,role:"reviewer",canViewSensitive:true})
- s1: specimen_insert(data:{${sc},id:"${open}",revision:1,state:"running",sensitive:false,createdBy:"worker"})
- s2: specimen_insert(data:{${sc},id:"${closed}",revision:1,state:"running",sensitive:true,createdBy:"reviewer"})
- s3: specimen_insert(data:{${sc},id:"${idle}",revision:1,state:"completed",sensitive:false,createdBy:"worker"})
+ s1: specimen_insert(data:{${sc},id:"${open}",revision:1,state:"running",sensitive:false,createdBy:"worker",workAvailableAt:"2026-01-02T00:00:00Z"})
+ s2: specimen_insert(data:{${sc},id:"${closed}",revision:1,state:"running",sensitive:true,createdBy:"reviewer",workAvailableAt:"2026-01-01T00:00:00Z"})
+ s3: specimen_insert(data:{${sc},id:"${idle}",revision:1,state:"completed",sensitive:false,createdBy:"worker",workAvailableAt:"2026-01-01T00:00:00Z"})
+ s4: specimen_insert(data:{${sc},id:"${early}",revision:1,state:"pending",sensitive:false,createdBy:"worker",workAvailableAt:"2026-01-01T00:00:00Z"})
+ s5: specimen_insert(data:{${sc},id:"${undated}",revision:1,state:"running",sensitive:false,createdBy:"worker"})
 }`));
 const scope = {organizationId: org, collectionId: coll};
 const profileId = randomUUID();
@@ -179,14 +183,20 @@ denied(await op('AppendLabelRegionV2', foreign));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), collectionId: otherColl, actorUid: 'reviewer'}));
 console.log('PASS composite keys refuse cross-collection references');
 
-// The lane's worker lists due work without sensitive-record access (ListDueWorkV2).
+// The lane's worker lists due work without sensitive-record access, oldest due time first (ListDueWorkV2).
 const cutoff = new Date().toISOString();
-const due = (actorUid, includeSensitive) => query('ListDueWorkV2', {...scope, actorUid, cutoff, afterId: '', limit: 100, includeSensitive});
-const ids = r => ok(r).items.map(item => item.id).sort();
-same(ids(await due('worker', false)), [open]);
+const start = {afterAt: '1970-01-01T00:00:00Z', afterId: ''};
+const due = (actorUid, includeSensitive, cursor = start, limit = 100) => query('ListDueWorkV2', {...scope, actorUid, cutoff, ...cursor, limit, includeSensitive});
+const ids = r => ok(r).items.map(item => item.id);
+same(ids(await due('worker', false)), [early, open]);
+same(ids(await due('reviewer', true)), [closed, early, open]);
+same(ids(await due('reviewer', false)), [early, open]);
+const first = ok(await due('worker', false, start, 1)).items;
+same(first.map(item => item.id), [early]);
+const next = {afterAt: first[0].workAvailableAt, afterId: first[0].id};
+same(ids(await due('worker', false, next, 1)), [open]);
+same(ids(await due('worker', false, {afterAt: '2026-01-02T00:00:00Z', afterId: open}, 1)), []);
 denied(await due('worker', true));
-same(ids(await due('reviewer', true)), [open, closed].sort());
-same(ids(await due('reviewer', false)), [open]);
 denied(await due('viewer', false));
-denied(await query('ListDueWorkV2', {...scope, actorUid: 'worker', cutoff, afterId: 'not-a-cursor', limit: 100, includeSensitive: false}));
-console.log('PASS due work hides sensitive rows from members who cannot view them and never lists finished runs');
+denied(await due('worker', false, {...start, afterId: 'not-a-cursor'}));
+console.log('PASS due work lists the oldest due time first, pages by due time and id, hides sensitive rows from the worker, and skips finished and undated runs');
