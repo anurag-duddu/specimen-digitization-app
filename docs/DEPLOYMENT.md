@@ -891,3 +891,27 @@ in [DATABASE_INITIALIZATION.md](execution/DATABASE_INITIALIZATION.md).
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md). The
 > initializer's temporary privilege stays one-time and time-bounded and is
 > removed after use; the workflow still creates no IAM policy or password.
+
+## Runtime release on merge (go-live program)
+
+Under the owner's decision G11, `.github/workflows/runtime-release.yml` runs on
+every push to `main` without an envelope. The specification is
+[`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 3.
+
+1. **Admission**, with no credentials: `scripts/ci/release_gate.py` checks the
+   protected `main` context and the merged pull request with the reviewed tree.
+   It checks that the five required checks passed in the latest CI/CD attempt,
+   and that the same commit's data release succeeded. It waits up to 90
+   minutes for both workflows.
+2. **Build**, in `runtime-build-production`: re-admits, publishes the three
+   images through the pinned publication action and attests them.
+3. **Release**, in `runtime-production`: re-admits, then authenticates with
+   the fixed provider. It verifies each image's attestation and deploys the
+   roles whose settings in `scripts/ci/runtime_settings.py` are complete. It
+   verifies the invoker policies, checks the API candidate's readiness before
+   promoting it, and writes an attested receipt.
+
+After a failure, re-run all jobs. A re-run of the release job alone finds no
+image receipts for its attempt. The first release creates the services, and
+its invoker check then names the owner's two grants (T4). The owner grants
+them, then re-runs.
