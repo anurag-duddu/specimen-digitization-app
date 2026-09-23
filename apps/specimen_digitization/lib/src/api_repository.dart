@@ -19,6 +19,33 @@ import 'vocabulary.dart';
 /// failure.
 const Duration apiRequestTimeout = Duration(seconds: 30);
 
+/// The search filters the API parses as UUIDs (`search.py`,
+/// `SearchFilters.bounds`).
+const Set<String> uuidFilters = {
+  'specimen_id',
+  'asset_id',
+  'active_run_id',
+  'batch_id',
+};
+
+/// [value] as the API writes a UUID, or null when it is not one.
+///
+/// Accepts the spellings Python's `uuid.UUID` accepts from a string: an
+/// optional `urn:uuid:` prefix, optional braces and optional hyphens around
+/// 32 hexadecimal digits, in either case. Surrounding space is ignored.
+String? canonicalUuid(String value) {
+  final hex = value
+      .trim()
+      .toLowerCase()
+      .replaceAll('urn:', '')
+      .replaceAll('uuid:', '')
+      .replaceAll(RegExp(r'^[{}]+|[{}]+$'), '')
+      .replaceAll('-', '');
+  if (!RegExp(r'^[0-9a-f]{32}$').hasMatch(hex)) return null;
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
 class ApiSpecimenRepository
     implements SpecimenRepository, SourceRepository, AccessFailureSource {
   ApiSpecimenRepository({
@@ -434,6 +461,7 @@ class ApiSpecimenRepository
   @override
   Future<List<CollectionScope>> scopes() async {
     final epoch = ++_accessEpoch;
+    _images.clear();
     final userId = expectedUserId?.call();
     _rechecking = true;
     try {
@@ -613,12 +641,23 @@ class ApiSpecimenRepository
         code: 'invalid_filter',
       );
     }
+    // The API reads these four as UUIDs and answers anything else with 422
+    // (`search.py`, `SearchFilters.bounds`). A value that is not a UUID names
+    // no record, so the page is empty and nothing is asked (UI.md T1.6).
+    final sent = Map<String, String>.of(filters);
+    for (final key in uuidFilters) {
+      final value = filters[key];
+      if (value == null) continue;
+      final id = canonicalUuid(value);
+      if (id == null) return const SpecimenPage(<Specimen>[]);
+      sent[key] = id;
+    }
     final result = await request(
       'GET',
       '${_root(scope)}/specimens',
       query: {
         'collection_id': scope.collectionId,
-        ...filters,
+        ...sent,
         'limit': '50',
         'cursor': ?cursor,
       },
@@ -854,7 +893,7 @@ class ApiSpecimenRepository
         ? Map<String, dynamic>.from(result['asset'])
         : <String, dynamic>{};
     asset['asset_id'] = asset['id'];
-    if (loadImage && asset['id'] != null) {
+    if (loadImage && asset['id'] != null && !_reuseImage(scope, asset)) {
       final epoch = _accessEpoch;
       final userId = expectedUserId?.call();
       try {
@@ -894,6 +933,7 @@ class ApiSpecimenRepository
           } else {
             asset['preview_bytes'] = response.bodyBytes;
             asset['preview_is_derivative'] = derivative;
+            _keepImage(scope, asset, response.bodyBytes, userId);
           }
         } else {
           asset['preview_error'] =
@@ -912,6 +952,7 @@ class ApiSpecimenRepository
     final run = result['run'] is Map
         ? Map<String, dynamic>.from(result['run'])
         : <String, dynamic>{};
+    final observations = objects(result['observations']);
     final fieldMap = result['fields'] is Map
         ? Map<String, dynamic>.from(result['fields'])
         : <String, dynamic>{};
@@ -942,11 +983,11 @@ class ApiSpecimenRepository
       'audit_events': objects(
         result['events'],
       ).map((e) => <String, dynamic>{...e, 'actor_id': e['actor']}).toList(),
+      // The regions whose readings differ and are not resolved. Unresolved
+      // alone is not a difference: the pilot resolves nothing (UI.md T1.3).
       'disagreements': objects(result['transcriptions'])
           .where(
-            (t) =>
-                t['resolved'] != true ||
-                (t['alternatives'] as List? ?? []).length > 1,
+            (t) => t['resolved'] != true && readingsDiffer(t, observations),
           )
           .toList(),
       'evidence': [
@@ -961,6 +1002,77 @@ class ApiSpecimenRepository
         ),
       ],
     });
+  }
+
+  /// The photographs this session already downloaded, most recently used
+  /// last (UI.md T1.5).
+  ///
+  /// The queue's poll reloads the open record every 20 seconds, and an
+  /// original can be 25 MB. An asset never changes, so the same id and
+  /// checksums are the same bytes. Reusing the same bytes also keeps the
+  /// decoded image, which `Image.memory` keys on their identity. Every access
+  /// check empties it, so it never outlives the session that fetched it.
+  final Map<String, ({Uint8List bytes, String? userId})> _images = {};
+
+  /// How many photographs [_images] keeps: the open record and the few a
+  /// reviewer moves between.
+  static const int _imageCacheEntries = 4;
+
+  /// What identifies a photograph's bytes: the collection, the asset, the
+  /// original's checksum and, for a view derivative, the derivative's.
+  ///
+  /// Null when a checksum is missing, or when a derivative does not name this
+  /// original, so an unidentified or mismatched image is always fetched and
+  /// checked again rather than reused.
+  String? _imageKey(CollectionScope scope, Json asset) {
+    final sha = asset['sha256'];
+    if (sha is! String || sha.isEmpty) return null;
+    final view = asset['view_derivative'];
+    if (view is! Map) {
+      return [scope.key, asset['id'], sha, 'original'].join(' ');
+    }
+    final viewSha = view['derivative_sha256'];
+    if (view['original_sha256'] != sha ||
+        viewSha is! String ||
+        viewSha.isEmpty) {
+      return null;
+    }
+    return [scope.key, asset['id'], sha, viewSha].join(' ');
+  }
+
+  /// Puts back on [asset] the photograph this session already accepted for
+  /// it, and answers whether there was one.
+  ///
+  /// No request is made, so there is nothing to re-check: the workspace
+  /// response that carried [asset] was itself authorised a moment ago.
+  bool _reuseImage(CollectionScope scope, Json asset) {
+    final key = _imageKey(scope, asset);
+    final cached = key == null ? null : _images.remove(key);
+    if (cached == null || cached.userId != expectedUserId?.call()) {
+      return false;
+    }
+    // Put back last, so the photograph in use is the last one dropped.
+    _images[key!] = cached;
+    asset['preview_bytes'] = cached.bytes;
+    asset['preview_is_derivative'] = asset['view_derivative'] is Map;
+    return true;
+  }
+
+  /// Keeps the bytes just accepted for [asset], dropping the photograph used
+  /// least recently. Bytes that were refused are never kept, so they are
+  /// asked for again on the next load.
+  void _keepImage(
+    CollectionScope scope,
+    Json asset,
+    Uint8List bytes,
+    String? userId,
+  ) {
+    final key = _imageKey(scope, asset);
+    if (key == null) return;
+    _images[key] = (bytes: bytes, userId: userId);
+    while (_images.length > _imageCacheEntries) {
+      _images.remove(_images.keys.first);
+    }
   }
 
   @override

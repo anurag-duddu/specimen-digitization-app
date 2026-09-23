@@ -90,6 +90,8 @@ differing, twice (a synthesised disagreement row and a transcription row).
 - The Readings segment draws one row per region, older records' difference
   rows included, by the same rule: resolved, the readings differ, or
   unresolved. A resolved region whose readings differed keeps them in view.
+- The repository's synthesised `disagreements` list holds only the regions
+  whose readings differ and are unresolved, so the key means what it says.
 
 ### T1.4 Each reason blocks clearance once
 
@@ -97,3 +99,25 @@ The workspace response publishes each run reason twice: in `reason_codes` and
 as a `validations` entry whose `reason_code` is the same string (`api.py`
 `workspace()`). The blockers list counted both. A reason code already stated by
 a validation finding is not listed again.
+
+### T1.5 The photograph is fetched once per checksum
+
+The queue's 20 second poll reloads the open record, and each reload downloaded
+the whole original again (up to 25 MB). The repository keeps the bytes of the
+last few images it fetched, keyed by collection, asset id, the original's
+SHA-256 and, for a view derivative, the derivative's SHA-256. A reload whose
+asset has the same identity reuses the bytes without a request. The cache
+belongs to one verified session: a new access check or another account starts
+it empty. Reusing the same bytes also keeps the decoded image, so the
+photograph no longer re-decodes every 20 seconds.
+
+### T1.6 Queue search sends only an identifier the API can match
+
+The search field is "Specimen ID, exact match" (07 section 3, controls row).
+The API coerces `specimen_id`, `asset_id`, `active_run_id` and `batch_id` to a
+UUID and answers anything else with 422 (`search.py` `SearchFilters.bounds`),
+so a partial ID, or any text, showed an error banner while the reviewer typed.
+A value that is not a UUID cannot name a record, so the repository answers an
+empty page without a request, and the queue shows its existing filtered empty
+state ("No records match these filters", with "Clear all"). A UUID is sent in
+canonical form, accepting the spellings the API accepts.
