@@ -248,6 +248,9 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
             if record["costs"]["total_usd"] > options.max_run_usd:
                 record["stages"].append({"stage": "cost", "name": "Run cost", "status": "failed",
                                          "detail": f"above --max-run-usd {options.max_run_usd}"})
+    # The lab's running tally against its share of G9; production's ledger never sees lab calls (G30).
+    record["lab_spend_usd"] = recorded_spend(options.runs_root) + record["costs"]["total_usd"]
+    record["lab_allowance_usd"] = options.lab_allowance_usd
     record["phases"].append({"name": "report", "status": "passed", "seconds": 0.0})
     record["result"] = "dry-run" if options.dry_run and source else lab_checks.verdict(
         record["phases"], record["stages"])
@@ -284,7 +287,9 @@ def render(record):
     lines += ["", "## Cost", "", f"Total USD {costs['total_usd']:.6f}: readers "
               f"{costs.get('readers_usd', 0):.6f}, other tokens {costs.get('other_tokens', 0)} "
               f"at most {costs.get('other_usd_upper_bound', 0):.6f}, SAM 3 local 0. Unpriced routes: "
-              f"{costs.get('unpriced_routes', [])}."]
+              f"{costs.get('unpriced_routes', [])}.", "",
+              f"Lab spend to date: USD {record['lab_spend_usd']:.6f} of {record['lab_allowance_usd']:.2f}, "
+              "the lab's share of G9, kept apart from production's model allowance (G30)."]
     lines += ["", "## Lab actions", ""] + [f"- {cell(a)}" for a in record["actions"] or ["none"]]
     lines += ["", "## Trace", "", f"Lab trace id `{record['trace']['lab_trace_id']}` "
               f"(environment `lab`); trace id stored by the app: {record['trace']['app_trace_id']}."]
