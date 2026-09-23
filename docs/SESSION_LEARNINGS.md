@@ -11818,3 +11818,14 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) A `late` field with an initialiser is initialised on first read. In a `State` whose first read is in `didUpdateWidget`, `widget` is already the new configuration by then, so the "previous" value equals the new one and the change is invisible. The announcement test caught it; take previous values in `initState`. (2) `tester.takeAnnouncements()` captures `SemanticsService.sendAnnouncement` calls, and an announcement gated on `MediaQuery.supportsAnnounceOf` needs `supportsAnnounce: true` in the test's `MediaQuery`.
 - Failed approaches: none.
 - Remaining follow-ups: none beyond the T1a entry's.
+
+### 2026-09-23 — Go-live S6 T1c: every record state opens a definition
+
+- Task: follow-up to T1a (#73): the strip's chip is a glossary term, and Retry scheduled, Paused and Cancelled had no definition.
+- Branch/worktree: `golive/ui-run-state-terms`, stacked on `golive/ui-client-defects` (#73); `.claude/worktrees/s6-thread-view`.
+- Outcome: one-sentence definitions for the three states; a test that every record state has one; the Help screen's contrast test now uses a 1024 by 3600 window. UI.md's T1.2 addendum records the reason. Found on the way: the Help screen's glossary pane scrolls on its own, and at 1024 by 2400 the three new terms moved the pane's cut line into "Authority". The contrast guideline measured the clipped node at 1.32:1. A node cut by a scroll edge cannot be measured; the screen is not at fault.
+- Commits/PRs: red `c0aea2e`, green `a6aa47b`; the pull request opened from this branch, depends on #73.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `specimen_status_test`, `dark_mode_test` and `term_text_test` 59 passed; `check_ui_strings.py` 0 violations; the full app suite 1,604 passed, 7 skipped, 0 failed.
+- Durable learnings: when a contrast failure appears in text you did not touch, render the screen to an image and look at the node's rectangle. Here it was half hidden by a scrolling pane's edge.
+- Failed approaches: attaching the definitions to approved #73 as a late follow-up; the full suite caught the Help failure first, so they moved to their own PR.
+- Remaining follow-ups: T3 adds `pending` (G13) and `sensitive_record_not_processed` with their definitions.
