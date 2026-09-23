@@ -83,7 +83,7 @@ def only_run(tmp_path):
 
 def test_a_run_writes_its_evidence_and_report_and_never_a_token(tmp_path):
     code, [lane] = run(tmp_path, "--persistence", "sqlite")
-    assert code == 1  # incomplete: stages 4, 6, 7 and tracing are absent on this commit
+    assert code == 1  # incomplete: stages 4, 6, 7 and tracing are not built on this commit
     path = only_run(tmp_path)
     assert path.name == "20260923T201500Z"
     for name in (

@@ -59,18 +59,18 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | 1 Images in storage | the asset's SHA-256 equals the fetched object's, and its file name is the subject's | failed |
 | 2 Label segmentation | the run has regions made by SAM 3, with its parameters on the run, and for each of the ten some region covers at least half of every label box below | failed when a label is uncovered; blocked, with the app's blocker; substituted when the lab drew the regions |
 | 3 VLMs | every region has one reading per profile route, each with model, provider, prompt version, input hash and a stored raw response | failed, or blocked with the blocker |
-| 4 Raw transcripts to SQL | normalized observation rows exist, one per reading, keyed to specimen and run | absent when SQL holds only the snapshot |
-| 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed or absent |
-| 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | absent |
-| 7 Agentic harness | the run records tool calls with typed outcomes | absent, or partial for deterministic lookups only |
+| 4 Raw transcripts to SQL | normalized observation rows exist, one per reading, keyed to specimen and run | not built when SQL holds only the snapshot |
+| 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed, or not built |
+| 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | not built |
+| 7 Agentic harness | the run records tool calls with typed outcomes | not built; the detail lists any deterministic lookups |
 | 8 Queue decision | exactly one disposition with reasons, or an operational block with its blocker | failed |
 | 9 Linkage | every region, reading, transcript and row points to this specimen, asset and run | failed |
-| Tracing | the run stores its trace id (DoD-5) | absent; the lab's own root trace id is always recorded |
+| Tracing | the run stores its trace id (DoD-5) | not built; the lab's own root trace id is always recorded |
 
-Statuses are passed, failed, blocked, substituted, absent (the stage is not on
+Statuses are passed, failed, blocked, substituted, not built (the stage is not on
 this commit) and not checked. A blocked stage names the blocker and the steps
 the app attempted but never completed. Checks for stages 4, 6 and 7 follow the
-contracts as S5 and S4 merge them. Until then the runner reports absent rather
+contracts as S5 and S4 merge them. Until then the runner reports not built rather
 than guess at field names.
 
 ### Label layout of the ten pilot slides

@@ -90,7 +90,7 @@ def test_full_sam_run_scores_every_stage_it_can_see():
     assert result["1"] == result["2"] == result["3"] == "passed"
     assert result["5"] == result["8"] == result["9"] == "passed"
     # Nothing on 709ae3c writes normalized rows, a first pass, tool calls or a trace id.
-    assert result["4"] == result["6"] == result["7"] == result["trace"] == "absent"
+    assert result["4"] == result["6"] == result["7"] == result["trace"] == "not built"
 
 
 def test_reviewed_region_is_reported_as_a_substitute_not_a_pass():
@@ -176,6 +176,6 @@ def test_normalized_rows_keyed_to_specimen_and_run_pass_stage_4():
 def test_verdict_separates_errors_failures_and_incomplete_runs():
     passed = [{"status": "passed"}]
     assert lab_checks.verdict(passed, passed) == "pass"
-    assert lab_checks.verdict(passed, [{"status": "absent"}]) == "incomplete"
+    assert lab_checks.verdict(passed, [{"status": "not built"}]) == "incomplete"
     assert lab_checks.verdict(passed, [{"status": "failed"}]) == "fail"
     assert lab_checks.verdict([{"status": "failed"}], passed) == "error"

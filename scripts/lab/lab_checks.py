@@ -32,12 +32,12 @@ def check_stages(evidence, source, subject):
         ("3", "VLMs", readers(run)),
         ("4", "Raw transcripts to SQL", normalized(rows, snap)),
         ("5", "Disagreement score", disagreement(run)),
-        ("6", "LLM first pass", ("absent", "no first-pass record on this commit")),
-        ("7", "Agentic harness", ("absent", "no tool-call record on this commit; "
+        ("6", "LLM first pass", ("not built", "no first-pass record on this commit")),
+        ("7", "Agentic harness", ("not built", "no tool-call record on this commit; "
                                   f"deterministic lookups: {[x['status'] for x in lookups]}")),
         ("8", "Queue decision", queue(run)),
         ("9", "Linkage", linkage(snap, runs)),
-        ("trace", "Tracing", ("absent", "the run stores no trace id on this commit")),
+        ("trace", "Tracing", ("not built", "the run stores no trace id on this commit")),
     ]
     return [{"stage": k, "name": n, "status": s, "detail": d} for k, n, (s, d) in stages]
 
@@ -119,7 +119,7 @@ def readers(run):
 def normalized(rows, snap):
     tables = [t for t in rows if t.replace("_", "").lower() == "modelobservation" and rows[t]]
     if not tables:
-        return "absent", f"no observation rows; tables with rows: {sorted(t for t in rows if rows[t])}"
+        return "not built", f"no observation rows; tables with rows: {sorted(t for t in rows if rows[t])}"
     table, run = rows[tables[0]], snap["run"]
     keyed = [r for r in table if snap["id"] in r.values() and run["id"] in r.values()]
     detail = f"{len(keyed)} of {len(table)} rows keyed to this specimen and run"
