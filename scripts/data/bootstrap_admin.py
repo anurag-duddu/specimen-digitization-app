@@ -143,11 +143,17 @@ def hierarchy_mutation(parents: list[int | None]) -> str:
 
 
 # The worker's own account (docs/execution/golive/WORKER_MEMBERSHIP.md). The organization
-# member and every collection member commit or roll back together. A replay, or a uid that is
-# already a member, stops on the organization member's primary key; an unknown collection stops
-# on the composite foreign key. Role and sensitivity are literals, never variables.
+# member insert contends on its primary key, so a replay or an existing member stops there. The
+# redacted precondition then refuses a uid that already holds any collection row in the
+# organization, as the administrator's document does: `CollectionMember` has no foreign key to
+# `OrganizationMember`, so a leftover row would otherwise become live. An unknown collection stops
+# on the composite foreign key. Every row commits or none does. Role and sensitivity are
+# literals, never variables.
 WORKER_MEMBERSHIP_MODE = "worker-membership-bootstrap/v1"
 WORKER_COLLECTIONS_MAX = 64
+# The committed allow-list of collection keys the worker is an operator in. Any further
+# collection needs a coordinator ruling.
+WORKER_COLLECTION_KEYS = ("insects",)
 
 
 def worker_membership_mutation(count: int) -> str:
@@ -165,14 +171,51 @@ def worker_membership_mutation(count: int) -> str:
     return (
         "mutation PrepareWorkerMembership(\n" + "\n".join(declared) + "\n) @transaction {\n"
         "  organizationMember_insert(data: {organizationId: $organizationId, uid: $uid, active: true})\n"
-        + "\n".join(rows) + "\n}\n"
+        "  query @redact {\n"
+        "    priorMemberships: collectionMembers(where: {organizationId: {eq: $organizationId}, uid: {eq: $uid}}, limit: 1)\n"
+        '      @check(expr: "this.size() == 0", message: "Membership already exists") { uid }\n'
+        "  }\n" + "\n".join(rows) + "\n}\n"
     )
 
 
+def _approved_hierarchy(artifact: Any, approved_sha256: Any) -> dict[str, Any]:
+    """The hash-approved hierarchy artifact, regenerated rather than trusted.
+
+    This is the release's `validate_prepared` for the hierarchy mode: the reviewed
+    tree is read at the fixed path in this checkout, never at one the artifact
+    names, and must hash to the bound digest; the artifact is prepared again from
+    its own values and must equal the given one and the approved hash exactly.
+    """
+    try:
+        if artifact["schema_version"] != "first-scope-hierarchy-bootstrap/v1":
+            raise ValueError("The worker membership resolves only from the hierarchy artifact")
+        identity, variables = artifact["auth_record"], artifact["request"]["variables"]
+        hierarchy = artifact["hierarchy"]
+        tree = (ROOT / TREE_PATH).read_bytes()
+        if hierarchy["tree_path"] != TREE_PATH or hashlib.sha256(tree).hexdigest() != hierarchy["tree_sha256"]:
+            raise ValueError("The reviewed collection tree changed after preparation")
+        expected = prepare_first_scope_hierarchy(
+            auth_record=identity, requested_email=identity["email"], requested_uid=identity["uid"],
+            organization_id=variables["organizationId"], organization_name=variables["organizationName"],
+            collections=hierarchy["collections"], admin_collection_key=hierarchy["admin_collection_key"],
+            tree=tree,
+        )
+    except (KeyError, TypeError, AttributeError):
+        raise ValueError("Invalid hierarchy artifact") from None
+    if expected["artifact_sha256"] != approved_sha256 or _canonical(expected) != _canonical(artifact):
+        raise ValueError("The hierarchy artifact differs from the approved one")
+    return expected
+
+
 def worker_membership_request(
-    *, organization_id: str, uid: str, collection_ids: list[str]
+    *, artifact: dict[str, Any], approved_sha256: str, uid: str, collection_keys: list[str]
 ) -> dict[str, Any]:
-    """The reviewed worker-membership request; the release job supplies the private values."""
+    """The reviewed worker-membership request, resolved from the approved hierarchy artifact.
+
+    The organization and every collection identifier come from that artifact; only
+    the uid and the allow-listed keys are inputs. The release job supplies the
+    private values.
+    """
     # The first-admin rule for an explicit Firebase UID.
     if (
         not isinstance(uid, str)
@@ -182,19 +225,23 @@ def worker_membership_request(
     ):
         raise ValueError("An explicit Firebase UID is required")
     if (
-        not isinstance(collection_ids, list)
-        or not collection_ids
-        or len(collection_ids) > WORKER_COLLECTIONS_MAX
+        not isinstance(collection_keys, list)
+        or not collection_keys
+        or not all(isinstance(key, str) and key in WORKER_COLLECTION_KEYS for key in collection_keys)
+        or len(set(collection_keys)) != len(collection_keys)
     ):
-        raise ValueError("Processing collections must be an explicit, bounded list")
-    identifiers = [_identifier(value) for value in collection_ids]
-    if len(set(identifiers)) != len(identifiers):
-        raise ValueError("Processing collections must be distinct")
-    variables = {"organizationId": _identifier(organization_id), "uid": uid}
-    variables.update({f"c{index}": value for index, value in enumerate(identifiers)})
+        raise ValueError("Processing collections must be distinct keys from the committed allow-list")
+    prepared = _approved_hierarchy(artifact, approved_sha256)
+    if uid == prepared["auth_record"]["uid"]:
+        raise ValueError("The worker never acts as the administrator")
+    identifiers = {entry["key"]: entry["id"] for entry in prepared["hierarchy"]["collections"]}
+    if any(key not in identifiers for key in collection_keys):
+        raise ValueError("Every allow-listed collection must be in the approved hierarchy")
+    variables = {"organizationId": prepared["request"]["variables"]["organizationId"], "uid": uid}
+    variables.update({f"c{index}": identifiers[key] for index, key in enumerate(collection_keys)})
     return {
         "mode": WORKER_MEMBERSHIP_MODE,
-        "query": worker_membership_mutation(len(identifiers)),
+        "query": worker_membership_mutation(len(collection_keys)),
         "variables": variables,
     }
 
