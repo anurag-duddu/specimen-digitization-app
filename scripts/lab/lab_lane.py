@@ -81,9 +81,10 @@ class AppLane:
     def ingest(self, filename, data, media_type):
         width, height = Image.open(io.BytesIO(data)).size
         batch = self.call("POST", "/batches", key="batch", json={
-            "collection_id": SYNTHETIC_COLLECTION, "display_name": "Acceptance lab " + self.subject})
+            "collection_id": SYNTHETIC_COLLECTION, "display_name": "Acceptance lab " + self.subject,
+            "sensitive": False})  # the ten are imported as not sensitive; the lane skips sensitive records
         item = self.call("POST", f"/batches/{batch['batch_id']}/items", key="item", json={
-            "client_item_id": self.subject, "filename": filename, "media_type": media_type,
+            "client_item_id": self.subject, "filename": filename, "media_type": media_type, "sensitive": False,
             "size_bytes": len(data), "width": width, "height": height,
             "sha256": hashlib.sha256(data).hexdigest()})
         if item["state"] != "uploading":
