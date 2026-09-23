@@ -189,9 +189,10 @@ or to the raw reading it came from. When a lookup confirms exactly one reader's
 literal (G20), the field records `raw_reading` and that reading's observation.
 
 A parsed date carries its precision and the rule that set its century (G24):
-`FieldValue` gains `precision` (`day`, `month` or `year`) and `century_rule`
-(for example `insects-two-digit-year-19xx`, the Insects rule that a two-digit
-year reads as 19xx), and the writer stores `parsedValue` as `{value, precision,
+`FieldValue` gains `precision` (`day`, `month` or `year`, exactly as written,
+never widened) and `century_rule` (the pinned profile's rule version and value,
+for example `date-rules-v1:two_digit_year_century=1900`; null for non-dates and
+four-digit years), and the writer stores `parsedValue` as `{value, precision,
 century_rule}` whenever either is set, otherwise as the parsed value alone.
 
 ## 5. Identifiers
