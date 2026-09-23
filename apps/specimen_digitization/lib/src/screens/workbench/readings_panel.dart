@@ -294,7 +294,15 @@ class WorkbenchReadings extends StatelessWidget {
 
   Widget _differences(BuildContext context, Json run) {
     final List<Json> transcriptions = objects(specimen.data['transcriptions']);
-    final List<Json> disagreements = objects(specimen.data['disagreements']);
+    // One row per region. A region with a transcription is described by it;
+    // the list of differences speaks only for a region no transcription
+    // covers, which is the shape older records and fixtures carry.
+    final Set<Object?> described = <Object?>{
+      for (final Json t in transcriptions) t['region_id'],
+    };
+    final List<Json> disagreements = objects(
+      specimen.data['disagreements'],
+    ).where((Json d) => !described.contains(d['region_id'])).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -340,17 +348,20 @@ class WorkbenchReadings extends StatelessWidget {
         for (final Json d in disagreements)
           _DifferenceRow(
             title: '${_regionName(d['region_id'])}: the readings differ',
-            detail: (d['alternatives'] as List? ?? <Object?>[])
-                .map((Object? a) => a.toString())
-                .join(' · '),
+            detail: _alternatives(d),
             payload: d,
           ),
         for (final Json t in transcriptions)
           _DifferenceRow(
-            title: t['resolved'] == true
-                ? '${_regionName(t['region_id'])}: resolved'
-                : '${_regionName(t['region_id'])}: unresolved',
-            detail: textOf(t['verbatim_text'], textOf(t['text'], '')),
+            title: switch ((t['resolved'] == true, readingsDiffer(t))) {
+              (true, _) => '${_regionName(t['region_id'])}: resolved',
+              (false, true) =>
+                '${_regionName(t['region_id'])}: the readings differ',
+              (false, false) => '${_regionName(t['region_id'])}: unresolved',
+            },
+            detail: t['resolved'] != true && readingsDiffer(t)
+                ? _alternatives(t)
+                : textOf(t['verbatim_text'], textOf(t['text'], '')),
             payload: t,
             extra: t.containsKey('alignment_status')
                 ? TranscriptionComparisonSummary(transcription: t)
@@ -380,6 +391,12 @@ class WorkbenchReadings extends StatelessWidget {
       ],
     );
   }
+
+  /// A region's distinct readings, as one line of metadata values.
+  String _alternatives(Json transcription) =>
+      (transcription['alternatives'] as List? ?? <Object?>[])
+          .map((Object? a) => a.toString())
+          .join(' · ');
 
   Future<void> _resolve(BuildContext context) async {
     final String? regionId =

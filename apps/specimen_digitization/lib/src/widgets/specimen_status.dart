@@ -73,7 +73,7 @@ class StatusPresentation {
 
 /// The dispositions, operational states and field states this client renders.
 ///
-/// The first six values are record-level; the last seven are the field states
+/// The first nine values are record-level; the last seven are the field states
 /// the server publishes in `knownFieldStates`.
 enum SpecimenStatus {
   /// A reviewer affirmed the record.
@@ -90,6 +90,16 @@ enum SpecimenStatus {
 
   /// Processing stopped. Operational, not evidentiary, and never error red.
   blocked('state.blocked'),
+
+  /// Processing stopped and the server set a time to try again. Operational,
+  /// so it takes the blocked triple (PRD 10.1, QUE-005).
+  retryScheduled('state.blocked'),
+
+  /// An operator paused processing. Operational, not a queue (PRD 10.1).
+  paused('state.blocked'),
+
+  /// An operator cancelled processing. Operational, not a queue (PRD 10.1).
+  cancelled('state.blocked'),
 
   /// The server reported something this client has no treatment for.
   unknown('state.unknown'),
@@ -121,15 +131,18 @@ enum SpecimenStatus {
   /// The product token triple this status draws from.
   final String tokenKey;
 
-  /// True for the six record-level values.
+  /// True for the nine record-level values.
   bool get isRecordStatus => index <= SpecimenStatus.unknown.index;
 
   /// The server strings this client maps, by status.
   ///
-  /// The record-level strings are the ones the API already emits
-  /// (`cleared`, `needs_human_review`, `deferred`, `running`,
-  /// `processing_blocked`); the field-level strings are `knownFieldStates`
-  /// in `models.dart`.
+  /// The record-level strings are the ones the API already emits: the three
+  /// dispositions, and the run states the summary sends as `status`
+  /// (`running`, `processing_blocked`, `retry_scheduled`, `paused`,
+  /// `cancelled`). `completed` is deliberately absent: it only ever arrives
+  /// beside a disposition, which is what a record's chip shows (see
+  /// [ofRecord]). The field-level strings are `knownFieldStates` in
+  /// `models.dart`.
   static const Map<String, SpecimenStatus> wireValues =
       <String, SpecimenStatus>{
         'cleared': SpecimenStatus.cleared,
@@ -137,6 +150,9 @@ enum SpecimenStatus {
         'deferred': SpecimenStatus.deferred,
         'running': SpecimenStatus.processing,
         'processing_blocked': SpecimenStatus.blocked,
+        'retry_scheduled': SpecimenStatus.retryScheduled,
+        'paused': SpecimenStatus.paused,
+        'cancelled': SpecimenStatus.cancelled,
         'supported': SpecimenStatus.supported,
         'unknown': SpecimenStatus.unknownValue,
         'unreadable': SpecimenStatus.unreadable,
@@ -156,6 +172,25 @@ enum SpecimenStatus {
     return wireValues[wire.trim()] ?? SpecimenStatus.unknown;
   }
 
+  /// The one status a record's chip draws: its queue when it has one,
+  /// otherwise the state of its run.
+  ///
+  /// The queue row and the status strip both call this, so the two cannot
+  /// disagree about a record. A value that is not a record status, a field
+  /// state such as `unknown` or `supported` included, is never drawn as one:
+  /// it is "State unknown", as is a record that sends neither. So is a
+  /// `completed` run with no disposition, because a completed run's queue is
+  /// its disposition and this one has none.
+  static SpecimenStatus ofRecord({String? disposition, String? state}) {
+    for (final String? wire in <String?>[disposition, state]) {
+      final SpecimenStatus status = fromWire(wire);
+      if (status.isRecordStatus && status != SpecimenStatus.unknown) {
+        return status;
+      }
+    }
+    return SpecimenStatus.unknown;
+  }
+
   /// The visible chip word.
   String get label => switch (this) {
     SpecimenStatus.cleared => 'Cleared',
@@ -163,6 +198,9 @@ enum SpecimenStatus {
     SpecimenStatus.deferred => 'Deferred',
     SpecimenStatus.processing => 'Processing',
     SpecimenStatus.blocked => 'Processing blocked',
+    SpecimenStatus.retryScheduled => 'Retry scheduled',
+    SpecimenStatus.paused => 'Paused',
+    SpecimenStatus.cancelled => 'Cancelled',
     SpecimenStatus.unknown => 'State unknown',
     SpecimenStatus.supported => 'Supported',
     SpecimenStatus.unknownValue => 'Unknown',
@@ -180,13 +218,18 @@ enum SpecimenStatus {
   /// `unknownValue` shares the unknown one, because each pair is the same
   /// meaning read at a different scale: a field the evidence supports and a
   /// record a reviewer affirmed both say yes, and a state neither the server
-  /// nor this client can name is one question mark.
+  /// nor this client can name is one question mark. The three stopped run
+  /// states draw the registry entry whose meaning is theirs: waiting for a
+  /// time, processing blocked, and cancelled processing.
   IconSpec get iconSpec => switch (this) {
     SpecimenStatus.cleared => UiIcons.cleared,
     SpecimenStatus.needsReview => UiIcons.needsReview,
     SpecimenStatus.deferred => UiIcons.deferred,
     SpecimenStatus.processing => UiIcons.processing,
     SpecimenStatus.blocked => UiIcons.blocked,
+    SpecimenStatus.retryScheduled => UiIcons.time,
+    SpecimenStatus.paused => UiIcons.blocked,
+    SpecimenStatus.cancelled => UiIcons.stop,
     SpecimenStatus.unknown => UiIcons.unknown,
     SpecimenStatus.supported => UiIcons.cleared,
     SpecimenStatus.unknownValue => UiIcons.unknown,

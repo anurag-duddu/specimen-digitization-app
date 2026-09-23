@@ -138,8 +138,9 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     final UiThemeData ui = context.ui;
     final Specimen record = widget.specimen;
     final Json run = objectOf(record.data['run']);
-    final SpecimenStatus status = SpecimenStatus.fromWire(
-      record.disposition ?? record.data['operational_state'] as String?,
+    final SpecimenStatus status = SpecimenStatus.ofRecord(
+      disposition: record.disposition,
+      state: record.state,
     );
     final String stage = vocabularyLabel(
       textOf(run['stage'], textOf(record.data['stage'], '')),

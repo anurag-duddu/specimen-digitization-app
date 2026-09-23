@@ -841,7 +841,10 @@ class _QueueListRow extends StatelessWidget {
       id: specimen.id,
       title: specimen.title,
       reason: queueReason(specimen),
-      status: SpecimenStatus.fromWire(specimen.disposition ?? specimen.state),
+      status: SpecimenStatus.ofRecord(
+        disposition: specimen.disposition,
+        state: specimen.state,
+      ),
       riskComposite: specimen.data['risk'] as num?,
       // The search endpoint answers a bare composite and leaves the
       // contributing signals on the record. The compact meter never draws
