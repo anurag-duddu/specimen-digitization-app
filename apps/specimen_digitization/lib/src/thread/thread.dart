@@ -426,6 +426,47 @@ class ThreadToolCall extends _View {
   String? get completedAt => _t('completed_at');
 }
 
+/// One entry of what a field says was written (G27, G28): the decided
+/// transcript's text, or, when the first pass chose no reading, one reader's.
+class ThreadVerbatim extends _View {
+  const ThreadVerbatim._(super.json);
+
+  /// What was written, exactly.
+  String? get text => _verbatim('text');
+
+  /// The input source as sent.
+  String? get inputSourceName => _t('input_source');
+
+  /// The input source, or null when the server sent one this client does
+  /// not know.
+  ThreadInputSource? get inputSource =>
+      ThreadInputSource.fromWire(inputSourceName);
+  String? get regionId => _t('region_id');
+
+  /// The reader whose text this is, for a raw reading; null for the decided
+  /// transcript.
+  String? get observationId => _t('observation_id');
+}
+
+/// One source's evidence for a field, and how it bears on the value.
+class ThreadEvidence extends _View {
+  const ThreadEvidence._(super.json);
+
+  String? get evidenceId => _t('evidence_id');
+
+  /// `decides`, `supports` or `contradicts` (G23), as sent.
+  String? get relation => _t('relation');
+
+  /// The database, as an identifier (`gbif-backbone`).
+  String? get source => _t('source');
+
+  /// Where in that source (`place/{place id}` for Google, G26).
+  String? get locator => _t('locator');
+
+  /// The lookup's typed outcome.
+  String? get outcome => _t('outcome');
+}
+
 /// One profile field's result.
 class ThreadField extends _View {
   /// The field in [json].
@@ -442,8 +483,9 @@ class ThreadField extends _View {
   /// The value state: supported, unknown, unreadable and the rest.
   String? get state => _t('state');
 
-  /// As written, read as and standardized, exactly as sent.
-  String? get literal => _verbatim('literal');
+  /// What was written: one entry for the decided transcript, or one per
+  /// reader when the first pass chose none (G27, G28).
+  List<ThreadVerbatim> get verbatim => _each('verbatim', ThreadVerbatim._);
 
   /// Read as. The thread sends it as text with the precision and the century
   /// rule beside it (G24); the stored object form is read too, so a change
@@ -455,8 +497,6 @@ class ThreadField extends _View {
     return value is String ? value : null;
   }
 
-  String? get normalized => _verbatim('normalized');
-
   /// How precise a date is, as written: day, month or year (G24).
   String? get precision =>
       _t('precision') ?? _text(_parsedObject?['precision']);
@@ -466,20 +506,19 @@ class ThreadField extends _View {
   String? get centuryRule =>
       _t('century_rule') ?? _text(_parsedObject?['century_rule']);
 
-  Json? get _parsedObject => _object(_json['parsed']);
+  /// What was settled: the standardized value. For a Google-confirmed field
+  /// it is at most a reader's exactly matching text, never a Google name
+  /// (G26); for a GBIF-settled taxon it may be GBIF's accepted name (G28).
+  String? get normalized => _verbatim('normalized');
+
+  /// The authority record the value was settled against: a Google place ID,
+  /// a GBIF usage and so on.
   String? get authorityId => _t('authority_id');
 
-  /// The input source as sent.
-  String? get inputSourceName => _t('input_source');
+  /// Each source's evidence and its relation to the value (G23).
+  List<ThreadEvidence> get evidence => _each('evidence', ThreadEvidence._);
 
-  /// The input source, or null when the server sent none this client knows.
-  ThreadInputSource? get inputSource =>
-      ThreadInputSource.fromWire(inputSourceName);
-  String? get sourceRegionId => _t('source_region_id');
-
-  /// The reading its literal came from, for a raw-reading literal (G20).
-  String? get sourceObservationId => _t('source_observation_id');
-  List<String> get evidenceIds => _texts('evidence_ids');
+  Json? get _parsedObject => _object(_json['parsed']);
 }
 
 /// The queue decision and its reasons.
@@ -493,6 +532,22 @@ class ThreadDecision extends _View {
 
   /// The one-sentence summary (QUE-006).
   String? get summary => _t('summary');
+
+  /// The findings behind it, hard, warning and info. Warnings and info never
+  /// change the disposition.
+  List<ThreadFinding> get findings => _each('findings', ThreadFinding._);
+}
+
+/// One finding of the queue decision.
+class ThreadFinding extends _View {
+  const ThreadFinding._(super.json);
+
+  String? get ruleId => _t('rule_id');
+
+  /// `hard`, `warning` or `info`, as sent.
+  String? get severity => _t('severity');
+  String? get fieldKey => _t('field_key');
+  String? get reasonCode => _t('reason_code');
 }
 
 /// One specimen run's whole thread.
