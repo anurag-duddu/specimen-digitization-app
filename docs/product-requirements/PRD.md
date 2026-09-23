@@ -487,6 +487,7 @@ For every such case, the record must retain the literal text, candidates conside
 - The first pilot subcollection is **Insects**.
 - The following fields are mandatory members of the entomological record schema.
 - **Cleared requires a supported, non-empty value for every mandatory field.** A placeholder or processing state such as `unknown`, `unreadable`, `not present`, or `not applicable` does not satisfy this requirement.
+  > 2026-09-23: For the slide pilot, `identified_by_irn` is no longer one of these mandatory fields, superseded by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G16: it is recorded as not resolved and does not block clearance until EMu Parties is connected. Every other mandatory field still needs a supported, non-empty value.
 - No agent, model, validator, or reviewer workflow may invent or pressure-generate a value merely to make a record complete. Insufficient evidence produces an explicit abstention and blocks Cleared.
 - Taxonomy work begins with Global Names Verifier, Catalogue of Life, GBIF, and BugGuide for North American material.
 - Geography work begins with Mapcarta and Google Maps.
