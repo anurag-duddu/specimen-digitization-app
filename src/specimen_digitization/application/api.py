@@ -45,7 +45,14 @@ from .active_graph import (
 )
 from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
-from .lane import LaneConflict, processable, queue, queue_on_intake, run_status
+from .lane import (
+    LaneConflict,
+    processable,
+    queue,
+    queue_on_intake,
+    refuse_sensitive,
+    run_status,
+)
 from .lane_dispatch import UNCONFIGURED
 from .policy import finalize
 from .reliability import has_active_lease
@@ -2423,6 +2430,7 @@ def create_app(
         if mode == "synthetic":
             return render_workspace(workflow.drain(p, s.id), p, mutation_committed=True)
         request_key = key(idempotency_key)
+        refuse_sensitive(s)
         if s.run.stage == "ingested":
             request_processing(s, user)
             s.audit.append(
