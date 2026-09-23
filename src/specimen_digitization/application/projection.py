@@ -1,8 +1,9 @@
 """The normalized SQL projection of a specimen's run (docs/execution/golive/DATA_CONTRACT.md 11).
 
-Pure: maps domain objects to the connector writes of section 7, parents before
-children, with the ids of section 5. The repository adds the scope and the actor,
-sends each write and counts a primary-key conflict as already written.
+Pure apart from the two blob functions the repository supplies: maps domain
+objects to the connector writes of section 7, parents before children, with the
+ids of section 5. The repository adds the scope and the actor, sends each write
+and counts a primary-key conflict as already written.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ class Blob:
     bucket: str
     object_name: str
     generation: str
-    byte_size: int
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,7 @@ class Write:
 
 
 Locate = Callable[[str], Blob]
+Size = Callable[[str], int]
 
 
 def _write(operation: str, variables: dict, *key_parts: object) -> Write:
@@ -51,7 +52,7 @@ def _write(operation: str, variables: dict, *key_parts: object) -> Write:
     return Write(operation, variables, key)
 
 
-def writes(specimen: Specimen, locate: Locate, actor: str) -> list[Write]:
+def writes(specimen: Specimen, locate: Locate, size: Size, actor: str) -> list[Write]:
     """Every row the specimen supports so far, each after the rows it references."""
     result = [_original(specimen, locate)]
     run = specimen.run
@@ -71,6 +72,7 @@ def writes(specimen: Specimen, locate: Locate, actor: str) -> list[Write]:
     for observation in run.observations:
         raw = _raw_asset(specimen, observation, locate, actor)
         if raw.key not in assets:
+            raw.variables["byteSize"] = str(size(observation.raw_ref))
             assets.add(raw.key)
             result.append(raw)
         result.append(_reading(run, observation, raw.variables["id"]))
@@ -194,7 +196,7 @@ def _raw_asset(
             "generation": blob.generation,
             "sha256": observation.raw_sha256,
             "mimeType": "application/json",
-            "byteSize": str(blob.byte_size),
+            "byteSize": None,
             "width": None,
             "height": None,
             "acquisitionMethod": "model_response",

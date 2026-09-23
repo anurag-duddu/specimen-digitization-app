@@ -40,7 +40,12 @@ class TracedRun(Run):
 
 def locate(ref: str) -> Blob:
     sha, generation = ref.split(":")
-    return Blob("demo-bucket", f"application/sha256/{sha}", generation, 321)
+    return Blob("demo-bucket", f"application/sha256/{sha}", generation)
+
+
+def size(ref: str) -> int:
+    assert not ref.startswith("a" * 64), "the original's size comes from its asset"
+    return 321
 
 
 def reading(region: Region, route: str, text: str, raw: str) -> Observation:
@@ -145,7 +150,7 @@ def test_canonical_json_hashes_to_the_snapshot_digest():
 
 def test_before_the_profile_is_pinned_only_the_original_image_is_written():
     s = specimen()
-    result = writes(s, locate, "worker-uid")
+    result = writes(s, locate, size, "worker-uid")
     assert ops(result) == ["AppendSourceAssetV2"]
     original = result[0].variables
     assert original["id"] == s.asset.id
@@ -162,7 +167,7 @@ def test_before_the_profile_is_pinned_only_the_original_image_is_written():
 
 def test_a_pinned_run_writes_its_profile_version_then_the_run():
     s = pinned(specimen(trace_id=None))
-    result = writes(s, locate, "worker-uid")
+    result = writes(s, locate, size, "worker-uid")
     assert ops(result) == [
         "AppendSourceAssetV2",
         "AppendProfileVersionV2",
@@ -188,7 +193,7 @@ def test_a_pinned_run_writes_its_profile_version_then_the_run():
 
 def test_a_trace_id_is_carried_on_the_run_and_recorded_once():
     trace = "0af7" * 8
-    result = writes(pinned(specimen(trace_id=trace)), locate, "worker-uid")
+    result = writes(pinned(specimen(trace_id=trace)), locate, size, "worker-uid")
     assert result[2].variables["traceId"] == trace
     assert ops(result)[3] == "RecordRunTraceV1"
     assert result[3].variables == {"id": result[2].variables["id"], "traceId": trace}
@@ -196,7 +201,7 @@ def test_a_trace_id_is_carried_on_the_run_and_recorded_once():
 
 def test_regions_readings_and_comparisons_follow_their_parents():
     s = read(pinned(specimen()))
-    result = writes(s, locate, "worker-uid")
+    result = writes(s, locate, size, "worker-uid")
     assert ops(result) == [
         "AppendSourceAssetV2",
         "AppendProfileVersionV2",
@@ -262,7 +267,7 @@ def test_one_raw_response_shared_by_two_readings_is_one_asset():
     s = read(pinned(specimen()))
     right, left = s.run.observations
     s.run.observations = [right, left.model_copy(update={"raw_ref": right.raw_ref})]
-    result = writes(s, locate, "worker-uid")
+    result = writes(s, locate, size, "worker-uid")
     assert ops(result).count("AppendSourceAssetV2") == 2
     observations = [w.variables for w in result if w.operation == "AppendModelObservationV2"]
     assert observations[0]["rawAssetId"] == observations[1]["rawAssetId"]
@@ -271,16 +276,16 @@ def test_one_raw_response_shared_by_two_readings_is_one_asset():
 def test_unmeasured_or_incomplete_pairs_have_no_invented_components():
     s = read(pinned(specimen()))
     s.run.transcripts[0].disagreement_ratio = None
-    comparison = writes(s, locate, "worker-uid")[-1].variables
+    comparison = writes(s, locate, size, "worker-uid")[-1].variables
     assert (comparison["ratio"], comparison["editDistance"]) == (None, None)
     assert comparison["lengthBasis"] == 13
     s.run.transcripts[0].observation_ids = s.run.transcripts[0].observation_ids[:1]
-    assert "AppendReadingComparisonV1" not in ops(writes(s, locate, "worker-uid"))
+    assert "AppendReadingComparisonV1" not in ops(writes(s, locate, size, "worker-uid"))
 
 
 def test_every_write_has_a_distinct_key_and_repeats_are_identical():
     s = read(pinned(specimen(trace_id="0af7" * 8)))
-    first, second = writes(s, locate, "worker-uid"), writes(s, locate, "worker-uid")
+    first, second = writes(s, locate, size, "worker-uid"), writes(s, locate, size, "worker-uid")
     assert [w.key for w in first] == [w.key for w in second]
     assert [w.variables for w in first] == [w.variables for w in second]
     assert len({w.key for w in first}) == len(first)
