@@ -13,8 +13,8 @@ it; that session fixes it and resubmits (owner decision G4).
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`, all of it. Sections 2.1 (owner decisions G1
-   to G11), 6 (who owns what) and 7 (rules) are your review criteria.
+1. `docs/execution/golive/PLAN.md`, all of it. Sections 2.1 (the owner's
+   decisions), 6 (who owns what) and 7 (rules) are your review criteria.
 2. `AGENTS.md` and `docs/DEPLOYMENT.md`. Until the release workstream's
    contract-amendment PR merges, the old envelope text is still in them;
    PLAN.md G11 already supersedes it.
@@ -41,7 +41,9 @@ For each head SHA you have not reviewed:
    `docs/SESSION_LEARNINGS.md` closeout entry; size under about 600 changed
    lines excluding generated files and goldens (otherwise ask for a split);
    every "Depends on" PR already merged.
-2. **Review swarm, new every time.** Never reuse an earlier review agent. Fetch
+2. **Review swarm, new every time.** Every new head gets a fresh four-reviewer
+   swarm, including a head that differs from an approved one only by a merge
+   from `main` (G18). Never reuse an earlier review agent. Fetch
    the head without checking it out: `git fetch origin pull/N/head:refs/steward/pr-N`;
    reviewers read with `gh pr diff N` and `git show refs/steward/pr-N:<path>`.
    Launch these in parallel, each with the PR number, head SHA and the PLAN
@@ -58,7 +60,8 @@ For each head SHA you have not reviewed:
      action SHAs or identity conditions; no deploy from a shell.
    - **Integration** (Sonnet): overlap with other open go-live PRs; shared
      files (`domain.py`, `workflow.py`, `api.py`, `production.py`) changed
-     additively; schema changes additive only; goldens touched only by S6;
+     additively; schema changes additive as PLAN section 4.4 defines it;
+     goldens touched only by S6;
      `docs/SESSION_LEARNINGS.md` append-only.
    For large code PRs also run the `code-review` skill at high effort.
    Each reviewer returns a verdict (approve or changes needed) and findings
@@ -70,8 +73,10 @@ For each head SHA you have not reviewed:
      "PR #N ready" again, then review the new head with a new swarm.
    - Only should-fix and nits: post them as a comment and continue.
    - Never push code to another session's branch. You may run
-     `gh pr update-branch N` to bring a PR up to date with `main`; then tell the
-     owning session to pull before its next push.
+     `gh pr update-branch N` to bring a PR up to date with `main`; do it only
+     for the pull request that is next to merge, since the new head needs a
+     fresh swarm (G18). Then tell the owning session to pull before its next
+     push.
 4. **CI.** Watch with a Monitor or a background
    `gh pr checks N --watch --interval 60 > <log>`. On a failure, save
    `gh run view <id> --log-failed` to a file and read at most 60 lines. An
@@ -82,7 +87,9 @@ For each head SHA you have not reviewed:
    the swarm for that head approved with no open blocking finding; the branch
    is up to date with `main`; dependencies merged; `~/specimen-golive/MERGE_ORDER.md`
    does not hold it. Then `gh pr merge N --merge` (a merge commit keeps the red
-   and green commits visible). Merge one PR at a time.
+   and green commits visible). Merge one PR at a time. Auto-merge stays off
+   (G17): if you find it enabled on a go-live pull request, tell the
+   coordinator and leave the setting alone.
 6. **After each merge**, watch the push-to-`main` runs for the merge commit:
    CI/CD (Hosting deploy and public marker check) and Runtime candidate CI, and,
    once the release workstream's auto-deploy PRs have merged, the data and

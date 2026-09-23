@@ -46,8 +46,10 @@ comes first (G6).
   the model-capability limits of QUE-004.
 - "graceful failures are important. no data found, an error occurred, retry and
   so on. I am aware there is not always available data and thats when it goes to
-  the need a human queue." No data found sends the record to the human queue with
-  the reason. An error is retried with backoff; when retries are exhausted it is
+  the need a human queue." No data found for a mandatory field sends the record
+  to the human queue with the reason; an optional field with no data is recorded
+  as such and does not block clearance (G1: "mandatory fields if cleared then
+  cleared"). An error is retried with backoff; when retries are exhausted it is
   an operational block with retry (QUE-005), shown as blocked, never a crash.
   Every outcome is typed (HAR-008) and recorded.
 - Never invent values (HAR-019). Every literal comes from the decided transcript
@@ -75,35 +77,51 @@ records into S5's contract.
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
 profile's registry: GBIF Species Match v2 (the existing adapter, `lookup.py`),
 Global Names Verifier and Catalogue of Life for taxonomy; Google Maps geocoding
-for geography (G10; the key comes from Secret Manager, and until the owner
-creates it the tool returns the typed `unavailable` outcome and the field goes
-to review); the deterministic validators for catalog numbers and dates; parties
-returns `unavailable` because EMu Parties is not provisioned, and person names
-are transcribed as seen. Phases as the specification lists them; the raw-reading
-fallback; retries with backoff; a budget check per paid call; every tool call
-recorded for S5 and traced with Pydantic AI instrumentation, content on (G3;
-coordinate with S3's tracing topic).
+for geography (G10; the key comes from Secret Manager as
+`specimen-google-maps-key`, and a missing or rejected key is
+`authentication_error`, an operational block: `CONTRACTS.md` 244-246,
+`PRD.md` 679); the deterministic validators for catalog numbers and dates (the
+pilot slides carry date-shaped slide-preparation codes that are not collection
+dates; PLAN section 3). No Parties tool: `identified_by_irn` is optional for the
+slide pilot (G16), and the other fields outside taxonomy and geography are
+transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
+encodes them (`domain.py` 43-54); add none. Phases as the specification lists
+them; the raw-reading fallback; retries with backoff; a budget check per paid
+call; every tool call recorded for S5 and traced with Pydantic AI
+instrumentation, content on and binary content off (G3; `include_binary_content`
+defaults to on, and the first pass sends the crop; coordinate with S3's tracing
+topic).
 
 Geography is being researched separately (owner decision G12, session S8,
 `briefs/S8-georeferencing-research.md`): historical toponyms, tiered
 resolution and uncertainty. Build geography as one typed tool behind the same
 interface as the others, with the Google Maps implementation of G10 as the
 initial version, so that an accepted S8 plan replaces the tool without touching
-the harness. Share the tool interface with S8 when it exists.
+the harness. Share the tool interface with S8 when it exists. The pilot's
+localities are in the Philippines (1946) and Guatemala (1948); assume no
+country.
 
 **T4. The queue decision (stage 8).** The policy applies G1. For the lane,
 remove the gates that contradict it: `policy.py` 31-34 (institutional approval
-and semantics) and 138-139 (`human_approval_required`), and `worker.py` 318-323
-(`pilot_clearance_forbidden`). Human deferral in `api.py` 1940-1967 stays for
-people; the harness may also defer under QUE-004. Tests cover every path: all
-mandatory fields resolved, cleared; no data, needs human review with the reason;
+and semantics) and 138-139 (`human_approval_required`). Keep
+`label_coverage_unconfirmed` (35-36): the lane's automatic coverage check (S3,
+G15) satisfies it, and a failed check sends the record to needs human review.
+`pilot_clearance_forbidden` (`worker.py` 318-323) is in the evidence-only
+`PilotWorker`, off the lane's path; leave it. The reviewer's `capability_defer`
+action in `api.py` 1940-1967 stays; the queue decision may also return deferred
+under QUE-004. Tests cover every path: all mandatory fields resolved, cleared;
+no data for a mandatory field, needs human review with the reason; no data for
+an optional field, still cleared; a failed coverage check, needs human review;
 capability limit, deferred; transient error, retried, then an operational block.
 
 ## Coordination
 
-S3 supplies the profile, the tools per field, the optional fields and the
-tracing mode. S5 supplies the tables for the first-pass decisions, the tool calls
-and the fields; agree the shapes in S5's first PR. S2 supplies the secrets and
+S3 supplies the profile, the tools per field, the optional fields (as
+`Run.field_groups`), the coverage check and the tracing mode. S5 supplies the
+tables for the first-pass decisions, the tool calls and the fields; agree the
+shapes in S5's first PR. `domain.py` has no single owner: add to it additively,
+list your additions in the pull request body, and let S5 decide any shape that
+S3 also needs. S2 supplies the secrets and
 environment. S7 supplies real crops and recorded responses.
 
 ## Done
