@@ -39,8 +39,7 @@ from specimen_digitization.application.storage import LocalBlobs, SQLiteReposito
 from specimen_digitization.application.workflow import SyntheticAdapters, crop_bytes
 
 from test_api_runtime import config_env
-from test_application import intake
-from test_lane_trigger import RecordingDispatcher, specimen_with
+from test_lane_trigger import RecordingDispatcher, intake, specimen_with
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 COLLECTION_UUID = "00000000-0000-4000-8000-0000000000c1"
