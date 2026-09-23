@@ -2238,6 +2238,15 @@ def create_app(
             coverage_confirmed=True,
             completed_steps=["classify", "segment"],
             stage="transcribe",
+            # Classify does not run again, so keep every field of the bound profile.
+            **(
+                {
+                    "field_groups": old.field_groups,
+                    "fields": {key: FieldValue() for key in old.field_groups},
+                }
+                if old.field_groups
+                else {}
+            ),
         )
         s.audit.append(
             AuditEvent(
