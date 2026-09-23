@@ -163,3 +163,105 @@ deadline, so the API's request timeout is 600 s.
 - Runtime configuration parsing for both new variables, and the production
   wiring of the registry, reader and dispatcher.
 - Synthetic-mode tests stay green unchanged.
+
+## T4. The slide pilot profile as configuration
+
+Implements PLAN 4.2 with G8, G14, G16, G22 and G24, and fixes issue #79.
+
+### The published registry
+
+The published collection profiles are one committed configuration file,
+`src/specimen_digitization/application/profiles/published.json`, loaded at start
+by the API and the worker. It holds:
+
+- the collection tree: the public keys, names and parents of
+  `infra/reference/fieldmuseum-collection-tree.json` (a test keeps the two equal);
+- the published profiles;
+- one mapping per collection that has its own profile.
+
+Changing a profile, including its field groups (G8), is one edit to this file.
+The edit adds a new profile version and moves the mapping to it; a published
+version is never replaced (`collection_profiles.py` 182-185).
+`insects_registry()` and `application_registry()` keep today's draft and
+synthetic registries for the existing tests and for synthetic mode.
+
+### Resolution down the collection tree
+
+A collection with no mapping of its own uses the mapping of its nearest ancestor
+that has one, as `COLLECTION_HIERARCHY.md` describes. Resolution walks the parent
+chain up to the root. A collection with no mapped ancestor, an ambiguous mapping
+or an inactive profile resolves to review with the existing reasons.
+
+### Private collection identifiers
+
+SQL collection identifiers are minted privately (`COLLECTION_HIERARCHY.md`,
+"The pilot's scope"), so the committed file names collections by key.
+`SPECIMEN_COLLECTION_BINDINGS_JSON` is a JSON object from collection identifier
+to key, set on the API and the worker; the release plane injects it from Secret
+Manager. Resolution translates an identifier through the bindings, and a key
+resolves as itself (the reviewer's correction route and the tests pass keys).
+
+Bindings never appear in the registry's serialized form, in `GET /collections`
+or in a run. A binding to an unknown key, or a value that is not a JSON object,
+stops the process at start.
+
+### The risk policy
+
+The profile references the existing uncalibrated policy: the `RiskPolicy`
+defaults (`review_risk.py` 125-147), id `review-risk-draft`, version
+`review-risk-draft-1`, with no calibration dataset. The production risk registry
+publishes it. Its scores stay labelled `calibrated: false` and carry no
+clearance authority (`review_risk.py` 165, 329-331).
+
+### The slide pilot profile
+
+| Setting | Value | Source |
+|---|---|---|
+| Identity | `zoology_insects_slides` version `1.0.0`, state `active`, mapped to `insects` beneath `zoology` | brief T4 |
+| Readers | `handwriting-qwen`, `handwriting-muse` | PLAN 2.2 |
+| Segmentation | `sam3-settings-v1`, concept prompt `label`, the pinned revision; the server's 0.5 thresholds and 64-region limit | brief T4. T3 makes the thresholds explicit, together with G15's values |
+| Mandatory fields | the 19 keys of `MANDATORY` other than `identified_by_irn`, the four elevations included | G8, G16, G22 |
+| Optional fields | `identified_by_irn` | G16 |
+| Tools per field | `taxon`: `taxonomy_verifier`. `country`, `province_state`, `county`, `city`, `precise_location`: `geography_lookup`. `fmnh_ins_number`: `catalog_number_validator`. The three dates: `date_parser`. Every other field: none (transcribed as seen). `tools` is their union | PLAN 4.2; S4 owns the tools |
+| Risk policy | the existing uncalibrated policy, above | brief T4 |
+| Clearance policy | `insects-clearance-v1`. S4's G1 change moves it to v2 with a new profile version | S4 |
+| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 15,000; each reader 20,000; `parse` 20,000. `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
+| Routes for the first pass and the harness | `first_pass_route` and `harness_route` fields exist, unset until S4's routes are approved | S4 |
+| Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900). S4's date parser stamps the rule, its version and the profile on each parsed date that uses it, so the century stays visibly derived (`CONTRACTS.md` 234-235) | G24 |
+
+`max_tokens` and `max_external_calls` join the allowance because the defaults
+(160,000 tokens, 32 weighted calls) admit only ten billable steps per run. A
+three-label slide already uses eight, before S4's first pass and harness steps.
+A request copies them into the run's `profile.execution` with the cost fields.
+The institutional-approval and semantics flags stay false; the G1 policy change
+(S4) owns those gates.
+
+### Optional fields at run time
+
+When classify binds the profile, the run gets a `FieldValue` for every mandatory
+and optional key. `Run.field_groups` maps each key to `mandatory` or `optional`,
+which is S5's shape. S4's `parse` extracts both groups, and only mandatory fields
+gate clearance. Synthetic profiles have no optional fields, so their runs are
+unchanged.
+
+### Wiring
+
+`production_app` passes the published registry with the bindings, and the
+production risk registry, to `create_app`. The worker gets the same in T2.
+
+The acceptance lab runs `mode="emulator"` with `ProductionAdapters`, the same two
+registries and a binding for its local collection. Its runs are then
+non-synthetic, which is what #79 needs: a real reader's input is its region crop,
+the reading provenance a non-synthetic run requires (`integrity.py` 107-112).
+
+### Tests
+
+- The published file loads, its tree equals the reviewed tree, and the pilot
+  profile has every value in the table.
+- Resolution through bindings and down the tree, and the refusals.
+- The risk reference resolves in the production risk registry.
+- Classify gives the run every mandatory and optional field with its group.
+- The bindings variable parses and fails closed, and `production_app` passes
+  both registries.
+- An emulator-mode run with production-like readers, queued on upload and
+  drained, passes `parse` (the failure of #79).
