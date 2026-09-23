@@ -38,13 +38,19 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
 - Hosting production deployments MUST use `.github/workflows/ci-cd.yml` after
   a pull request is merged to `main`. Runtime and data production deployments
   MUST use only `.github/workflows/runtime-release.yml` and
-  `.github/workflows/data-release.yml`, respectively, after a pull request is
-  merged to `main` and the approved contract in `docs/DEPLOYMENT.md` is met.
-  Each plane uses a separate main-only environment and keyless identity,
-  all five successful checks on the exact merged source, independent review,
-  immutable provenance and verified readiness. The Hosting identity remains
-  isolated. The bounded authority is recorded in
-  `docs/execution/RELEASE_AUTHORIZATION.md`; missing evidence fails closed.
+  `.github/workflows/data-release.yml`, respectively. They run automatically,
+  and only after a pull request is merged to `main` with the required checks
+  passed and the PR steward's approval, and only when the approved contract in
+  `docs/DEPLOYMENT.md` is met. Each plane uses a separate main-only
+  environment and keyless identity, verifies all five successful checks on the
+  exact merged commit, keeps immutable, attested provenance and verifies
+  readiness. The data plane applies schema changes only through an automated
+  additive-only gate. The Hosting identity remains isolated. For the go-live
+  program, the PR steward's review replaces the former independent review. The
+  authority is the owner's decision G11 of 2026-09-23 in
+  `docs/execution/golive/PLAN.md` section 2.1;
+  `docs/execution/RELEASE_AUTHORIZATION.md` keeps its list of what remains
+  forbidden. Missing evidence fails closed.
 - Never run `firebase deploy`, a Hosting channel deploy, or a `gcloud ... deploy`
   command from a workstation or an agent shell.
 - Never deploy SQL Connect schemas, database migrations, Storage rules,
