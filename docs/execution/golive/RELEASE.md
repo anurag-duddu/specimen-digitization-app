@@ -49,19 +49,37 @@ traded for a passing release:
 - IAM writes and secret creation are owner actions, taken from a reviewed list
   a read-only script prints (T4). No workflow and no agent creates IAM policy.
   Every grant names its resource and its reason; no identity receives Owner or
-  Editor. Standing grants go only to the runtime-build, runtime-release and
-  runtime identities; to the data-release roles that automatic applies need
-  (`specimenDataSchemaPublish`, `specimenDataStorageRules`,
-  `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`,
-  `specimenDataInventoryProjectRead`); and to the `allUsers` invoker on the
-  API. Every other data-release role stays time-bounded: the clone roles open
-  only for the first apply's restore check (D1). The one-time roles never get
-  a standing grant: the initializer role,
-  `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
-  one-time and time-bounded through the existing setup-window path
-  (`scripts/ci/data_setup_window.py`) and are revoked after use. That window
-  grants the initializer role for 75 minutes; `docs/DEPLOYMENT.md` separately
-  caps the initializer's privilege window after native parity at ten minutes.
+  Editor. Standing grants go only to three groups:
+  - the runtime-build, runtime-release and runtime identities;
+  - the data-release roles that automatic applies need:
+    `specimenDataSchemaPublish`, `specimenDataStorageRules` and
+    `specimenDataSourceBackup` become standing, and
+    `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead`,
+    already standing, keep their conditions unchanged;
+  - the `allUsers` invoker on the API.
+
+  Every other data-release role stays time-bounded:
+  - `specimenDataCloneCreate`, `specimenDataCloneControl` and
+    `specimenDataRestoreAllowanceClaim` open only for the first apply's single
+    restore check, whose claim is the single-use allowance of
+    `CLONE_ALLOWANCE.md`. That check is D1, the coordinator's ruling for T3 of
+    2026-09-23: a backup before every apply, and one clone restore proof.
+  - `specimenDataRuntimeAbsence` stays time-bounded too, though no automatic
+    apply uses it.
+  - The one-time roles never get a standing grant: the initializer role
+    (`specimenDataInitializeTemporary`), `specimenDataOwnerBootstrap` and
+    `specimenDataInitializerDisposal` stay one-time and time-bounded through
+    the existing setup-window path (`scripts/ci/data_setup_window.py`) and are
+    revoked after use. That window grants the initializer role for 75 minutes;
+    `docs/DEPLOYMENT.md` separately caps the initializer's privilege window
+    after native parity at ten minutes.
+- The setup-window path keeps every binding it manages time-bound. Run the
+  window first or adapt the path, never fall back to a grant without a time
+  condition, and list the revocation commands.
+- Before every apply, an on-demand backup must succeed and point-in-time
+  recovery must be on; the first apply also restores that backup once into a
+  clone and checks it (D1). After every apply, the supplemental SQL indexes
+  are re-created concurrently and each is checked by definition.
 - No private value (administrator or bootstrap identities, organization or
   collection ids, tokens) appears in a workflow log or artifact, because both
   are public in this repository.
@@ -136,6 +154,7 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/policy.py` 31-34 and 138-139, for the lane | The institutional-approval and semantics gates, and the human-approval gate | G1 | S4 |
 | `scripts/ci/worker_trace_setup.py` `grant` | A worker-only writer-secret binding that expires within 24 hours | G3, G11 | S2 T4 (standing grants per identity and secret) |
 | `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
+| `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews the standing roles and the time-bounded ones alike as 120-minute bindings, and refuses any untimed binding | G11 | S2 T4 (narrows the renewals to the time-bounded roles) |
 
 ## 3. Next pull requests
 
@@ -157,7 +176,7 @@ requires.
   grants and secrets T2 and T3 need, each bound to a named resource with its
   reason. It also prints the time-bounded windows for the one-time roles (the
   initializer role, `specimenDataOwnerBootstrap`,
-  `specimenDataInitializerDisposal`) and for the clone roles.
+  `specimenDataInitializerDisposal`) and for the clone and claim roles.
 - T5, first releases: the first data and runtime releases; the repository
   variables as an owner action whose private values the owner fills in;
   Hosting rebuilt and connected (DoD-1 to DoD-3).

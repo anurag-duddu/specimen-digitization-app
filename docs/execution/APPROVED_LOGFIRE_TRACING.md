@@ -147,7 +147,9 @@ the release plan, a launch payload or the identity receipt.
 > program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3 and G11. The worker, SAM 3 and API runtime identities each hold a standing
-> `roles/secretmanager.secretAccessor` on this secret. Hosting, GitHub and every
+> `roles/secretmanager.secretAccessor` on this secret. These standing grants
+> carry no version condition; the runtime release pins the version it
+> references in `scripts/ci/runtime_settings.py`. Hosting, GitHub and every
 > other identity still gain no writer access, and the writer value still never
 > appears in Git or in any output.
 
@@ -181,9 +183,9 @@ merged source before issuance or use.
 > G11: the owner creates the writer secret and grants the runtime identities
 > their standing read access from the release workstream's reviewed list, and
 > no tracing setup packet or independent review report is issued. The
-> separately approved bootstrap window stands: `specimenDataOwnerBootstrap` and
-> `specimenDataInitializerDisposal` stay one-time and time-bounded and are
-> revoked after use.
+> separately approved bootstrap window stands. The initializer role,
+> `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
+> one-time and time-bounded and are revoked after use.
 
 ## Cost, retention and activation
 
@@ -232,9 +234,10 @@ specimen record." PLAN section 4.5 describes the instrumentation.
   prompt and the text input and output of every model call (each VLM reader,
   the LLM first pass and the agentic harness), SAM 3's parameters, the
   harness's tool calls with their arguments and results, and the queue decision
-  with its reasons. Under G26, a Google geocoding call keeps only the place ID,
-  the pipeline's own outcome and a fingerprint of the response. Each run is one trace whose root span carries the specimen,
-  run, collection and profile identifiers; the trace id is stored on the run
+  with its reasons. Under G26, a Google geocoding result keeps only the place
+  ID, the pipeline's own outcome and a fingerprint of the response. Each run is
+  one trace whose root span carries the specimen, run, collection and profile
+  identifiers; the trace id is stored on the run
   and linked from the record in the app.
 - Excluded: images and all other binary content, since binary capture stays
   off and images stay in Cloud Storage; and Google's names, address parts and

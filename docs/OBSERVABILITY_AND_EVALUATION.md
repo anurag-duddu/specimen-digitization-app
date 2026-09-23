@@ -79,8 +79,8 @@ for that approval because LLM message attributes are not reliably scrubbed.
 > to the specimen record, under the amended scope in
 > execution/APPROVED_LOGFIRE_TRACING.md. Secrets and user identities are kept
 > out of prompts and tool arguments, so scrubbing is only a backstop. The
-> retention and deletion confirmations this paragraph requires stay open; G3
-> does not settle them.
+> confirmations this paragraph requires for retention, deletion and Logfire
+> project access stay open; G3 does not settle them.
 
 ## Trace structure
 

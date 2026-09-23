@@ -769,8 +769,9 @@ expansion requires user review and approval of end-to-end results.
   > and the supplemental SQL indexes are non-unique. So writers keep running.
   > The supplemental indexes are still restored and checked by definition
   > after every apply, and a backup with a verified restore path still precedes
-  > it; both are specified in
-  > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md).
+  > it. The isolated restore proof is now done once, on the first apply (D1).
+  > All of this is specified in
+  > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1.
   Do not create or upgrade a source SQL instance as a side effect of deployment.
   Preserve source data and object generations. Bootstrap the approved initial
   administrator only after verified identity/scope, with sensitive access off.
@@ -823,11 +824,13 @@ after verification evidence is retained. Existing data and source SQL remain.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The owner runs the standing grants and secret steps from the
 > release workstream's reviewed, read-only-generated list, with no action
-> packet or cost reservation, and the ceiling is USD 25. The one-time roles
-> (the initializer role, `specimenDataOwnerBootstrap` and
-> `specimenDataInitializerDisposal`) and the clone roles stay in the bounded
-> setup window with its action packet. A restore clone is still removed by its
-> two-hour expiry. Existing data and source SQL still remain.
+> packet or cost reservation, and the ceiling is USD 25.
+> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1 names
+> the five standing data-release roles. The one-time roles (the initializer
+> role, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`)
+> and the clone and claim roles stay in the bounded setup window with its
+> action packet. A restore clone is still removed by its two-hour expiry.
+> Existing data and source SQL still remain.
 
 Recovery admission additionally requires the original typed
 [`recovery.allowance` contract](execution/CLONE_ALLOWANCE.md). The protected data
@@ -838,6 +841,13 @@ No retries, receipt adoption or allowance reset are permitted. Root must first
 qualify the complete issuance baseline, effective exact-object create-only IAM
 and continuing held-object costs. This source contract grants no native setup or
 new execution window; existing clone ownership and cleanup controls still apply.
+
+> 2026-09-23: For the go-live program, under
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11 and the coordinator's D1, this allowance guards only the first apply's
+> single restore clone. The on-demand backup before every apply needs no
+> claim. The claim stays single-use, and its role
+> (`specimenDataRestoreAllowanceClaim`) stays time-bounded.
 
 The candidate CI workflow `runtime-ci.yml` builds committed container inputs
 without credentials or registry publication. Scoped PRs report absent owner

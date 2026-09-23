@@ -67,7 +67,9 @@ end-to-end acceptance.
 > G1, G14 and G19. Automated clearance is no longer deferred: the agentic
 > harness runs its lookups (including GBIF) on the transcript the LLM first
 > pass decides or, when the first pass picks no reading, on each reader's raw
-> reading (G19). A record the harness resolves is cleared without a human, and
+> reading (G19). It falls back to the raw readings when the decided transcript
+> fails (PLAN section 1). A record the harness resolves is cleared without a
+> human, and
 > human review and deferral otherwise stay as the specification defines them.
 > Automated collection classification stays deferred: under G14 the profile
 > comes from the collection a specimen was uploaded or imported into, resolved
@@ -86,7 +88,7 @@ all days, sessions and retries. Initial administrator sensitive access stays fal
 > and authorization artifact that
 > `RELEASE_AUTHORIZATION.md` describes are retired; releases now deploy
 > automatically on merge once the required checks pass and the PR steward
-> approves.
+> approves. Initial administrator sensitive access still stays false.
 
 The user's actual selection is preserved in the owned private file
 `human-review-release-scope-v1.json` under the coordinator's existing rollout-state

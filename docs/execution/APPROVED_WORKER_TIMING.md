@@ -120,7 +120,8 @@ The original SAM activation lifetime remains at most one hour in both dialects.
 > section fixes; the amended scope is in
 > [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md). The
 > independent transport/privacy/completion review this section keeps as a
-> release gate is retired along with other independent-review gates.
+> release gate is retired with the other independent-review gates; the PR
+> steward's review of each pull request replaces it.
 
 Approved native tracing requires `worker_trace` with version `worker-trace/v2`,
 the reviewed existing `project_id`, the distinct immutable worker writer
