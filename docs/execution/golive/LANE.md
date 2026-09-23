@@ -561,6 +561,35 @@ Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread
 shows it, so a block is never a surprise.
 
+How T2b builds it:
+
+- **Setting.** `processing.program_allowance` in a published profile holds
+  `allowance_micros` and `ledger_collection`, a public tree key. Every profile
+  that carries an allowance must carry the same one, so the program has a
+  single allowance. The pilot's is 5,000,000 micro-dollars, with its ledger in
+  `insects`.
+- **The ledger's collection.** The tree key is resolved through the private
+  bindings and must be bound to exactly one collection. Otherwise a request to
+  process is refused with `program_allowance_unavailable`, and an upload's run
+  is `processing_blocked` with that blocker. At request time the run copies the
+  allowance and the ledger's collection into its execution policy, like the
+  rest of the collection's allowance.
+- **When it reserves.** For a paid step with a stage cost. The reservation comes
+  after the run's own budget check and the provider circuit's admission, and
+  before the step's intent is saved. A circuit refusal therefore reserves
+  nothing.
+- **The document.** A `worker_cursor` document in the ledger collection's
+  scope, marked not sensitive. Its id derives from the organization and the
+  ledger collection. It holds the reserved total and the last reservation
+  (specimen, run, step, attempt, amount, allowance, time).
+  - Collections may share the ledger, so a compare-and-set conflict is retried
+    against a fresh read, up to five times.
+  - A ledger that stays busy or cannot be read blocks the run with
+    `program_allowance_ledger_unavailable`, also an operational block.
+- **On the run.** `Run.program_allowance` holds the allowance, the reserved
+  total after the step, what remains, the ledger's revision and the time. A
+  refused reservation records the same, with the amount it asked for.
+
 ### Cost of every paid call
 
 `Run.paid_calls` records one entry per paid call:
