@@ -70,7 +70,7 @@ def test_gateway_builds_model_with_pinned_provider_and_org_billing(
 
     monkeypatch.setattr(model_gateway, "AsyncInferenceClient", FakeClient)
     monkeypatch.setattr(model_gateway, "HuggingFaceProvider", FakeProvider)
-    monkeypatch.setattr(model_gateway, "HuggingFaceModel", FakeModel)
+    monkeypatch.setattr(model_gateway, "ArgumentPreservingHuggingFaceModel", FakeModel)
 
     gateway = HuggingFaceModelGateway(token="hf_do_not_log", bill_to="field-museum")
     gateway.model_for("handwriting-muse")
