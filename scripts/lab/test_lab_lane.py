@@ -66,6 +66,14 @@ def test_a_blocked_segmentation_gets_the_reviewer_boxes_for_the_slide(tmp_path):
     assert len(snapshot["run"]["observations"]) == 4  # two readers per label
 
 
+def test_only_the_ten_the_owner_classified_are_created_not_sensitive(tmp_path):
+    # G31: the owner classified the ten pilot slides not sensitive; every other slide stays Sensitive.
+    _, pilot = drive(tmp_path / "pilot", SyntheticAdapters, "subject_105526330", "sam3")
+    _, other = drive(tmp_path / "other", SyntheticAdapters, "subject_105526331", "sam3")
+    assert pilot["snapshot"]["asset"]["sensitive"] is False
+    assert "sensitive" not in other["snapshot"]["asset"]  # the default, Sensitive, is not serialized
+
+
 def test_without_the_substitute_the_lane_leaves_a_block_alone(tmp_path):
     actions, evidence = drive(tmp_path, NoLocalSam, "subject_105526321", "sam3")
     assert actions == []
