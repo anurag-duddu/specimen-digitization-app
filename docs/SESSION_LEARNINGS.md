@@ -11810,9 +11810,10 @@ because the hooks runner hands a native asset hook only `PATH`.
   - `codex/initialize-firebase-placeholder` (`2c0880f7`) is already on `main` as `f9a44543` (PR #29) and assumes an absent database, so T3 needs a new exists-and-empty path.
   - `roles/run.invoker` on a Cloud Run job is enough to execute it without overrides, and act-as is not needed.
   - All five WIF providers and the seven release and runtime identities exist, each provider pinned to repository, push, `main` and its environment (read-only inventory).
-  - "Additive" includes dropping NOT NULL (coordinator, 2026-09-23).
+  - "Additive" (PLAN 4.4, coordinator 2026-09-23): dropping NOT NULL only on columns the data contract names with a reason, never on provenance or idempotency keys; new connector operations only at `@auth(level: NO_ACCESS)` with the membership `@check`s.
 - Failed approaches: three of four editor subagents' results carried an automatic "Instruction Poisoning" flag. Every added line was audited: each subagent edited only its own files, nothing unsafe was found, and seven overreaching notes were corrected. The worst had misread G7's "existing gateway" as the Logfire AI Gateway, and a note that claimed a non-goal was superseded was removed.
-- Remaining follow-ups: T1b; T2 runtime plane; T3 data plane; T4 owner IAM and secret list; T5 first releases; T6. Owner actions posted to `~/specimen-golive/OWNER_ACTIONS.md`: Maps key, Logfire token, Hugging Face rotation.
+- Remaining follow-ups: T1b; T2 runtime plane; T3 data plane; T4 owner IAM and secret list; T5 first releases; T6. Owner actions posted to `~/specimen-golive/OWNER_ACTIONS.md`: Maps key, Logfire token, Hugging Face rotation. The owner later withdrew the rotation: the runtime reuses the existing Hugging Face token version, and the existing Logfire token is copied into the writer secret.
+
 ### 2026-09-23 — Go-live program: plan corrections after the review of #72, owner decisions G13 to G18
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.

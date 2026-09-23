@@ -33,21 +33,29 @@ traded for a passing release:
 - Credentials are keyless and short-lived; no service-account key exists.
 - Runtime images are immutable, attested and built from `main`; every deploy
   verifies readiness before it reports success; missing evidence fails closed.
-- The data plane applies additive schema changes only. Additive means, as the
-  coordinator confirmed on 2026-09-23 for PLAN section 4.4: new tables, new
-  nullable columns, dropping NOT NULL, new indexes, unique constraints and
-  foreign keys only over new columns, and new connector operations. Anything
-  else is refused: a dropped or renamed table or column, a changed type, a new
-  NOT NULL, a changed key, uniqueness over existing columns, or a changed or
-  removed connector operation.
+- The data plane applies additive schema changes only, as PLAN section 4.4
+  defines them: new tables; new nullable columns; dropping NOT NULL, but only
+  on columns the data contract names with a reason and never on provenance or
+  idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
+  `modelVersion`, `stepKey`); new indexes, unique constraints and foreign keys
+  over new columns only; and new connector operations, each
+  `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73). The
+  gate refuses everything else: dropped or renamed tables and columns, type
+  changes, adding NOT NULL, key changes, uniqueness over existing columns,
+  changed or removed operations, and operations at any other auth level.
 - Branch protection and the repository's visibility stay as they are
   ([DEPLOYMENT.md, branch and repository protection](../../DEPLOYMENT.md#branch-and-repository-protection)).
 - IAM writes and secret creation are owner actions, taken from a reviewed list
   a read-only script prints (T4). No workflow and no agent creates IAM policy.
   Every grant names its resource and its reason; no identity receives Owner or
   Editor. Standing grants go only to the ordinary data-release, runtime-build,
-  runtime-release and runtime identities. The one-time initializer identity
-  keeps its ten-minute, time-bounded window and loses its access after use.
+  runtime-release and runtime identities, plus the `allUsers` invoker on the
+  API. The one-time roles never get a standing grant: the initializer role,
+  `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
+  one-time and time-bounded through the existing setup-window path
+  (`scripts/ci/data_setup_window.py`) and are revoked after use. That window
+  grants the initializer role for 75 minutes; `docs/DEPLOYMENT.md` separately
+  caps the initializer's privilege window after native parity at ten minutes.
 - No private value (administrator or bootstrap identities, organization or
   collection ids, tokens) appears in a workflow log or artifact, because both
   are public in this repository.
@@ -59,7 +67,10 @@ section names as superseded, and in the other documents with a clause those
 decisions contradict. It rewrites no history: each superseded clause keeps its original
 text and gains a dated note, "Superseded for the go-live program by
 `docs/execution/golive/PLAN.md` section 2.1 G#", followed by what now holds.
-Each amended document also carries a dated banner under its title.
+Each amended release and approval document also carries a dated banner under
+its title; `PRD.md` and `CONTRACTS.md` carry notes only. Decisions made after
+T1 began are recorded where they supersede a clause: G19 beside the harness
+scope in `HUMAN_REVIEW_RELEASE.md`, and G14 and G16 in `PRD.md` (T1b).
 
 T1 lands in two pull requests to stay under the program's size limit. T1a
 amends `AGENTS.md`, `docs/DEPLOYMENT.md`, the approvals and the product
@@ -114,7 +125,9 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/worker_launch.py` 42, `worker.py`, `worker_timing.py` | The `authorized-ten-v1` launch, the ten-specimen loop and the single timing clock | G2 | S3 |
 | `src/specimen_digitization/application/sam3_server.py` 617-618 | The manifest binding and the self-shutdown within an hour | G2 | S3 |
 | `src/specimen_digitization/observability.py`, `bounded_telemetry.py`, the worker's forced metadata mode | Metadata-only tracing | G3 | S3 |
-| `src/specimen_digitization/application/policy.py` 31-34, 138-139; `worker.py` 320; `api.py` 1940-1967 | Human-only clearance and deferral, the institutional-approval and semantics gates, `pilot_clearance_forbidden` | G1 | S4 |
+| `src/specimen_digitization/application/policy.py` 31-34 and 138-139, for the lane | The institutional-approval and semantics gates, and the human-approval gate | G1 | S4 |
+| `scripts/ci/worker_trace_setup.py` `grant` | A worker-only writer-secret binding that expires within 24 hours | G3, G11 | S2 T4 (standing grants per identity and secret) |
+| `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
 
 ## 3. T2: runtime plane on merge
 
