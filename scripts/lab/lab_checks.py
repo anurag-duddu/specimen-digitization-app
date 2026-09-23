@@ -117,15 +117,19 @@ def readers(run):
 
 
 def normalized(rows, snap):
-    tables = [t for t in rows if t.replace("_", "").lower() == "modelobservation" and rows[t]]
-    if not tables:
+    """S5's data contract: readings are model_observation rows with independent = true, sharing the
+    snapshot's observation ids; a row reaches its specimen only through pipeline_run.specimen_id."""
+    observations = rows.get("model_observation") or []
+    if not observations:
         return "not built", f"no observation rows; tables with rows: {sorted(t for t in rows if rows[t])}"
-    table, run = rows[tables[0]], snap["run"]
-    keyed = [r for r in table if snap["id"] in r.values() and run["id"] in r.values()]
-    detail = f"{len(keyed)} of {len(table)} rows keyed to this specimen and run"
-    if keyed and len(keyed) >= len(run.get("observations") or []):
-        return "passed", detail
-    return "failed", detail + f"; {len(run.get('observations') or [])} readings"
+    run = snap["run"]
+    linked = any(r.get("id") == run["id"] and r.get("specimen_id") == snap["id"]
+                 for r in rows.get("pipeline_run") or [])
+    readings = {r["id"] for r in observations if r.get("run_id") == run["id"] and r.get("independent") is True}
+    expected = {o["id"] for o in run.get("observations") or []}
+    detail = (f"run row linked to specimen: {linked}; {len(readings & expected)} of {len(expected)} readings "
+              f"as rows; {len(readings - expected)} rows without a reading")
+    return ("passed" if linked and readings == expected else "failed"), detail
 
 
 def disagreement(run):

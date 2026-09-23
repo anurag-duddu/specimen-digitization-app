@@ -161,15 +161,20 @@ def test_disagreement_needs_the_named_metric_on_every_region():
 
 
 def test_normalized_rows_keyed_to_specimen_and_run_pass_stage_4():
+    # S5's contract: readings are model_observation rows with independent = true, sharing the
+    # snapshot's observation ids and linked to the specimen only through pipeline_run.
+    first_pass = {"id": "fp-r1", "run_id": "run-2", "independent": False}
     rows = {
+        "pipeline_run": [{"id": "run-2", "specimen_id": "specimen-1"}],
         "model_observation": [
-            {"id": f"o-r1-{route}", "specimen_id": "specimen-1", "run_id": "run-2"}
-            for route in ROUTES
-        ],
-        "specimen_snapshot": [{"id": "specimen-1"}],
+            {"id": f"o-r1-{route}", "run_id": "run-2", "independent": True} for route in ROUTES
+        ] + [first_pass],
     }
     assert statuses(evidence(snapshot(), rows))["4"] == "passed"
     rows["model_observation"][0]["run_id"] = "another-run"
+    assert statuses(evidence(snapshot(), rows))["4"] == "failed"
+    rows["model_observation"][0]["run_id"] = "run-2"
+    rows["pipeline_run"][0]["specimen_id"] = "another-specimen"
     assert statuses(evidence(snapshot(), rows))["4"] == "failed"
 
 
