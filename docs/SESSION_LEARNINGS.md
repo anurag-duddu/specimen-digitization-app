@@ -11809,3 +11809,21 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) GitHub auto-merge fires on green required checks alone, so it bypasses any review that is not itself a required check. (2) A plan that removes gates must trace every field only a person can set; searching for "human" missed `label_coverage_unconfirmed`. (3) Facts carried over from a survey of two slides were wrong for the set of ten; read every item of a small acceptance set before writing it into briefs. (4) Squash merges drop the red-then-green commits the plan relies on; the steward merges with `--merge`.
 - Failed approaches: none new. All four product and process questions this round went to the owner rather than being decided by the coordinator.
 - Remaining follow-ups: the owner's field list (G8); pre-paid Hugging Face credits (routed calls return HTTP 402); the Maps key, Logfire token and Hugging Face rotation commands in `~/specimen-golive/OWNER_ACTIONS.md`; S2's IAM list; S3's concrete coverage check, to take to the owner if it holds a product choice.
+
+### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-2` from `origin/main` at `7e3afb8`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome: every finding of the PR steward's review of #74 (https://github.com/anurag-duddu/specimen-digitization-app/pull/74#issuecomment-5803266279) fixed. The fixes are in `PLAN.md`, the S1, S2, S3, S4, S5 and S8 briefs, and a dated `AGENTS.md` correction on the union merge driver. Owner decisions G19 to G22 recorded. Coordinator rulings since #74 written in: taxonomy success per `GBIF.md` 126-130, no stored Google Maps coordinates, and S3's topic order. Docs only.
+- Evidence: #72 and #74 were both merged by squash auto-merge that this session's desktop PR panel enabled as the owner's account; the panel's status showed `monitor.auto_merge: true` while #74 was bound. This PR opened as a draft; the panel then showed `auto_merge: false`, and GitHub reported no auto-merge request before it was marked ready.
+- Owner decisions (chat, 2026-09-23):
+  - G19: when the first pass picks no reading, the harness runs on the raw readings.
+  - G20: a lookup confirming exactly one reader's literal settles a disagreement.
+  - G21: the repository's "Allow auto-merge" goes off.
+  - G22: all four elevation fields stay mandatory and nothing is derived, so every pilot record is expected to end in needs human review.
+- Durable learnings:
+  - (1) A Claude desktop session's PR panel can hold an Auto-merge switch that enables GitHub auto-merge, as the owner, on the PRs the session opens. After opening a PR, read the panel status and open drafts until auto-merge is confirmed off; `set_auto_merge` cannot act on a merged PR.
+  - (2) GitHub's server-side merge ignores `merge=union`, so this append-only log conflicts on every `gh pr update-branch`; owning sessions merge `origin/main` locally.
+  - (3) The specification answered two of the review's questions (what counts as a successful taxonomy match; dates as literal plus a parsed value). Read the spec's own tables before taking a question to the owner.
+- Failed approaches: calling `set_auto_merge(false)` on a merged PR to reset the panel's switch; the app refuses it.
+- Remaining follow-ups: the owner's G21 setting, field list (with S7's field-coverage table), Hugging Face credits and secrets; S3's G15 coverage-check design.
