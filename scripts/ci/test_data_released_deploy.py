@@ -110,9 +110,9 @@ def release(tmp_path, monkeypatch, capsys):
     return run
 
 
-def receipt(phase, connector="connector-etag", ruleset=RULESET, schema="schema-etag"):
+def receipt(phase, connector="connector-etag", ruleset=RULESET):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
-            "schema_etag": schema, "schema_update_time": UPDATED if schema else None, "connector_etag": connector,
+            "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": connector,
             "storage_ruleset": ruleset}
 
 
@@ -243,9 +243,10 @@ def test_the_committed_sources_are_exactly_what_the_envelope_path_sends():
     assert D.committed_rules() == {"files": [{"name": "storage.rules", "content": (D.ROOT / "storage.rules").read_text()}]}
 
 
-@pytest.mark.parametrize("action", ["--admit", "--prepare-inputs", "--prepare-clone-intent", "--complete-initialization"])
-def test_the_command_line_releases_a_gate_record_only_through_deploy(tmp_path, monkeypatch, action):
-    packet, output, steps, calls = tmp_path / "packet.json", tmp_path / "data-released.json", tmp_path / "out", []
+@pytest.fixture
+def command_line(tmp_path, monkeypatch):
+    """main() with a gate record admitted for the requested plane; the envelope's plan and deploy must stay unused."""
+    calls, output, steps = [], tmp_path / "data-released.json", tmp_path / "github-output"
     steps.touch()
     monkeypatch.setenv("GITHUB_OUTPUT", str(steps))
     monkeypatch.setattr(D, "admit", lambda path, plane: record(plane))
@@ -253,13 +254,26 @@ def test_the_command_line_releases_a_gate_record_only_through_deploy(tmp_path, m
     monkeypatch.setattr(D, "read_bound_plan", lambda *args: pytest.fail("a gate record has no plan"))
     monkeypatch.setattr(D, "deploy", lambda *args: pytest.fail("a gate record never takes the envelope path"))
     monkeypatch.setattr(D, "deploy_released_data", lambda *args: calls.append(args) or output.write_text("{}\n"))
-    arguments = ["--receipt", str(tmp_path / "receipt.json")] if action == "--complete-initialization" else []
-    monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(packet), "--deploy", "--output", str(output)])
-    D.main()
-    assert calls == [(packet, output)]
-    assert steps.read_text() == "receipt_sha256=" + hashlib.sha256(b"{}\n").hexdigest() + "\n"
-    monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(packet), action, "--output", str(output),
-                                      *arguments])
-    with pytest.raises(SystemExit, match=r"stage=data\.admission"):
+
+    def run(*arguments):
+        monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(tmp_path / "packet.json"), *arguments,
+                                          "--output", str(output)])
         D.main()
-    assert len(calls) == 1
+        return calls, steps.read_text()
+    run.calls = calls
+    return run
+
+
+def test_the_command_line_releases_a_gate_record_through_deploy_without_a_plan(tmp_path, command_line):
+    calls, outputs = command_line("--deploy")
+    assert calls == [(tmp_path / "packet.json", tmp_path / "data-released.json")]
+    assert outputs == "receipt_sha256=" + hashlib.sha256(b"{}\n").hexdigest() + "\n"
+
+
+@pytest.mark.parametrize("arguments", [["--admit"], ["--prepare-inputs"], ["--prepare-clone-intent"],
+                                       ["--complete-initialization", "--receipt", "receipt.json"],
+                                       ["--initialize", "--receipt", "receipt.json"]])
+def test_the_command_line_refuses_a_gate_record_for_any_other_action(command_line, arguments):
+    with pytest.raises(SystemExit, match=r"^Data release blocked \[stage=data\.admission\]\.$"):
+        command_line(*arguments)
+    assert command_line.calls == []
