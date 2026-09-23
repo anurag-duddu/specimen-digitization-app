@@ -43,19 +43,25 @@ workstation or an agent shell" all stay.
   them, or paste them into messages.
 - The auto-mode classifier blocks IAM writes, branch protection changes and
   repository visibility changes from agent shells. Prepare the exact commands for
-  the owner instead.
+  the owner instead. Branch protection and repository visibility stay as they
+  are (`DEPLOYMENT.md` 561-566).
 
 ## Pull requests, in order
 
-**T1. Contract amendments (documents only, first, small).** Record G1 to G11
-with dated entries in every document PLAN section 2.1 names as superseded,
-without rewriting history: add a dated "Superseded for the go-live program by
-`docs/execution/golive/PLAN.md` section 2.1 G#" note beside each clause. In
-`AGENTS.md`, change only the deployment paragraph's release requirements to
-G11's (merge to `main` after the required checks and the PR steward's review;
-main-only environments; keyless identities; immutable attested images; verified
-readiness); keep "never deploy from a workstation or an agent shell" and the
-list of things never to weaken, word for word. `APPROVED_LOGFIRE_TRACING.md`
+**T1. Contract amendments (documents only, first, small).** Record the owner
+decisions of PLAN section 2.1 with dated entries in every document that section
+names as superseded, without rewriting history: add a dated "Superseded for the
+go-live program by `docs/execution/golive/PLAN.md` section 2.1 G#" note beside
+each clause. In `AGENTS.md`'s deployment paragraph, change only what G11
+retires: the envelope and its inputs, the independent-review report and the
+authorization artifacts, with the PR steward's review in place of the
+independent review. Carry every other safeguard over: a separate main-only
+environment and keyless identity per plane; the isolated Hosting identity; all
+five required checks successful on the exact merged commit; immutable attested
+provenance; verified readiness; failing closed on missing evidence. Add the
+additive-only schema gate (PLAN section 4.4). Keep "never deploy from a
+workstation or an agent shell" and the list of things never to weaken, word for
+word. `APPROVED_LOGFIRE_TRACING.md`
 gets G3's content scope (system prompts, text inputs and outputs, SAM 3
 parameters, tool calls with arguments and results; no images; identities and
 secrets scrubbed). `APPROVED_RELEASE_BUDGET.md` gets USD 25 (G9).
@@ -81,35 +87,62 @@ Tests for every validator you change.
 **T3. Data plane, automatic on merge.** `data-release.yml` and
 `scripts/ci/deploy_data.py` and the initialization modules: a first
 initialization that matches the real state (database exists and is empty); then,
-on every push to `main` that changes `dataconnect/`, an additive-only check (new
-tables and nullable columns; refuse anything else) and a `COMPATIBLE` apply, the
+on every push to `main` that changes `dataconnect/`, an additive-only check (PLAN
+section 4.4's expand-only definition, including its NOT NULL and `NO_ACCESS`
+rules; refuse anything else) and a `COMPATIBLE`
+apply, the
 supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
 one-time, idempotent hierarchy bootstrap from the private artifacts. Retire the
-envelope admission for this plane. Tests.
+envelope admission for this plane, but keep the checks that live inside it:
+`GITHUB_REF_PROTECTED=true` and the five required checks successful on the
+exact merged commit, as in T2. Take a backup with a verified restore path
+before any apply. Keep bootstrap identities and other private values out of
+Actions logs and artifacts, which are public in this repository. Tests.
 
 **T4. The owner's IAM and secret list.** A read-only script, in the style of
 `scripts/ci/data_setup_window.py plan`, that reads the live policies and prints
-the exact standing grants, without time conditions, that T2 and T3 need: the
-data release and initialization identities; the runtime build and release
-identities (Artifact Registry push, Cloud Run deploy, act-as on the runtime
-identities, attestations); the runtime identities (connector impersonation;
-bucket create and read on the application prefix and read on
-`microscopic-slides/`; secret access; SAM 3 invoker for the worker only;
-permission for the API to run executions of the worker job and act as the
-worker identity; Firebase user lookup for the API); `allUsers` invoker on the
-API; the secrets to create (Logfire token, Maps key, a new Hugging Face token
-version); public access prevention on the bucket; the Budget API and a USD 25
-budget alert. Write the commands into `~/specimen-golive/OWNER_ACTIONS.md` and
+the exact grants T2 and T3 need. Standing grants: the data release identity's
+roles for automatic applies, each named and justified against that path (the
+other "ordinary access" roles of `data_setup_window.py` 55-65 stay
+time-bounded); the runtime build and release identities
+(Artifact Registry push, Cloud Run deploy, act-as on the runtime identities,
+attestations); the runtime identities (connector impersonation; object create
+and read on the application prefix and read on `microscopic-slides/`; secret
+access per identity and per secret, each with a reason: the worker reads the
+Hugging Face, Logfire and Maps secrets and its actor uid, SAM 3 the Logfire
+token, the API the Logfire token and the source registry; SAM 3 invoker for the
+worker only; `run.invoker` for the API on the worker job
+only, since running a job needs no act-as; Firebase user lookup for the API);
+`allUsers` invoker on the API. The one-time roles get no standing grant: the
+initializer, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`
+stay one-time and time-bounded through the existing setup-window path
+(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 809-815
+caps the initializer's privilege window after native parity at ten minutes. The
+setup-window path requires every binding to stay time-bound
+(`data_setup_window.py` 126-138): run the window first or adapt the path, never
+fall back to a grant without a time condition, and list the revocation
+commands. Also list the
+secrets (already stored: the Logfire token and the Maps key, version 1 each;
+the existing Hugging Face version is reused, since the owner withdrew the
+rotation; still to create: `specimen-source-registry` and
+`specimen-worker-actor-uid`),
+public access prevention on the bucket, and the Budget API with a USD 25 budget
+alert. Bind every grant to a named resource with a one-line reason; never Owner
+or Editor. Write the commands into `~/specimen-golive/OWNER_ACTIONS.md` and
 message the coordinator. Never run IAM writes yourself.
 
 **T5. First releases.** After T2 to T4 are merged and the owner has run T4's
 list: watch the data release (initialization, schema, connector, rules,
 bootstrap) and then the runtime deploy, and check them against DoD-2 and DoD-3.
-Prepare the repository variables `SPECIMEN_API_BASE_URL`,
+Write the repository variables `SPECIMEN_API_BASE_URL`,
 `SPECIMEN_RECAPTCHA_SITE_KEY`, `SPECIMEN_ADMIN_CONTACT` and
-`SPECIMEN_PILOT_SCOPE` as exact `gh variable set` commands and give them to the
-coordinator, who runs them with the owner's go-ahead. The next merge rebuilds
+`SPECIMEN_PILOT_SCOPE` into `~/specimen-golive/OWNER_ACTIONS.md` as exact
+`gh variable set` commands for the owner to run. Leave private values such as
+the administrator contact for the owner to fill in, and never put them in a
+message. `SPECIMEN_ADMIN_CONTACT` is compiled into the public web client, so the
+entry says its value becomes public and recommends a role address rather than a
+person's. The next merge rebuilds
 Hosting; then check DoD-1 (sign-in resolves the collection).
 
 **T6. Deploy health.** For the rest of the program, fix any failed deploy the
@@ -122,6 +155,8 @@ PR steward reports.
 - S5 owns the schema; your data plane applies it.
 - The owner's actions come from your T4 list; the coordinator relays them.
 - Your spec deltas go in `docs/execution/golive/RELEASE.md`.
+- Where the specification is silent or contradictory, stop and ask the
+  coordinator; do not decide (G5).
 
 ## Done
 

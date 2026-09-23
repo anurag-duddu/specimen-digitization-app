@@ -20,7 +20,8 @@ Read before researching, so the plan fits the product that exists:
 1. `docs/execution/golive/PLAN.md` (sections 1, 2 and 4.1 row 7) and the S4
    brief (`briefs/S4-first-pass-and-harness.md`), which defines the harness,
    its typed tools and outcomes, and the owner's rules: never invent values
-   (`PRD.md` HAR-019); no data found goes to the human queue; errors retry;
+   (`PRD.md` HAR-019); no data found for a mandatory field goes to the human
+   queue; errors retry;
    "something that harness was able to resolve is cleared".
 2. `docs/product-requirements/PRD.md` section 12.4 (484-564): the Insects field
    keys `country`, `province_state`, `county`, `city`, `precise_location`
@@ -35,12 +36,14 @@ Read before researching, so the plan fits the product that exists:
    per collection and subcollection select geography behaviour.
 5. `~/specimen-golive/research/06-product-spec-and-approvals.md` section 4 (the
    pilot field profile).
-6. The pilot labels themselves: microscope slides from the 1946 Chicago Natural
-   History Museum expedition, for example "E. slope of Mt. McKinley, Davao
-   Province, Mindanao, Philippines", collectors F.G. Werner and H. Hoogstraal.
-   Davao Province was later divided into several provinces, and several names
-   on these labels are colonial-era toponyms, so they are a real test set for
-   historical resolution. Images:
+6. The pilot labels themselves (PLAN section 3): four localities on ten slides
+   from two collecting events. Mindanao, Philippines, 1946 (CNHM; F.G. Werner,
+   H. Hoogstraal): "E. slope Mt. McKinley, Davao Prov." at 6400 ft and at 3300
+   ft, and "E. slope Mt. Apo, Davao Prov.", written "P.I." or "Philippine
+   Islands". Yepocapa, Chimaltenango, Guatemala, 1948 (R.D. Mitchell), at 4800
+   ft; the label misspells "Chimaltenago". Davao Province was later divided
+   into several provinces and "P.I." is the pre-independence name, so the set
+   tests historical resolution in two countries. Images:
    `gs://specimen-digitization.firebasestorage.app/microscopic-slides/subject_105526321.jpeg`
    to `...330.jpeg` (application default credentials work on this Mac). The
    acceptance lab (S7) produces transcripts of them; ask it for the ones it has.
@@ -51,7 +54,12 @@ Read before researching, so the plan fits the product that exists:
    charter's six sections, grounded in the repository (field keys, typed
    outcomes, the harness tool interface, the queue rule, profiles per
    collection). Cite sources for every external API claim, with the date you
-   checked it. Mark every design choice the owner must confirm.
+   checked it. Mark every design choice the owner must confirm, and mark the
+   document "Proposed, not accepted by the owner" at the top until the owner
+   accepts it (G12). Tool outcomes are HAR-008's, as `LookupStatus` encodes
+   them (`domain.py` 43-54); a missing credential is an operational block.
+   From Google geocoding the pipeline keeps only the place ID, the outcome and a
+   response fingerprint (G26).
 2. Optional, only if it helps the owner judge the plan: a prototype under
    `scripts/research/georeferencing/` exercising the public endpoints read-only
    on the pilot labels' place names, with its results summarized in the plan.

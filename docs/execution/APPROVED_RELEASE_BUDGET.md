@@ -1,5 +1,14 @@
 # Approved cumulative budget amendment — September 14, 2026
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the decision.
+> The [go-live amendment](#go-live-amendment-2026-09-23-g9) at the end records
+> the USD 25 ceiling. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
+> that still enforces a superseded clause until a later go-live pull request
+> changes it.
+
 The user approved the combined release decision at 2026-09-14T02:03:08.382Z in
 integration task `01a07f48-a57c-71b0-9642-c9430886049c`. The unchanged ten original
 specimens, every actual region, both readers and human save/reopen acceptance
@@ -7,13 +16,31 @@ remain required. The new total and daily ceilings are USD12. Every previous
 cost, reservation and unknown liability stays counted across sessions and days.
 This is a ceiling, not a price quote or evidence that production is ready.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G9. The ceiling is USD 25, cumulative, infrastructure and models
+> together, and the ten pilot specimens are the acceptance cohort, processed one
+> at a time in order, while new uploads are processed on demand too.
+
 The exact original user-record SHA256 is
 `3303d129e5fde28d828729cd5b034a7981968c5cbbbad882a05367a5c361df2a`.
 Private original context and approval bytes remain with the coordinator. A new
 source-bound packet, independent review and current complete cost reservation
 are still required. No historical packet, capture time or consumed fence changes.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Releases need no packet, independent review report or cost reservation;
+> they deploy on merge after the required checks pass and the PR steward
+> approves.
+
 ## Release inputs
+
+> 2026-09-23: This section is superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. The release packet, `shared-release-reservations/v2`,
+> `release-cost-ledger/v3` and the coordinator snapshot retire with the
+> envelopes and cost ledgers.
 
 The outer `protected-release/v1` packet and its three evidence keys remain
 unchanged. The approved budget explicitly selects
@@ -46,11 +73,24 @@ allocation remains unknown. Existing replay and exact active-reservation checks
 remain in force. A larger shared budget does not enlarge provider/SAM allocations
 or permit an extra worker execution.
 
+> 2026-09-23: The single worker execution is superseded for the go-live program
+> by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. The API starts an execution of the worker job whenever work is due, and
+> the worker drains it one specimen at a time (PLAN section 4.6).
+
 The source loader must qualify both `scripts/ci/release_admission.py` and its new
 pure dependency `src/specimen_digitization/release_budget.py`; importing an
 unqualified copy from an ambient environment is insufficient.
 
 ## Review evidence
+
+> 2026-09-23: This section is superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G11. `cohort-budget/v2` and its review evidence retire with the cost
+> ledgers. Both `human-review-release-scope` artifacts carry
+> `"automated_clearance": "deferred"`, which G1 replaces: a record the harness
+> resolves is cleared without a human.
 
 `cohort-budget/v2` retains all v1 fields and adds the fixed `approval_sha256` and
 `release_ledger: {path, sha256}`. The relative artifact holds the complete v3
@@ -73,3 +113,30 @@ The original human-scope digest remains
 The companion [worker timing contract](APPROVED_WORKER_TIMING.md) specifies the
 approved single 3,500-second execution. The complete release remains subject to
 [protected deployment](../DEPLOYMENT.md) and the original data/privacy scope.
+
+> 2026-09-23: The single 3,500-second execution is superseded for the go-live
+> program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2; protected deployment now follows G11.
+
+## Go-live amendment, 2026-09-23 (G9)
+
+For the go-live program, the owner's decision G9 in
+[`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+sets the spending ceiling at USD 25, cumulative, infrastructure and models
+together. It replaces the USD12 total and daily ceilings above.
+
+The ceiling covers every paid model call (the readers, the LLM first pass and
+the agentic harness) and the project's infrastructure: Cloud Run, Cloud SQL,
+Cloud Storage, Artifact Registry, Secret Manager, Logfire and the Google Maps
+Platform. PLAN section 4.3 says how it is held: the pipeline records every paid
+call's cost on its run and refuses a paid step whose estimate would cross the
+configured model allowance, and a Cloud Billing budget alert watches the whole
+project. Release runs reserve and reconcile no cost, because the release
+ledgers retire under G11.
+
+Until the release workstream retires the envelope admission, the old figures are
+still enforced in code: `APPROVED_LIMIT_MICROS` and the v3 ledger checks in
+`src/specimen_digitization/release_budget.py`, and the human-review scope digests
+in `scripts/ci/mint_release_packet.py`. [`golive/RELEASE.md`](golive/RELEASE.md)
+tracks their removal.

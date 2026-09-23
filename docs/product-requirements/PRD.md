@@ -28,6 +28,7 @@ For each submitted photograph, the platform will:
 5. Ask multiple vision models to independently transcribe every detected label.
 6. Preserve each model's raw output, measure disagreement, and produce an adjudicated transcription without concealing uncertainty.
 7. Run a modular agentic harness to extract fields, perform authoritative lookups, reason over historical and contextual information, normalize values, and validate the candidate record.
+   > 2026-09-23: Resolved for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G7. The owner decided, for the go-live program, that the LLM first pass in item 6 and the agentic harness in item 7 run on a Hugging Face model through the existing gateway and token.
 8. Route the specimen to exactly one final queue: **Cleared**, **Needs human review**, or **Deferred**. Operationally failed or interrupted work remains in a recoverable processing state and is not misclassified as a completed outcome.
 
 The system must never treat a confidence score as proof of correctness. A record is cleared only when its profile-specific evidence, coverage, validation, provenance, and disagreement-resolution gates have all passed.
@@ -392,6 +393,8 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | QUE-006 | P0 | Every disposition includes rule version, reason codes, summary, outstanding issues, and the evidence used. |
 | QUE-007 | P1 | Deferred records include retry eligibility predicates, such as a newer model family, capability tag, profile version, or manual campaign. |
 | QUE-008 | P1 | A reprocessed record retains prior dispositions and shows why the latest disposition changed. |
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1. For the lane, QUE-002's clearance gate no longer requires human approval when the agentic harness resolves the record; human review and deferral stay as QUE-003 and QUE-004 define them.
 
 ### 11.11 Search, reporting, and export
 
@@ -889,6 +892,7 @@ These questions do not prevent the initial PRD draft, but the starred items must
 
 1. What downstream collection management system and exact target schema will eventually receive cleared Insects records? This is intentionally deferred and does not block the initial build.
 2. **What does “cleared” mean institutionally?** ★ Must every pilot record receive human approval, or can a calibrated subset clear automatically after hard gates?
+   > 2026-09-23: Answered for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1: a pilot record the agentic harness is able to resolve is cleared without human approval, and a record it cannot resolve goes to human review or deferral as this PRD defines them.
 3. **What does `Verbatim D/T/S` mean in the target system, including its format and validation rules?** ★
 4. **Can Field Museum confirm the current production column, serialization, authority-access method, and permitted fields for the `eparties` record referenced by `Identified by IRN`?** ★
 5. **Can the collection manager confirm that Parties resolution is required for every person-name field, including species authors, Collectors, and identifiers?** ★

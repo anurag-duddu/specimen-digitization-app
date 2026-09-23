@@ -11808,3 +11808,74 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: a documents-only amendment still needs a size budget. At about 1,060 lines, T1 exceeded the program's 600-line review limit, so it was split along the line other sessions care about: the contracts they code against first, the runbooks and histories second.
 - Failed approaches: none beyond those in the T1a entry.
 - Remaining follow-ups: as in the T1a entry.
+### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
+
+- Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
+- Branch/worktree: `golive/release-contract-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated "Superseded for the go-live program by PLAN section 2.1 G#" notes beside every superseded clause in eleven contract documents, and a banner on each release and approval document (`PRD.md` and `CONTRACTS.md` carry notes only). The `AGENTS.md` first deployment rule now follows G11: it keeps every safeguard G11 doesn't retire and adds the additive-only schema gate; the never-deploy and never-weaken rules are unchanged. `APPROVED_LOGFIRE_TRACING.md` carries G3's content scope and `APPROVED_RELEASE_BUDGET.md` carries G9's USD 25. The new `docs/execution/golive/RELEASE.md` holds the invariants, the coordinator-confirmed definition of "additive" and the table of code that still enforces superseded clauses. T1b (the runbooks and release histories) follows as its own PR, for size.
+- Commits/PRs: [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76): spec delta `0088a70`, amendments `6bb4064`, this closeout.
+- Validation actually run: pre-commit on the twelve files (all hooks passed); `uv run pytest tests/test_deployment_policy.py -q` (6 passed); `git diff --check` clean; a link and anchor check over the 84 added links (0 broken).
+- Durable learnings:
+  - No document's bytes are pinned by code or tests; `3303d129…` fingerprints the owner's 2026-09-14 message. The pins are code constants (`release_budget.py` `APPROVED_LIMIT_MICROS`, `mint_release_packet.py` `HUMAN_REVIEW_SCOPES`).
+  - `codex/initialize-firebase-placeholder` (`2c0880f7`) is already on `main` as `f9a44543` (PR #29) and assumes an absent database, so T3 needs a new exists-and-empty path.
+  - `roles/run.invoker` on a Cloud Run job is enough to execute it without overrides, and act-as is not needed.
+  - All five WIF providers and the seven release and runtime identities exist, each provider pinned to repository, push, `main` and its environment (read-only inventory).
+  - "Additive" (PLAN 4.4, coordinator 2026-09-23): dropping NOT NULL only on columns the data contract names with a reason, never on provenance or idempotency keys; new connector operations only at `@auth(level: NO_ACCESS)` with the membership `@check`s.
+- Failed approaches: three of four editor subagents' results carried an automatic "Instruction Poisoning" flag. Every added line was audited: each subagent edited only its own files, nothing unsafe was found, and seven overreaching notes were corrected. The worst had misread G7's "existing gateway" as the Logfire AI Gateway, and a note that claimed a non-goal was superseded was removed.
+- Remaining follow-ups: T1b; T2 runtime plane; T3 data plane; T4 owner IAM and secret list; T5 first releases; T6. Owner actions posted to `~/specimen-golive/OWNER_ACTIONS.md`: Maps key, Logfire token, Hugging Face rotation. The owner later withdrew the rotation: the runtime reuses the existing Hugging Face token version, and the existing Logfire token is copied into the writer secret.
+
+### 2026-09-23 — Go-live program: plan corrections after the review of #72, owner decisions G13 to G18
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections` from `origin/main` at `3398ed5`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Correction to the previous entry: #72 recorded owner decisions G1 to G12 and eight briefs (S1 to S8), not G1 to G11 and seven.
+- Outcome: `PLAN.md` and the eight briefs corrected for every finding of the PR steward's review of #72 (https://github.com/anurag-duddu/specimen-digitization-app/pull/72#issuecomment-5802808877); squash auto-merge had merged #72 before that review reported. Owner decisions G13 to G18 recorded, the pilot slides' facts corrected, and "additive" schema changes defined as expand-only. Docs only.
+- Evidence: each blocking finding confirmed at `3398ed5`: `LookupStatus` (`domain.py` 43-54) has no `unavailable`; `api.py` 1940-1967 is the reviewer's `capability_defer` action; `pilot_clearance_forbidden` sits in `PilotWorker`; `parse` (`workflow.py` 685-719) runs inside the adjudicate-to-finalize range; `DEPLOYMENT.md` 809-815 caps the initializer at ten minutes. For real profiles only a person sets `coverage_confirmed` (`api.py` 1990, 2220; `workflow.py` 345 sets it only for synthetic profiles). Slides 324 and 328 were read by eye to confirm S8's finding.
+- Owner decisions (chat, 2026-09-23): G13 a second request in a collection waits its turn; G14 the intake collection selects the profile; G15 label coverage is checked automatically and a failed check goes to the human queue; G16 `identified_by_irn` is optional until EMu Parties is connected; G17 only the steward merges and auto-merge stays off; G18 a fresh four-reviewer swarm on every new head.
+- Durable learnings: (1) GitHub auto-merge fires on green required checks alone, so it bypasses any review that is not itself a required check. (2) A plan that removes gates must trace every field only a person can set; searching for "human" missed `label_coverage_unconfirmed`. (3) Facts carried over from a survey of two slides were wrong for the set of ten; read every item of a small acceptance set before writing it into briefs. (4) Squash merges drop the red-then-green commits the plan relies on; the steward merges with `--merge`.
+- Failed approaches: none new. All four product and process questions this round went to the owner rather than being decided by the coordinator.
+- Remaining follow-ups: the owner's field list (G8); pre-paid Hugging Face credits (routed calls return HTTP 402); the Maps key, Logfire token and Hugging Face rotation commands in `~/specimen-golive/OWNER_ACTIONS.md`; S2's IAM list; S3's concrete coverage check, to take to the owner if it holds a product choice.
+
+### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-2` from `origin/main` at `7e3afb8`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome: every finding of the PR steward's review of #74 (https://github.com/anurag-duddu/specimen-digitization-app/pull/74#issuecomment-5803266279) fixed. The fixes are in `PLAN.md`, the S1, S2, S3, S4, S5 and S8 briefs, and a dated `AGENTS.md` correction on the union merge driver. Owner decisions G19 to G22 recorded. Coordinator rulings since #74 written in: taxonomy success per `GBIF.md` 126-130, no stored Google Maps coordinates, and S3's topic order. Docs only.
+- Evidence: #72 and #74 were both merged by squash auto-merge that this session's desktop PR panel enabled as the owner's account; the panel's status showed `monitor.auto_merge: true` while #74 was bound. This PR opened as a draft; the panel then showed `auto_merge: false`, and GitHub reported no auto-merge request before it was marked ready.
+- Owner decisions (chat, 2026-09-23):
+  - G19: when the first pass picks no reading, the harness runs on the raw readings.
+  - G20: a lookup confirming exactly one reader's literal settles a disagreement.
+  - G21: the repository's "Allow auto-merge" goes off.
+  - G22: all four elevation fields stay mandatory and nothing is derived, so every pilot record is expected to end in needs human review.
+- Durable learnings:
+  - (1) A Claude desktop session's PR panel can hold an Auto-merge switch that enables GitHub auto-merge, as the owner, on the PRs the session opens. After opening a PR, read the panel status and open drafts until auto-merge is confirmed off; `set_auto_merge` cannot act on a merged PR.
+  - (2) GitHub's server-side merge ignores `merge=union`, so this append-only log conflicts on every `gh pr update-branch`; owning sessions merge `origin/main` locally.
+  - (3) The specification answered two of the review's questions (what counts as a successful taxonomy match; dates as literal plus a parsed value). Read the spec's own tables before taking a question to the owner.
+- Failed approaches: calling `set_auto_merge(false)` on a merged PR to reset the panel's switch; the app refuses it.
+- Remaining follow-ups: the owner's G21 setting, field list (with S7's field-coverage table), Hugging Face credits and secrets; S3's G15 coverage-check design.
+
+### 2026-09-23 — Go-live program: #87 fix round, owner decisions G23 to G26
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-2` (PR #87), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome: the PR steward's review of `442b860` (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5803654541) addressed:
+  - the date wording no longer settles an open item by itself, and the owner then decided G24;
+  - `unresolved_transcription` is named and aligned with G19 and G20;
+  - the stage 5 scores are named in S4's brief;
+  - the GBIF rank rule is quoted, and G25 settles it;
+  - G26 settles what may be kept from Google;
+  - the owner-action changes are reflected;
+  - the owning session's local merge is the update path;
+  - a change to another session's file needs that session's sign-off;
+  - provenance keys are named, with a checked-in allowlist;
+  - the standing roles are justified.
+  The worker also gets its own operator account, which the spec already requires. Docs only.
+- Owner decisions (chat, 2026-09-23):
+  - G23: GBIF decides taxonomy, and the other sources support it.
+  - G24: dates clear at the precision written, and two-digit years read as 19xx for Insects.
+  - G25: a confirmed, accepted genus satisfies a genus-only label.
+  - G26: from Google, only the place ID, the outcome and a response fingerprint are kept.
+- Durable learnings:
+  - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
+  - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
+- Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
