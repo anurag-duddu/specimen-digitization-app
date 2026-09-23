@@ -1,6 +1,7 @@
-// The typed thread, part one (UI.md T2.1): the envelope, the regions, the
-// readings and their comparison, read from the thread response S5 serves
-// (docs/execution/golive/DATA_CONTRACT.md section 8).
+// The typed thread (UI.md T2.1), read from the thread response S5 serves
+// (docs/execution/golive/DATA_CONTRACT.md section 8): part one's envelope,
+// regions, readings and comparison, and part two's first pass, handoffs,
+// harness calls, fields and queue decision.
 //
 // Two things matter more than the happy path: an absent part stays absent,
 // never a value (an unmeasured ratio is null, a measured zero is zero), and
@@ -97,6 +98,100 @@ void main() {
       expect(differ.status, 'disagreement');
     });
 
+    test('records how each transcript was decided', () {
+      final ThreadFirstPass identical = thread.regions[0].firstPass!;
+      expect(identical.kind, ThreadDecisionKind.identicalReadings);
+      expect(identical.rationale, isNull);
+      expect(identical.modelCall, isNull);
+
+      final ThreadFirstPass decided = thread.regions[1].firstPass!;
+      expect(decided.kind, ThreadDecisionKind.firstPass);
+      expect(decided.selectedObservationId, 'obs-right-muse');
+      expect(decided.decidedText, 'GUATEMALA Zacapa Sa. de las Minas');
+      expect(decided.unresolved, isFalse);
+      expect(decided.rationale, startsWith('The fourth word reads las'));
+      expect(decided.modelCall?.model, 'first-pass-fixture-model');
+      expect(
+        decided.modelCall?.promptVersion,
+        'transcription-disagreement-adjudication-v1',
+      );
+      expect(decided.modelCall?.rawResponse?.assetId, 'raw-right-first-pass');
+    });
+
+    test('records what each reader handed to the harness', () {
+      final List<ThreadHandoff> handoffs =
+          thread.regions[1].firstPass!.handoffs;
+      expect(
+        handoffs.map((ThreadHandoff h) => (h.observationId, h.source)),
+        <(String?, ThreadInputSource?)>[
+          ('obs-right-muse', ThreadInputSource.decidedTranscript),
+          ('obs-right-qwen', ThreadInputSource.rawReading),
+        ],
+      );
+      expect(handoffs[1].handedText, 'GUATEMALA Zacapa Sa. de los Minas');
+      expect(handoffs[1].note, startsWith('Kept for the raw check'));
+    });
+
+    test('lists the lookups in the order they ran, retries included', () {
+      expect(thread.toolCalls.map((ThreadToolCall c) => c.callKey), <String>[
+        'call-1',
+        'call-2',
+        'call-3',
+        'call-4',
+      ]);
+      final ThreadToolCall timedOut = thread.toolCalls[1];
+      expect(timedOut.source, 'google-maps-geocoding');
+      expect(timedOut.fieldKeys, <String>[
+        'country',
+        'province_state',
+        'county',
+        'city',
+      ]);
+      expect(timedOut.attempt, 1);
+      expect(timedOut.outcome, 'timeout');
+      expect(timedOut.error, 'The service did not answer within 30 seconds.');
+      expect(timedOut.retryAfter, '2026-09-23T14:31:45Z');
+      expect(thread.toolCalls[2].attempt, 2);
+      final ThreadToolCall onRaw = thread.toolCalls[3];
+      expect(onRaw.inputSource, ThreadInputSource.rawReading);
+      expect(onRaw.observationId, 'obs-left-muse');
+      expect(onRaw.outcome, 'no_match');
+    });
+
+    test('groups the fields as the profile does (G16)', () {
+      expect(
+        thread.mandatoryFields.map((ThreadField f) => f.fieldKey),
+        <String>[
+          'country',
+          'province_state',
+          'collectors',
+          'date_visited_from',
+          'habitat',
+        ],
+      );
+      expect(thread.optionalFields.map((ThreadField f) => f.fieldKey), <String>[
+        'identified_by_irn',
+      ]);
+      expect(thread.ungroupedFields, isEmpty);
+      final ThreadField country = thread.mandatoryFields.first;
+      expect(country.state, 'supported');
+      expect(country.literal, 'GUATEMALA');
+      expect(country.parsed, 'Guatemala');
+      expect(country.normalized, isNull, reason: 'G26: no Google names');
+      expect(country.inputSource, ThreadInputSource.decidedTranscript);
+      expect(country.sourceRegionId, 'region-right');
+      expect(country.evidenceIds, <String>['evidence-geo-1']);
+    });
+
+    test('carries the queue decision and its reasons', () {
+      expect(thread.decision?.disposition, 'needs_human_review');
+      expect(thread.decision?.policyVersion, 'slide-pilot-policy-1');
+      expect(thread.decision?.reasonCodes, <String>[
+        'mandatory_field_not_supported',
+      ]);
+      expect(thread.decision?.summary, contains('habitat'));
+    });
+
     test('finds a reading and a region by id', () {
       expect(
         thread.readingOf('obs-right-muse')?.literalText,
@@ -137,6 +232,9 @@ void main() {
       expect(thread.segmentation, isNull);
       expect(thread.coverageCheck, isNull);
       expect(thread.regions, isEmpty);
+      expect(thread.toolCalls, isEmpty);
+      expect(thread.fields, isEmpty);
+      expect(thread.decision, isNull);
     });
 
     test('a reading is kept verbatim, an empty one included', () {
@@ -158,11 +256,28 @@ void main() {
       );
     });
 
+    test('a region with no recorded decision has no first pass', () {
+      final ThreadRegion region = ThreadRegion.fromJson(<String, dynamic>{
+        'region_id': 'r1',
+        'ordinal': 0,
+        'first_pass': null,
+      });
+      expect(region.firstPass, isNull);
+      expect(region.geometry, isNull);
+    });
+
     test('malformed values are absent, never coerced', () {
       final SpecimenThread thread = SpecimenThread.fromJson(<String, dynamic>{
         'specimen_id': 'odd',
         'revision': '7',
         'image': <String, dynamic>{'asset_id': 'a', 'width': 'wide'},
+        'tool_calls': <Json>[
+          <String, dynamic>{
+            'call_key': 'c',
+            'attempt': 1.5,
+            'field_keys': <Object?>['country', 7, null],
+          },
+        ],
         'regions': <Json>[
           <String, dynamic>{
             'region_id': 'r1',
@@ -174,8 +289,96 @@ void main() {
       });
       expect(thread.revision, isNull);
       expect(thread.image?.width, isNull);
+      expect(thread.toolCalls.single.attempt, isNull);
+      expect(thread.toolCalls.single.fieldKeys, <String>['country']);
       expect(thread.regions.single.comparisons.single.ratio, isNull);
       expect(thread.regions.single.comparisons.single.editDistance, isNull);
+    });
+  });
+
+  group('the unknown stays what the server said', () {
+    test('an unknown decision kind keeps its word and has no kind', () {
+      final ThreadFirstPass pass = ThreadFirstPass.fromJson(<String, dynamic>{
+        'decision_kind': 'oracle',
+      });
+      expect(pass.kind, isNull);
+      expect(pass.kindName, 'oracle');
+    });
+
+    test('an unknown input source keeps its word and has no source', () {
+      final ThreadHandoff handoff = ThreadHandoff.fromJson(<String, dynamic>{
+        'observation_id': 'o1',
+        'role': 'rumour',
+      });
+      expect(handoff.source, isNull);
+      expect(handoff.roleName, 'rumour');
+    });
+
+    test('a field with no known group is kept apart from both groups', () {
+      final SpecimenThread thread = SpecimenThread.fromJson(<String, dynamic>{
+        'specimen_id': 's',
+        'fields': <Json>[
+          <String, dynamic>{'field_key': 'a', 'group': 'mandatory'},
+          <String, dynamic>{'field_key': 'b'},
+          <String, dynamic>{'field_key': 'c', 'group': 'sometimes'},
+        ],
+      });
+      expect(
+        thread.mandatoryFields.map((ThreadField f) => f.fieldKey),
+        <String>['a'],
+      );
+      expect(thread.optionalFields, isEmpty);
+      expect(
+        thread.ungroupedFields.map((ThreadField f) => f.fieldKey),
+        <String>['b', 'c'],
+      );
+      expect(thread.ungroupedFields.last.groupName, 'sometimes');
+    });
+  });
+
+  // G24, as S5 pins it for the thread: the parsed text stays a string and
+  // the precision and the century rule are its siblings.
+  group('dates (G24)', () {
+    test('carry their precision and, for two digits, the century rule', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'date_visited_from',
+        'literal': '12.v.78',
+        'parsed': '1978-05-12',
+        'precision': 'day',
+        'century_rule': 'date-rules-v1:two_digit_year_century=1900',
+      });
+      expect(field.parsed, '1978-05-12');
+      expect(field.precision, 'day');
+      expect(field.centuryRule, 'date-rules-v1:two_digit_year_century=1900');
+    });
+
+    test('a four-digit year has a precision and no century rule', () {
+      final ThreadField field = SpecimenThread.fromJson(fixture())
+          .mandatoryFields
+          .firstWhere((ThreadField f) => f.fieldKey == 'date_visited_from');
+      expect(field.precision, 'day');
+      expect(field.centuryRule, isNull);
+    });
+
+    test('a non-date has neither', () {
+      final ThreadField field = SpecimenThread.fromJson(
+        fixture(),
+      ).mandatoryFields.first;
+      expect(field.precision, isNull);
+      expect(field.centuryRule, isNull);
+    });
+
+    test('the stored object form is read too, never lost', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'date_visited_from',
+        'parsed': <String, dynamic>{
+          'value': '1978-05',
+          'precision': 'month',
+          'century_rule': null,
+        },
+      });
+      expect(field.parsed, '1978-05');
+      expect(field.precision, 'month');
     });
   });
 

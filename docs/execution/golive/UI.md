@@ -152,3 +152,6 @@ a null the screen names.
 - The model lands in two parts: the envelope, the regions, the readings and
   their comparison first; the first pass with its handoffs, the harness's
   calls, the fields and the queue decision second.
+- A date field carries its precision (day, month or year, as written) and
+  the century rule that set a two-digit year (G24) beside its parsed text,
+  as S5 pins them for the thread; the stored object form is read too.
