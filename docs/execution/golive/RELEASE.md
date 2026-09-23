@@ -255,7 +255,11 @@ and T2e the reuse of an unchanged SAM 3 image.
 only), its read-only default permissions and its uncancelled concurrency
 group. Its jobs are:
 
-1. Admission: no credentials. It runs the gate and waits for CI.
+1. Admission: no credentials. It runs the gate and waits for CI, then for
+   the same commit's data release to succeed. Runtime promotion follows data
+   readiness (the coordinator's D3 of 2026-09-23). The wait is bounded at 90
+   minutes, and the record carries the data run and attempt, so a later
+   re-run of either fails re-admission.
 2. Build: `runtime-build-production`; one job per image. It runs the gate,
    then the unchanged publication action, then attestation.
 3. Release: `runtime-production`. It runs the gate, then authenticates with
