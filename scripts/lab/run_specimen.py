@@ -7,8 +7,10 @@ from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import time
 import traceback
@@ -319,3 +321,42 @@ def write_subject_report(options, redact):
         lines += ["", "## Latest run", ""] + [("#" + x if x.startswith("#") else x) for x in body]
     options.reports_root.mkdir(parents=True, exist_ok=True)
     (options.reports_root / f"{options.subject}.md").write_text(redact("\n".join(lines) + "\n"))
+
+
+def fetch_gcs(subject):
+    from google.cloud import storage
+
+    name = PREFIX + subject + ".jpeg"
+    blob = storage.Client(project="specimen-digitization").bucket(BUCKET).get_blob(name, timeout=60)
+    if blob is None:
+        raise FileNotFoundError(f"gs://{BUCKET}/{name}")
+    return blob.download_as_bytes(timeout=120), {
+        "bucket": BUCKET, "object_name": name, "generation": str(blob.generation),
+        "md5": blob.md5_hash, "media_type": blob.content_type,
+    }
+
+
+def git_commit():
+    root = Path(__file__).resolve().parents[2]
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True).stdout.strip()
+
+    return {"head": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain")),
+            "origin_main_base": git("merge-base", "HEAD", "origin/main")}
+
+
+def main(argv=None):
+    options = parse_args(argv)
+    os.environ["APP_ENV"] = "lab"
+    if options.segmentation == "reviewed-region":
+        for name in ("SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_REVISION"):
+            os.environ.pop(name, None)
+    import lab_lane
+
+    return execute(options, fetch=fetch_gcs, lane_factory=lab_lane.production_lane, env=os.environ,
+                   clock=lambda: datetime.now(timezone.utc), loadavg=os.getloadavg, commit=git_commit)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
