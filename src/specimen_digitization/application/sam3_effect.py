@@ -265,16 +265,53 @@ def validate_sam3_run_response(value, payload):
             return "checkpoint_digest_mismatch"
         if value["checkpoint_sha256"] != pins["checkpoint_sha256"]:
             return "checkpoint_binding_mismatch"
-        if value.get("threshold") != 0.5 or value.get("mask_threshold") != 0.5:
+        from .collection_profiles import Sam3Parameters
+
+        applied = Sam3Parameters.model_validate(request["parameters"]).applied()
+        if value.get("parameters") != applied:
+            return "parameters_binding_mismatch"
+        if (value.get("threshold"), value.get("mask_threshold")) != (
+            applied["label_threshold"],
+            applied["mask_threshold"],
+        ):
             return "unpinned_segmentation_thresholds"
+        found = value.get("detections")
+        if not isinstance(found, dict) or set(found) != {"label"}:
+            return "invalid_detection"
+        label = found["label"]
+        if not valid_detections(label, applied, request):
+            return "invalid_detection"
+        cross = value.get("cross_check")
+        if applied["cross_check_concept"] is None:
+            if cross is not None:
+                return "parameters_binding_mismatch"
+        elif (
+            not isinstance(cross, dict)
+            or set(cross) != {"concept", "detections"}
+            or cross["concept"] != applied["cross_check_concept"]
+        ):
+            return "parameters_binding_mismatch"
+        elif not valid_detections(cross["detections"], applied, request):
+            return "invalid_detection"
         regions, masks = value.get("regions"), value.get("masks")
         if (
             not isinstance(regions, list)
             or not isinstance(masks, list)
-            or not 0 < len(regions) <= 64
+            or not len(regions) <= 64
             or len(regions) != len(masks)
         ):
             return "invalid_region_provenance"
+        # Regions are the label detections at or above the threshold, in order.
+        expected = [d for d in label if d["score"] >= applied["label_threshold"]]
+        if len(expected) != len(regions) or any(
+            not isinstance(region, dict)
+            or not isinstance(mask, dict)
+            or mask.get("score") != detection["score"]
+            or [region.get(key) for key in ("x", "y", "width", "height")]
+            != detection["box"]
+            for region, mask, detection in zip(regions, masks, expected)
+        ):
+            return "region_detection_mismatch"
         total_bytes = 0
         for index, (raw_region, mask) in enumerate(zip(regions, masks, strict=True)):
             if not isinstance(raw_region, dict) or not isinstance(mask, dict):
@@ -323,6 +360,34 @@ def validate_sam3_run_response(value, payload):
         return "valid" if total_bytes <= 16_000_000 else "mask_byte_limit"
     except (KeyError, ValueError, TypeError, OverflowError):
         return "invalid_response_provenance"
+
+
+def valid_detections(found, applied, request):
+    """Boxes inside the image, scores between the floor and 1, best first."""
+    if not isinstance(found, list) or len(found) > applied["max_detections"]:
+        return False
+    scores = []
+    for detection in found:
+        if not isinstance(detection, dict) or set(detection) != {"box", "score"}:
+            return False
+        box, score = detection["box"], detection["score"]
+        if (
+            not isinstance(box, list)
+            or len(box) != 4
+            or any(type(value) is not int for value in box)
+            or box[0] < 0
+            or box[1] < 0
+            or box[2] <= 0
+            or box[3] <= 0
+            or box[0] + box[2] > request["width"]
+            or box[1] + box[3] > request["height"]
+            or type(score) not in (int, float)
+            or not math.isfinite(score)
+            or not applied["record_floor"] <= score <= 1
+        ):
+            return False
+        scores.append(score)
+    return scores == sorted(scores, reverse=True)
 
 
 def sam3_run_request(payload):

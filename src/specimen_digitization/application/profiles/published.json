@@ -131,7 +131,14 @@
         "version": "sam3-settings-v1",
         "adapter_version": "sam3-http-v1",
         "model_id": "facebook/sam3",
-        "prompt": "label"
+        "prompt": "label",
+        "parameters": {
+          "label_threshold": 0.5,
+          "mask_threshold": 0.5,
+          "record_floor": 0.1,
+          "max_detections": 64,
+          "cross_check_concept": "text"
+        }
       },
       "tools": [
         "taxonomy_verifier",

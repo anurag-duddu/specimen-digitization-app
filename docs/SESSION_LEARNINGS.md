@@ -11866,3 +11866,13 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: a server-side create-only claim with a stored response turns "outcome unknown" into "safe to retry". A retry either returns the finished inference or takes over an attempt whose process provably died at the hard deadline, so the worker can treat transport failures as ordinary retryable failures.
 - Failed approaches: none.
 - Remaining follow-ups: T3b (parameters in the profile, recorded detections, the G15 coverage check). S2 sets the worker's `SPECIMEN_SAM3_CHECKPOINT_SHA256` and deploys once T3a and T3b are both on `main`.
+
+### 2026-09-23 — Go-live lane T3b (detections): SAM 3 parameters in the profile, detections recorded
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the first half of topic T3b of `docs/execution/golive/LANE.md`; the G15 coverage check follows in the next pull request.
+- Branch/worktree: `golive/lane-sam-detections` from `golive/lane-sam-client`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome: `Sam3Parameters` carries the values the service applies: label threshold, mask threshold, recording floor, detection limit and cross-check concept. It omits them when unset, so older settings keep their bytes, and `applied()` gives both sides the same defaults. The pilot pins 0.5, 0.5, 0.1, 64 and `text`. Per run, the service runs the label and cross-check concepts through `Sam3Engine.detect`, records every detection at or above the floor, keeps masks only for regions, and answers an empty result instead of an error when no label clears the threshold. The worker checks that exactly the requested parameters were applied, that every detection is in bounds at or above the floor, and that the regions are the qualifying label detections in order. It keeps the parameters, region scores and both detection lists on `Run.segmentation`. `SPECIMEN_SAM3_LAB_CROSS_CHECK_CONCEPT` lets the lab name another cross-check concept for calibration.
+- Validation actually run: the SAM lane tests (58 passed); the pilot's SAM and evidence-pilot tests with the lane and application tests (179 passed, 1 skipped); the full gates as listed in the pull request.
+- Durable learnings: moving the audited risk-policy digest to another line of the profile file needs only the baseline entry's `line_number` updated. The gitleaks exception keys on the finding hash, which does not change.
+- Failed approaches: none.
+- Remaining follow-ups: T3b's G15 coverage check (next pull request).

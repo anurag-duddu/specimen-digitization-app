@@ -28,7 +28,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..hub_models import SAM3_MODEL
-from .collection_profiles import SegmentationSettings
+from .collection_profiles import Sam3Parameters, SegmentationSettings
 from .domain import Region
 from .sam3_effect import canonical_bytes
 
@@ -339,6 +339,26 @@ class Sam3Engine:
         )
         self.torch = torch
 
+    def detect(self, image, prompt, *, threshold, mask_threshold, limit):
+        """Every detection at or above the threshold, highest scores first."""
+        inputs = self.processor(images=image, text=prompt, return_tensors="pt")
+        with self.torch.inference_mode():
+            output = self.model(**inputs)
+        result = self.processor.post_process_instance_segmentation(
+            output,
+            threshold=threshold,
+            mask_threshold=mask_threshold,
+            target_sizes=inputs.get("original_sizes").tolist(),
+        )[0]
+        found = [
+            (
+                Image.fromarray(mask.cpu().numpy().astype("uint8") * 255),
+                float(score.item()),
+            )
+            for mask, score in zip(result["masks"], result["scores"], strict=True)
+        ]
+        return sorted(found, key=lambda pair: pair[1], reverse=True)[:limit]
+
     def predict(self, image, prompt):
         inputs = self.processor(images=image, text=prompt, return_tensors="pt")
         with self.torch.inference_mode():
@@ -519,6 +539,16 @@ def mask_regions(objects, masks, image, request, prefix, mask_ref):
     return regions, evidence
 
 
+def detections(found):
+    """Box and score of each detection, in original pixel edges."""
+    return [
+        {"box": [x, y, right - x, bottom - y], "score": score}
+        for (x, y, right, bottom), score in (
+            (mask.getbbox(), score) for mask, score in found
+        )
+    ]
+
+
 # A run id names storage paths, so it may not contain a separator or a dot.
 RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")
 MAX_RUN_ATTEMPTS = 10
@@ -569,6 +599,26 @@ class RunSegmenter:
                 raise HTTPException(409, "sam3_busy")
         raise HTTPException(409, "sam3_run_attempts_exhausted")
 
+    def _detect(self, image, concept, parameters):
+        found = self.engine.detect(
+            image,
+            concept,
+            threshold=parameters["record_floor"],
+            mask_threshold=parameters["mask_threshold"],
+            limit=parameters["max_detections"],
+        )
+        for mask, score in found:
+            if (
+                mask.size != image.size
+                or mask.mode != "L"
+                or not math.isfinite(score)
+                or not parameters["record_floor"] <= score <= 1
+            ):
+                raise HTTPException(422, "sam3_invalid_mask")
+            if mask.getbbox() is None:
+                raise HTTPException(422, "sam3_empty_mask")
+        return found
+
     def _segment(self, request):
         request_sha256 = digest(encoded(request.model_dump()))
         prefix = f"application/sha256/sam3-runs/{request.run_id}"
@@ -579,20 +629,36 @@ class RunSegmenter:
         if digest(raw) != request.sha256:
             raise HTTPException(409, "source_integrity_mismatch")
         image = decode_source(raw, request)
+        parameters = Sam3Parameters.model_validate(request.parameters).applied()
         self._claim(prefix, request_sha256)
-        regions, evidence = mask_regions(
-            self.objects,
-            self.engine.predict(image, request.prompt),
-            image,
-            request,
-            f"sam3-run/{request.run_id}",
-            lambda stored: stored.get("ref")
-            or f"{stored['sha256']}:{stored['generation']}",
+        label = self._detect(image, request.prompt, parameters)
+        kept = [(mask, score) for mask, score in label if score >= parameters["label_threshold"]]
+        regions, evidence = (
+            mask_regions(
+                self.objects,
+                kept,
+                image,
+                request,
+                f"sam3-run/{request.run_id}",
+                lambda stored: stored.get("ref")
+                or f"{stored['sha256']}:{stored['generation']}",
+            )
+            if kept
+            else ([], [])  # No label found is the coverage check's verdict, not an error.
         )
         evidence = [
             dict(item, ref=region["mask_ref"])
             for item, region in zip(evidence, regions, strict=True)
         ]
+        concept = parameters["cross_check_concept"]
+        cross_check = (
+            {
+                "concept": concept,
+                "detections": detections(self._detect(image, concept, parameters)),
+            }
+            if concept
+            else None
+        )
         response = {
             "model_id": SAM3_MODEL.repo_id,
             "model_revision": SAM3_MODEL.revision,
@@ -606,10 +672,13 @@ class RunSegmenter:
                 "sha256": request.sha256,
                 "size_bytes": len(raw),
             },
-            "threshold": 0.5,
-            "mask_threshold": 0.5,
+            "threshold": parameters["label_threshold"],
+            "mask_threshold": parameters["mask_threshold"],
+            "parameters": parameters,
             "regions": regions,
             "masks": evidence,
+            "detections": {"label": detections(label)},
+            "cross_check": cross_check,
         }
         if self.objects.create(prefix + "/response.json", encoded(response)) is None:
             stored = self._stored(prefix, request_sha256)
