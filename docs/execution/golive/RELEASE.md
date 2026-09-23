@@ -380,14 +380,16 @@ It compares them with the committed table below and prints, for the owner:
 - each missing grant as one exact command with its one-line reason;
 - each custom role to create;
 - each grant these identities hold beyond the table, so it can be reviewed;
-- the steps that must wait: the two invoker grants after the first runtime
-  release creates the services, and the SAM 3 checkpoint's listing grant once
-  its digest is known.
+- each grant to remove: Owner or Editor, and any untimed binding of a
+  time-bounded role, with its exact removal command;
+- the steps that must wait: the invoker grants until the first runtime
+  release creates the services and the job, and the SAM 3 checkpoint's
+  listing grant until `runtime_settings.py` pins its digest.
 
 Every grant names its resource. No identity receives Owner or Editor, and no
-grant carries a time condition except the one-time roles, which stay in
-`scripts/ci/data_setup_window.py`. The script never writes IAM and never prints
-a secret or a private id.
+grant carries a time condition except the time-bounded roles, which only
+`scripts/ci/data_setup_window.py` opens. The script never writes IAM and never
+prints a secret or a private id.
 
 | Identity | Grant | Resource | Reason |
 |---|---|---|---|
@@ -401,12 +403,32 @@ a secret or a private id.
 | API, worker and SAM 3 runtime | `roles/storage.objectViewer` and `roles/storage.objectCreator`, conditioned on objects under `application/sha256/` | bucket | read and write the application's content-addressed objects; no delete |
 | API runtime | `roles/storage.objectViewer`, conditioned on objects and listings under `microscopic-slides/` | bucket | source import (S3) |
 | SAM 3 runtime | `roles/storage.objectViewer`, conditioned on listings under `application/sha256/<checkpoint digest>/sam3-cache` | bucket | mount the checkpoint read-only; waits for the digest |
-| API runtime | `roles/firebaseauth.viewer` | project | look up the Firebase user behind a verified ID token |
+| API runtime | new custom `specimenApiUserLookup`: `firebaseauth.users.get` | project | look up the Firebase user behind a verified ID token; `roles/firebaseauth.viewer` would also read the auth configuration and list apps and projects |
 | API runtime | `roles/run.invoker` | job `specimen-worker` | start executions (G2); after the first runtime release |
+| worker runtime | `roles/run.invoker` (`run.jobs.run`, never `run.jobs.runWithOverrides`) | job `specimen-worker` | the drain worker hands over to its next execution; bounded by the collection fence and a no-progress stop; after the first runtime release |
 | worker runtime | `roles/run.invoker` | service `specimen-sam` | call SAM 3; after the first runtime release |
 | `allUsers` | `roles/run.invoker` | service `specimen-api` | the web client reaches the API, which authenticates every request itself; after the first runtime release |
-| runtime identities | `roles/secretmanager.secretAccessor` | each secret its role reads (`runtime_settings.py`) | per identity and per secret: the API reads the Logfire token, the source registry and the collection bindings; the worker reads the Hugging Face token, the Logfire token, the Maps key, its actor uid and the collection bindings; SAM 3 reads the Logfire token |
+| runtime identities | `roles/secretmanager.secretAccessor`, conditioned on the exact version it reads | each secret its role reads (`runtime_settings.py`) | per identity and per secret: the API reads the Logfire token, the source registry and the collection bindings; the worker reads the Hugging Face token, the Logfire token, the Maps key, its actor uid and the collection bindings; SAM 3 reads the Logfire token |
 | `specimen-data-release` | `specimenDataSchemaPublish`, `specimenDataStorageRules`, `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`, `specimenDataInventoryProjectRead` | project, with the existing resource conditions and no time condition | apply the schema, the connector and the rules; back up before an apply (D1); read the catalog |
+
+Each `secretAccessor` grant keeps the owner-approved condition naming the
+exact version its identity reads (coordinator ruling on #76's review): version
+1 of the Logfire, Maps, source-registry, collection-bindings and worker-uid
+secrets, and version 2 of the Hugging Face token. IAM enforces the version on
+every read, and `runtime_settings.py` pins the same version in code. A version
+bump is an owner action that updates the condition, beside the settings pull
+request that pins the new version.
+
+The data release's reads on merge (section 4.2) need
+`firebasedataconnect.schemas.get` and `connectors.get`,
+`firebaserules.releases.get` and `rulesets.get`, and `cloudsql.instances.get`
+and `databases.get`. The script names the standing data-release role that
+grants each. When none does, it prints the `gcloud iam roles update
+--add-permissions` command for the narrowest one: `specimenDataSchemaPublish`
+for Data Connect, `specimenDataStorageRules` for the rules, and
+`specimenDataInventorySqlConnect` for Cloud SQL, whose binding keeps its
+instance condition. `specimenDataInventoryProjectRead` never grows, because
+the runtime identities hold it too.
 
 Only the roles automatic applies need are standing. The inventory roles
 `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead` are
@@ -419,10 +441,12 @@ time-bounded through the setup window:
 - the one-time roles: the initializer role, `specimenDataOwnerBootstrap` and
   `specimenDataInitializerDisposal`.
 
-The script reports every live binding of these as time-bounded, never as
-missing.
+The script reports each timed live binding of these as time-bounded, never
+as missing. An untimed binding of any of them is a standing grant the
+invariants forbid, so the script lists it for removal.
 
-T4 also narrows `scripts/ci/data_setup_window.py`. Its renewals drop the three
+A second pull request, T4c, narrows `scripts/ci/data_setup_window.py` before
+the owner next opens a window. Its renewals drop the three
 roles that become standing (`specimenDataSchemaPublish`,
 `specimenDataSourceBackup`, `specimenDataStorageRules`). The window keeps
 refusing any untimed binding of the roles it manages, and prints their
@@ -432,8 +456,12 @@ The script also prints the other owner steps:
 - public access prevention on the bucket;
 - the Budget API and a USD 25 budget alert (the owner fills in the billing
   account);
-- uploading the readiness marker;
-- uploading the SAM 3 checkpoint.
+- uploading the readiness marker, until `runtime_settings.py` pins its
+  generation.
+
+The SAM 3 checkpoint is already in the bucket: it was uploaded on
+2026-09-09, and each object's checksum matches the files behind the pinned
+digest.
 
 ## 6. Next pull requests
 
