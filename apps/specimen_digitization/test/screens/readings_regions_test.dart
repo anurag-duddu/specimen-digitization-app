@@ -244,6 +244,54 @@ void main() {
     );
   });
 
+  testWidgets('an unresolved decision says so under its title', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    (((json['regions'] as List<dynamic>)[1] as Json)['first_pass']
+            as Json)['unresolved'] =
+        true;
+    final SpecimenThread open = SpecimenThread.fromJson(json);
+    await pumpReadings(tester, specimenFor(open), thread: open);
+    expect(
+      inSection(
+        'region-right',
+        find.text('The first pass chose muse-handwriting-fixture'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.text('Transcription not resolved')),
+      findsOneWidget,
+      reason: 'a chosen reading can leave a material difference open',
+    );
+    expect(
+      inSection('region-left', find.text('Transcription not resolved')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('a reviewer decision claims no resolution it lacks', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    final Json pass =
+        ((json['regions'] as List<dynamic>)[1] as Json)['first_pass'] as Json;
+    pass['decision_kind'] = 'human';
+    pass['unresolved'] = true;
+    final SpecimenThread reviewed = SpecimenThread.fromJson(json);
+    await pumpReadings(tester, specimenFor(reviewed), thread: reviewed);
+    expect(
+      inSection('region-right', find.text('Decided by a reviewer')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.text('Transcription not resolved')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Resolved by'), findsNothing);
+  });
+
   testWidgets('a region with no recorded decision names where the run is', (
     WidgetTester tester,
   ) async {
