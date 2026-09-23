@@ -7,12 +7,15 @@ model Opus 5.5 at high effort.
 
 Build stages 6, 7 and 8 exactly as the owner specified: the LLM first pass on a
 Hugging Face model, a fully functional agentic harness with graceful failures,
-and the queue decision. A strong harness comes later; a fully functional one
-comes first (G6).
+and the queue decision. Stage 5's scores also live in your steps: keep the
+disagreement ratio in `adjudicate` (`workflow.py` 390-395) and the risk refresh
+in `finalize` (534) when you change them. A strong harness comes later; a fully
+functional one comes first (G6).
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`: sections 1, 2 and 4.1 rows 6 to 8.
+1. `docs/execution/golive/PLAN.md`: sections 1, 2, 4.1 rows 5 to 8, and 6 (your
+   row).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
 3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (322-340), QUE-001 to
@@ -54,6 +57,13 @@ comes first (G6).
   Every outcome is typed (HAR-008) and recorded.
 - Never invent values (HAR-019). Every literal comes from the decided transcript
   or a raw reading, with provenance.
+- G19: when the first pass picks no reading for a label, the harness runs its
+  lookups on each reader's raw reading; fields that resolve clear on their own
+  evidence, and a field still left with conflicting readings goes to needs human
+  review. G20: when the readers disagree and a lookup confirms exactly one
+  reader's literal, that literal is used with its provenance and the field can
+  clear; it counts as a resolved critical disagreement for QUE-002.
+- G22: the four elevation fields stay mandatory and nothing is derived.
 - G5: when the specification is silent or contradictory, ask the coordinator.
 
 ## Pull requests, in order
@@ -76,13 +86,24 @@ records into S5's contract.
 
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
 profile's registry: GBIF Species Match v2 (the existing adapter, `lookup.py`),
-Global Names Verifier and Catalogue of Life for taxonomy; Google Maps geocoding
+Global Names Verifier and Catalogue of Life for taxonomy (G23: GBIF species
+match v2 against the pinned COL XR checklist decides, the other two are
+recorded as supporting evidence, a disagreement is a warning finding, and
+BugGuide is not called; a match succeeds as `GBIF.md` 126-130 defines, exact and
+accepted at the expected rank, which for a genus-only label is the genus (G25);
+synonym, fuzzy, variant and higher-rank matches are `ambiguous`, which changes
+today's adapter: `lookup.py` 105-118 returns `success` for an exact synonym and
+`malformed_response` for VARIANT); Google Maps geocoding
 for geography (G10; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
-`PRD.md` 679); the deterministic validators for catalog numbers and dates (the
-pilot slides carry date-shaped slide-preparation codes that are not collection
-dates; PLAN section 3). No Parties tool: `identified_by_irn` is optional for the
+`PRD.md` 679; keep only the place ID, the outcome and the response digest,
+everywhere including traces, and drop Google's names, address parts and
+coordinates (G26)); the deterministic validators for catalog numbers and dates
+(a Roman numeral I to XII in the month position is the month; a date clears at
+the precision written, and a two-digit year reads as 19xx for Insects,
+recorded as the profile's rule (G24); date-shaped slide-preparation codes on
+the pilot slides are not collection dates, PLAN section 3). No Parties tool: `identified_by_irn` is optional for the
 slide pilot (G16), and the other fields outside taxonomy and geography are
 transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
 encodes them (`domain.py` 43-54); add none. Phases as the specification lists
@@ -109,7 +130,15 @@ G15) satisfies it, and a failed check sends the record to needs human review.
 `pilot_clearance_forbidden` (`worker.py` 318-323) is in the evidence-only
 `PilotWorker`, off the lane's path; leave it. The reviewer's `capability_defer`
 action in `api.py` 1940-1967 stays; the queue decision may also return deferred
-under QUE-004. Tests cover every path: all mandatory fields resolved, cleared;
+under QUE-004. Validate the separately parsed date, not the verbatim text
+(`policy.py` 119-126 parses the literal today): a date clears at the precision
+written, and a two-digit year reads as 19xx for Insects (G24). Keep the
+elevation gate (99-106): the four elevation fields stay mandatory and nothing is
+derived (G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
+region whose first pass picked no reading passes when every field drawn from it
+resolved, on its own evidence or through a lookup that settled the
+disagreement; a field still left with conflicting readings sends the record to
+needs human review. Tests cover every path: all mandatory fields resolved, cleared;
 no data for a mandatory field, needs human review with the reason; no data for
 an optional field, still cleared; a failed coverage check, needs human review;
 capability limit, deferred; transient error, retried, then an operational block.
@@ -117,7 +146,7 @@ capability limit, deferred; transient error, retried, then an operational block.
 ## Coordination
 
 S3 supplies the profile, the tools per field, the optional fields (as
-`Run.field_groups`), the coverage check and the tracing mode. S5 supplies the
+`Run.field_groups`, a new field whose shape S5 decides), the coverage check and the tracing mode. S5 supplies the
 tables for the first-pass decisions, the tool calls and the fields; agree the
 shapes in S5's first PR. `domain.py` has no single owner: add to it additively,
 list your additions in the pull request body, and let S5 decide any shape that

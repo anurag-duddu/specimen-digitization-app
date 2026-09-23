@@ -7,6 +7,12 @@
 > [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md). The selection
 > itself, the ten specimens and the human-review scope are unchanged.
 
+> 2026-09-23: The ten specimens and the human-review scope's deferred clearance
+> in the note above are superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G1. Specimens are processed one at a time on demand, with the ten as
+> the acceptance cohort, and a record the harness resolves is cleared.
+
 > 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md`
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > supersede parts of this document for the go-live program. Each superseded
@@ -61,7 +67,9 @@ end-to-end acceptance.
 > G1, G14 and G19. Automated clearance is no longer deferred: the agentic
 > harness runs its lookups (including GBIF) on the transcript the LLM first
 > pass decides or, when the first pass picks no reading, on each reader's raw
-> reading (G19). A record the harness resolves is cleared without a human, and
+> reading (G19). It falls back to the raw readings when the decided transcript
+> fails (PLAN section 1). A record the harness resolves is cleared without a
+> human, and
 > human review and deferral otherwise stay as the specification defines them.
 > Automated collection classification stays deferred: under G14 the profile
 > comes from the collection a specimen was uploaded or imported into, resolved
@@ -74,11 +82,13 @@ all days, sessions and retries. Initial administrator sensitive access stays fal
 
 > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
-> models together. The release envelope and authorization artifact that
+> G2, G9 and G11. The same ten specimens are now the acceptance cohort,
+> processed one at a time on demand with new uploads. The spending ceiling is
+> USD 25, cumulative, infrastructure and models together. The release envelope
+> and authorization artifact that
 > `RELEASE_AUTHORIZATION.md` describes are retired; releases now deploy
 > automatically on merge once the required checks pass and the PR steward
-> approves.
+> approves. Initial administrator sensitive access still stays false.
 
 The user's actual selection is preserved in the owned private file
 `human-review-release-scope-v1.json` under the coordinator's existing rollout-state
