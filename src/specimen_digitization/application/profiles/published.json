@@ -216,7 +216,8 @@
       },
       "date_rules": {
         "version": "date-rules-v1",
-        "two_digit_year_century": 1900
+        "two_digit_year_century": 1900,
+        "roman_numeral_months": true
       }
     }
   ],
