@@ -12,7 +12,7 @@ from typing import Protocol
 from .domain import Principal, Scope, Specimen, WorkItem, WorkPage, now
 
 
-def digest(value: object) -> str:
+def canonical_json(value: object) -> str:
     def canonical(item):
         if isinstance(item, dict):
             return {k: canonical(v) for k, v in item.items()}
@@ -22,11 +22,13 @@ def digest(value: object) -> str:
             return int(item)
         return item
 
-    return hashlib.sha256(
-        json.dumps(
-            canonical(value), sort_keys=True, separators=(",", ":"), allow_nan=False
-        ).encode()
-    ).hexdigest()
+    return json.dumps(
+        canonical(value), sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+
+
+def digest(value: object) -> str:
+    return hashlib.sha256(canonical_json(value).encode()).hexdigest()
 
 
 class Conflict(RuntimeError):
