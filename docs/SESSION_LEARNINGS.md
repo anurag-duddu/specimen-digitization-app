@@ -11826,6 +11826,19 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: none new. All four product and process questions this round went to the owner rather than being decided by the coordinator.
 - Remaining follow-ups: the owner's field list (G8); pre-paid Hugging Face credits (routed calls return HTTP 402); the Maps key, Logfire token and Hugging Face rotation commands in `~/specimen-golive/OWNER_ACTIONS.md`; S2's IAM list; S3's concrete coverage check, to take to the owner if it holds a product choice.
 
+### 2026-09-23 — Go-live release workstream (S2), T2a: the gate that admits the runtime planes from GitHub facts
+
+- Task: the S2 session, brief item T2 step one (`docs/execution/golive/RELEASE.md` section 3.1).
+- Branch/worktree: `golive/release-runtime-gate` in `.claude/worktrees/zealous-euler-da786e`, stacked on #76's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed the diff and integrated it.
+- Outcome: `scripts/ci/release_gate.py` admits a runtime job without an envelope. It checks the job context (with the retired `RELEASE_AUTHORIZED_SHA` no longer required); that the commit is on `main`; that exactly one merged pull request of this repository produced it, with the reviewed tree; and that the five required checks passed in the latest attempt of its CI/CD push run, waiting for that run up to a bounded time. It writes an owner-only gate record in place of the envelope packet and exports its digest. `release_admission.admit` re-admits a gate record for the runtime planes only. No workflow uses the gate yet; T2c switches the workflow.
+- Commits/PRs: spec `0da26ca`, `f9df3d4`; red `76c9d53`; green `e5fe68c`; the spec correction and this closeout.
+- Validation actually run: the red run failed at collection (no module), and `test_release_context.py` had 6 failures on the new keyword. Green: 207 targeted tests passed; `uv run pytest scripts/ -q` passed 1,656 with 50 skipped (run by the subagent at load 11.6); pre-commit passed on all five files. The subagent's mutation check broke 61 checks one at a time, and the tests caught all 61.
+- Durable learnings:
+  - The CI run's `path` is exactly `.github/workflows/ci-cd.yml`, and the five required job names match. Both were checked against the live API; nothing had verified them before, because no envelope was ever minted.
+  - Tip-of-main is the wrong guard for automatic deploys: frequent merges would abort healthy runs mid-deploy. Workflow concurrency plus a rollback guard on the deployed `source-sha` label (T2b) protects the same thing.
+  - The repository deletes merged branches (`delete_branch_on_merge`), so a PR stacked on another's branch retargets to `main` when that one merges.
+- Failed approaches: none.
+- Remaining follow-ups: in T2b, the publication supervisor must check the context without the retired variable, and its `--admit` step must accept a gate record without a plan. In T2c, the admission job's timeout must exceed the 3,300-second CI wait. If CI is re-run with "Re-run failed jobs" rather than "Re-run all jobs", the gate may fail closed; this is unverified.
 ### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.

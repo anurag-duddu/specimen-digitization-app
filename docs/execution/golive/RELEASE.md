@@ -156,15 +156,125 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
 | `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews the standing roles and the time-bounded ones alike as 120-minute bindings, and refuses any untimed binding | G11 | S2 T4 (narrows the renewals to the time-bounded roles) |
 
-## 3. Next pull requests
+## 3. T2: runtime plane on merge
+
+T2 replaces the runtime plane's envelope with a gate that derives everything
+from GitHub and fixed configuration, then deploys on every push to `main`.
+It lands in steps that each keep `main` green: T2a the gate, T2b the deploy,
+T2c the workflow, T2d the removal of the runtime plane's dead envelope code,
+and T2e the reuse of an unchanged SAM 3 image.
+
+### 3.1 The gate (T2a)
+
+`scripts/ci/release_gate.py` admits a runtime job without cloud credentials.
+
+- Context: `release_context.validate_context` with `envelope=False` checks
+  every value the envelope checked except the retired owner-set
+  `RELEASE_AUTHORIZED_SHA`: the repository and its numeric ids, the `push`
+  event, `refs/heads/main`, `GITHUB_REF_PROTECTED=true`, the workflow ref, the
+  commit, the environment, the project and the release identity.
+- The commit is on `main`: `compare/<sha>...main` is `identical` or `ahead`.
+- Exactly one merged pull request produced it: merged, its merge commit is this
+  commit, its base is `main` of this repository, its head is in this
+  repository, and its head's tree equals the commit's tree.
+- Exactly one CI/CD push run exists for the commit, on `main`, from
+  `.github/workflows/ci-cd.yml` in this repository. The gate waits for it,
+  polling every 30 seconds up to a bounded `--wait-seconds`, because both
+  workflows start on the same push. The run must succeed, and each of the five
+  required checks must be exactly one successful job of that run's latest
+  attempt, on the same commit.
+- It writes a gate record, `protected-release-gate/v1`, owner-only, where the
+  envelope packet used to be. The record holds the plane, the commit and its
+  tree, the pull request, the CI run and attempt, this run and attempt, the
+  issue time, an expiry one hour later, and the plane's fixed Workload
+  Identity provider. It exports the record's digest as `RELEASE_PACKET_SHA256`
+  for the job's later steps.
+- `release_admission.admit` recognizes a gate record and re-admits it with
+  `release_gate.readmit`. The digest, plane, run and attempt must match, the
+  record must not be expired, the context must pass again, and the same facts
+  are observed again without waiting. Envelope packets keep their existing
+  path until T2d. The Google client calls `admit` before each mutation and
+  needs no change. The publication supervisor needs two small ones, which T2b
+  makes: it checks the context without the retired variable, and its
+  admission step reads a gate record, which has no plan.
+- The CI run's `path` (`.github/workflows/ci-cd.yml`) and the five job names
+  the gate requires were checked against the live GitHub API on 2026-09-23.
+- The gate does not require the commit to be the tip of `main`. The
+  workflow's concurrency group runs one release at a time in push order, and
+  the deploy's rollback guard refuses to replace a newer deployed commit.
+
+### 3.2 The deploy (T2b)
+
+`scripts/ci/deploy_runtime.py --deploy` with a gate record:
+
+- Settings: `scripts/ci/runtime_settings.py` commits every non-secret value.
+  That includes each secret's pinned version number and the API readiness
+  object's name and generation, so a new secret version or marker is a
+  reviewed pull request, and the release needs no permission to discover
+  them. Private values (the worker's actor uid, and the source registry, which
+  holds collection ids) and credentials arrive only as Secret Manager
+  references.
+- Pending settings: some values are not known yet. The worker's drain
+  arguments and SAM 3's environment follow the processing lane's merged server
+  code; the secret versions, the readiness marker and the SAM 3 checkpoint
+  digest follow the owner's T4 actions. A role with a pending setting is not
+  deployed. The receipt names the role and each missing setting, and the run
+  still verifies every role it did deploy, so the API can go live before SAM 3
+  and the worker.
+- Images: the three receipts from this run's build job. Each image's
+  attestation is verified: signer workflow `runtime-release.yml`, source and
+  signer digest equal to the commit, ref `main`, no self-hosted runners.
+- Rollback guard: before changing a resource, its `source-sha` label must be
+  this commit or an ancestor of it.
+- Order: SAM 3, then the worker job, then the API.
+  - `specimen-sam`: zero to one instance, concurrency one, 4 CPU and 16 GiB,
+    the checkpoint mounted read-only, Hugging Face offline, traffic to the
+    latest ready revision. Its invoker policy must be exactly the worker
+    identity.
+  - `specimen-worker`: the job definition only. One task, parallelism one, no
+    retries, 3,600 seconds, the drain arguments. The deploy never sets an
+    execution token and never calls `:run`.
+  - `specimen-api`: when a revision already serves, the new revision gets 0%
+    traffic under the tag `candidate`. On the candidate URL, `/version`
+    reports the merged commit, `/health/ready` passes and an anonymous
+    `/v1/session` is refused. Only then does traffic move to 100%, and the same
+    three checks run on the service URL. Its invoker policy must be exactly
+    `allUsers`, unconditionally.
+- IAM is verified, never changed. The invoker policies are checked after
+  every deployable role is deployed and before the API is promoted, and all
+  missing bindings are reported together. The first release creates the
+  services, so its check fails with the owner actions it names; the owner
+  grants both bindings from T4's list and re-runs the failed job once.
+- The deploy writes a `runtime-deployed/v1` receipt without private values,
+  attests it and uploads it.
+
+### 3.3 The workflow (T2c)
+
+`.github/workflows/runtime-release.yml` keeps its trigger (push to `main`
+only), its read-only default permissions and its uncancelled concurrency
+group. Its jobs are:
+
+1. Admission: no credentials. It runs the gate and waits for CI.
+2. Build: `runtime-build-production`; one job per image. It runs the gate,
+   then the unchanged publication action, then attestation.
+3. Release: `runtime-production`. It runs the gate, then authenticates with
+   the fixed provider, then deploys.
+
+It reads no `RELEASE_INPUTS_B64` secret and no `RELEASE_*` variable.
+
+### 3.4 After the switch (T2d, T2e)
+
+T2d deletes the runtime plane's envelope code and tests once no workflow
+reaches them. The data plane keeps its envelope until T3. T2e reuses the last
+attested SAM 3 image when its inputs (`containers/worker/sam3.Dockerfile`, its
+lock file and `src/specimen_digitization`) are unchanged, and rebuilds it
+otherwise.
+
+## 4. Next pull requests
 
 Each adds its own section here, with failing tests first, as PLAN section 7.2
 requires.
 
-- T2, runtime plane on merge: admission without the envelope, three images
-  (SAM 3 rebuilt only when its inputs change), attestation, the API service,
-  the worker job deployed without an execution, SAM 3 as a scale-to-zero
-  service only the worker may invoke, secrets and environment, readiness.
 - T3, data plane on merge: the protected-ref check and the five-checks check
   move out of the retired admission into the plane's own gate; a first
   initialization that matches the real state; then, on every change to
