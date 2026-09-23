@@ -6,6 +6,19 @@ governs the existing US destination and worker-only writer secret.
 Historical USD5/30-minute statements below remain applicable to legacy artifacts;
 new release inputs must explicitly select the approved additive contracts.
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the decision.
+> The ceiling is now USD 25 (G9,
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9)),
+> trace content follows G3
+> ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
+> and data and runtime releases deploy on merge without release inputs (G11).
+> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) lists the code
+> that still enforces a superseded clause until a later go-live pull request
+> changes it.
+
 This document is the authoritative release runbook for Specimen Digitization.
 It applies to humans, automation, agents, every branch, every worktree, and every
 Codex session. `AGENTS.md` points all sessions here.
@@ -297,6 +310,13 @@ These optional smoke commands are distinct from the user-authorized first-ten
 application pilot. The pilot requires its privately frozen originals, pinned
 provider routes, verified identity/data/runtime prerequisites and the shared
 USD 5 reservation ledger. It is never run inside ordinary pull-request CI.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. Specimens are processed one at a time, on demand, including
+> new uploads; the ceiling is USD 25, held by the pipeline and a billing alert
+> rather than a reservation ledger. The pilot still never runs in pull-request
+> CI.
 
 ### Flutter client
 
@@ -703,6 +723,14 @@ not establish cloud readiness or authorize an unspecified expansion. The
 initial sample remains the data owner's frozen first ten existing specimens;
 expansion requires user review and approval of end-to-end results.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. The authority for the runtime and data paths is G11: they deploy
+> automatically when a pull request is merged to `main` after the required
+> checks pass and the PR steward approves. Specimens, including new uploads,
+> are processed one at a time on demand; the ten pilot specimens are the
+> acceptance cohort, processed in order.
+
 - `.github/workflows/runtime-release.yml` and
   `.github/workflows/data-release.yml` accept only pushes to `main` after a PR
   merge. No PR/tag/manual/workflow-run deployment route is permitted.
@@ -711,6 +739,11 @@ expansion requires user review and approval of end-to-end results.
   merged-PR provenance, latest main, all five successful CI/CD jobs on that
   exact source, and the applicable reviewed authorization packet. A stale,
   incomplete, example or unreviewed packet fails closed.
+  > 2026-09-23: The authorization packet is superseded for the go-live program
+  > by
+  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G11; the PR steward's approval replaces it. Every other check in this item
+  > stays.
 - Runtime publication and runtime promotion use separate identities and
   main-only environments (`runtime-build-production` and
   `runtime-production`), so a publisher cannot inherit deployment authority.
@@ -727,6 +760,18 @@ expansion requires user review and approval of end-to-end results.
 - Verify current backup and isolated restore proof before compatible data
   changes. Keep writers quiesced when uniqueness protection could be absent;
   restore and independently verify supplemental indexes after reconciliation.
+  > 2026-09-23: For additive applies, quiescing writers is superseded for the
+  > go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G11. The uniqueness this item protects is never absent during an additive
+  > apply. Every unique constraint is declared in the schema (for example
+  > `specimen_scope_checksum`), the gate refuses any change to an existing one,
+  > and the supplemental SQL indexes are non-unique. So writers keep running.
+  > The supplemental indexes are still restored and checked by definition
+  > after every apply, and a backup with a verified restore path still precedes
+  > it. The isolated restore proof is now done once, on the first apply (D1).
+  > All of this is specified in
+  > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1.
   Do not create or upgrade a source SQL instance as a side effect of deployment.
   Preserve source data and object generations. Bootstrap the approved initial
   administrator only after verified identity/scope, with sensitive access off.
@@ -749,12 +794,23 @@ expansion requires user review and approval of end-to-end results.
   Build admission precedes images; data admission precedes data apply; runtime
   promotion follows data readiness; public acceptance follows deployment.
   Do not create circular prerequisites or confuse preflight with acceptance.
+  > 2026-09-23: The expiry, scope and cumulative cost limits are superseded for
+  > the go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G2, G9 and G11. SAM 3 scales to zero instead of expiring, the worker runs
+  > on demand, and the USD 25 ceiling is held by the pipeline and a billing
+  > alert rather than by release admission. The ordering in this item stays.
 - Serialize production transitions without cancellation. Quiesce on failure;
   retain previous known revisions and evidence. Runtime rollback uses a reviewed
   main PR and compatible data; never delete original data to simulate recovery.
 - Completion requires the exact main workflow/deploy results, public Hosting
   marker, matching runtime/data revisions and authenticated full-cohort product
   evidence. An evidence-only intermediate run is not full-pipeline acceptance.
+  > 2026-09-23: The full-cohort product evidence is superseded for the go-live
+  > program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G1 and G2. Product acceptance is the per-specimen loop of PLAN section 8,
+  > through the full pipeline; the workflow, marker and revision evidence stay.
 
 The coordinator may perform only the approved, independently reviewed setup
 actions after live inventory and recording the exact bounded action packet.
@@ -763,6 +819,18 @@ unknown costs are not zero. The USD 5 limit is cumulative across all sessions
 and retries. Stop if costs do not fit or an action exceeds the recorded scope.
 Only the newly created restore clone may be removed, by its two-hour expiry,
 after verification evidence is retained. Existing data and source SQL remain.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The owner runs the standing grants and secret steps from the
+> release workstream's reviewed, read-only-generated list, with no action
+> packet or cost reservation, and the ceiling is USD 25.
+> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1 names
+> the five standing data-release roles. The one-time roles (the initializer
+> role, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`)
+> and the clone and claim roles stay in the bounded setup window with its
+> action packet. A restore clone is still removed by its two-hour expiry.
+> Existing data and source SQL still remain.
 
 Recovery admission additionally requires the original typed
 [`recovery.allowance` contract](execution/CLONE_ALLOWANCE.md). The protected data
@@ -773,6 +841,13 @@ No retries, receipt adoption or allowance reset are permitted. Root must first
 qualify the complete issuance baseline, effective exact-object create-only IAM
 and continuing held-object costs. This source contract grants no native setup or
 new execution window; existing clone ownership and cleanup controls still apply.
+
+> 2026-09-23: For the go-live program, under
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11 and the coordinator's D1, this allowance guards only the first apply's
+> single restore clone. The on-demand backup before every apply needs no
+> claim. The claim stays single-use, and its role
+> (`specimenDataRestoreAllowanceClaim`) stays time-bounded.
 
 The candidate CI workflow `runtime-ci.yml` builds committed container inputs
 without credentials or registry publication. Scoped PRs report absent owner
@@ -801,6 +876,11 @@ this with example/schema validation. API, worker and CPU SAM image provenance,
 pinned model artifact hashes, data restoration and approval evidence are required;
 actual evidence verification and cloud authorization remain additional gates.
 
+> 2026-09-23: The packet requirement is superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Image provenance and pinned model artifact hashes stay; the packet and
+> its approval evidence retire with the envelopes.
+
 The first missing application database uses the typed
 `data-initialize-missing/v1` phase in that same protected data workflow. The
 plan may bind the exact empty Firebase onboarding schema instead of requiring
@@ -817,3 +897,13 @@ conditional permissions and this exact temporary privilege require the existing
 independent authority/admission review. The workflow creates no IAM policy or
 password and changes no source capacity. See the precise contract and live gates
 in [DATABASE_INITIALIZATION.md](execution/DATABASE_INITIALIZATION.md).
+
+> 2026-09-23: The independent authority and admission review is superseded for
+> the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. The application database already exists and is empty (PLAN section 3),
+> so the release workstream's data-plane pull request specifies a first
+> initialization that matches that state, in
+> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md). The
+> initializer's temporary privilege stays one-time and time-bounded and is
+> removed after use; the workflow still creates no IAM policy or password.

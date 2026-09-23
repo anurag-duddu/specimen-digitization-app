@@ -1,5 +1,23 @@
 # Approved review worker timing
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that
+> still enforces a superseded clause until a later go-live pull request
+> changes it.
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. Specimens are processed one at a time, on demand, instead of
+> the single bounded worker execution, timing clock T and SAM life reserve
+> this document defines; the ten pilot specimens remain the acceptance
+> cohort, processed in order, and SAM 3 scales to zero instead of expiring
+> after an hour. Release envelopes, cost ledgers and reservations, including
+> the reservation budget and approval digest this document requires, are
+> retired; data and runtime releases now deploy automatically on merge.
+
 The combined approval recorded on 2026-09-14 adds one explicit timing dialect.
 It does not change legacy launches. This document describes source behavior and
 required native qualification; it is not an operational launch packet or evidence
@@ -91,6 +109,19 @@ Legacy launches without this timing discriminator retain their original
 The original SAM activation lifetime remains at most one hour in both dialects.
 
 ## Worker trace delivery
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G3 and G11. System prompts and text inputs and outputs at every VLM, LLM
+> and SAM 3 level, SAM 3 parameters and the harness's tool calls with
+> arguments and results (geocoding keeps only what G26 allows) are recorded
+> in Logfire, one trace per run linked
+> from the specimen record, not the metadata-only, worker-only scope this
+> section fixes; the amended scope is in
+> [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md). The
+> independent transport/privacy/completion review this section keeps as a
+> release gate is retired with the other independent-review gates; the PR
+> steward's review of each pull request replaces it.
 
 Approved native tracing requires `worker_trace` with version `worker-trace/v2`,
 the reviewed existing `project_id`, the distinct immutable worker writer

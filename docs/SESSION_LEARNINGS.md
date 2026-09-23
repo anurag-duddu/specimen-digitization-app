@@ -11798,6 +11798,22 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: a first draft of the plan specified adjudication behaviour and routing conditions the owner had not asked for; the owner rejected new design decisions, and the plan now quotes the owner's rules and the existing specification instead.
 - Remaining follow-ups: the owner's field list; the owner actions queued in `~/specimen-golive/OWNER_ACTIONS.md`; launching and coordinating the seven sessions.
 
+### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
+
+- Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
+- Branch/worktree: `golive/release-contract-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated "Superseded for the go-live program by PLAN section 2.1 G#" notes beside every superseded clause in eleven contract documents, and a banner on each release and approval document (`PRD.md` and `CONTRACTS.md` carry notes only). The `AGENTS.md` first deployment rule now follows G11: it keeps every safeguard G11 doesn't retire and adds the additive-only schema gate; the never-deploy and never-weaken rules are unchanged. `APPROVED_LOGFIRE_TRACING.md` carries G3's content scope and `APPROVED_RELEASE_BUDGET.md` carries G9's USD 25. The new `docs/execution/golive/RELEASE.md` holds the invariants, the coordinator-confirmed definition of "additive" and the table of code that still enforces superseded clauses. T1b (the runbooks and release histories) follows as its own PR, for size.
+- Commits/PRs: [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76): spec delta `0088a70`, amendments `6bb4064`, this closeout.
+- Validation actually run: pre-commit on the twelve files (all hooks passed); `uv run pytest tests/test_deployment_policy.py -q` (6 passed); `git diff --check` clean; a link and anchor check over the 84 added links (0 broken).
+- Durable learnings:
+  - No document's bytes are pinned by code or tests; `3303d129…` fingerprints the owner's 2026-09-14 message. The pins are code constants (`release_budget.py` `APPROVED_LIMIT_MICROS`, `mint_release_packet.py` `HUMAN_REVIEW_SCOPES`).
+  - `codex/initialize-firebase-placeholder` (`2c0880f7`) is already on `main` as `f9a44543` (PR #29) and assumes an absent database, so T3 needs a new exists-and-empty path.
+  - `roles/run.invoker` on a Cloud Run job is enough to execute it without overrides, and act-as is not needed.
+  - All five WIF providers and the seven release and runtime identities exist, each provider pinned to repository, push, `main` and its environment (read-only inventory).
+  - "Additive" (PLAN 4.4, coordinator 2026-09-23): dropping NOT NULL only on columns the data contract names with a reason, never on provenance or idempotency keys; new connector operations only at `@auth(level: NO_ACCESS)` with the membership `@check`s.
+- Failed approaches: three of four editor subagents' results carried an automatic "Instruction Poisoning" flag. Every added line was audited: each subagent edited only its own files, nothing unsafe was found, and seven overreaching notes were corrected. The worst had misread G7's "existing gateway" as the Logfire AI Gateway, and a note that claimed a non-goal was superseded was removed.
+- Remaining follow-ups: T1b; T2 runtime plane; T3 data plane; T4 owner IAM and secret list; T5 first releases; T6. Owner actions posted to `~/specimen-golive/OWNER_ACTIONS.md`: Maps key, Logfire token, Hugging Face rotation. The owner later withdrew the rotation: the runtime reuses the existing Hugging Face token version, and the existing Logfire token is copied into the writer secret.
+
 ### 2026-09-23 — Go-live program: plan corrections after the review of #72, owner decisions G13 to G18
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
