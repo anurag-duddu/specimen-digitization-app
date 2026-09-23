@@ -141,6 +141,9 @@ def test_the_record_binds_github_facts_and_the_planes_fixed_provider(tmp_path, s
     for missing in steps:
         with pytest.raises(ValueError):
             M.write_record(record, tmp_path / "other" / "packet.json", {**env, missing: ""})
+    for injected in ({**record, "source_sha": f"{SHA}\nprovider=x"}, {**record, "identity": {"provider": "p\nq=r"}}):
+        with pytest.raises(ValueError):
+            M.write_record(injected, tmp_path / "other" / "packet.json", env)
     assert not (tmp_path / "other").exists()
 
 
@@ -245,8 +248,18 @@ def test_only_a_successful_ci_cd_push_run_of_this_repository_counts(field, value
         gate(answers)
     observed = watch(GitHub())(SHA, wait_seconds=0)
     observed["run"][field] = value
+    job_field = {"id": "run_id", "run_attempt": "run_attempt"}.get(field)
+    for job in observed["jobs"] if job_field else ():
+        job[job_field] = value  # consistent jobs: only the run's own check can refuse it
     with pytest.raises(ValueError):
         M.validate_facts(SHA, observed)
+
+
+def test_runs_of_other_events_branches_workflows_or_commits_are_not_candidates():
+    answers = responses()
+    answers[RUNS]["workflow_runs"] += [run(id=124, event="workflow_dispatch"), run(id=125, head_branch="feature"),
+                                       run(id=126, path=".github/workflows/spoof.yml"), run(id=127, head_sha="b" * 40)]
+    assert gate(answers)["ci_run_id"] == 123
 
 
 @pytest.mark.parametrize("change", [

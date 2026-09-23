@@ -17,7 +17,8 @@ PLANES = {
 }
 
 
-def validate_context(env: dict[str, str], plane: str, source_sha: str) -> None:
+def validate_context(env: dict[str, str], plane: str, source_sha: str, *, envelope: bool = True) -> None:
+    """Check the job's exact context; only envelope=False drops the owner-set RELEASE_AUTHORIZED_SHA (G11)."""
     if plane not in PLANES:
         raise ValueError("unknown release plane")
     if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
@@ -38,6 +39,9 @@ def validate_context(env: dict[str, str], plane: str, source_sha: str) -> None:
         "RELEASE_PROJECT": PROJECT,
         "RELEASE_SERVICE_ACCOUNT": f"{identity}@{PROJECT}.iam.gserviceaccount.com",
     }
+    if envelope is False:
+        # The gate derives the commit from GitHub facts; every other guard stays exact.
+        del expected["RELEASE_AUTHORIZED_SHA"]
     for key, value in expected.items():
         if env.get(key) != value:
             raise ValueError(f"release context rejected: {key}")
