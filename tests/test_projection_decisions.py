@@ -152,13 +152,19 @@ def first_pass(s, *, selected=True, verdict=None):
                     role="decided_transcript" if selected else "raw_reading",
                     handed_text=left.literal_text,
                 ),
-                Handoff(
-                    observation_id=right.id,
-                    role="raw_reading",
-                    handed_text=right.literal_text,
-                    note="Reads the l as a one.",
-                ),
-            ],
+            ]
+            + (
+                []
+                if selected
+                else [
+                    Handoff(
+                        observation_id=right.id,
+                        role="raw_reading",
+                        handed_text=right.literal_text,
+                        note="Reads the l as a one.",
+                    )
+                ]
+            ),
         )
     ]
     return s
@@ -203,15 +209,16 @@ def test_the_first_pass_writes_its_call_its_decision_and_each_handoff():
         "AppendModelObservationV2",
         "AppendTranscriptionVersionV2",
         "AppendHarnessInputV1",
-        "AppendHarnessInputV1",
     ]
+    region_row = derived_id("region", s.run.id, region.id)
     written_call = rows(result, "AppendModelObservationV2")[-1]
     assert written_call["id"] == call.id
     assert written_call["independent"] is False
+    assert written_call["regionId"] == region_row
     assert written_call["stepKey"] == f"first_pass:{region.id}"
     assert written_call["literalText"] == ""
     decision = rows(result, "AppendTranscriptionVersionV2")[0]
-    assert decision["regionId"] == region.id
+    assert decision["regionId"] == region_row
     assert decision["decisionKind"] == "first_pass"
     assert decision["selectedObservationId"] == left.id
     assert decision["firstPassObservationId"] == call.id
@@ -220,28 +227,31 @@ def test_the_first_pass_writes_its_call_its_decision_and_each_handoff():
     assert decision["spans"] == [transcript.differences[0].model_dump(mode="json")]
     assert decision["alternatives"] == []
     assert decision["unresolved"] is False
-    handoffs = rows(result, "AppendHarnessInputV1")
-    assert [(h["observationId"], h["role"]) for h in handoffs] == [
-        (left.id, "decided_transcript"),
-        (right.id, "raw_reading"),
-    ]
-    assert handoffs[1]["handedText"] == right.literal_text
-    assert handoffs[1]["note"] == "Reads the l as a one."
-    assert handoffs[0]["id"] == derived_id("handoff", decision["id"], left.id)
-    assert all(h["transcriptionVersionId"] == decision["id"] for h in handoffs)
+    (handoff,) = rows(result, "AppendHarnessInputV1")
+    assert (handoff["observationId"], handoff["role"]) == (left.id, "decided_transcript")
+    assert handoff["id"] == derived_id("handoff", decision["id"], left.id)
+    assert handoff["transcriptionVersionId"] == decision["id"]
 
 
-def test_no_selected_reading_or_an_uncertain_material_difference_is_unresolved():
-    unselected = rows(
-        writes(first_pass(base(), selected=False), locate, size, "worker-uid"),
-        "AppendTranscriptionVersionV2",
-    )[0]
+def test_only_a_decision_without_a_selected_reading_is_unresolved():
+    s = first_pass(base(), selected=False)
+    right, left = s.run.observations
+    result = writes(s, locate, size, "worker-uid")
+    unselected = rows(result, "AppendTranscriptionVersionV2")[0]
     assert unselected["selectedObservationId"] is None
     assert unselected["unresolved"] is True
     assert unselected["literalText"] == ""
+    # G19: every reading goes to the harness as a raw reading.
+    handoffs = rows(result, "AppendHarnessInputV1")
+    assert [(h["observationId"], h["role"]) for h in handoffs] == [
+        (left.id, "raw_reading"),
+        (right.id, "raw_reading"),
+    ]
+    assert (handoffs[1]["handedText"], handoffs[1]["note"]) == (right.literal_text, "Reads the l as a one.")
+    # A selected reading is resolved, and the open difference stays among the alternatives.
     s = first_pass(base(), verdict="uncertain")
     uncertain = rows(writes(s, locate, size, "worker-uid"), "AppendTranscriptionVersionV2")[0]
-    assert uncertain["unresolved"] is True
+    assert uncertain["unresolved"] is False
     assert uncertain["alternatives"] == [s.run.transcripts[0].differences[0].model_dump(mode="json")]
 
 
@@ -259,7 +269,11 @@ def test_today_identical_and_reviewer_decisions_are_recognised():
     transcript = s.run.transcripts[0]
     transcript.actor, transcript.resolved, transcript.text = "reviewer-uid", True, "Chicago, Ill."
     transcript.reason = "The crop shows a lowercase l."
-    human = rows(writes(s, locate, size, "worker-uid"), "AppendTranscriptionVersionV2")[0]
+    # A reviewer's decision is written only by a reviewer's own save (section 6).
+    assert "AppendTranscriptionVersionV2" not in ops(writes(s, locate, size, "worker-uid"))
+    human = rows(
+        writes(s, locate, size, "reviewer-uid", reviewer=True), "AppendTranscriptionVersionV2"
+    )[0]
     assert (human["decisionKind"], human["selectedObservationId"], human["unresolved"]) == (
         "human",
         None,
@@ -276,6 +290,16 @@ def test_lookups_and_stored_evidence_become_evidence_items():
     s.run.lookups.append(
         Lookup(provider="gbif", adapter_version="g1", query={"name": "x"}, status=LookupStatus.TIMEOUT)
     )
+    nothing = Lookup(
+        provider="google-maps-geocoding",
+        adapter_version="geocode-1",
+        query={"address": "Nowhere, Ill."},
+        status=LookupStatus.NO_MATCH,
+        metadata={"source_version": "v1"},
+        raw_ref=f"{'1' * 64}:4",
+        digest="2" * 64,
+    )
+    s.run.lookups.append(nothing)
     stored = Evidence(
         kind="authority",
         source="gbif-backbone",
@@ -288,7 +312,7 @@ def test_lookups_and_stored_evidence_become_evidence_items():
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
     items = rows(result, "AppendEvidenceItemV2")
-    assert [i["id"] for i in items] == [found.id, stored.id]
+    assert [i["id"] for i in items] == [found.id, nothing.id, stored.id]
     geocoded = items[0]
     assert geocoded["source"] == "google-maps-geocoding"
     assert (geocoded["sourceVersion"], geocoded["adapterVersion"]) == ("v1", "geocode-1")
@@ -298,8 +322,10 @@ def test_lookups_and_stored_evidence_become_evidence_items():
     assert geocoded["responseSha256"] == "8" * 64
     assert geocoded["capturedAt"] == "2026-09-23T12:00:00+00:00"
     asset = next(w.variables for w in result if w.variables["id"] == geocoded["rawAssetId"])
-    assert (asset["kind"], asset["sha256"], asset["width"]) == ("lookup_response", "9" * 64, None)
-    assert items[1]["locator"] == "gbif/1"
+    # G26: Google's stored record holds our reduced record, never its response.
+    assert (asset["kind"], asset["sha256"], asset["width"]) == ("evidence_record", "9" * 64, None)
+    assert (items[1]["outcome"], items[1]["locator"]) == ("no_match", None)
+    assert items[2]["locator"] == "gbif/1"
 
 
 def test_tool_calls_point_at_the_decision_they_ran_on_and_the_evidence_they_made():
@@ -358,8 +384,16 @@ def test_tool_calls_point_at_the_decision_they_ran_on_and_the_evidence_they_made
 def test_fields_carry_their_source_date_precision_and_evidence():
     s = first_pass(base())
     found = lookup(s)
+    nothing = Lookup(
+        provider="google-maps-geocoding",
+        adapter_version="geocode-1",
+        query={"address": "Nowhere, Ill."},
+        status=LookupStatus.NO_MATCH,
+        raw_ref=f"{'1' * 64}:4",
+        digest="2" * 64,
+    )
+    s.run.lookups.append(nothing)
     region = s.run.regions[0]
-    right, _ = s.run.observations
     s.run.fields = {
         "date_visited_from": TracedField(
             state=ValueState.SUPPORTED,
@@ -374,17 +408,24 @@ def test_fields_carry_their_source_date_precision_and_evidence():
             state=ValueState.SUPPORTED,
             literal="Chicago",
             authority_id="fixture-place",
-            evidence_ids=[found.id, "no-such-evidence"],
-            input_source="raw_reading",
+            evidence_ids=[found.id, nothing.id, "no-such-evidence"],
+            evidence_relations={found.id: "supports", nothing.id: "supports", "no-such-evidence": "supports"},
+            input_source="decided_transcript",
             source_region_id=region.id,
-            source_observation_id=right.id,
+        ),
+        "country": TracedField(
+            state=ValueState.SUPPORTED,
+            literal="U.S.A.",
+            evidence_ids=[found.id],
+            input_source="decided_transcript",
+            source_region_id=region.id,
         ),
         "county": TracedField(),
     }
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
     decision = rows(result, "AppendTranscriptionVersionV2")[0]
-    date, city = rows(result, "AppendFieldCandidateV2")
+    date, city, country = rows(result, "AppendFieldCandidateV2")
     assert date["fieldKey"] == "date_visited_from"
     assert date["parsedValue"] == {
         "value": "1946-07",
@@ -395,11 +436,13 @@ def test_fields_carry_their_source_date_precision_and_evidence():
     assert (date["sourceTranscriptionId"], date["sourceObservationId"]) == (decision["id"], None)
     assert city["parsedValue"] is None
     assert (city["derivation"], city["authorityId"]) == ("literal", "fixture-place")
-    assert (city["sourceTranscriptionId"], city["sourceObservationId"]) == (None, right.id)
+    assert (city["sourceTranscriptionId"], city["sourceObservationId"]) == (decision["id"], None)
+    # Only a successful call's evidence is linked, and only with a relation: no default (G23).
     links = rows(result, "AppendCandidateEvidenceV2")
     assert [(link["candidateId"], link["evidenceId"], link["relation"]) for link in links] == [
         (city["id"], found.id, "supports")
     ]
+    assert country["id"] not in {link["candidateId"] for link in links}
 
 
 def test_a_deciding_source_makes_a_lookup_and_every_relation_is_kept():
@@ -431,6 +474,7 @@ def test_a_deciding_source_makes_a_lookup_and_every_relation_is_kept():
 
 def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
     s = first_pass(base(), selected=False)
+    found = lookup(s)
     right, left = s.run.observations
     s.run.fields = {
         "city": TracedField(
@@ -439,8 +483,11 @@ def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
             verbatim_by_observation={left.id: "Chimaltenango", right.id: "Chimaltenago"},
             normalized="Chimaltenango",
             authority_id="fixture-place",
+            evidence_ids=[found.id],
+            evidence_relations={found.id: "supports"},
             input_source="raw_reading",
             source_region_id=s.run.regions[0].id,
+            source_observation_id=left.id,
         )
     }
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
@@ -450,10 +497,21 @@ def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
         ("Chimaltenango", left.id, "raw_reading"),
         ("Chimaltenago", right.id, "raw_reading"),
     ]
-    assert all(c["authorityId"] == "fixture-place" and c["sourceTranscriptionId"] is None for c in candidates)
-    assert len({c["id"] for c in candidates}) == 2
+    assert all(c["sourceTranscriptionId"] is None for c in candidates)
+    # G20: only the confirmed reader's candidate carries the settled value and its evidence.
+    confirmed, other = candidates
+    assert (confirmed["normalizedValue"], confirmed["authorityId"]) == ("Chimaltenango", "fixture-place")
+    assert (other["normalizedValue"], other["authorityId"], other["derivation"]) == (None, None, "literal")
+    assert [link["candidateId"] for link in rows(result, "AppendCandidateEvidenceV2")] == [confirmed["id"]]
     (resolved,) = rows(result, "AppendResolvedFieldV2")
-    assert resolved["candidateId"] == candidates[0]["id"]
+    assert resolved["candidateId"] == confirmed["id"]
+    # With no reader confirmed, no single verbatim is implied.
+    s.run.fields["city"] = s.run.fields["city"].model_copy(
+        update={"source_observation_id": None, "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
+    )
+    unconfirmed = writes(s, locate, size, "worker-uid")
+    assert all(c["authorityId"] is None for c in rows(unconfirmed, "AppendFieldCandidateV2"))
+    assert rows(unconfirmed, "AppendResolvedFieldV2")[0]["candidateId"] is None
 
 
 def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
@@ -489,24 +547,38 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
         ("label_coverage_unconfirmed", None, "label_coverage_unconfirmed"),
     ]
     assert all((f["severity"], f["outcome"]) == ("hard", "fail") for f in findings)
+    assert all((f["runId"], f["evidenceIds"]) == (s.run.id, None) for f in findings)
+    assert [f["id"] for f in findings] == [
+        derived_id(record["id"], "finding", "hard", "mandatory_unresolved", "county", "mandatory_unresolved:county"),
+        derived_id(record["id"], "finding", "hard", "label_coverage_unconfirmed", "-", "label_coverage_unconfirmed"),
+    ]
+    found = lookup(s)
     s.run.findings = [
         Finding(
             rule_id="taxonomy_source_disagreement",
             rule_version="g23-v1",
             severity="warning",
             field_key="taxon",
-            reason_code="taxonomy_source_disagreement:taxon",
-        )
+            reason_code="taxonomy_source_disagreement",
+            evidence_ids=[found.id, "no-such-evidence"],
+        ),
+        # Two spelling warnings on different fields keep distinct ids (G27).
+        Finding(rule_id="spelling_disagreement", rule_version="g27-v1", severity="warning", field_key="city", reason_code="spelling_disagreement"),
+        Finding(rule_id="spelling_disagreement", rule_version="g27-v1", severity="warning", field_key="county", reason_code="spelling_disagreement"),
     ]
     warned = writes(s, locate, size, "worker-uid")
-    extra = rows(warned, "AppendValidationFindingV2")[-1]
+    extra, city_spelling, county_spelling = rows(warned, "AppendValidationFindingV2")[-3:]
     assert (extra["severity"], extra["outcome"], extra["ruleId"], extra["ruleVersion"]) == (
         "warning",
         "fail",
         "taxonomy_source_disagreement",
         "g23-v1",
     )
-    assert (extra["fieldKey"], extra["reasonCode"]) == ("taxon", "taxonomy_source_disagreement:taxon")
+    assert (extra["fieldKey"], extra["reasonCode"]) == ("taxon", "taxonomy_source_disagreement")
+    # Only evidence the run recorded is named.
+    assert extra["evidenceIds"] == [found.id]
+    assert city_spelling["id"] != county_spelling["id"]
+    assert city_spelling["evidenceIds"] is None
     assert rows(warned, "AppendRecordVersionV2")[0]["disposition"] == "needs_human_review"
     assert rows(warned, "AppendRecordVersionV2")[0]["id"] != record["id"]
     s.run.findings = []
