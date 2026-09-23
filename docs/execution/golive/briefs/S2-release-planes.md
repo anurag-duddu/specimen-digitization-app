@@ -90,8 +90,8 @@ Tests for every validator you change.
 `scripts/ci/deploy_data.py` and the initialization modules: a first
 initialization that matches the real state (database exists and is empty); then,
 on every push to `main` that changes `dataconnect/`, an additive-only check (PLAN
-section 4.4's expand-only definition, including its NOT NULL and `NO_ACCESS`
-rules; refuse anything else) and a `COMPATIBLE`
+section 4.4's expand-only definition, including its NOT NULL, unique-constraint
+relaxation and `NO_ACCESS` rules; refuse anything else) and a `COMPATIBLE`
 apply, the
 supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a

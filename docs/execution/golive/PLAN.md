@@ -209,11 +209,18 @@ only on columns the data contract names with a reason and never on provenance or
 idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
 `modelVersion`, `stepKey`, and the TRN-005 provenance `rawAssetId`,
 `promptVersion` and `inputSha256`), the gate reading a checked-in list of the
-allowed columns and refusing these keys even when that list names them; new indexes, unique constraints and foreign keys over new
-columns only; new connector operations, each `@auth(level: NO_ACCESS)` with the
+allowed columns and refusing these keys even when that list names them;
+replacing a unique constraint with one over a strict superset of its columns,
+which only relaxes it, on the same terms: the data contract names it with a
+reason, the gate reads it from the same checked-in list, checks the superset,
+and refuses it when the old constraint is the table's key or any existing
+operation uses it (the first case: `SourceAsset`'s object uniqueness becomes
+per specimen, because the blob store is content-addressed and identical bytes
+are one object across specimens, #88); new indexes, unique constraints and
+foreign keys over new columns only; new connector operations, each `@auth(level: NO_ACCESS)` with the
 membership `@check`s (`DATA.md` 73). The data plane's gate refuses everything
 else: dropped or renamed tables and columns, type changes, adding NOT NULL, key
-changes, uniqueness over existing columns, changed or removed operations, and
+changes, new uniqueness over existing columns, changed or removed operations, and
 operations at any other auth level. `AppendProfileVersionV2` is open to
 operators so that the projection can record the profile snapshot each run
 used, but its `approvedBy` stays null unless the caller is a reviewer or above

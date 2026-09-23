@@ -11863,6 +11863,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Records two coordinator rulings from #88's review: sensitive uploads are never processed by the worker, as the spec requires; `approvedBy` is null unless the caller is a reviewer with sensitive access.
   - Addresses the steward's merge review of #87 (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5804177173). The worker's membership step is specified. G26 now reaches traces, fixtures, lab folders and the request URL. The two gates that read only the last lookup are named. G21 is standing. The steward no longer updates branches. The TRN-005 keys join the never-drop list. `search.py` gets an owner.
   - One nit is declined with its reason: a separate lab read token (the owner reuses existing credentials). Docs only.
+  - Adds a coordinator ruling for #88: replacing a unique constraint with one over a strict superset of its columns counts as expand, on the same terms as a dropped NOT NULL. The first case is `SourceAsset`'s object uniqueness, which becomes per specimen because identical bytes share one content-addressed object.
 - Owner decisions (chat, 2026-09-23):
   - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
   - G28: taxon names work the same way.
