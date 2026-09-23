@@ -87,7 +87,7 @@ void main() {
     'codec asset keeps original identity and verifies decoded preview provenance',
     () async {
       var tamper = false;
-      final repo = ApiSpecimenRepository(
+      ApiSpecimenRepository connect() => ApiSpecimenRepository(
         baseUrl: Uri.parse('http://localhost:8014'),
         token: () async => 'test-only',
         client: MockClient((r) async {
@@ -106,6 +106,7 @@ void main() {
           );
         }),
       );
+      final repo = connect();
       final specimen = await repo.specimen(scope, completion['specimen_id']);
       expect(specimen.assets.single['width'], 64);
       expect(specimen.assets.single['height'], 96);
@@ -119,7 +120,15 @@ void main() {
         'decoded_heif_primary_pixel_edges',
       );
       tamper = true;
-      final rejected = await repo.specimen(scope, completion['specimen_id']);
+      // The session keeps the preview it verified (UI.md T1.5), so bytes
+      // changed on the wire behind the same checksums never replace it.
+      final reloaded = await repo.specimen(scope, completion['specimen_id']);
+      expect(reloaded.assets.single['preview_bytes'], preview);
+      // A session that downloads the changed bytes checks them and refuses.
+      final rejected = await connect().specimen(
+        scope,
+        completion['specimen_id'],
+      );
       expect(rejected.assets.single['preview_bytes'], isNull);
       expect(
         rejected.assets.single['preview_error'],
