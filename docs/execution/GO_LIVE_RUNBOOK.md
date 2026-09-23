@@ -1,5 +1,13 @@
 # Go-live runbook: the first-ten human-review release
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that
+> still enforces a superseded clause until a later go-live pull request
+> changes it.
+
 This page is for the project owner. It puts the whole release in order, says
 who does each step, and names the evidence to keep. It adds nothing to the
 contract: [`DEPLOYMENT.md`](../DEPLOYMENT.md) remains the authority on every
@@ -8,6 +16,15 @@ gate, [`RELEASING.md`](RELEASING.md) on minting the release envelope, and
 Nothing here deploys from a workstation. The read-only commands that obtain
 each owner-supplied value are in
 [`../../infra/release/OWNER_INPUTS.md`](../../infra/release/OWNER_INPUTS.md).
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. `DEPLOYMENT.md`'s gates, `RELEASING.md`'s release envelope and
+> `RELEASE_AUTHORIZATION.md`'s approval are amended: once the required
+> checks pass and the PR steward approves, a merge to `main` deploys data
+> and runtime releases automatically, and envelopes and authorization
+> artifacts are retired. The prohibition on deploying from a workstation or
+> agent shell is unchanged.
 
 ## What "live" means for this release
 
@@ -19,9 +36,24 @@ readers on every region, and then the administrator compares, corrects, saves
 and reopens all ten on the public URL. Cost stays inside the USD 12 cumulative
 ceiling ([`APPROVED_RELEASE_BUDGET.md`](APPROVED_RELEASE_BUDGET.md)).
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G9. Specimens are processed one at a time, on demand, including new
+> uploads, instead of one bounded worker execution over the whole cohort;
+> the ten remain the acceptance cohort, processed in order. The spending
+> ceiling is USD 25, cumulative, infrastructure and models together.
+
 It is not full-pipeline acceptance and not institutional acceptance. EMu,
 GBIF lookups, native apps, more than ten specimens, BYOK, Temporal, automated
 classification and automated clearance are out of scope.
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1. The full pipeline of PLAN section 1 is in scope, including the LLM
+> first pass, the agentic harness's lookups (GBIF among them) and the queue
+> decision; a record the harness resolves is cleared without a human. EMu,
+> native apps, BYOK and Temporal stay out of scope, and new uploads beyond
+> the ten are processed on demand under G2.
 
 ## Where things stood on 2026-09-22
 
@@ -37,6 +69,12 @@ The order below is fixed by the code, not by preference: Hosting green, then
 data, then runtime build, then runtime prepare, then client configuration and
 the import of the ten, then runtime activation and the one worker execution,
 then human review.
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. After the first release, the worker drains due work one specimen at a
+> time, on demand, instead of one execution over the whole cohort; SAM 3
+> serves any run the worker authorizes.
 
 ## Phase 0. Repository and credentials
 
@@ -83,6 +121,12 @@ on GitHub. Merge it through the pull request. The merge redeploys Hosting;
 verify the public marker with the four-argument smoke from `DEPLOYMENT.md`
 before going on. The merged commit is the source the first envelopes bind to.
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. There are no first envelopes to bind to: once this pull request's
+> required checks pass and the PR steward approves, merging it deploys data
+> and runtime releases automatically.
+
 ## Phase 2. Cloud bootstrap
 
 Owner, inside the approved action packets. Every item is a precondition the
@@ -114,6 +158,22 @@ only what is missing.
 | Required APIs (Cloud Run, Artifact Registry, Secret Manager, Cloud SQL Admin, Data Connect, reCAPTCHA Enterprise, Identity Toolkit, Storage for Firebase, IAM, STS) | All enabled. Billing is enabled on the "Firebase Payment" account; the Budget API is not enabled | None; a budget alert is optional |
 | Firebase Authentication email-link sign-in and the authorized domain; App Check enforcement and a budget line for reCAPTCHA Enterprise assessments | Not visible from the CLI | Owner confirms in the console. The organization-wide free quota is now 10,000 assessments a month |
 
+> 2026-09-23: The "Secret `specimen-worker-logfire`" row: Superseded for the
+> go-live program by [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G3. The scope to mint the writer secret for is no longer metadata-only:
+> system prompts and text inputs and outputs at every VLM, LLM and SAM 3
+> level, and the harness's tool calls, are recorded in Logfire and linked
+> from the specimen record. The amended scope is in
+> [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md).
+
+> 2026-09-23: The "eleven data-plane custom roles" row: Superseded for the
+> go-live program by [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. The "both data envelopes are installed" precondition no longer
+> applies: once the required checks pass and the PR steward approves, a
+> merge to `main` applies additive schema changes automatically.
+
 Evidence to keep: the recorded action packet and its receipt, the writer
 secret and identity receipts, the inventory log after the changes, and the
 exact resource names and secret version numbers, which go into the plans.
@@ -126,9 +186,21 @@ receipt is written. The writer secret, its identity receipt, the bucket
 setting and the token rotation are persistent and can be done any time
 before.
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. There are no data envelopes in Phase 4 to install. How the one-time,
+> time-bounded initializer window lines up with the automatic data release
+> is specified in the release workstream's data-plane pull request
+> ([`golive/RELEASE.md`](golive/RELEASE.md)).
+
 ## Phase 3. Private artifacts
 
 Owner and coordinator, before any envelope is minted.
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. No envelope is minted: once the required checks pass and the PR
+> steward approves, a merge to `main` deploys the release automatically.
 
 | Artifact | How it comes to exist |
 |---|---|
@@ -138,6 +210,18 @@ Owner and coordinator, before any envelope is minted.
 | Authorization artifact for this source commit | Owner's private record of approval, bound to the merged commit |
 | Cost review, and the shared ledger upgraded to `release-cost-ledger/v3` with `reserved` rows in all eleven categories for the exact run and attempt | Coordinator, from the surviving v2 ledger; reserving cost is a spending decision the mint refuses to make |
 | Independent review report | A reviewer session that is not the coordinator's |
+
+> 2026-09-23: The "Recipient keys for the catalog and evidence envelopes,"
+> "Authorization artifact for this source commit," "Cost review... ledger,"
+> and "Independent review report" rows: Superseded for the go-live program
+> by [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. Release envelopes, cost ledgers and reservations,
+> independent-review reports and authorization artifacts are retired for
+> this program; the PR steward's fresh-swarm review of the pull request
+> replaces the independent-review report. Where cost still matters, the
+> spending ceiling is USD 25, cumulative, infrastructure and models
+> together.
 
 ## Phase 4. Data initialization and apply
 
@@ -150,8 +234,19 @@ database exists and is empty ([`DATABASE_INITIALIZATION.md`](DATABASE_INITIALIZA
    exactly as `RELEASING.md` describes: `--plane data-initialization` for
    `data-initialization-production` and `--plane data` for `data-production`.
    Install the secret and the four variables in each environment.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G11. No envelope is minted and no `RELEASE_INPUTS_B64` secret or
+   > `RELEASE_*` variables are installed: once the required checks pass and
+   > the PR steward approves, a merge to `main` runs this data release
+   > automatically.
 3. Re-run all jobs of that run before the packet deadline. Never dispatch a
    new run and never re-run failed jobs only.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G11. There is no packet deadline or separate re-run step: the
+   > automatic deploy on merge (see the note on step 2) runs the release
+   > once, from the merged commit.
 4. Watch it through: recovery proof, initializer window, disposal, compatible
    apply, connector publication, Storage ruleset, clone cleanup.
 5. When the bootstrap plan is ready, mint and run the `data-bootstrap/v1`
@@ -161,6 +256,11 @@ database exists and is empty ([`DATABASE_INITIALIZATION.md`](DATABASE_INITIALIZA
    departments and their sub-collections, with `Insects` beneath `Zoology`
    as the pilot's scope) and the administrator's two memberships, and the
    release verifies every row before it writes its receipt.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G11. The bootstrap phase deploys the same way as step 2's data
+   > release: automatically, on merge, without minting an envelope. The
+   > hierarchy-mode content it applies is unchanged.
 
 Evidence to keep: the attested `data-ready` and `native-recovery` artifacts,
 the receipts, the clone deletion time, and the encrypted bootstrap evidence.
@@ -171,11 +271,25 @@ the receipts, the clone deletion time, and the encrypted bootstrap evidence.
    the failed `Protected runtime release` run, install it, re-run all jobs.
    The three images are built from the exact merged source, attested and
    pushed with immutable tags.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G11. No envelope is minted: once the required checks pass and the PR
+   > steward approves, a merge to `main` builds and deploys these images
+   > automatically. They stay attested and immutable-tagged, built from the
+   > merged commit.
 2. Mint the `runtime` envelope for `runtime-production` for the prepare
    phase, install it together with `RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256`
    (the digest of the version 2 human-review scope), re-run all jobs. The API
    and SAM services and the worker job are created from the attested images.
    A first creation serves the API at its URL immediately.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G1 and G11. `RELEASE_HUMAN_REVIEW_AUTHORIZATION_SHA256`, the deferred-
+   > clearance authorization digest, no longer applies: a record the
+   > agentic harness resolves is cleared without a human. No envelope is
+   > minted or `RELEASE_*` variable installed; the merge itself deploys the
+   > prepared services automatically once the required checks pass and the
+   > PR steward approves.
 3. Verify the API from outside: `/version` and `/health/ready` report
    production and the merged commit; an anonymous request to `/v1/session`
    is refused.
@@ -196,6 +310,13 @@ the receipts, the clone deletion time, and the encrypted bootstrap evidence.
 
 ## Phase 7. Activation and the one worker execution
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. After the first release there is no single worker execution
+> over the whole cohort and no envelope minted for it: the worker drains due
+> work one specimen at a time, on demand, and SAM 3 serves any run the
+> worker authorizes and scales to zero instead of expiring within an hour.
+
 1. Populate the SAM checkpoint cache if not already done, and confirm the
    secret versions in the activation plan.
 2. Mint the activation envelope for `runtime-production`, install it, re-run
@@ -204,6 +325,12 @@ the receipts, the clone deletion time, and the encrypted bootstrap evidence.
    one worker execution keyed to the manifest digest. The worker runs SAM 3
    and both readers for every region inside the approved 3,500 seconds. The
    SAM service expires within one hour on its own.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G2 and G11 (see the note under this phase's heading). No envelope is
+   > minted; the worker drains due work one specimen at a time instead of
+   > dispatching one execution for all ten, and SAM 3 no longer expires
+   > within an hour on its own.
 
 Evidence to keep: the activation receipt, the worker dispatch intent, the
 execution outcome, and the per-specimen receipts in Storage.
@@ -217,7 +344,17 @@ execution outcome, and the per-specimen receipts in Storage.
    four manual subcriteria ([`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)).
 3. Reconcile cost: every reservation category closed with an artifact, the
    ledger appended, the cumulative total inside USD 12.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G9 and G11. Cost ledgers and reservation artifacts are retired for this
+   > program. The spending ceiling is USD 25, cumulative, infrastructure and
+   > models together.
 4. Independent reconciliation of deployed source, results and cleanup.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G11. The reconciliation stays; the PR steward's post-merge deploy check
+   > performs it instead of a separate independent reviewer, whose report is
+   > retired.
 5. Append the closeout to `docs/SESSION_LEARNINGS.md` with the commit,
    pull request, run ids, marker and smoke results.
 
@@ -231,6 +368,13 @@ Only after step 5 is the release complete.
   source commit, a window that expired, a ledger without reserved rows, or a
   reviewer session equal to the coordinator's. Mint a fresh envelope against
   the current run; a packet is never edited.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+  > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G11. There is no envelope, packet, reservation ledger or independent
+  > reviewer session to admit. Admission keeps only the checks that stay,
+  > the protected branch and the five checks on the exact merged commit;
+  > when one fails, the fix goes through a pull request and the next merge
+  > deploys.
 - The restore rehearsal crashes after claiming the held Storage object: the
   allowance is consumed by contract and no workflow can retry. This is a new
   authorization decision for the owner, recorded in `CLONE_ALLOWANCE.md`
@@ -238,5 +382,10 @@ Only after step 5 is the release complete.
 - The worker's outcome is unknown: it exits without retrying by design.
   Read the execution log and the per-specimen receipts; a second execution
   is a new dispatch decision under the same budget.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+  > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G2. There is no single execution over the whole cohort to redispatch:
+  > the API starts a worker execution when work is due, and the worker
+  > drains it one specimen at a time, within the USD 25 ceiling.
 - The public site is broken: follow the emergency rollback rule in
   `DEPLOYMENT.md`, which covers Hosting only.

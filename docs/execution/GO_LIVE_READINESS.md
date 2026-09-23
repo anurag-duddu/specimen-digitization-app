@@ -6,6 +6,12 @@ and what only the owner can do. The ordered procedure is in
 [GO_LIVE_RUNBOOK.md](GO_LIVE_RUNBOOK.md). The contract is unchanged:
 [`DEPLOYMENT.md`](../DEPLOYMENT.md).
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) supersede parts of this document for the go-live program.
+> Each superseded clause keeps its original text and carries a dated note
+> naming the decision. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
+> that still enforces a superseded clause until a later go-live pull request
+> changes it.
+
 The assessment was assembled from twelve read-only research passes over the
 code, the workflows, the release scripts and their tests, the product and
 execution documents, the session log, the live public site, the GitHub
@@ -79,6 +85,10 @@ the USD 12 ceiling was never created. The ten pilot subjects are recorded in
 [SOURCE_BROWSE_AND_RUN.md](SOURCE_BROWSE_AND_RUN.md) as
 `subject_105526321` to `subject_105526330`.
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G9 and G11.
+> The spending ceiling for the go-live program is USD 25, cumulative, across
+> infrastructure and models, and cost ledgers retire for this program.
+
 ## 2. What blocks the first live release
 
 In the order they must be cleared.
@@ -93,10 +103,20 @@ In the order they must be cleared.
    runtime identities their resource permissions once the connector exists,
    and enforcing public access prevention on the bucket. The workflows verify
    these and refuse to create them.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
+   > Leaving tracing out is no longer an option: system prompts and the
+   > harness's tracing must be visible in Logfire, linked to the specimen
+   > record.
 3. The private artifacts in Phase 3, including a version 3 ledger with
    reserved rows and a manifest re-frozen from the owner's ordered catalog.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+   > Cost ledgers and authorization artifacts, including this manifest freeze,
+   > retire for this program.
 4. Fresh envelopes per environment, bound to the merged readiness commit and
    the failed run they will re-run.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+   > Envelopes retire for this program; a merge to `main` deploys automatically
+   > once the required checks pass and the PR steward approves.
 
 ## 3. Defects found and fixed in the readiness pull request
 
@@ -131,21 +151,32 @@ release path, with a test.
 - The production session endpoint reports two permanent blockers and no
   production ingest can finalize a record. Both are intended for the
   human-review release, which does not finalize.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1.
+  > The human-review release is superseded: a record the agentic harness
+  > resolves is cleared without a human, so ingest can finalize.
 - The source-browse import surface is not wired in the production app
   factory. The pilot imports the ten through the ordinary upload flow, as the
   contract specifies, so this is a follow-up for the 1,000-image scope, not a
   go-live blocker.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G2.
+  > Wiring source import in production is in scope for the go-live program now,
+  > not deferred; intake starts processing on upload and on request.
 - The API has no per-principal rate limit and accepts large decodes inside a
   1 GiB container. Acceptable for one administrator behind App Check and a
   domain allowlist; a follow-up before any wider audience.
 - The independent review is a session id that differs from the
   coordinator's, not a GitHub review. A follow-up could bind it to an
   approving review from a different login.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+  > Independent-review reports retire for this program; the PR steward's review
+  > and approval gate the merge instead.
 - The runtime-build envelope keeps the 1,800-second default window while an
   image build may take up to 3,600 seconds and the publication budget is
   capped by the packet expiry. Widening a default is a deliberate loosening,
   so it is left for the owner to set explicitly at mint time with
   `--window-seconds`; the admission cap of 7,200 seconds still applies.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+  > Envelopes, including this runtime-build window, retire for this program.
 - The worker's non-timing production path still leaves the telemetry send
   setting unspecified; the bounded path the approval covers is unaffected.
 - No `runtime-build` plan version exists in the deploy script: the build
@@ -188,7 +219,16 @@ Checked against platform documentation current in 2026.
 
 - Make the repository public to restore branch protection.
 - Release by the book, with defect fixes only; no contract simplification.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+  > The release contract is simplified for this program: envelopes, cost
+  > ledgers, independent-review reports and authorization artifacts retire, and
+  > a merge deploys automatically once required checks pass and the PR steward
+  > approves.
 - Scope is the first-ten human-review pilot, web only, one administrator.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1 and G2.
+  > Scope is the whole pipeline, one specimen at a time, on demand; a record the
+  > harness resolves is cleared without a human, and the ten remain the
+  > acceptance cohort, processed in order.
 - The coordinator runs the read-only cloud inventory after the owner signs
   in.
 - Later the same day: the whole collection tree is bootstrapped in the first
@@ -196,12 +236,19 @@ Checked against platform documentation current in 2026.
   in the first runtime plan rather than left out. The IAM setup window's
   exact packet is recorded by `scripts/ci/data_setup_window.py` for the
   owner's approval.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
+  > Metadata-only is superseded: system prompts and the harness's tracing at
+  > every VLM, LLM and SAM 3 level are now visible in Logfire, linked to the
+  > specimen record.
 
 ## 7. Still open for the owner
 
 - The administrator's fieldmuseum.org account, and the organization and
   collection names to freeze.
 - The independent reviewer session.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+  > Independent-review reports retire for this program; no independent reviewer
+  > session is required.
 - The current location of the SAM 3 checkpoint and the ordered catalog the
   manifest is frozen from.
 - Rotating the Hugging Face token, and confirming data-processing approval
@@ -209,3 +256,7 @@ Checked against platform documentation current in 2026.
 - The ongoing budget after the pilot. Logfire stays metadata-only under the
   2026-09-14 approval; content capture would need a new approval and a
   privacy review.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
+  > G3 is that new approval for the go-live program: system prompts and text
+  > inputs and outputs are recorded in Logfire under the amended scope in
+  > APPROVED_LOGFIRE_TRACING.md; images stay excluded.

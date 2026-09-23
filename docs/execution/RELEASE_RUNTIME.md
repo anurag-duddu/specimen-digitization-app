@@ -4,6 +4,13 @@ Current approved budget/duration: see the [September 14 amendment](APPROVED_RELE
 Historical USD5/30-minute statements below remain applicable to legacy artifacts;
 new release inputs must explicitly select the approved additive contracts.
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the decision.
+> [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that still enforces a
+> superseded clause until a later go-live pull request changes it.
+
 Owner task `01a082b4-a9bd-7392-a73b-57ca45532fb7`, model/effort
 `gpt-6-astra/xhigh` confirmed by coordinator inspection of turn context.
 Worktree `/Users/anuragduddu/.codex/worktrees/7471/specimen-digitization-app`,
@@ -17,6 +24,11 @@ The baseline main already includes prior API, worker, SAM and materialization
 corrections. Historical unmerged statements in LIVE reports are not current
 blockers. The total shared first-ten spending ceiling is USD 5, with USD 4 as
 the working target, without a reset between sessions, retries or days.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9. The spending ceiling is USD 25, cumulative, infrastructure and models
+> together, replacing this USD 5/USD 4 figure.
 
 ## Confirmed repairs and TDD evidence
 
@@ -57,6 +69,12 @@ escalations; none was bypassed. No current tool wait is represented as a pass.
 | API | Existing `containers/api/Dockerfile`; embedded exact `SOURCE_SHA`; `specimen-api --mode production`; PORT defaults 8080; explicit Firebase project/number/app allowlist, exact CORS origins, SQL location/service/connector, approved bucket and pinned readiness object/generation from LIVE_API | `/health/live` is process-only; `/health/ready` is cached read-only named SQL query plus object metadata, not model or write proof; `/version` embeds source/contract/mode | Existing 8s ASGI drain and 9s hard watchdog; one process; data remains external |
 | Worker | Existing `containers/worker/Dockerfile`; `specimen-worker --mode production --launch-policy <private> --source-manifest <private>` plus evidence-only/profile flags when authorized; external launch hash, exact ten manifest/checkpoint pins, actor and HF secret version, inference approval and approved SAM endpoint/revision | `--version` reads embedded source; `--check-config` validates private launch inputs and returns `live_services_verified:false`; final summary reloads all ten and cannot equate pending/unknown with completion | SIGTERM sets stop between work steps; active model subprocess is bounded by launch timeout; durable dispatch/intent fences prevent replay. `--max-seconds` 1..1500 is a scheduling bound, not a hard bound on cloud SDK teardown |
 | SAM | Existing AMD64-only `containers/worker/sam3.Dockerfile`; UID10001; authorized-pilot enable flag, budget reference, K_SERVICE, pinned private ready manifest, caller/audience, evidence bucket, offline read-only checkpoint cache with required aggregate pin, and absolute expiry; no HF credential; startup window >125s and <=3600s | CLI `--version` gives source/model/revision/implementation without loading; `/health/live` is exposed only after synchronous model construction. No separate deployed readiness/version HTTP endpoint exists | One process, one model request at a time; 120s request hard timer, 5s drain, absolute expiry including startup. New timer repair prevents a failed startup or returned server from waiting until expiry |
+
+> 2026-09-23: The "Worker" and "SAM" rows: superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. Specimens are processed one at a time, on demand, instead of an exact
+> ten-manifest pinned batch; SAM 3 serves any run the worker authorizes and
+> scales to zero instead of expiring after an hour.
 
 `--materialize-config` keeps strict readers intact while copying hash-pinned
 read-only mounts into private UID-owned runtime files. No credentials, images,
@@ -111,12 +129,26 @@ are excluded. Raw responses, crop hashes, model/provider/prompt and token usage
 are retained. Evidence-only runs stop at `pilot_evidence_review_required`, with
 unresolved readings, no disposition, no invented calibrated risk and no clearance.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1, G2 and G11. The full pipeline, including the harness's lookups, is in
+> scope, and a harness-resolved record is cleared without a human; specimens
+> are processed one at a time instead of through this frozen-manifest ledger;
+> and cost reservations are retired for this program.
+
 Actual issued Auth/App Check tokens, production ADC, SQL operations, object
 writes/reads, ten-source model results and deployed restart recovery remain
 **Not confirmed**. Local suites and image/container construction do not close
 those gates.
 
 ## Current pricing, cardinality and conservative reservations
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together; cost ledgers and reservations, including the
+> stage-reservation ledger this section works toward, are retired in favor of
+> automatic deploy on merge.
 
 Public primary sources checked 2026-09-08: [Novita pricing](https://novita.ai/pricing)
 lists Qwen input/output USD 0.20/0.70 per million tokens; [DeepInfra Muse API](https://deepinfra.com/meta-models/Muse-Glimmer-30B/api)
@@ -214,7 +246,22 @@ production auth/authorization/storage/database/model acceptance; independent
 review of the integrated candidate. No manual deploy, cloud mutation, paid call,
 model/provider change, Temporal selection, push, merge or pruning occurred here.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. Specimens are processed one at a time instead of as a frozen
+> exact-ten manifest; release envelopes, cost-reservation packets and
+> independent-review reports are retired, replaced by the required checks and
+> the PR steward's approval.
+
 ## Authorized follow-up: stage reservations and offline SAM
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. Specimens are processed one at a time, on demand, instead of
+> one worker execution over an exact ten-specimen cohort; the spending ceiling
+> is USD 25, cumulative; and the cost-reservation ledger this section
+> implements, along with the authorization artifacts, is retired in favor of
+> automatic deploy on merge.
 
 Coordinator subsequently confirmed the user's protected runtime/data release
 and bounded Google setup approvals, recorded in `RELEASE_AUTHORIZATION.md` in
@@ -330,6 +377,12 @@ This is local component evidence, not a new cohort run or release image.
 
 ### Native SAM qualification inside the one authorized execution
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. Specimens are processed one at a time, on demand, instead of within one
+> worker execution across all ten; SAM 3 serves any run the worker authorizes
+> and scales to zero instead of expiring after an hour.
+
 No separate qualification job is necessary. Existing `EvidencePilotWorkflow`
 orders quality, segmentation and only then readers. `Sam3Service` runs the
 authenticated request under the existing at-most-120-second external deadline.
@@ -349,6 +402,14 @@ result. The 120-second deadline remains unchanged and full native/end-to-end
 acceptance remains Not confirmed until these receipts exist.
 
 ### Full pipeline scope and remaining configuration
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1, G9 and G11. The full pipeline, including automated clearance and the
+> harness's lookups such as GBIF, is this program's scope rather than
+> deferred, so a harness-resolved record clears without a human; the spending
+> ceiling is USD 25, cumulative; and the cost ledger this section describes is
+> retired for this program.
 
 An evidence-only pilot is an intermediate evidence collection step. It does not
 exercise ordinary classification, structured extraction, the complete authority
