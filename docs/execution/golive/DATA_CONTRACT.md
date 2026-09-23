@@ -9,8 +9,9 @@ transcript should run against (it should also give at a VLM level what was
 returned to the harness) ... obviously everything should link back to the
 specimen record/id". Owner decisions G15 (automatic coverage check), G16
 (`identified_by_irn` optional), G19 (the harness runs on each raw reading when
-the first pass selects none) and G20 (a lookup confirming exactly one reader's
-literal resolves the disagreement) are included.
+the first pass selects none), G20 (a lookup confirming exactly one reader's
+literal resolves the disagreement), G24 (dates clear at the precision written)
+and G26 (only the place id from Google) are included.
 
 This page fixes what SQL holds for every run, which domain fields each row comes
 from, and the exact schema and connector additions. The lane (S3) and the first
@@ -38,11 +39,13 @@ reads them.
    have several regions (slides 324-328 have two labels); everything from the
    readings to the first pass is per region, and a field records the region
    and reading its literal came from.
-6. No Google Geocoding latitude or longitude is stored anywhere (Google Maps
-   Platform Service Specific Terms 6.3.1): not in a column, a `result`, an
-   evidence row or a stored raw response. S4 redacts them before storage and
-   keeps the full response's digest; SQL holds the place id, the matched name
-   and components, and the outcome.
+6. From Google geocoding only the place id, our own outcome and a digest of the
+   response are kept (G26; Google Maps Platform Service Specific Terms 6.3.1).
+   No Google name, address component or coordinate is stored anywhere: not in
+   a column, a `result`, an evidence row, a stored blob, the snapshot or a
+   trace. The stored record behind a Google `EvidenceItem` holds only those
+   three values, its `responseSha256` is the digest of Google's full response,
+   and its `locator` is `place/{place id}`.
 
 ## 2. What SQL holds, stage by stage
 
@@ -98,7 +101,8 @@ call serves several), `inputSource` (`decided_transcript` or `raw_reading`),
 one region's text (null when it spans regions), `attempt` (1 based),
 `arguments: Any!`, `outcome` (exactly the 11 HAR-008 values, checked in the
 operation), `result: Any` (bounded: `candidates`, `retry_after` and the
-sanitized `error` of CONTRACTS.md's `LookupResult`; never the raw response),
+sanitized `error` of CONTRACTS.md's `LookupResult`; never the raw response; a
+Google geocoding candidate is its place id and nothing else),
 `evidenceId` (the `EvidenceItem` the call produced), `startedAt`,
 `completedAt`.
 
@@ -183,6 +187,12 @@ Each `FieldValue` in `Run.fields` gains `input_source`, `source_region_id` and
 `source_observation_id`, so a field's literal traces to the decided transcript
 or to the raw reading it came from. When a lookup confirms exactly one reader's
 literal (G20), the field records `raw_reading` and that reading's observation.
+
+A parsed date carries its precision and the rule that set its century (G24):
+`FieldValue` gains `precision` (`day`, `month` or `year`) and `century_rule`
+(for example `insects-two-digit-year-19xx`, the Insects rule that a two-digit
+year reads as 19xx), and the writer stores `parsedValue` as `{value, precision,
+century_rule}` whenever either is set, otherwise as the parsed value alone.
 
 ## 5. Identifiers
 
