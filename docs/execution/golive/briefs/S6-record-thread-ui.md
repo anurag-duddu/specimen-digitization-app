@@ -39,7 +39,8 @@ readings grouped under each region (several per specimen: five pilot slides
 carry two labels); each reader's identity (route, model,
 provider, prompt version); the disagreement score labelled uncalibrated; the
 first pass's decision and what each reader handed to the harness; the harness's
-lookups as a timeline with their typed outcomes; fields grouped mandatory and
+lookups as a timeline with their typed outcomes (a geography lookup shows the
+place ID and its outcome only, G26); fields grouped mandatory and
 optional with state and evidence; the queue decision with its reasons,
 including a failed automatic coverage check (G15); and
 "Open trace", a link built from the Logfire project configuration and the trace
