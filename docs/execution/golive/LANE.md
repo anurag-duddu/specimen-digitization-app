@@ -141,6 +141,12 @@ The release plane injects the value from Secret Manager, because it names privat
 collection identifiers. The routes, their roles and the integrity rules are
 unchanged (`CONTRACTS.md` 482-685).
 
+Both new API variables fail closed at start, in `RuntimeConfig`:
+
+- `SPECIMEN_WORKER_JOB` must name a job in the configured project.
+- Every source must be a valid `RegisteredSource` with no extra keys, in the
+  approved bucket (`SPECIMEN_GCS_BUCKET`), and registered once.
+
 A first capture of `microscopic-slides/` digests about 1,000 objects and took
 256 s when measured (`SESSION_LEARNINGS.md`, 2026-09-14 entry). Until capture moves
 to the worker plane, `CONTRACTS.md` 540-547 makes it an operator call with a long
