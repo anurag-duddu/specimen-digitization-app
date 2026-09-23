@@ -83,7 +83,10 @@ type ProfileVersion @table(key: ["organizationId", "collectionId", "id"]) {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-type SourceAsset @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName", "generation"]) {
+# Step 1 of making object uniqueness per specimen (DATA_CONTRACT.md 3.3): the blob store is
+# content-addressed, so byte-identical assets of different specimens are one stored object. T2a
+# drops specimen_unique_1 in a later apply, once this constraint exists.
+type SourceAsset @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName", "generation"]) @unique(indexName: "source_asset_specimen_object", fields: ["organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation"]) {
   organizationId: UUID!
   collectionId: UUID!
   collection: Collection! @ref(constraintName: "scope_ref_7", fields: ["organizationId", "collectionId"])
@@ -131,6 +134,8 @@ type LabelRegion @table(key: ["organizationId", "collectionId", "id"]) {
   id: UUID! @default(expr: "uuidV4()")
   runId: UUID!
   run: PipelineRun! @ref(constraintName: "scope_ref_14", fields: ["organizationId", "collectionId", "runId"])
+  # The domain's region id, which repeats across runs; the row's id is per run (DATA_CONTRACT.md 5).
+  domainRegionId: String
   sourceAssetId: UUID!
   sourceAsset: SourceAsset! @ref(constraintName: "scope_ref_15", fields: ["organizationId", "collectionId", "sourceAssetId"])
   cropAssetId: UUID
@@ -245,7 +250,8 @@ type EvidenceItem @table(key: ["organizationId", "collectionId", "id"]) {
   adapterVersion: String!
   query: Any!
   outcome: String!
-  locator: String!
+  # Null when the source found no single match (DATA_CONTRACT.md 3.3).
+  locator: String
   responseSha256: String!
   capturedAt: Timestamp!
   rawAssetId: UUID!
@@ -460,6 +466,8 @@ type ValidationFinding @table(key: ["organizationId", "collectionId", "id"]) {
   outcome: String!
   fieldKey: String
   reasonCode: String!
+  # The evidence behind the finding, all of the record version's run.
+  evidenceIds: [UUID!]
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
