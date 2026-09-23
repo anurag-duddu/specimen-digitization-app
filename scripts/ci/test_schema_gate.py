@@ -82,14 +82,12 @@ type ReadingComparison @table(key: ["organizationId", "collectionId", "id"]) @un
   regionId: UUID!
   leftObservationId: UUID!
   leftObservation: ModelObservation! @ref(fields: ["organizationId", "collectionId", "leftObservationId"], constraintName: "comparison_left")
-  rightObservationId: UUID!
   reasons: [String!]!
 }
 '''
 TRANSCRIPTION = r'''  # The first pass's decision for one region; null on legacy rows.
   regionId: UUID
   region: LabelRegion @ref(constraintName: "transcription_region", fields: ["organizationId", "collectionId", "regionId"])
-  decisionKind: String
   selectedObservationId: UUID
   selectedObservation: ModelObservation @ref(constraintName: "transcription_selected", fields: ["organizationId", "collectionId", "selectedObservationId"])
 '''
@@ -122,7 +120,6 @@ def check(schema=BASE, connector=OPS):
 
 
 ACCEPTED = {
-    "unchanged": (BASE, OPS),
     "new table": (BASE + COMPARISON, OPS),
     "new view": (BASE + 'type Other @view(sql: "SELECT 1 AS one") {\n  one: Int\n}\n', OPS),
     "new nullable fields with a reference over a new field": (edit(BASE, "  note: String\n", "  note: String\n  regionId: UUID\n"
@@ -171,11 +168,13 @@ SCHEMA_REFUSED = [
      ["LabelRegion.sourceAsset: NOT NULL dropped outside the named relaxations"]),
     ("relation whose column keeps NOT NULL", edit(BASE, "  cropAsset: SourceAsset!", "  cropAsset: SourceAsset"),
      ["LabelRegion.cropAsset: NOT NULL dropped outside the named relaxations"]),
-    ("new foreign key over existing fields", edit(BASE, "  cropAssetId: UUID!\n", '  cropAssetId: UUID!\n  crop: SourceAsset '
-     '@ref(constraintName: "crop_again", fields: ["organizationId", "cropAssetId"])\n'),
-     ["LabelRegion.crop: new foreign key over existing fields only"]),
-    ("field-level @unique over an existing field", edit(BASE, "  kind: String!", "  kind: String! @unique"),
-     ["SourceAsset.kind: @unique added"]),
+    ("new fields over existing columns", edit(BASE, "  cropAssetId: UUID!\n", '  cropAssetId: UUID!\n  crop: SourceAsset @ref('
+     'constraintName: "crop_again", fields: ["organizationId", "cropAssetId"])\n  source: SourceAsset\n  alias: UUID @col(name: '
+     '"crop_asset_id")\n'), ["LabelRegion.alias: new field over an existing column", "LabelRegion.crop: new foreign key over "
+     "existing fields only", "LabelRegion.source: new relation without @ref fields over a new field"]),
+    ("new type over an existing SQL table", BASE + 'type Assets @table(name: "source_asset") {\n  id: UUID\n}\n',
+     ["Assets: new type over an existing SQL table or view"]),
+    ("field-level @unique over an existing field", edit(BASE, "  kind: String!", "  kind: String! @unique"), ["SourceAsset.kind: @unique added"]),
     ("type-level @unique over an existing field", edit(BASE, '"createdAt"]) {', '"createdAt"]) @unique(fields: ["kind", '
      '"batchId"]) {\n  batchId: UUID\n'), ["SourceAsset: new type-level @unique over an existing field"]),
     ("type-level constraint changed", edit(BASE, '["bucket", "generation"]', '["generation", "bucket"]'),
@@ -183,8 +182,7 @@ SCHEMA_REFUSED = [
     ("type-level constraint removed", edit(BASE, '\n  @index(fields: ["organizationId", "createdAt"])', ""),
      ["SourceAsset: type-level @index removed or changed"]),
     ("@table name changed", edit(BASE, '"source_asset", key', '"assets", key'), ["SourceAsset: @table key or name changed"]),
-    ("@table key changed", edit(BASE, '@table(key: "id")', '@table(key: ["id", "provider"])'),
-     ["ModelObservation: @table key or name changed"]),
+    ("@table key changed", edit(BASE, '@table(key: "id")', '@table(key: ["id", "provider"])'), ["ModelObservation: @table key or name changed"]),
     ("view changed", edit(BASE, "AS b --", "AS c --"), ["AssetListing: view changed"]),
     ("view removed", drop(BASE, r"type AssetListing .*?\n}\n"), ["AssetListing: view removed or renamed"]),
 ]
@@ -209,9 +207,8 @@ CONNECTOR_REFUSED = [
     ("membership check only inside a string", OPS + edit(NEW_OP, MEMBERSHIP, 'collectionMember(key: {uid: $actorUid}) '
      '@check(expr: "organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(") { active }'),
      ["AddRegion: new operation without the organizationMember @check"]),
-    ("membership check only inside a comment", OPS + edit(NEW_OP, MEMBERSHIP, f"# {MEMBERSHIP}\n    "
-     "organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) { active }"),
-     ["AddRegion: new operation without the organizationMember @check"]),
+    ("membership check only inside a comment", OPS + edit(NEW_OP, MEMBERSHIP, f"# {MEMBERSHIP}\n    " + MEMBERSHIP.replace(
+        ' @check(expr: "this.active")', "")), ["AddRegion: new operation without the organizationMember @check"]),
     ("skippable membership check", OPS + edit(NEW_OP, '"this.active")', '"this.active") @skip(if: true)'),
      ["AddRegion: new operation uses @skip or @include"]),
     ("nullable actor", OPS + edit(NEW_OP, "$actorUid: String!", "$actorUid: String"),
@@ -325,8 +322,7 @@ def test_sources_from_rest_responses_and_committed_directories(tmp_path):
     with pytest.raises(ValueError, match="placeholder"):
         M.check_additive({}, SCHEMA, {}, CONNECTOR)
     for invalid in (None, {}, {"source": {"files": [{"path": "connector.yaml", "content": ""}]}},
-                    {"source": {"files": [{"path": "a.gql", "content": 1}]}},
-                    {"source": {"files": [{"path": "a.gql", "content": ""}] * 2}}):
+                    {"source": {"files": [{"path": "a.gql", "content": 1}]}}, {"source": {"files": [{"path": "a.gql", "content": ""}] * 2}}):
         with pytest.raises(ValueError):
             M.live_sources(invalid, None)
     for name in ("b.gql", "a.gql", "connector.yaml"):
@@ -334,6 +330,9 @@ def test_sources_from_rest_responses_and_committed_directories(tmp_path):
     assert list(M.read_tree(tmp_path).items()) == [("a.gql", "a.gql"), ("b.gql", "b.gql")]
     with pytest.raises(ValueError):
         M.read_tree(tmp_path / "missing")
+    (tmp_path / "c.gql").write_bytes(b"type \xff")
+    with pytest.raises(ValueError, match="^source file is not UTF-8$"):
+        M.read_tree(tmp_path)
 
 
 def test_cli_compares_live_directories_with_the_committed_tree(tmp_path, capsys):
