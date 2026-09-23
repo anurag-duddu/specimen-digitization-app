@@ -35,11 +35,13 @@ The live web app shows each specimen's whole processing thread (PLAN section
 
 **T2. The thread view.** Build against the thread API contract from the data
 workstream (S5), with a fixture until the endpoint lands: regions with the
-readings grouped under each region; each reader's identity (route, model,
+readings grouped under each region (several per specimen: five pilot slides
+carry two labels); each reader's identity (route, model,
 provider, prompt version); the disagreement score labelled uncalibrated; the
 first pass's decision and what each reader handed to the harness; the harness's
 lookups as a timeline with their typed outcomes; fields grouped mandatory and
-optional with state and evidence; the queue decision with its reasons; and
+optional with state and evidence; the queue decision with its reasons,
+including a failed automatic coverage check (G15); and
 "Open trace", a link built from the Logfire project configuration and the trace
 id. Use `specimen_ui` components; there is no timeline component yet, so add one
 to the package with its own tests.
@@ -68,6 +70,8 @@ relax the gate.
   copy `firebase_options.ci.dart` to `lib/firebase_options.dart` for builds and
   remove it afterwards; never commit it.
 - Hot reload through the Dart MCP server when an app instance is running.
+- Where the specification or the design documents are silent or contradictory,
+  stop and ask the coordinator; do not decide (G5).
 
 ## Done
 
