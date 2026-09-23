@@ -1,8 +1,8 @@
 # Go-live program: the full pipeline on the first ten specimens, one at a time
 
 Status: active, started 2026-09-23, corrected the same day after the PR
-steward's review of #72, which auto-merge had merged before the review
-finished. Coordinator: the Claude session titled "App production launch plan";
+steward's reviews of #72 and #74, both merged by auto-merge before their
+reviews finished. Coordinator: the Claude session titled "App production launch plan";
 its topic branches are `golive/plan-*`.
 This page is the program's master plan. Workstream briefs are in
 [`briefs/`](briefs/). Live status, research reports and the owner-actions
@@ -64,11 +64,15 @@ first pull request records that in each affected document with a dated entry.
 | G11 | Data and runtime releases deploy automatically on merge, like Hosting: once the required checks pass and the PR steward approves, a merge to `main` deploys runtime code and additive schema changes. Branch protection, the required checks, keyless identities and main-only environments stay. Envelopes, cost ledgers, independent-review reports and authorization artifacts retire for this program | `AGENTS.md` deployment paragraph (envelope, independent review), `DEPLOYMENT.md`, `RELEASING.md`, `RELEASE_AUTHORIZATION.md`, `RELEASE_DATA.md`, `RELEASE_RUNTIME.md`, `PROTECTED_RELEASE_HARNESS.md` |
 | G12 | "for location parts in the harness a different approach might be needed, spin this off as a new task". A research session (S8) produces a retrospective georeferencing plan from the owner's charter for the owner to review. Until the owner accepts a plan, the harness keeps geography behind its typed tool interface with the Google Maps tool of G10 as the initial version | nothing; G10 stands until the owner accepts S8's plan |
 | G13 | Chosen option "Queue it" (asked by S3): a request to process a specimen while another run in the same collection is active waits, and runs go one at a time in request order | nothing; the per-specimen limit of `CONTRACTS.md` 219 stays |
-| G14 | Chosen option "Use intake collection" (asked by S3): the profile comes from the collection a specimen was uploaded or imported into, resolved down the collection tree; a reviewer can correct the collection; there is no classification stage | nothing |
+| G14 | Chosen option "Use intake collection" (asked by S3): the profile comes from the collection a specimen was uploaded or imported into, resolved down the collection tree; a reviewer can correct the collection; there is no classification stage | `PRD.md` 9.2 steps 1-2 (185-186), collection prediction |
 | G15 | Chosen option "Automatic coverage check": the lane checks the segmentation result itself with the specification's region-count and full-image cross-checks, and sends the record to the human queue when the check fails | nothing; QUE-002's coverage requirement stands and is now met automatically |
 | G16 | Chosen option "Optional for now": `identified_by_irn` is recorded as not resolved and does not block clearance until EMu Parties is connected | its mandatory status in `PRD.md` 12.4, for the slide pilot |
 | G17 | Chosen option "Steward merges": auto-merge stays off on go-live pull requests; the PR steward merges after its swarm approves | nothing; restates G4 and DoD-7 |
 | G18 | Chosen option "Full swarm every time": the PR steward reviews every new head with a fresh four-reviewer swarm, including a head that differs from an approved one only by a merge from `main` | nothing |
+| G19 | Chosen option "Harness tries raw readings" (asked by S4): when the LLM first pass picks no reading for a label, the harness runs its lookups on each reader's raw reading; fields that resolve clear on their own evidence, and a field still left with conflicting readings goes to needs human review | the first-pass prompt's "route material ambiguity to human review", which now means the first pass returns no reading |
+| G20 | Chosen option "Yes, the lookup settles it" (asked by S4): when the readers disagree and a lookup confirms exactly one reader's literal, that literal is used with its provenance and the field can clear under G1; it counts as a resolved critical disagreement for QUE-002 | nothing |
+| G21 | Chosen option "Turn off repo auto-merge": the owner switches off the repository's "Allow auto-merge", so that G17 holds for every session | nothing |
+| G22 | Chosen option "Keep all four mandatory": the four elevation fields stay mandatory and nothing is derived, neither a conversion nor a filled-in endpoint; a label without all four values goes to human review, which is every pilot label | nothing; settles the "pending policy" of `CONTRACTS.md` 234-235 |
 
 `AGENTS.md`'s security rules are unchanged: nobody deploys from a workstation
 or an agent shell, and nobody weakens branch protection, required checks,
@@ -102,7 +106,9 @@ Sessions implement these as specified; none is a new decision.
 | Logfire write token (G3) | tracing in production | owner mints it in the Logfire console and stores it with `scripts/ci/worker_trace_setup.py store` or the command the release workstream supplies |
 | Hugging Face token rotated to a fine-grained inference token | production readers, first pass, harness | owner, as a new secret version |
 | Hugging Face Inference Providers credits: the account's included monthly credits ran out on 2026-09-23 and routed calls return HTTP 402 | every model call: readers, first pass, harness, the acceptance lab | owner buys pre-paid credits within G9 |
-| Standing IAM grants for the release and runtime identities (G11), and the initialization identity's one-time grant, time-bounded as `DEPLOYMENT.md` 809-815 requires | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares |
+| The repository's "Allow auto-merge" switched off (G21) | G17 for every session | owner, in the repository settings; exact steps in `~/specimen-golive/OWNER_ACTIONS.md` |
+| A Logfire read token for the acceptance lab | reading each run's trace back for DoD-5 | owner mints it; the acceptance lab's entry in `~/specimen-golive/OWNER_ACTIONS.md` |
+| Standing IAM grants for the release and runtime identities (G11), and the one-time, time-bounded grants for initialization and bootstrap that `DEPLOYMENT.md` 809-815 and the setup-window path require | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares |
 
 ## 3. Verified starting state, 2026-09-23
 
@@ -142,9 +148,9 @@ the coordinator; it does not decide (G5).
 | 3 VLMs | Several readers per label | Two provider-pinned routes, independent, raw responses kept | Run both routes in the on-demand lane |
 | 4 Raw transcripts to SQL | Linked to the original image, which VLM gave what | Stored in the snapshot JSON only | Write the normalized tables in production (section 4.4) |
 | 5 Disagreement score | Scoring for level of disagreement | `bounded-levenshtein-fraction-v1`, risk scores, uncalibrated | Run in the lane and persist per region |
-| 6 LLM first pass | Decides which final raw transcript the harness runs against, and gives per VLM what was returned to the harness | Prompt only | A first-pass step on a Hugging Face model (G7) with the existing prompt; records the decision and, per reader, the reading and what was handed to the harness |
-| 7 Agentic harness | Runs lookups on the decided transcript through tools that depend on collection and subcollection, mandatory and optional fields; falls back to the raw readings if the decided transcript fails; if both fail, the relevant queue; graceful failures (G6) | Deterministic phases, GBIF adapter, unconfigured authorities | A Pydantic AI agent with the profile's typed tools (section 2.2 sources), the HAR-008 outcomes for no data found, errors and retries, the raw-reading fallback, every tool call recorded |
-| 8 Queue decision | Harness-resolved is cleared (G1); otherwise human review or deferred as the spec defines; no data for a mandatory field means the human queue (G1, G6) | Policy engine with human-only clearance; deferral only through the reviewer's action | Apply G1 in the policy: remove the gates that contradict it for the lane (`policy.py` 31-34 and 138-139); keep `label_coverage_unconfirmed` (35-36), which the lane's automatic check satisfies (G15); keep the reviewer's `capability_defer` action (`api.py` 1940-1967) and let the queue decision also return deferred under QUE-004; keep operational blocks with retry. `pilot_clearance_forbidden` (`worker.py` 318-323) is off the lane's path and stays |
+| 6 LLM first pass | Decides which final raw transcript the harness runs against, and gives per VLM what was returned to the harness | Prompt only | A first-pass step on a Hugging Face model (G7) with the existing prompt; records the decision and, per reader, the reading and what was handed to the harness; when it picks no reading, the harness runs on each reader's raw reading (G19) |
+| 7 Agentic harness | Runs lookups on the decided transcript through tools that depend on collection and subcollection, mandatory and optional fields; falls back to the raw readings if the decided transcript fails; if both fail, the relevant queue; graceful failures (G6) | Deterministic phases, GBIF adapter, unconfigured authorities | A Pydantic AI agent with the profile's typed tools (section 2.2 sources), the HAR-008 outcomes for no data found, errors and retries, the raw-reading fallback, every tool call recorded; a taxonomy match succeeds as `GBIF.md` 126-130 defines; a lookup that confirms exactly one reader's literal settles a disagreement (G20); Google Maps coordinates are never stored, since the platform terms allow caching them for 30 days at most (the place ID, matched names and components are stored) |
+| 8 Queue decision | Harness-resolved is cleared (G1); otherwise human review or deferred as the spec defines; no data for a mandatory field means the human queue (G1, G6) | Policy engine with human-only clearance; deferral only through the reviewer's action | Apply G1 in the policy: remove the gates that contradict it for the lane (`policy.py` 31-34 and 138-139); keep `label_coverage_unconfirmed` (35-36), which the lane's automatic check satisfies (G15); keep the reviewer's `capability_defer` action (`api.py` 1940-1967) and let the queue decision also return deferred under QUE-004; keep operational blocks with retry; validate the separately parsed dates, keeping partial precision, instead of the verbatim text (`policy.py` 119-126; `CONTRACTS.md` 234-235); keep the elevation gate (99-106, G22). `pilot_clearance_forbidden` (`worker.py` 318-323) is off the lane's path and stays |
 | 9 Linkage | Everything links to the specimen record | Stable ids throughout | Keep; the normalized rows carry specimen and run |
 
 ### 4.2 Profile
@@ -155,9 +161,14 @@ reference, and the clearance rule (G1). It maps to the `Insects` collection
 beneath `Zoology`, and subcollections inherit their nearest ancestor's profile,
 as `COLLECTION_HIERARCHY.md` 73-76 describes and the code does not yet do. A
 specimen's profile comes from its intake collection, resolved down the tree, and
-a reviewer can correct the collection (G14). `identified_by_irn` is optional for
-the slide pilot (G16); the other nineteen fields stay mandatory until the
-owner's list arrives (G8). Optional fields must survive at runtime and be
+a reviewer can correct it (G14): the lane sets `run.classification_selection`
+from the intake collection, which the `classify` step requires (`workflow.py`
+308-331), and a reviewer corrects the profile collection through the existing
+classification endpoint (`api.py` 2243); moving a specimen to another
+collection stays refused (2262). `identified_by_irn` is optional for the slide
+pilot (G16); the other nineteen fields stay mandatory until the owner's list
+arrives (G8), and the four elevation fields stay mandatory with nothing derived
+(G22). Optional fields must survive at runtime and be
 extracted and shown.
 
 ### 4.3 Budget
@@ -177,13 +188,17 @@ transcription's region (required by `CONTRACTS.md` 185) and the first pass's
 decision with what each reader handed to the harness; the harness's tool calls;
 the mandatory or optional group of each field; the automatic coverage check's
 result and evidence (G15); the trace id. Everything is keyed per region, since a
-specimen can carry several labels. Its first pull request is the exact GraphQL
+specimen can carry several labels. No Google Maps coordinates are stored
+anywhere; the place ID, matched names and components are. Its first pull request is the exact GraphQL
 and the contract the other workstreams code against. Additive changes only,
-meaning expand-only: new tables; new nullable columns; dropping NOT NULL; new
-indexes, unique constraints and foreign keys over new columns only; new
-connector operations. The data plane's gate refuses everything else: dropped or
-renamed tables and columns, type changes, adding NOT NULL, key changes,
-uniqueness over existing columns, and changed or removed operations.
+meaning expand-only: new tables; new nullable columns; dropping NOT NULL, but
+only on columns the data contract names with a reason and never on provenance or
+idempotency keys; new indexes, unique constraints and foreign keys over new
+columns only; new connector operations, each `@auth(level: NO_ACCESS)` with the
+membership `@check`s (`DATA.md` 73). The data plane's gate refuses everything
+else: dropped or renamed tables and columns, type changes, adding NOT NULL, key
+changes, uniqueness over existing columns, changed or removed operations, and
+operations at any other auth level.
 
 ### 4.5 Tracing
 
@@ -263,8 +278,8 @@ requests labelled `golive` with the title prefix `[golive:<ws>]`.
 | S0 | App production launch plan | Plan, decisions, merge order, owner liaison, acceptance sign-off | `docs/execution/golive/PLAN.md`, `briefs/`, `~/specimen-golive/MERGE_ORDER.md` | Opus 5.5, max |
 | S1 | Steward go-live PRs through review and merge | Review every PR with a fresh swarm, CI to green, merge, post-merge deploy checks, push back | no source; PR comments; `gh pr update-branch`; merges (G17) | Opus 5.5, high |
 | S2 | Release data and runtime planes on merge | Contract amendments, auto-on-merge planes, IAM and secret lists, first releases, repository variables, deploy health | `AGENTS.md` deployment paragraph, `docs/DEPLOYMENT.md`, release and approval docs, `.github/workflows/`, `scripts/ci/` release and deploy code, `infra/`, `containers/` | Opus 5.5, xhigh |
-| S3 | Build the on-demand processing lane | On-demand trigger and source import in production, worker drain, SAM 3 per run, profile configuration and inheritance, optional fields at runtime, budget, tracing | `api.py` processing and source routes, `worker*.py`, `sam3_*.py`, `production.py` adapters (535-910), `workflow.py` step bodies before `adjudicate` (intake to score), `collection_*.py`, `profile_runtime.py`, `observability.py`, `bounded_telemetry.py`, `tracing.py`, `provider_privacy.py` | Opus 5.5, high |
-| S4 | Build the LLM first pass and agentic harness | LLM first pass, agentic harness and tools, fallback, graceful outcomes, queue rule G1 | new first-pass and harness modules, `harness.py`, `evidence_harness.py`, `lookup.py`, `parties.py`, `geography.py`, `policy.py`, `prompts.py`, `model_gateway.py` routes, `workflow.py` step bodies from `adjudicate` to finalize, including `parse` (685-719) | Opus 5.5, high |
+| S3 | Build the on-demand processing lane | On-demand trigger and source import in production, worker drain, SAM 3 per run, profile configuration and inheritance, optional fields at runtime, budget, tracing | `api.py` processing and source routes, `worker*.py`, `sam3_*.py`, `production.py` adapters (535-910), `workflow.py` step bodies before `adjudicate` (pin_dependencies, classify, quality_check, segment, transcribe), `cli.py`, `transcription.py`, `collection_*.py`, `profile_runtime.py`, `observability.py`, `bounded_telemetry.py`, `tracing.py`, `provider_privacy.py` | Opus 5.5, high |
+| S4 | Build the LLM first pass and agentic harness | LLM first pass, agentic harness and tools, fallback, graceful outcomes, queue rule G1 | new first-pass and harness modules, `harness.py`, `evidence_harness.py`, `lookup.py`, `parties.py`, `geography.py`, `policy.py`, `prompts.py`, `model_gateway.py` routes, `workflow.py` step bodies from `adjudicate` to finalize, including `parse` (685-719) and the stage 5 scores (the disagreement ratio in `adjudicate`, the risk score in `finalize`) | Opus 5.5, high |
 | S5 | Build the pipeline data model and thread API | Data contract, schema additions, normalized projection, thread API, contract snapshots | `dataconnect/`, `storage.py`, `active_graph.py`, `production.py` `SqlConnectRepository` (80-534), a new thread-route module, `scripts/ci/release_sql_catalog.sql` and the table-count assertion in `scripts/ci/test_data_release.py`, `docs/execution/backend-*.json` | Opus 5.5, high |
 | S6 | Build the record thread UI | Client defects, thread view, queue, processing status, trace link | `apps/specimen_digitization/` (sole owner of goldens) | Opus 5.5, high |
 | S7 | Run the acceptance lab one specimen at a time | Local and production runs one specimen at a time, run reports, defect routing | new `scripts/lab/`, `~/specimen-golive/runs/`, `~/specimen-golive/reports/`, GitHub issues labelled `golive` | Opus 5.5, high |
@@ -307,10 +322,14 @@ Everyone appends to `docs/SESSION_LEARNINGS.md`.
 - When the PR is open, message the PR steward: first line "PR #N ready: <title>".
 - When the steward pushes back, fix on the same branch and message it again.
   When it runs `gh pr update-branch`, pull before your next push.
-- Never enable auto-merge (G17). The steward merges with `gh pr merge N --merge`
-  once its swarm approves the current head. Every new head gets a fresh swarm
-  (G18), so the steward brings a pull request up to date with `main` only when
-  it is next to merge.
+- Never enable auto-merge (G17); the owner is switching the repository's
+  setting off (G21). The steward merges with `gh pr merge N --merge` once its
+  swarm approves the current head. Every new head gets a fresh swarm, reverts
+  included (G18), so a pull request is brought up to date with `main` only when
+  it is next to merge, and by its owning session: GitHub's server-side merge
+  ignores the `merge=union` rule for `docs/SESSION_LEARNINGS.md`. When the
+  steward says your PR is next, run `git fetch origin && git merge origin/main`
+  (a merge, not a rebase), push, and reply "PR #N ready".
 
 ### 7.4 Local gates and machine load
 - Start every shell with `export DEVELOPER_DIR=/Library/Developer/CommandLineTools LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`.
@@ -351,7 +370,7 @@ Everyone appends to `docs/SESSION_LEARNINGS.md`.
   `--project specimen-digitization`. `gh` writes only what your brief assigns:
   your own pull requests and their comments, GitHub issues (S7), and the
   steward's reviews, branch updates, reruns and merges. Repository variables and
-  settings are owner actions. `gh` takes no `--project` flag.
+  settings are owner actions. Never pass `--project` to `gh`.
   `firebase dataconnect:sql:diff` is not read-only (it moves the live schema's
   update time); do not run it.
 - Do not read `.logfire/` credential files or `.env` files into context.
@@ -382,4 +401,7 @@ For each specimen in order, `subject_105526321` first:
 
 A record the harness could not resolve and that went to the human queue with
 the right reason is a correct run; correct means the pipeline behaved as
-section 4 specifies, not that every record cleared.
+section 4 specifies, not that every record cleared. Under G22 every pilot label
+lacks at least one mandatory elevation value, and most lack a taxon and a
+determiner, so the expected outcome for each of the ten is needs human review
+with the right reasons.

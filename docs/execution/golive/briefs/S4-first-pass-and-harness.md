@@ -54,6 +54,13 @@ comes first (G6).
   Every outcome is typed (HAR-008) and recorded.
 - Never invent values (HAR-019). Every literal comes from the decided transcript
   or a raw reading, with provenance.
+- G19: when the first pass picks no reading for a label, the harness runs its
+  lookups on each reader's raw reading; fields that resolve clear on their own
+  evidence, and a field still left with conflicting readings goes to needs human
+  review. G20: when the readers disagree and a lookup confirms exactly one
+  reader's literal, that literal is used with its provenance and the field can
+  clear; it counts as a resolved critical disagreement for QUE-002.
+- G22: the four elevation fields stay mandatory and nothing is derived.
 - G5: when the specification is silent or contradictory, ask the coordinator.
 
 ## Pull requests, in order
@@ -76,13 +83,18 @@ records into S5's contract.
 
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
 profile's registry: GBIF Species Match v2 (the existing adapter, `lookup.py`),
-Global Names Verifier and Catalogue of Life for taxonomy; Google Maps geocoding
+Global Names Verifier and Catalogue of Life for taxonomy (a match succeeds as
+`GBIF.md` 126-130 defines: exact, accepted, at the label's own rank; synonym,
+fuzzy, variant and higher-rank matches are `ambiguous`); Google Maps geocoding
 for geography (G10; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
-`PRD.md` 679); the deterministic validators for catalog numbers and dates (the
-pilot slides carry date-shaped slide-preparation codes that are not collection
-dates; PLAN section 3). No Parties tool: `identified_by_irn` is optional for the
+`PRD.md` 679; coordinates are never stored, since the platform terms allow
+caching them for 30 days at most, so keep the place ID, matched names and
+components and the response digest); the deterministic validators for catalog
+numbers and dates (expect date-shaped slide-preparation codes on the pilot
+slides, which are not collection dates, PLAN section 3; a pilot-specific date
+rule needs the coordinator first). No Parties tool: `identified_by_irn` is optional for the
 slide pilot (G16), and the other fields outside taxonomy and geography are
 transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
 encodes them (`domain.py` 43-54); add none. Phases as the specification lists
@@ -109,7 +121,10 @@ G15) satisfies it, and a failed check sends the record to needs human review.
 `pilot_clearance_forbidden` (`worker.py` 318-323) is in the evidence-only
 `PilotWorker`, off the lane's path; leave it. The reviewer's `capability_defer`
 action in `api.py` 1940-1967 stays; the queue decision may also return deferred
-under QUE-004. Tests cover every path: all mandatory fields resolved, cleared;
+under QUE-004. Validate the separately parsed dates, keeping partial precision,
+not the verbatim text (`policy.py` 119-126 parses the literal today;
+`CONTRACTS.md` 234-235). Keep the elevation gate (99-106): the four elevation
+fields stay mandatory and nothing is derived (G22). Tests cover every path: all mandatory fields resolved, cleared;
 no data for a mandatory field, needs human review with the reason; no data for
 an optional field, still cleared; a failed coverage check, needs human review;
 capability limit, deferred; transient error, retried, then an operational block.
@@ -117,7 +132,7 @@ capability limit, deferred; transient error, retried, then an operational block.
 ## Coordination
 
 S3 supplies the profile, the tools per field, the optional fields (as
-`Run.field_groups`), the coverage check and the tracing mode. S5 supplies the
+`Run.field_groups`, a new field whose shape S5 decides), the coverage check and the tracing mode. S5 supplies the
 tables for the first-pass decisions, the tool calls and the fields; agree the
 shapes in S5's first PR. `domain.py` has no single owner: add to it additively,
 list your additions in the pull request body, and let S5 decide any shape that

@@ -75,8 +75,10 @@ For each head SHA you have not reviewed:
    - Never push code to another session's branch. You may run
      `gh pr update-branch N` to bring a PR up to date with `main`; do it only
      for the pull request that is next to merge, since the new head needs a
-     fresh swarm (G18). Then tell the owning session to pull before its next
-     push.
+     fresh swarm (G18). GitHub's server-side merge ignores the `merge=union`
+     rule for `docs/SESSION_LEARNINGS.md`, so when it reports a conflict there,
+     ask the owning session to merge `origin/main` locally and push instead.
+     Otherwise tell the owning session to pull before its next push.
 4. **CI.** Watch with a Monitor or a background
    `gh pr checks N --watch --interval 60 > <log>`. On a failure, save
    `gh run view <id> --log-failed` to a file and read at most 60 lines. An
@@ -88,8 +90,9 @@ For each head SHA you have not reviewed:
    is up to date with `main`; dependencies merged; `~/specimen-golive/MERGE_ORDER.md`
    does not hold it. Then `gh pr merge N --merge` (a merge commit keeps the red
    and green commits visible). Merge one PR at a time. Auto-merge stays off
-   (G17): if you find it enabled on a go-live pull request, tell the
-   coordinator and leave the setting alone.
+   (G17), and the owner is switching the repository's "Allow auto-merge" off
+   (G21). Until that is done, if you find it enabled on a go-live pull request,
+   tell the coordinator and leave the setting alone.
 6. **After each merge**, watch the push-to-`main` runs for the merge commit:
    CI/CD (Hosting deploy and public marker check) and Runtime candidate CI, and,
    once the release workstream's auto-deploy PRs have merged, the data and
@@ -98,8 +101,9 @@ For each head SHA you have not reviewed:
    the merge commit, then the smoke check `DEPLOYMENT.md` names. For runtime
    deploys use the readiness checks the release workstream documents. If
    `main` goes red, tell the owning session and the coordinator; if it stays
-   red for 30 minutes with no fix in sight, open a revert PR (one new reviewer
-   is enough for a pure revert).
+   red for 30 minutes with no fix in sight, open a revert PR. It gets the full
+   four-reviewer swarm like any other head (G18), because a revert also deploys
+   (G11).
 
 Until the release workstream's auto-on-merge PRs merge, the protected data and
 runtime workflows fail closed at admission on every push. That is expected;

@@ -21,10 +21,17 @@ endpoint.
 
 ## Constraints
 
-- Additive only, as PLAN section 4.4 defines it: expand-only, and dropping NOT
-  NULL is allowed. Never destructive.
+- Additive only, as PLAN section 4.4 defines it: expand-only. Dropping NOT NULL
+  is allowed only on columns your contract names with a reason, never on
+  provenance or idempotency keys (`ModelObservation.runId`, `regionId`,
+  `provider`, `modelVersion`, `stepKey`). Every new connector operation is
+  `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73).
+  Never destructive.
 - Key everything per region: a specimen can carry several labels, and five
   pilot slides carry two (PLAN section 3).
+- `Run.field_groups` is new, and you decide its shape. No Google Maps coordinates
+  are stored anywhere (the platform terms allow caching them for 30 days at
+  most); the place ID, matched names and components are.
 - Versioned operations follow the existing pattern (new V-numbered operations
   with old and new adapter tests, `DATA_CHECKSUM.md` 64-84).
 - Every new table updates `scripts/ci/release_sql_catalog.sql` and the table

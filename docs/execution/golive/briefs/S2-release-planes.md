@@ -88,7 +88,8 @@ Tests for every validator you change.
 `scripts/ci/deploy_data.py` and the initialization modules: a first
 initialization that matches the real state (database exists and is empty); then,
 on every push to `main` that changes `dataconnect/`, an additive-only check (PLAN
-section 4.4's expand-only definition; refuse anything else) and a `COMPATIBLE`
+section 4.4's expand-only definition, including its NOT NULL and `NO_ACCESS`
+rules; refuse anything else) and a `COMPATIBLE`
 apply, the
 supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
@@ -101,16 +102,21 @@ Actions logs and artifacts, which are public in this repository. Tests.
 
 **T4. The owner's IAM and secret list.** A read-only script, in the style of
 `scripts/ci/data_setup_window.py plan`, that reads the live policies and prints
-the exact grants T2 and T3 need. Standing grants: the data release identity;
-the runtime build and release identities (Artifact Registry push, Cloud Run
-deploy, act-as on the runtime identities, attestations); the runtime identities
-(connector impersonation; bucket create and read on the application prefix and
-read on `microscopic-slides/`; secret access; SAM 3 invoker for the worker
-only; `run.invoker` for the API on the worker job only, since running a job
-needs no act-as; Firebase user lookup for the API); `allUsers` invoker on the
-API. The initialization identity gets no standing grant: its grant stays
-one-time and time-bounded to the ten-minute window of `DEPLOYMENT.md` 809-815,
-through the existing setup-window path, and is revoked after use. Also list the
+the exact grants T2 and T3 need. Standing grants: the data release identity's
+ordinary apply roles, each named; the runtime build and release identities
+(Artifact Registry push, Cloud Run deploy, act-as on the runtime identities,
+attestations); the runtime identities (connector impersonation; object create
+and read on the application prefix and read on `microscopic-slides/`; secret
+access per identity and per secret, each with a reason: the worker reads the
+Hugging Face, Logfire and Maps secrets and its actor uid, SAM 3 the Logfire
+token, the API the Logfire token and the source registry; SAM 3 invoker for the
+worker only; `run.invoker` for the API on the worker job
+only, since running a job needs no act-as; Firebase user lookup for the API);
+`allUsers` invoker on the API. The one-time roles get no standing grant: the
+initializer, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`
+stay one-time and time-bounded through the existing setup-window path
+(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 809-815
+caps the initializer's privilege window after native parity at ten minutes. Also list the
 secrets to create (Logfire token, Maps key, a new Hugging Face token version),
 public access prevention on the bucket, and the Budget API with a USD 25 budget
 alert. Bind every grant to a named resource with a one-line reason; never Owner
@@ -125,7 +131,8 @@ Write the repository variables `SPECIMEN_API_BASE_URL`,
 `SPECIMEN_PILOT_SCOPE` into `~/specimen-golive/OWNER_ACTIONS.md` as exact
 `gh variable set` commands for the owner to run. Leave private values such as
 the administrator contact for the owner to fill in, and never put them in a
-message. The next merge rebuilds
+message. `SPECIMEN_ADMIN_CONTACT` is compiled into the public web client, so the
+entry says its value becomes public. The next merge rebuilds
 Hosting; then check DoD-1 (sign-in resolves the collection).
 
 **T6. Deploy health.** For the rest of the program, fix any failed deploy the
