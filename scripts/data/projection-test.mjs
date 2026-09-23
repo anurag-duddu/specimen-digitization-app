@@ -219,7 +219,12 @@ const elsewhere = {...work.candidate, id: randomUUID(), authorityId: 'another-pl
 ok(await op('AppendFieldCandidateV2', elsewhere));
 denied(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), candidateId: elsewhere.id}));
 ok(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), relation: 'contradicts'}));
-console.log('PASS Google evidence keeps a place id only for a single match, points at an evidence record, and never decides');
+// Any lookup has a locator exactly when it succeeded; recorded evidence keeps its own.
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'success', locator: null}));
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'no_match', locator: 'gbif/usage/1'}));
+ok(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'no_match', locator: null}));
+ok(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'label-coverage-check', outcome: 'recorded', locator: 'coverage/region-count'}));
+console.log('PASS a lookup has a locator exactly when it succeeded; Google keeps a place id only, points at an evidence record, and never decides');
 
 // Sensitive specimens: a sensitive-capable reviewer writes the run; the worker and a viewer cannot.
 const kept = await chain(closed, 'reviewer');

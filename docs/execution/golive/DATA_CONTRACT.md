@@ -187,7 +187,7 @@ the same list, with these reasons.
 |---|---|---|
 | `SourceAsset.width`, `SourceAsset.height` | drop `NOT NULL` | Raw provider responses and check evidence are assets without pixels, and `ModelObservation.rawAssetId` and `EvidenceItem.rawAssetId` point at them. The operation still requires both, positive, for image kinds (`original`, `crop`, `mask`). |
 | `LabelRegion.cropAssetId` | drop `NOT NULL` | SAM regions carry no crop (`Region.crop_ref` is always null from SAM), so a region is written as soon as segmentation finishes. The crop each reader saw is identified by `ModelObservation.inputSha256`. |
-| `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match (`no_match`, `ambiguous`, an error) has nothing to locate, and G26 allows no Google value but a place id (rule 1.6). |
+| `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match (`no_match`, `ambiguous`, an error) has nothing to locate, and G26 allows no Google value but a place id (rule 1.6). The operation keeps a lookup's locator set exactly when its outcome is `success`, so it is optional nowhere else. |
 | `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: this PR declares the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Two applies, because within one the compatible migration drops the old index before it creates the new one, each statement in its own transaction, so writers running during the apply would meet no constraint; created first, the new constraint cannot fail on existing rows, since it is weaker. |
 
 ## 4. Domain fields the writer reads
@@ -418,6 +418,8 @@ On top of that rule:
     reading names no decision.
   - A reading pair is recorded in its fixed order (section 3.1). The score's
     parts are in bounds. The trace id is well formed.
+  - A lookup's `EvidenceItem.locator` is set exactly when its outcome is
+    `success`; `recorded` evidence that is not a lookup keeps its own.
 - **Human decisions.** A `human` `TranscriptionVersion` needs `reviewer`,
   `manager` or `admin`, and so does `AppendReviewDecisionV1`, as the API's
   decision route does. The reviewer's own save writes them, and a worker's
