@@ -274,3 +274,140 @@ the reading provenance a non-synthetic run requires (`integrity.py` 107-112).
   both registries.
 - An emulator-mode run with production-like readers, queued on upload and
   drained, passes `parse` (the failure of #79).
+
+## T3. SAM 3 per run, lab mode and the label-coverage check
+
+Implements PLAN 4.1 row 2 with G6, G15 and the acceptance lab's requirements. It
+lands as two pull requests: T3a (serving per run, failures, lab mode) and T3b
+(parameters in the profile, recorded detections, G15).
+
+### Serving each run (T3a)
+
+The SAM 3 service gains a per-run mode, `SPECIMEN_SAM3_ENABLE=authorized-run`,
+beside the frozen pilot's manifest mode, which is unchanged.
+
+- **Authorization.** In per-run mode the service serves any well-formed request
+  from its authenticated caller: the worker's Google identity token in
+  production, loopback in the lab. The worker authorizes a run by reserving the
+  segment step's cost within the run's budget before it calls. There is no
+  manifest, budget-authorization variable or launch window.
+- **Source integrity.** Unchanged. The request names the application copy
+  (`blob_ref`, `sha256`, size), and the service reads exactly that generation
+  and refuses bytes whose digest differs.
+- **One inference per run.** A create-only claim at
+  `application/sha256/sam3-runs/{run_id}/claim.json` holds the request digest,
+  with the response stored beside it. A repeated request with the same digest
+  returns the stored response without running the model again.
+  - A claim with no response, older than the service's hard deadline, belongs to
+    an attempt that died with its process, and the next attempt takes it over.
+  - A younger claim answers `409 sam3_busy`, which is retryable.
+- **Lifetime.** No self-shutdown. The service scales to zero between runs.
+- **Pins.** Unchanged: the pinned revision, the offline checkpoint and its
+  digest, and no Hugging Face token.
+- **Response binding.** The worker checks the response against its own request
+  and pins: the model and revision, the request digest, the source, the
+  checkpoint digest it pinned for the run, and region and mask provenance. Region
+  ids derive from the run id and the region's index.
+
+### Failures (T3a, G6)
+
+A timeout, `429`, `409 sam3_busy` or `5xx` from the service is a retryable
+failure on the existing retry schedule (`workflow.py` `schedule_retry`); once
+the attempts are spent, it is an operational block. The per-run claim makes the
+retry safe: a finished inference is returned, not repeated. A failure of the
+service is never a coverage verdict. A response that fails its provenance check
+blocks the run, as today.
+
+### Lab mode (T3a, acceptance lab)
+
+- **Switch.** `SPECIMEN_SAM3_ENABLE=lab`. The service refuses it when `K_SERVICE`
+  is set or `APP_ENV=production`.
+- **Callers.** Instead of an identity token, the service accepts a shared lab
+  secret, `SPECIMEN_SAM3_LAB_TOKEN` (at least 32 characters, compared in constant
+  time), set on both the service and the worker. The lab runs the image in
+  Docker, where a loopback check cannot work: the caller appears as Docker's
+  gateway. The runner publishes the port on host loopback only
+  (`-p 127.0.0.1:<port>:8080`), which bounds exposure.
+- **Storage.** Objects live in a local directory, `SPECIMEN_SAM3_LAB_DIR`, laid
+  out as the application's `LocalBlobs` so the worker's finalize integrity check
+  can read the masks. The source is read from it, and masks, claims and
+  responses are written to it. References are the bare digests `LocalBlobs` uses.
+- **Worker side.** `SPECIMEN_SAM3_ENDPOINT=http://127.0.0.1:<port>` is accepted
+  only when `SPECIMEN_SAM3_LAB=true` and `APP_ENV` is not production. The worker
+  then sends the lab secret instead of fetching an identity token.
+- **Checkpoint digest.** The image's entrypoint with `--checkpoint-digest`
+  (`python -m specimen_digitization.application.sam3_server --checkpoint-digest`)
+  prints the digest of the local offline checkpoint without loading the model,
+  so the lab gives the service and the worker the same
+  `SPECIMEN_SAM3_CHECKPOINT_SHA256`.
+- **Everything else** is the per-run path above: authorization, claims and no
+  shutdown.
+
+### Parameters and recorded detections (T3b)
+
+The pilot profile's segmentation settings pin the values the service applies:
+
+- label threshold 0.5 and mask threshold 0.5;
+- a recording floor of 0.1;
+- at most 64 detections per concept;
+- the cross-check concept `text`.
+
+Settings without these values keep today's bytes and digests.
+
+The service runs the label concept and the cross-check concept on the same
+decoded original. For each concept it returns every detection at or above the
+floor, the 64 highest-scoring, each with box and score, and it returns the
+parameters it applied. It stores masks only for label detections at or above the
+label threshold. Those become the regions, as today.
+
+The worker keeps the whole response as the segmentation evidence, so the lab can
+sweep thresholds offline. `Run.segmentation` summarises it: concept, thresholds,
+floor, revision, checkpoint digest, region count and per-region scores.
+
+### Label-coverage check (T3b, G15)
+
+The segment step checks the result. All three rules must hold for
+`run.coverage_confirmed`:
+
+1. Geometry: the existing `check_regions` (`image_quality.py` 213-251). At least
+   one label region, and none out of bounds. Overlap is recorded, not failed.
+2. Region count: after merging label regions that overlap at IoU of 0.9 or more,
+   between 1 and 3 regions.
+3. Full-image cross-check: every cross-check detection scoring 0.5 or more lies
+   at least 50% inside the union of the label regions. A detection outside is
+   recorded, with its box, as a possible missed label.
+
+The values are the coordinator's approved starting values, pinned in the
+profile. The owner signs off the final values after the lab measures them on the
+ten. Changing a value is one profile edit.
+
+A failed check sets `coverage_confirmed` false with the reason
+`label_coverage_unconfirmed`. The run still goes through every stage, and the
+policy gate (`policy.py` 35-36) sends it to needs human review.
+
+`Run.coverage_check` records the evidence in S5's shape:
+
+- `version` `coverage-check-v1`;
+- `outcome`, `region_count`, `cross_check` and `reason_codes`;
+- `evidence_ref` and `evidence_sha256`, the segmentation response;
+- `checked_at`.
+
+### Production shape (S2)
+
+- **Environment.**
+  - Unchanged: `SPECIMEN_SAM3_ENABLE` (value `authorized-run`),
+    `SPECIMEN_SAM3_AUDIENCE`, `SPECIMEN_SAM3_CALLER_EMAIL`,
+    `SPECIMEN_SAM3_OUTPUT_BUCKET` (the application bucket),
+    `SPECIMEN_SAM3_CHECKPOINT_SHA256` and `HF_HUB_OFFLINE=1`.
+  - Retired for per-run mode: `SPECIMEN_SAM3_BUDGET_AUTHORIZATION`,
+    `SPECIMEN_PILOT_MANIFEST_*`, `SPECIMEN_SAM3_EXPIRES_UNIX` and the manifest
+    volume.
+- **Worker.** Adds `SPECIMEN_SAM3_CHECKPOINT_SHA256`, so it can pin the
+  checkpoint it expects.
+- **Storage.** The service's identity reads and creates objects under
+  `application/sha256/` in the application bucket.
+- **Timing.** Two concepts on one image cost about twice the single-concept
+  time, measured at about 25 s on a workstation CPU. The service's hard deadline
+  becomes 240 s and the request timeout 300 s. The pilot's allowance sets the
+  worker's external-call timeout to 270 s with a 300 s lease, and keeps readers
+  at 120 s. The allowance refuses timeouts that do not fit the lease.
