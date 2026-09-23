@@ -7,6 +7,12 @@
 | Trace format | OpenTelemetry through Logfire and Pydantic AI |
 | Default capture | Metadata only; binary images always excluded |
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) supersede parts of this document for the go-live program.
+> Each superseded clause keeps its original text and carries a dated note
+> naming the decision. [`golive/RELEASE.md`](execution/golive/RELEASE.md) lists
+> the code that still enforces a superseded clause until a later go-live pull
+> request changes it.
+
 ## Decision
 
 Use Logfire as the observability and evaluation plane for the complete specimen
@@ -50,6 +56,11 @@ and tool text. It is for synthetic data or a specifically approved evaluation
 corpus. The integration always sets `include_binary_content=false`; images stay
 in Cloud Storage regardless of capture mode.
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
+> For the go-live program, approved-content mode also covers the real pipeline
+> runs in PLAN section 1, not only synthetic data or an evaluation corpus;
+> images stay excluded.
+
 Use separate `APP_ENV` values for `development`, `evaluation`, `staging`, and
 `production`. Start with 100% trace sampling while volume is low. If sampling is
 later required, preserve complete traces and retain all failures/slow runs at an
@@ -60,6 +71,12 @@ The production decision to store specimen-label text in Logfire remains open.
 It requires confirmation of permitted collections, US-region retention,
 project access, and deletion requirements. Regex scrubbing is not a substitute
 for that approval because LLM message attributes are not reliably scrubbed.
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
+> G3 is that approval for the go-live program: system prompts and text inputs
+> and outputs at every VLM, LLM and SAM 3 level are recorded in Logfire, linked
+> to the specimen record, under the amended scope in
+> execution/APPROVED_LOGFIRE_TRACING.md.
 
 ## Trace structure
 
@@ -112,6 +129,14 @@ Gateway for UI prompt tests. The gateway supports Hugging Face BYOK, but do not
 route production specimen images through it until its data handling, region,
 latency, and billing are approved. Direct Hugging Face inference remains the
 production candidate in the meantime.
+
+> 2026-09-23: Not superseded. The "existing gateway" of
+> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G7 is the application's own model gateway
+> (`src/specimen_digitization/model_gateway.py`) with the existing Hugging Face
+> token, the direct inference this paragraph keeps for production. The LLM
+> first pass and the agentic harness use it; the Logfire AI Gateway stays
+> unapproved for production calls.
 
 ## Evaluation datasets and experiments
 

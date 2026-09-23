@@ -245,6 +245,11 @@ exhausted viable approved attempts and retry eligibility. Missing configuration,
 429, timeout, invalid credentials, outage, budget exhaustion and code error are
 operational blocks. No reviewer action may simply waive missing evidence.
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1.
+> A record the agentic harness is able to resolve is cleared without requiring
+> human approval; human review and deferral stay as this contract defines them
+> for records the harness cannot resolve.
+
 ## Application-owned processing interfaces
 
 `HarnessRunner.run_phase(snapshot, profile, phase, transcript_refs, tool_registry,

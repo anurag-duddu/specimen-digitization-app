@@ -10,6 +10,13 @@ decisions, superseding earlier statements that these two approvals were pending.
 It is authority for the bounded actions below, not evidence that any resource,
 credential, cost estimate, backup, deployment or acceptance test is ready.
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the decision.
+> [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that still enforces a
+> superseded clause until a later go-live pull request changes it.
+
 ## Protected backend and data releases
 
 Amend `AGENTS.md` and `docs/DEPLOYMENT.md`. Hosting continues only through
@@ -20,6 +27,13 @@ Each uses a separate main-only environment and keyless identity. Require all
 five successful checks on the exact merged source, independent review,
 immutable build provenance, verified data readiness and public end-to-end
 verification. Preserve Hosting isolation and every existing protection.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Independent review is replaced by the PR steward's review of every pull
+> request; the required checks, keyless identities, main-only environments and
+> Hosting isolation stay, and a merge to main now deploys runtime code and
+> additive schema changes automatically.
 
 Workstation deployments, manual dispatch, weaker branch protection, broader
 Hosting permissions, service-account JSON keys and AWS resources remain forbidden.
@@ -39,12 +53,25 @@ Use only the existing `specimen-digitization` project; proposed region
 | SQL and Storage | Reuse existing services; no new persistent SQL instance or capacity upgrade |
 | Restore rehearsal | One isolated clone, at most 2 hours; proposed `specimen-digitization-restore-20260908-r1`; smallest compatible target after checking backup/source requirements and complete cost |
 
+> 2026-09-23: The "Worker" and "CPU SAM" rows are superseded for the go-live
+> program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. The worker drains due work one specimen at a time, on demand, instead of
+> one bounded execution, and SAM 3 serves any run the worker authorizes and
+> scales to zero instead of expiring after an hour.
+
 Remove only the newly created rehearsal clone by its expiry after preserving
 verification evidence. Never delete the source instance or original data. Preserve
 originals, object generations and history. Apply only independently reviewed,
 compatible schema, connector, index and private Storage-rule changes through the
 protected data workflow. Bootstrap only the previously supplied administrator
 after verifying identity and collection scope; keep sensitive-data access disabled.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Independent review is replaced by the PR steward's review; the data
+> plane applies additive schema changes automatically once required checks
+> pass and the steward approves.
 
 Create only missing APIs, image registry, secret versions and separate build,
 release and runtime identities needed by these services. Permissions must be
@@ -66,6 +93,15 @@ and **USD 5 total incremental test spending across all sessions and retries**,
 without resets. The USD 4 ordinary-reservation target and USD 1 contingency are
 planning allocations within that ceiling, not extra budget.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. Specimens are processed one at a time, on demand, instead of
+> a single ten-specimen batch; the ten remain the acceptance cohort, processed
+> in order. The cumulative spending ceiling is USD 25 across infrastructure
+> and models, and independent review and the action packet are retired: a
+> merge to main deploys automatically once required checks pass and the PR
+> steward approves.
+
 Stop if the complete conservative reservation cannot fit the remaining budget
 or a change falls outside these limits. Do not omit specimens or regions to make
 cost or acceptance pass. Stop paid processing when the test completes or its
@@ -79,6 +115,11 @@ not approvals to request again. Retain the private authority artifact and its
 digest with the private execution packet; no private identity or object path
 belongs in this public record.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. The private authority artifact and execution packet are retired;
+> release evidence no longer needs to be retained or matched against them.
+
 ## Approved combined amendment — 2026-09-14
 
 The user explicitly approved the combined decision at 2026-09-14T02:03:08.382Z
@@ -87,10 +128,20 @@ the exact budget, worker and Firebase IAM proposal. Its direct user-record diges
 and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md).
 
 - USD 12 cumulative and daily, preserving every previous cost and reservation.
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G9 and G11. The cumulative spending ceiling is USD 25, infrastructure and
+  > models together, and cost ledgers and reservations retire for this
+  > program.
 - One worker execution, 1 CPU/1 GiB, one task, zero platform retries, at most
   3500 seconds from original dispatch. Useful work stops by 3485; cleanup by 3500.
   The original SAM one-hour expiry remains unchanged. See
   [APPROVED_WORKER_TIMING.md](APPROVED_WORKER_TIMING.md).
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G2. The worker drains due work one specimen at a time, on demand, instead
+  > of one bounded execution, and SAM 3 scales to zero instead of expiring
+  > after an hour.
 - One fresh ten-minute bounded Firebase setup window for exactly three effects:
   create persistent role `specimenDataOwnerBootstrap` with only
   `firebaseauth.users.get`, `firebasedataconnect.services.executeGraphql` and
@@ -134,10 +185,19 @@ the first-scope bootstrap.
 - The pilot's scope is the `Insects` collection beneath `Zoology`. The
   administrator's memberships, sensitive access (off), the ten specimens,
   the budget and every other boundary above are unchanged.
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G9. The budget this bullet points back to is retired; the cumulative
+  > spending ceiling is now USD 25, infrastructure and models together.
 
 Everything else in this record, including the protected data lane, the
 evidence recipient, the independent review and the private identity rule,
 applies to the new mode without change.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Independent review is replaced by the PR steward's review of every
+> pull request; the protected data lane and private identity rule stay.
 
 ## Owner decision — 2026-09-22: bounded tracing is in the first plan
 
@@ -151,6 +211,14 @@ secret with one version, one identity request, the accessor grant bound to
 the exact version and the runtime expiration. Content capture (prompts,
 label text, images, model responses) stays excluded and would need a new
 approval and a privacy review.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G3. Tracing now also covers system prompts and text inputs and outputs at
+> every VLM, LLM and SAM 3 level, SAM 3 parameters and the harness's tool
+> calls, one trace per run linked from the specimen record; images stay
+> excluded. The amended scope is in
+> [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md).
 
 The owner also asked for the IAM setup to proceed and offered approval. The
 bounded setup window of the 2026-09-14 amendment is unchanged; its exact
