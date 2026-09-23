@@ -249,7 +249,8 @@ operational blocks. No reviewer action may simply waive missing evidence.
 > Two clearance gates above no longer apply: "approved semantics/policy" (the
 > institutional-approval and semantics gates, `policy.py` 31-34) and "any
 > required human approval" (`policy.py` 138-139). A record the agentic harness
-> resolves is cleared without a human. Every other gate stays, including label
+> resolves is cleared without a human. Every other gate stays, as G19, G20 and
+> G24 apply them, including label
 > coverage, which the lane now checks automatically (G15), and the operational
 > blocks, which retry and are not a queue; needs human review and deferral stay
 > as this contract defines them.

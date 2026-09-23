@@ -20,7 +20,8 @@ Read before researching, so the plan fits the product that exists:
 1. `docs/execution/golive/PLAN.md` (sections 1, 2 and 4.1 row 7) and the S4
    brief (`briefs/S4-first-pass-and-harness.md`), which defines the harness,
    its typed tools and outcomes, and the owner's rules: never invent values
-   (`PRD.md` HAR-019); no data found goes to the human queue; errors retry;
+   (`PRD.md` HAR-019); no data found for a mandatory field goes to the human
+   queue; errors retry;
    "something that harness was able to resolve is cleared".
 2. `docs/product-requirements/PRD.md` section 12.4 (484-564): the Insects field
    keys `country`, `province_state`, `county`, `city`, `precise_location`
@@ -57,6 +58,8 @@ Read before researching, so the plan fits the product that exists:
    document "Proposed, not accepted by the owner" at the top until the owner
    accepts it (G12). Tool outcomes are HAR-008's, as `LookupStatus` encodes
    them (`domain.py` 43-54); a missing credential is an operational block.
+   From Google geocoding the pipeline keeps only the place ID, the outcome and a
+   response fingerprint (G26).
 2. Optional, only if it helps the owner judge the plan: a prototype under
    `scripts/research/georeferencing/` exercising the public endpoints read-only
    on the pilot labels' place names, with its results summarized in the plan.
