@@ -32,12 +32,15 @@ PROVIDERS = {"runtime-build": f"{POOL}/providers/specimen-runtime-build",
              "runtime": f"{POOL}/providers/specimen-runtime-release"}
 WINDOW_SECONDS = 3600
 POLL_SECONDS = 30
-MAX_WAIT_SECONDS = 3300
+MAX_WAIT_SECONDS = 5400
 REPOSITORY_ID = 1360732425
 CI_WORKFLOW = ".github/workflows/ci-cd.yml"
+# Runtime promotion follows data readiness (D3): a runtime job waits for the
+# same commit's data release, which only verifies when dataconnect/ is unchanged.
+DATA_WORKFLOW = ".github/workflows/data-release.yml"
 RECORD_KEYS = {"version", "plane", "repository", "project", "source_sha", "source_tree_sha", "pull_request",
-               "ci_run_id", "ci_run_attempt", "release_run_id", "release_run_attempt", "issued_at_unix",
-               "expires_at_unix", "identity"}
+               "ci_run_id", "ci_run_attempt", "data_run_id", "data_run_attempt", "release_run_id",
+               "release_run_attempt", "issued_at_unix", "expires_at_unix", "identity"}
 
 
 def field(value: object, *keys: str) -> object:
@@ -66,19 +69,19 @@ def identity(plane: str) -> dict:
     return {"project_number": PROJECT_NUMBER, "pool_id": POOL_ID, "provider": PROVIDERS[plane]}
 
 
-def ci_run(sha: str, wait_seconds: int, gh, clock, sleep) -> dict:
-    """The one CI/CD push run of the commit, polled until it completes or the bounded wait ends."""
-    path = f"repos/{REPOSITORY}/actions/workflows/ci-cd.yml/runs?head_sha={sha}&event=push&branch=main&per_page=20"
-    deadline = clock() + wait_seconds
+def workflow_run(sha: str, workflow: str, deadline: float, gh, clock, sleep) -> dict:
+    """The one push run of a workflow for the commit, polled until it completes or the deadline passes."""
+    name = workflow.rsplit("/", 1)[-1]
+    path = f"repos/{REPOSITORY}/actions/workflows/{name}/runs?head_sha={sha}&event=push&branch=main&per_page=20"
     while True:
         listing = field(gh(path), "workflow_runs")
-        require(isinstance(listing, list), "invalid CI/CD run listing")
+        require(isinstance(listing, list), f"invalid {name} run listing")
         runs = [run for run in listing if field(run, "head_sha") == sha and field(run, "event") == "push"
-                and field(run, "head_branch") == "main" and field(run, "path") == CI_WORKFLOW]
-        require(len(runs) <= 1, "ambiguous CI/CD runs for the merged commit")
+                and field(run, "head_branch") == "main" and field(run, "path") == workflow]
+        require(len(runs) <= 1, f"ambiguous {name} runs for the merged commit")
         if runs and runs[0].get("status") == "completed":
             return runs[0]
-        require(clock() < deadline, "CI/CD run for the merged commit did not finish in time")
+        require(clock() < deadline, f"{name} run for the merged commit did not finish in time")
         sleep(POLL_SECONDS)
 
 
@@ -91,7 +94,9 @@ def observe(sha: str, *, wait_seconds: int, gh=gh_json, clock=time.time, sleep=t
     require(is_sha(sha), "invalid release source")
     require(type(wait_seconds) is int and 0 <= wait_seconds <= MAX_WAIT_SECONDS, "invalid CI/CD wait")
     base = f"repos/{REPOSITORY}"
-    run = ci_run(sha, wait_seconds, gh, clock, sleep)
+    deadline = clock() + wait_seconds
+    run = workflow_run(sha, CI_WORKFLOW, deadline, gh, clock, sleep)
+    data_run = workflow_run(sha, DATA_WORKFLOW, deadline, gh, clock, sleep)
     run_id, attempt = run.get("id"), run.get("run_attempt")
     require(positive(run_id) and positive(attempt), "invalid CI/CD run")
     jobs = []
@@ -114,7 +119,7 @@ def observe(sha: str, *, wait_seconds: int, gh=gh_json, clock=time.time, sleep=t
     head = field(pull, "head", "sha")
     require(field(pull, "number") == number and is_sha(head), "pull request differs from its listing")
     return {"compare": gh(f"{base}/compare/{sha}...main"), "commit": gh(f"{base}/commits/{sha}"),
-            "pull": pull, "pull_head": gh(f"{base}/commits/{head}"), "run": run, "jobs": jobs}
+            "pull": pull, "pull_head": gh(f"{base}/commits/{head}"), "run": run, "jobs": jobs, "data_run": data_run}
 
 
 def validate_facts(sha: str, observed: dict) -> dict:
@@ -144,7 +149,13 @@ def validate_facts(sha: str, observed: dict) -> dict:
         require(job.get("status") == "completed" and job.get("conclusion") == "success" and job.get("head_sha") == sha
                 and job.get("run_id") == run_id and job.get("run_attempt") == attempt,
                 f"required check failed on the merged commit: {name}")
-    return {"source_tree_sha": tree, "pull_request": pull["number"], "ci_run_id": run_id, "ci_run_attempt": attempt}
+    data = observed["data_run"]
+    data_id, data_attempt = field(data, "id"), field(data, "run_attempt")
+    require(all(field(data, key) == value for key, value in {**expected, "path": DATA_WORKFLOW}.items())
+            and positive(data_id) and positive(data_attempt) and field(data, "repository", "id") == REPOSITORY_ID
+            and field(data, "head_repository", "id") == REPOSITORY_ID, "the same commit's data release did not succeed")
+    return {"source_tree_sha": tree, "pull_request": pull["number"], "ci_run_id": run_id, "ci_run_attempt": attempt,
+            "data_run_id": data_id, "data_run_attempt": data_attempt}
 
 
 def admit_gate(plane: str, env: dict[str, str], *, wait_seconds: int, now: float | None = None,

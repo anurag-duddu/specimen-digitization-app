@@ -235,7 +235,7 @@ def test_an_unfinished_missing_or_ambiguous_ci_run_fails_within_the_bounded_wait
     assert clock.sleeps == sleeps
 
 
-@pytest.mark.parametrize("wait", [-1, 3301, 30.0, True, "30"])
+@pytest.mark.parametrize("wait", [-1, 5401, 30.0, True, "30"])
 def test_the_wait_is_a_bounded_integer(wait):
     github = GitHub()
     with pytest.raises(ValueError, match="wait"):
