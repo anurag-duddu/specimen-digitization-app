@@ -343,6 +343,12 @@ class Workflow:
                     ):
                         raise OperationalBlock("segmentation_geometry_invalid")
                 run.coverage_confirmed = run.profile.synthetic
+                if not run.profile.synthetic:
+                    from .label_coverage import check_run
+
+                    # G15: the lane checks coverage itself (LANE.md T3). A failed
+                    # check is a verdict for the queue, and the run goes on.
+                    check_run(specimen)
             elif step.startswith("transcribe:"):
                 _, region_id, route = step.split(":", 2)
                 region = next(r for r in run.regions if r.id == region_id)

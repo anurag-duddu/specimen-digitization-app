@@ -385,6 +385,10 @@ class Run(Record):
     created_at: str = Field(default_factory=now)
     # When processing was requested (LANE.md T1). Omitted until then.
     queued_at: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    # G15's label-coverage evidence, in S5's shape (LANE.md T3). Omitted until checked.
+    coverage_check: dict | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     # Each field's group from the bound profile (LANE.md T4). Omitted until bound.
     field_groups: dict[str, Literal["mandatory", "optional"]] = Field(
         default_factory=dict, exclude_if=lambda value: not value

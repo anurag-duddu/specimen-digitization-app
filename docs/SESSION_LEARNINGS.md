@@ -11876,3 +11876,19 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: moving the audited risk-policy digest to another line of the profile file needs only the baseline entry's `line_number` updated. The gitleaks exception keys on the finding hash, which does not change.
 - Failed approaches: none.
 - Remaining follow-ups: T3b's G15 coverage check (next pull request).
+
+### 2026-09-23 — Go-live lane T3b (coverage): the automatic label-coverage check (G15)
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the second half of topic T3b of `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-coverage-check` from `golive/lane-sam-detections`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - `label_coverage.check_coverage` implements G15 with the coordinator-approved starting values, pinned as the pilot's `segmentation_settings.coverage` (`CoverageRule`, omitted when unset). Three rules must hold:
+    - the existing geometry check: at least one label region and none out of bounds;
+    - 1 to 3 label regions after merging those overlapping at IoU 0.9 or more;
+    - every cross-check (`text`) detection scoring 0.5 or more lies at least 50% inside the union of the label regions.
+  - It sets `run.coverage_confirmed` and records `Run.coverage_check` in S5's shape. That shape carries the version, outcome, region count, cross-check summary with uncovered boxes, reason codes led by `label_coverage_unconfirmed`, and the segmentation response as evidence.
+  - The segment step runs it for non-synthetic runs whose profile pins a rule. A failed check is a verdict for the existing policy gate, and the run goes on through every stage.
+- Validation actually run: the coverage tests (12 passed), including a workflow segment step that records a failed check and moves on to transcription; the lane, SAM, application, worker and evidence-pilot tests (215 passed, 2 skipped); the full gates as listed in the pull request.
+- Durable learnings: the exact share of a box inside a union of rectangles is a sweep over x-strips, merging each strip's y-intervals. That is exact and cheap for the few labels a slide carries, with no rasterizing.
+- Failed approaches: a first draft checked every compressed grid cell against every rectangle, which is quadratic in the edges.
+- Remaining follow-ups: the lab measures hits and misses per subject against its label boxes, and "text" against "handwriting"; the coordinator takes the final values to the owner before the first production run.
