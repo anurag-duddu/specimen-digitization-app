@@ -712,3 +712,42 @@ against real PostgreSQL and the Data Connect emulator. It checks:
 the emulator. It does not compile the GraphQL, run the `@check`s, test replays,
 cursors or the migration from `main`. Those run locally, and each PR records
 the result.
+
+## 11. Projection writer (S5 T2)
+
+`application/projection.py` maps a specimen to the section 7 writes, in
+foreign-key order, with the section 5 ids. It is pure: the repository supplies
+the scope, the actor and a function that locates a blob by its ref (bucket,
+object, generation, size). `SqlConnectRepository` runs it after every
+successful `CreateSpecimenV3` or `SaveSpecimenV3`.
+
+- A write whose primary key already exists counts as written. Any other error
+  stops the projection for that save, because later rows may depend on the
+  failed one; it is logged with the specimen, run and operation, and the next
+  save retries. The projection never fails a save: the snapshot is committed
+  first.
+- The repository remembers the rows it wrote in this process, so a save sends
+  only rows it has not sent. A new process sends each row once more, and the
+  primary keys absorb the repeats.
+- T2a writes stages 1 to 5: the original image, the profile version and the run
+  (the trace id is recorded once when it appears), the regions, each reading
+  with its raw response asset, and the reading comparisons. T2b adds the first
+  pass, the harness, the queue decision and review decisions on S4's domain
+  fields.
+- `Checkpoint` rows are not written: the domain keeps no input digest per
+  attempt. Attempts stay in the snapshot, and the harness's attempts are
+  `ToolCall` rows.
+- The acceptance lab runs the same writer against the emulator
+  (`--persistence sql-emulator`), so it sees the same rows as production.
+
+T2a mapping:
+
+| Row | Mapping |
+|---|---|
+| `SourceAsset` original | id `Asset.id`; object from `Asset.blob_ref`; `mimeType`, `byteSize`, `width`, `height` from the asset; `acquisitionMethod` `intake`; `uploaderUid` `Asset.uploader` |
+| `ProfileVersion` | `Run.profile.id` and `.version`; `configObject` the canonical JSON of `Run.profile_snapshot`; `configSha256` `Run.dependencies["profile_snapshot_sha256"]` |
+| `PipelineRun` | id `Run.id`; `supersedesRunId` the previous run's id; `pinnedVersions` the profile's key, version, registry version and digest, its routes, schema and policy versions, its segmentation settings, and `Run.dependencies`; `inputSha256` the original's SHA-256; `traceId` `Run.trace_id` |
+| `LabelRegion` | id `Region.id`; `sourceAssetId` the original; `geometry` `{x, y, width, height, rotation_quarter_turns, pixel_basis}`; `ordinal` `Region.order`; `regionType` `label`; `segmentationVersion` `{method}:{version}` |
+| `SourceAsset` raw response | kind `raw_response`, `application/json`, no dimensions, `acquisitionMethod` `model_response`, `uploaderUid` the writing actor |
+| `ModelObservation` reading | id `Observation.id`; `modelVersion` `model_id`; `parameters` `{model_settings, provider_model_id, input_tokens, output_tokens, latency_seconds, latency_basis}`; `outcome` `completion_state`, else `finish_state`; `independent` true; `routeId`; `unreadableSpans` |
+| `ReadingComparison` | for a region's transcript with exactly two readings and an alignment algorithm; readings in the profile's route order; `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |
