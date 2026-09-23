@@ -37,7 +37,8 @@ traded for a passing release:
   defines them: new tables; new nullable columns; dropping NOT NULL, but only
   on columns the data contract names with a reason and never on provenance or
   idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
-  `modelVersion`, `stepKey`); new indexes, unique constraints and foreign keys
+  `modelVersion`, `stepKey`), the gate reading a checked-in list of the
+  allowed columns; new indexes, unique constraints and foreign keys
   over new columns only; and new connector operations, each
   `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73). The
   gate refuses everything else: dropped or renamed tables and columns, type
@@ -48,14 +49,37 @@ traded for a passing release:
 - IAM writes and secret creation are owner actions, taken from a reviewed list
   a read-only script prints (T4). No workflow and no agent creates IAM policy.
   Every grant names its resource and its reason; no identity receives Owner or
-  Editor. Standing grants go only to the ordinary data-release, runtime-build,
-  runtime-release and runtime identities, plus the `allUsers` invoker on the
-  API. The one-time roles never get a standing grant: the initializer role,
-  `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
-  one-time and time-bounded through the existing setup-window path
-  (`scripts/ci/data_setup_window.py`) and are revoked after use. That window
-  grants the initializer role for 75 minutes; `docs/DEPLOYMENT.md` separately
-  caps the initializer's privilege window after native parity at ten minutes.
+  Editor. Standing grants go only to three groups:
+  - the runtime-build, runtime-release and runtime identities;
+  - the data-release roles that automatic applies need:
+    `specimenDataSchemaPublish`, `specimenDataStorageRules` and
+    `specimenDataSourceBackup` become standing, and
+    `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead`,
+    already standing, keep their conditions unchanged;
+  - the `allUsers` invoker on the API.
+
+  Every other data-release role stays time-bounded:
+  - `specimenDataCloneCreate`, `specimenDataCloneControl` and
+    `specimenDataRestoreAllowanceClaim` open only for the first apply's single
+    restore check, whose claim is the single-use allowance of
+    `CLONE_ALLOWANCE.md`. That check is D1, the coordinator's ruling for T3 of
+    2026-09-23: a backup before every apply, and one clone restore proof.
+  - `specimenDataRuntimeAbsence` stays time-bounded too, though no automatic
+    apply uses it.
+  - The one-time roles never get a standing grant: the initializer role
+    (`specimenDataInitializeTemporary`), `specimenDataOwnerBootstrap` and
+    `specimenDataInitializerDisposal` stay one-time and time-bounded through
+    the existing setup-window path (`scripts/ci/data_setup_window.py`) and are
+    revoked after use. That window grants the initializer role for 75 minutes;
+    `docs/DEPLOYMENT.md` separately caps the initializer's privilege window
+    after native parity at ten minutes.
+- The setup-window path keeps every binding it manages time-bound. Run the
+  window first or adapt the path, never fall back to a grant without a time
+  condition, and list the revocation commands.
+- Before every apply, an on-demand backup must succeed and point-in-time
+  recovery must be on; the first apply also restores that backup once into a
+  clone and checks it (D1). After every apply, the supplemental SQL indexes
+  are re-created concurrently and each is checked by definition.
 - No private value (administrator or bootstrap identities, organization or
   collection ids, tokens) appears in a workflow log or artifact, because both
   are public in this repository.
@@ -91,11 +115,13 @@ Three documents gain more than notes:
   or a `gcloud ... deploy` command from a workstation or an agent shell" and
   the rule listing what is never weakened are unchanged, word for word.
 - [`APPROVED_LOGFIRE_TRACING.md`](../APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3):
-  G3's content scope. System prompts, text inputs and outputs, SAM 3
-  parameters and the harness's tool calls with arguments and results are
-  permitted; images are never captured; secrets and the identities of the
-  app's users are scrubbed; the worker, SAM 3 and the API hold standing read
-  access to the writer secret.
+  G3's content scope with G26 applied. System prompts, text inputs and
+  outputs, SAM 3 parameters and the harness's tool calls with arguments and
+  results are permitted, except that geocoding keeps only the place ID, the
+  pipeline's outcome and a response fingerprint. Images are never captured.
+  Secrets and the identities of the app's users never enter prompts or tool
+  arguments, and scrubbing is only the backstop. The worker, SAM 3 and the API
+  hold standing read access to the writer secret.
 - [`APPROVED_RELEASE_BUDGET.md`](../APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9):
   G9's USD 25 ceiling, cumulative, infrastructure and models together.
 
@@ -128,6 +154,7 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/policy.py` 31-34 and 138-139, for the lane | The institutional-approval and semantics gates, and the human-approval gate | G1 | S4 |
 | `scripts/ci/worker_trace_setup.py` `grant` | A worker-only writer-secret binding that expires within 24 hours | G3, G11 | S2 T4 (standing grants per identity and secret) |
 | `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
+| `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews the standing roles and the time-bounded ones alike as 120-minute bindings, and refuses any untimed binding | G11 | S2 T4 (narrows the renewals to the time-bounded roles) |
 
 ## 3. T2: runtime plane on merge
 

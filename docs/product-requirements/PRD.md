@@ -393,7 +393,7 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | QUE-007 | P1 | Deferred records include retry eligibility predicates, such as a newer model family, capability tag, profile version, or manual campaign. |
 | QUE-008 | P1 | A reprocessed record retains prior dispositions and shows why the latest disposition changed. |
 
-> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1. For the go-live program, QUE-002's clearance gate no longer requires human approval when the agentic harness resolves the record; human review and deferral stay as QUE-003 and QUE-004 define them.
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1. For the lane, QUE-002's clearance gate no longer requires human approval when the agentic harness resolves the record; human review and deferral stay as QUE-003 and QUE-004 define them.
 
 ### 11.11 Search, reporting, and export
 
