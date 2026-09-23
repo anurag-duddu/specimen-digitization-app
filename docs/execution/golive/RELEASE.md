@@ -381,13 +381,25 @@ a secret or a private id.
 | runtime identities | `roles/secretmanager.secretAccessor` | each secret its role reads (`runtime_settings.py`) | per identity and per secret: the API reads the Logfire token, the source registry and the collection bindings; the worker reads the Hugging Face token, the Logfire token, the Maps key, its actor uid and the collection bindings; SAM 3 reads the Logfire token |
 | `specimen-data-release` | `specimenDataSchemaPublish`, `specimenDataStorageRules`, `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`, `specimenDataInventoryProjectRead` | project, with the existing resource conditions and no time condition | apply the schema, the connector and the rules; back up before an apply (D1); read the catalog |
 
-The data release's two retired roles, `specimenDataRuntimeAbsence` and
-`specimenDataRestoreAllowanceClaim`, get no new grant. Only the roles automatic
-applies need are standing. The clone roles, `specimenDataCloneCreate` and
-`specimenDataCloneControl`, stay time-bounded: the owner opens them through
-the setup window only for the first apply's restore check (D1). The
-initializer role, `specimenDataOwnerBootstrap` and
-`specimenDataInitializerDisposal` stay one-time, through the setup window.
+Only the roles automatic applies need are standing. The inventory roles
+`specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead` are
+already standing and keep their conditions unchanged. The rest stay
+time-bounded through the setup window:
+- the clone roles (`specimenDataCloneCreate`, `specimenDataCloneControl`) and
+  `specimenDataRestoreAllowanceClaim`, opened only for the first apply's single
+  restore check (D1);
+- `specimenDataRuntimeAbsence`, which automatic applies no longer use;
+- the one-time roles: the initializer role, `specimenDataOwnerBootstrap` and
+  `specimenDataInitializerDisposal`.
+
+The script reports every live binding of these as time-bounded, never as
+missing.
+
+T4 also narrows `scripts/ci/data_setup_window.py`. Its renewals drop the three
+roles that become standing (`specimenDataSchemaPublish`,
+`specimenDataSourceBackup`, `specimenDataStorageRules`). The window keeps
+refusing any untimed binding of the roles it manages, and prints their
+revocation commands.
 
 The script also prints the other owner steps:
 - public access prevention on the bucket;
