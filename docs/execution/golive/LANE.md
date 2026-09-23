@@ -73,6 +73,14 @@ synthetic mode, five things make a request:
    and `POST /specimens/{id}/classification`, the same way. A decision that
    leaves the run due starts the worker without changing the run.
 
+The lane never processes a record marked sensitive. Sensitive information is
+not sent to an unapproved provider (`PRD.md` section 3, principle 9), and the
+worker's membership cannot see sensitive records anyway. Intake creates such a
+record `processing_blocked` with the blocker `sensitive_record_not_processed` and
+starts no worker. A process request or a run action on it is refused with `409`
+and that code. A stored record's sensitivity cannot be lowered, so the image is
+processed by uploading or importing it into a batch declared non-sensitive.
+
 If intake cannot queue a specimen because its collection has no resolvable
 allowance, the specimen is still created. It is created `processing_blocked`
 with the blocker `collection_processing_unconfigured`, and a `retry` queues it
