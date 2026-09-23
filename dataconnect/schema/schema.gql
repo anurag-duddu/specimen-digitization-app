@@ -163,6 +163,9 @@ type ModelObservation @table(key: ["organizationId", "collectionId", "id"]) @uni
   literalText: String!
   outcome: String!
   independent: Boolean!
+  # The reader's route and the spans it marked unreadable (DATA_CONTRACT.md); null on legacy rows.
+  routeId: String
+  unreadableSpans: [String!]
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
@@ -205,6 +208,8 @@ type ReadingComparison @table(key: ["organizationId", "collectionId", "id"]) @un
   rightObservation: ModelObservation! @ref(fields: ["organizationId", "collectionId", "rightObservationId"], constraintName: "comparison_right")
   algorithm: String!
   ratio: Float
+  editDistance: Int
+  lengthBasis: Int
   status: String!
   reasons: [String!]!
   createdAt: Timestamp! @default(expr: "request.time")
@@ -260,6 +265,7 @@ type ToolCall @table(key: ["organizationId", "collectionId", "id"]) @unique(inde
   phase: String!
   tool: String!
   toolVersion: String!
+  source: String
   fieldKey: String
   inputSource: String!
   transcriptionVersionId: UUID
