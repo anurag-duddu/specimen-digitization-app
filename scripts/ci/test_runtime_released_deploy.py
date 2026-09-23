@@ -60,6 +60,7 @@ class FakeGoogle:
     """Cloud Run v2 as far as the release uses it. Every call is recorded; operations finish at once."""
 
     run_iam_policy = M.Google.run_iam_policy  # the real read-only guard; it issues GET <service>:getIamPolicy
+    real_wait = M.Google.wait  # the real operation-name and deadline checks
 
     def __init__(self, existing=(), policies=None):
         self.packet = gate_record()
@@ -99,7 +100,7 @@ class FakeGoogle:
 
     def wait(self, api, operation, *, maximum_seconds=600):
         self.calls.append(f"wait {maximum_seconds}")
-        return M.Google.wait(self, api, operation, maximum_seconds=maximum_seconds)
+        return self.real_wait(api, operation, maximum_seconds=maximum_seconds)
 
 
 @pytest.fixture
@@ -285,6 +286,13 @@ def test_an_api_candidate_that_fails_readiness_never_receives_traffic(tmp_path, 
     assert isinstance(error, ValueError) and seen["probed"] == [CANDIDATE]
     assert "PATCH specimen-api traffic" not in google.calls and receipt["promoted"] is False
     assert google.state[NAMES["api"]]["traffic"][0] == {"type": REVISION, "revision": "specimen-api-old", "percent": 100}
+
+
+def test_a_failed_check_on_the_service_url_fails_the_run_and_the_receipt_says_traffic_moved(tmp_path, monkeypatch, ready):
+    google = FakeGoogle(existing=[previous(role) for role in NAMES])
+    receipt, error, seen = deploy(tmp_path, monkeypatch, google, failing=SERVICE)
+    assert isinstance(error, ValueError) and seen["probed"] == [CANDIDATE, SERVICE]
+    assert "PATCH specimen-api traffic" in google.calls and receipt["promoted"] is True
 
 
 @pytest.mark.parametrize("sam,api,actions", [

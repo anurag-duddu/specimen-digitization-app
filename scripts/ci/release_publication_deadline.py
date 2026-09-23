@@ -25,6 +25,7 @@ import time
 
 from release_admission import private_bytes, read_packet, require, strict_json
 from release_context import PROJECT, validate_context
+from release_gate import is_gate_record
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTH_SHA = "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"  # pragma: allowlist secret (public upstream commit)
@@ -78,7 +79,8 @@ class Deadline:
 def frozen_packet(path, env):
     packet = read_packet(path, env)
     require(packet.get("plane") == "runtime-build", "only the fixed publisher is supervised")
-    validate_context(env, "runtime-build", packet.get("source_sha", ""))
+    # G11: a gate record carries no owner-set commit; an envelope packet still needs RELEASE_AUTHORIZED_SHA.
+    validate_context(env, "runtime-build", packet.get("source_sha", ""), envelope=not is_gate_record(packet))
     require(type(packet.get("expires_at_unix")) is int, "integer packet deadline required")
     for field, key in (("release_run_id", "GITHUB_RUN_ID"), ("release_run_attempt", "GITHUB_RUN_ATTEMPT")):
         value = packet.get(field)
