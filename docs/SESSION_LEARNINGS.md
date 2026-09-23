@@ -11867,3 +11867,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Pending settings: the readiness generation once the owner uploads the marker, the SAM checkpoint digest once uploaded, S3's per-run SAM server settings, and the worker's drain arguments.
   - Unverified until the first live deploy: that Cloud Run echoes templates exactly, and that `urls` includes the deterministic SAM URL.
   - Re-run all jobs after a failure, because the receipts are per attempt.
+
+### 2026-09-23 — Go-live release workstream (S2), T2c: the runtime workflow admits through the gate
+
+- Task: the S2 session, brief item T2, step three (`docs/execution/golive/RELEASE.md` section 3.3), plus the coordinator's D3.
+- Branch/worktree: `golive/release-runtime-workflow`, stacked on T2b's branch; written by this session.
+- Outcome:
+  - `.github/workflows/runtime-release.yml` reads no secret and no `RELEASE_*` variable.
+  - Every job runs `release_gate.py` for its own plane before any credential.
+  - The admission waits up to 90 minutes for the five checks and then the same commit's data release.
+  - The build job keeps the pinned publication action and attestation.
+  - The release job authenticates with the gate's fixed provider and deploys through `deploy_runtime.py`.
+  - The gate records the data release run and attempt (D3).
+  - A workflow-shape test pins these properties, and `docs/DEPLOYMENT.md` gains a runbook entry for the runtime release on merge.
+- Commits/PRs: red `b4a140c`; D3 green `dd29901`; workflow `e31c457`; spec sentence and this closeout.
+- Validation actually run:
+  - Red: 10 gate tests failed before D3.
+  - Green: 215 gate, admission and context tests. After rebasing onto T2b, 170 tests passed across the gate, workflow, deploy, publication and policy files.
+  - pre-commit with actionlint passed on the workflow and tests.
+- Durable learnings: waiting for the data release inside the runtime gate is simpler than cross-workflow triggers, and it keeps `on: push` as the only trigger the policy test allows. The cost is a longer admission job (timeout raised to 100 minutes).
+- Failed approaches: none.
+- Remaining follow-ups: until T3 lands, the data release fails closed at envelope admission on every push. With this change the runtime release will then fail its gate too, which is intended: runtime follows data readiness.
