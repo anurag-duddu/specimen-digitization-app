@@ -95,7 +95,9 @@ coordinate). One root span per run with specimen, run, collection and profile
 ids (helpers exist unused in `tracing.py` 48-68); a span per stage carrying
 `specimen.processing.stage` (the existing helper's attribute, `tracing.py` 65);
 SAM 3 spans on both sides; the trace id stored on the run (S5
-adds the column) and exposed to the thread API; identities and secrets scrubbed.
+adds the column) and exposed to the thread API; identities and secrets
+scrubbed, and no span records the Geocoding request URL, which carries the key
+(G26).
 Update the leak tests to the new approval instead of deleting them. Wire the
 Logfire project and token with S2. The unmerged branch `codex/reader-trace-linkage`
 (four commits) may have reusable pieces.

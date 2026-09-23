@@ -41,14 +41,19 @@ provider, prompt version); the disagreement score labelled uncalibrated; the
 first pass's decision and what each reader handed to the harness; the harness's
 lookups as a timeline with their typed outcomes (a geography lookup shows the
 place ID and its outcome only, G26); fields grouped mandatory and
-optional with state and evidence; the queue decision with its reasons,
+optional with state and evidence, a place or taxon field showing its verbatim
+text and its settled final value, each labelled, with each reader's reading
+attributed when the first pass picked none (G27, G28), and a date the harness
+could not settle showing its candidate readings (G29); the queue decision with its reasons,
 including a failed automatic coverage check (G15); and
 "Open trace", a link built from the Logfire project configuration and the trace
 id. Use `specimen_ui` components; there is no timeline component yet, so add one
 to the package with its own tests.
 
 **T3. Queue and processing.** Needs human review (filterable by reason),
-deferred, cleared, processing and blocked; a Process action
+deferred, cleared, processing and blocked; a record declared Sensitive shows
+that it waits because automated reading never runs on sensitive records, and
+the upload screen says so before submission (PLAN section 2.2); a Process action
 (`POST /specimens/{id}/process`); intake that starts processing and shows live
 status; upload rows linked to the specimen they created (`api.py` 1283 already
 returns `specimen_id`).

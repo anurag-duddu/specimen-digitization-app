@@ -71,12 +71,15 @@ first pull request records that in each affected document with a dated entry.
 | G18 | Chosen option "Full swarm every time": the PR steward reviews every new head with a fresh four-reviewer swarm, including a head that differs from an approved one only by a merge from `main` | nothing |
 | G19 | Chosen option "Harness tries raw readings" (asked by S4): when the LLM first pass picks no reading for a label, the harness runs its lookups on each reader's raw reading; fields that resolve clear on their own evidence, and a field still left with conflicting readings goes to needs human review | the first-pass prompt's "route material ambiguity to human review", which now means the first pass returns no reading |
 | G20 | Chosen option "Yes, the lookup settles it" (asked by S4): when the readers disagree and a lookup confirms exactly one reader's literal, that literal is used with its provenance and the field can clear under G1; it counts as a resolved critical disagreement for QUE-002 | nothing |
-| G21 | Chosen option "Turn off repo auto-merge": the owner switches off the repository's "Allow auto-merge", so that G17 holds for every session | nothing |
-| G22 | Chosen option "Keep all four mandatory": the four elevation fields stay mandatory and nothing is derived, neither a conversion nor a filled-in endpoint; a label without all four values goes to human review, which is every pilot label | nothing; settles the "pending policy" of `CONTRACTS.md` 234-235 |
-| G23 | Chosen option "GBIF decides, others support" (asked by S4): GBIF species match v2 against the pinned COL XR checklist decides a taxonomy outcome; Global Names Verifier and Catalogue of Life are queried and recorded as supporting evidence, and a disagreement is flagged without changing GBIF's result; BugGuide is not used | settles `PRD.md` 562 (source precedence) |
-| G24 | Chosen option "As written, '46 means 1946": a date clears at the precision written (month and year is enough), and a two-digit year reads as 19xx for Insects, recorded as that rule | settles `PRD.md` 561 (date precision) |
+| G21 | Chosen option "Turn off repo auto-merge": the owner switches off the repository's "Allow auto-merge", so that G17 holds for every session. Done 2026-09-23 and standing: the steward reports any auto-merge it finds and never changes the setting | nothing |
+| G22 | Chosen option "Keep all four mandatory": the four elevation fields stay mandatory and nothing is derived, neither a conversion nor a filled-in endpoint; a label without all four values goes to human review, which is every pilot label | nothing; settles the "pending policy" of `CONTRACTS.md` 234-235 and `PRD.md` 560 (elevation conversion) |
+| G23 | Chosen option "GBIF decides, others support" (asked by S4): GBIF species match v2 against the pinned COL XR checklist decides a taxonomy outcome; Global Names Verifier and Catalogue of Life are also queried and recorded as evidence; in the chosen option's words, "a disagreement is flagged but GBIF's result stands" and "BugGuide isn't used (North American only)". The flag is a warning finding, never a reason for review (section 4.1, stage 8) | settles `PRD.md` 562 (source precedence) |
+| G24 | Chosen option "As written, '46 means 1946": a date clears at the precision written, and a two-digit year reads as 19xx for Insects, recorded as that rule. An uncertain date (a written "?") is outside G24 and keeps the existing date gate | settles the precision part of `PRD.md` 561; G29 settles its Roman-numeral months |
 | G25 | Chosen option "Yes, at the label's rank": when a label identifies only to genus, a confirmed, accepted genus satisfies the taxon field | settles `GBIF.md` 126's "expected rank" for genus-only labels |
-| G26 | Chosen option "Place ID only": from Google geocoding the pipeline keeps only the place ID, its own outcome and a fingerprint of the response; Google's names, address parts and coordinates are dropped everywhere, including Logfire traces | settles the storage and caching part of `PRD.md` 563 |
+| G26 | Chosen option "Place ID only": from Google geocoding the pipeline keeps only the place ID, its own outcome and a fingerprint of the response; Google's names, address parts and coordinates are dropped everywhere, including Logfire traces | settles the storage and caching part of `PRD.md` 563; narrows `PRD.md` 538 (Google as a source of names and coordinates) and 541 (what an adapter keeps) for Google |
+| G27 | Asked by the coordinator from S8's finding on 105526329 and 105526330: the label reads "Chimaltenago", one reader wrote that and the other silently wrote "Chimaltenango", and a place lookup matches the second exactly and the first only approximately. The owner chose neither offered option ("Exact match settles it", "Place yes, spelling to review") and answered: "raw transcript anyway will have exactly as written, for verbatim field it will be as written but final location will be exact actual as settled by harness. we are always capturing both so there isn't an issue if people want to change later". So the lookup settles the final value and the field clears; the verbatim is never replaced, neither by a lookup result nor by the spelling a lookup matched; when the first pass picked no reading and the readers' literals differ, each reader's reading is kept as captured and none is chosen; both are stored, linked to the specimen (the shape is in S5's data contract) | G20's "that literal is used" for the verbatim; S8's proposal D14 (#94) |
+| G28 | Chosen option "Yes, same as places": taxon names follow G27; the taxon field keeps the label's spelling as its verbatim text, GBIF's settled result is the final value, and both are stored | nothing |
+| G29 | Chosen option "Yes, read it as the month", with the owner's addition: "yes, read as month + this should be part of system prompt too, all permutations combinatinos. thats the whole point of the harness, we figure out all possible cases and try to get to final records that need to be ingested. this should be the prinnciple of th harness essentially. theres a broad range possible per collection/subcollection each subcollection will have its own harness, right now were on insects". So a Roman numeral I to XII in the month position is that month; the harness works through every reading a notation allows, for dates and for every other field, and settles the one the evidence supports; what it cannot settle goes to needs human review with the candidates (G1, G6); each subcollection's profile carries its own harness knowledge, and the pilot's is Insects | settles the Roman-numeral months of `PRD.md` 561; states `PRD.md` 43 and HAR-013 as the harness's principle |
 
 `AGENTS.md`'s security rules are unchanged: nobody deploys from a workstation
 or an agent shell, and nobody weakens branch protection, required checks,
@@ -95,12 +98,12 @@ Sessions implement these as specified; none is a new decision.
 | Raw reading provenance | `PRD.md` TRN-005; `CONTRACTS.md` 184 |
 | Disagreement score `bounded-levenshtein-fraction-v1`, labelled as review priority and uncalibrated | `BACKEND_ADJUDICATION_PROVENANCE.md` 5; `READING_EVIDENCE.md` 70-89; `PRD.md` SCR-004, SCR-005 |
 | The LLM first pass prompt is the managed prompt `transcription-disagreement-adjudication` | `src/specimen_digitization/prompts.py` 63-72 |
-| Lookup sources: taxonomy through Global Names Verifier, Catalogue of Life and GBIF (BugGuide is for North American material only, and the pilot slides are from the Philippines and Guatemala); geography through Google Maps (G10), keeping only the place ID (G26); GBIF decides taxonomy, with the others as supporting evidence (G23). Fields other than taxonomy, geography and parties resolution are transcribed as seen. Parties resolution (`identified_by_irn`) needs EMu Parties, which is not provisioned, so that field is optional for the slide pilot (G16) | `PRD.md` 12.4 (484-494, 529-541); `GBIF.md` |
+| Lookup sources: taxonomy through GBIF, which decides, with Global Names Verifier and Catalogue of Life as supporting evidence, and BugGuide isn't used (G23); geography through Google Maps (G10), keeping only the place ID, the outcome and a response fingerprint (G26). On `PRD.md` 564 (may a Google-only match clear): G10, G20 and G27 let a Google lookup settle a place field, so a Google-only match can support that field's clearance today; S8's proposal D1 in #94 would narrow that, and the owner decides it. Fields other than taxonomy, geography and parties resolution are transcribed as seen. Parties resolution (`identified_by_irn`) needs EMu Parties, which is not provisioned, so that field is optional for the slide pilot (G16) | `PRD.md` 12.4 (484-494, 529-541); `GBIF.md` |
 | Typed lookup outcomes: the eleven of HAR-008, as `LookupStatus` encodes them; no outcome is added. The failure table: a missing or rejected credential is an authentication error and an operational block | `PRD.md` HAR-008 (329), 673-685; `domain.py` 43-54 |
 | Queue definitions: exactly one of cleared, needs human review, deferred; deferred only for documented model-capability limits; missing configuration, rate limits, timeouts, invalid credentials, outages, budget exhaustion and code errors are operational blocks with retry, not a queue | `PRD.md` QUE-001 to QUE-005 (386-390); `CONTRACTS.md` 217-246, as modified by G1 |
 | Field value states; only `supported` satisfies a mandatory field | `CONTRACTS.md` 221-237 |
 | Collection hierarchy and bootstrap | `COLLECTION_HIERARCHY.md`; `FIRST_COLLECTION_BOOTSTRAP.md` |
-| The worker acts as its own operator account with a membership that cannot see sensitive data, never as the administrator, so automated steps are recorded under their own identity | `LIVE_PROCESSING.md` 62-63; `BACKEND.md` 169-170; `infra/release/OWNER_INPUTS.md` 288 |
+| The worker acts as its own operator account with a membership that cannot see sensitive data, never as the administrator, so automated steps are recorded under their own identity. An upload declared Sensitive, which is the intake default, is therefore never processed by this worker (coordinator ruling from these sources); G2 and DoD-6 hold for uploads declared not sensitive, and the app says why a sensitive record waits | `LIVE_PROCESSING.md` 62-63; `BACKEND.md` 169-170; `infra/release/OWNER_INPUTS.md` 288; `CONTRACTS.md` "Explicit intake sensitivity"; `PRD.md` 66, 715 |
 
 ### 2.3 Owner inputs still outstanding
 
@@ -110,11 +113,11 @@ Sessions implement these as specified; none is a new decision.
 | Google Maps Platform key (G10) | harness geography tool | done 2026-09-23: `specimen-google-maps-key` version 1, a key restricted to the Geocoding API |
 | Logfire write token (G3) | tracing in production | done 2026-09-23: the owner's existing token, stored as `specimen-worker-logfire` version 1 and verified for the specimen project |
 | Hugging Face token rotation | none | withdrawn by the owner on 2026-09-23; the existing `huggingface-runtime-token` version is used |
-| Hugging Face Inference Providers credits: the account's included monthly credits ran out on 2026-09-23 and routed calls return HTTP 402 | every model call: readers, first pass, harness, the acceptance lab | owner buys pre-paid credits within G9 |
+| Hugging Face Inference Providers credits: the account's included monthly credits ran out on 2026-09-23 and routed calls return HTTP 402 | every model call: readers, first pass, harness, the acceptance lab | done 2026-09-23: the owner bought pre-paid credits, and routed calls succeed again |
 | The repository's "Allow auto-merge" switched off (G21) | G17 for every session | done 2026-09-23 (`allow_auto_merge` is false) |
-| A Logfire read token for the acceptance lab (optional) | reading each run's trace back for DoD-5 | owner copies the existing read token; the acceptance lab's entry in `~/specimen-golive/OWNER_ACTIONS.md` |
-| Standing IAM grants for the release and runtime identities (G11), the one-time, time-bounded grants for initialization and bootstrap that `DEPLOYMENT.md` 809-815 and the setup-window path require, and the secrets `specimen-source-registry` and `specimen-worker-actor-uid` | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares |
-| A Firebase account for the worker, with an operator membership that cannot see sensitive data (section 2.2) | automated steps recorded under their own identity | owner creates the account; S2 and S5 supply the membership step and the `specimen-worker-actor-uid` secret |
+| A Logfire read token for the acceptance lab (optional) | reading each run's trace back for DoD-5 | owner copies the existing read token, under the owner's 2026-09-23 decision to reuse existing credentials; a separate, revocable lab token can replace it later; the acceptance lab's entry in `~/specimen-golive/OWNER_ACTIONS.md` |
+| Standing IAM grants for the release and runtime identities (G11), the one-time, time-bounded grants for initialization and bootstrap that `DEPLOYMENT.md` 809-815 and the setup-window path require, and read access to the secrets `specimen-source-registry`, `specimen-collection-bindings` and `specimen-worker-actor-uid`, which the owner created on 2026-09-23 (version 1 each) | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares |
+| A Firebase account for the worker, with an operator membership that cannot see sensitive data (section 2.2) | automated steps recorded under their own identity | account done 2026-09-23: disabled, with no password and no sign-in provider; its UID is `specimen-worker-actor-uid` version 1. Still to run: its membership, written once by the reviewed one-time bootstrap (S5's document in #96, run by S2's T3e with the UID from a temporary environment secret): an active organization membership and one collection membership on the pilot collection (Insects) only, role `operator`, which cannot approve (`api.py` 323-342), with `canViewSensitive: false`. Never `scripts/data/bootstrap_admin.py`, which hard-codes role `admin` (51, 71) |
 
 ## 3. Verified starting state, 2026-09-23
 
@@ -155,8 +158,8 @@ the coordinator; it does not decide (G5).
 | 4 Raw transcripts to SQL | Linked to the original image, which VLM gave what | Stored in the snapshot JSON only | Write the normalized tables in production (section 4.4) |
 | 5 Disagreement score | Scoring for level of disagreement | `bounded-levenshtein-fraction-v1`, risk scores, uncalibrated | Run in the lane and persist per region |
 | 6 LLM first pass | Decides which final raw transcript the harness runs against, and gives per VLM what was returned to the harness | Prompt only | A first-pass step on a Hugging Face model (G7) with the existing prompt; records the decision and, per reader, the reading and what was handed to the harness; when it picks no reading, the harness runs on each reader's raw reading (G19) |
-| 7 Agentic harness | Runs lookups on the decided transcript through tools that depend on collection and subcollection, mandatory and optional fields; falls back to the raw readings if the decided transcript fails; if both fail, the relevant queue; graceful failures (G6) | Deterministic phases, GBIF adapter, unconfigured authorities | A Pydantic AI agent with the profile's typed tools (section 2.2 sources), the HAR-008 outcomes for no data found, errors and retries, the raw-reading fallback, every tool call recorded; GBIF decides taxonomy, with Global Names Verifier and Catalogue of Life as supporting evidence (G23), and a match succeeds as `GBIF.md` 126-130 defines, at the label's own rank for a genus-only label (G25); a lookup that confirms exactly one reader's literal settles a disagreement (G20); from Google only the place ID, the outcome and a response fingerprint are kept, everywhere including traces (G26) |
-| 8 Queue decision | Harness-resolved is cleared (G1); otherwise human review or deferred as the spec defines; no data for a mandatory field means the human queue (G1, G6) | Policy engine with human-only clearance; deferral only through the reviewer's action | Apply G1 in the policy: remove the gates that contradict it for the lane (`policy.py` 31-34 and 138-139); keep `label_coverage_unconfirmed` (35-36), which the lane's automatic check satisfies (G15); keep the reviewer's `capability_defer` action (`api.py` 1940-1967) and let the queue decision also return deferred under QUE-004; keep operational blocks with retry; validate the separately parsed date instead of the verbatim text (`policy.py` 119-126): a date clears at the precision written, and a two-digit year reads as 19xx for Insects (G24); keep the elevation gate (99-106, G22); `unresolved_transcription` (46-48) yields to G19 and G20, so a region whose first pass picked no reading passes when every field drawn from it resolved, on its own evidence or through a lookup that settled the disagreement, and a field still left with conflicting readings sends the record to needs human review. `pilot_clearance_forbidden` (`worker.py` 318-323) is off the lane's path and stays |
+| 7 Agentic harness | Runs lookups on the decided transcript through tools that depend on collection and subcollection, mandatory and optional fields; falls back to the raw readings if the decided transcript fails; if both fail, the relevant queue; graceful failures (G6) | Deterministic phases, GBIF adapter, unconfigured authorities | A Pydantic AI agent with the profile's typed tools (section 2.2 sources), the HAR-008 outcomes for no data found, errors and retries, the raw-reading fallback, every tool call recorded; GBIF decides taxonomy, with Global Names Verifier and Catalogue of Life as supporting evidence (G23), and a match succeeds as `GBIF.md` 126-130 defines, at the label's own rank for a genus-only label (G25); a lookup that confirms exactly one reader's literal settles a disagreement (G20); for places (G27) and taxon names (G28) the verbatim keeps the text as written and the final value is what the lookup settled, both stored; from Google only the place ID, the outcome and a response fingerprint are kept, everywhere including traces, test fixtures and lab folders, and the geocoding tool hands the agent only those (G26); the harness works through every reading a notation allows and settles the one the evidence supports, with the notations in the profile's harness prompt, starting with Insects (G29) |
+| 8 Queue decision | Harness-resolved is cleared (G1); otherwise human review or deferred as the spec defines; no data for a mandatory field means the human queue (G1, G6) | Policy engine with human-only clearance; deferral only through the reviewer's action | Apply G1 in the policy: remove the gates that contradict it for the lane (`policy.py` 31-34 and 138-139); keep `label_coverage_unconfirmed` (35-36), which the lane's automatic check satisfies (G15); keep the reviewer's `capability_defer` action (`api.py` 1940-1967) and let the queue decision also return deferred under QUE-004; keep operational blocks with retry; validate the separately parsed date instead of the verbatim text (`policy.py` 119-126): a date clears at the precision written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral in the month position is that month (G29); keep the elevation gate (99-106, G22); `unresolved_transcription` (46-48) yields to G19 and G20, so a region whose first pass picked no reading passes when every field drawn from it resolved, on its own evidence or through a lookup that settled the disagreement, and a field still left with conflicting readings sends the record to needs human review; in that case the non-empty check reads the settled value with a success outcome, since no single verbatim was chosen (G27, G28). The taxonomy gate (140-157) and finalize's operational check (163) read only `run.lookups[-1]`, which is arbitrary once G19 and G20 add a lookup per reader: the taxonomy gate reads the lookup that settled the taxon field, and the operational check catches an operational failure, not recovered by a retry, in any lookup the decision depends on. G23's flag and the readers' spelling difference under G27 are recorded as findings, never reasons for review. `pilot_clearance_forbidden` (`worker.py` 318-323) is off the lane's path and stays |
 | 9 Linkage | Everything links to the specimen record | Stable ids throughout | Keep; the normalized rows carry specimen and run |
 
 ### 4.2 Profile
@@ -174,8 +177,11 @@ classification endpoint (`api.py` 2243); moving a specimen to another
 collection stays refused (2262). `identified_by_irn` is optional for the slide
 pilot (G16); the other nineteen fields stay mandatory until the owner's list
 arrives (G8), and the four elevation fields stay mandatory with nothing derived
-(G22). The profile carries the Insects date rule of G24: a two-digit year reads
-as 19xx. Optional fields must survive at runtime and be extracted and shown.
+(G22). The profile carries the Insects date rules, a two-digit year reads as
+19xx (G24) and a Roman numeral I to XII in the month position is that month
+(G29), and the Insects harness knowledge under G29: the notations its labels
+use and every reading each allows. Optional fields must survive at runtime and
+be extracted and shown.
 
 ### 4.3 Budget
 
@@ -195,18 +201,24 @@ decision with what each reader handed to the harness; the harness's tool calls;
 the mandatory or optional group of each field; the automatic coverage check's
 result and evidence (G15); the trace id. Everything is keyed per region, since a
 specimen can carry several labels. From Google geocoding only the place ID, the
-outcome and a response fingerprint are stored (G26). Its first pull request is the exact GraphQL
+outcome and a response fingerprint are stored (G26). A place or taxon field
+stores both its verbatim text and its settled final value (G27, G28). Its first pull request is the exact GraphQL
 and the contract the other workstreams code against. Additive changes only,
 meaning expand-only: new tables; new nullable columns; dropping NOT NULL, but
 only on columns the data contract names with a reason and never on provenance or
 idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
-`modelVersion`, `stepKey`), the gate reading a checked-in list of the allowed
-columns; new indexes, unique constraints and foreign keys over new
+`modelVersion`, `stepKey`, and the TRN-005 provenance `rawAssetId`,
+`promptVersion` and `inputSha256`), the gate reading a checked-in list of the
+allowed columns and refusing these keys even when that list names them; new indexes, unique constraints and foreign keys over new
 columns only; new connector operations, each `@auth(level: NO_ACCESS)` with the
 membership `@check`s (`DATA.md` 73). The data plane's gate refuses everything
 else: dropped or renamed tables and columns, type changes, adding NOT NULL, key
 changes, uniqueness over existing columns, changed or removed operations, and
-operations at any other auth level.
+operations at any other auth level. `AppendProfileVersionV2` is open to
+operators so that the projection can record the profile snapshot each run
+used, but its `approvedBy` stays null unless the caller is a reviewer or above
+with sensitive access, which is main's rule for approval claims; the worker
+writes null (coordinator ruling on #88's review).
 
 ### 4.5 Tracing
 
@@ -216,7 +228,10 @@ span carrying specimen, run, collection and profile ids; a span per stage; SAM 3
 parameters on its span, continued inside the SAM service; Pydantic AI
 instrumentation with content on for readers, the first pass and the harness, so
 system prompts, messages and tool calls are visible; the queue decision with its
-reasons. The trace id is stored on the run and linked from the record in the
+reasons. The geocoding tool hands the agent only the place ID, the outcome and
+the response fingerprint, so neither the traces nor the model provider see
+Google's response (G26), and no span records the Geocoding request URL, which
+carries the key. The trace id is stored on the run and linked from the record in the
 app. Local lab runs use the same instrumentation with `environment=lab`.
 
 ### 4.6 Runtime and releases
@@ -284,11 +299,11 @@ requests labelled `golive` with the title prefix `[golive:<ws>]`.
 | ID | Session title (also its messaging name) | Scope | Owns (writes) | Model and effort |
 |---|---|---|---|---|
 | S0 | App production launch plan | Plan, decisions, merge order, owner liaison, acceptance sign-off | `docs/execution/golive/PLAN.md`, `briefs/`, `~/specimen-golive/MERGE_ORDER.md` | Opus 5.5, max |
-| S1 | Steward go-live PRs through review and merge | Review every PR with a fresh swarm, CI to green, merge, post-merge deploy checks, push back | no source; PR comments; `gh pr update-branch`; merges (G17) | Opus 5.5, high |
+| S1 | Steward go-live PRs through review and merge | Review every PR with a fresh swarm, CI to green, merge, post-merge deploy checks, push back | no source; PR comments; reruns; merges (G17) | Opus 5.5, high |
 | S2 | Release data and runtime planes on merge | Contract amendments, auto-on-merge planes, IAM and secret lists, first releases, repository variables, deploy health | `AGENTS.md` deployment paragraph, `docs/DEPLOYMENT.md`, release and approval docs, `.github/workflows/`, `scripts/ci/` release and deploy code, `infra/`, `containers/` | Opus 5.5, xhigh |
 | S3 | Build the on-demand processing lane | On-demand trigger and source import in production, worker drain, SAM 3 per run, profile configuration and inheritance, optional fields at runtime, budget, tracing | `api.py` processing and source routes, `worker*.py`, `sam3_*.py`, `production.py` adapters (535-910), `workflow.py` step bodies before `adjudicate` (pin_dependencies, classify, quality_check, segment, transcribe), `cli.py`, `transcription.py`, `collection_*.py`, `profile_runtime.py`, `observability.py`, `bounded_telemetry.py`, `tracing.py`, `provider_privacy.py` | Opus 5.5, high |
 | S4 | Build the LLM first pass and agentic harness | LLM first pass, agentic harness and tools, fallback, graceful outcomes, queue rule G1 | new first-pass and harness modules, `harness.py`, `evidence_harness.py`, `lookup.py`, `parties.py`, `geography.py`, `policy.py`, `prompts.py`, `model_gateway.py` routes, `workflow.py` step bodies from `adjudicate` to finalize, including `parse` (685-719) and the stage 5 scores (the disagreement ratio in `adjudicate`, the risk score in `finalize`) | Opus 5.5, high |
-| S5 | Build the pipeline data model and thread API | Data contract, schema additions, normalized projection, thread API, contract snapshots | `dataconnect/`, `storage.py`, `active_graph.py`, `production.py` `SqlConnectRepository` (80-534), a new thread-route module, `scripts/ci/release_sql_catalog.sql` and the table-count assertion in `scripts/ci/test_data_release.py`, `docs/execution/backend-*.json` | Opus 5.5, high |
+| S5 | Build the pipeline data model and thread API | Data contract, schema additions, normalized projection, thread API, contract snapshots | `dataconnect/`, `storage.py`, `search.py`, `active_graph.py`, `production.py` `SqlConnectRepository` (80-534), a new thread-route module, `scripts/ci/release_sql_catalog.sql` and the table-count assertion in `scripts/ci/test_data_release.py`, `docs/execution/backend-*.json` | Opus 5.5, high |
 | S6 | Build the record thread UI | Client defects, thread view, queue, processing status, trace link | `apps/specimen_digitization/` (sole owner of goldens) | Opus 5.5, high |
 | S7 | Run the acceptance lab one specimen at a time | Local and production runs one specimen at a time, run reports, defect routing | new `scripts/lab/`, `~/specimen-golive/runs/`, `~/specimen-golive/reports/`, GitHub issues labelled `golive` | Opus 5.5, high |
 | S8 | Research retrospective georeferencing for the harness | The owner's georeferencing charter (G12): historical toponyms, tiered resolution, uncertainty, Darwin Core mapping; a plan for the owner, optionally a read-only prototype | `docs/product-requirements/GEOREFERENCING.md`, `scripts/research/georeferencing/` | Opus 5.5, high |
@@ -318,7 +333,8 @@ Everyone appends to `docs/SESSION_LEARNINGS.md`.
   doc under `docs/execution/golive/`, citing section 2) and failing tests, in
   their own commit, then the implementation. The PR body names both commits.
 - Tests use fakes for paid and external calls; recorded real responses from the
-  acceptance lab may become fixtures.
+  acceptance lab may become fixtures, except that a Google geocoding response is
+  first reduced to the place ID, the outcome and the fingerprint (G26).
 - Nothing may contradict the owner decisions in section 2.1 or add product
   behaviour the owner did not ask for (G5). Where the specification is silent
   or contradictory, stop and ask the coordinator; do not decide.
@@ -333,8 +349,8 @@ Everyone appends to `docs/SESSION_LEARNINGS.md`.
 - When the steward pushes back, fix on the same branch and message it again.
 - Open a pull request as a draft and confirm your session's PR panel shows
   auto-merge off before marking it ready (defence in depth after G21).
-- Never enable auto-merge (G17); the owner is switching the repository's
-  setting off (G21). The steward merges with `gh pr merge N --merge` once its
+- Never enable auto-merge (G17); the repository's setting is off (G21, done
+  2026-09-23). The steward merges with `gh pr merge N --merge` once its
   swarm approves the current head. Every new head gets a fresh swarm, reverts
   included (G18), so a pull request is brought up to date with `main` only when
   it is next to merge, and by its owning session: GitHub's server-side merge
@@ -380,7 +396,7 @@ Everyone appends to `docs/SESSION_LEARNINGS.md`.
 - No deploys from a shell. `gcloud` calls are read-only and always carry
   `--project specimen-digitization`. `gh` writes only what your brief assigns:
   your own pull requests and their comments, GitHub issues (S7), and the
-  steward's reviews, branch updates, reruns and merges. Repository variables and
+  steward's reviews, reruns and merges. Repository variables and
   settings are owner actions. Never pass `--project` to `gh`.
   `firebase dataconnect:sql:diff` is not read-only (it moves the live schema's
   update time); do not run it.
@@ -397,7 +413,9 @@ For each specimen in order, `subject_105526321` first:
 
 1. Run it locally with real models through the latest merged lane (S7); fix
    what fails before touching production.
-2. Import and process it in production through the app.
+2. Import and process it in production through the app, declared not
+   sensitive, since the worker never sees a record declared Sensitive (section
+   2.2).
 3. Check, and record in `~/specimen-golive/reports/<subject>.md`: every stage
    ran; SQL holds the regions, each reader's reading with provenance, the
    disagreement scores, the first pass's decision with what each reader handed

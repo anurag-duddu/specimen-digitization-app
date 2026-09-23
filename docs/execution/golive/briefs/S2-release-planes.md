@@ -64,7 +64,9 @@ workstation or an agent shell" and the list of things never to weaken, word for
 word. `APPROVED_LOGFIRE_TRACING.md`
 gets G3's content scope (system prompts, text inputs and outputs, SAM 3
 parameters, tool calls with arguments and results; no images; identities and
-secrets scrubbed). `APPROVED_RELEASE_BUDGET.md` gets USD 25 (G9).
+secrets scrubbed), narrowed by G26: the geocoding tool's result is only the
+place ID, the outcome and the fingerprint, and no span records the Geocoding
+request URL, which carries the key. `APPROVED_RELEASE_BUDGET.md` gets USD 25 (G9).
 
 **T2. Runtime plane, automatic on merge.** `runtime-release.yml` and
 `scripts/ci/deploy_runtime.py` (and the admission modules as needed): on a push
@@ -93,7 +95,14 @@ rules; refuse anything else) and a `COMPATIBLE`
 apply, the
 supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
-one-time, idempotent hierarchy bootstrap from the private artifacts. Retire the
+one-time, idempotent hierarchy bootstrap from the private artifacts, followed in
+the same window (T3e) by the worker's membership from S5's reviewed document
+(#96): an active organization membership and one collection membership on the
+pilot collection (Insects) only, role `operator`, `canViewSensitive: false`,
+with the UID from the temporary environment secret `DATA_WORKER_ACTOR_UID`,
+which the owner sets for that run and deletes afterwards; read back, skip if
+identical, fail if different. Never `scripts/data/bootstrap_admin.py`, which
+hard-codes role `admin`. Retire the
 envelope admission for this plane, but keep the checks that live inside it:
 `GITHUB_REF_PROTECTED=true` and the five required checks successful on the
 exact merged commit, as in T2. Take a backup with a verified restore path
@@ -110,8 +119,9 @@ time-bounded); the runtime build and release identities
 attestations); the runtime identities (connector impersonation; object create
 and read on the application prefix and read on `microscopic-slides/`; secret
 access per identity and per secret, each with a reason: the worker reads the
-Hugging Face, Logfire and Maps secrets and its actor uid, SAM 3 the Logfire
-token, the API the Logfire token and the source registry; SAM 3 invoker for the
+Hugging Face, Logfire and Maps secrets, its actor uid and the collection
+bindings, SAM 3 the Logfire token, the API the Logfire token, the source
+registry and the collection bindings; SAM 3 invoker for the
 worker only; `run.invoker` for the API on the worker job
 only, since running a job needs no act-as; Firebase user lookup for the API);
 `allUsers` invoker on the API. The one-time roles get no standing grant: the
@@ -123,10 +133,10 @@ setup-window path requires every binding to stay time-bound
 (`data_setup_window.py` 126-138): run the window first or adapt the path, never
 fall back to a grant without a time condition, and list the revocation
 commands. Also list the
-secrets (already stored: the Logfire token and the Maps key, version 1 each;
-the existing Hugging Face version is reused, since the owner withdrew the
-rotation; still to create: `specimen-source-registry` and
-`specimen-worker-actor-uid`),
+secrets (already stored, version 1 each: the Logfire token, the Maps key,
+`specimen-source-registry`, `specimen-collection-bindings` and
+`specimen-worker-actor-uid`; the existing Hugging Face version is reused,
+since the owner withdrew the rotation),
 public access prevention on the bucket, and the Budget API with a USD 25 budget
 alert. Bind every grant to a named resource with a one-line reason; never Owner
 or Editor. Write the commands into `~/specimen-golive/OWNER_ACTIONS.md` and

@@ -24,8 +24,10 @@ endpoint.
 - Additive only, as PLAN section 4.4 defines it: expand-only. Dropping NOT NULL
   is allowed only on columns your contract names with a reason, never on
   provenance or idempotency keys (`ModelObservation.runId`, `regionId`,
-  `provider`, `modelVersion`, `stepKey`); S2's gate reads a checked-in list of
-  the allowed columns. Every new connector operation is
+  `provider`, `modelVersion`, `stepKey`, and the TRN-005 provenance
+  `rawAssetId`, `promptVersion` and `inputSha256`); S2's gate reads a checked-in
+  list of the allowed columns and refuses these keys even when the list names
+  them. Every new connector operation is
   `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73).
   Never destructive.
 - Key everything per region: a specimen can carry several labels, and five
@@ -33,7 +35,17 @@ endpoint.
 - `Run.field_groups` is new, and you decide its shape. From Google geocoding only
   the place ID, the outcome and a response fingerprint are stored (G26); no
   Google names, address parts or coordinates anywhere. Parsed dates carry their
-  precision and, where G24's rule set the century, that rule.
+  precision and, where G24's rule set the century, that rule; a date the
+  harness could not settle keeps every candidate reading (G29). A place or taxon
+  field stores both its verbatim text and its settled final value; when the
+  first pass picked no reading and the readers' literals differ, each reader's
+  reading is kept and none is chosen (G27, G28). You decide the shape.
+- `AppendProfileVersionV2` stays open to operators so that the projection can
+  record each run's profile snapshot; `approvedBy` is null unless the caller is
+  a reviewer or above with sensitive access (main's rule for approval claims),
+  and the worker writes null.
+- `search.py` is yours (PLAN section 6); #85 adds one literal to it and needs
+  your sign-off.
 - Versioned operations follow the existing pattern (new V-numbered operations
   with old and new adapter tests, `DATA_CHECKSUM.md` 64-84).
 - Every new table updates `scripts/ci/release_sql_catalog.sql` and the table

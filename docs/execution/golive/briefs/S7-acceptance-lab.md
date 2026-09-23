@@ -60,7 +60,8 @@ every stage works on real data, until specimen 10 passes the first time
 the latest lane locally (real SAM 3 container, real readers, and later the first
 pass and harness; emulator persistence; Logfire lab traces). It writes
 `~/specimen-golive/runs/<subject>/<timestamp>/` (inputs, crops, raw responses,
-snapshot, a dump of the normalized rows, timings, costs, trace id) and a report
+with a Google geocoding response reduced to the place ID, the outcome and the
+fingerprint (G26), snapshot, a dump of the normalized rows, timings, costs, trace id) and a report
 `~/specimen-golive/reports/<subject>.md`. Test the runner's own logic with fakes
 first; then run it for real.
 
@@ -71,7 +72,10 @@ and readers), to flush out environment failures. Record everything.
 then 3, one at a time. Each failure becomes a GitHub issue (label `golive` plus
 the workstream; no secrets or identities) and a message to the owning session
 and the coordinator. Rerun after the fix merges. Offer recorded real responses
-to S4 as test fixtures.
+to S4 as test fixtures, never a Google geocoding response beyond the place ID,
+the outcome and the fingerprint (G26). Declare the pilot's import not
+sensitive: the worker never sees a record declared Sensitive (PLAN section
+2.2).
 
 **T4. Production acceptance,** once DoD-1 to DoD-3 hold, following PLAN section
 8 through the app. The owner signs in; agree with the coordinator how you drive
