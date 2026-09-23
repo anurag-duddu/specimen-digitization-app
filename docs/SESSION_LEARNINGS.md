@@ -11863,7 +11863,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The gate checks that the membership `@check` is present, not what its expression says. `@check(expr: "true")` would pass, so the PR steward still reviews check expressions.
   - T3b must never call the gate with a live schema but a missing connector, because every operation would then count as new.
 
-### 2026-09-24 — Go-live release workstream (S2), T3b1: the data plane admits through the gate and chooses its phase
+### 2026-09-23 — Go-live release workstream (S2), T3b1: the data plane admits through the gate and chooses its phase
 
 - Task: the S2 session, brief item T3, step two, code half (`docs/execution/golive/RELEASE.md` section 4.2). T3b2, the workflow switch, follows as its own pull request.
 - Branch/worktree: `golive/release-data-gate`, stacked on #99's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed and integrated it.
