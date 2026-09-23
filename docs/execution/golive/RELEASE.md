@@ -166,8 +166,12 @@ and T2e the reuse of an unchanged SAM 3 image.
   `release_gate.readmit`. The digest, plane, run and attempt must match, the
   record must not be expired, the context must pass again, and the same facts
   are observed again without waiting. Envelope packets keep their existing
-  path until T2d. The Google client and the publication supervisor call
-  `admit` before each mutation, so they need no change.
+  path until T2d. The Google client calls `admit` before each mutation and
+  needs no change. The publication supervisor needs two small ones, which T2b
+  makes: it checks the context without the retired variable, and its
+  admission step reads a gate record, which has no plan.
+- The CI run's `path` (`.github/workflows/ci-cd.yml`) and the five job names
+  the gate requires were checked against the live GitHub API on 2026-09-23.
 - The gate does not require the commit to be the tip of `main`. The
   workflow's concurrency group runs one release at a time in push order, and
   the deploy's rollback guard refuses to replace a newer deployed commit.
