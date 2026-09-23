@@ -72,12 +72,24 @@ class TracedField(FieldValue):
     source_observation_id: str | None = None
     precision: str | None = None
     century_rule: str | None = None
+    verbatim_by_observation: dict[str, str] = {}
+    evidence_relations: dict[str, str] = {}
+
+
+class Finding(BaseModel):
+    rule_id: str
+    rule_version: str
+    severity: str
+    field_key: str | None
+    reason_code: str
+    evidence_ids: list[str] = []
 
 
 class HarnessRun(TracedRun):
     tool_calls: list[ToolCallRecord] = []
     field_groups: dict[str, str] = {}
     disposition_summary: str | None = None
+    findings: list[Finding] = []
 
 
 def base():
@@ -382,12 +394,66 @@ def test_fields_carry_their_source_date_precision_and_evidence():
     assert (date["derivation"], date["inputSource"]) == ("parsed", "decided_transcript")
     assert (date["sourceTranscriptionId"], date["sourceObservationId"]) == (decision["id"], None)
     assert city["parsedValue"] is None
-    assert (city["derivation"], city["authorityId"]) == ("lookup", "fixture-place")
+    assert (city["derivation"], city["authorityId"]) == ("literal", "fixture-place")
     assert (city["sourceTranscriptionId"], city["sourceObservationId"]) == (None, right.id)
     links = rows(result, "AppendCandidateEvidenceV2")
     assert [(link["candidateId"], link["evidenceId"], link["relation"]) for link in links] == [
         (city["id"], found.id, "supports")
     ]
+
+
+def test_a_deciding_source_makes_a_lookup_and_every_relation_is_kept():
+    s = first_pass(base())
+    gbif = Lookup(provider="gbif", adapter_version="g1", query={"name": "Aedes aegypti"}, status=LookupStatus.SUCCESS, raw_ref=f"{'5' * 64}:2", digest="4" * 64)
+    col = Lookup(provider="catalogue-of-life", adapter_version="c1", query={"name": "Aedes aegypti"}, status=LookupStatus.SUCCESS, raw_ref=f"{'3' * 64}:2", digest="2" * 64)
+    s.run.lookups = [gbif, col]
+    s.run.fields = {
+        "taxon": TracedField(
+            state=ValueState.SUPPORTED,
+            literal="Aedes aegypti L.",
+            normalized="Aedes aegypti",
+            authority_id="gbif:1651891",
+            evidence_ids=[gbif.id, col.id],
+            evidence_relations={gbif.id: "decides", col.id: "contradicts"},
+            input_source="decided_transcript",
+            source_region_id=s.run.regions[0].id,
+        )
+    }
+    result = writes(s, locate, size, "worker-uid")
+    (taxon,) = rows(result, "AppendFieldCandidateV2")
+    assert (taxon["derivation"], taxon["normalizedValue"]) == ("lookup", "Aedes aegypti")
+    links = rows(result, "AppendCandidateEvidenceV2")
+    assert [(link["evidenceId"], link["relation"]) for link in links] == [
+        (gbif.id, "decides"),
+        (col.id, "contradicts"),
+    ]
+
+
+def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
+    s = first_pass(base(), selected=False)
+    right, left = s.run.observations
+    s.run.fields = {
+        "city": TracedField(
+            state=ValueState.SUPPORTED,
+            literal=None,
+            verbatim_by_observation={left.id: "Chimaltenango", right.id: "Chimaltenago"},
+            normalized="Chimaltenango",
+            authority_id="fixture-place",
+            input_source="raw_reading",
+            source_region_id=s.run.regions[0].id,
+        )
+    }
+    s.run.disposition, s.run.reasons = Disposition.CLEARED, []
+    result = writes(s, locate, size, "worker-uid")
+    candidates = rows(result, "AppendFieldCandidateV2")
+    assert [(c["literalValue"], c["sourceObservationId"], c["inputSource"]) for c in candidates] == [
+        ("Chimaltenango", left.id, "raw_reading"),
+        ("Chimaltenago", right.id, "raw_reading"),
+    ]
+    assert all(c["authorityId"] == "fixture-place" and c["sourceTranscriptionId"] is None for c in candidates)
+    assert len({c["id"] for c in candidates}) == 2
+    (resolved,) = rows(result, "AppendResolvedFieldV2")
+    assert resolved["candidateId"] == candidates[0]["id"]
 
 
 def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
@@ -423,6 +489,27 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
         ("label_coverage_unconfirmed", None, "label_coverage_unconfirmed"),
     ]
     assert all((f["severity"], f["outcome"]) == ("hard", "fail") for f in findings)
+    s.run.findings = [
+        Finding(
+            rule_id="taxonomy_source_disagreement",
+            rule_version="g23-v1",
+            severity="warning",
+            field_key="taxon",
+            reason_code="taxonomy_source_disagreement:taxon",
+        )
+    ]
+    warned = writes(s, locate, size, "worker-uid")
+    extra = rows(warned, "AppendValidationFindingV2")[-1]
+    assert (extra["severity"], extra["outcome"], extra["ruleId"], extra["ruleVersion"]) == (
+        "warning",
+        "fail",
+        "taxonomy_source_disagreement",
+        "g23-v1",
+    )
+    assert (extra["fieldKey"], extra["reasonCode"]) == ("taxon", "taxonomy_source_disagreement:taxon")
+    assert rows(warned, "AppendRecordVersionV2")[0]["disposition"] == "needs_human_review"
+    assert rows(warned, "AppendRecordVersionV2")[0]["id"] != record["id"]
+    s.run.findings = []
     s.run.disposition_summary, s.run.field_groups = None, {}
     fallback = writes(s, locate, size, "worker-uid")
     assert rows(fallback, "AppendRecordVersionV2")[0]["summary"] == (
@@ -480,6 +567,7 @@ def test_record_ids_depend_on_the_decision_content():
         "disposition": "cleared",
         "reasons": [],
         "summary": "cleared",
+        "findings": [],
         "fields": {key: value.state.value for key, value in s.run.fields.items()},
     }
     assert record["id"] == derived_id("record", s.run.id, digest(content))
