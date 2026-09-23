@@ -760,12 +760,16 @@ expansion requires user review and approval of end-to-end results.
 - Verify current backup and isolated restore proof before compatible data
   changes. Keep writers quiesced when uniqueness protection could be absent;
   restore and independently verify supplemental indexes after reconciliation.
-  > 2026-09-23: Quiescing writers for every data change is superseded for the
+  > 2026-09-23: For additive applies, quiescing writers is superseded for the
   > go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G11: additive schema changes apply while the runtime runs, behind an
-  > automated additive-only gate. A backup with a verified restore path still
-  > precedes every apply. Both are specified in
+  > G11. The uniqueness this item protects is never absent during an additive
+  > apply. Every unique constraint is declared in the schema (for example
+  > `specimen_scope_checksum`), the gate refuses any change to an existing one,
+  > and the supplemental SQL indexes are non-unique. So writers keep running.
+  > The supplemental indexes are still restored and checked by definition
+  > after every apply, and a backup with a verified restore path still precedes
+  > it; both are specified in
   > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md).
   Do not create or upgrade a source SQL instance as a side effect of deployment.
   Preserve source data and object generations. Bootstrap the approved initial
@@ -817,11 +821,13 @@ after verification evidence is retained. Existing data and source SQL remain.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9 and G11. The owner runs the standing IAM grants and secret steps from the
-> release workstream's reviewed, read-only-generated list; no action packet or
-> cost reservation is recorded, and the ceiling is USD 25. The initializer's
-> grant stays one-time and time-bounded. Existing data and source SQL still
-> remain.
+> G9 and G11. The owner runs the standing grants and secret steps from the
+> release workstream's reviewed, read-only-generated list, with no action
+> packet or cost reservation, and the ceiling is USD 25. The one-time roles
+> (the initializer role, `specimenDataOwnerBootstrap` and
+> `specimenDataInitializerDisposal`) and the clone roles stay in the bounded
+> setup window with its action packet. A restore clone is still removed by its
+> two-hour expiry. Existing data and source SQL still remain.
 
 Recovery admission additionally requires the original typed
 [`recovery.allowance` contract](execution/CLONE_ALLOWANCE.md). The protected data

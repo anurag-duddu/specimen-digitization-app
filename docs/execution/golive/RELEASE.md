@@ -49,9 +49,14 @@ traded for a passing release:
 - IAM writes and secret creation are owner actions, taken from a reviewed list
   a read-only script prints (T4). No workflow and no agent creates IAM policy.
   Every grant names its resource and its reason; no identity receives Owner or
-  Editor. Standing grants go only to the ordinary data-release, runtime-build,
-  runtime-release and runtime identities, plus the `allUsers` invoker on the
-  API. The one-time roles never get a standing grant: the initializer role,
+  Editor. Standing grants go only to the runtime-build, runtime-release and
+  runtime identities; to the data-release roles that automatic applies need
+  (`specimenDataSchemaPublish`, `specimenDataStorageRules`,
+  `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`,
+  `specimenDataInventoryProjectRead`); and to the `allUsers` invoker on the
+  API. Every other data-release role stays time-bounded: the clone roles open
+  only for the first apply's restore check (D1). The one-time roles never get
+  a standing grant: the initializer role,
   `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal` stay
   one-time and time-bounded through the existing setup-window path
   (`scripts/ci/data_setup_window.py`) and are revoked after use. That window
@@ -92,11 +97,13 @@ Three documents gain more than notes:
   or a `gcloud ... deploy` command from a workstation or an agent shell" and
   the rule listing what is never weakened are unchanged, word for word.
 - [`APPROVED_LOGFIRE_TRACING.md`](../APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3):
-  G3's content scope. System prompts, text inputs and outputs, SAM 3
-  parameters and the harness's tool calls with arguments and results are
-  permitted; images are never captured; secrets and the identities of the
-  app's users are scrubbed; the worker, SAM 3 and the API hold standing read
-  access to the writer secret.
+  G3's content scope with G26 applied. System prompts, text inputs and
+  outputs, SAM 3 parameters and the harness's tool calls with arguments and
+  results are permitted, except that geocoding keeps only the place ID, the
+  pipeline's outcome and a response fingerprint. Images are never captured.
+  Secrets and the identities of the app's users never enter prompts or tool
+  arguments, and scrubbing is only the backstop. The worker, SAM 3 and the API
+  hold standing read access to the writer secret.
 - [`APPROVED_RELEASE_BUDGET.md`](../APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9):
   G9's USD 25 ceiling, cumulative, infrastructure and models together.
 
@@ -148,7 +155,9 @@ requires.
   artifact.
 - T4, the owner's list: a read-only script that prints the exact standing IAM
   grants and secrets T2 and T3 need, each bound to a named resource with its
-  reason, plus the initializer's one-time window.
+  reason. It also prints the time-bounded windows for the one-time roles (the
+  initializer role, `specimenDataOwnerBootstrap`,
+  `specimenDataInitializerDisposal`) and for the clone roles.
 - T5, first releases: the first data and runtime releases; the repository
   variables as an owner action whose private values the owner fills in;
   Hosting rebuilt and connected (DoD-1 to DoD-3).

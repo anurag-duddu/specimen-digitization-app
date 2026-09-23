@@ -33,8 +33,9 @@ verification. Preserve Hosting isolation and every existing protection.
 > G11. Independent review is replaced by the PR steward's review of every pull
 > request. The required checks, keyless identities, main-only environments,
 > immutable build provenance, verified data readiness, public end-to-end
-> verification and Hosting isolation stay, and a merge to `main` now deploys
-> runtime code and additive schema changes automatically.
+> verification, Hosting isolation and every existing protection stay, and a
+> merge to `main` now deploys runtime code and additive schema changes
+> automatically.
 
 Workstation deployments, manual dispatch, weaker branch protection, broader
 Hosting permissions, service-account JSON keys and AWS resources remain forbidden.
@@ -60,8 +61,7 @@ Use only the existing `specimen-digitization` project; proposed region
 > execution whenever work is due, and each execution drains due work one
 > specimen at a time within the task timeout the release sets. In the "CPU
 > SAM" row, the absolute one-hour expiry: SAM 3 serves any run the worker
-> authorizes and scales to zero. The CPU, memory, instance and no-retry limits
-> stand.
+> authorizes and scales to zero. The CPU, memory and instance limits stand.
 
 Remove only the newly created rehearsal clone by its expiry after preserving
 verification evidence. Never delete the source instance or original data. Preserve
@@ -164,10 +164,16 @@ and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_REL
   > 2026-09-23: The expiry of the ordinary DATA access in this item is
   > superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G11: the ordinary data-release access becomes standing, from the release
-  > workstream's reviewed list. The rest stands: `specimenDataOwnerBootstrap`,
-  > the initializer role and `specimenDataInitializerDisposal` stay one-time and
-  > time-bounded through this setup window and are revoked after use.
+  > G11, but only for the roles automatic applies need:
+  > `specimenDataSchemaPublish`, `specimenDataStorageRules`,
+  > `specimenDataSourceBackup`, `specimenDataInventorySqlConnect` and
+  > `specimenDataInventoryProjectRead` become standing, from the release
+  > workstream's reviewed list. The rest of this item stands. The clone roles
+  > stay time-bounded and open only for the first apply's restore check.
+  > `specimenDataRestoreAllowanceClaim` and `specimenDataRuntimeAbsence` are
+  > retired. `specimenDataOwnerBootstrap`, the initializer role and
+  > `specimenDataInitializerDisposal` stay one-time and time-bounded through
+  > this setup window and are revoked after use.
 
 This includes finishing, independently reviewing and using the bounded helpers
 for those effects with at most 187 metadata/IAM requests. Prepare all source,
@@ -215,7 +221,9 @@ applies to the new mode without change.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. Independent review is replaced by the PR steward's review of every
-> pull request; the protected data lane and private identity rule stay.
+> pull request. The protected data lane, the evidence recipient (bootstrap
+> evidence stays encrypted in public artifacts) and the private identity rule
+> stay.
 
 ## Owner decision — 2026-09-22: bounded tracing is in the first plan
 
@@ -234,8 +242,8 @@ approval and a privacy review.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3. Tracing now also covers system prompts and text inputs and outputs at
 > every VLM, LLM and SAM 3 level, SAM 3 parameters and the harness's tool
-> calls, one trace per run linked from the specimen record; images stay
-> excluded. The amended scope is in
+> calls (geocoding keeps only what G26 allows), one trace per run linked from
+> the specimen record; images stay excluded. The amended scope is in
 > [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md).
 
 The owner also asked for the IAM setup to proceed and offered approval. The
@@ -245,10 +253,13 @@ owner's approval attaches to that packet, not to a general statement. The
 helper performs the three approved effects only, inside the 600-second
 clock, and refuses if the live policy differs from the packet.
 
-> 2026-09-23: This paragraph stands for the one-time roles. Under
+> 2026-09-23: This paragraph stands for every role that stays time-bounded.
+> Under
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11, the ordinary data-release access this window renews becomes standing,
-> from the release workstream's reviewed list, while
-> `specimenDataOwnerBootstrap`, the initializer role and
-> `specimenDataInitializerDisposal` stay inside this bounded window and are
-> revoked after use.
+> G11, only the roles automatic applies need become standing, from the release
+> workstream's reviewed list: `specimenDataSchemaPublish`,
+> `specimenDataStorageRules`, `specimenDataSourceBackup`,
+> `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead`.
+> The clone roles, `specimenDataOwnerBootstrap`, the initializer role and
+> `specimenDataInitializerDisposal` stay inside this bounded window with its
+> action packet and are revoked after use.

@@ -65,9 +65,10 @@ baggage, exception events or arbitrary links must not create a second export pat
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3. System prompts, text inputs and outputs, SAM 3 parameters and the
-> harness's tool calls are now permitted content; images, credentials and the
-> identities of the app's users stay excluded. The scope is in the
-> [go-live amendment](#go-live-amendment-2026-09-23-g3).
+> harness's tool calls are now permitted content, within the limits of the
+> [go-live amendment](#go-live-amendment-2026-09-23-g3), including G26 for
+> geocoding; images, credentials and the identities of the app's users stay
+> excluded.
 
 Existing application evidence and human review remain required. The tracing
 approval does not authorize publishing raw specimen content, expanding the cohort,
@@ -231,13 +232,17 @@ specimen record." PLAN section 4.5 describes the instrumentation.
   prompt and the text input and output of every model call (each VLM reader,
   the LLM first pass and the agentic harness), SAM 3's parameters, the
   harness's tool calls with their arguments and results, and the queue decision
-  with its reasons. Each run is one trace whose root span carries the specimen,
+  with its reasons. Under G26, a Google geocoding call keeps only the place ID,
+  the pipeline's own outcome and a fingerprint of the response. Each run is one trace whose root span carries the specimen,
   run, collection and profile identifiers; the trace id is stored on the run
   and linked from the record in the app.
 - Excluded: images and all other binary content, since binary capture stays
-  off and images stay in Cloud Storage. Secrets of every kind (tokens, API keys,
+  off and images stay in Cloud Storage; and Google's names, address parts and
+  coordinates from geocoding (G26). Secrets of every kind (tokens, API keys,
   credentials) and the identities of the app's users (email addresses and
-  Firebase user ids) are scrubbed before export.
+  Firebase user ids) never enter a prompt, a tool argument or a span
+  attribute. The code keeps them out, and scrubbing before export is only the
+  backstop, because LLM message attributes are not reliably scrubbed.
 - Writer access: the writer secret stays
   `projects/specimen-digitization/secrets/specimen-worker-logfire`. The worker,
   SAM 3 and API runtime identities hold a standing

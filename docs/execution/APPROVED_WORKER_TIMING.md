@@ -114,7 +114,8 @@ The original SAM activation lifetime remains at most one hour in both dialects.
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3 and G11. System prompts and text inputs and outputs at every VLM, LLM
 > and SAM 3 level, SAM 3 parameters and the harness's tool calls with
-> arguments and results are recorded in Logfire, one trace per run linked
+> arguments and results (geocoding keeps only what G26 allows) are recorded
+> in Logfire, one trace per run linked
 > from the specimen record, not the metadata-only, worker-only scope this
 > section fixes; the amended scope is in
 > [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md). The

@@ -58,8 +58,9 @@ in Cloud Storage regardless of capture mode.
 
 > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
 > For the go-live program, approved-content mode also covers the real pipeline
-> runs in PLAN section 1, not only synthetic data or an evaluation corpus;
-> images stay excluded.
+> runs in PLAN section 1, not only synthetic data or an evaluation corpus.
+> Images stay excluded, and a Google geocoding result keeps only the place ID,
+> the pipeline's outcome and a response fingerprint (G26).
 
 Use separate `APP_ENV` values for `development`, `evaluation`, `staging`, and
 `production`. Start with 100% trace sampling while volume is low. If sampling is
@@ -76,7 +77,10 @@ for that approval because LLM message attributes are not reliably scrubbed.
 > G3 is that approval for the go-live program: system prompts and text inputs
 > and outputs at every VLM, LLM and SAM 3 level are recorded in Logfire, linked
 > to the specimen record, under the amended scope in
-> execution/APPROVED_LOGFIRE_TRACING.md.
+> execution/APPROVED_LOGFIRE_TRACING.md. Secrets and user identities are kept
+> out of prompts and tool arguments, so scrubbing is only a backstop. The
+> retention and deletion confirmations this paragraph requires stay open; G3
+> does not settle them.
 
 ## Trace structure
 
