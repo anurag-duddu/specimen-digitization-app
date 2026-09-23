@@ -73,3 +73,26 @@ route or prompt blocks as `pinned_model_route_unavailable` or
 
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).
+
+## 4. The first pass in the workflow, and what each region records
+
+**When.** A region whose readings are all identical keeps today's behaviour
+(the `adjudicate` step in `workflow.py`) and is recorded with `decision_kind`
+`identical_readings`, the first reading as the decided transcript when the
+region resolves. Every other region with at least two stored readings (TRN-001,
+TRN-008) gets one external, billable step `first_pass:{region_id}` (section 3)
+after its transcribe steps and before `adjudicate`; a run that already passed
+`adjudicate` is never given one. A decision for another region, or one naming a
+reading the region does not have, blocks as `first_pass_contract_invalid`.
+
+**Recorded** on the region's `Transcript` (DATA_CONTRACT 4.2): `decision_kind`
+`first_pass`, `selected_observation_id`, `text` (the selected reading verbatim,
+or none), `first_pass_call` (the call's provenance), `reason` (the rationale),
+`differences` (every verdict with each reading's span), and `handoffs`, one per
+reading: the selected reading as `decided_transcript`, the others as
+`raw_reading` (the harness's fallback); with no selection every reading is a
+`raw_reading` (G19). `resolved` is true exactly when a reading was selected; a
+difference left `neither` or `uncertain` stays on the record for the harness and
+the queue decision (G19, G20). The disagreement score and the alignment fields
+of stage 5 are unchanged. The run keeps each region's decision in
+`first_pass_decisions`. Synthetic runs use a fixture that selects no reading.
