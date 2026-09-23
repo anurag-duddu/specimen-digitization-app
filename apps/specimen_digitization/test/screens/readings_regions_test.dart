@@ -1,6 +1,8 @@
-// The Readings segment, one section per label region (UI.md T2.2, part
-// one): a two-label slide shows two sections, each with its own readings,
-// its heading, and each reading's route and prompt version.
+// The Readings segment, one section per label region (UI.md T2.2).
+//
+// A two-label slide shows two sections, each with its own readings, and, when
+// the thread carries them, the comparison beside its components and the
+// decision with what each reader handed to the harness.
 
 import 'dart:convert';
 import 'dart:io';
@@ -64,25 +66,29 @@ Specimen specimenFor(
   ],
 });
 
-Future<void> pumpReadings(WidgetTester tester, Specimen specimen) =>
-    pumpComponent(
-      tester,
-      SingleChildScrollView(
-        child: WorkbenchReadings(
-          specimen: specimen,
-          anchors: <String, GlobalKey>{
-            for (final Json region in specimen.regions)
-              region['region_id'] as String: GlobalKey(),
-          },
-          selectedRegionId: null,
-          onSelectRegion: (_) {},
-          onChange: (_) async {},
-          transcriptionBlockedReason: null,
-          declarationsBlocked: true,
-        ),
-      ),
-      size: const Size(1000, 4000),
-    );
+Future<void> pumpReadings(
+  WidgetTester tester,
+  Specimen specimen, {
+  SpecimenThread? thread,
+}) => pumpComponent(
+  tester,
+  SingleChildScrollView(
+    child: WorkbenchReadings(
+      specimen: specimen,
+      thread: thread,
+      anchors: <String, GlobalKey>{
+        for (final Json region in specimen.regions)
+          region['region_id'] as String: GlobalKey(),
+      },
+      selectedRegionId: null,
+      onSelectRegion: (_) {},
+      onChange: (_) async {},
+      transcriptionBlockedReason: null,
+      declarationsBlocked: true,
+    ),
+  ),
+  size: const Size(1000, 4000),
+);
 
 Finder section(String? regionId) => find.byWidgetPredicate(
   (Widget w) => w is ReadingsRegionSection && w.regionId == regionId,
@@ -97,7 +103,7 @@ void main() {
   testWidgets('each region is a section, in order, holding its readings', (
     WidgetTester tester,
   ) async {
-    await pumpReadings(tester, specimenFor(thread));
+    await pumpReadings(tester, specimenFor(thread), thread: thread);
     expect(inSection('region-left', find.text('Label 1')), findsOneWidget);
     expect(inSection('region-right', find.text('Label 2')), findsOneWidget);
     expect(
@@ -116,7 +122,7 @@ void main() {
 
   testWidgets('the region name is a heading', (WidgetTester tester) async {
     final SemanticsHandle handle = tester.ensureSemantics();
-    await pumpReadings(tester, specimenFor(thread));
+    await pumpReadings(tester, specimenFor(thread), thread: thread);
     expect(
       tester.getSemantics(inSection('region-right', find.text('Label 2'))),
       matchesSemantics(label: 'Label 2', isHeader: true),
@@ -127,7 +133,7 @@ void main() {
   testWidgets('a card names its route and its prompt version', (
     WidgetTester tester,
   ) async {
-    await pumpReadings(tester, specimenFor(thread));
+    await pumpReadings(tester, specimenFor(thread), thread: thread);
     expect(
       inSection(
         'region-left',
@@ -135,6 +141,188 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('a difference stands beside its components and its caveat', (
+    WidgetTester tester,
+  ) async {
+    await pumpReadings(tester, specimenFor(thread), thread: thread);
+    expect(
+      inSection('region-right', find.text('Difference 0.03')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.text('1 edit over 33 characters')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.byType(NotCalibratedChip)),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-left', find.text('No edits over 23 characters')),
+      findsOneWidget,
+      reason: 'a measured zero is a measurement, and says so',
+    );
+  });
+
+  testWidgets('an unmeasured difference says so, with the reason behind Why', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    final Json region = (json['regions'] as List<dynamic>)[1] as Json;
+    region['comparisons'] = <Json>[
+      <String, dynamic>{
+        'left_observation_id': 'obs-right-qwen',
+        'right_observation_id': 'obs-right-muse',
+        'algorithm': 'bounded-levenshtein-fraction-v1',
+        'ratio': null,
+        'status': 'policy_blocked',
+        'reasons': <String>['pilot_risk_unmeasured'],
+      },
+    ];
+    final SpecimenThread unmeasured = SpecimenThread.fromJson(json);
+    await pumpReadings(tester, specimenFor(unmeasured), thread: unmeasured);
+    expect(
+      inSection('region-right', find.text('Difference not measured')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.textContaining('Difference 0.')),
+      findsNothing,
+      reason: 'absence is never drawn as a number',
+    );
+  });
+
+  testWidgets('the decision says who decided and what each reader handed on', (
+    WidgetTester tester,
+  ) async {
+    await pumpReadings(tester, specimenFor(thread), thread: thread);
+    expect(
+      inSection(
+        'region-right',
+        find.text('The first pass chose muse-handwriting-fixture'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.textContaining('The fourth word reads')),
+      findsOneWidget,
+    );
+    expect(
+      inSection(
+        'region-right',
+        find.textContaining('first-pass-fixture-model'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.text('Handed to the harness')),
+      findsOneWidget,
+    );
+    expect(
+      inSection(
+        'region-right',
+        find.text('muse-handwriting-fixture · decided transcript'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inSection(
+        'region-right',
+        find.text('Qwen/Qwen2.5-VL-72B-Instruct · raw reading'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.textContaining('Kept for the raw check')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-left', find.text('The readings match')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an unresolved decision says so under its title', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    (((json['regions'] as List<dynamic>)[1] as Json)['first_pass']
+            as Json)['unresolved'] =
+        true;
+    final SpecimenThread open = SpecimenThread.fromJson(json);
+    await pumpReadings(tester, specimenFor(open), thread: open);
+    expect(
+      inSection(
+        'region-right',
+        find.text('The first pass chose muse-handwriting-fixture'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.text('Transcription not resolved')),
+      findsOneWidget,
+      reason: 'a chosen reading can leave a material difference open',
+    );
+    expect(
+      inSection('region-left', find.text('Transcription not resolved')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('a reviewer decision claims no resolution it lacks', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    final Json pass =
+        ((json['regions'] as List<dynamic>)[1] as Json)['first_pass'] as Json;
+    pass['decision_kind'] = 'human';
+    pass['unresolved'] = true;
+    final SpecimenThread reviewed = SpecimenThread.fromJson(json);
+    await pumpReadings(tester, specimenFor(reviewed), thread: reviewed);
+    expect(
+      inSection('region-right', find.text('Decided by a reviewer')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.text('Transcription not resolved')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Resolved by'), findsNothing);
+  });
+
+  testWidgets('a region with no recorded decision names where the run is', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    ((json['regions'] as List<dynamic>)[1] as Json)['first_pass'] = null;
+    json['run'] = <String, dynamic>{
+      'run_id': 'run-fixture-1',
+      'status': 'processing_blocked',
+      'stage': 'adjudicate',
+      'blocker': 'provider_error',
+    };
+    final SpecimenThread stopped = SpecimenThread.fromJson(json);
+    await pumpReadings(tester, specimenFor(stopped), thread: stopped);
+    expect(
+      inSection('region-right', find.text('No decision recorded')),
+      findsOneWidget,
+    );
+    expect(
+      inSection('region-right', find.textContaining('provider error')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without a thread the sections still group the readings', (
+    WidgetTester tester,
+  ) async {
+    await pumpReadings(tester, specimenFor(thread));
+    expect(section('region-left'), findsOneWidget);
+    expect(section('region-right'), findsOneWidget);
+    expect(find.text('Handed to the harness'), findsNothing);
+    expect(find.textContaining('Difference 0.'), findsNothing);
   });
 
   testWidgets('a reading outside the listed regions goes to the last section', (
@@ -154,6 +342,7 @@ void main() {
           },
         ],
       ),
+      thread: thread,
     );
     final Finder stray = find.byWidgetPredicate(
       (Widget w) => w is ReadingsRegionSection && w.unassigned,
@@ -177,6 +366,7 @@ void main() {
           <String, dynamic>{'region_id': 'region-empty'},
         ],
       ),
+      thread: thread,
     );
     expect(
       inSection(
@@ -184,6 +374,21 @@ void main() {
         find.text('No reading recorded for this label.'),
       ),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('the ratio appears once', (WidgetTester tester) async {
+    await pumpReadings(tester, specimenFor(thread), thread: thread);
+    expect(
+      find.textContaining('Difference fraction'),
+      findsNothing,
+      reason: 'the region section states the ratio with its components',
+    );
+    await pumpReadings(tester, specimenFor(thread));
+    expect(
+      find.textContaining('Difference fraction'),
+      findsOneWidget,
+      reason: 'without a thread the row is still where the ratio is stated',
     );
   });
 }
