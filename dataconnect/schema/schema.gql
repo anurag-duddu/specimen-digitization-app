@@ -228,7 +228,7 @@ type HarnessInput @table(key: ["organizationId", "collectionId", "id"]) @unique(
   observationId: UUID!
   observation: ModelObservation! @ref(fields: ["organizationId", "collectionId", "observationId"], constraintName: "harness_input_observation")
   role: String!
-  handedText: String
+  handedText: String!
   note: String
   createdAt: Timestamp! @default(expr: "request.time")
 }
@@ -266,7 +266,7 @@ type ToolCall @table(key: ["organizationId", "collectionId", "id"]) @unique(inde
   tool: String!
   toolVersion: String!
   source: String
-  fieldKey: String
+  fieldKeys: [String!]!
   inputSource: String!
   transcriptionVersionId: UUID
   transcriptionVersion: TranscriptionVersion @ref(fields: ["organizationId", "collectionId", "transcriptionVersionId"], constraintName: "tool_call_transcription")

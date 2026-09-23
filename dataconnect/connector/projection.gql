@@ -81,7 +81,7 @@ mutation AppendTranscriptionVersionV2($organizationId: UUID!, $collectionId: UUI
   }
   transcriptionVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, literalText: $literalText, spans: $spans, alternatives: $alternatives, unresolved: $unresolved, regionId: $regionId, decisionKind: $decisionKind, selectedObservationId: $selectedObservationId, firstPassObservationId: $firstPassObservationId, rationale: $rationale})
 }
-mutation AppendHarnessInputV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $transcriptionVersionId: UUID!, $observationId: UUID!, $role: String!, $handedText: String, $note: String, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+mutation AppendHarnessInputV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $transcriptionVersionId: UUID!, $observationId: UUID!, $role: String!, $handedText: String!, $note: String, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.role in ['decided_transcript', 'raw_reading']") { active role canViewSensitive }
@@ -101,15 +101,15 @@ mutation AppendEvidenceItemV2($organizationId: UUID!, $collectionId: UUID!, $id:
   }
   evidenceItem_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, source: $source, sourceVersion: $sourceVersion, adapterVersion: $adapterVersion, query: $query, outcome: $outcome, locator: $locator, responseSha256: $responseSha256, capturedAt: $capturedAt, rawAssetId: $rawAssetId})
 }
-mutation AppendToolCallV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $callKey: String!, $phase: String!, $tool: String!, $toolVersion: String!, $source: String, $fieldKey: String, $inputSource: String!, $transcriptionVersionId: UUID, $observationId: UUID, $attempt: Int!, $arguments: Any!, $outcome: String!, $result: Any, $evidenceId: UUID, $startedAt: Timestamp, $completedAt: Timestamp, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+mutation AppendToolCallV1($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $callKey: String!, $phase: String!, $tool: String!, $toolVersion: String!, $source: String, $fieldKeys: [String!]!, $inputSource: String!, $transcriptionVersionId: UUID, $observationId: UUID, $attempt: Int!, $arguments: Any!, $outcome: String!, $result: Any, $evidenceId: UUID, $startedAt: Timestamp, $completedAt: Timestamp, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.inputSource in ['decided_transcript', 'raw_reading'] && vars.attempt >= 1") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.inputSource in ['decided_transcript', 'raw_reading'] && vars.attempt >= 1 && vars.outcome in ['success', 'no_match', 'ambiguous', 'empty_response', 'rate_limited', 'timeout', 'authentication_error', 'authorization_error', 'provider_error', 'malformed_response', 'policy_blocked']") { active role canViewSensitive }
   }
   scope: query @redact {
     pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
   }
-  toolCall_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, callKey: $callKey, phase: $phase, tool: $tool, toolVersion: $toolVersion, source: $source, fieldKey: $fieldKey, inputSource: $inputSource, transcriptionVersionId: $transcriptionVersionId, observationId: $observationId, attempt: $attempt, arguments: $arguments, outcome: $outcome, result: $result, evidenceId: $evidenceId, startedAt: $startedAt, completedAt: $completedAt})
+  toolCall_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, callKey: $callKey, phase: $phase, tool: $tool, toolVersion: $toolVersion, source: $source, fieldKeys: $fieldKeys, inputSource: $inputSource, transcriptionVersionId: $transcriptionVersionId, observationId: $observationId, attempt: $attempt, arguments: $arguments, outcome: $outcome, result: $result, evidenceId: $evidenceId, startedAt: $startedAt, completedAt: $completedAt})
 }
 mutation AppendFieldCandidateV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $fieldKey: String!, $state: String!, $literalValue: String, $parsedValue: Any, $normalizedValue: Any, $authorityId: String, $derivation: String!, $inputSource: String, $sourceTranscriptionId: UUID, $sourceObservationId: UUID, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
