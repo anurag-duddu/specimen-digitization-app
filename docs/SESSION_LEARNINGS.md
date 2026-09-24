@@ -11898,3 +11898,12 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the agent tests fail without the module and pass with it; the full Python suites and pre-commit pass.
 - Durable learnings: (1) A post-response token check does not bound what a run spends: pydantic-ai checks `input_tokens_limit` after each response, so the request that crosses the limit is itself bounded by construction instead, through a prompt byte cap, a tool-call cap and the output cap on its history. That makes S3's reservation provable. (2) One geocoding budget covers the agent's checks and the final lookups, and geography arguments are sorted by field. Without that, a check and the final call on the same literals were two paid requests. (3) The agent names readings 1A, 1B, 2A, never by model; the first pass's reader letters taught the same lesson.
 - Remaining follow-ups: T3d part a (G37 and G38 layers and the derivations that need no outside data), the first pass's G30 output cap, T3c (the `parse` step), T4 (the queue decision), T3d part b (S8's derivations and `derive_rest`), and the geography name-key alignment with S8.
+
+### 2026-09-24 — Go-live S4: the harness's instructions (T3b, part 2c)
+
+- Task: go-live S4, topic T3b part 2c: the harness agent's instructions, meaning the managed prompt `field-harness` and the Insects harness knowledge, under owner decisions G29, G36, G37 and G40. Split from #138 at the steward's request.
+- Branch/worktree: `golive/harness-knowledge`, stacked on `golive/harness-agent` (#138), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: the managed prompt in `prompts.py`, and `application/harness_knowledge/` (`insects`, id `insects`, version `insects-harness-knowledge-v1`, and `instructions_for`). S3's profile names the knowledge by id and version. Spec: `docs/execution/golive/HARNESS.md` section 12.
+- Validation actually run: the knowledge tests fail without the package and pass with it; the prompt-resolution test covers the new prompt; the full Python suites and pre-commit pass.
+- Durable learnings: (1) A notation's reading assigns what is written to its field; it never fills or converts a value. Keeping the knowledge to readings let it merge while the owner was still deciding elevation derivation (G22 to G41). (2) Place aliases must be written as the geography tool folds them (`fold("P.I.")` is `pi`), and a test pins that, so a change to the fold cannot silently orphan an alias.
+- Remaining follow-ups: T3d part a (layers and derived values, G37, G38, G41), then T3c and T4.
