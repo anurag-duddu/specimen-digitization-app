@@ -15,13 +15,17 @@ assert.equal(env.GITHUB_WORKFLOW_REF, `${env.GITHUB_REPOSITORY}/.github/workflow
 assert.ok((env.RELEASE_AUTHORIZED_SHA === undefined) !== (env.RELEASE_GATE_SHA === undefined));
 assert.equal(env.RELEASE_AUTHORIZED_SHA ?? env.RELEASE_GATE_SHA, env.GITHUB_SHA);
 const [mode, instance, output, input] = process.argv.slice(2);
-assert.ok(['inventory', 'indexes', 'indexed', 'catalog', 'summary', 'migrate', 'migrated'].includes(mode));
+assert.ok(['inventory', 'indexes', 'indexed', 'catalog', 'summary', 'migrate', 'migrated', 'restored'].includes(mode));
 assert.ok(['specimen-digitization-instance', 'specimen-digitization-restore-20260908-r1'].includes(instance));
 const ACTOR = 'specimen-data-release@specimen-digitization.iam';
 const OWNER = 'firebaseowner_specimen-digitization-database_public';
 // RELEASE.md 4.3 steps 3 and 5, and 4.4's verify, serve only a gate record's commit, on the source instance.
 if (mode.startsWith('migrate') || mode === 'indexed') {
   assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-instance');
+}
+// RELEASE.md 4.4 item 1 (D1): the first apply's restored clone is read as migrated reads the source, for a gate record.
+if (mode === 'restored') {
+  assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-restore-20260908-r1');
 }
 // Every index in public with what deploy_data.verify_indexes checks: its table, method, validity, keys and definition.
 const INDEXES = `SELECT c.relname AS name, t.relname AS table_name, a.amname AS method,
@@ -183,7 +187,7 @@ try {
       throw error;
     }
     writeFileSync(output, JSON.stringify({version: 'data-migration/v1', statements: statements.length, committed: true}), {mode: 0o600});
-  } else if (mode === 'migrated') {
+  } else if (mode === 'migrated' || mode === 'restored') {
     // Step 5, read only: the initializer's own postconditions (the owner owns every relation in public, the writer and
     // reader hold exactly the default privileges, and the extensions are plpgsql and uuid-ossp), then the relations.
     await client.query('BEGIN TRANSACTION READ ONLY');

@@ -192,6 +192,9 @@ class Google:
         aliases = {PROJECT, self.packet["identity"]["project_number"]}
         require(any(resource.startswith(f"projects/{value}/") or resource == f"projects/{value}" for value in aliases), "foreign Google resource")
         require(not any(value in resource for value in ("?", "#", "..", "%", "\\")), "invalid Google resource")
+        # Of the SQL instances, only the fixed restore clone is ever deleted (RELEASE.md 4.4 item 1).
+        require(api != "sql" or method != "DELETE" or re.fullmatch(
+            r"projects/[^/]+/instances/specimen-digitization-restore-20260908-r1", resource), "only the restore clone is deleted")
         recovery_deadline = None
         if method != "GET":
             self.packet = admit(self.path, self.plane)
@@ -246,12 +249,15 @@ class Google:
         require(self.plane == "data" and directory == self.path.parent
                 and os.environ.get("RELEASE_SERVICE_ACCOUNT") == ACTOR, "only ordinary recovery can claim")
         require(admit(self.path, "data") == self.packet, "claim admission changed")
+        import release_gate
+        # A gate record's claim is bounded by its own window (RELEASE.md 4.4), an envelope's by its recovery deadline.
+        deadline = strict_json(payload)["expires_at_unix" if release_gate.is_gate_record(self.packet)
+                                        else "recovery_expires_at_unix"]
         body, content_type = multipart(payload)
         retain(directory / "clone-allowance-request.body", body)
         retain(directory / "clone-allowance-request.json", canonical({"method": "POST", "url": URL,
             "params": PARAMS, "content_type": content_type, "body_sha256": sha(body)}))
-        remaining = min(self.packet["expires_at_unix"],
-                        strict_json(payload)["recovery_expires_at_unix"]) - time.time()
+        remaining = min(self.packet["expires_at_unix"], deadline) - time.time()
         require(remaining > 1800, "insufficient original claim authority")
         response = None
         raw = bytearray()
@@ -280,7 +286,7 @@ class Google:
         require(complete, "incomplete claim response")
         if response.status_code != 200:
             raise HTTPFailure(response.status_code)
-        require(time.time() < strict_json(payload)["recovery_expires_at_unix"], "claim response arrived too late")
+        require(time.time() < deadline, "claim response arrived too late")
         return strict_json(bytes(raw))
 
     def wait(self, api: str, operation: dict, *, maximum_seconds=600):

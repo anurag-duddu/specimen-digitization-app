@@ -220,15 +220,20 @@ def authorize_effect(google, resource):
     return min(google.packet["expires_at_unix"], winner.plan["recovery"]["expires_at_unix"])
 
 
-# The gate path (G11, RELEASE.md 4.4): each apply sends its one backup, and nothing else of the envelope's recovery.
-GATE_EFFECTS = {f"projects/{PROJECT}/backups": "backup"}
+# The gate path (G11, RELEASE.md 4.4): each apply sends its one backup; only the first apply, after its claim, sends the
+# clone and the restore. The envelope's backupRuns insert stays refused.
+GATE_EFFECTS = {f"projects/{PROJECT}/backups": "backup", f"projects/{PROJECT}/instances": "clone-create",
+                f"projects/{PROJECT}/instances/{CLONE}/restoreBackup": "clone-restore"}
 
 
 def gate_effect(google, resource):
-    """Admit a gate record's recovery effect only while its step names it, once per invocation, until its deadline."""
+    """Admit a gate record's recovery effect only while its step names it, the clone's only after this invocation's
+    claim, each once per invocation, until the record's deadline."""
     name = GATE_EFFECTS.get(resource)
     require(name is not None and getattr(google, "_gate_effect", None) == name,
             "the gate path sends only its current recovery effect")
+    require(name == "backup" or isinstance(getattr(google, "_gate_claim", None), str),
+            "the first apply's clone needs this invocation's claim")
     sent = google.__dict__.setdefault("_gate_sent", set())
     require(name not in sent, "native recovery submission cannot be replayed")
     sent.add(name)
