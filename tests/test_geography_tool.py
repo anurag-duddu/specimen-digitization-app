@@ -216,6 +216,7 @@ def test_one_result_confirms_only_the_fields_whose_component_names_match():
         "county": S.SUCCESS,
         "country": S.NO_MATCH,  # "P.I." is not Google's "Philippines".
     }
+    assert result.warnings == []
     assert result.places == [
         PlaceCandidate(
             field_key=field_key,
@@ -279,8 +280,91 @@ def test_a_result_for_the_wrong_place_settles_no_admin_field(admin, options):
     assert seen.requests[0].url.params["address"] == LABEL
     assert seen.result.outcome == S.SUCCESS
     assert seen.result.field_outcomes == {key: S.NO_MATCH for key, _ in admin}
-    assert seen.result.places == []
+    assert seen.result.places == [] and seen.result.warnings == []
     assert_keeps_only_place_id(seen, DENALI)
+
+
+# G34: FMNH 105526330 reads "Chimaltenago"; Google's department and town are
+# "Chimaltenango" (one result, no partial match; checked live 2026-09-24).
+CHIMALTENANGO = place(
+    "place-chimaltenango",
+    component("Chimaltenango", "Chimaltenango", "locality", "political"),
+    component("Chimaltenango", "Chimaltenango", "administrative_area_level_1"),
+    component("Guatemala", "GT", "country", "political"),
+    lat=14.6611,
+    lng=-90.8208,
+)
+GUATEMALA = {"guat": ["guatemala"]}
+
+
+def near(*pairs, answer=CHIMALTENANGO):
+    payload = {"status": "OK", "results": [answer]}
+    return map_geocoding_response(query(*pairs), 200, payload, GUATEMALA)
+
+
+def test_a_near_spelling_the_other_fields_confirm_clears_with_the_place_id_only():
+    geography = query(("province_state", "Chimaltenago"), ("country", "GUAT."))
+
+    seen = geocode(geography, reply(CHIMALTENANGO), aliases=GUATEMALA)
+
+    assert seen.result.field_outcomes == {
+        "province_state": S.SUCCESS,
+        "country": S.SUCCESS,
+    }
+    assert [(p.field_key, p.source_record_id, p.name) for p in seen.result.places] == [
+        ("province_state", "place-chimaltenango", None),
+        ("country", "place-chimaltenango", None),
+    ]
+    assert seen.result.warnings == ["near_spelling:province_state"]
+    assert_keeps_only_place_id(seen, CHIMALTENANGO)
+
+
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        (("province_state", "Chimaltinago"), ("country", "GUAT.")),
+        (("province_state", "Chimaltenago"),),
+        (("province_state", "Chimaltenago"), ("country", "P.I.")),
+        (
+            ("province_state", "Chimaltenago"),
+            ("city", "Chimaltenago"),
+            ("country", "GUAT."),
+        ),
+    ],
+    ids=["two-edits", "no-other-field", "other-field-contradicts", "two-near"],
+)
+def test_a_near_spelling_clears_nothing_unless_every_condition_holds(pairs):
+    outcome, fields, places, warnings = near(*pairs)
+
+    assert outcome == S.SUCCESS and fields["province_state"] == S.NO_MATCH
+    assert [p for p in places if p.field_key == "province_state"] == []
+    assert warnings == []
+
+
+def test_a_near_spelling_is_never_measured_against_a_code():
+    # "P.I." folds to "pi", one edit from Google's short name "PH"; a code is
+    # not a name, so only the profile's alias may confirm it.
+    geography = query(("city", "DAVAO CITY."), ("country", "P.I."))
+    payload = {"status": "OK", "results": [DAVAO]}
+
+    _, fields, _, warnings = map_geocoding_response(geography, 200, payload)
+
+    assert fields == {"city": S.SUCCESS, "country": S.NO_MATCH} and warnings == []
+
+
+def test_a_near_spelling_needs_exactly_one_such_component_at_the_fields_levels():
+    twins = place(
+        "place-twins",
+        component("Chimaltenango", "Chimaltenango", "administrative_area_level_1"),
+        component("Chimaltenaga", "Chimaltenaga", "administrative_area_level_2"),
+        component("Guatemala", "GT", "country", "political"),
+    )
+
+    _, fields, _, warnings = near(
+        ("province_state", "Chimaltenago"), ("country", "GUAT."), answer=twins
+    )
+
+    assert fields["province_state"] == S.NO_MATCH and warnings == []
 
 
 @pytest.mark.parametrize(
@@ -629,7 +713,7 @@ def test_only_place_id_outcome_and_fingerprint_leave_the_tool(answer):
 def test_every_response_maps_to_one_outcome_that_every_field_shares(
     http_status, payload, expected
 ):
-    outcome, fields, places = map_geocoding_response(QUERY, http_status, payload)
+    outcome, fields, places, _ = map_geocoding_response(QUERY, http_status, payload)
 
     assert (outcome, fields, places) == (expected, dict.fromkeys(FIELDS, expected), [])
 
@@ -661,7 +745,7 @@ def test_a_field_is_confirmed_only_by_a_component_at_its_own_level(
 ):
     found = place("place-sao-paulo", component("São Paulo", "SP", component_type))
 
-    outcome, fields, places = map_geocoding_response(
+    outcome, fields, places, _ = map_geocoding_response(
         query((field_key, "  SÃO   PAULO. ")), 200, {"status": "OK", "results": [found]}
     )
 
@@ -690,7 +774,7 @@ def test_names_compare_after_folding_and_every_literal_of_a_field_must_match(
     found = place("place-usa", component("United States", short_name, "country"))
     geography = query(*(("country", literal) for literal in literals))
 
-    _, fields, _ = map_geocoding_response(
+    _, fields, _, _ = map_geocoding_response(
         geography, 200, {"status": "OK", "results": [found]}
     )
 
@@ -794,7 +878,7 @@ def test_notations_compare_by_the_name_they_qualify(
 ):
     found = place("place-notation", component(google_name, google_name, component_type))
 
-    _, fields, _ = map_geocoding_response(
+    _, fields, _, _ = map_geocoding_response(
         query((field_key, literal)), 200, {"status": "OK", "results": [found]}
     )
 
@@ -825,7 +909,7 @@ def test_notations_compare_by_the_name_they_qualify(
     ],
 )
 def test_aliases_add_names_that_count_as_matches(aliases, expected):
-    outcome, fields, places = map_geocoding_response(
+    outcome, fields, places, _ = map_geocoding_response(
         query(("country", "P.I.")),
         200,
         {"status": "OK", "results": [DAVAO]},
@@ -872,3 +956,20 @@ def test_the_key_filter_is_installed_once_at_import():
 
     assert httpx_logger.filters == installed
     assert sum(isinstance(f, geography_tool.RedactMapsKey) for f in installed) == 1
+
+
+@pytest.mark.parametrize(
+    "a,b,expected",
+    [
+        ("chimaltenago", "chimaltenango", True),  # One insertion.
+        ("chimaltenango", "chimaltenago", True),  # One deletion.
+        ("chimaltenaga", "chimaltenago", True),  # One substitution.
+        ("davao", "davao", True),
+        ("chimaltinago", "chimaltenango", False),  # Two edits.
+        ("pi", "philippines", False),
+        ("ab", "ba", False),  # A transposition is two edits.
+        ("", "a", True),
+    ],
+)
+def test_one_edit_is_one_insertion_deletion_or_substitution(a, b, expected):
+    assert geography_tool._one_edit(a, b) is expected

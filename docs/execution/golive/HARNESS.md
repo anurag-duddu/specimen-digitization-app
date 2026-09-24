@@ -231,6 +231,21 @@ are G29 applied to places: PLAN's G29 row makes it the harness's principle to
 work through every reading a notation allows, "for dates and for every other
 field", from the harness knowledge each subcollection's profile carries.
 
+**A near spelling** (G34, the owner's answer to S8's D15, 2026-09-24) can clear
+a field no name matches, with the place ID and no name. It needs a single result
+without `partial_match`, as any success does, and all three of G34's conditions:
+(1) a component at the field's levels has a long name within one edit of the
+folded literal, never a short name or code: "P.I." is not one letter off "PH",
+and only the profile's alias confirms it; (2) it is the only such component; (3)
+every other admin field of the reading, and at least one, matched by name or
+alias. FMNH 105526330's "Chimaltenago" clears its department this way, because
+Google's department is "Chimaltenango" and "GUAT." names its country. A live
+check on 2026-09-24 found that Google answers that address with one result and
+no partial match. The tool then warns `near_spelling:{field}`; the harness
+records it as a warning finding, which never routes the record. The label's
+spelling stays the verbatim (G27). Denali still clears nothing: no component
+there is one edit from "Davao" or "P.I.".
+
 **`precise_location` is verbatim locality text** (PRD 515). Its literal helps
 form the address, but the tool reports no outcome and no place for it, so
 nothing it returns can settle or replace it; where such a phrase actually is
