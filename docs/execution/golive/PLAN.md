@@ -278,6 +278,12 @@ coordinator ruling on the mechanism:
   harness model request carries a cap on output tokens, and each harness run a
   cap on its model requests, set from the lab's measured runs. A run that
   reaches its cap is a harness failure under G6.
+- A reader or first-pass call that sends a crop reserves from that crop:
+  image tokens from its pixel dimensions under the route's documented rule,
+  capped at the model's maximum input resolution, plus the prompt tokens and
+  the output cap, at the pinned price. 20,000 micro-dollars is the floor, and
+  a route without a documented rule takes the most conservative pinned rule on
+  uncapped pixels (coordinator ruling for S3, 2026-09-24).
 - SAM 3 is priced by its measured seconds, startup included, at the service's
   vCPU and memory rates, and settles as `computed`; its reservation bounds
   startup, the 300-second request timeout and the 10-second shutdown, as
@@ -407,7 +413,10 @@ The place tool follows these coordinator rulings, from #124's reviews:
   content-addressed under `application/sha256/`, which the worker's standing
   read grant covers (#119). The reader verifies each checksum. The owner
   uploads them with a checksum-verifying, no-clobber command that S2 writes
-  from the merged manifest; no agent writes storage.
+  from the merged manifest; no agent writes storage. GeoNames keeps no archive
+  of its daily dumps, so for them the command uploads S8's pinned files from a
+  folder outside the repository after checking size and digest, and never
+  downloads them again.
 
 The taxonomy tools send the taxon name, never place text (G23).
 
@@ -417,7 +426,7 @@ The taxonomy tools send the taxon name, never place text (G23).
 | GeoNames (place tool, tier 1) | nothing: its dumps are read from the project's storage | GeoNames ids, names, codes and coordinates | CC BY 4.0, credited |
 | Wikidata (place tool, tier 1) | the name, with the same reading's place fields | item ids, labels and coordinates | CC0, credited as a courtesy |
 | Getty TGN (place tool, tier 1) | the name, with the same reading's place fields | TGN ids, names, dates and coordinates | ODC-By 1.0, credited |
-| NGA GNS (place tool, tier 1) | the name, with the same reading's place fields, or nothing when read from its files | feature ids, names and coordinates | freely available, with the citation NGA requests (#94) |
+| NGA GNS (place tool, tier 1) | the name, with the same reading's place fields, or nothing when read from its files | feature ids, names and coordinates | credited as "NGA GEOnet Names Server"; NGA's current pages carry only a disclaimer (#94, source S33) |
 | Copernicus GLO-30 (place tool, D11) | nothing: tiles are read from the project's storage | where the label states no elevation, the minimum and maximum over the uncertainty circle, with the tile's version | credited to DLR and Airbus, as its licence requires |
 | geoBoundaries, open release (place tool, containment, G37) | nothing: files are read from the project's storage | the county or city whose unit holds the whole uncertainty circle | CC BY 4.0, credited |
 | GBIF species match v2 (taxonomy, decides, G23) | the scientific name with authorship when present, its rank and higher ranks, and the checklist key (`GBIF.md` 107-114) | the usage key, accepted name, rank, status and match type, with the exact query, retrieval time, identifiers, licence metadata and response digest (`GBIF.md` 31) | the checklist's licence, cited per GBIF's citation guidelines (`GBIF.md` 47) |
