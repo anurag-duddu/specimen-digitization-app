@@ -563,6 +563,15 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   `Run.usage.actual_cost_micros` (S3, G30: the program's USD 5 allowance and
   what remains of it). Cost stays out of SQL. A run with no paid call yet has an
   empty `paid_calls`.
+  - A paid call's `cost_basis` is `computed` (the provider's reported usage times
+    the pinned price list), `billed` (a billed amount the provider returned), or
+    `reserved`, when the call's outcome is unknown (a timeout, a transport error,
+    a 5xx, or a response without usage). A reserved call costs its full
+    reservation, which is never released. Only `computed` or `billed` settles a
+    call, and a settled cost above its reservation counts in full (coordinator
+    ruling under G30).
+  - Each entry is passed through as S3 records it on the run, so keys S3 adds
+    reach the client unchanged.
 - `region_id` throughout is the domain region id (`LabelRegion.domainRegionId`),
   the id the app and the snapshot use.
 - `coverage_check.status` is `passed`, `failed` or `not_run` (G15). A failed
