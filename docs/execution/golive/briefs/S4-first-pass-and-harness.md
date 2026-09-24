@@ -94,8 +94,11 @@ functional one comes first (G6).
   text as its verbatim and its value and clears, on one label as on several
   (coordinator reading of G27 and G32, matching your #131).
 - The place tool's outside requests carry place text only, built from the
-  named place fields and never from agent text, with a test that a collector,
-  a date and a catalogue number never leave; taxonomy requests carry the
+  named place fields and never from agent text; the agent's mid-run geocoding
+  tool is withdrawn, and the deterministic final call builds one request per
+  reading, cutting other fields' literals, digit-bearing tokens and text after
+  collector or determiner markers, with tests that a collector, a date and a
+  catalogue number never leave (coordinator ruling); taxonomy requests carry the
   taxon name and ranks (`GBIF.md` 107-114); every credential follows the Maps
   key's rules (PLAN section 4.8). `derive_rest` runs in the worker's
   derivation job, never in the API.

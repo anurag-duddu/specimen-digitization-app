@@ -401,8 +401,15 @@ The place tool follows these coordinator rulings, from #124's reviews:
 - Its requests carry place text only. It builds each request from the
   reading's place fields (`country`, `province_state`, `county`, `city`,
   `precise_location`), its unassigned locality text and the names tier 1
-  returns, never from text the agent writes (G40). A test shows that a
-  collector, a date and a catalogue number never leave.
+  returns, never from text the agent writes (G40). The agent has no geocoding
+  tool of its own: geocoding happens in the deterministic final call, one
+  request per reading, which cuts out every literal the same reading assigns
+  to another field, drops tokens that carry digits, and drops the text after
+  a collector or determiner marker the profile's notations name. The agent
+  still reads everything transcribed (G40) and weighs the recorded outcomes.
+  Tests show that a collector, a date and a catalogue number never leave,
+  whether inside the locality text, in a wrongly assigned place field, or
+  unassigned.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
