@@ -6,7 +6,8 @@ pass, handoffs, tool calls, field candidates and the queue decision. The snapsho
 the source of truth, gives the run's state and cost, the image, segmentation and the coverage
 check, and says which decision, candidates and record version are current: those are keyed by
 their content, so the ids come from the writer's own functions and the operation reads exactly
-them.
+them. A region shows the model's decision and a reviewer's beside it, never one in place of the
+other.
 """
 
 from __future__ import annotations
@@ -37,11 +38,13 @@ LIMITS = {
     "regions": 100,
     "observations": 400,
     "comparisons": 100,
-    "handoffs": 400,
+    "firstPasses": 400,
     "evidence": 1000,
     "toolCalls": 1000,
 }
-NESTED_LIMITS = {"links": 64, "fields": 500, "findings": 200}
+NESTED_LIMITS = {"handoffs": 64, "links": 64, "fields": 500, "findings": 200}
+# The model's own decisions; a reviewer's is `human` (section 4.2).
+MODEL_KINDS = ("first_pass", "identical_readings")
 # The ids passed for the current decisions, candidates and record version; the operation
 # refuses more.
 KEY_LIMITS = {"decisionIds": 100, "candidateIds": 500, "recordIds": 1}
@@ -174,6 +177,12 @@ class FirstPass(Part):
     handoffs: list[Handoff]
 
 
+class ReviewerDecision(Part):
+    decided_text: str
+    unresolved: bool
+    rationale: str | None
+
+
 class RegionThread(Part):
     region_id: str | None
     ordinal: int
@@ -182,6 +191,7 @@ class RegionThread(Part):
     readings: list[Reading]
     comparisons: list[Comparison]
     first_pass: FirstPass | None
+    reviewer_decision: ReviewerDecision | None
 
 
 class ToolCall(Part):
@@ -339,7 +349,7 @@ def assemble(
         ),
         segmentation=_segmentation(run),
         coverage_check=_coverage(run, evidence),
-        regions=_regions(row, current),
+        regions=_regions(row, run),
         tool_calls=[_tool_call(call) for call in tool_calls],
         fields=_fields(run, row, current, evidence, tool_calls),
         decision=_decision(row, current),
@@ -362,6 +372,7 @@ def _whole(value):
 
 def _check_bounds(row: dict) -> None:
     lists = [(name, row.get(name) or [], limit) for name, limit in LIMITS.items()]
+    lists += [("handoffs", d.get("handoffs") or [], NESTED_LIMITS["handoffs"]) for d in row.get("firstPasses") or []]
     lists += [("links", c.get("links") or [], NESTED_LIMITS["links"]) for c in row.get("candidates") or []]
     for record in row.get("records") or []:
         lists += [(name, record.get(name) or [], NESTED_LIMITS[name]) for name in ("fields", "findings")]
@@ -453,7 +464,7 @@ def _raw(row: dict) -> RawResponse:
     return RawResponse(asset_id=_id(row["rawAssetId"]), sha256=(row.get("rawAsset") or {}).get("sha256"))
 
 
-def _regions(row: dict, current: dict) -> list[RegionThread]:
+def _regions(row: dict, run) -> list[RegionThread]:
     readings, calls, comparisons = defaultdict(list), {}, defaultdict(list)
     for observation in row.get("observations") or []:
         calls[_id(observation["id"])] = observation
@@ -461,19 +472,19 @@ def _regions(row: dict, current: dict) -> list[RegionThread]:
             readings[_id(observation["regionId"])].append(observation)
     for comparison in row.get("comparisons") or []:
         comparisons[_id(comparison["regionId"])].append(comparison)
-    handoffs = defaultdict(list)
-    for handoff in row.get("handoffs") or []:
-        handoffs[_id(handoff["transcriptionVersionId"])].append(handoff)
-    decisions = {}
-    for found in row.get("decisions") or []:
-        if _id(found["id"]) in current["decisionIds"]:
-            decisions.setdefault(_id(found.get("regionId")), found)
+    # The decision the snapshot names for each region, by the writer's own key (section 5).
+    named = {t.region_id: d for t in run.transcripts if (d := decision(run, t)) is not None}
+    decisions = {_id(d["id"]): d for d in row.get("decisions") or []}
+    models = defaultdict(list)
+    for found in row.get("firstPasses") or []:
+        # Newest first, as the operation orders them.
+        models[_id(found.get("regionId"))].append(found)
     result = []
     # Stable: regions of one ordinal keep the order they were written in.
     for region in sorted(row.get("regions") or [], key=lambda r: r["ordinal"]):
         ident = _id(region["id"])
         geometry = {k: _whole(v) for k, v in (region.get("geometry") or {}).items()}
-        found = decisions.get(ident)
+        found, reviewer = _decided(named.get(region.get("domainRegionId")), models[ident], decisions)
         result.append(
             RegionThread(
                 region_id=region.get("domainRegionId"),
@@ -508,13 +519,37 @@ def _regions(row: dict, current: dict) -> list[RegionThread]:
                     )
                     for c in comparisons[ident]
                 ],
-                first_pass=None if found is None else _first_pass(found, calls, handoffs),
+                first_pass=None if found is None else _first_pass(found, calls),
+                reviewer_decision=reviewer,
             )
         )
     return result
 
 
-def _first_pass(found: dict, calls: dict, handoffs: dict) -> FirstPass:
+def _decided(named, models: list[dict], decisions: dict) -> tuple[dict | None, ReviewerDecision | None]:
+    """A region's model decision, and a reviewer's beside it (coordinator ruling, 2026-09-23).
+
+    The first pass is the model decision the snapshot names; when the snapshot names a
+    reviewer's instead, it is the region's latest model decision, so a later layer never erases
+    an earlier one (G38). The reviewer's decision is the human one the snapshot names.
+    """
+    if named is not None and named.kind in MODEL_KINDS:
+        found = next((d for d in models if _id(d["id"]) == _id(named.id)), None)
+    else:
+        found = models[0] if models else None
+    reviewer = None
+    if named is not None and named.kind == "human":
+        row = decisions.get(_id(named.id))
+        if row is not None:
+            reviewer = ReviewerDecision(
+                decided_text=row["literalText"],
+                unresolved=row["unresolved"],
+                rationale=row.get("rationale"),
+            )
+    return found, reviewer
+
+
+def _first_pass(found: dict, calls: dict) -> FirstPass:
     call = calls.get(_id(found.get("firstPassObservationId")))
     return FirstPass(
         decision_kind=found.get("decisionKind"),
@@ -540,7 +575,7 @@ def _first_pass(found: dict, calls: dict, handoffs: dict) -> FirstPass:
                 handed_text=h["handedText"],
                 note=h.get("note"),
             )
-            for h in handoffs[_id(found["id"])]
+            for h in found.get("handoffs") or []
         ],
     )
 
