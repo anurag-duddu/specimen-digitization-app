@@ -294,10 +294,12 @@ offline. It parses only the SDL this repository uses. It accepts:
   covers at least one new field. Scoped foreign keys always include the
   existing `organizationId` and `collectionId`, and PostgreSQL does not
   enforce a foreign key on rows whose new, nullable column is null;
-- removing `!` only from a field on the gate's checked-in list, each named
-  with its reason from the data contract (`SourceAsset.width`,
-  `SourceAsset.height`, `LabelRegion.cropAssetId`, `EvidenceItem.locator`). A
-  relation field whose `@ref(fields:)` covers a listed column may follow it,
+- removing `!` only from a field that section 3.3 of the data contract
+  (`docs/execution/golive/DATA_CONTRACT.md`) lists with its reason. The gate
+  reads that table strictly from the merged tree, and fails closed on a
+  missing or malformed one. Today it lists `SourceAsset.width`,
+  `SourceAsset.height`, `LabelRegion.cropAssetId` and `EvidenceItem.locator`.
+  A relation field whose `@ref(fields:)` covers a listed column may follow it,
   since they are the same SQL column. The gate never removes `!` from a key
   field, a `@unique` field, or a provenance or idempotency key
   (`ModelObservation` `runId`, `regionId`, `provider`, `modelVersion`,

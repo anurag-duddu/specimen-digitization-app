@@ -11916,7 +11916,8 @@ because the hooks runner hands a native asset hook only `PATH`.
     - step two, in a later merge, drops `specimen_unique_1` only once the live schema has the new unique and no live operation uses the old one.
   - Both steps in one merge are refused, with a reason naming create-before-drop.
   - Each added column must be an existing NOT NULL column. Neither constraint may be the key or hold a protected key.
-  - `PROTECTED` gains TRN-005's `rawAssetId`, `promptVersion` and `inputSha256`. `EvidenceItem.locator` joins the NOT NULL relaxations with the data contract's reason.
+  - `PROTECTED` gains TRN-005's `rawAssetId`, `promptVersion` and `inputSha256`.
+  - The NOT NULL relaxations are no longer hard-coded. The gate reads them from `DATA_CONTRACT.md` section 3.3 in the merged tree, strictly, so `EvidenceItem.locator` arrives with #88's contract. Key, `@unique` and never-list columns stay refused even when listed.
 - Commits/PRs:
   - This session's earlier superset version was replaced before it was pushed. Its spec and code were squashed into one spec commit and one red/green pair.
   - Spec `29763ba`, red `3d2917a`, green `38014da`, and this closeout.
