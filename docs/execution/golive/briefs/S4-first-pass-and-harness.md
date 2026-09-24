@@ -93,13 +93,15 @@ functional one comes first (G6).
 - A field without a lookup whose readers all read the same text takes that
   text as its verbatim and its value and clears, on one label as on several
   (coordinator reading of G27 and G32, matching your #131). It still passes
-  G45's kind check first.
-- The place tool's outside requests follow PLAN section 4.8 exactly: its
-  sources, cuts, expansions, fixed request parts and tests, in your single
-  filter, which S8's request builder also calls. Taxonomy requests carry the
-  taxon name and ranks (`GBIF.md` 107-114). Every credential follows the Maps
-  key's rules. `derive_rest` runs in the worker's derivation job, never in the
-  API.
+  G45's kind check first, which for `verbatim_dts` is a finding until the
+  owner answers.
+- The place tool's outside requests follow PLAN section 4.8 exactly
+  (coordinator rulings, PLAN 4.8, including the ruling on S8's option (c) for
+  expansions, 2026-09-24): its sources, cuts, expansions, fixed request parts
+  and tests, in your single filter, which S8's request builder also calls.
+  Taxonomy requests carry the taxon name and ranks (`GBIF.md` 107-114). Every
+  credential follows the Maps key's rules. `derive_rest` runs in the worker's
+  derivation job, never in the API.
 - G33: the numeric dates of every reading, the decided transcript's and the raw
   readings', are the evidence for an all-numeric date's day and month order;
   any disagreement among them fixes no order, and the date goes to review with

@@ -235,7 +235,7 @@ the coordinator; it does not decide (G5).
 | 5 Disagreement score | Scoring for level of disagreement | `bounded-levenshtein-fraction-v1`, risk scores, uncalibrated | Run in the lane and persist per region |
 | 6 LLM first pass | Decides which final raw transcript the harness runs against, and gives per VLM what was returned to the harness | Prompt only | A first-pass step on a Hugging Face model (G7) with the existing prompt; records the decision and, per reader, the reading and what was handed to the harness; when it picks no reading, the harness runs on each reader's raw reading (G19) |
 | 7 Agentic harness | Runs lookups on the decided transcript through tools that depend on collection and subcollection, mandatory and optional fields; falls back to the raw readings if the decided transcript fails; if both fail, the relevant queue; graceful failures (G6) | Deterministic phases, GBIF adapter, unconfigured authorities | A Pydantic AI agent with the profile's typed tools (section 2.2 sources), its place lookups and the final call's going through section 4.8's filter (coordinator ruling), the HAR-008 outcomes for no data found, errors and retries, the raw-reading fallback, every tool call recorded; GBIF decides taxonomy, with Global Names Verifier and Catalogue of Life as supporting evidence (G23), and a match succeeds as `GBIF.md` 126-130 defines, at the label's own rank for a genus-only label (G25); a lookup that confirms exactly one reader's literal settles a disagreement (G20); for places (G27) and taxon names (G28) the verbatim keeps the text as written and the final value is what the lookup settled, both stored; from Google only the place ID, the outcome and a response fingerprint are kept, everywhere including traces, test fixtures and lab folders, and the geocoding tool hands the agent only those (G26); when no reader's literal matched the settled place exactly, the final value is the place ID and the outcome with no name, because G26 keeps Google's names out; S8's D15 (#94) asks the owner to choose between that, where the field clears (option b), and sending the field to review (option c), and G34 decides it for the Google tool: where no reader's literal matches even after folding or through an alias, the field clears with the place ID and no name only when the long name of Google's component at the field's levels, never a short name or code, is within one edit of the folded literal, the only such component, and every other admin field of the same reading, all of them and at least one, matches by fold or alias, with a `near_spelling` warning finding that never routes the record, and otherwise goes to review with the candidate; S8 builds the retrospective georeferencing tool of #94 behind the same interface (G34), whose D items stand as section 2.3 records; the harness works through every reading a notation allows and settles the one the evidence supports, with the notations in the Insects harness knowledge that S4 writes and the profile names, rendered into the harness's system prompt (G29, section 4.2); a field on two labels is settled per label and clears when every label settles to the same value, or else goes to review with each label's reading (G32); the numeric dates of every reading, decided and raw, are the evidence for an all-numeric date's order, and any disagreement among them fixes no order (G33); the place tool follows the owner's three tiers, historical gazetteers, then Google given the modernized name with its context, then the point-radius uncertainty, and stores only open-source coordinates (G35, G26), and a place only the museum's records know settles through a curator-confirmed entry (G36); a field the label leaves out is derived from settled fields with authority and evidence (G37), each value records its layer (G38), and the agent reads everything transcribed as context and keeps looking things up until a field settles, is derived or goes to review (G40); S8 builds the geographic derivations behind the geography interface, and S4 those that need no outside data (coordinator ruling) |
-| 8 Queue decision | Harness-resolved is cleared (G1); otherwise human review or deferred as the spec defines; no data for a mandatory field means the human queue (G1, G6) | Policy engine with human-only clearance; deferral only through the reviewer's action | Apply G1 in the policy: remove the gates that contradict it (`policy.py` 31-34 and 138-139) for runs whose profile names `harness_route`, since G1 covers "something that harness was able to resolve", while every other run keeps them (coordinator reading of G1, #158); keep `label_coverage_unconfirmed` (35-36), which the lane's automatic check satisfies (G15); keep the reviewer's `capability_defer` action (`api.py` 1940-1967) and let the queue decision also return deferred under QUE-004; keep operational blocks with retry; validate the separately parsed date instead of the verbatim text (`policy.py` 119-126), and for a Date Visited To derived under G44 the derived value with its record: a date clears at the precision written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral in the month position is that month (G29); keep the elevation gate (99-106), which reads `field.literal` today (101-110) and must read a derived elevation's value instead, counting it only with its derivation record (G37 and G41, revising G22; section 4.8); a single written collecting date fills Date Visited To as derived (G44); a field no lookup checks whose value doesn't look like its kind sends the record to review with a reason (G45), except `verbatim_dts`, a finding until the owner answers (section 2.3); `unresolved_transcription` (46-48) yields to G19 and G20, so a region whose first pass picked no reading passes when every field drawn from it resolved, on its own evidence or through a lookup that settled the disagreement, and a field still left with conflicting readings sends the record to needs human review; when the first pass picked no reading, the non-empty check reads the settled value with a success outcome, since no single verbatim was chosen (G27, G28), while a field without a lookup whose readers all read the same text takes that text as its verbatim and its value and clears, on one label as on several, once it passes G45's kind check (coordinator reading of G27 and G32, matching #131), and the grounding check (75, `field.literal in excerpt`, which raises on that None literal) tests each reader's reading against its own evidence. The taxonomy gate (140-157) and finalize's operational check (163) read only `run.lookups[-1]`, which is arbitrary once G19 and G20 add a lookup per reader: the taxonomy gate reads the lookup that settled the taxon field, and the operational check catches an operational failure, not recovered by a retry, in any lookup the decision depends on. G23's flag and the readers' spelling difference under G27 are recorded as findings, never reasons for review. `pilot_clearance_forbidden` (`worker.py` 318-323) is off the lane's path and stays |
+| 8 Queue decision | Harness-resolved is cleared (G1); otherwise human review or deferred as the spec defines; no data for a mandatory field means the human queue (G1, G6) | Policy engine with human-only clearance; deferral only through the reviewer's action | Apply G1 in the policy: remove the gates that contradict it (`policy.py` 31-34 and 138-139) for runs whose profile names `harness_route`, since G1 covers "something that harness was able to resolve", while every other run keeps them (coordinator reading of G1, #158); keep `label_coverage_unconfirmed` (35-36), which the lane's automatic check satisfies (G15); keep the reviewer's `capability_defer` action (`api.py` 1940-1967) and let the queue decision also return deferred under QUE-004; keep operational blocks with retry; validate the separately parsed date instead of the verbatim text (`policy.py` 119-126), and for a Date Visited To derived under G44 the derived value with its record: a date clears at the precision written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral in the month position is that month (G29); keep the elevation gate (99-106), which reads `field.literal` today (101-110) and must read a derived elevation's value instead, counting it only with its derivation record (G37 and G41, revising G22; section 4.8); a single written collecting date fills Date Visited To as derived (G44); a field no lookup checks whose value doesn't look like its kind sends the record to review with a reason (G45), except `verbatim_dts`, a finding until the owner answers (section 2.3); `unresolved_transcription` (46-48) yields to G19 and G20, so a region whose first pass picked no reading passes when every field drawn from it resolved, on its own evidence or through a lookup that settled the disagreement, and a field still left with conflicting readings sends the record to needs human review; when the first pass picked no reading, the non-empty check reads the settled value with a success outcome, since no single verbatim was chosen (G27, G28), while a field without a lookup whose readers all read the same text takes that text as its verbatim and its value and clears, on one label as on several, once it passes G45's kind check, which for `verbatim_dts` is a finding until the owner answers (coordinator reading of G27 and G32, matching #131), and the grounding check (75, `field.literal in excerpt`, which raises on that None literal) tests each reader's reading against its own evidence. The taxonomy gate (140-157) and finalize's operational check (163) read only `run.lookups[-1]`, which is arbitrary once G19 and G20 add a lookup per reader: the taxonomy gate reads the lookup that settled the taxon field, and the operational check catches an operational failure, not recovered by a retry, in any lookup the decision depends on. G23's flag and the readers' spelling difference under G27 are recorded as findings, never reasons for review. `pilot_clearance_forbidden` (`worker.py` 318-323) is off the lane's path and stays |
 | 9 Linkage | Everything links to the specimen record | Stable ids throughout | Keep; the normalized rows carry specimen and run |
 
 ### 4.2 Profile
@@ -414,37 +414,51 @@ status. The client defects in section 3 are fixed first.
 ### 4.8 Outside data (G35, G38)
 
 The place tool follows these coordinator rulings, from #124's reviews:
-- Its requests carry place text only. The agent keeps a place-lookup tool it
-  can call mid-run (G40), and the deterministic final call looks places up
-  too; both build requests the same way, and so does S8's tool for every
-  request it sends. The rule covers what is sent: the values a request takes
-  from the reading, from tier 1 and from a reviewer. Those values draw only on
-  exact substrings of the reading taken from its place fields (`country`,
-  `province_state`, `county`, `city`, `precise_location`) and its unassigned
-  locality text (the part of the lines holding those fields that no reading
-  assigns to any field), on the names tier 1 returns, and, in "fill the
-  rest", on the reviewer's value in a place field; a value drawn from anything
-  else is refused. From those values, and only there, the filter cuts every
-  token of every literal any reading assigns to a non-place field and of every
-  value a reviewer puts in a non-place field; every token of every clause,
-  between commas, semicolons or line breaks, that holds a collector or
-  determiner marker the profile's notations name, wherever the marker sits in
-  it; every token that carries a digit; and the month names and abbreviations
-  the profile's date notations list. After the cuts, the filter may replace a
-  notation token with its full form from the profile's notation table (G29),
-  so "Davao Prov." is sent as "Davao Province"; an expansion adds only the
-  table's fixed full forms and never brings back a cut token. The fixed parts
-  of a request (SPARQL properties such as P625, P582 and P1365, paging,
-  limits and the key) are reviewed constants, with a test that they carry no
-  label text. Notations may be read locally in any form, since the rule limits
-  only what leaves, and dates and elevations are compared locally and never
-  sent. It applies to every request the place tool makes, tier 1, tier 2 and
-  "fill the rest" alike. Tests show exactly what it guarantees, with "H.
-  Hoogstraal leg.", "3 Sept. '46" and "Davao Prov., leg. Hoogstraal" among the
-  cases: no cut token leaves, an expansion carries only its full form, and a
-  value not drawn from those sources is refused. Text the filter cannot
-  recognize, such as a name no reading assigns to any field and no marker
-  accompanies, can still leave; that is its stated limit.
+- Its requests carry place text only (coordinator rulings of 2026-09-24,
+  including the ruling on S8's option (c) for expansions). The agent keeps a
+  place-lookup tool it can call mid-run (G40), and the deterministic final
+  call looks places up too. Both build requests through S4's single filter,
+  and S8's request builder calls that same filter for every request its tiers
+  send. The rule covers every value a request takes from the record, in any
+  parameter.
+  - Sources, checked first, before any cut or expansion: exact substrings of
+    the reading taken from its place fields (`country`, `province_state`,
+    `county`, `city`, `precise_location`) and its unassigned locality text
+    (the part of the lines holding those fields that no reading assigns to
+    any field); the names tier 1 returns; in "fill the rest", the reviewer's
+    value in a place field; and each full form the profile's notation table
+    lists for a notation the table assigns to place fields only (G29). A value
+    drawn from anything else is refused.
+  - Cuts, applied only to those values: every token of every literal any
+    reading assigns to a non-place field, and of every value a reviewer puts
+    in a non-place field; every token of every clause, between commas,
+    semicolons or line breaks, that holds a collector or determiner marker the
+    profile's notations name, wherever the marker sits in it; every token that
+    carries a digit; and the month names, abbreviations and Roman-numeral
+    months (I to XII) the profile's date notations list. The readings'
+    non-place literals do not cut the reviewer's own place value, since the
+    reviewer's correction is the authority there.
+  - Expansion, after the cuts: a surviving notation token that the table
+    assigns to place fields only may be replaced by its full form, so "Davao
+    Prov." is sent as "Davao Province". Each full form then goes through the
+    same cuts, and an expansion never brings back a cut token.
+  - Fixed parts: SPARQL properties such as P625, P582 and P1365, paging,
+    limits and headers (a project User-Agent naming no person or email) are
+    reviewed constants, not record values, and a record value enters SPARQL
+    only as an escaped literal. The key is the Secret Manager credential,
+    which the filter leaves untouched; the fixed-parts test uses a fake key,
+    and no test or fixture records a key or the URL carrying it.
+  - Notations may be read locally in any form, since the rule limits only what
+    leaves, and dates and elevations are compared locally and never sent. The
+    filter applies to every request the place tool makes, tier 1, tier 2 and
+    "fill the rest" alike.
+  - Tests show exactly what it guarantees: "H. Hoogstraal leg.", "3 Sept.
+    '46", "3 VIII 1946", "Davao Prov., leg. Hoogstraal", every full form the
+    table lists, and a reviewer's corrected collector spelling that matches no
+    reading literal. No cut token leaves, an expansion carries only its full
+    form, and a value not drawn from those sources is refused.
+  - Its stated limit: text the filter cannot recognize, such as a name no
+    reading assigns to any field and no marker accompanies, can still leave.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
