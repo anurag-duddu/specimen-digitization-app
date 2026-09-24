@@ -11886,7 +11886,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - the existing geometry check: at least one label region and none out of bounds;
     - 1 to 3 label regions after merging those overlapping at IoU 0.9 or more;
     - every cross-check (`text`) detection scoring 0.5 or more lies at least 50% inside the union of the label regions.
-  - It sets `run.coverage_confirmed` and records `Run.coverage_check` in S5's shape. That shape carries the version, outcome, region count, cross-check summary with uncovered boxes, reason codes led by `label_coverage_unconfirmed`, and the segmentation response as evidence.
+  - It sets `run.coverage_confirmed` and records `Run.coverage_check` in S5's shape. That shape carries the version, outcome, region count with the rule's range, cross-check summary with uncovered boxes, reason codes led by `label_coverage_unconfirmed`, and the segmentation response as evidence.
   - The segment step runs it for non-synthetic runs whose profile pins a rule. A failed check is a verdict for the existing policy gate, and the run goes on through every stage.
 - Validation actually run: the coverage tests (12 passed), including a workflow segment step that records a failed check and moves on to transcription; the lane, SAM, application, worker and evidence-pilot tests (215 passed, 2 skipped); the full gates as listed in the pull request.
 - Durable learnings: the exact share of a box inside a union of rectangles is a sweep over x-strips, merging each strip's y-intervals. That is exact and cheap for the few labels a slide carries, with no rasterizing.

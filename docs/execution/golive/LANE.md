@@ -397,7 +397,8 @@ policy gate (`policy.py` 35-36) sends it to needs human review.
 `Run.coverage_check` records the evidence in S5's shape:
 
 - `version` `coverage-check-v1`;
-- `outcome`, `region_count`, `cross_check` and `reason_codes`;
+- `outcome`, `region_count` with the rule's `min_label_regions` and
+  `max_label_regions`, `cross_check` and `reason_codes`;
 - `evidence_ref` and `evidence_sha256`, the segmentation response;
 - `checked_at`.
 
