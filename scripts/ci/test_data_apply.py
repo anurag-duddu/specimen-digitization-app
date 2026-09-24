@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 import deploy_data as D
+import deploy_runtime
 import release_clone
 import release_google
 import release_initialize as I
@@ -48,6 +49,8 @@ CLAIMED = "the first production restore is already claimed; the coordinator deci
 UNKNOWN = "the restore claim failed or its outcome is unknown; the coordinator decides"
 RECIPE = "the SQL instance does not fit the restore clone's recipe"
 NOT_OURS = "the restore clone is not provably this run's; the coordinator deletes it"
+SPENT = ("an earlier attempt spent the first production restore's claim without checking the clone; "
+         "the coordinator decides")
 IAM = {"name": "cloudsql.iam_authentication", "value": "on"}
 
 
@@ -75,6 +78,7 @@ class Cloud:
         self.diff, self.backup, self.compared, self.patches = [ADD] if schema == LIVE else [], {}, [], []
         self.catalog, self.indexes, self.restored = copy.deepcopy(MERGED_CATALOG), inventory(), copy.deepcopy(MERGED_CATALOG)
         self.claims, self.response, self.clone, self.pending, self.swap = [], {}, lambda clone: None, set(), False
+        self.earlier = {}  # this run's earlier attempts' data receipts: attempt -> (receipt, attested)
 
     def effect(self, name):
         self.events.append(name)
@@ -189,7 +193,28 @@ def released(tmp_path, monkeypatch, capsys):
 
     def run(cloud, directory="release"):
         monkeypatch.setattr(D, "Google", lambda path, plane: cloud)
-        monkeypatch.setattr(D, "gh_json", lambda path: cloud.compared.append(path) or {"status": cloud.status})
+        def gh_json(path):
+            if path.startswith(f"repos/{D.REPOSITORY}/actions/runs/456/artifacts"):
+                items = [{"name": f"data-receipt-{SHA}-{attempt}", "expired": False, "workflow_run": {"id": 456}}
+                         for attempt in cloud.earlier]
+                return {"total_count": len(items), "artifacts": items}
+            cloud.compared.append(path)
+            return {"status": cloud.status}
+
+        def download(command, **kwargs):
+            assert command[:8] == ["gh", "run", "download", "456", "--repo", D.REPOSITORY, "--name", command[7]]
+            attempt = int(command[7].rsplit("-", 1)[1])
+            Path(command[9], "data-receipt.json").write_text(json.dumps(cloud.earlier[attempt][0]))
+
+        def verified(path, sha256, source, workflow):
+            attested = {json.dumps(value): ok for value, ok in cloud.earlier.values()}
+            assert (source, workflow) == (SHA, "data-release.yml")
+            if not attested[Path(path).read_text()]:
+                raise ValueError("no attestation")
+            return Path(path).read_bytes()
+        monkeypatch.setattr(D, "gh_json", gh_json)
+        monkeypatch.setattr(deploy_runtime, "checked", download)
+        monkeypatch.setattr(deploy_runtime, "verified_receipt_bytes", verified)
         monkeypatch.setattr(D.subprocess, "run", node_sql(cloud))
         (tmp_path / directory).mkdir(exist_ok=True)
         steps.write_text("")
@@ -593,3 +618,52 @@ def test_node_reads_the_index_inventory_read_only_for_a_gate_records_commit_on_t
     for env, instance in (({"RELEASE_AUTHORIZED_SHA": SHA}, D.SOURCE), ({"RELEASE_GATE_SHA": SHA}, I.CLONE)):
         assert node(tmp_path, "scripts/ci/release_sql.mjs", "indexed", {"DEPLOYMENT_ENVIRONMENT": "data-production", **env}, [],
                     instance, pg=RELEASE_PG) == (1, None, [])
+
+
+def earlier(first_restore="checked", attested=True, **changes):
+    """Attempt 1's data receipt, as the release job uploads and attests it on every exit."""
+    return {1: ({**receipt(source_sha_label=None, backup_id=BACKUP_ID, first_restore=first_restore), "run_attempt": 1,
+                 **changes}, attested)}
+
+
+def test_a_re_run_after_a_failure_past_the_claim_applies_without_a_second_clone_on_the_earlier_attested_check(released):
+    """The coordinator's ruling of 2026-09-24: attempt 1 claimed, checked the clone and then failed; its attested receipt is
+    D1's one restore proof, so attempt 2 needs no clone role, sends no claim and applies with this attempt's own backup."""
+    cloud = Cloud(label=None)
+    cloud.earlier = earlier()
+    cloud.live["sql", CLONED] = HTTPFailure(403)  # the owner's window has closed again: the clone is never read
+    value, _ = released(cloud)
+    assert cloud.error is None and cloud.events == ORDER and cloud.claims == []
+    assert value == receipt(**APPLIED, first_restore="proven")
+    assert "An earlier attempt of this run claimed and checked the first restore" in cloud.log
+
+
+def test_an_earlier_attempt_that_only_claimed_stops_the_first_apply_before_any_effect(released):
+    """A claim spent without a checked clone proves nothing: the apply stops before its backup, for the coordinator."""
+    cloud = Cloud(label=None)
+    cloud.earlier = earlier("claimed")
+    value, _ = released(cloud)
+    assert cloud.error == SPENT and cloud.events == [] and cloud.claims == []
+    assert value == receipt(source_sha_label=None)
+
+
+@pytest.mark.parametrize("found", [
+    {}, earlier(attested=False), earlier(source_sha="c" * 40), earlier(run_id=789), earlier(run_attempt=3),
+    earlier(None), earlier("proven"),
+], ids=["another-commit", "unattested", "other-commit-receipt", "other-run", "other-attempt", "no-restore", "proven"])
+def test_nothing_else_proves_the_restore_and_the_spent_claim_stops_the_first_apply(released, found):
+    """Anything but an earlier attempt's attested "checked" for this commit, this run and that attempt proves nothing: a
+    different commit's first apply, an unattested or mismatched receipt, or any other value meets the spent claim."""
+    cloud = Cloud(label=None)
+    cloud.earlier, cloud.response = found, HTTPFailure(412)
+    value, _ = released(cloud)
+    assert cloud.error == CLAIMED and cloud.events == ["backup", "claim"] and ("sql", CLONED) not in cloud.live
+    assert value == receipt(source_sha_label=None, backup_id=BACKUP_ID)
+
+
+def test_a_labelled_apply_never_reads_earlier_receipts(released):
+    """Only a first apply looks for an earlier attempt's check; every later apply has its label."""
+    cloud = Cloud()
+    cloud.earlier = earlier("claimed")
+    value, _ = released(cloud)
+    assert cloud.error is None and value == receipt(**APPLIED)
