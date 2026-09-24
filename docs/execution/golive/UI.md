@@ -279,3 +279,29 @@ status strip's blockers).
   They follow the Fields segment's rule: shown while the field stands as
   the run left it. Hard findings keep coming from the workspace, in the
   blockers list and on their fields, so none is stated twice.
+
+### T2.5 Processing: the run and its trace
+
+The Processing disclosure, in the Fields segment at every width (13
+section 3.2), adds from the thread where the record's run came from. The
+coordinator placed the run, the version and "Open trace" here under G5,
+and brief T2 asks for "a link built from the Logfire project configuration
+and the trace id".
+
+- The run, the profile with its version, and the policy the queue decided
+  under, as labelled values: "Run", "Profile" and "Policy".
+- The trace: its id, with a control that copies it, and "Open trace", a
+  link to the run's trace in Logfire. The thread gives the address, and the
+  client keeps it only when it is an absolute https URL (T2.1). A trace id
+  without an address is still named, and a run with neither says "No trace
+  recorded".
+- A run blocked because the program's model allowance is spent
+  (`program_allowance_exhausted`, G30) says so in plain words, with the
+  amount when the thread records it: "The USD 5.00 model allowance for this
+  program is spent. Processing resumes when the owner raises it." Without
+  the thread the sentence names no amount. Cost appears nowhere else (the
+  coordinator, 2026-09-23).
+
+"Open trace" is `url_launcher`'s `Link`, which the owner approved for it:
+on the web it is a real link that opens in a new tab, and elsewhere it
+opens the system browser.
