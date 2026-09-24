@@ -553,19 +553,17 @@ would cross the allowance is not called. The run blocks with
 `program_allowance_exhausted`, an operational block with no queue outcome
 (QUE-005).
 
-The coordinator ruled on 2026-09-23 (#104, 9e8ee26) that G30 caps what
-production's model calls spend, so the ledger follows spend:
+G30 caps what production's model calls spend (PLAN 4.3, #104). So each paid
+call reserves its step's reservation before it starts, and settles to its cost
+once its outcome is known; T2b and T2c build it. Which failures count as known,
+and how reservations are checked, are for the coordinator's next plan PR. A
+retry reserves again. The run's own budget keeps its rule: its reservations are
+never refunded (`domain.py` 222-227). With no allowance configured, the ledger
+is not consulted.
 
-- Each paid call reserves its step's reservation before it starts, and every
-  reservation bounds its step's worst case. No call can cross the allowance.
-- When a call's outcome is known (completed, or failed with known usage), it
-  settles to its computed or billed cost (T2c). An unknown outcome
-  (`external_outcome_unknown`) stays fully reserved. A retry reserves again.
-- The run's own budget keeps its rule: its reservations are never refunded
-  (`domain.py` 222-227).
-- With no allowance configured, the ledger is not consulted.
-
-Worst cases behind the pilot's reservations, at the pinned prices (T2c):
+Every reservation bounds its step's worst case, so no call can cross the
+allowance. The worst cases behind the pilot's reservations, at the pinned
+prices (T2c):
 
 - `segment` 33,000: SAM 3's 240 s hard deadline × 136 micro-dollars a second
   (4 vCPU and 16 GiB at Cloud Run's request-based rates) plus the request,
