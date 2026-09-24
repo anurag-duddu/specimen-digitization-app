@@ -1092,3 +1092,19 @@ def test_a_google_call_keeps_only_place_ids(kept, allowed):
     else:
         with pytest.raises(ValueError):
             writes(s, locate, size, "worker-uid")
+
+
+def test_an_entry_of_no_known_reading_never_settles_by_region():
+    """A reading the run does not have has no region, so no other named reading can settle it."""
+    s, picked, _, left = two_labels()
+    s.run.fields = {
+        "locality": TracedField(
+            state=ValueState.SUPPORTED,
+            verbatim_by_observation={"not-a-reading": "Chicago", left.id: "Chicago"},
+            input_source_by_observation={"not-a-reading": "decided_transcript", left.id: "raw_reading"},
+            settled_observation_ids=["also-not-a-reading", left.id],
+            normalized="Chicago",
+        )
+    }
+    unknown, known = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV2")
+    assert (unknown["normalizedValue"], known["normalizedValue"]) == (None, "Chicago")
