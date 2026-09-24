@@ -82,7 +82,7 @@ async function chain(specimenId, actorUid) {
   // Every other reading goes to the harness too, with the first pass's note (S4, #98).
   w.fallback = {...w.decided, id: id(), observationId: w.right.id, role: 'raw_reading', handedText: w.right.literalText, note: 'Reads the l as a one.'};
   w.evidence = {...v, id: id(), runId: w.run.id, source: 'google-maps-geocoding', sourceVersion: 'v1', adapterVersion: 'a1', query: {address: 'Chicago, Ill.'}, outcome: 'success', locator: 'place/fixture-place', responseSha256: hex('e'), capturedAt: '2026-09-23T12:00:00Z', rawAssetId: w.placeRecord.id};
-  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: `lookup:geocode:google-maps-geocoding:decided_transcript:${w.region.domainRegionId}:-:0af70af70af70af7:1`, phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {candidates: [{place_id: 'fixture-place'}]}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
+  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: `lookup:geocode:google-maps-geocoding:decided_transcript:${w.region.domainRegionId}:-:0af70af70af70af7:1`, phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {place_ids: ['fixture-place']}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
   w.candidate = {...v, id: id(), runId: w.run.id, fieldKey: 'city', state: 'supported', literalValue: 'Chicago', parsedValue: null, normalizedValue: null, authorityId: 'fixture-place', derivation: 'literal', inputSource: 'decided_transcript', sourceTranscriptionId: w.transcription.id, sourceObservationId: null};
   w.link = {...v, id: id(), candidateId: w.candidate.id, evidenceId: w.evidence.id, relation: 'supports'};
   w.record = {...v, id: id(), runId: w.run.id, predecessorId: null, disposition: 'needs_human_review', policyVersion: 'insects-clearance-v1', reasonCodes: ['mandatory_unresolved:county'], summary: 'mandatory_unresolved:county'};
@@ -434,3 +434,67 @@ denied(await due('worker', true));
 denied(await due('viewer', false));
 denied(await due('worker', false, {...start, afterId: 'not-a-cursor'}));
 console.log('PASS due work lists the oldest due time first, pages by due time and id, hides sensitive rows from the worker, and skips finished and undated runs');
+
+// The thread of one run (GetRunThreadV1, DATA_CONTRACT.md 8, T3): it admits whom the workspace route
+// admits, finds the run by its id and its specimen, and reads only the decision, candidates and
+// record version whose ids it is given, although the run by now holds several of each.
+const threadOf = (actorUid, specimenId, runId, ids = {}) => query('GetRunThreadV1', {...scope, actorUid, specimenId, runId, decisionIds: [], candidateIds: [], recordIds: [], ...ids});
+const current = {decisionIds: [work.transcription.id], candidateIds: [work.candidate.id], recordIds: [work.record.id]};
+const [read] = ok(await threadOf('worker', open, work.run.id, current)).runs;
+same(read.id, work.run.id);
+same(read.decisions.map(d => [d.id, d.decisionKind, d.literalText]), [[work.transcription.id, 'first_pass', work.left.literalText]]);
+// Every model decision of the run, newest first, whatever ids are given, each with its handoffs:
+// the no-pick and identical decisions written below the chain, the second first-pass decision
+// written with the closed vocabularies, then the chain's first pass.
+same(read.firstPasses.map(d => d.decisionKind), ['identical_readings', 'identical_readings', 'first_pass', 'first_pass', 'first_pass']);
+same([read.firstPasses.at(-2).id, read.firstPasses.at(-2).handoffs.map(h => h.role)], [fresh.id, ['decided_transcript', 'raw_reading']]);
+const chosen = read.firstPasses.at(-1);
+same([chosen.id, chosen.selectedObservationId, chosen.firstPassObservationId], [work.transcription.id, work.left.id, work.firstPassCall.id]);
+// The selected reading as the decided transcript, and the other reading with its note.
+same(chosen.handoffs.map(h => [h.role, h.observationId, h.note]), [['decided_transcript', work.left.id, null], ['raw_reading', work.right.id, 'Reads the l as a one.']]);
+// Its evidence as linked above: Google's support, a contradiction, and the coverage check.
+same(read.candidates.map(c => [c.id, c.links.map(l => [l.evidenceId, l.relation])]), [[work.candidate.id, [[work.evidence.id, 'supports'], [work.evidence.id, 'contradicts'], [coverage.id, 'supports']]]]);
+// A candidate's decision gives its region and, for G32, the reading it selected.
+same([read.candidates[0].sourceTranscription.region.domainRegionId, read.candidates[0].sourceTranscription.selectedObservationId], [work.region.domainRegionId, work.left.id]);
+// The chain's hard finding, the one citing 64 evidence rows, then the two warnings.
+same(read.records.map(r => [r.id, r.fields.map(f => f.fieldKey), r.findings.map(f => f.severity)]), [[work.record.id, ['city'], ['hard', 'hard', 'warning', 'warning']]]);
+// The run's own four regions: its first, a second label, a superseding one and one with a crop.
+assert.equal(read.regions.length, 4);
+same(read.regions.slice(0, 2).map(r => [r.domainRegionId, r.ordinal]), [[work.region.domainRegionId, 0], [second.domainRegionId, 1]]);
+same(read.observations.filter(o => !o.independent).map(o => [o.id, o.rawAsset.sha256]), [[work.firstPassCall.id, hex('9')]]);
+const geocode = read.toolCalls.find(t => t.callKey === work.toolCall.callKey);
+same([geocode.transcriptionVersion.region.domainRegionId, geocode.observation, geocode.evidenceId], [work.region.domainRegionId, null, work.evidence.id]);
+// Timestamps come back in UTC with six fractional digits, whatever form was written.
+assert.equal(geocode.startedAt, '2026-09-23T12:00:00.000000Z');
+same(read.toolCalls.filter(t => t.inputSource === 'raw_reading').map(t => t.observation.region.domainRegionId), [work.region.domainRegionId]);
+same(read.evidence.filter(e => e.source === 'label-coverage-check').map(e => [e.outcome, e.locator]), [['recorded', 'coverage/region-count']]);
+// T2c's columns: the call on a reviewer's text names its review decision and no reading; a derived
+// candidate names its inputs and has no literal; a settled value keeps its authority's identity.
+same(read.toolCalls.filter(t => t.inputSource === 'review').map(t => [t.reviewDecisionId, t.observationId]), [[asked.id, null]]);
+const identified = {...candidate3, id: randomUUID(), authorityIdentity: {source: 'gbif', source_record_id: 'fixture-gbif-1', name: 'Apis', credit: 'fixture credit'}};
+ok(await op('AppendFieldCandidateV3', identified));
+const t2c = ok(await threadOf('worker', open, work.run.id, {candidateIds: [derived.id, identified.id]})).runs[0].candidates;
+same(t2c.map(c => [c.id, c.derivedFromFieldKeys, c.literalValue, c.authorityIdentity]), [
+  [derived.id, ['elevation_from_ft'], null, null],
+  [identified.id, null, work.candidate.literalValue, identified.authorityIdentity],
+]);
+// With no ids, no decision, candidate or record version is read: an empty list selects none.
+const none = ok(await threadOf('worker', open, work.run.id)).runs[0];
+same([none.decisions, none.candidates, none.records], [[], [], []]);
+assert.ok(none.regions.length > 0 && none.toolCalls.length > 0 && none.firstPasses.length === 5);
+// A viewer reads what the workspace shows it; a non-member is refused, and so are oversized id lists.
+assert.equal(ok(await threadOf('viewer', open, work.run.id, current)).runs.length, 1);
+denied(await threadOf('stranger', open, work.run.id, current));
+denied(await threadOf('worker', open, work.run.id, {decisionIds: Array.from({length: 101}, () => randomUUID())}));
+denied(await threadOf('worker', open, work.run.id, {recordIds: [work.record.id, randomUUID()]}));
+// A sensitive specimen's thread needs sensitive access; the worker's membership has none.
+denied(await threadOf('worker', closed, kept.run.id));
+assert.equal(ok(await threadOf('reviewer', closed, kept.run.id)).runs.length, 1);
+// Another specimen's run, a sensitive one included, and an unknown run read as empty.
+same(ok(await threadOf('worker', open, b.run.id)).runs, []);
+same(ok(await threadOf('reviewer', open, kept.run.id)).runs, []);
+same(ok(await threadOf('worker', open, randomUUID())).runs, []);
+// A run that reuses a region id reads its own region row only.
+const [later] = ok(await threadOf('worker', open, again.id)).runs;
+same(later.regions.map(r => r.domainRegionId), [work.region.domainRegionId]);
+console.log('PASS the thread admits the workspace route\'s readers, reads a run only through its own specimen, and only the decision, candidates and record version it is given');
