@@ -151,12 +151,32 @@ def test_a_billed_amount_is_recorded_instead_of_the_computed_one():
     assert run.usage.actual_cost_micros == 321
 
 
-def test_an_unpriced_call_is_recorded_without_a_cost():
+def test_a_call_without_a_price_is_a_configuration_error():
     run = priced_run()
-    record_tool_usage(run, "parse", "unlisted_tool", requests=1)
-    [call] = run.paid_calls
-    assert (call["cost_micros"], call["cost_basis"]) == (None, "unpriced")
-    assert run.usage.actual_cost_micros is None
+    with pytest.raises(ValueError, match="No price for tool unlisted_tool"):
+        record_tool_usage(run, "parse", "unlisted_tool", requests=1)
+    assert run.paid_calls == []
+
+
+def test_a_settled_cost_above_its_reservation_counts_in_full(tmp_path):
+    repository = NonSensitiveMember(tmp_path / "state.sqlite3")
+    run = priced_run()
+    run.profile.execution = run.profile.execution.model_copy(
+        update={
+            "program_allowance_micros": 5_000_000,
+            "program_ledger_collection": SYNTHETIC_COLLECTION,
+        }
+    )
+    specimen = specimen_with(run)
+    principal = Principal(user_id=USER, scope=SCOPE, role="reviewer")
+    assert reserve_step(repository, principal, specimen, QWEN, 2_000) is None
+    run.attempts[QWEN] = 1
+    record_model_usage(
+        run, QWEN, "handwriting-qwen", input_tokens=1, output_tokens=1,
+        billed_micros=3_500,
+    )
+    settle_step(repository, principal, specimen, QWEN, 2_000)
+    assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == 3_500
 
 
 def test_a_run_without_a_price_list_records_nothing():
@@ -259,14 +279,15 @@ def test_a_failed_call_is_recorded_with_its_attempt(tmp_path):
     workflow.clock = lambda: datetime.now(timezone.utc) + timedelta(hours=1)
     run = workflow.drain(principal, row["specimen_id"]).run
     segments = [call for call in run.paid_calls if call["step"] == "segment"]
-    assert [(c["attempt"], c["outcome"]) for c in segments] == [
-        (1, "failed"),
-        (2, "completed"),
+    assert [(c["attempt"], c["outcome"], c["cost_basis"]) for c in segments] == [
+        (1, "failed", "reserved"),
+        (2, "completed", "computed"),
     ]
-    # The failed attempt stays reserved until failures are ruled on; the
-    # completed calls settle to what they cost.
+    # SAM 3's busy answer reported no usage, so it stays reserved at its full
+    # amount; the calls that reported usage settle to what they cost.
+    assert segments[0]["cost_micros"] == 45_000
     completed = sum(c["cost_micros"] for c in run.paid_calls if c["outcome"] == "completed")
-    assert ledger_total(app) == 33_000 + completed
+    assert ledger_total(app) == 45_000 + completed
 
 
 def ledger_total(app):
@@ -279,10 +300,10 @@ def test_a_settled_step_gives_back_the_rest_of_its_reservation(tmp_path):
     app, principal, row = lab(tmp_path)
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert "parse" in run.completed_steps, run.blocker
-    # SAM 3 and two readings reserved 33,000 + 2 x 20,000, then settled to
+    # SAM 3 and two readings reserved 45,000 + 2 x 20,000, then settled to
     # what their calls cost.
-    assert run.usage.reserved_cost_micros == 73_000
-    assert ledger_total(app) == run.usage.actual_cost_micros < 73_000
+    assert run.usage.reserved_cost_micros == 85_000
+    assert ledger_total(app) == run.usage.actual_cost_micros < 85_000
     assert run.program_allowance["reserved_total_micros"] == ledger_total(app)
 
 
@@ -292,7 +313,8 @@ def test_an_unknown_outcome_stays_fully_reserved(tmp_path):
     assert run.blocker == "external_outcome_unknown"
     [call] = run.paid_calls
     assert (call["step"], call["outcome"]) == ("segment", "unknown")
-    assert ledger_total(app) == 33_000
+    assert (call["cost_micros"], call["cost_basis"], call["usage"]) == (45_000, "reserved", None)
+    assert ledger_total(app) == 45_000
 
 
 def test_a_call_that_would_cross_the_cap_is_refused_however_little_was_spent(
@@ -301,7 +323,7 @@ def test_a_call_that_would_cross_the_cap_is_refused_however_little_was_spent(
     app, principal, row = lab(tmp_path)
     repository = app.state.workflow.repository
     # Earlier runs settled at 4,980,000: 20,000 of the allowance is left, less
-    # than SAM 3's 33,000 reservation.
+    # than SAM 3's 45,000 reservation.
     repository.put_document(
         SCOPE,
         LEDGER_KIND,
@@ -346,8 +368,9 @@ def test_the_pilot_pins_the_prices_read_on_2026_09_23():
         "output_micros_per_million": 1_200_000,
     }
     assert prices.tools == {"geography_lookup": 5_000}
-    # SAM 3 on 4 vCPU and 16 GiB: 136 micro-dollars a second. Its 240 s hard
-    # deadline stays inside the pilot's 33,000 segment reservation.
-    worst = segmentation_cost(prices.model_dump(mode="json"), 240)
-    assert worst == 32_641
+    # SAM 3 on 4 vCPU and 16 GiB: 136 micro-dollars a second. One call is billed
+    # at most its 300 s request timeout, cold start included, plus 10 s of
+    # shutdown, inside the pilot's 45,000 segment reservation.
+    worst = segmentation_cost(prices.model_dump(mode="json"), 310)
+    assert worst == 42_161
     assert worst <= published_registry().resolve("insects").profile.processing.stage_cost_micros.for_step("segment")

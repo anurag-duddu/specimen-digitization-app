@@ -233,7 +233,7 @@ clearance authority (`review_risk.py` 165, 329-331).
 | Tools per field | `taxon`: `taxonomy_verifier`. `country`, `province_state`, `county`, `city`, `precise_location`: `geography_lookup`. `fmnh_ins_number`: `catalog_number_validator`. The three dates: `date_parser`. Every other field: none (transcribed as seen). `tools` is their union | PLAN 4.2; S4 owns the tools |
 | Risk policy | the existing uncalibrated policy, above | brief T4 |
 | Clearance policy | `insects-clearance-v1`. S4's G1 change moves it to v2 with a new profile version | S4 |
-| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 33,000; each reader 20,000; `parse` 20,000. Each bounds its step's worst case (T2). `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
+| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 45,000; each reader 20,000; `parse` 20,000. Each bounds its step's worst case (T2). `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
 | Routes for the first pass and the harness | `first_pass_route` and `harness_route` fields exist, unset until S4's routes are approved | S4 |
 | Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900), and a Roman numeral I to XII in the month position is that month (`roman_numeral_months`). S4's date parser stamps each rule, its version and the profile on every parsed date that uses it, so the reading stays visibly derived (`CONTRACTS.md` 234-235) | G24, G29 |
 
@@ -573,9 +573,14 @@ Every reservation bounds its step's worst case, so no call can cross the
 allowance. The worst cases behind the pilot's reservations, at the pinned
 prices (T2c):
 
-- `segment` 33,000: SAM 3's 240 s hard deadline × 136 micro-dollars a second
-  (4 vCPU and 16 GiB at Cloud Run's request-based rates) plus the request,
-  about 32,641.
+- `segment` 45,000: at 136 micro-dollars a second (4 vCPU and 16 GiB at Cloud
+  Run's request-based rates). Cloud Run bills a request-based instance while it
+  starts, serves and shuts down (S2, from the billing settings page, updated
+  2026-09-21). A request must be answered within the 300 s request timeout,
+  cold start included (the container runtime contract), and shutdown is the
+  10 s grace period. (300 s + 10 s) × 136 plus the request is about 42,161.
+  The rest is margin for anything else billed at start, such as an image
+  pull, which the pages do not mention.
 - Each reader 20,000: two requests, each output capped at 4,096 tokens, and
   about 16,000 tokens before the second request is refused. That is at most
   about 8,200 output and 24,000 input tokens, or about 17,030 at the muse
@@ -665,25 +670,25 @@ How T2c builds it:
 
   They add the cost to `usage.actual_cost_micros`. Costs round up to whole
   micro-dollars. A provider's billed amount, when given, is recorded instead as
-  `billed`. A call with no price is recorded `unpriced`, without a cost.
+  `billed`. A call that reported no usage is recorded by `record_reserved` at
+  its step's full reservation, as `reserved`. A call with no price is a
+  configuration error: the step fails and keeps its reservation.
 - **Where.** After each reading and SAM 3 step, the workflow records the
-  reader's tokens from its observation, or SAM 3's measured seconds. It records
-  the step's outcome with them: `completed`, `failed`, or `unknown` when
-  the outcome of the call is unknown. The harness records its own model
+  reader's tokens from its observation, or a completed SAM 3 call's measured
+  seconds, which include waiting for a cold start. It records the step's
+  outcome with them: `completed`, `failed`, or `unknown` when the outcome of
+  the call is unknown. A reading that failed before reporting tokens, and a
+  SAM 3 call that did not complete (a busy 409 or 429, a 5xx, a timeout), are
+  recorded as `reserved`. The harness records its own model
   requests and tool calls in `parse` (S4, T3c). A run without a price list
   records nothing.
-- **Settlement (G30).** After a paid step completes, the ledger gives back the
-  step's reservation less the cost of the calls recorded for that attempt. It
-  does so only when the step recorded calls and every call has a cost.
-  Everything else stays fully reserved:
-  - a failure or an unknown outcome;
-  - a step whose calls nobody recorded;
-  - a call without a price.
-
-  Which failures count as known costs is for the coordinator's next plan PR.
-  Until then they stay reserved, which errs on the safe side. A step's next
-  attempt reserves again, and no call starts if its reservation would cross the
-  allowance, however little has been spent.
+- **Settlement (G30).** After a paid step, the ledger settles the attempt to
+  the cost of the calls recorded for it, giving back the rest of the
+  reservation. It does so only when every call reported usage or a billed
+  amount; a settled cost above the reservation counts in full. A step with a
+  `reserved` call, or whose calls nobody recorded, stays fully reserved. A
+  step's next attempt reserves again, and no call starts if its reservation
+  would cross the allowance, however little has been spent.
 - **Pilot prices, read on 2026-09-23.**
   - Readers, from the Hugging Face router's `/v1/models` pricing for their
     pinned providers: `handwriting-qwen` (novita) 200,000 input and 700,000

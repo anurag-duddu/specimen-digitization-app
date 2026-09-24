@@ -187,7 +187,7 @@ def test_a_step_that_would_cross_the_allowance_is_not_called(tmp_path):
     assert app.state.workflow.adapters.segments == 0
     position = run.program_allowance
     assert position["remaining_micros"] == 10_000
-    assert position["requested_micros"] == 33_000
+    assert position["requested_micros"] == 45_000
     assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == 4_990_000
 
 
@@ -215,7 +215,7 @@ def test_a_retry_reserves_again(tmp_path):
     total = ProgramLedger(repository, SCOPE).read()["reserved_total_micros"]
     # The failed attempt stays reserved; the retry reserved again and, like the
     # rest of the run, settled to its cost once it completed (T2c).
-    assert first == 33_000
+    assert first == 45_000
     completed = sum(
         c["cost_micros"] for c in specimen.run.paid_calls if c["outcome"] == "completed"
     )

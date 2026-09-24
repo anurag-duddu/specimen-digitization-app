@@ -102,7 +102,7 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
     allowance = profile.processing
     assert allowance.run_cost_limit_micros == 500_000
     assert allowance.stage_cost_micros.cost_micros == {
-        "segment": 33_000,
+        "segment": 45_000,
         "transcribe:handwriting-qwen": 20_000,
         "transcribe:handwriting-muse": 20_000,
         "parse": 20_000,
