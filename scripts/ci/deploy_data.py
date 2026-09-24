@@ -17,7 +17,7 @@ from release_admission import (admit, digest, exact_keys, gh_json, integer, mate
                                private_bytes, read_bound_plan, require, strict_json)
 from release_context import PROJECT, REPOSITORY
 from release_google import Google, cleanup_packet, cleanup_permit
-from release_diagnostics import public_failure, stage
+from release_diagnostics import HTTPFailure, public_failure, stage
 import release_gate
 import schema_gate
 
@@ -35,6 +35,7 @@ REVISION = re.compile(r"[\x21-\x7e]{1,500}")
 EXTENSION = re.compile(r"[a-z][a-z0-9_-]{0,62}")
 COUNTS = ("relations", "views", "routines", "types")
 APPLICATION_ROLES = {role: f"firebase{role}_{DATABASE}_public" for role in ("owner", "writer", "reader")}
+OWNER = APPLICATION_ROLES["owner"]
 # RELEASE.md 4.3 step 3 reads a diff statement as tokens: ASCII space, a quoted identifier, a string, a word, a number,
 # punctuation, an operator run or any other character. A backslash or an "other" token refuses it, so no escape string
 # or dollar quote can move a statement boundary. release_sql.mjs reads each statement the same way before it runs.
@@ -535,16 +536,7 @@ def apply_compatible(google, plan, path, output, before):
         native(path.parent, SOURCE, "post", files=plan["initialization"]["files"], deadline=google.packet["expires_at_unix"])
     if plan["schema_mode"] == "validate_existing":
         require(before["rows"] == after["rows"] and before["sequences"] == after["sequences"], "data or sequence values changed during compatible publication")
-    release = google.request("rules", "GET", RULE_RELEASE, missing=True)
-    require((release.get("rulesetName") if release else None) == plan["storage_release_etag"], "Storage release changed")
-    rules = google.request("rules", "POST", f"projects/{PROJECT}/rulesets", body={"source": committed_rules()})
-    body = {"name": RULE_RELEASE, "rulesetName": rules["name"]}
-    if release:
-        google.request("rules", "PATCH", RULE_RELEASE, body={"release": body}, params={"updateMask": "ruleset_name"})
-    else:
-        google.request("rules", "POST", f"projects/{PROJECT}/releases", body=body)
-    reread = google.request("rules", "GET", RULE_RELEASE)
-    require(reread.get("rulesetName") == rules["name"], "Storage publication mismatch")
+    ruleset = publish_rules(google, plan["storage_release_etag"])
     observations = {role: google.request("data", "GET", body["name"]) for role, body in (("schema", schema), ("connector", connector))}
     for value in observations.values():
         require(value.get("reconciling", False) is False and value.get("etag"), "data did not finish reconciling")
@@ -569,7 +561,23 @@ def apply_compatible(google, plan, path, output, before):
                                  **({"bootstrap_receipt": bootstrap_receipt} if bootstrap_receipt
                                     and bootstrap_receipt.get("version") in FIRST_SCOPE_RECEIPTS else {}),
                                  **{role: {"name": value["name"], "etag": value["etag"]} for role, value in observations.items()},
-                                 "storage_ruleset": rules["name"], "release_accepted": False}, sort_keys=True) + "\n")
+                                 "storage_ruleset": ruleset, "release_accepted": False}, sort_keys=True) + "\n")
+
+
+def publish_rules(google, expected):
+    """Release the committed Storage rules as a new ruleset over the expected live ruleset (None: no release yet)."""
+    release = google.request("rules", "GET", RULE_RELEASE, missing=True)
+    require((release.get("rulesetName") if release else None) == expected, "Storage release changed")
+    rules = google.request("rules", "POST", f"projects/{PROJECT}/rulesets", body={"source": committed_rules()})
+    require(isinstance(rules, dict) and isinstance(rules.get("name"), str) and RULESET.fullmatch(rules["name"]), "invalid new ruleset")
+    body = {"name": RULE_RELEASE, "rulesetName": rules["name"]}
+    if release:
+        google.request("rules", "PATCH", RULE_RELEASE, body={"release": body}, params={"updateMask": "ruleset_name"})
+    else:
+        google.request("rules", "POST", f"projects/{PROJECT}/releases", body=body)
+    reread = google.request("rules", "GET", RULE_RELEASE)
+    require(reread.get("rulesetName") == rules["name"], "Storage publication mismatch")
+    return rules["name"]
 
 
 def complete_initialization(path, receipt_path, output):
@@ -921,6 +929,160 @@ def _allowed(t, relaxed):
     return True
 
 
+def relaxations():
+    """The schema gate's NOT NULL relaxations, {(Type, field): reason}. Every migration caller reads them here, so
+    rebasing onto the gate's reading of the data contract (schema_gate.read_relaxations()) changes this line alone."""
+    return schema_gate.NAMED_RELAXATIONS
+
+
+def migration_plan(google, body, relaxed):
+    """RELEASE.md 4.3 step 3: the statements of Data Connect's SQL diff, from a validate-only COMPATIBLE update of the
+    merged schema; none when the database is already compatible. It reads the shape firebase-tools 15.8.0 reads
+    (lib/dataconnect/errors.js 10-41, schemaMigration.js 56-81): a 400 whose error.details hold one
+    IncompatibleSqlSchemaError, {diffs: [{sql, description, destructive}], destructive}, and a PreconditionFailure whose
+    violations are INCOMPATIBLE_SCHEMA. INACCESSIBLE_SCHEMA lists the whole expected schema, not a diff. Unless every
+    statement is allowed none runs, and the log names each refused one by its kind alone. relaxed: the merged
+    schema's (table, column) pairs whose NOT NULL may drop, the same set the plan hands release_sql.mjs."""
+    try:
+        google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true", "validateOnly": "true"}, diff=True)
+        return []
+    except HTTPFailure as failure:
+        answer = getattr(failure, "body", None)
+        if failure.http_status != 400 or answer is None:
+            raise
+    details = answer.get("error", {}).get("details") if isinstance(answer, dict) and isinstance(answer.get("error"), dict) else []
+    details = [detail for detail in details if isinstance(detail, dict)] if isinstance(details, list) else []
+    found = [detail for detail in details if "IncompatibleSqlSchemaError" in str(detail.get("@type"))]
+    violations = [violation.get("type") if isinstance(violation, dict) else None
+                  for detail in details if "google.rpc.PreconditionFailure" in str(detail.get("@type"))
+                  for violation in (detail.get("violations") if isinstance(detail.get("violations"), list) else [None])]
+    if len(found) != 1 or set(violations) != {"INCOMPATIBLE_SCHEMA"}:
+        raise blocked("Data Connect did not answer with a SQL diff for this database")
+    diffs = found[0].get("diffs")
+    if not (set(found[0]) <= {"@type", "diffs", "destructive"} and type(found[0].get("destructive", False)) is bool
+            and isinstance(diffs, list) and 0 < len(diffs) <= 1000 and all(
+                isinstance(diff, dict) and set(diff) <= {"sql", "description", "destructive"} and isinstance(diff.get("sql"), str)
+                and isinstance(diff.get("description", ""), str) and type(diff.get("destructive", False)) is bool for diff in diffs)):
+        raise blocked("Data Connect's SQL diff is malformed")
+    if found[0].get("destructive", False):
+        raise blocked("Data Connect marked the SQL diff destructive")
+    kinds, refusals = {}, []
+    for at, diff in enumerate(diffs, 1):
+        kind, reason = migration_statement(diff["sql"], relaxed)
+        reason = "marked destructive" if diff.get("destructive", False) else reason
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if reason:
+            refusals.append(f"Refused: diff statement {at} of {len(diffs)} ({kind}): {reason}.")
+    if refusals:
+        print("\n".join(refusals))
+        raise blocked(f"the migration refused {len(refusals)} of {len(diffs)} statement(s)")
+    print("Migration: " + ", ".join(f"{count} {kind}" for kind, count in sorted(kinds.items())) + ".")
+    return [diff["sql"] for diff in diffs]
+
+
+def initializer_receipt(record):
+    """This run's one attested data-initializer receipt, verified as disposal verifies the intent (RELEASE.md 4.3)."""
+    from deploy_runtime import checked, verified_receipt_bytes
+    receipts = run_artifacts(record, "data-initializer")
+    if len(receipts) != 1:
+        raise blocked("this run's attested initializer receipt is missing or ambiguous")
+    (attempt,) = receipts
+    with tempfile.TemporaryDirectory() as folder:
+        checked(["gh", "run", "download", str(record["release_run_id"]), "--repo", REPOSITORY,
+                 "--name", f"data-initializer-{record['source_sha']}-{attempt}", "--dir", folder])
+        path = Path(folder) / "data-initializer.json"
+        receipt = strict_json(verified_receipt_bytes(path, hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                     record["source_sha"], "data-release.yml"))
+    expected = {"version": "data-initializer/v1", "source_sha": record["source_sha"], "run_id": record["release_run_id"],
+                "run_attempt": attempt, "instance": SOURCE, "database": DATABASE}
+    if not (isinstance(receipt, dict) and set(receipt) == {*expected, "postconditions_sha256"}
+            and all(receipt[key] == value for key, value in expected.items())
+            and isinstance(receipt["postconditions_sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", receipt["postconditions_sha256"])):
+        raise blocked("this run's initializer receipt does not match its artifact")
+    return receipt
+
+
+def gate_sql(mode, directory, source_sha, *inputs):
+    """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit; None when it fails."""
+    target = directory / f"{SOURCE}-{mode}.json"
+    result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, SOURCE, str(target), *map(str, inputs)], cwd=ROOT,
+                            env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True, timeout=300)
+    return strict_json(private_bytes(target)) if result.returncode == 0 else None
+
+
+def migrate_initialized(google, directory, output):
+    """RELEASE.md 4.3 steps 3 to 5 on the gate path, as specimen-data-release. After this run's attested initializer, its
+    exact postconditions and its principal's absence: Data Connect's diff runs client-side as the owner role in one
+    transaction, then the schema (COMPATIBLE, on the live etag), the supplemental indexes, the connector and the Storage
+    rules are released, and the catalog is checked. Every exit writes the data-initialized/v1 receipt, public facts only."""
+    import release_initialize as initializer
+    record = google.packet
+    require(google.plane == "data" and release_gate.is_gate_record(record), "a data gate record is required")
+    facts = dict.fromkeys(("schema_etag", "schema_update_time", "connector_etag", "storage_ruleset", "tables", "views"))
+    try:
+        require_database(google)
+        receipt = initializer_receipt(record)
+        post = initializer.native(directory, SOURCE, "post", files=initializer.fingerprints(), deadline=record["expires_at_unix"],
+                                  gate_sha=record["source_sha"])["postconditions"]
+        if initializer.sha(post) != receipt["postconditions_sha256"]:
+            raise blocked("the database's postconditions changed since this run's initializer")
+        if initializer.own_principal(google) is not None:
+            raise blocked("the initializer's SQL principal still exists; dispose of it, then re-run")
+        merged = [files_by(committed_source(folder), "path") for folder in ("dataconnect/schema", "dataconnect/connector")]
+        tables, views, relaxed = schema_gate.declared_sql(merged[0], relaxations())
+        schema, connector = google.request("data", "GET", SCHEMA_NAME), google.request("data", "GET", CONNECTOR_NAME, missing=True)
+        live = schema_gate.live_sources(schema, connector)
+        if schema.get("reconciling", False) is not False or live[0] not in ({}, merged[0]) or connector and live[1] != merged[1]:
+            raise blocked("the live schema or connector is neither the placeholder nor the merged files; reconcile them")
+        ruleset = (google.request("rules", "GET", RULE_RELEASE, missing=True) or {}).get("rulesetName")
+        body, connector_body = data_bodies({"schema_mode": "validate_existing", "schema_etag": revision(schema),
+                                            "connector_etag": connector and revision(connector)})
+        statements = migration_plan(google, body, relaxed)
+        if statements:
+            # Node re-checks every statement against the same relaxed pairs, as sorted table.column names.
+            plan = directory / "migration.json"
+            with os.fdopen(os.open(plan, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), "w") as handle:
+                json.dump({"version": "data-migration/v1", "source_sha": record["source_sha"], "statements": statements,
+                           "relaxed": sorted(f"{table}.{column}" for table, column in relaxed)}, handle)
+            if gate_sql("migrate", directory, record["source_sha"], plan) != {
+                    "version": "data-migration/v1", "statements": len(statements), "committed": True}:
+                raise blocked("the migration transaction failed and rolled back; re-run once the database is idle")
+        google.wait("data", google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true"}))
+        inventory = gate_sql("indexes", directory, record["source_sha"])
+        if inventory is None:
+            raise blocked("the supplemental indexes could not be created as the owner role")
+        verify_indexes(inventory)
+        google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true", "validateOnly": "true"})
+        google.wait("data", google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true"}))
+        facts["storage_ruleset"] = publish_rules(google, ruleset)
+        schema, connector = (google.request("data", "GET", name) for name in (SCHEMA_NAME, CONNECTOR_NAME))
+        if schema.get("reconciling", False) is not False or connector.get("reconciling", False) is not False:
+            raise blocked("the schema or connector is still reconciling; re-run this job")
+        verify_persistent_schema(schema)
+        require(schema_gate.live_sources(schema, connector) == tuple(merged), "released data sources differ from the merged files")
+        stamp(schema.get("updateTime"))
+        facts.update(schema_etag=revision(schema), schema_update_time=schema["updateTime"], connector_etag=revision(connector))
+        catalog = gate_sql("migrated", directory, record["source_sha"])
+        if not (isinstance(catalog, dict) and catalog.get("expected_database") is True and catalog.get("expected_actor") is True
+                and all(isinstance(catalog.get(key), list) for key in ("tables", "views", "owners", "extensions"))):
+            raise blocked("the migrated catalog could not be read")
+        if sorted(catalog["tables"]) != sorted(f"public.{name}" for name in tables):
+            raise blocked("the catalog's tables differ from the merged schema's")
+        if sorted(catalog["views"]) != sorted(f"public.{name}" for name in views):
+            raise blocked("the catalog's views differ from the merged schema's")
+        if catalog["owners"] != [OWNER]:
+            raise blocked("a relation is not owned by the owner role")
+        if catalog["extensions"] != ["plpgsql", "uuid-ossp"]:
+            raise blocked("the extensions are not exactly plpgsql and uuid-ossp")
+        if initializer.sha(catalog.get("postconditions")) != receipt["postconditions_sha256"]:
+            raise blocked("the database's postconditions changed since this run's initializer")
+        facts.update(tables=len(tables), views=len(views))
+    finally:
+        output.write_text(json.dumps({"version": "data-initialized/v1", "phase": "initialize", "source_sha": record["source_sha"],
+                                      "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
+                                      **facts}, sort_keys=True) + "\n")
+
+
 @stage("data.receipt")
 def emit_result_digest(path):
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
@@ -942,6 +1104,7 @@ def main():
     action.add_argument("--initialize", action="store_true")
     action.add_argument("--complete-initialization", action="store_true")
     action.add_argument("--dispose-initializer", action="store_true")
+    action.add_argument("--migrate", action="store_true")
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -975,10 +1138,12 @@ def main():
             packet = admit(args.packet, plane)
             gate = release_gate.is_gate_record(packet)
             # G11: a gate record replaces the envelope, its plan, --prepare-inputs and --receipt; release_gate.py
-            # writes it, and only the release, initialize and dispose-initializer jobs read it (RELEASE.md 4.3).
+            # writes it, and only the release, initialize, dispose-initializer and migrate jobs read it (RELEASE.md 4.3).
             require(gate or not args.dispose_initializer, "signed recovery and creation journals required")
+            require(gate or not args.migrate, "only a gate record migrates")
             require(not gate or args.receipt is None and (args.prepare_initializer_intents or args.dispose_initializer
-                    or (args.deploy or args.initialize) and args.output is not None), "a gate record releases only through its jobs")
+                    or (args.deploy or args.initialize or args.migrate) and args.output is not None),
+                    "a gate record releases only through its jobs")
         if gate:
             import release_initialize as initializer
             if args.deploy:
@@ -987,9 +1152,11 @@ def main():
                 initializer.initialize_existing(Google(args.packet, plane), args.packet.parent, args.output)
             elif args.prepare_initializer_intents:
                 initializer.prepare_owned_initializer(Google(args.packet, plane), args.packet.parent)
+            elif args.migrate:
+                migrate_initialized(Google(args.packet, plane), args.packet.parent, args.output)
             else:
                 initializer.dispose_owned_initializer(Google(args.packet, plane), args.packet.parent)
-            if args.deploy or args.initialize:
+            if args.deploy or args.initialize or args.migrate:
                 emit_result_digest(args.output)
             return
         with stage("data.plan"):
