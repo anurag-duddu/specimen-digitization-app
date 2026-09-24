@@ -44,7 +44,7 @@ workstation or an agent shell" all stay.
 - The auto-mode classifier blocks IAM writes, branch protection changes and
   repository visibility changes from agent shells. Prepare the exact commands for
   the owner instead. Branch protection and repository visibility stay as they
-  are (`DEPLOYMENT.md` 581-586).
+  are (`DEPLOYMENT.md` 584-589).
 
 ## Pull requests, in order
 
@@ -96,17 +96,25 @@ closed unique-constraint exception and its `NO_ACCESS` rule; refuse anything
 else) and a `COMPATIBLE`
 apply, the
 supplemental indexes, the connector and the Storage rules, working while the
-runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
+runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); before step two of the one unique
+exception, the release reads the live database itself and runs S5's fixed drop
+statement only if `source_asset_specimen_object` is in place, over its six
+columns and valid, before it computes the migration diff, since the gate
+compares committed text only; a
 one-time, idempotent hierarchy bootstrap from the private artifacts, followed in
 the same window (T3e) by the worker's membership from S5's reviewed document
 (#96), applied once by the protected data release, never from an agent shell:
 an active organization membership and one collection membership on the pilot
 collection only, resolved from the committed key `insects` against the approved
-hierarchy artifact, role `operator`, `canViewSensitive: false`, with the UID
+hierarchy artifact, whose approval hash the owner holds and supplies apart from
+the artifact, never computed from it (#96's `WORKER_MEMBERSHIP.md`; the
+hierarchy bootstrap follows the same rule), role `operator`,
+`canViewSensitive: false`, with the UID
 from the temporary environment secret `DATA_WORKER_ACTOR_UID`, which the owner
 sets for that run and deletes afterwards. First a read-only account lookup that
 refuses unless the account exists, is disabled, and has no email, password,
-phone or sign-in provider; then write, read back, skip if identical, fail if different. Never the admin membership document of
+phone or sign-in provider (coordinator ruling, from #96's security review);
+then write, read back, skip if identical, fail if different. Never the admin membership document of
 `scripts/data/bootstrap_admin.py`, which hard-codes role `admin`. Retire the
 envelope admission for this plane, but keep the checks that live inside it:
 `GITHUB_REF_PROTECTED=true` and the five required checks successful on the
@@ -132,7 +140,7 @@ only, since running a job needs no act-as; Firebase user lookup for the API);
 `allUsers` invoker on the API. The one-time roles get no standing grant: the
 initializer, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`
 stay one-time and time-bounded through the existing setup-window path
-(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 889-895
+(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 917-923
 caps the initializer's privilege window after native parity at ten minutes. The
 setup-window path requires every binding to stay time-bound
 (`data_setup_window.py` 126-138): run the window first or adapt the path, never
@@ -146,6 +154,14 @@ public access prevention on the bucket, and the Budget API with a USD 25 budget
 alert. Bind every grant to a named resource with a one-line reason; never Owner
 or Editor. Write the commands into `~/specimen-golive/OWNER_ACTIONS.md` and
 message the coordinator. Never run IAM writes yourself.
+
+**T4d. The reference-data upload command** (PLAN section 4.8), once S8's
+manifest PR merges. Write the owner's command from the merged manifest: the
+GeoNames files from `~/specimen-golive/datasets/geonames/<dump date>/`,
+checked for size and SHA-256 and never downloaded again; the Copernicus tiles
+and geoBoundaries files downloaded anonymously and checked; each uploaded with
+`--no-clobber` to `application/sha256/<sha256>`, then listed. Never from an
+agent shell. Send it to the coordinator to relay.
 
 **T5. First releases.** After T2 to T4 are merged and the owner has run T4's
 list: watch the data release (initialization, schema, connector, rules,
