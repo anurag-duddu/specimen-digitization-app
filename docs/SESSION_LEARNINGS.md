@@ -11798,6 +11798,17 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: a first draft of the plan specified adjudication behaviour and routing conditions the owner had not asked for; the owner rejected new design decisions, and the plan now quotes the owner's rules and the existing specification instead.
 - Remaining follow-ups: the owner's field list; the owner actions queued in `~/specimen-golive/OWNER_ACTIONS.md`; launching and coordinating the seven sessions.
 
+### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
+
+- Task: the same S2 session as the T1a entry, second half of brief item T1.
+- Branch/worktree: `golive/release-runbook-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated notes and banners in `GO_LIVE_RUNBOOK.md`, `GO_LIVE_READINESS.md`, `RELEASING.md`, `RELEASE_RUNTIME.md`, `RELEASE_DATA.md` and `PROTECTED_RELEASE_HARNESS.md`. Four notes in `PRD.md`, which the coordinator signed off: G14 beside section 9.2 steps 1-2 and after section 11.2's table (CLS-002), both restating G14 (the intake collection chooses the profile; there is no classification stage); and G16 beside the 12.4 rule that clearance needs every mandatory field and after the 12.4 mandatory-field table (`identified_by_irn` does not block clearance until EMu Parties is connected). Notes that keep a safeguard say so: post-merge reconciliation, the protected-branch and five-check admission, and the time-bounded initializer.
+- Commits/PRs: [PR #78](https://github.com/anurag-duddu/specimen-digitization-app/pull/78): amendments `7a83c61` and this closeout. It depends on [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76).
+- Validation actually run: pre-commit hooks at commit (all passed); `git diff --check` clean; a link and anchor check over the 92 added links (0 broken, with `golive/RELEASE.md` resolved from #76's branch).
+- Durable learnings: a documents-only amendment still needs a size budget. At about 1,060 lines, T1 exceeded the program's 600-line review limit, so it was split along the line other sessions care about: the contracts they code against first, the runbooks and histories second.
+- Failed approaches: none beyond those in the T1a entry.
+- Remaining follow-ups: as in the T1a entry.
+
 ### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
 
 - Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
@@ -11900,6 +11911,31 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T1a follow-up: #76's should-fixes
+
+- Task: the S2 session, the should-fix list from the PR steward's approval of #76 (comment 5804769771), carried in #78.
+- Branch/worktree: `golive/release-runbook-amendments` (#78), in this session's worktree.
+- Outcome:
+  - The owner-approved exact-version condition on the standing `secretAccessor` grants is restored, per the coordinator's ruling. Only the runtime expiration is superseded, and a version bump is an owner action.
+  - The never-in-prompts rule and the steward's replacement of the privacy review now stand in both restated trace scopes.
+  - G26 reads "a Google geocoding result keeps only…" throughout.
+  - `specimenDataRuntimeAbsence` is named in the time-bounded lists.
+  - D1 is labelled as the coordinator's ruling.
+  - Retention stays open in the Logfire approval.
+  - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
+- Commits/PRs: `876fc53` and this closeout, on #78. Later on #78:
+  - `8f04330`: RELEASE.md section 1 states PLAN 4.4 as #104 merged it;
+  - the review-fix commits for #78's five review rounds: `ccb8fad`, `7690f5b`, `c47984a`, `2d499b4`, `ac43a1b` and the round-5 commit. Round 4 swept every dated note that retires a ledger, cost or reservation. Before the sweep, 0 of 36 carried the exact G30 sentence (9 had a variant wording); after it, 37 of 37 do.
+  - Round 5 added `budget` to that sweep: six more notes, and two undated #76 lines, now carry the sentence. It also swept acceptance. Five notes made PLAN section 8's loop the whole of acceptance. Each now carries one sentence that keeps the rest, naming all 25 UI and live cases the human-review checker requires.
+- Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
+- Durable learnings:
+  - A note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
+  - When a review finding recurs across files, sweep every sibling with a script before fixing any. Three rounds of fixing the named instances still left 27 of 36 notes without the G30 sentence, and one regex over the dated notes found those 27.
+  - A sweep is only as good as its vocabulary. The round-4 pattern missed the notes that say "budget", and it also skipped undated amendment paragraphs.
+  - A note that states what now holds must not read as a closed list. "The checks stand: A, B" retires everything unnamed; "the rest stands, including A, B" keeps it.
+- Failed approaches: none.
+- Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
 
 ### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
 
