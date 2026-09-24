@@ -127,6 +127,34 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets("a server instant is spoken on the reviewer's clock", (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await pumpComponent(
+      tester,
+      SizedBox(
+        width: 700,
+        child: QueueRow(
+          id: 'fixture-001',
+          title: 'FMNH-0001',
+          reason: 'Two readings disagree on the locality',
+          status: SpecimenStatus.needsReview,
+          // In UTC, as the server sends it and `queueUpdatedAt` parses it.
+          updatedAt: DateTime.utc(2026, 9, 8, 5, 1),
+          now: DateTime.utc(2026, 9, 14, 14),
+          onOpen: () {},
+        ),
+      ),
+    );
+    expect(
+      find.bySemanticsLabel(RegExp(r'updated 8 Sep 2026, 00:01 CDT$')),
+      findsOneWidget,
+      reason: "the zone is said, and it is the reviewer's (design/01 H1.9)",
+    );
+    handle.dispose();
+  });
+
   testWidgets('selection reaches the semantics tree', (
     WidgetTester tester,
   ) async {

@@ -32,10 +32,12 @@ void main() {
       );
     });
 
-    test('an instant in UTC still prints in UTC, as it always has', () {
+    test("an instant in UTC prints on the reviewer's clock too", () {
+      // design/01 H1.9: a reviewer never converts zones in their head
+      // (coordinator ruling for S6, 2026-09-24).
       expect(
         absoluteTime(DateTime.utc(2026, 9, 14, 10, 22)),
-        '14 Sep 2026, 10:22 UTC',
+        '14 Sep 2026, 05:22 CDT',
       );
     });
 
