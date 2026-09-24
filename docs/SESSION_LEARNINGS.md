@@ -11981,3 +11981,22 @@ because the hooks runner hands a native asset hook only `PATH`.
   - T3c1b: the workflow jobs. `dispose-initializer` must stay off the shared mutation lock, because GitHub replaces a pending job in a concurrency group, which would leave the principal behind. `DEPLOYMENT.md` must also stop saying `initialize` fails until T3c.
   - T3c2's migrate must require the initializer principal to be absent.
   - Open risk: whether Cloud SQL assigns uuid-ossp's objects to `cloudsqlsuperuser` is proven only on vanilla PostgreSQL. If Cloud SQL gives them to the session user instead, the postconditions refuse, so it fails closed.
+
+### 2026-09-24 — Go-live release workstream (S2), T3c1b: the initializer's jobs in the data workflow
+
+- Task: the S2 session, T3c's first initialization, workflow half (`docs/execution/golive/RELEASE.md` section 4.3, Jobs).
+- Branch/worktree: `golive/release-data-init-jobs`, stacked on #147's branch. The T3c1 subagent prepared the wiring as patches; this session applied them and changed the disposal job's lock.
+- Outcome: `data-release.yml` gains three jobs:
+  - **`initialize`:** runs in `data-initialization-production` under the gate's `data-initialization` plane and the shared mutation lock. It signs and publishes the creation intent before any effect, then uploads and attests the `data-initializer/v1` receipt.
+  - **`dispose-initializer`:** runs whenever `initialize` ran. It holds **no lock**.
+  - **`migrate`:** a placeholder that fails an `initialize` run closed until T3c2.
+
+  T3b2's fail-closed step leaves the release job. `DEPLOYMENT.md`'s data section describes the five jobs.
+- Commits/PRs: red `6c2b3a0`; green (this PR's release commit); this closeout.
+- Validation actually run:
+  - red: 7 failed, 13 passed;
+  - green: the workflow, policy, deploy and first-initialization tests, 117 passed;
+  - pre-commit, including actionlint, passed.
+- Durable learnings: GitHub keeps one pending job per concurrency group and cancels the older one when a newer job queues. A cleanup job must therefore never wait on a shared lock it doesn't need: a cancelled disposal leaves a privileged principal behind.
+- Failed approaches: none.
+- Remaining follow-ups: T3c2 replaces `migrate` with the client-side migration, and must require the initializer principal to be absent.
