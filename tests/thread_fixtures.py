@@ -554,7 +554,7 @@ def synthetic_run(
     )
     col = Lookup(
         id=ident(33),
-        provider="catalogue-of-life",
+        provider="col",
         adapter_version="col-1",
         query={"name": "Aedes aegypti L."},
         status=LookupStatus.SUCCESS,
@@ -628,7 +628,7 @@ def synthetic_run(
              {"query": "Cook Co."}, "no_match", {"place_ids": []}, nowhere.id, region=left.id),
         call("gbif", "gbif", ["taxon"], "raw_reading", {"name": "Aedes aegypti L."}, "success",
              {"candidates": [{"usage_key": 1651891}]}, gbif.id, region=right.id, reading=right_qwen.id),
-        call("catalogue-of-life", "catalogue-of-life", ["taxon"], "raw_reading", {"name": "Aedes aegypti L."},
+        call("col", "col", ["taxon"], "raw_reading", {"name": "Aedes aegypti L."},
              "success", {"candidates": [{"id": "fixture-col-taxon"}]}, col.id, region=right.id, reading=right_qwen.id),
         call("geocode", "google-maps-geocoding", ["city"], "raw_reading", {"query": "Chicago"}, "success",
              {"place_ids": ["fixture-place"]}, place_right.id, region=right.id, reading=right_qwen.id),
