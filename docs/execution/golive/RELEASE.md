@@ -362,6 +362,9 @@ workflow.
   `initialize` route fails closed, so the runtime's wait (D3) never passes
   over an uninitialized database.
 - The runtime gate waits for the same commit's data release to succeed (D3).
+- The data admission waits up to 3,300 seconds for CI/CD, the gate's limit
+  on this branch. When T2c raises the limit to 5,400 seconds, the data wait
+  rises with it, since the CI/CD run can take about an hour.
 
 ### 4.3 First initialization (T3c)
 
@@ -380,7 +383,11 @@ with point-in-time recovery are on. The ordinary identity then:
    point-in-time recovery must be on. On the first apply after the plane goes
    live, that backup is also restored into a short-lived clone; the clone's
    catalog is checked and the clone is deleted (D1).
-2. The gate of section 4.1 must pass.
+2. The gate of section 4.1 must pass, and the merged commit must be the one
+   the plane last applied or a descendant of it, checked like the runtime's
+   rollback guard against a commit the apply records. A manual re-run of an
+   older run could otherwise roll the Storage rules back; the gate already
+   refuses a stale schema's apparent removals.
 3. The schema is applied with `MIGRATE_COMPATIBLE`: validate-only first, then
    conditional on the live etag.
 4. The supplemental indexes are created concurrently, then the connector and
