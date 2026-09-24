@@ -15,6 +15,7 @@ from specimen_digitization.application.domain import (
     Scope,
     Specimen,
 )
+from specimen_digitization.application.lane_dispatch import DispatchOutcome
 from specimen_digitization.application.lane_worker import (
     CollectionFence,
     DrainWorker,
@@ -26,6 +27,7 @@ from specimen_digitization.hub_models import SAM3_MODEL
 
 ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
+OTHER = "00000000-0000-4000-8000-000000000003"
 SCOPE = Scope(organization_id=ORG, collection_id=COLLECTION)
 WORKER = "worker-actor"
 START = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
@@ -47,6 +49,17 @@ class Clock:
 
     def sleep(self, seconds):
         self.now += timedelta(seconds=seconds)
+
+
+class Continuation:
+    """Records each start of the next execution."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self):
+        self.calls += 1
+        return DispatchOutcome(status="requested")
 
 
 class NonSensitiveMember(SQLiteRepository):
@@ -131,6 +144,7 @@ def worker(
     *,
     execution="exec-a",
     role="operator",
+    continuation=None,
     deadline_seconds=3600,
     collections=(COLLECTION,),
 ):
@@ -150,6 +164,7 @@ def worker(
         execution_id=execution,
         clock=clock,
         sleep=clock.sleep,
+        continuation=continuation,
         deadline_seconds=deadline_seconds,
     )
 
@@ -204,11 +219,16 @@ def test_the_worker_drains_one_run_at_a_time_in_request_order(lane):
     queued(lane.repository, "c-newest", minutes=1)
     queued(lane.repository, "a-oldest", minutes=30)
     lane.workflow.scripts = {"a-oldest": ["progress", "progress", "finalized"]}
-    summary = worker(lane.repository, lane.workflow, lane.clock).run(stop=None)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, lane.workflow, lane.clock, continuation=continuation
+    ).run(stop=None)
     assert lane.workflow.steps == ["a-oldest", "a-oldest", "a-oldest", "c-newest"]
     assert summary["status"] == "drained"
     assert summary["processed"] == ["a-oldest", "c-newest"]
     assert fence(lane).read()["holder"] is None
+    # An empty queue starts no further execution.
+    assert (continuation.calls, summary["continuation"]) == (0, None)
 
 
 def test_the_fence_is_written_as_not_sensitive(lane):
@@ -317,12 +337,47 @@ def test_a_short_retry_is_waited_for_before_the_worker_exits(lane):
     assert lane.clock.now >= START + timedelta(seconds=12)
 
 
-def test_a_retry_after_the_window_is_left_pending(lane):
+def test_a_retry_after_the_window_is_handed_to_the_next_execution(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+
+    class LateWorkflow(ScriptedWorkflow):
+        def step(self, principal, ident):
+            self.clock.sleep(2900)
+            return super().step(principal, ident)
+
+    late = LateWorkflow(lane.repository, lane.clock, {"a-oldest": ["retry:200"]})
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, late, lane.clock, continuation=continuation
+    ).run(stop=None)
+    assert late.steps == ["a-oldest"]
+    assert summary["pending_retries"] == 1
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+    left = fence(lane).read()
+    assert (left["holder"], left["specimen_id"]) == (None, "a-oldest")
+    assert left["retry_at"] == (START + timedelta(seconds=3100)).isoformat()
+
+    # The next execution waits for the handed-over retry, then finishes the run.
+    lane.clock.sleep(10)
+    lane.workflow.scripts = {"a-oldest": ["finalized"]}
+    summary = worker(
+        lane.repository, lane.workflow, lane.clock, execution="exec-b"
+    ).run(stop=None)
+    assert lane.workflow.steps == ["a-oldest"]
+    assert summary["processed"] == ["a-oldest"]
+    assert lane.clock.now >= START + timedelta(seconds=3100)
+
+
+def test_a_retry_no_execution_could_reach_waits_for_a_later_request(lane):
     queued(lane.repository, "a-oldest", minutes=30)
     lane.workflow.scripts = {"a-oldest": ["retry:7000", "finalized"]}
-    summary = worker(lane.repository, lane.workflow, lane.clock).run(stop=None)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, lane.workflow, lane.clock, continuation=continuation
+    ).run(stop=None)
     assert lane.workflow.steps == ["a-oldest"]
     assert summary["pending_retries"] == 1
+    assert (continuation.calls, summary["continuation"]) == (0, None)
 
 
 def test_no_new_run_starts_in_the_last_ten_minutes(lane):
@@ -330,9 +385,78 @@ def test_no_new_run_starts_in_the_last_ten_minutes(lane):
     queued(lane.repository, "b-next", minutes=10)
     lane.workflow.scripts = {"a-oldest": ["progress"] * 100 + ["finalized"]}
     slow = SlowWorkflow(lane.repository, lane.clock, lane.workflow.scripts)
-    summary = worker(lane.repository, slow, lane.clock).run(stop=None)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, slow, lane.clock, continuation=continuation
+    ).run(stop=None)
     assert "b-next" not in slow.steps
     assert summary["status"] == "window_closed"
+    # The rest of the queue is handed to the next execution.
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+
+
+def test_a_closed_window_with_nothing_due_starts_no_execution(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    slow = SlowWorkflow(
+        lane.repository, lane.clock, {"a-oldest": ["progress"] * 100 + ["finalized"]}
+    )
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, slow, lane.clock, continuation=continuation
+    ).run(stop=None)
+    assert summary["status"] == "window_closed"
+    assert (continuation.calls, summary["continuation"]) == (0, None)
+
+
+def test_requested_work_in_a_collection_not_reached_is_handed_over(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    queued(
+        lane.repository,
+        "z-other",
+        minutes=5,
+        scope=Scope(organization_id=ORG, collection_id=OTHER),
+    )
+    slow = SlowWorkflow(
+        lane.repository, lane.clock, {"a-oldest": ["progress"] * 100 + ["finalized"]}
+    )
+    continuation = Continuation()
+    summary = worker(
+        lane.repository,
+        slow,
+        lane.clock,
+        continuation=continuation,
+        collections=(COLLECTION, OTHER),
+    ).run(stop=None)
+    assert "z-other" not in slow.steps
+    assert summary["status"] == "window_closed"
+    assert (continuation.calls, summary["continuation"]) == (1, "requested")
+
+
+def test_handing_over_stops_after_three_executions_without_progress(lane):
+    queued(lane.repository, "a-oldest", minutes=30)
+    continuation = Continuation()
+    for index in range(3):
+        # A window too short to start anything makes no progress.
+        summary = worker(
+            lane.repository,
+            lane.workflow,
+            lane.clock,
+            execution=f"exec-{index}",
+            continuation=continuation,
+            deadline_seconds=600,
+        ).run(stop=None)
+        if index < 2:
+            assert fence(lane).read()["handovers_without_progress"] == index + 1
+    assert lane.workflow.steps == []
+    assert continuation.calls == 2
+    assert summary["continuation"] is None
+    assert summary["withheld_collections"] == [COLLECTION]
+    run = lane.repository.get(SCOPE, "a-oldest").run
+    assert (run.stage, run.blocker) == (
+        "processing_blocked",
+        "lane_handover_without_progress",
+    )
+    assert fence(lane).read()["handovers_without_progress"] == 0
 
 
 def test_a_run_whose_step_saves_nothing_is_blocked_and_the_queue_moves_on(lane):
@@ -347,11 +471,15 @@ def test_a_run_whose_step_saves_nothing_is_blocked_and_the_queue_moves_on(lane):
             return super().step(principal, ident)
 
     stuck = StuckWorkflow(lane.repository, lane.clock)
-    summary = worker(lane.repository, stuck, lane.clock).run(stop=None)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, stuck, lane.clock, continuation=continuation
+    ).run(stop=None)
     assert stuck.steps == ["a-stuck", "b-next"]
     run = lane.repository.get(SCOPE, "a-stuck").run
     assert (run.stage, run.blocker) == ("processing_blocked", "lane_run_not_progressing")
     assert summary["status"] == "drained"
+    assert continuation.calls == 0
 
 
 def test_a_concurrent_edit_is_read_again_and_the_run_continues(lane):
@@ -408,10 +536,14 @@ def test_a_stop_signal_ends_the_drain_and_releases_the_fence(lane):
             return super().step(principal, ident)
 
     stopping = StoppingWorkflow(lane.repository, lane.clock)
-    summary = worker(lane.repository, stopping, lane.clock).run(stop=stop)
+    continuation = Continuation()
+    summary = worker(
+        lane.repository, stopping, lane.clock, continuation=continuation
+    ).run(stop=stop)
     assert stopping.steps == ["a-oldest"]
     assert summary["status"] == "stopped"
     assert fence(lane).read()["holder"] is None
+    assert continuation.calls == 0
 
 
 def test_viewer_memberships_are_not_drained(lane):
@@ -502,7 +634,9 @@ def test_drain_settings_carry_the_actor_job_and_bindings():
     assert settings.bindings == {COLLECTION: "insects"}
 
 
-@pytest.mark.parametrize("blocker", ["lane_run_not_progressing"])
+@pytest.mark.parametrize(
+    "blocker", ["lane_run_not_progressing", "lane_handover_without_progress"]
+)
 def test_the_drains_blocks_are_retried_by_the_operator_action(tmp_path, blocker):
     import test_lane_trigger as trigger
 

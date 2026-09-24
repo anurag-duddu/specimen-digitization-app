@@ -11926,3 +11926,16 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A dead holder's run can still be leased after the fence expires, because the step's lease starts after the fence's last renewal. Resuming it at once would read as a stall.
 - Failed approaches: none.
 - Remaining follow-ups: the hand-over and the command line.
+
+### 2026-09-23 — Go-live lane T2a (3 of 4): the hand-over
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the third of four PRs for T2's drain in `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-drain-handover` from `golive/lane-drain-loop`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - At the end the worker releases its fences. Any retry that falls after its window is written into the fence for the next holder.
+  - It starts the next execution only when requested work is due as the window closes, in a collection it drained or one it never reached, or when such a retry is within the next execution's reach. The start goes through T1's job start, with no overrides.
+  - After three consecutive hand-overs without progress, it stops and blocks the waiting run with `lane_handover_without_progress`. These are the coordinator's bounds.
+- Validation actually run: `tests/test_lane_drain.py` (36 passed) and the other lane tests; the full gates as listed in the pull request.
+- Durable learnings: `ListDueWorkV2` cannot look ahead, so anything the next execution must wait for travels in the fence.
+- Failed approaches: tracking retries only in memory. A retry after the window was stranded, because the next execution cannot see it until it is due.
+- Remaining follow-ups: the command line.

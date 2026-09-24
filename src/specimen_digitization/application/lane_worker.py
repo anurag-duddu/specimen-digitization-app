@@ -2,7 +2,8 @@
 
 One collection at a time, behind a fence: the oldest request first (G13), each
 run stepped until it stops, short retries waited for, and no new run in the
-last ten minutes before the task deadline.
+last ten minutes before the task deadline. Work left at the end is handed to
+the next execution.
 """
 
 from __future__ import annotations
@@ -24,7 +25,9 @@ FINISHED = {"finalized", "processing_blocked", "paused", "cancelled", "waiting_f
 FENCE_KIND = "worker_cursor"  # The worker's own state documents, one actor only.
 CLOSING_SECONDS = 600  # No new run starts this close to the task deadline.
 MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
+MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
 RUN_STALLED = "lane_run_not_progressing"
+HANDOVER_STALLED = "lane_handover_without_progress"
 EMULATOR_KEYS = (
     "SPECIMEN_SQL_EMULATOR_HOST",
     "DATA_CONNECT_EMULATOR_HOST",
@@ -115,9 +118,17 @@ class CollectionFence:
             current = self.repository.document(self.scope, FENCE_KIND, self.ident)
         except Missing:
             return {"revision": 0, "holder": None}
-        return dict(current, revision=stored_integer(current["revision"]))
+        return dict(
+            current,
+            revision=stored_integer(current["revision"]),
+            handovers_without_progress=stored_integer(
+                current.get("handovers_without_progress", 0)
+            ),
+        )
 
-    def _write(self, revision, holder, specimen_id=None, run_id=None):
+    def _write(
+        self, revision, holder, specimen_id=None, run_id=None, retry_at=None, idle=0
+    ):
         lease = self.clock() + timedelta(seconds=self.lease_seconds)
         stored = self.repository.put_document(
             self.scope,
@@ -130,6 +141,9 @@ class CollectionFence:
                 "specimen_id": specimen_id,
                 "run_id": run_id,
                 "lease_until": lease.isoformat(),
+                # A retry this holder left for the next one to wait for.
+                "retry_at": retry_at,
+                "handovers_without_progress": idle,
             },
             revision,
         )
@@ -157,10 +171,12 @@ class CollectionFence:
         except Conflict as exc:
             raise FenceLost("collection fence taken over") from exc
 
-    def release(self):
-        """Free the fence for the next holder."""
+    def release(self, retry=None, idle=0):
+        """Free the fence, leaving `(specimen_id, retry_at)` for the next holder
+        and the count of consecutive hand-overs without progress."""
+        specimen_id, retry_at = retry or (None, None)
         try:
-            self._write(self.revision, None)
+            self._write(self.revision, None, specimen_id, retry_at=retry_at, idle=idle)
         except Conflict:
             pass  # Taken over after expiry; the new holder owns it now.
 
@@ -197,6 +213,7 @@ class DrainWorker:
         execution_id,
         clock=None,
         sleep=None,
+        continuation=None,
         deadline_seconds=3600,
         lease_seconds=300,
         max_steps_per_run=500,
@@ -206,6 +223,8 @@ class DrainWorker:
         self.execution_id = execution_id
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.sleep = sleep
+        # Starts the next execution of the job, with no overrides.
+        self.continuation = continuation
         self.window_seconds = deadline_seconds - CLOSING_SECONDS
         self.lease_seconds = lease_seconds
         self.max_steps_per_run = max_steps_per_run
@@ -228,12 +247,15 @@ class DrainWorker:
             "status": "drained",
             "processed": [],
             "skipped_collections": [],
+            "withheld_collections": [],
             "pending_retries": 0,
+            "continuation": None,
         }
+        wanted = False
         for member in self.membership_loader(self.user_id):
             if member["role"] not in LANE_ROLES:
                 continue
-            if self._stopped(stop):
+            if summary["status"] == "stopped" or self._stopped(stop):
                 summary["status"] = "stopped"
                 break
             scope = Scope(
@@ -241,6 +263,10 @@ class DrainWorker:
                 collection_id=member["collection_id"],
             )
             principal = Principal(user_id=self.user_id, scope=scope, role=member["role"])
+            if summary["status"] == "window_closed":
+                # Past the window: only note whether requested work is waiting.
+                wanted = wanted or self._next_due(principal) is not None
+                continue
             fence = CollectionFence(
                 self.repository,
                 scope,
@@ -260,13 +286,41 @@ class DrainWorker:
                 # Another execution took over after this one stalled past its lease.
                 summary["skipped_collections"].append(scope.collection_id)
                 continue
-            finally:
+            except BaseException:
                 fence.release()
-            summary["pending_retries"] += len(drain.retries)
+                raise
+            wanted = self._release(drain, fence, previous, status, summary) or wanted
             if status != "drained":
                 summary["status"] = status
-                break
+        if self.continuation and wanted and summary["status"] != "stopped":
+            summary["continuation"] = self.continuation().status
         return summary
+
+    def _release(self, drain, fence, previous, status, summary) -> bool:
+        """Release the fence; whether the collection wants the next execution.
+
+        It does when requested work is due at the window's close, or a retry
+        falls within the next execution's reach. A stop wants none. After
+        MAX_IDLE_HANDOVERS in a row without progress, the waiting run is blocked
+        where people can see it instead.
+        """
+        first = min(drain.retries.items(), key=lambda item: item[1], default=None)
+        reach = self.clock() + timedelta(seconds=self.window_seconds)
+        waiting = None
+        if status == "window_closed":
+            waiting = self._next_due(drain.principal, drain.stalled)
+        if waiting is None and status != "stopped" and first and first[1] <= reach:
+            waiting = first[0]
+        idle = 0
+        if waiting is not None and not drain.progress:
+            idle = previous.get("handovers_without_progress", 0) + 1
+            if idle >= MAX_IDLE_HANDOVERS:
+                self._block(drain.principal, waiting, HANDOVER_STALLED)
+                summary["withheld_collections"].append(drain.principal.scope.collection_id)
+                waiting, idle = None, 0
+        fence.release(first and (first[0], first[1].isoformat()), idle)
+        summary["pending_retries"] += len(drain.retries)
+        return waiting is not None
 
     def _next_due(self, principal, skip=()):
         # A cutoff a second behind keeps it no later than the database's clock.
@@ -280,10 +334,14 @@ class DrainWorker:
         """The run a dead execution left under the fence, when it is due now.
 
         A run still waiting (its step's lease can outlive the fence's) is waited
-        for like a retry.
+        for like a retry; so is a retry a finished execution handed over.
         """
         ident = previous.get("specimen_id")
-        if ident is None or not previous.get("holder"):
+        if ident is None:
+            return None
+        if not previous.get("holder"):
+            if previous.get("retry_at"):
+                drain.retries[ident] = moment(previous["retry_at"])
             return None
         try:
             run = self.repository.get(drain.principal.scope, ident).run
