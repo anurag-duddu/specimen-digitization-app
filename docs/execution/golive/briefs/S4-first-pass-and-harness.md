@@ -90,6 +90,12 @@ functional one comes first (G6).
   clears when every label settles to the same value: the same place ID or GBIF
   usage, or, for a field without a lookup, the same text. Otherwise it goes to
   review with each label's reading kept.
+- A field without a lookup whose readers all read the same text takes that
+  text as its verbatim and its value and clears, on one label as on several
+  (coordinator reading of G27 and G32, matching your #131).
+- Outside requests carry place text only, and every credential follows the
+  Maps key's rules (PLAN section 4.8). `derive_rest` runs in the worker's
+  derivation job, never in the API.
 - G33: the numeric dates of every reading, the decided transcript's and the raw
   readings', are the evidence for an all-numeric date's day and month order;
   any disagreement among them fixes no order, and the date goes to review with

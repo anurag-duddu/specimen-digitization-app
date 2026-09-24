@@ -18,16 +18,48 @@ with place ID byt I want the harness for location retrospective
 georeferencing fully implemented". So this workstream now also builds the
 retrospective georeferencing tool behind S4's T3a geography interface, spec
 first and test first as PLAN section 7 requires, in modules it owns, merged
-by the steward. D1 to D13 remain the owner's: revise #94 for G34 (D1's
-recommendation that a Google-only `success` does not by itself clear a field
-conflicts with it), send the coordinator D1 to D13 as neutral questions, and
-let each part of the build wait for the D items that decide it. The owner
-answered D1, D2, D3, D6, D7 and D9 on 2026-09-24 (G35 to G39, with G40 on the
-harness's job); D11 and D13 are coordinator rulings; D4 and D5 are on hold.
+by the steward. The D items stand as PLAN section 2.3 records: the owner
+decided D1, D2, D3, D6, D7 and D9 on 2026-09-24 (G35 to G39, with G40 on the
+harness's job and G41 on stated elevations); D11 (Copernicus GLO-30 tiles
+read from the project's storage, credited) and D13 (the in-house point-radius
+uncertainty engine) are coordinator rulings; D4 and D5 are on hold, so those
+checks record findings only (coordinator ruling); D8, D10 and D12 wait for
+their phase, except Getty TGN (G35). Each part of the build waits for any D
+item that decides it.
 You build the geographic derivations behind S4's interface (coordinator
 ruling). Your modules: `src/specimen_digitization/application/georef_*.py`
 and `georeferencing_tool.py`, their tests, `tests/fixtures/georeferencing/`
 and `docs/execution/golive/GEO.md`.
+
+## Build (G34 to G41)
+
+Each task starts with its spec delta in `docs/execution/golive/GEO.md` and
+failing tests, on its own branch, merged by the steward. PLAN section 4.8
+governs every outside request.
+
+1. Locality text: the parts of a locality, label notations and their readings
+   (G29), slope and bearing phrases, elevation phrases kept as written, query
+   variants from each reader's literal (G19, G20, G27), and the one-letter
+   comparison on full names, never codes (G34).
+2. Tier 1 gazetteers (G35): GeoNames, Wikidata, Getty TGN and NGA behind fakes
+   and recorded fixtures, one source call per request, place text only,
+   credited.
+3. History: validity windows, successor chains, and historical and modern
+   roles. The label-lag tolerance waits for D5.
+4. Curated entries (G36): drafted with their sources and confirmed only
+   through a pull request citing the owner-recorded confirmation, with a test
+   that an unconfirmed entry never settles a field.
+5. Tier 2 (G35): Google given the modernized name, or the literal, with the
+   same reading's place fields, keeping only the place ID, the outcome and the
+   fingerprint (G26).
+6. Tier 3 and the geographic derivations (D13, D11, G37, G41): the in-house
+   point-radius engine; containment for county and city; elevation from
+   Copernicus GLO-30 where the label states none; all as derivation results
+   behind S4's interface, from open-source coordinates only.
+7. The tool as `geography_lookup`, swapped in behind the same interface once
+   the acceptance lab shows it resolves the pilot slides at least as well as
+   the Google module; the georeference stays in the tool result and the trace
+   (G39).
 
 ## Grounding in this repository
 

@@ -58,7 +58,10 @@ production model calls (G30), with the existing cost fields (`domain.py` 286;
 reserves its worst-case cost first, in one atomic check-and-reserve on the
 ledger (your T2b `worker_cursor` document, written only at the revision it was
 checked against), so a step's reservation must bound its worst case (SAM 3's
-startup bound plus its 240-second deadline). Only usage the provider reports,
+startup, its 300-second request timeout and its 10-second shutdown, as #132
+computes; SAM 3 settles as `computed`). The "fill the rest" review action
+runs as a worker job you host, its paid calls reserved under G30 (PLAN
+section 4.8). Only usage the provider reports,
 or a billed amount it returns, settles a call and releases the rest of its
 reservation; a timeout, a transport error, a 5xx or a response without usage
 stays reserved in full as `cost_basis: reserved`; a settled cost above its
