@@ -188,16 +188,25 @@ def test_the_month_names_and_abbreviations_are_cut(month):
     assert request(f"Mindanao {month}, P.I.") == "Mindanao, P.I."
 
 
-def test_a_roman_month_is_cut_and_never_written_out():
-    # The coordinator's ruling of 2026-09-24 (4.8 in #180): I to XII are cut.
-    assert forms("3 VIII 1946") == []
-    assert forms("Mindanao 3 VIII 1946, P.I.") == [
+@pytest.mark.parametrize("date", ["3 VIII 1946", "3 viii 1946", "VIII 1946", "3 VIII"])
+def test_a_roman_month_in_the_month_position_is_cut_and_never_written_out(date):
+    # The coordinator's ruling of 2026-09-24 (4.8 in #185): a numeral I to XII,
+    # in any case, next to a day or a year.
+    assert forms(date) == []
+    assert forms(f"Mindanao {date}, P.I.") == [
         "Mindanao, P.I.",
         "Mindanao, Philippine Islands",
     ]
-    assert forms("Mindanao VIII/IX") == ["Mindanao"]
-    # A token only partly Roman is not a month: "P.I." stays.
-    assert request("Mindanao, P.I.") == "Mindanao, P.I."
+
+
+def test_the_month_position_reaches_across_separators():
+    assert forms("Mindanao, VIII, 1946") == ["Mindanao"]
+
+
+@pytest.mark.parametrize("text", ["Camp IV", "Mindanao VIII/IX", "Mindanao, P.I."])
+def test_a_roman_numeral_outside_a_date_stays(text):
+    # "Camp IV" and a lone "VIII/IX" are no date; "P.I." is no numeral.
+    assert request(text) == text
 
 
 def test_a_dropped_clause_keeps_the_line_break_it_held():

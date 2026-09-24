@@ -308,17 +308,22 @@ request, and S8's tiers import it for every value they send.
     marker accompanies never leaves, whatever field it was given;
   - every token that carries a digit, so no date, elevation or catalogue number
     leaves;
-  - the month names and abbreviations the knowledge lists, and a token whose
-    every word is a Roman month, I to XII (the coordinator's ruling of
-    2026-09-24, 4.8 in #180). So "3 VIII 1946" leaves nothing, while the "I" of
-    "P.I." stays.
+  - the month names and abbreviations the knowledge lists;
+  - a Roman month in the month position: a token whose every word is a Roman
+    numeral I to XII, in any case, next to a date number (a day or a year)
+    before or after it, across separators. This is the coordinator's ruling of
+    2026-09-24, which replaced an earlier cut of every I to XII (4.8 in #185).
+    So "3 VIII 1946", "VIII 1946" and "Mindanao, VIII, 1946" leave no numeral,
+    while "Camp IV", a lone "VIII/IX" and the "I" of "P.I." stay.
 - A notation token that survived may then be written out in full from the
   knowledge's table (the coordinator's ruling, option c). The table expands
   only notations assigned to place fields alone, never a month, a year or a
   marker. A notation is cut whenever one of its full forms is, so every full
   form that leaves has passed the same cuts. A full form adds only the table's
-  fixed words and never brings back a cut token, and a source written out in
-  full is a source too.
+  fixed words and never brings back a cut token. It counts only as the
+  expansion of a notation present in an allowed source, never as a source on
+  its own (coordinator ruling, 2026-09-24): a source written out in full is a
+  source too, a standalone full form is not.
 - What survives keeps its clauses, single-spaced and joined by their own
   separators, with a line break wherever the dropped text held one, as S8's
   parser reads them. `place_request_forms` returns the value as written after
@@ -726,7 +731,7 @@ It also holds what PLAN 4.8's filter reads (section 7):
 - the collector and determiner markers its notations name ("leg.", "coll.",
   "Coll.", "det.");
 - the month names with the abbreviations its date notation lists, and the Roman
-  months I to XII;
+  months I to XII, cut in the month position;
 - the full forms of the place notations that have fixed ones: "P.I." is
   "Philippine Islands", "Guat." "Guatemala", "Prov." "Province", "Dept."
   "Department", "Mt." "Mount", and "Is." "Island" or "Islands". "nr." is left
