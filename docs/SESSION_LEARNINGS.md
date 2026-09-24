@@ -11968,7 +11968,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   - At request time the run copies the allowance and the ledger's collection, resolved through the private bindings. A ledger key bound to anything but exactly one collection refuses the request with `program_allowance_unavailable`.
   - `lane_allowance.reserve_step` adds each paid step's stage reservation to a non-sensitive `worker_cursor` ledger. It runs after the run's budget check and the circuit's admission, and before the intent is saved.
   - A reservation that would cross the allowance blocks the run with `program_allowance_exhausted` and the call is not made. A ledger that stays busy or cannot be read blocks it with `program_allowance_ledger_unavailable`.
-  - `Run.program_allowance` records the program's position after every reservation. Reservations are never refunded.
+  - `Run.program_allowance` records the program's position after every reservation.
+  - The coordinator ruled that G30 caps spend, so T2c settles each call to its cost once its outcome is known. Each reservation must therefore bound its step's worst case; the pilot's `segment` rises from 15,000 to 33,000, because SAM 3's 240 s deadline at 4 vCPU and 16 GiB costs about 32,641.
 - Validation actually run: `tests/test_lane_allowance.py` (13 passed), including an emulator-mode drain whose ledger total equals the run's own reserved cost. `tests/test_lane_documents_sqlconnect.py` ran against `scripts/data/serve-local.sh`: an operator without sensitive access creates and saves the ledger, and a reservation past the allowance is refused (4 passed). Also the full gates as listed in the pull request.
 - Durable learnings: the reservation must come after the provider circuit's admission. During an outage the circuit refuses call after call, and reserving first would spend the allowance on calls that never happen.
 - Failed approaches: none.

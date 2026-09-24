@@ -186,7 +186,7 @@ def test_a_step_that_would_cross_the_allowance_is_not_called(tmp_path):
     assert app.state.workflow.adapters.segments == 0
     position = run.program_allowance
     assert position["remaining_micros"] == 10_000
-    assert position["requested_micros"] == 15_000
+    assert position["requested_micros"] == 33_000
     assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == 4_990_000
 
 
@@ -212,9 +212,9 @@ def test_a_retry_reserves_again(tmp_path):
     specimen = workflow.drain(principal(), specimen.id)
     assert specimen.run.attempts["segment"] == 2
     total = ProgramLedger(repository, SCOPE).read()["reserved_total_micros"]
-    assert first == 15_000
+    assert first == 33_000
     assert total == specimen.run.usage.reserved_cost_micros
-    assert total - first >= 15_000  # The retry's segment was reserved again.
+    assert total - first >= 33_000  # The retry's segment was reserved again.
 
 
 def test_without_an_allowance_the_ledger_is_not_consulted(tmp_path):

@@ -233,7 +233,7 @@ clearance authority (`review_risk.py` 165, 329-331).
 | Tools per field | `taxon`: `taxonomy_verifier`. `country`, `province_state`, `county`, `city`, `precise_location`: `geography_lookup`. `fmnh_ins_number`: `catalog_number_validator`. The three dates: `date_parser`. Every other field: none (transcribed as seen). `tools` is their union | PLAN 4.2; S4 owns the tools |
 | Risk policy | the existing uncalibrated policy, above | brief T4 |
 | Clearance policy | `insects-clearance-v1`. S4's G1 change moves it to v2 with a new profile version | S4 |
-| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 15,000; each reader 20,000; `parse` 20,000. `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
+| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 33,000; each reader 20,000; `parse` 20,000. Each bounds its step's worst case (T2). `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
 | Routes for the first pass and the harness | `first_pass_route` and `harness_route` fields exist, unset until S4's routes are approved | S4 |
 | Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900), and a Roman numeral I to XII in the month position is that month (`roman_numeral_months`). S4's date parser stamps each rule, its version and the profile on every parsed date that uses it, so the reading stays visibly derived (`CONTRACTS.md` 234-235) | G24, G29 |
 
@@ -553,9 +553,31 @@ would cross the allowance is not called. The run blocks with
 `program_allowance_exhausted`, an operational block with no queue outcome
 (QUE-005).
 
-Reservations are never refunded. A retry reserves again, as the run budget
-already does (`domain.py` 222-227). With no allowance configured, the ledger is
-not consulted.
+The coordinator ruled on 2026-09-23 (#104, 9e8ee26) that G30 caps what
+production's model calls spend, so the ledger follows spend:
+
+- Each paid call reserves its step's reservation before it starts, and every
+  reservation bounds its step's worst case. No call can cross the allowance.
+- When a call's outcome is known (completed, or failed with known usage), it
+  settles to its computed or billed cost (T2c). An unknown outcome
+  (`external_outcome_unknown`) stays fully reserved. A retry reserves again.
+- The run's own budget keeps its rule: its reservations are never refunded
+  (`domain.py` 222-227).
+- With no allowance configured, the ledger is not consulted.
+
+Worst cases behind the pilot's reservations, at the pinned prices (T2c):
+
+- `segment` 33,000: SAM 3's 240 s hard deadline × 136 micro-dollars a second
+  (4 vCPU and 16 GiB at Cloud Run's request-based rates) plus the request,
+  about 32,641.
+- Each reader 20,000: two requests, each output capped at 4,096 tokens, and
+  about 16,000 tokens before the second request is refused. That is at most
+  about 8,200 output and 24,000 input tokens, or about 17,030 at the muse
+  route's price and 10,530 at qwen's.
+- `parse` 20,000: today's extraction agent has the same limits on the qwen
+  route, about 10,530. The harness (S4) replaces it with its own route and up
+  to three geocodes; its reservation moves with it, bounded the same way. The
+  first pass joins with its own bounded reservation.
 
 Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread

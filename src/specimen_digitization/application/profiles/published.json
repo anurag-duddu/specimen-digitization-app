@@ -217,7 +217,7 @@
         "stage_cost_micros": {
           "version": "stage-cost-reservations-v1",
           "cost_micros": {
-            "segment": 15000,
+            "segment": 33000,
             "transcribe:handwriting-qwen": 20000,
             "transcribe:handwriting-muse": 20000,
             "parse": 20000
