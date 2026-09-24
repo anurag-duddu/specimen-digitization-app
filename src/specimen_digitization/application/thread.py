@@ -245,7 +245,7 @@ class FieldThread(Part):
     century_rule: str | None
     normalized: str | None
     authority_id: str | None
-    confirmed_observation_id: str | None
+    settled_observation_ids: list[str]
     evidence: list[FieldEvidence]
 
 
@@ -617,30 +617,29 @@ def _fields(run, row: dict, current: dict, evidence: list[dict], tool_calls: lis
     records = [r for r in row.get("records") or [] if _id(r["id"]) in current["recordIds"]]
     resolved = {f["fieldKey"]: f for f in records[0].get("fields") or []} if records else {}
     items = {_id(e["id"]): e for e in evidence}
-    produced = defaultdict(list)
-    for call in tool_calls:
-        if call.get("evidenceId"):
-            produced[_id(call["evidenceId"])].append(call)
     result = []
     for key, value in run.fields.items():
-        present = [(c, rows[c.id]) for c in candidates(run, key, value) if c.id in rows]
+        # The field's current candidates, in verbatim order.
+        present = [rows[c.id] for c in candidates(run, key, value) if c.id in rows]
         field = resolved.get(key)
         if not present and field is None:
             continue
-        settling = next((found for c, found in present if c.settles), None)
-        links = [
-            (link, items[_id(link["evidenceId"])])
-            for link in (settling or {}).get("links") or []
-            if _id(link["evidenceId"]) in items
-            and items[_id(link["evidenceId"])]["outcome"] in LINKABLE
-        ]
-        parsed = (settling or {}).get("parsedValue")
+        # Only a candidate carrying the settled value carries these (section 11); with two
+        # labels settled alike (G32), each label's candidate does.
+        links, seen = [], set()
+        for found in present:
+            for link in found.get("links") or []:
+                item = items.get(_id(link["evidenceId"]))
+                if item is not None and item["outcome"] in LINKABLE and item["id"] not in seen:
+                    seen.add(item["id"])
+                    links.append((link, item))
+        parsed = _first(present, "parsedValue")
         stated = parsed if isinstance(parsed, dict) else {"value": parsed}
         result.append(
             FieldThread(
                 field_key=key,
                 group=(field or {}).get("fieldGroup") or field_group(run, key),
-                state=field["state"] if field else present[0][1]["state"],
+                state=field["state"] if field else present[0]["state"],
                 verbatim=[
                     Verbatim(
                         text=found.get("literalValue"),
@@ -648,14 +647,14 @@ def _fields(run, row: dict, current: dict, evidence: list[dict], tool_calls: lis
                         region_id=_region_of(found, "sourceTranscription", "sourceObservation"),
                         observation_id=_id(found.get("sourceObservationId")),
                     )
-                    for _, found in present
+                    for found in present
                 ],
                 parsed=stated.get("value"),
                 precision=stated.get("precision"),
                 century_rule=stated.get("century_rule"),
-                normalized=(settling or {}).get("normalizedValue"),
-                authority_id=(settling or {}).get("authorityId"),
-                confirmed_observation_id=_confirmed(settling, links, produced),
+                normalized=_first(present, "normalizedValue"),
+                authority_id=_first(present, "authorityId"),
+                settled_observation_ids=settled_observation_ids(present, tool_calls),
                 evidence=[
                     FieldEvidence(
                         evidence_id=_id(link["evidenceId"]),
@@ -671,25 +670,57 @@ def _fields(run, row: dict, current: dict, evidence: list[dict], tool_calls: lis
     return result
 
 
-def _confirmed(settling: dict | None, links: list, produced: dict) -> str | None:
-    """The reading whose exact literal a lookup confirmed, when the settled value came from a
-    raw reading (G20; section 8)."""
-    if settling is None or (
-        settling.get("normalizedValue") is None and settling.get("authorityId") is None
+def _first(rows: list[dict], name: str):
+    return next((row[name] for row in rows if row.get(name) is not None), None)
+
+
+def settled_observation_ids(candidate_rows: list[dict], tool_calls: list[dict]) -> list[str]:
+    """The readings a field's settled value rests on, in verbatim order (G32; section 8).
+
+    `candidate_rows` are the field's current candidates in verbatim order and `tool_calls` the
+    run's, as GetRunThreadV1 returns them. Each candidate carrying the settled value names its
+    reading: its own for a raw reading, its decision's selected reading for the decided
+    transcript. A single decided-transcript candidate that a raw-reading lookup confirmed, by
+    evidence that decides or supports it, names that lookup's reading instead (G20's fallback).
+    """
+    carrying = [
+        c
+        for c in candidate_rows
+        if c.get("normalizedValue") is not None or c.get("authorityId") is not None
+    ]
+    if (
+        len(candidate_rows) == 1
+        and carrying
+        and carrying[0].get("inputSource") == "decided_transcript"
     ):
-        return None
-    if settling.get("inputSource") == "raw_reading":
-        # With no pick, the confirmed reader's candidate carries the settled value.
-        return _id(settling.get("sourceObservationId"))
-    # With a pick and a fallback, the raw reading the confirming call ran on.
-    readings = {
-        _id(call["observationId"])
-        for link, _ in links
-        if link["relation"] in ("decides", "supports")
-        for call in produced.get(_id(link["evidenceId"]), [])
-        if call.get("inputSource") == "raw_reading" and call.get("observationId")
-    }
-    return readings.pop() if len(readings) == 1 else None
+        confirming = {
+            _id(link["evidenceId"])
+            for link in carrying[0].get("links") or []
+            if link["relation"] in ("decides", "supports")
+        }
+        fallback = []
+        for call in tool_calls:
+            reading = _id(call.get("observationId"))
+            if (
+                _id(call.get("evidenceId")) in confirming
+                and call.get("inputSource") == "raw_reading"
+                and reading is not None
+                and reading not in fallback
+            ):
+                fallback.append(reading)
+        if fallback:
+            return fallback
+    result = []
+    for candidate in carrying:
+        if candidate.get("inputSource") == "raw_reading":
+            reading = candidate.get("sourceObservationId")
+        elif candidate.get("inputSource") == "decided_transcript":
+            reading = (candidate.get("sourceTranscription") or {}).get("selectedObservationId")
+        else:
+            reading = None
+        if reading is not None:
+            result.append(_id(reading))
+    return result
 
 
 def _decision(row: dict, current: dict) -> DecisionThread | None:

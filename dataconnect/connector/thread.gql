@@ -41,7 +41,7 @@ query GetRunThreadV1(
     }
     candidates: fieldCandidates_on_run(where: {id: {in: $candidateIds}}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: 500) {
       id fieldKey state literalValue parsedValue normalizedValue authorityId inputSource sourceObservationId
-      sourceTranscription { region { domainRegionId } }
+      sourceTranscription { selectedObservationId region { domainRegionId } }
       sourceObservation { region { domainRegionId } }
       links: candidateEvidences_on_candidate(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 64) { evidenceId relation }
     }

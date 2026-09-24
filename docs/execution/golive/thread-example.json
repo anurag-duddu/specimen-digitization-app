@@ -412,7 +412,7 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": null,
-      "confirmed_observation_id": null,
+      "settled_observation_ids": [],
       "evidence": [
         {
           "evidence_id": "00000000-0000-4000-8000-000000000030",
@@ -440,7 +440,9 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": "fixture-place",
-      "confirmed_observation_id": null,
+      "settled_observation_ids": [
+        "00000000-0000-4000-8000-000000000020"
+      ],
       "evidence": [
         {
           "evidence_id": "00000000-0000-4000-8000-000000000030",
@@ -468,7 +470,7 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": null,
-      "confirmed_observation_id": null,
+      "settled_observation_ids": [],
       "evidence": []
     },
     {
@@ -488,7 +490,7 @@
       "century_rule": "date-rules-v1:two_digit_year_century=1900",
       "normalized": null,
       "authority_id": null,
-      "confirmed_observation_id": null,
+      "settled_observation_ids": [],
       "evidence": []
     },
     {
@@ -514,7 +516,9 @@
       "century_rule": null,
       "normalized": "Aedes aegypti",
       "authority_id": "gbif:1651891",
-      "confirmed_observation_id": "00000000-0000-4000-8000-000000000022",
+      "settled_observation_ids": [
+        "00000000-0000-4000-8000-000000000022"
+      ],
       "evidence": [
         {
           "evidence_id": "00000000-0000-4000-8000-000000000032",
@@ -542,7 +546,7 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": null,
-      "confirmed_observation_id": null,
+      "settled_observation_ids": [],
       "evidence": []
     }
   ],
