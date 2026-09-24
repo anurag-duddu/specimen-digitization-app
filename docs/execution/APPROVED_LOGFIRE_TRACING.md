@@ -91,8 +91,10 @@ and the other retained product journeys.
 > G2, G3 and G11. Traces use the standard Logfire SDK path in its existing
 > `approved-content` mode (PLAN section 4.5) instead of the bounded transport;
 > its ceilings, its reservation ledger and the T+3485 deadline retire with the
-> single execution (G2) and the release ledgers (G11). SAM 3 and the API may
-> hold the writer token, because SAM 3 continues each run's trace.
+> single execution (G2) and the release ledgers (G11); G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> SAM 3 and the API may hold the writer token, because SAM 3 continues each
+> run's trace.
 
 | Dimension | Maximum |
 |---|---:|

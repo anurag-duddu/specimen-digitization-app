@@ -25,8 +25,9 @@ each owner-supplied value are in
 > code and additive schema changes automatically. Branch protection, the
 > required checks, keyless identities and main-only environments stay.
 > Envelopes, cost ledgers, independent-review reports and authorization
-> artifacts retire for this program. The prohibition on deploying from a
-> workstation or agent shell is unchanged.
+> artifacts retire for this program. G30's per-call reservations stand (PLAN
+> 4.3; the coordinator's ruling on the mechanism). The prohibition on
+> deploying from a workstation or agent shell is unchanged.
 
 ## What "live" means for this release
 
@@ -224,10 +225,10 @@ Owner and coordinator, before any envelope is minted.
 > this program; the PR steward's fresh-swarm review of the pull request
 > replaces the independent-review report. The spending ceiling is USD 25,
 > cumulative, infrastructure and models together. G30's per-call
-> reservations stand: each paid model call reserves its worst-case cost
-> before it starts, is settled once its outcome is known, and stays reserved
-> while its outcome is unknown (PLAN section 4.3; the coordinator's ruling on
-> the mechanism).
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism):
+> each paid model call reserves its worst-case cost before it starts, is
+> settled once its outcome is known, and stays reserved while its outcome is
+> unknown.
 > The "Pilot manifest of the ten, frozen" row is superseded by G2: each run
 > is authorized on its own instead of per frozen manifest (PLAN section 4.1
 > stage 2), so no manifest is frozen or pinned into a release; the ten stay
@@ -323,8 +324,9 @@ the receipts, the clone deletion time, and the encrypted bootstrap evidence.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
    > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
    > G2. No manifest is frozen (PLAN section 4.1 stage 2), so there is none to
-   > verify against; source import is in scope, and the ten are processed one
-   > at a time, in order.
+   > verify against, and the ten are processed one at a time, in order. Source
+   > import is in scope (PLAN section 4.1 stage 1), and it refuses an object
+   > whose generation or digest changed.
 
 ## Phase 7. Activation and the one worker execution
 
@@ -360,12 +362,16 @@ execution outcome, and the per-specimen receipts in Storage.
    denial and stale-save behaviour.
 2. Run the human-review checker over the unchanged 45-case ledger plus the
    four manual subcriteria ([`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)).
-   > 2026-09-23: Items 1 and 2 are superseded for the go-live program by
+   > 2026-09-23: Items 1 and 2 are superseded in part for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
    > G1 and G2. Acceptance is the ten pilot specimens, processed one at a time,
    > in order (PLAN section 8); a record the harness resolves is cleared
    > without a human, so the administrator reviews only what the queue sends
-   > to human review.
+   > to human review. The security acceptance checks stand: the
+   > administrator's history, denial and stale-save checks, and the 45-case
+   > gate's denial cases (unauthenticated, cross-collection, viewer-write and
+   > revoked access) and its stale concurrent save
+   > ([`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)).
 3. Reconcile cost: every reservation category closed with an artifact, the
    ledger appended, the cumulative total inside USD 12.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
@@ -373,7 +379,7 @@ execution outcome, and the per-specimen receipts in Storage.
    > G9 and G11. The release cost ledgers and their reservation artifacts are
    > retired for this program. The spending ceiling is USD 25, cumulative,
    > infrastructure and models together, and G30's per-call reservations stand
-   > (PLAN section 4.3; the coordinator's ruling on the mechanism).
+   > (PLAN 4.3; the coordinator's ruling on the mechanism).
 4. Independent reconciliation of deployed source, results and cleanup.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
    > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
@@ -396,11 +402,12 @@ Only after step 5 is the release complete.
   the current run; a packet is never edited.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G11. There is no envelope, packet, reservation ledger or independent
-  > reviewer session to admit. Admission keeps only the checks that stay,
-  > the protected branch and the five checks on the exact merged commit;
-  > when one fails, the fix goes through a pull request and the next merge
-  > deploys.
+  > G11. There is no envelope, packet, release reservation ledger or
+  > independent reviewer session to admit. Admission keeps only the checks
+  > that stay, the protected branch and the five checks on the exact merged
+  > commit; when one fails, the fix goes through a pull request and the next
+  > merge deploys. G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism).
 - The restore rehearsal crashes after claiming the held Storage object: the
   allowance is consumed by contract and no workflow can retry. This is a new
   authorization decision for the owner, recorded in `CLONE_ALLOWANCE.md`
@@ -413,8 +420,8 @@ Only after step 5 is the release complete.
   > G2. There is no single execution over the whole cohort to redispatch:
   > the API starts a worker execution when work is due, and the worker
   > drains it one specimen at a time. Paid model calls stay within G30's USD 5
-  > allowance: each reserves its worst-case cost before it starts and stays
-  > reserved while its outcome is unknown (PLAN section 4.3; the
-  > coordinator's ruling on the mechanism).
+  > allowance, and G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism): each reserves its worst-case cost
+  > before it starts and stays reserved while its outcome is unknown.
 - The public site is broken: follow the emergency rollback rule in
   `DEPLOYMENT.md`, which covers Hosting only.

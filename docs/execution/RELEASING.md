@@ -100,11 +100,13 @@ the gate easier to pass. It makes it possible to pass at all.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2 and G11. The deployment plan, authorization artifact, independent review
-> report, human review scope, budget ledger and cost review inputs below are
-> retired for this program, and specimens are processed one at a time, on
-> demand, rather than as a fixed ten-specimen manifest. The recipient keys
-> that encrypt the catalog and the evidence (`catalog_recipient`,
-> `evidence_recipient`) stand; they are not release envelopes.
+> report, human review scope, release budget ledger and cost review inputs
+> below are retired for this program, and specimens are processed one at a
+> time, on demand, rather than as a fixed ten-specimen manifest. G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> The recipient keys that encrypt the catalog and the evidence
+> (`catalog_recipient`, `evidence_recipient`) stand; they are not release
+> envelopes.
 
 The command works out for itself everything that can be observed. You are never
 asked for any of this:
@@ -215,8 +217,9 @@ activated.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
-> models together; the cost ledger and its version gate are retired for this
-> program.
+> models together; the release cost ledger and its version gate are retired
+> for this program. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 Your approved ceiling is USD 12. That ceiling only applies if the cost ledger
 you supply is version `release-cost-ledger/v3`. With any older ledger the packet
@@ -312,9 +315,10 @@ below it names the exact gate. The common ones:
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2, G9 and G11. There is no envelope to mint or ledger version to check;
-> "the release worked" below, checked after an automatic deploy, is still
-> the authority.
+> G2, G9 and G11. There is no envelope to mint or release ledger version to
+> check; "the release worked" below, checked after an automatic deploy, is
+> still the authority. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 **The release worked** is a separate and later question, and a successful mint
 is not evidence of it. A release is only complete when all of the following are

@@ -15,7 +15,8 @@ merge, like Hosting: once the required checks pass and the PR steward approves,
 a merge to `main` deploys runtime code and additive schema changes. Branch
 protection, the required checks, keyless identities and main-only environments
 stay. Envelopes, cost ledgers, independent-review reports and authorization
-artifacts retire for this program."
+artifacts retire for this program." G30's per-call reservations stand
+(PLAN 4.3; the coordinator's ruling on the mechanism).
 
 These invariants hold for every pull request in this workstream and are never
 traded for a passing release:

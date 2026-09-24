@@ -87,7 +87,9 @@ the USD 12 ceiling was never created. The ten pilot subjects are recorded in
 
 > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G9 and G11.
 > The spending ceiling for the go-live program is USD 25, cumulative, across
-> infrastructure and models, and cost ledgers retire for this program.
+> infrastructure and models, and the release and cohort cost ledgers retire
+> for this program. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 ## 2. What blocks the first live release
 
@@ -110,10 +112,11 @@ In the order they must be cleared.
 3. The private artifacts in Phase 3, including a version 3 ledger with
    reserved rows and a manifest re-frozen from the owner's ordered catalog.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G2 and G11.
-   > The version 3 ledger retires with the cost ledgers (G11). The manifest
-   > freeze retires because each run is authorized on its own instead of per
-   > frozen manifest (G2, PLAN section 4.1 stage 2); the ten stay the
-   > acceptance cohort, processed in order.
+   > The version 3 ledger retires with the release cost ledgers (G11), and
+   > G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on
+   > the mechanism). The manifest freeze retires because each run is
+   > authorized on its own instead of per frozen manifest (G2, PLAN section
+   > 4.1 stage 2); the ten stay the acceptance cohort, processed in order.
 4. Fresh envelopes per environment, bound to the merged readiness commit and
    the failed run they will re-run.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
@@ -153,7 +156,8 @@ release path, with a test.
   > 2026-09-23: The data plane's refusal once runtime services exist is superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
   > The data plane applies additive changes while the runtime runs; the
   > runtime release still waits for the same commit's data release to succeed
-  > (the coordinator's ruling D3).
+  > (the coordinator's ruling D3: a commit's runtime release waits for that
+  > commit's data release to succeed).
 - The production session endpoint reports two permanent blockers and no
   production ingest can finalize a record. Both are intended for the
   human-review release, which does not finalize.
@@ -227,9 +231,10 @@ Checked against platform documentation current in 2026.
 - Release by the book, with defect fixes only; no contract simplification.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
   > The release contract is simplified for this program: envelopes, cost
-  > ledgers, independent-review reports and authorization artifacts retire, and
-  > a merge deploys automatically once required checks pass and the PR steward
-  > approves.
+  > ledgers, independent-review reports and authorization artifacts retire.
+  > G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on
+  > the mechanism). A merge deploys automatically once required checks pass
+  > and the PR steward approves.
 - Scope is the first-ten human-review pilot, web only, one administrator.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1 and G2.
   > Scope is the whole pipeline, one specimen at a time, on demand; a record the
@@ -261,7 +266,8 @@ Checked against platform documentation current in 2026.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G2.
   > No manifest is frozen (PLAN section 4.1 stage 2), and the ten stay the
   > acceptance cohort, processed in order. The SAM 3 checkpoint is in the
-  > bucket under its pinned digest, uploaded on 2026-09-09.
+  > bucket under its pinned digest, uploaded on 2026-09-09 (the coordinator's
+  > check of 2026-09-23).
 - Rotating the Hugging Face token, and confirming data-processing approval
   for paid calls on real museum images.
 - The ongoing budget after the pilot. Logfire stays metadata-only under the

@@ -14,9 +14,11 @@
 > the single bounded worker execution, timing clock T and SAM life reserve
 > this document defines; the ten pilot specimens remain the acceptance
 > cohort, processed in order, and SAM 3 scales to zero instead of expiring
-> after an hour. Release envelopes, cost ledgers and reservations, including
-> the reservation budget and approval digest this document requires, are
-> retired; data and runtime releases now deploy automatically on merge.
+> after an hour. Release envelopes, the release and cohort cost ledgers and
+> their reservations, including the reservation budget and approval digest
+> this document requires, are retired; data and runtime releases now deploy
+> automatically on merge. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 The combined approval recorded on 2026-09-14 adds one explicit timing dialect.
 It does not change legacy launches. This document describes source behavior and

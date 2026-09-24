@@ -315,8 +315,9 @@ USD 5 reservation ledger. It is never run inside ordinary pull-request CI.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2, G9 and G11. Specimens are processed one at a time, on demand, including
 > new uploads; the ceiling is USD 25, held by the pipeline and a billing alert
-> rather than a reservation ledger. The pilot still never runs in pull-request
-> CI.
+> rather than a release reservation ledger. G30's per-call reservations stand
+> (PLAN 4.3; the coordinator's ruling on the mechanism). The pilot still never
+> runs in pull-request CI.
 
 ### Flutter client
 
@@ -803,7 +804,9 @@ expansion requires user review and approval of end-to-end results.
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G2, G9 and G11. SAM 3 scales to zero instead of expiring, the worker runs
   > on demand, and the USD 25 ceiling is held by the pipeline and a billing
-  > alert rather than by release admission. The ordering in this item stays.
+  > alert rather than by release admission. G30's per-call reservations stand
+  > (PLAN 4.3; the coordinator's ruling on the mechanism). The ordering in
+  > this item stays.
 - Serialize production transitions without cancellation. Quiesce on failure;
   retain previous known revisions and evidence. Runtime rollback uses a reviewed
   main PR and compatible data; never delete original data to simulate recovery.
@@ -828,7 +831,9 @@ after verification evidence is retained. Existing data and source SQL remain.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The owner runs the standing grants and secret steps from the
 > release workstream's reviewed, read-only-generated list, with no action
-> packet or cost reservation, and the ceiling is USD 25.
+> packet or release cost reservation, and the ceiling is USD 25. G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1 names
 > the five standing data-release roles. The one-time roles (the initializer
 > role, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`)

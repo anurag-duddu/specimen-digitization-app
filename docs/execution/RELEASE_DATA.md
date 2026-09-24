@@ -61,7 +61,8 @@ The updated decisions-file SHA256 is
 > models together, replacing the USD 5 figure above; the resource/cost/identity
 > packet and authorization artifact described above are retired, replaced by
 > automatic deploy on merge after required checks and the PR steward's
-> approval.
+> approval. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+> ruling on the mechanism).
 
 The preserved data handoff is
 `/Users/anuragduddu/.codex/private/live-rollout/data-20260908/final-3d60a1b-handoff.json`
@@ -193,7 +194,8 @@ the shared content-addressed object prefix is not per-collection IAM isolation.
    > G2 and G11. Specimens are processed one at a time, on demand, instead of
    > freezing an exact ten-record manifest before any read (PLAN section 4.1
    > stage 2); the whole-test cost reservation this step describes is retired
-   > with the cost ledgers.
+   > with the release cost ledgers. G30's per-call reservations stand (PLAN
+   > 4.3; the coordinator's ruling on the mechanism).
 4. After authorized data delivery and successful recovery rehearsal, lookup only
    the approved email in Firebase Auth for this project. Privately export UID,
    email, emailVerified and disabled; require exact verified/enabled identity and
@@ -241,7 +243,7 @@ primary application source must not be reported as processing every original.
 > models together, replacing the USD 5 ceiling and its USD 4/USD 1/USD 0.75
 > sub-allocations reserved below; release envelopes and the release's
 > cost-gated reservations are retired for this program. G30's per-call
-> reservations stand (PLAN section 4.3; the coordinator's ruling on the mechanism).
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 Reuse an already successful, sufficiently fresh native backup when it covers
 the quiesced source checkpoint. Otherwise price and approve one new backup.
@@ -340,11 +342,13 @@ acceptance. Budget and prior PR merge are resolved decisions, not missing inputs
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. Data releases deploy automatically once the required checks pass and the
-> PR steward approves; release envelopes, cost packets, authorization artifacts
-> and independent-review gating are retired for this program. `DEPLOYMENT.md`'s
-> approved contract and `RELEASE_AUTHORIZATION.md`'s list of what remains
-> forbidden stand, and the protected-ref and five-check admission moves into
-> the data plane's gate (`golive/RELEASE.md` section 1).
+> PR steward approves; release envelopes, release cost packets, authorization
+> artifacts and independent-review gating are retired for this program. G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism). `DEPLOYMENT.md`'s approved contract and
+> `RELEASE_AUTHORIZATION.md`'s list of what remains forbidden stand, and the
+> protected-ref and five-check admission moves into the data plane's gate
+> (`golive/RELEASE.md` section 1).
 
 ## Subsequent actual connector integration and metadata checkpoint
 
@@ -370,12 +374,12 @@ remain excluded from ordinary offset/keyset document lists. The new
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The `PilotLaunch` copy of the stage-cost reservations, its digest pin
-> and the source-cohort launch ledger this connector work supports are
-> retired; data releases deploy automatically once the required checks pass
-> and the PR steward approves. The per-stage reservation map
+> G2 and G11. The `PilotLaunch` copy of the stage-cost reservations, its
+> digest pin and the source-cohort launch ledger this connector work supports
+> are retired; data releases deploy automatically once the required checks
+> pass and the PR steward approves. The per-stage reservation map
 > (`ExecutionPolicy.stage_cost_reservations`) stays, and G30's per-call
-> reservations stand (PLAN section 4.3; the coordinator's ruling on the mechanism).
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 Actual connector red: `/tmp/specimen-release-pilot-ledger-red-20260908.log` and
 `/tmp/specimen-release-stage-map-connector-isolated-red-20260908.log` (one snapshot
@@ -553,7 +557,8 @@ new clone was authorized here. [Cloud SQL pricing](https://cloud.google.com/sql/
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9. The spending ceiling is USD 25, cumulative, infrastructure and models
-> together, replacing this shared USD 5 ledger.
+> together, replacing this shared USD 5 release ledger. G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The region selector updates the storage and instance tables together. The
 generic $0.0105 rate belongs to the Iowa default; $0.018 in search results was

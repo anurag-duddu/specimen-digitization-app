@@ -128,7 +128,9 @@ deploy; the release paths never change IAM or database users/passwords.
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
    > G2. Specimens are imported and processed one at a time, on demand,
    > including new uploads, instead of through a single batch intake of all
-   > ten; the ten remain the acceptance cohort, processed in order.
+   > ten; the ten remain the acceptance cohort, processed in order. Original
+   > generations, scoped membership, profile versions, the stage budgets and
+   > the offline SAM 3 file-map and cache pins stand.
 7. `runtime-activate/v1` consumes the signed preparation receipt and exact images,
    current compatible data receipt, real imported-record readback, and bound
    private inputs. It verifies API source/readiness and anonymous denial, then
@@ -231,7 +233,7 @@ entries. Historical liabilities cannot be removed by a retry or a new date.
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
 > models together, and this cumulative release ledger and its reserved
 > entries are retired for this program. G30's per-call reservations stand
-> (PLAN section 4.3; the coordinator's ruling on the mechanism).
+> (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The data and runtime workflows have separate non-cancelling run queues. Their
 mutation jobs share `specimen-protected-mutation`; neither waits for the other
@@ -242,8 +244,10 @@ an uncertain effect into a settled charge.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. Separately reserved build costs and reconciling reservations before
-> issuing another packet are retired for this program.
+> G11. Separately reserved release build costs, and reconciling those
+> release reservations before issuing another packet, are retired for this
+> program. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+> ruling on the mechanism).
 
 Resource fences supplement that shared authority: expected etags and previous
 revisions, immutable registry tags per source/run/attempt, one clone name with a
@@ -297,7 +301,8 @@ No wider cleanup authority is inferred from owned-clone disposal.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. Admission through a reviewed packet is retired for this
 > program; a backup still needs a bounded retention/disposal decision and
-> its cost tracked against the USD 25 ceiling.
+> its cost tracked against the USD 25 ceiling. G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 ## Remaining live inputs and gates
 
@@ -318,8 +323,11 @@ No wider cleanup authority is inferred from owned-clone disposal.
   strict per-stage/provider bounds, real native timings and actual reader evidence.
   > 2026-09-23: Superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G9 and G11. The reviewed cumulative cost ledger is retired; the spending
-  > ceiling is USD 25, cumulative, infrastructure and models together.
+  > G9 and G11. The reviewed cumulative release cost ledger is retired; the
+  > spending ceiling is USD 25, cumulative, infrastructure and models
+  > together. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+  > ruling on the mechanism), and so do the strict per-stage and provider
+  > bounds and SAM 3's cache staging and file hashes.
 - Successful exact-source protected workflows, matching public Hosting marker,
   application smoke, and independent all-ten human-review acceptance.
   > 2026-09-23: Superseded for the go-live program by

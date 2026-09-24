@@ -11926,9 +11926,11 @@ because the hooks runner hands a native asset hook only `PATH`.
   - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
 - Commits/PRs: `876fc53` and this closeout, on #78. Later on #78:
   - `8f04330`: RELEASE.md section 1 states PLAN 4.4 as #104 merged it;
-  - the review-fix commits for #78's three review rounds: `ccb8fad`, `7690f5b`, `c47984a` and the round-3 consolidated commit.
+  - the review-fix commits for #78's four review rounds: `ccb8fad`, `7690f5b`, `c47984a`, `2d499b4` and the round-4 commit. Round 4 swept every dated note that retires a ledger, cost or reservation. Before the sweep, 0 of 36 carried the exact G30 sentence (9 had a variant wording); after it, 37 of 37 do.
 - Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
-- Durable learnings: a note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
+- Durable learnings:
+  - A note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
+  - When a review finding recurs across files, sweep every sibling with a script before fixing any. Three rounds of fixing the named instances still left 27 of 36 notes without the G30 sentence; one regex over the dated notes found them all.
 - Failed approaches: none.
 - Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
 

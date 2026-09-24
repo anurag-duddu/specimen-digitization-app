@@ -146,8 +146,9 @@ and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_REL
   > 2026-09-23: Superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G9 and G11. The cumulative spending ceiling is USD 25, infrastructure and
-  > models together, and cost ledgers and reservations retire for this
-  > program.
+  > models together, and the release cost ledgers and their reservations
+  > retire for this program. G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism).
 - One worker execution, 1 CPU/1 GiB, one task, zero platform retries, at most
   3500 seconds from original dispatch. Useful work stops by 3485; cleanup by 3500.
   The original SAM one-hour expiry remains unchanged. See
