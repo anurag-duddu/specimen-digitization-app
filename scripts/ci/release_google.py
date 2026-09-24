@@ -179,8 +179,11 @@ class Google:
             require(project.get("name") == f"projects/{self.packet['identity']['project_number']}"
                     and project.get("projectId") == PROJECT and project.get("state") == "ACTIVE", "observed project identity mismatch")
 
-    def request(self, api: str, method: str, resource: str, *, body=None, params=None, missing=False):
+    def request(self, api: str, method: str, resource: str, *, body=None, params=None, missing=False, diff=False):
         require(api in ORIGINS and method in {"GET", "POST", "PATCH", "DELETE", "PUT"}, "unsupported Google request")
+        # Only Data Connect's validate-only schema update keeps a 400's body, the SQL diff (RELEASE.md 4.3); never printed.
+        require(not diff or api == "data" and method == "PATCH" and (params or {}).get("validateOnly") == "true",
+                "only a validate-only schema update keeps its error body")
         require(method != "PUT" or self.plane == "data-initialization", "PUT is reserved for fixed initializer role replacement")
         if self.plane == "data-initialization":
             from release_initialize import validate_request
@@ -232,7 +235,9 @@ class Google:
             if missing and response.status_code == 404:
                 return None
             if not 200 <= response.status_code < 300:
-                raise HTTPFailure(response.status_code)
+                failure = HTTPFailure(response.status_code)
+                failure.body = response.json() if diff and response.status_code == 400 else None
+                raise failure
             return response.json()
 
     def claim_restore(self, payload, directory):

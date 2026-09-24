@@ -347,21 +347,29 @@ def test_the_command_line_releases_a_gate_record_through_deploy_without_a_plan(t
 @pytest.mark.parametrize("arguments,plane,step", [
     (["--prepare-initializer-intents"], "data-initialization", "prepare_owned_initializer"),
     (["--initialize"], "data-initialization", "initialize_existing"), (["--dispose-initializer"], "data", "dispose_owned_initializer"),
+    (["--migrate"], "data", "migrate_initialized"),
 ])
 def test_each_initialization_job_runs_its_own_step_from_its_own_gate_plane(tmp_path, command_line, monkeypatch, arguments, plane, step):
     import release_initialize
     steps = []
     monkeypatch.setattr(D, "Google", lambda path, used: SimpleNamespace(plane=used, packet=record(used)))
-    monkeypatch.setattr(release_initialize, step, lambda google, directory, *output: steps.append((google.plane, directory))
-                        or output and output[0].write_text("{}\n"), raising=False)
+    for module in (release_initialize, D):
+        monkeypatch.setattr(module, step, lambda google, directory, *output: steps.append((google.plane, directory))
+                            or output and output[0].write_text("{}\n"), raising=False)
     command_line(*arguments)
     assert steps == [(plane, tmp_path)] and command_line.calls == []
 
 
 @pytest.mark.parametrize("arguments", [["--admit"], ["--prepare-inputs"], ["--prepare-clone-intent"],
                                        ["--complete-initialization", "--receipt", "receipt.json"],
-                                       ["--initialize", "--receipt", "receipt.json"]])
+                                       ["--initialize", "--receipt", "receipt.json"], ["--migrate", "--receipt", "receipt.json"]])
 def test_the_command_line_refuses_a_gate_record_for_any_other_action(command_line, arguments):
     with pytest.raises(SystemExit, match=r"^Data release blocked \[stage=data\.admission\]\.$"):
         command_line(*arguments)
     assert command_line.calls == []
+
+
+def test_the_command_line_migrates_only_a_gate_record(command_line, monkeypatch):
+    monkeypatch.setattr(D, "admit", lambda path, plane: {"version": "protected-release/v1", "plane": plane, "source_sha": SHA})
+    with pytest.raises(SystemExit, match=r"^Data release blocked \[stage=data\.admission\]\.$"):
+        command_line("--migrate")

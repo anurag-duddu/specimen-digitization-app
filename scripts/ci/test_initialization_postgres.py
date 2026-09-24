@@ -228,6 +228,9 @@ def relations(postgres):
 
 def test_pg18_the_migration_runs_as_the_owner_and_the_writer_inserts_with_uuid_generate_v4_defaults(postgres, tmp_path):
     assert transaction(postgres).returncode == 0
+    # Before the diff, the migrate step reads the initialized catalog back the same way (RELEASE.md 4.3, Jobs).
+    code, initialized = release_sql(postgres, tmp_path, 'migrated')
+    assert code == 0 and (initialized['tables'], initialized['views'], initialized['owners']) == ([], [], [])
     assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION, MEMBER, UNIQUE) == (
         0, {'version': 'data-migration/v1', 'statements': 3, 'committed': True})
     assert relations(postgres) == ','.join(f'{name}:{OWNER}' for name in (
@@ -238,6 +241,8 @@ def test_pg18_the_migration_runs_as_the_owner_and_the_writer_inserts_with_uuid_g
     # The catalog check reads the same database back: the initializer's postconditions hold over the new tables.
     code, catalog = release_sql(postgres, tmp_path, 'migrated')
     assert code == 0 and catalog['postconditions']['schema_owner'] == OWNER
+    # One object before and after the migration, so the initializer receipt's one hash covers both reads.
+    assert catalog['postconditions'] == initialized['postconditions']
     assert {key: catalog[key] for key in ('expected_database', 'expected_actor', 'tables', 'views', 'owners', 'extensions')} == {
         'expected_database': True, 'expected_actor': True, 'tables': ['public.organization', 'public.organization_member'],
         'views': [], 'owners': [OWNER], 'extensions': ['plpgsql', 'uuid-ossp']}
