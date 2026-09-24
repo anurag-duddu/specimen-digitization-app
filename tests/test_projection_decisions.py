@@ -16,13 +16,14 @@ from specimen_digitization.application.domain import (
     Lookup,
     LookupStatus,
     Observation,
+    Region,
     Transcript,
     ValueState,
 )
 from specimen_digitization.application.projection import derived_id, writes
 from specimen_digitization.application.storage import digest
 
-from test_projection import TracedRun, locate, pinned, read, size, specimen
+from test_projection import TracedRun, locate, pinned, read, reading, size, specimen
 
 
 class Difference(BaseModel):
@@ -73,6 +74,8 @@ class TracedField(FieldValue):
     precision: str | None = None
     century_rule: str | None = None
     verbatim_by_observation: dict[str, str] = {}
+    input_source_by_observation: dict[str, str] = {}
+    settled_observation_ids: list[str] = []
     evidence_relations: dict[str, str] = {}
 
 
@@ -86,6 +89,7 @@ class Finding(BaseModel):
 
 
 class HarnessRun(TracedRun):
+    coverage_check: dict | None = None
     tool_calls: list[ToolCallRecord] = []
     field_groups: dict[str, str] = {}
     disposition_summary: str | None = None
@@ -486,9 +490,8 @@ def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
             authority_id="fixture-place",
             evidence_ids=[found.id],
             evidence_relations={found.id: "supports"},
-            input_source="raw_reading",
-            source_region_id=s.run.regions[0].id,
-            source_observation_id=left.id,
+            input_source_by_observation={left.id: "raw_reading", right.id: "raw_reading"},
+            settled_observation_ids=[left.id],
         )
     }
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
@@ -508,7 +511,7 @@ def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
     assert resolved["candidateId"] == confirmed["id"]
     # With no reader confirmed, no single verbatim is implied.
     s.run.fields["city"] = s.run.fields["city"].model_copy(
-        update={"source_observation_id": None, "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
+        update={"settled_observation_ids": [], "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
     )
     unconfirmed = writes(s, locate, size, "worker-uid")
     assert all(c["authorityId"] is None for c in rows(unconfirmed, "AppendFieldCandidateV2"))
@@ -665,3 +668,165 @@ def test_a_new_resolved_candidate_is_a_new_record_version():
     # Same state, another value: an authority selection that keeps the state still changes the record.
     s.run.fields["city"] = s.run.fields["city"].model_copy(update={"literal": "Chicago, Ill."})
     assert rows(writes(s, locate, size, "worker-uid"), "AppendRecordVersionV2")[0]["id"] != first
+
+
+def second_label(s):
+    """A second label on the slide, read by both routes; its first pass picked none (G19)."""
+    region = Region(
+        asset_id=s.asset.id, x=10, y=200, width=390, height=160, order=1, method="sam3", version="rev-1"
+    )
+    right = reading(region, "handwriting-muse", "Chicago, Il1.", "5")
+    left = reading(region, "handwriting-qwen", "Chicago, Ill.", "6")
+    call = left.model_copy(
+        update={
+            "id": Observation.model_fields["id"].default_factory(),
+            "route_id": "first-pass",
+            "literal_text": "",
+            "raw_ref": f"{'7' * 64}:9",
+            "raw_sha256": "7" * 64,
+        }
+    )
+    s.run.regions.append(region)
+    s.run.observations += [right, left]
+    s.run.transcripts.append(
+        DecidedTranscript(
+            region_id=region.id,
+            observation_ids=[right.id, left.id],
+            alternatives=[right.literal_text, left.literal_text],
+            resolved=False,
+            disagreement_ratio=1 / 13,
+            alignment_status="difference",
+            alignment_algorithm="bounded-levenshtein-fraction-v1",
+            decision_kind="first_pass",
+            first_pass_call=call,
+            handoffs=[
+                Handoff(observation_id=o.id, role="raw_reading", handed_text=o.literal_text)
+                for o in (right, left)
+            ],
+        )
+    )
+    return region, left, right
+
+
+def two_labels():
+    """Label one decided by the first pass; label two with no pick (G32)."""
+    s = first_pass(base())
+    _, picked = s.run.observations[:2]
+    region, left, _ = second_label(s)
+    return s, picked, region, left
+
+
+def test_a_field_on_two_labels_keeps_one_candidate_per_label():
+    s, picked, _, left = two_labels()
+    s.run.fields = {
+        "locality": TracedField(
+            state=ValueState.SUPPORTED,
+            verbatim_by_observation={picked.id: "Chicago", left.id: "Chicago"},
+            input_source_by_observation={picked.id: "decided_transcript", left.id: "raw_reading"},
+            settled_observation_ids=[picked.id, left.id],
+            normalized="Chicago",
+        )
+    }
+    s.run.disposition, s.run.reasons = Disposition.CLEARED, []
+    result = writes(s, locate, size, "worker-uid")
+    label_one = rows(result, "AppendTranscriptionVersionV2")[0]
+    first, second = rows(result, "AppendFieldCandidateV2")
+    # Each label keeps its own candidate and provenance, even with identical texts.
+    assert (first["inputSource"], first["sourceTranscriptionId"], first["sourceObservationId"]) == (
+        "decided_transcript",
+        label_one["id"],
+        None,
+    )
+    assert (second["inputSource"], second["sourceTranscriptionId"], second["sourceObservationId"]) == (
+        "raw_reading",
+        None,
+        left.id,
+    )
+    assert [c["literalValue"] for c in (first, second)] == ["Chicago", "Chicago"]
+    # A field without a lookup that clears on identical texts has the common text in normalized.
+    assert all((c["normalizedValue"], c["derivation"]) == ("Chicago", "normalized") for c in (first, second))
+    assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] == first["id"]
+
+
+def test_labels_in_conflict_settle_nothing():
+    s, picked, _, left = two_labels()
+    s.run.fields = {
+        "locality": TracedField(
+            state=ValueState.SUPPORTED,
+            verbatim_by_observation={picked.id: "Chicago", left.id: "Chimaltenango"},
+            input_source_by_observation={picked.id: "decided_transcript", left.id: "raw_reading"},
+            settled_observation_ids=[],
+        )
+    }
+    s.run.disposition, s.run.reasons = Disposition.REVIEW, ["labels_conflict:locality"]
+    result = writes(s, locate, size, "worker-uid")
+    candidates = rows(result, "AppendFieldCandidateV2")
+    assert [c["literalValue"] for c in candidates] == ["Chicago", "Chimaltenango"]
+    assert all((c["normalizedValue"], c["authorityId"], c["derivation"]) == (None, None, "literal") for c in candidates)
+    assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] is None
+
+
+def test_each_settled_label_links_the_evidence_its_own_call_made():
+    s, picked, region, left = two_labels()
+    found = lookup(s)
+    other = found.model_copy(
+        update={
+            "id": Lookup.model_fields["id"].default_factory(),
+            "query": {"address": "Chicago, Ill."},
+            "raw_ref": f"{'4' * 64}:4",
+            "digest": "3" * 64,
+        }
+    )
+    s.run.lookups.append(other)
+    call = dict(phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["locality"], arguments={}, outcome="success")
+    s.run.tool_calls = [
+        ToolCallRecord(call_key="one", input_source="decided_transcript", region_id=s.run.regions[0].id, evidence_id=found.id, **call),
+        ToolCallRecord(call_key="two", input_source="raw_reading", region_id=region.id, observation_id=left.id, evidence_id=other.id, **call),
+    ]
+    s.run.fields = {
+        "locality": TracedField(
+            state=ValueState.SUPPORTED,
+            verbatim_by_observation={picked.id: "Chicago", left.id: "Chicago, Ill."},
+            input_source_by_observation={picked.id: "decided_transcript", left.id: "raw_reading"},
+            settled_observation_ids=[picked.id, left.id],
+            normalized="Chicago",
+            authority_id="fixture-place",
+            evidence_ids=[found.id, other.id],
+            evidence_relations={found.id: "supports", other.id: "supports"},
+        )
+    }
+    result = writes(s, locate, size, "worker-uid")
+    first, second = rows(result, "AppendFieldCandidateV2")
+    links = rows(result, "AppendCandidateEvidenceV2")
+    assert [(link["candidateId"], link["evidenceId"]) for link in links] == [
+        (first["id"], found.id),
+        (second["id"], other.id),
+    ]
+
+
+def test_the_coverage_check_is_recorded_evidence():
+    s = base()
+    s.run.coverage_check = {
+        "version": "label-coverage-v1",
+        "outcome": "unconfirmed",
+        "region_count": 3,
+        "min_label_regions": 1,
+        "max_label_regions": 2,
+        "cross_check": {"concept": "label", "threshold": 0.5, "min_inside_fraction": 0.8, "counted": 1, "uncovered_boxes": []},
+        "reason_codes": ["label_coverage_unconfirmed", "label_region_count_out_of_range"],
+        "evidence_ref": f"{'2' * 64}:3",
+        "evidence_sha256": "2" * 64,
+        "checked_at": "2026-09-23T12:00:00+00:00",
+    }
+    result = writes(s, locate, size, "worker-uid")
+    references_come_first(result)
+    (item,) = [w for w in rows(result, "AppendEvidenceItemV2") if w["source"] == "label-coverage-check"]
+    assert item["id"] == derived_id("coverage", s.run.id, "2" * 64)
+    assert (item["outcome"], item["locator"]) == ("recorded", "coverage/label-coverage-v1")
+    assert (item["sourceVersion"], item["responseSha256"]) == ("label-coverage-v1", "2" * 64)
+    assert item["capturedAt"] == "2026-09-23T12:00:00+00:00"
+    asset = next(w.variables for w in result if w.variables["id"] == item["rawAssetId"])
+    assert asset["kind"] == "evidence_record"
+    # A check without an evidence blob has no evidence item.
+    s.run.coverage_check = {**s.run.coverage_check, "evidence_ref": None}
+    assert "label-coverage-check" not in {w["source"] for w in rows(writes(s, locate, size, "worker-uid"), "AppendEvidenceItemV2")}
