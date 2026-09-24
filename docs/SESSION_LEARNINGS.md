@@ -12065,3 +12065,20 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. Dart has no in-process way to change the zone, and `Zone` does not intercept `toLocal()`. An override variable in the `debug…Override` idiom is the smallest seam that works on every platform.
 - Failed approaches: the red tests first expected `absoluteTime` of a UTC instant to print CDT. That would have changed the UTC texts on screen, so those tests now target `absoluteWallTime`, and a new test pins the UTC rule.
 - Remaining follow-ups: none for the zone. Once this merges, sessions can drop `TZ=America/Chicago`.
+
+### 2026-09-24 — Go-live S6: server instants read on the reviewer's clock
+
+- Task: coordinator ruling for S6, 2026-09-24, from design/01 (H1.9 at line 149, and H2.1): the source screen's "listed … UTC" and the queue row's spoken time read on the reviewer's clock through `wall_time`, and the spoken time says the zone.
+- Branch/worktree: `golive/ui-reviewer-clock`, stacked on `golive/ui-golden-zone` (#181); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `absoluteTime` is the single citable form, always on the reviewer's wall clock with its zone (02 section 4.14). #181's UTC branch and `absoluteWallTime` fold back into it.
+  - The source screen's header reads "listed 14 Sep 2026, 05:22 CDT" in the suite.
+  - The queue row speaks a server instant as "updated 8 Sep 2026, 00:01 CDT".
+  - The 24 source-screen goldens were regenerated, in Central time, and nothing else moved.
+- Commits/PRs: red `f1e0f46`; green ``ae9d194``; the pull request depends on #181.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the three changed test files 46 passed; the full app suite 1,583 passed, 7 skipped, 0 failed, on the host zone (America/New_York).
+- Durable learnings:
+  1. Run the suite without updating first, and let its failures list what moved. Here the list was exactly the 24 images of the one surface the ruling named. That proves the change's reach before any golden is touched, and makes a stray moved image a question rather than a regeneration.
+  2. Regenerate with the narrowest name filter that covers the moved scenes, then check that the count of changed images equals the count of failures.
+- Failed approaches: none.
+- Remaining follow-ups: none for time display.
