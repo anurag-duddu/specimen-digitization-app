@@ -61,11 +61,11 @@ Size = Callable[[str], int]
 OPEN_VERDICTS = ("neither", "uncertain")
 # The one source string Google's evidence may carry (rule 1.6); the connector refuses any other.
 GOOGLE = "google-maps-geocoding"
-# Rule 1.6: what a Google call's result may keep, and what no stored call may hold: a request
-# URL carrying a key, or an API key itself.
+# Rule 1.6 and PLAN 4.8: what a Google call's result may keep, and what no stored call may
+# hold: a request URL carrying a credential (the Maps key, a GeoNames username), or an API key.
 GOOGLE_RESULT = frozenset({"place_ids", "error", "retry_after"})
 PLACE_ID = re.compile(r"[A-Za-z0-9_-]+")
-KEYS = re.compile(r"(?i)https?://[^\s\"'<>]*[?&](?:key|api_?key)=|AIza[0-9A-Za-z_-]{35}")
+KEYS = re.compile(r"(?i)https?://[^\s\"'<>]*[?&](?:key|api_?key|username)=|AIza[0-9A-Za-z_-]{35}")
 # Evidence that may back a candidate: a successful lookup, or recorded evidence (section 6).
 LINKABLE = ("success", "recorded")
 
@@ -543,14 +543,14 @@ def _derivation(value, relations: dict) -> str:
 
 
 def _refuse_keys(run: Run) -> None:
-    """Rule 1.6: no stored call holds a key, and a Google call keeps only place ids.
+    """Rule 1.6: no stored call holds a credential, and a Google call keeps only place ids.
 
     The error names where, never the value, because the repository logs it.
     """
     for n, record in enumerate(getattr(run, "tool_calls", None) or []):
         where = f"tool call {n} ({record.tool})"
         if KEYS.search(json.dumps([record.arguments, record.result], default=str)):
-            raise ValueError(f"{where} holds a key (rule 1.6)")
+            raise ValueError(f"{where} holds a credential (rule 1.6)")
         if record.source == GOOGLE:
             kept = record.result or {}
             ids = kept.get("place_ids", [])
@@ -563,7 +563,7 @@ def _refuse_keys(run: Run) -> None:
     for n, found in enumerate(run.lookups):
         stored = found.raw_ref and found.digest
         if stored and KEYS.search(json.dumps(found.query, default=str)):
-            raise ValueError(f"lookup {n} ({found.provider}) holds a key in its query (rule 1.6)")
+            raise ValueError(f"lookup {n} ({found.provider}) holds a credential in its query (rule 1.6)")
 
 
 def _evidence_names(run: Run) -> dict:
