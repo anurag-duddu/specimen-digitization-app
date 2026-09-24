@@ -54,7 +54,7 @@ PERMISSIONS = {
 DATA_ROLES = {  # live definitions of the standing data-release roles that grant every read deploy_data.py makes
     "specimenDataSchemaPublish": ["firebasedataconnect.schemas.get", "firebasedataconnect.connectors.get"],
     "specimenDataStorageRules": ["firebaserules.releases.get", "firebaserules.rulesets.get"],
-    "specimenDataSourceBackup": ["cloudsql.backupRuns.create"],
+    "specimenDataSourceBackup": ["cloudsql.backupRuns.create", "cloudsql.backupRuns.get"],
     "specimenDataInventorySqlConnect": ["cloudsql.instances.get", "cloudsql.databases.get"],
     "specimenDataInventoryProjectRead": ["resourcemanager.projects.get"]}
 SECRETS = {  # each role's secret_env as scripts/ci/runtime_settings.py commits it (T2b)
@@ -266,7 +266,7 @@ def test_a_fully_satisfied_live_state_leaves_nothing_to_do():
     answers = live(TABLE | INVOKERS | {(B, VIEW, SAM, CHECKPOINT)}, existing())
     parts = sections(report(answers, SAM_CHECKPOINT_SHA256=DIGEST, READINESS_GENERATION=1))
     assert all(parts[title] == ["(none)"] for title in TITLES[:-1] if title != READS)
-    assert len(parts[READS]) == 6 and all(": granted by specimenData" in line for line in parts[READS])
+    assert len(parts[READS]) == 7 and all(": granted by specimenData" in line for line in parts[READS])
     assert [line.split()[:3] for line in parts["Other owner steps"] if not line.startswith("# ")] == [
         ["gcloud", "storage", "buckets"], ["gcloud", "services", "enable"], ["gcloud", "billing", "budgets"]]
 
@@ -286,7 +286,10 @@ def test_each_data_release_read_names_the_role_granting_it_or_the_command_that_a
         f"gcloud iam roles update specimenDataSchemaPublish --project={PROJECT} "
         "--add-permissions=firebasedataconnect.connectors.get",
         f"gcloud iam roles update specimenDataStorageRules --project={PROJECT} "
-        "--add-permissions=firebaserules.releases.get,firebaserules.rulesets.get"]
+        "--add-permissions=firebaserules.releases.get,firebaserules.rulesets.get",
+        # Every apply's backup reads its backup run back (T3d); the backup role alone may.
+        f"gcloud iam roles update specimenDataSourceBackup --project={PROJECT} "
+        "--add-permissions=cloudsql.backupRuns.get"]
     reasoned(lines)
     for role in set(G.DATA_READS.values()):  # the narrowest standing role only the data release holds
         assert {grant.member for grant in G.STANDING if grant.role == CUSTOM(role)} == {DATA}
