@@ -523,6 +523,12 @@ class ThreadField extends _View {
   /// Each source's evidence and its relation to the value (G23).
   List<ThreadEvidence> get evidence => _each('evidence', ThreadEvidence._);
 
+  /// The readings whose own literal settled the value, in verbatim order:
+  /// one per label when the field cleared across labels (G32), the reader a
+  /// lookup confirmed (G20), or none, as when the field went to review
+  /// (#88 at `4f9997a`).
+  List<String> get settledObservationIds => _texts('settled_observation_ids');
+
   Json? get _parsedObject => _object(_json['parsed']);
 }
 
