@@ -83,6 +83,29 @@ List<String> recordReasonCodes(Specimen specimen) {
   ];
 }
 
+/// The policy's codes a run stores with a suffix, such as
+/// `mandatory_unresolved:taxon` (S3's list of 2026-09-24).
+///
+/// The search API matches a reason code exactly until S5's T5, so a picked
+/// base code would find nothing; until then the filter does not offer these
+/// (the coordinator's ruling (b), 2026-09-24). Empty this when T5 lands.
+const Set<String> suffixedReasonCodes = <String>{
+  'independent_observations_missing',
+  'raw_provenance_missing',
+  'unresolved_transcription',
+  'evidence_lineage_invalid',
+  'mandatory_unresolved',
+  'evidence_missing',
+  'evidence_does_not_support_value',
+  'pixel_lineage_missing',
+  'unsupported_parsed',
+  'unsupported_normalized',
+  'unsupported_authority_id',
+  'elevation_range',
+  'elevation_invalid',
+  'elevation_units_conflict',
+};
+
 /// One reason code in words, the one spelling every screen that shows a
 /// reason uses: the queue's rows, the blockers list, a field's findings and
 /// the reason sheet (UI.md T3.2).

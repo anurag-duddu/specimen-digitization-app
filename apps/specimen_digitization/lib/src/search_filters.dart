@@ -18,6 +18,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
+import 'reason_codes.dart';
 import 'saved_filters.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
@@ -342,6 +343,11 @@ class SearchFiltersState extends State<SearchFilters> {
           (Object? value) => value is Map ? textOf(value['id'], '') : '$value',
         )
         .where((String value) => value.isNotEmpty)
+        // A reason the search cannot find yet is not offered (UI.md T3.2).
+        .where(
+          (String value) =>
+              key != 'reason_code' || !suffixedReasonCodes.contains(value),
+        )
         .toList();
   }
 
@@ -576,7 +582,9 @@ class SearchFiltersState extends State<SearchFilters> {
           for (final String choice in choices)
             UiSelectOption<String>(
               value: choice,
-              label: vocabularyLabel(choice),
+              label: key == 'reason_code'
+                  ? reasonLabel(choice)
+                  : vocabularyLabel(choice),
             ),
         ],
         onChanged: (String value) =>
