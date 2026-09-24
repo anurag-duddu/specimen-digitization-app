@@ -32,7 +32,7 @@ PG_BIN = Path(os.getenv("POSTGRES_BIN", "/opt/homebrew/opt/postgresql@18/bin"))
 PREFIX = f"/v1/organizations/{SYNTHETIC_ORG}"
 CHUNK = 4 * 1024 * 1024
 USE_REVIEWED_REGIONS = "sam3_serving_contract_not_configured_use_reviewed_regions"
-# G31: the owner classified these ten pilot slides not sensitive against PRD 715 (2026-09-23), as
+# G31: the owner classified these ten pilot slides not sensitive against PRD.md 718 (2026-09-23), as
 # CONTRACTS.md 169-170 requires. Every other slide stays Sensitive, and the lane never processes those.
 NOT_SENSITIVE = frozenset(f"subject_1055263{n}" for n in range(21, 31))
 READER = "synthetic-reviewer"
