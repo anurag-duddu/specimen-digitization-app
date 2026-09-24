@@ -153,9 +153,9 @@ def map_geocoding_response(
     http_status: int,
     payload: object,
     aliases: Mapping[str, Sequence[str]] = NO_ALIASES,
-) -> tuple[LookupStatus, dict[str, LookupStatus], list[PlaceCandidate]]:
-    """Map one Geocoding response to our outcomes (G10). The whole mapping is
-    this function, because pending owner decisions may change only it.
+) -> tuple[LookupStatus, dict[str, LookupStatus], list[PlaceCandidate], list[str]]:
+    """Map one Geocoding response to our outcomes and warnings (G10). The whole
+    mapping is this function, because owner decisions change only it.
     `payload` is the parsed JSON body, None when it did not parse; `aliases`
     maps a folded literal to more folded names that count as matches (G29).
     Google's names are compared here in memory; only outcomes and the place
@@ -175,11 +175,24 @@ def map_geocoding_response(
     else:
         outcome = LookupStatus.SUCCESS
     if outcome != LookupStatus.SUCCESS:
-        return outcome, dict.fromkeys(fields, outcome), []
+        return outcome, dict.fromkeys(fields, outcome), [], []
     result, table = results[0], _alias_table(aliases)
     outcomes = {
         key: _confirmed(key, texts, result, table) for key, texts in fields.items()
     }
+    # G34: a field no name matches clears on a near spelling, with the place ID
+    # and no name, only when every other admin field, at least one, matched by
+    # name or alias and one component alone is within one edit of its literal.
+    matched = {key for key, value in outcomes.items() if value == LookupStatus.SUCCESS}
+    near = [
+        key
+        for key, value in outcomes.items()
+        if value == LookupStatus.NO_MATCH
+        and matched
+        and matched == set(outcomes) - {key}
+        and _near_spelling(key, fields[key], result)
+    ]
+    outcomes.update(dict.fromkeys(near, LookupStatus.SUCCESS))
     places = [
         PlaceCandidate(
             field_key=key, source=SOURCE, source_record_id=result["place_id"]
@@ -187,7 +200,7 @@ def map_geocoding_response(
         for key, value in outcomes.items()
         if value == LookupStatus.SUCCESS
     ]
-    return outcome, outcomes, places
+    return outcome, outcomes, places, [f"near_spelling:{key}" for key in near]
 
 
 def _confirmed(
@@ -196,13 +209,7 @@ def _confirmed(
     """SUCCESS when every literal of the field, folded or through an alias,
     equals the folded long or short name of a component at one of the field's
     levels; an empty fold never matches."""
-    levels, names = LEVELS.get(key, frozenset()), set()
-    parts = result.get("address_components")
-    for part in parts if isinstance(parts, list) else []:
-        kinds = part.get("types") if isinstance(part, dict) else None
-        if isinstance(kinds, list) and levels.intersection(map(str, kinds)):
-            labels = (part.get("long_name"), part.get("short_name"))
-            names.update(fold(label) for label in labels if isinstance(label, str))
+    names = set().union(*_names_at(key, result))
 
     def accepted(text: str) -> set[str]:
         folded = fold(text)
@@ -210,6 +217,46 @@ def _confirmed(
 
     matched = all(not names.isdisjoint(accepted(text)) for text in texts)
     return LookupStatus.SUCCESS if matched else LookupStatus.NO_MATCH
+
+
+def _names_at(
+    key: str, result: dict, kinds: Sequence[str] = ("long_name", "short_name")
+) -> list[set[str]]:
+    """The folded names of each component at the field's levels."""
+    levels, components = LEVELS.get(key, frozenset()), []
+    parts = result.get("address_components")
+    for part in parts if isinstance(parts, list) else []:
+        types = part.get("types") if isinstance(part, dict) else None
+        if isinstance(types, list) and levels.intersection(map(str, types)):
+            labels = [part.get(kind) for kind in kinds]
+            components.append({fold(x) for x in labels if isinstance(x, str)} - {""})
+    return components
+
+
+def _near_spelling(key: str, texts: list[str], result: dict) -> bool:
+    """Exactly one component at the field's levels has a long name within one
+    edit of every literal of the field, folded (G34). Never a short name: a
+    code such as "PH" is not a name, so "P.I." is not one letter off it."""
+    folded = [fold(text) for text in texts]
+    near = [
+        names
+        for names in _names_at(key, result, ("long_name",))
+        if all(text and any(_one_edit(text, name) for name in names) for text in folded)
+    ]
+    return len(near) == 1
+
+
+def _one_edit(a: str, b: str) -> bool:
+    """Whether a and b differ by at most one insertion, deletion or substitution."""
+    if len(a) > len(b):
+        a, b = b, a
+    if len(b) - len(a) > 1:
+        return False
+    i = 0
+    while i < len(a) and a[i] == b[i]:
+        i += 1
+    tail = a[i + 1 :] if len(a) == len(b) else a[i:]
+    return tail == b[i + 1 :]
 
 
 def _alias_table(aliases: Mapping[str, Sequence[str]]) -> dict[str, set[str]]:
@@ -244,7 +291,9 @@ def geocode_locality(
     no table of its own."""
     address = geocoding_address(query)
     key = os.environ.get(KEY_VARIABLE) if api_key is None else api_key
-    mapped: dict[int, tuple[dict[str, LookupStatus], list[PlaceCandidate]]] = {}
+    mapped: dict[
+        int, tuple[dict[str, LookupStatus], list[PlaceCandidate], list[str]]
+    ] = {}
 
     def call(
         number: int, outcome: LookupStatus, error: str | None = None, **fields
@@ -279,8 +328,10 @@ def geocode_locality(
             payload = json.loads(response.content) if code == 200 else None
         except (ValueError, RecursionError):
             payload = None
-        outcome, fields, places = map_geocoding_response(query, code, payload, aliases)
-        mapped[number] = (fields, places)
+        outcome, fields, places, warnings = map_geocoding_response(
+            query, code, payload, aliases
+        )
+        mapped[number] = (fields, places, warnings)
         results = payload.get("results") if isinstance(payload, dict) else None
         first = results[0] if isinstance(results, list) and results else None
         digest = hashlib.sha256(response.content).hexdigest()
@@ -310,7 +361,7 @@ def geocode_locality(
             calls = with_retries(partial(attempt, http), sleep=sleep)
     final = calls[-1]
     everywhere = dict.fromkeys(reported_literals(query), final.outcome)
-    fields, places = mapped.get(final.attempt, (everywhere, []))
+    fields, places, warnings = mapped.get(final.attempt, (everywhere, [], []))
     return ToolResult(
         tool="geography_lookup",
         tool_version=TOOL_VERSION,
@@ -318,4 +369,5 @@ def geocode_locality(
         field_outcomes=fields,
         places=places,
         sub_calls=calls,
+        warnings=warnings,
     )
