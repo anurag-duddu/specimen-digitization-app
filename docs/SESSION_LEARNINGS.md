@@ -11798,6 +11798,33 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: a first draft of the plan specified adjudication behaviour and routing conditions the owner had not asked for; the owner rejected new design decisions, and the plan now quotes the owner's rules and the existing specification instead.
 - Remaining follow-ups: the owner's field list; the owner actions queued in `~/specimen-golive/OWNER_ACTIONS.md`; launching and coordinating the seven sessions.
 
+### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
+
+- Task: the same S2 session as the T1a entry, second half of brief item T1.
+- Branch/worktree: `golive/release-runbook-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated notes and banners in `GO_LIVE_RUNBOOK.md`, `GO_LIVE_READINESS.md`, `RELEASING.md`, `RELEASE_RUNTIME.md`, `RELEASE_DATA.md` and `PROTECTED_RELEASE_HARNESS.md`. Four notes in `PRD.md`, which the coordinator signed off: G14 beside section 9.2 steps 1-2 and after section 11.2's table (CLS-002), both restating G14 (the intake collection chooses the profile; there is no classification stage); and G16 beside the 12.4 rule that clearance needs every mandatory field and after the 12.4 mandatory-field table (`identified_by_irn` does not block clearance until EMu Parties is connected). Notes that keep a safeguard say so: post-merge reconciliation, the protected-branch and five-check admission, and the time-bounded initializer.
+- Commits/PRs: [PR #78](https://github.com/anurag-duddu/specimen-digitization-app/pull/78): amendments `7a83c61` and this closeout. It depends on [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76).
+- Validation actually run: pre-commit hooks at commit (all passed); `git diff --check` clean; a link and anchor check over the 92 added links (0 broken, with `golive/RELEASE.md` resolved from #76's branch).
+- Durable learnings: a documents-only amendment still needs a size budget. At about 1,060 lines, T1 exceeded the program's 600-line review limit, so it was split along the line other sessions care about: the contracts they code against first, the runbooks and histories second.
+- Failed approaches: none beyond those in the T1a entry.
+- Remaining follow-ups: as in the T1a entry.
+
+### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
+
+- Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
+- Branch/worktree: `golive/release-contract-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated "Superseded for the go-live program by PLAN section 2.1 G#" notes beside every superseded clause in eleven contract documents, and a banner on each release and approval document (`PRD.md` and `CONTRACTS.md` carry notes only). The `AGENTS.md` first deployment rule now follows G11: it keeps every safeguard G11 doesn't retire and adds the additive-only schema gate; the never-deploy and never-weaken rules are unchanged. `APPROVED_LOGFIRE_TRACING.md` carries G3's content scope and `APPROVED_RELEASE_BUDGET.md` carries G9's USD 25. The new `docs/execution/golive/RELEASE.md` holds the invariants, the coordinator-confirmed definition of "additive" and the table of code that still enforces superseded clauses. T1b (the runbooks and release histories) follows as its own PR, for size.
+- Commits/PRs: [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76): spec delta `0088a70`, amendments `6bb4064`, this closeout.
+- Validation actually run: pre-commit on the twelve files (all hooks passed); `uv run pytest tests/test_deployment_policy.py -q` (6 passed); `git diff --check` clean; a link and anchor check over the 84 added links (0 broken).
+- Durable learnings:
+  - No document's bytes are pinned by code or tests; `3303d129…` fingerprints the owner's 2026-09-14 message. The pins are code constants (`release_budget.py` `APPROVED_LIMIT_MICROS`, `mint_release_packet.py` `HUMAN_REVIEW_SCOPES`).
+  - `codex/initialize-firebase-placeholder` (`2c0880f7`) is already on `main` as `f9a44543` (PR #29) and assumes an absent database, so T3 needs a new exists-and-empty path.
+  - `roles/run.invoker` on a Cloud Run job is enough to execute it without overrides, and act-as is not needed.
+  - All five WIF providers and the seven release and runtime identities exist, each provider pinned to repository, push, `main` and its environment (read-only inventory).
+  - "Additive" (PLAN 4.4, coordinator 2026-09-23): dropping NOT NULL only on columns the data contract names with a reason, never on provenance or idempotency keys; new connector operations only at `@auth(level: NO_ACCESS)` with the membership `@check`s.
+- Failed approaches: three of four editor subagents' results carried an automatic "Instruction Poisoning" flag. Every added line was audited: each subagent edited only its own files, nothing unsafe was found, and seven overreaching notes were corrected. The worst had misread G7's "existing gateway" as the Logfire AI Gateway, and a note that claimed a non-goal was superseded was removed.
+- Remaining follow-ups: T1b; T2 runtime plane; T3 data plane; T4 owner IAM and secret list; T5 first releases; T6. Owner actions posted to `~/specimen-golive/OWNER_ACTIONS.md`: Maps key, Logfire token, Hugging Face rotation. The owner later withdrew the rotation: the runtime reuses the existing Hugging Face token version, and the existing Logfire token is copied into the writer secret.
+
 ### 2026-09-23 — Go-live program: plan corrections after the review of #72, owner decisions G13 to G18
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -11819,3 +11846,188 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) The ten pilot slides hold four localities, not one: "E. slope Mt. McKinley" at 6400 ft and at 3300 ft, "E. slope Mt. Apo" (all "Davao Prov., Mindanao, P.I." or "Philippine Islands", 1946), and "Yepocapa, Mun. Yepocapa, Chimaltenago [sic], Guatemala" (1948). On 324 to 328 the locality is on the right-hand label; the left one holds only the preparation note. (2) Google Maps Platform Service Specific Terms 6.3.1 (last modified 2026-06-10) cap cached Geocoding latitude and longitude at 30 consecutive days; only place IDs may be kept, and 6.2 bars use with a non-Google map. A Google coordinate cannot be the stored or GBIF-published georeference. Only the `country` and `postal_code` components restrict results. (3) "Mount McKinley" in Davao appears on no map (Hoogstraal 1951, Fieldiana Zoology 33(1), p. 40). No gazetteer has it, and "Mount McKinley" searches return Denali. (4) GeoNames and NGA GNS attach "Davao Province" to modern Davao del Norte as an alternate name; Wikidata's Q15095071 is the 1914-1967 province with its three successors under P1366. The charter had P1365 and P1366 reversed. (5) The Field Museum's own published georeferences for "Mt McKinley, E slope" are two points 23.6 km apart, and neither agrees with the label elevations; the published "Mt Apo, east slope, Todaya" point lies near the summit with a stated 5.16 m uncertainty. (6) GEOLocate ignores `state` and returns no uncertainty outside the USA. (7) `handwriting-qwen` silently corrected "Chimaltenago" to "Chimaltenango"; both readers dropped the foot mark on 105526322. (8) The Wikidata Query Service answered 429 with `Retry-After: 120` after two requests from this machine; discovery through the Action API and SPARQL only for known items avoided it. (9) Getty TGN's legacy SPARQL no longer returns historic-name flags or dates, and WHG and Getty's new endpoint need tokens.
 - Failed approaches: two research subagents treated follow-up instructions sent through SendMessage as possible injected content and ignored them (the GeoNames Guatemala test and writing report files); the probe covered Guatemala instead. Put every instruction in the first prompt. The Biodiversity Heritage Library returned 403 to scripted fetches; the Internet Archive mirror (`biostor-65904`) had the narrative's text. The public Overpass instance timed out twice.
 - Remaining follow-ups: the owner decisions listed in the plan; S4's T3a interface, which accepted S8's five needs (unassigned locality text, per-field outcomes, historical and modern roles, per-candidate sources, one provenance entry per sub-call) and needs a paid-call path only if D1 keeps Google; a curator's review of the "Mount McKinley" to "Mount Talomo" hypothesis and of the expedition itinerary; D14 is decided (G27, 2026-09-23, as #104 records it): under G20 a gazetteer confirms handwriting-qwen's silently corrected "Chimaltenango" over the label's "Chimaltenago"; the lookup settles the final value and the field clears, the verbatim is never replaced, and when the first pass picked no reading and the readers differ each reading is kept and none is chosen; D15 is decided too (G34, 2026-09-24): the Google tool clears a field with Google's place ID and no name only when Google's name is one letter off and fits the other place fields, and the owner asked for the retrospective tool to be fully implemented, which S8 now builds; the owner then decided D1 to D3, D6, D7 and D9 with a three-tier design of their own (G35 to G39, 2026-09-24), dismissed D4 and D5, which are held, and set the harness's job (G40); D11 and D13 are the coordinator's engineering rulings (Copernicus GLO-30 tiles; the in-house uncertainty engine), and D8, D10 and D12 wait for their phase, except Getty TGN; Phase 1 as the plan's section 6 describes.
+### 2026-09-23 — Go-live data contract (S5 T1): projection tables, nullable columns, worker-compatible writes
+
+- Branch/worktree: `golive/data-contract` at `.claude/worktrees/epic-rhodes-d168f3`, rebased on `7e3afb8`. Spec delta: `docs/execution/golive/DATA_CONTRACT.md`. Nothing deployed; no cloud resource touched; `firebase dataconnect:sql:diff` not run.
+- Outcome: three new tables (`ReadingComparison` for the disagreement score per region and pair of readings, `HarnessInput` for what the first pass handed the harness per reader, `ToolCall` per harness call attempt), nullable columns for the run's trace id, the reader's route and unreadable spans, the first pass's decision on `TranscriptionVersion` (region, decision kind, selected reading, first-pass model call, rationale), a field candidate's input source and a resolved field's group, and three dropped `NOT NULL` constraints the coordinator confirmed as additive. `dataconnect/connector/projection.gql` adds 18 insert-only operations and `paging.gql` adds `ListDueWorkV2`; no existing operation changed. Shapes agreed with S3 (trace, field groups, profile identity, due work), S4 (first pass, handoffs, tool calls, outcomes, call key, summary) and S6 (thread response).
+- Validation actually run: `scripts/data/test-postgres.sh` against real PostgreSQL 18 and the Data Connect emulator, every stage passing, including the new `projection-test.mjs` (the whole chain for one run, worker allowed on a non-sensitive specimen and refused on a sensitive one with a reviewer positive control per operation, replays as primary-key conflicts, natural-key duplicates refused, trace recorded once, closed vocabularies, due work without sensitive rows) and the backup-restore proof reporting 30 tables; `uv run pytest scripts/ -q` and `uv run pytest tests/ -q` green; pre-commit hooks on every commit.
+- Durable learnings: (1) Data Connect 3.2.0 refuses table input types as operation variables ("cannot use LabelRegion_Data as a variable"), so a batch or list write and a transaction spanning the snapshot and its normalized rows are impossible; the projection is one insert per row with deterministic ids, a primary-key conflict meaning already written. (2) The same mutation field cannot appear twice in one operation without aliases. (3) Data Connect returns UUID key fields as 32 hex characters without dashes, while views that cast to text keep the dashes. (4) The existing `Append*` operations and `ListDueWork` require `canViewSensitive`, which the worker's release membership never has; the new operations apply `SaveSpecimenV3`'s rule, finding the specimen through the row's run in a `@redact` query with a nested `@check`. (5) `_upsert` conflicts only on the primary key and leaves `createdAt` untouched. (6) Any `dataconnect/` edit changes the digests pinned in the three data plan templates, so it also needs the secrets baseline entries for those files and the gitleaks SHA-1 exception refreshed (see `SECRET_SCAN_REVIEW.md`); a full `detect-secrets scan --baseline` rewrites thousands of unrelated lines, so splice only the affected files' entries. (7) The emulator migrates a database holding `main`'s schema to the new one in place, dropping the three `NOT NULL` constraints with rows intact.
+- Failed approaches: a combined snapshot-plus-rows mutation with list inputs (refused by the compiler); an upsert experiment that collided with a natural-key constraint (upserts key only on the primary key).
+- Remaining follow-ups: T2 projection writer in `SqlConnectRepository` (deterministic UUIDv5 ids, per-save delta, catch-up), T3 thread API, T4 contract snapshots; the V4 save operations for a new `ingested` state only if the owner approves that state.
+- Review round (steward, 2026-09-23; five blocking findings and the should-fixes in one push): every projection operation now reads its anchor from the database and refuses a parent of another run or specimen; closed vocabularies for phase, relation, severity, finding outcome and asset kind; consistent decision columns; one order per reading pair; a race-free set-once trace update; approval claims need a sensitive-capable reviewer (coordinator ruling); warning findings in a channel separate from reasons (G23, G27); verbatim and settled values for place and taxon fields (G27, G28); the region in the tool-call key. Learnings: (1) Data Connect 3.2.0's CEL does not compile the `all()` macro, so a check cannot iterate a JSON list; (2) a later `@check` can read an earlier named block through `response.<block>`, and database UUIDs compare equal in CEL, while a variable UUID should be compared in a `where` filter; (3) a `where` cannot mix `_or` with field filters at one level, wrap both in `_and`; (4) a conditional `_updateMany` with `@check(expr: "this == 1")` makes a set-once update race-free; (5) an optional parent is checked with a list query and `vars.x == null || this.size() == 1`, which is safe whatever a null filter does.
+- Review round two (S5 T1, PR #88; the steward's early review of `6b97508`, 15 items and nits, in one push): red `42a10fb` and `9495356`, green `654e571` and `00a6adc`.
+  - Changes: region rows per run (`domainRegionId`, a row id derived from run and domain id); unresolved only without a selected reading (G19, #98); the verbatim stays on the decided transcript when the first pass picked one (G27); settled values only from a successful call, with S4's GBIF cases; one relation per evidence id, with no default; Google's G26 guards; finding ids with severity, rule and field, plus their evidence ids; a lookup's locator set exactly on success; the thread's run check; S3's allowance (G30).
+  - Rulings: `EvidenceItem.locator` drops `NOT NULL` under PLAN 4.4 as written. `SourceAsset`'s object uniqueness becomes per specimen in two applies (PLAN 4.4 as amended by #104): this PR declares `source_asset_specimen_object` beside `specimen_unique_1`, and T2a drops the old one. S4 and S6 agreed to their parts; S6's agreement is a comment on #88.
+  - Validation: `projection-test.mjs` failed on the old head ("$domainRegionId is not expected") and passes 12 checks on the new one. A scratch copy that prints each refusal confirmed every new denial fails on its intended check. On `00a6adc`: `scripts/data/test-postgres.sh` 76 PASS, exit 0; `uv run pytest scripts/ -q` 1547 passed, 50 skipped; pre-commit on every commit.
+  - Learnings: (1) T2's emulator test, not review, found that the content-addressed blob store (`GcsBlobs.put`, create-only) shares one object across specimens and collections, so a per-specimen row keyed by the blob's location collides. Run the writer against the real connector early. (2) The compatible migration drops a replaced unique index before creating its replacement, each DDL statement in autocommit (`log_statement=all` shows no BEGIN), so a constraint swap on a live database takes two applies, new constraint first. Data Connect accepts two type-level `@unique` directives, and the migration then only creates. (3) Inside a `@check`, a UUID variable is lowercase hex without dashes whatever form the caller sent, so `vars.a < vars.b` fixes a pair order independent of formatting, and the unique constraint then refuses the reversed pair without a race. (4) `id: {in: $ids}` works on UUID filters, and `this.size() == size(vars.ids)` checks every listed id exists, refusing duplicates too. (5) RE2's `(?i)` works in CEL `matches`, which pins a vendor's source string against case variants.
+- Review round three (the steward's early review of `1163431`): red `eeb77e2`, green `9bf76b8`.
+  - Changes: a raw-reading handoff is refused only for the selected reading, so each unselected reader's handoff and note are recorded, as S4's #98 writes them; recorded evidence always has a locator; a Google locator, when set, is a place id, and Google's digest is 64 hex; the Google string is pinned on tool calls too; the call key names its source (agreed with S4); record ids cover each field's resolved candidate and finding ids their evidence; identical readings carry no rationale or note; a region's source asset is its original; an approval is the caller's own; catch-up for a lost human decision; G31, stored reason codes only, and synthetic fixture strings.
+  - Learnings: (1) In a `@check`, `cond ? a : b` expresses a rule that flips with a variable, for example the handoff role, in one list query; a separate query per role would need its own message and could not state the exclusive case. (2) A combined vocabulary `@check` on the membership row reports only "permission denied", so run the test once with a copy of `denied()` that prints the message and line, to prove each new refusal fires on its own check.
+  - Also in this push: `cost_basis` gains `reserved` for a call whose outcome is unknown (coordinator ruling under G30, `78ff5fa`); the paid-call entry's keys as S3 records them (`892d2d3`); and `main` merged at `830c099` (#96, #104), with the contract citing #104's merge.
+  - Added before the review, at the steward's request: the coverage check's detail keys in section 8 (promised to S6 for #120), and G32's field shape (PLAN in #124): a field on more than one label keeps one verbatim per label's reading, with `input_source_by_observation` and `settled_observation_ids`, which also replaces section 8's `confirmed_observation_id`.
+### 2026-09-23 — Worker membership bootstrap document (S5 T1b, #96)
+
+- Task: S5 T1b, worker membership; pull request #96, "[golive:data] worker membership bootstrap".
+- Branch/worktree: `golive/data-worker-membership` in `.claude/worktrees/epic-rhodes-d168f3`, from `7e3afb8`; the fixes for the #96 review in the subagent worktree `.claude/worktrees/agent-aa0f7a4d8a4a68f01`. Spec: `docs/execution/golive/WORKER_MEMBERSHIP.md`. Nothing deployed or applied; no uid or UUID committed.
+- Commits: first round `b2b1722` (spec and failing tests) and `dc9e23e` (implementation); the #96 review round `d814122` (spec and failing tests) and `808e981` (implementation).
+- Outcome: per the coordinator's ruling that the worker acts as its own nonsensitive operator account (`LIVE_PROCESSING.md` 62-63), `scripts/data/bootstrap_admin.py` renders one reviewed transaction, `PrepareWorkerMembership`: the worker's organization member, a redacted precondition that the uid holds no collection row in the organization, and an operator, nonsensitive collection member per allow-listed collection. `worker_membership_request` takes no organization or collection identifier: it resolves both from the hash-approved hierarchy artifact, regenerated as `validate_prepared` does, and accepts only the committed allow-list `("insects",)`. The document is applied once, with readback, by the owner's T3e steps or the protected data release.
+- Validation actually run: first round, `scripts/data/test-postgres.sh` with `worker-membership-test.mjs`, 67 PASS, exit 0 (recorded in #96). This round: `uv run pytest tests/test_worker_membership.py tests/test_admin_bootstrap.py -q`, 106 passed; `uv run pytest scripts/ci/test_bootstrap_release.py scripts/ci/test_first_scope_bootstrap.py scripts/ci/test_release_plan_templates.py -q`, 158 passed; `worker-membership-test.mjs` against a private `serve-local.sh` stack (PostgreSQL 18 and the Data Connect emulator), 3 PASS, exit 0. Red checked at `d814122`: the pytest file had 30 failed and 7 passed, and the emulator test exited 1. Before the push, on `a06f9af`: `scripts/data/test-postgres.sh` 67 PASS, exit 0; `uv run pytest scripts/ -q` 1547 passed, 50 skipped; `uv run pytest tests/ -q` 1494 passed, 31 skipped. After merging `main` at `d110d58` (#76, docs only), `uv run pytest scripts/ -q` passed again. Coordinator ruling after that, tightened after the in-turn review's security finding: T3e's bootstrap run itself looks the worker's uid up read-only and refuses unless the account exists, is disabled, and has no email, password, phone or sign-in provider, because production's email-link sign-in allows sign-up and reaches any enabled account that ever held an address; the owner-side lookup is recorded in `OWNER_INPUTS.md` 288. The in-turn review's other fixes: the approved hash is owner-held and apart from the artifact, T3e is the one apply path and runs from a commit whose tree matches `tree_sha256`, G31 is cited directly, and the allow-list test uses `["insects", "mammals"]` so a weakened check would fail.
+- Durable learnings: (1) a membership insert keyed on (organization, uid) makes a replay and "that uid is already a member" the same refusal, so a refusal never shows the rows are right; only an exact readback does. (2) Role and sensitivity as literals make the reviewed bytes carry the security property only if the scope is not a free input; bind it to a committed allow-list resolved from an approved artifact. (3) `CollectionMember` has no foreign key to `OrganizationMember`, so inserting an organization row can make leftover collection rows live. On the emulator, the document without the precondition, applied to a uid holding a leftover `admin` row with sensitive access, committed and left that row live.
+- Failed approaches: the first round's free `organization_id` and `collection_ids` inputs, with "Insects only" kept in prose.
+- Remaining follow-ups: the T3e run with the spec's readback and its own read-only lookup of the worker's account (disabled; no email, password, phone or sign-in provider); S3's switch to `ListDueWorkV2` with `includeSensitive: false`, without which the worker lists no due work.
+- Correction (added with #88): the membership has one apply path, T3e, the protected release's bootstrap job; and the commits above omit `a06f9af` (this entry), `8eb1319` (the coordinator's account-check ruling) and `abbdf50` (the in-turn review's fixes). #96 merged as `830c099`.
+
+### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-2` from `origin/main` at `7e3afb8`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome: every finding of the PR steward's review of #74 (https://github.com/anurag-duddu/specimen-digitization-app/pull/74#issuecomment-5803266279) fixed. The fixes are in `PLAN.md`, the S1, S2, S3, S4, S5 and S8 briefs, and a dated `AGENTS.md` correction on the union merge driver. Owner decisions G19 to G22 recorded. Coordinator rulings since #74 written in: taxonomy success per `GBIF.md` 126-130, no stored Google Maps coordinates, and S3's topic order. Docs only.
+- Evidence: #72 and #74 were both merged by squash auto-merge that this session's desktop PR panel enabled as the owner's account; the panel's status showed `monitor.auto_merge: true` while #74 was bound. This PR opened as a draft; the panel then showed `auto_merge: false`, and GitHub reported no auto-merge request before it was marked ready.
+- Owner decisions (chat, 2026-09-23):
+  - G19: when the first pass picks no reading, the harness runs on the raw readings.
+  - G20: a lookup confirming exactly one reader's literal settles a disagreement.
+  - G21: the repository's "Allow auto-merge" goes off.
+  - G22: all four elevation fields stay mandatory and nothing is derived, so every pilot record is expected to end in needs human review.
+- Durable learnings:
+  - (1) A Claude desktop session's PR panel can hold an Auto-merge switch that enables GitHub auto-merge, as the owner, on the PRs the session opens. After opening a PR, read the panel status and open drafts until auto-merge is confirmed off; `set_auto_merge` cannot act on a merged PR.
+  - (2) GitHub's server-side merge ignores `merge=union`, so this append-only log conflicts on every `gh pr update-branch`; owning sessions merge `origin/main` locally.
+  - (3) The specification answered two of the review's questions (what counts as a successful taxonomy match; dates as literal plus a parsed value). Read the spec's own tables before taking a question to the owner.
+- Failed approaches: calling `set_auto_merge(false)` on a merged PR to reset the panel's switch; the app refuses it.
+- Remaining follow-ups: the owner's G21 setting, field list (with S7's field-coverage table), Hugging Face credits and secrets; S3's G15 coverage-check design.
+
+### 2026-09-23 — Go-live program: #87 fix round, owner decisions G23 to G26
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-2` (PR #87), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome: the PR steward's review of `442b860` (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5803654541) addressed:
+  - the date wording no longer settles an open item by itself, and the owner then decided G24;
+  - `unresolved_transcription` is named and aligned with G19 and G20;
+  - the stage 5 scores are named in S4's brief;
+  - the GBIF rank rule is quoted, and G25 settles it;
+  - G26 settles what may be kept from Google;
+  - the owner-action changes are reflected;
+  - the owning session's local merge is the update path;
+  - a change to another session's file needs that session's sign-off;
+  - provenance keys are named, with a checked-in allowlist;
+  - the standing roles are justified.
+  The worker also gets its own operator account, which the spec already requires. Docs only.
+- Owner decisions (chat, 2026-09-23):
+  - G23: GBIF decides taxonomy, and the other sources support it.
+  - G24: dates clear at the precision written, and two-digit years read as 19xx for Insects.
+  - G25: a confirmed, accepted genus satisfies a genus-only label.
+  - G26: from Google, only the place ID, the outcome and a response fingerprint are kept.
+- Durable learnings:
+  - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
+  - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
+- Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T1a follow-up: #76's should-fixes
+
+- Task: the S2 session, the should-fix list from the PR steward's approval of #76 (comment 5804769771), carried in #78.
+- Branch/worktree: `golive/release-runbook-amendments` (#78), in this session's worktree.
+- Outcome:
+  - The owner-approved exact-version condition on the standing `secretAccessor` grants is restored, per the coordinator's ruling. Only the runtime expiration is superseded, and a version bump is an owner action.
+  - The never-in-prompts rule and the steward's replacement of the privacy review now stand in both restated trace scopes.
+  - G26 reads "a Google geocoding result keeps only…" throughout.
+  - `specimenDataRuntimeAbsence` is named in the time-bounded lists.
+  - D1 is labelled as the coordinator's ruling.
+  - Retention stays open in the Logfire approval.
+  - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
+- Commits/PRs: `876fc53` and this closeout, on #78. Later on #78:
+  - `8f04330`: RELEASE.md section 1 states PLAN 4.4 as #104 merged it;
+  - the review-fix commits for #78's five review rounds: `ccb8fad`, `7690f5b`, `c47984a`, `2d499b4`, `ac43a1b` and the round-5 commit. Round 4 swept every dated note that retires a ledger, cost or reservation. Before the sweep, 0 of 36 carried the exact G30 sentence (9 had a variant wording); after it, 37 of 37 do.
+  - Round 5 added `budget` to that sweep: six more notes, and two undated #76 lines, now carry the sentence. It also swept acceptance. Five notes made PLAN section 8's loop the whole of acceptance. Each now carries one sentence that keeps the rest, naming all 25 UI and live cases the human-review checker requires.
+- Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
+- Durable learnings:
+  - A note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
+  - When a review finding recurs across files, sweep every sibling with a script before fixing any. Three rounds of fixing the named instances still left 27 of 36 notes without the G30 sentence, and one regex over the dated notes found those 27.
+  - A sweep is only as good as its vocabulary. The round-4 pattern missed the notes that say "budget", and it also skipped undated amendment paragraphs.
+  - A note that states what now holds must not read as a closed list. "The checks stand: A, B" retires everything unnamed; "the rest stands, including A, B" keeps it.
+- Failed approaches: none.
+- Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
+
+### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-3` (PR #104), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Records owner decisions G27 to G29.
+  - Records two coordinator rulings from #88's review: sensitive uploads are never processed by the worker, as the spec requires; `approvedBy` is null unless the caller is a reviewer with sensitive access.
+  - Addresses the steward's merge review of #87 (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5804177173). The worker's membership step is specified. G26 now reaches traces, fixtures, lab folders and the request URL. The two gates that read only the last lookup are named. G21 is standing. The steward no longer updates branches. The TRN-005 keys join the never-drop list. `search.py` gets an owner.
+  - One nit is declined with its reason: a separate lab read token (the owner reuses existing credentials). Docs only.
+  - Adds a coordinator ruling for #88, narrowed in the fix round to one closed exception. `SourceAsset`'s object uniqueness becomes per specimen on (organizationId, collectionId, specimenId, bucket, objectName, generation), because identical bytes share one content-addressed object. The added columns are NOT NULL, and the change takes two applies. The first adds the new constraint beside the old; a later one drops the old. One apply drops before it creates, each statement in autocommit, as S5 measured with statement logging.
+  - The fix round for the security review (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804585044):
+    - the ten's not-sensitive declaration rests on the owner's verified classification (G31);
+    - S4's G20 line points at G27;
+    - the upload-screen notice is part of the ruling;
+    - an unmatched place keeps the place ID with no name and clears under G1 until the owner decides S8's D15 (#94);
+    - "the admin document" wording is fixed;
+    - S5 owns `scripts/data/`.
+  - The second fix round (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804939504):
+    - the NOT NULL rule now also excludes key columns and every unique constraint's columns;
+    - S8's D15 is cited, with option (b) holding under G1;
+    - the old unique is dropped only after a read-back;
+    - the Geocoding URL ban covers logs, exceptions, stored errors and tool-call results;
+    - the worker's membership resolves the committed `insects` key and is applied by the protected release;
+    - the worker account must be disabled, with no email, password, phone or sign-in provider (from #96's security review: email-link sign-in allows sign-up);
+    - citations are re-pointed after #76;
+    - S4's `normalized` rule, "is not processed" for Sensitive uploads, S3's G30 text and the no-pick grounding.
+- Owner decisions (chat, 2026-09-23):
+  - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
+  - G28: taxon names work the same way.
+  - G29: a Roman-numeral month is the month. The harness works through every reading a notation allows and settles with evidence; each subcollection has its own harness, Insects first.
+  - G30: production model calls may spend USD 5 of the USD 25; the lab's USD 5 is separate. The coordinator's mechanism: each call reserves its worst case and settles to its cost, since counting reservations alone would stop the pilot near 48 runs instead of about 238.
+  - G31: the owner checked the ten pilot slides and classified them not sensitive.
+- Durable learnings:
+  - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
+  - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 44 and HAR-013 made explicit, so check a new format question against it before asking the owner.
+  - (3) An owner can answer a narrow question with a broader principle (G27, G29). Record the answer verbatim, then write the engineering reading separately, so reviewers can check one against the other.
+  - (4) A rule that relaxes a safety property must be a closed exception. "No existing operation uses it" cannot see idempotency uniques enforced by plain inserts (`ModelObservation` (runId, stepKey), `Checkpoint`, `OutboxEvent`). A column added to a unique constraint must also be NOT NULL.
+  - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
+  - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
+- Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
+
+### 2026-09-24 — Go-live release workstream (S2), T1c: #78's acceptance follow-ups
+
+- Task: the S2 session, the PR steward's should-fix list from #78's merge review (comment 5808938104).
+- Branch/worktree: `golive/release-docs-acceptance-followups`, from `main` at `0632994`, in this session's worktree.
+- Outcome:
+  - The five acceptance notes now keep "every UI and live case" the human-review checker requires. It also requires four manual subcriteria and `HUMAN-RECORDS`, which the notes leave under "the rest stands".
+  - The notes no longer name the gate record, which main doesn't define, as the packet's replacement. The release packet and the cohort ledger retire (G11), and G9's USD 25 replaces the cohort budget. G30's sentence follows that retirement in every note.
+  - In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API and worker SHAs and image digests and the SQL and rules revisions with the release runs on main that deployed them, and the rest of DEPLOY-IDENTITY stands.
+  - All five notes state G1 (a record the harness resolves is cleared without a human), and their headers name G1, G2, G9 and G11.
+  - `golive/RELEASE.md` section 2.1 tracks the `human_review.py` lines that still enforce what G1, G2, G9 and G11 retire:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE`'s automatic-clearance and institutional-approval clause (52, 124);
+    - the policy gates and the review block (194-200), keeping the rule that an operational block cannot qualify;
+    - the frozen manifest (103, 168-169, 175, 290), keeping the evidence fields and re-anchoring the original-bytes and scope checks to the ten;
+    - the manifest digest on SAM receipts, the report and case rows (224; `acceptance.py` 431, 443);
+    - COHORT-BUDGET (298-304; `acceptance.py` 512-517).
+
+    The coordinator assigned these to S2, after T3d, on 2026-09-24, and will add `scripts/qa/live/` to PLAN section 6.
+- Commits/PRs: `8772220`, `3926f0d` (the owner) and the review round's commit.
+- Validation actually run: pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check; the acceptance sweep (5 of 5 notes carry the updated sentence).
+- Durable learnings:
+  - A replacement named in a note must exist where the reader is, on main. Name what retires, and say what the check compares against now.
+  - A note that newly retires a ledger or a budget takes G30's sentence, even when it only restates a substitution.
+  - Tracking rows are a later PR's work order, so each must name exactly what a decision retires and what stays.
+- Failed approaches: none.
+- Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
+### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-4`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Records owner decisions G32 to G34. G34 decides S8's D15 for the Google tool and makes the retrospective georeferencing tool of #94 a build; its D items then went to the owner, who decided six of them as G35 to G39 (below).
+  - Records owner decisions G35 to G45 (G42 answers G8 with the field list; G43 confirms G16; G44 and G45 come from S4's real runs): S8's D1, D2, D3, D6, D7 and D9, plus the harness's job. G37 and G41 revise G22 for elevation. Also records the coordinator reading from #88's review: a field without a lookup whose readers all agree takes that text and clears. D4 and D5 are on hold.
+  - Addresses the steward's final review of #104 (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5805226880). Covered: G30's mechanism in section 4.3 (worst-case reservation, what settles a call, the atomic ledger, token and request caps, SAM 3's startup); the worker-account rule labelled a coordinator ruling; the owner-held approval hash; the live read-back as the release's own check; who writes G29's rules and notations; the URL ban in fixtures and lab folders; the NOT NULL ban on every table with TRN-005's columns; the lab's ledger.
+  - Records coordinator rulings: `cost_basis: reserved` for an unknown outcome; `url_launcher` for #122; S6's reason filter and run-state picker; S5's reason-code search as its T5.
+  - Correction to the entry "2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29" above. That entry also records G30 and G31, and its follow-ups should list D15 with D1 to D13.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  - (1) Check a tool's generated SQL against the reviewed setup, not only its documentation. Data Connect compiles `uuidV4()` to `uuid_generate_v4()`, which needs `uuid-ossp`; firebase-tools runs `CREATE EXTENSION` as a temporary built-in superuser with a password, and the reviewed initializer adds no extensions. S2's first-release spec would have stopped at its migration step; S2's revised T3c spec, now #147 (a236fd97), has the initializer create exactly that extension.
+  - (2) firebase-tools shows objects the schema stops declaring only in its STRICT diff, so a `COMPATIBLE` apply should not drop them. Either way, S2's migration allowlist admits no drop, so a planned drop needs its own reviewed statement, run after a live read-back and before the diff.
+  - (3) A summary of another session's option can be broader than the option. The plan's wording of D15's option (b), a place ID whenever Google settles one place, would have cleared a Philippine label to Denali, Alaska; S8's D15 covers only a near spelling. Quote the proposer's condition, and put the question to the owner with the regression case in hand.
+  - (4) An owner's free-text answer can add scope ("fully implemented"). Record it verbatim, turn the new scope into owned work, and keep the owner's other pending decisions pending rather than reading acceptance into them.
+  - (5) Before widening a reading, check what the owner declined earlier. The coordinator read G37's "like other fields" as allowing unit conversion and filled endpoints, which the owner had declined by name at G22. #124's review caught it, and the owner then chose them explicitly (G41). A reading never overturns an explicit refusal; ask instead.
+- Failed approach: none. The first draft of section 4.4 turned one list item into separate sentences, which cut the rest of the list off from its lead-in, so it was rewritten with semicolons.
+- Remaining follow-ups: owner questions saved for a natural moment: D4, D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3). D8, D10 and D12 wait for their phase. Still open: relaying #119's IAM list after its review, then #123's window packet; the G15 calibration sign-off. When #78 merges, re-map the citations into the files it changes (PRD, RELEASE_RUNTIME, RELEASE_AUTHORIZATION, DEPLOYMENT).
