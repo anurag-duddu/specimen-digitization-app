@@ -259,6 +259,24 @@ class Workflow:
                     digest(run.circuit),
                 )
             permit = admission.token
+        if billable and not run.profile.synthetic:
+            from .lane_allowance import reserve_step
+
+            # The program's allowance (LANE.md T2b), once the circuit admits the call.
+            allowance_issue = reserve_step(
+                self.repository, principal, specimen, step, cost, self.clock
+            )
+            if allowance_issue:
+                run.blocker = allowance_issue
+                run.stage = "processing_blocked"
+                run.disposition = None
+                return self.repository.save(
+                    principal,
+                    specimen,
+                    revision,
+                    f"allowance:{revision}",
+                    digest({"allowance": allowance_issue}),
+                )
         run.usage.steps += 1
         if external:
             run.usage.external_calls += external_weight

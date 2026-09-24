@@ -233,7 +233,7 @@ clearance authority (`review_risk.py` 165, 329-331).
 | Tools per field | `taxon`: `taxonomy_verifier`. `country`, `province_state`, `county`, `city`, `precise_location`: `geography_lookup`. `fmnh_ins_number`: `catalog_number_validator`. The three dates: `date_parser`. Every other field: none (transcribed as seen). `tools` is their union | PLAN 4.2; S4 owns the tools |
 | Risk policy | the existing uncalibrated policy, above | brief T4 |
 | Clearance policy | `insects-clearance-v1`. S4's G1 change moves it to v2 with a new profile version | S4 |
-| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 15,000; each reader 20,000; `parse` 20,000. `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
+| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 45,000; each reader 20,000; `parse` 20,000. Each bounds its step's worst case (T2). `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
 | Routes for the first pass and the harness | `first_pass_route` and `harness_route` fields exist, unset until S4's routes are approved | S4 |
 | Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900), and a Roman numeral I to XII in the month position is that month (`roman_numeral_months`). S4's date parser stamps each rule, its version and the profile on every parsed date that uses it, so the reading stays visibly derived (`CONTRACTS.md` 234-235) | G24, G29 |
 
@@ -565,13 +565,92 @@ ruling of 2026-09-23). T2b and T2c build it:
 - An unknown outcome (a timeout, a transport error, a 5xx, or a response
   without usage) stays reserved at its full amount, recorded as
   `cost_basis: reserved`. A retry reserves again.
-- The run's own budget keeps its rule: its reservations are never refunded
-  (`domain.py` 222-227). With no allowance configured, the ledger is not
-  consulted.
+- The run's own budget settles the same way (the coordinator's ruling of
+  2026-09-24). A paid step's reservation is released to its settled cost when
+  every call reported usage or a billed amount; an unknown outcome stays
+  reserved in full. The run's limit stays 500,000. With no allowance
+  configured, the ledger is not consulted, and the run's budget still
+  settles.
+
+Every reservation bounds its step's worst case, so no call can cross the
+allowance (PLAN 4.3; the coordinator's ruling of 2026-09-24). The pilot's, at
+the pinned prices (T2c):
+
+- `segment` 45,000: at 136 micro-dollars a second (4 vCPU and 16 GiB at Cloud
+  Run's request-based rates). Cloud Run bills a request-based instance while it
+  starts, serves and shuts down (S2, from the billing settings page, updated
+  2026-09-21). A request must be answered within the 300 s request timeout,
+  cold start included (the container runtime contract), and shutdown is the
+  10 s grace period. (300 s + 10 s) × 136 plus the request is about 42,161.
+  The rest is margin for anything else billed at start, such as an image
+  pull, which the pages do not mention.
+- A model call that sends a crop reserves, before it starts, for each
+  request it may make. A reading makes at most two, and its retry resends the
+  crop with the first answer and at most 8,192 bytes of feedback (HARNESS.md
+  section 15). Each request reserves the lesser of:
+  - (a) the route's context length at the input price, plus the answer's cap
+    (4,096 tokens) at the output price;
+  - (b) where the route documents its image-token rule, the crop's tokens
+    under that rule, plus the prompt and the answer's cap.
+
+  A route without a documented rule reserves (a). The stage's reservation,
+  20,000, is the floor.
+  - The readers document their rules (T2c lists them), so (b) applies, and
+    it is far below (a): 29,082 a request on qwen and 44,237 on muse. For
+    every crop up to a source image's 40,000,000 pixels, the two requests
+    come to at most 16,284 on qwen and 18,391 on muse. Both readers reserve
+    the 20,000 floor.
+  - The first pass's route (GLM-5.3-Flash) documents no image rule: not on
+    DeepInfra's page, zai-org's model card or Z.ai's documentation. It will
+    reserve (a) when it lands: with its 1,048,576-token context and 1,024-token
+    answers, 157,799 a request, 315,598 for two. First passes run one at a
+    time, and the run's budget settles, so a run's 500,000 holds.
+- `parse` 20,000: today's extraction agent sends text only, with the same
+  request and answer limits on the qwen route, about 10,000 at most. The
+  harness (S4) replaces it with its own route and up to four geocoding
+  requests, each with at most three attempts (HARNESS.md section 11); its
+  reservation moves with it, bounded the same way.
 
 Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread
 shows it, so a block is never a surprise.
+
+How T2b builds it:
+
+- **Setting.** `processing.program_allowance` in a published profile holds
+  `allowance_micros` and `ledger_collection`, a public tree key. Every profile
+  that carries an allowance must carry the same one, so the program has a
+  single allowance. The pilot's is 5,000,000 micro-dollars, with its ledger in
+  `insects`.
+- **The ledger's collection.** The tree key is resolved through the private
+  bindings and must be bound to exactly one collection. Otherwise a request to
+  process is refused with `program_allowance_unavailable`, and an upload's run
+  is `processing_blocked` with that blocker. At request time the run copies the
+  allowance and the ledger's collection into its execution policy, like the
+  rest of the collection's allowance.
+- **When it reserves.** For a paid step with a stage cost. The reservation comes
+  after the run's own budget check and the provider circuit's admission, and
+  before the step's intent is saved. A circuit refusal therefore reserves
+  nothing.
+- **The document.** A `worker_cursor` document in the ledger collection's
+  scope, marked not sensitive. Its id derives from the organization and the
+  ledger collection. It holds the reserved total and the last reservation
+  (specimen, run, step, attempt, amount, allowance, time).
+  - Collections may share the ledger, so a compare-and-set conflict is retried
+    against a fresh read, up to five times.
+  - A ledger that stays busy or cannot be read blocks the run with
+    `program_allowance_ledger_unavailable`, also an operational block.
+- **On the run.** `Run.program_allowance` holds the allowance, the reserved
+  total after the step, what remains, the ledger's revision and the time. A
+  refused reservation records the same, with the amount it asked for.
+- **Blocks and refusals.** Both blocks are operational (QUE-005), and the
+  operator's `retry` or `resume` action requests the run again.
+
+  | Code | What it means | What to check |
+  | --- | --- | --- |
+  | `program_allowance_exhausted` | The next paid step would take the program past its model allowance, so it was not called. | The allowance and the remaining amount on the run. Only the owner raises the allowance, by a profile edit. Then retry. |
+  | `program_allowance_ledger_unavailable` | The worker could not read or update the program's ledger. | The worker's membership in the ledger's collection, and that the ledger document is its own. Then retry. |
+  | `program_allowance_unavailable` | A request was refused: the ledger's tree key is not bound to exactly one collection. | `SPECIMEN_COLLECTION_BINDINGS_JSON`. Then request processing again. |
 
 ### Cost of every paid call
 

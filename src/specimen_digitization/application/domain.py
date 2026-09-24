@@ -290,6 +290,13 @@ class ExecutionPolicy(Record):
     stage_cost_reservations: StageCostReservations | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # The program's allowance and the collection holding its ledger (LANE.md T2b).
+    program_allowance_micros: int | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
+    program_ledger_collection: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def timeout_fits_lease(self):
@@ -392,6 +399,10 @@ class Run(Record):
     # Each field's group from the bound profile (LANE.md T4). Omitted until bound.
     field_groups: dict[str, Literal["mandatory", "optional"]] = Field(
         default_factory=dict, exclude_if=lambda value: not value
+    )
+    # The program's position after this run's latest reservation (LANE.md T2b).
+    program_allowance: dict | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
 
 

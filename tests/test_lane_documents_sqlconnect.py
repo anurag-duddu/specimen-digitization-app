@@ -15,6 +15,7 @@ import requests
 
 from specimen_digitization.application.circuit_runtime import RepositoryCircuitStore
 from specimen_digitization.application.domain import Scope
+from specimen_digitization.application.lane_allowance import ProgramLedger
 from specimen_digitization.application.lane_worker import CollectionFence
 from specimen_digitization.application.production import (
     SqlConnectRepository,
@@ -106,3 +107,23 @@ def test_the_worker_creates_and_saves_provider_circuit_state(worker):
     admission = circuit.admit(key, 20)
     assert admission.status == "permitted"
     assert circuit.record_success(admission.token).status == "recorded"
+
+
+def test_the_worker_creates_and_saves_the_program_ledger(worker):
+    _, scope, repository = worker
+    moment = datetime.now(timezone.utc)
+    ledger = ProgramLedger(repository, scope, clock=lambda: moment)
+    for micros, total in ((15_000, 15_000), (20_000, 35_000)):
+        reservation = ledger.reserve(
+            5_000_000, micros, specimen_id=str(uuid4()), run_id="run-a",
+            step="segment", attempt=1,
+        )
+        assert reservation.issue is None
+        assert reservation.position["reserved_total_micros"] == total
+    stored = ledger.read()
+    assert (stored["revision"], stored["reserved_total_micros"]) == (2, 35_000)
+    assert stored["sensitive"] is False
+    refused = ledger.reserve(
+        40_000, 10_000, specimen_id=str(uuid4()), run_id="run-a", step="parse", attempt=1
+    )
+    assert refused.issue == "program_allowance_exhausted"
