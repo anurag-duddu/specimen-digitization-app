@@ -570,7 +570,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     a 5xx, or a response without usage). A reserved call costs its full
     reservation, which is never released. Only `computed` or `billed` settles a
     call, and a settled cost above its reservation counts in full (coordinator
-    ruling under G30).
+    ruling under G30; PLAN 4.3 and S5's brief in #124, 18958e0).
   - Each entry is passed through as S3 records it on the run (LANE.md T2c):
     `step`, `attempt`, `kind` and its target, `reserved_micros`, `usage`,
     `outcome`, `cost_micros`, `cost_basis`, `price_list {version, as_of}` and
