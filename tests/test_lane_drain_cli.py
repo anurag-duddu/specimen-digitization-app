@@ -136,7 +136,11 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
     drain_env.setattr(worker, "ProductionAdapters", lambda blobs: "adapters")
     drain_env.setattr(worker, "Workflow", workflow)
     drain_env.setattr(lane_worker, "DrainWorker", Worker)
-    drain_env.setattr(observability, "configure_observability", lambda **_: None)
+    drain_env.setattr(
+        observability,
+        "configure_observability",
+        lambda **options: seen.update(observability=options),
+    )
     drain_env.setattr("signal.signal", lambda signum, handler: None)
 
     cli(drain_env, "--mode", "production", "--drain")
@@ -156,6 +160,8 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
     }
     assert registries["risk_registry"] is not None
     assert not seen["stop"].is_set()
+    # The lane traces in approved-content mode (LANE.md T5a, PLAN 4.5).
+    assert seen["observability"]["capture_mode"] == observability.CaptureMode.APPROVED_CONTENT
 
 
 def test_the_drain_without_a_job_reports_an_unconfigured_hand_over(
