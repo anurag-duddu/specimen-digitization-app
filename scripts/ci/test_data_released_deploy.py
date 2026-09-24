@@ -9,6 +9,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -341,6 +342,20 @@ def test_the_command_line_releases_a_gate_record_through_deploy_without_a_plan(t
     calls, outputs = command_line("--deploy")
     assert calls == [(tmp_path / "packet.json", tmp_path / "data-released.json")]
     assert outputs == "receipt_sha256=" + hashlib.sha256(b"{}\n").hexdigest() + "\n"
+
+
+@pytest.mark.parametrize("arguments,plane,step", [
+    (["--prepare-initializer-intents"], "data-initialization", "prepare_owned_initializer"),
+    (["--initialize"], "data-initialization", "initialize_existing"), (["--dispose-initializer"], "data", "dispose_owned_initializer"),
+])
+def test_each_initialization_job_runs_its_own_step_from_its_own_gate_plane(tmp_path, command_line, monkeypatch, arguments, plane, step):
+    import release_initialize
+    steps = []
+    monkeypatch.setattr(D, "Google", lambda path, used: SimpleNamespace(plane=used, packet=record(used)))
+    monkeypatch.setattr(release_initialize, step, lambda google, directory, *output: steps.append((google.plane, directory))
+                        or output and output[0].write_text("{}\n"), raising=False)
+    command_line(*arguments)
+    assert steps == [(plane, tmp_path)] and command_line.calls == []
 
 
 @pytest.mark.parametrize("arguments", [["--admit"], ["--prepare-inputs"], ["--prepare-clone-intent"],
