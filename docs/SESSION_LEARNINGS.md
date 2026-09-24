@@ -12027,3 +12027,26 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Remaining follow-ups:
   - The migrate step (this PR's successor) and the job (T3c2b).
   - When the stack takes #99's head, `deploy_data.relaxations()` switches to `schema_gate.read_relaxations()`.
+
+### 2026-09-24 — Go-live release workstream (S2), T3c2: the migrate step
+
+- Task: the S2 session, T3c's first initialization, steps 3 to 5, the step that drives the SQL half (`docs/execution/golive/RELEASE.md` section 4.3).
+- Branch/worktree: `golive/release-data-migrate-step`, stacked on `golive/release-data-migrate-sql`. The subagent wrote the first red and green pair; this session wrote the second.
+- Outcome: `deploy_data.py --migrate` runs only from a data gate record, as `specimen-data-release`.
+  - **Preconditions**, each stopping before any effect:
+    - this run's one attested `data-initializer/v1` receipt;
+    - the postconditions, read back read-only, hashing to the receipt's;
+    - the initializer's principal gone;
+    - a live schema that is the placeholder or the merged files.
+  - **The diff.** `migration_plan` sends the merged schema validate-only, `COMPATIBLE` on the live etag, and reads Data Connect's 400 in the shape `firebase-tools` 15.8.0 reads. Unless every statement is allowed and none is destructive, nothing runs, and the log names each refused statement by kind.
+  - **The migration and release.** The plan carries the statements and the relaxed pairs. Then come the schema (`COMPATIBLE`, never server-side migration), the supplemental indexes as the owner role, the connector and the Storage rules.
+  - **The catalog check**, then a `data-initialized/v1` receipt with public facts on every exit.
+- Commits/PRs: red `eeff678` and green `29bb852` (the subagent's); red `b20c68a` and green `256ae71` (the read-only precondition); this closeout.
+- Validation actually run:
+  - the subagent: red 27 failed, 161 passed; green 297 passed;
+  - this session: the second red, 22 failed and 79 passed, every failure "the migrate step never runs the initializer's post"; green, 190 passed; `SPECIMEN_TEST_INITIALIZATION_PG=true` over both PostgreSQL files, 44 passed.
+- Durable learnings:
+  - A guard written for one step can block a later step that reuses it. `release_initialize.mjs post` refuses any other client session, which is right before initialization but wrong for a migrate re-run that meets Data Connect's sessions. The migrate step needs only the postconditions.
+  - PostgreSQL shows another role's `backend_type` as NULL unless the reader has that role's privileges or `pg_read_all_stats`, so a count of sessions depends on who counts.
+- Failed approaches: my first red fixture failed every migration before its output existed. I caught it at green and amended the red commit.
+- Remaining follow-ups: T3c2b wires the job. T3d reuses this step for applies while the runtime runs.
