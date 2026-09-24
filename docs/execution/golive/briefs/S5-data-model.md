@@ -42,6 +42,15 @@ endpoint.
   through `SaveDocumentV2` only at the revision it was checked against;
   `cost_basis` is `computed`, `billed` or `reserved`, the last for a call whose
   outcome is unknown, held at its full reservation (coordinator rulings).
+- G38: each field value records its layer, verbatim, settled or derived, and
+  a derived value what it came from; a reviewer's value is the review
+  decision; the thread shows every layer, with the first pass beside any
+  reviewer decision; the "fill the rest" route runs S4's `derive_rest` and
+  returns the derived values, unsaved, for the reviewer to edit and approve.
+  G37 revises G22 in the contract. A field without a lookup whose readers all
+  read the same text takes that text as its verbatim and its value, on one
+  label as on several (coordinator reading of G27 and G32). G39: no
+  georeference fields for the pilot.
 - Key everything per region: a specimen can carry several labels, and five
   pilot slides carry two (PLAN section 3).
 - `Run.field_groups` is new, and you decide its shape. From Google geocoding only

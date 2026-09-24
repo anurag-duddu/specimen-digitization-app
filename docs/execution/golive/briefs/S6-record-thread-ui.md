@@ -50,7 +50,14 @@ including a failed automatic coverage check (G15); and
 id. Use `specimen_ui` components; there is no timeline component yet, so add one
 to the package with its own tests.
 
-**T3. Queue and processing.** Needs human review (filterable by reason),
+**G38 (owner, 2026-09-24).** The thread marks each value's layer, verbatim,
+settled or derived, with a derived value's evidence one step away. In review,
+after a reviewer fills a field, "Fill the rest" derives the remaining fields
+through S5's route; the filled values show as derived and stay editable before
+approval, and the result is announced once.
+
+**T3. Queue and processing.** Needs human review (filterable by reason; until
+S5's T5, only the codes stored without a suffix, coordinator ruling),
 deferred, cleared, processing and blocked; a record declared Sensitive shows
 that it is not processed, because automated reading never runs on sensitive
 records, and the upload screen says so before submission, with the Sensitive

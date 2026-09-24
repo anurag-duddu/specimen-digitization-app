@@ -103,7 +103,20 @@ functional one comes first (G6).
   `near_spelling` warning finding that never routes the record. Otherwise it
   goes to review with the candidate. S8 builds the retrospective
   georeferencing tool behind your T3a interface (G34).
-- G22: the four elevation fields stay mandatory and nothing is derived.
+- G22, revised by G37: the four elevation fields stay mandatory and are
+  filled like other fields, with authority and evidence: a stated elevation
+  fills the other unit's fields by exact conversion, a single stated value
+  fills both endpoints, and a missing one is derived by S8's tool from the
+  settled location.
+- G35 to G40 (PLAN section 2.1): the place tool's three tiers and open-source
+  coordinates (G35, S8's build behind your interface); no conclusion without
+  evidence, and curator-confirmed places (G36); fill in what the label leaves
+  out, with authority and evidence, harness-wide (G37); every value records
+  its layer, and `derive_rest` serves review's "fill the rest" (G38); the
+  georeference stays in the tool result (G39); the agent reads everything
+  transcribed and keeps looking things up (G40), stated in its system prompt.
+  S8 builds the geographic derivations; you build those that need no outside
+  data (coordinator ruling).
 - G5: when the specification is silent or contradictory, ask the coordinator.
 
 ## Pull requests, in order
@@ -189,8 +202,8 @@ under QUE-004. Validate the separately parsed date, not the verbatim text
 (`policy.py` 119-126 parses the literal today): a date clears at the precision
 written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral
 in the month position is that month (G29). Keep the
-elevation gate (99-106): the four elevation fields stay mandatory and nothing is
-derived (G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
+elevation gate (99-106), which accepts elevation values filled with authority
+and evidence (G37, revising G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to

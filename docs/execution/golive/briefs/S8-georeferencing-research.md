@@ -21,7 +21,13 @@ first and test first as PLAN section 7 requires, in modules it owns, merged
 by the steward. D1 to D13 remain the owner's: revise #94 for G34 (D1's
 recommendation that a Google-only `success` does not by itself clear a field
 conflicts with it), send the coordinator D1 to D13 as neutral questions, and
-let each part of the build wait for the D items that decide it.
+let each part of the build wait for the D items that decide it. The owner
+answered D1, D2, D3, D6, D7 and D9 on 2026-09-24 (G35 to G39, with G40 on the
+harness's job); D11 and D13 are coordinator rulings; D4 and D5 are on hold.
+You build the geographic derivations behind S4's interface (coordinator
+ruling). Your modules: `src/specimen_digitization/application/georef_*.py`
+and `georeferencing_tool.py`, their tests, `tests/fixtures/georeferencing/`
+and `docs/execution/golive/GEO.md`.
 
 ## Grounding in this repository
 
