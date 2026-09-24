@@ -358,9 +358,10 @@ execution outcome, and the per-specimen receipts in Storage.
    ledger appended, the cumulative total inside USD 12.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
    > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-   > G9 and G11. Cost ledgers and reservation artifacts are retired for this
-   > program. The spending ceiling is USD 25, cumulative, infrastructure and
-   > models together.
+   > G9 and G11. The release cost ledgers and their reservation artifacts are
+   > retired for this program. The spending ceiling is USD 25, cumulative,
+   > infrastructure and models together, and G30's per-call reservations stand
+   > (PLAN section 4.3).
 4. Independent reconciliation of deployed source, results and cleanup.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
    > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
@@ -399,6 +400,8 @@ Only after step 5 is the release complete.
   > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G2. There is no single execution over the whole cohort to redispatch:
   > the API starts a worker execution when work is due, and the worker
-  > drains it one specimen at a time, within the USD 25 ceiling.
+  > drains it one specimen at a time. Paid model calls stay within G30's USD 5
+  > allowance: each reserves its worst-case cost before it starts and stays
+  > reserved while its outcome is unknown (PLAN section 4.3).
 - The public site is broken: follow the emergency rollback rule in
   `DEPLOYMENT.md`, which covers Hosting only.

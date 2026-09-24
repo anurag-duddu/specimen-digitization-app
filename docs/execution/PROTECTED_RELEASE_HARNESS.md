@@ -219,8 +219,9 @@ entries. Historical liabilities cannot be removed by a retry or a new date.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
-> models together, and the cumulative ledger and its reserved entries are
-> retired for this program.
+> models together, and this cumulative release ledger and its reserved
+> entries are retired for this program. G30's per-call reservations stand
+> (PLAN section 4.3).
 
 The data and runtime workflows have separate non-cancelling run queues. Their
 mutation jobs share `specimen-protected-mutation`; neither waits for the other
@@ -250,8 +251,9 @@ autoscaling limit alone is an exact billing hard stop.
 > running to an absolute one-hour deadline. The other fences here stand:
 > expected etags and previous revisions, immutable registry tags, the one
 > clone name with its held Storage claim, SAM 3's immutable checkpoint files
-> from a read-only cache with no provider credential, and the API and SAM 3
-> service and revision caps.
+> from a read-only cache with no provider credential, its bounded requests
+> (its only time limit once it scales to zero), and the API and SAM 3 service
+> and revision caps.
 
 Both recovery entrypoints use `scripts/ci/release_clone.py`. The original intent
 must be attested, published as this run's immutable artifact, downloaded and

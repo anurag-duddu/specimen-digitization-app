@@ -239,8 +239,9 @@ primary application source must not be reported as processing every original.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
 > models together, replacing the USD 5 ceiling and its USD 4/USD 1/USD 0.75
-> sub-allocations reserved below; release envelopes and cost-gated reservations
-> are retired for this program.
+> sub-allocations reserved below; release envelopes and the release's
+> cost-gated reservations are retired for this program. G30's per-call
+> reservations stand (PLAN section 4.3).
 
 Reuse an already successful, sufficiently fresh native backup when it covers
 the quiesced source checkpoint. Otherwise price and approve one new backup.
@@ -442,8 +443,8 @@ not relax any sensitivity check or classify actual images.
 > G1. Automated clearance is in scope for this program: a record the harness
 > resolves is cleared without a human; human review and deferral stay as the
 > specification defines them. The sensitivity defaults above stand:
-> default-sensitive legacy evidence, creator-only control documents and no
-> downgrade.
+> default-sensitive legacy evidence, creator-only control documents, no
+> downgrade, and the initial administrator's sensitive access stays false.
 
 ## Explicit classification connector follow-up
 

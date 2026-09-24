@@ -74,7 +74,11 @@ escalations; none was bypassed. No current tool wait is represented as a pass.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2. Specimens are processed one at a time, on demand, instead of an exact
 > ten-manifest pinned batch; SAM 3 serves any run the worker authorizes and
-> scales to zero instead of expiring after an hour.
+> scales to zero instead of expiring after an hour. The rest of these rows
+> stands: SAM 3 holds no model credential and reads its pinned checkpoint from
+> a read-only cache; it checks its caller and audience; each request keeps a
+> hard timer, whose length the processing lane sets; and the worker's durable
+> dispatch and intent fences still prevent replay.
 
 `--materialize-config` keeps strict readers intact while copying hash-pinned
 read-only mounts into private UID-owned runtime files. No credentials, images,
@@ -415,8 +419,9 @@ acceptance remains Not confirmed until these receipts exist.
 > G1, G9 and G11. The full pipeline, including automated clearance and the
 > harness's lookups such as GBIF, is this program's scope rather than
 > deferred, so a harness-resolved record clears without a human; the spending
-> ceiling is USD 25, cumulative; and the cost ledger this section describes is
-> retired for this program.
+> ceiling is USD 25, cumulative; and the release cost ledger this section
+> describes is retired for this program. G30's per-call reservations stand
+> (PLAN section 4.3).
 
 An evidence-only pilot is an intermediate evidence collection step. It does not
 exercise ordinary classification, structured extraction, the complete authority

@@ -275,9 +275,9 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | CLS-004 | P1 | Allow an authorized user to correct classification later; create a new run and explicitly invalidate profile-dependent downstream results. |
 | CLS-005 | P0 | Map a selected classification to one active, versioned collection profile. Missing or ambiguous mappings must fail closed to review. |
 | CLS-006 | P1 | Support profile-specific classification thresholds, top-k behavior, and mandatory human confirmation. |
+| CLS-007 | P1 | Capture confirmed user corrections as evaluation data; do not automatically use them for model training without an approved policy. |
 
 > 2026-09-23: CLS-002 is superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G14. There is no classification stage: the profile comes from the collection a specimen was uploaded or imported into, resolved down the collection tree, and a reviewer can correct the collection as CLS-003 and CLS-004 describe.
-| CLS-007 | P1 | Capture confirmed user corrections as evaluation data; do not automatically use them for model training without an approved policy. |
 
 ### 11.3 Segmentation
 

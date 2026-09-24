@@ -230,7 +230,8 @@ Checked against platform documentation current in 2026.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1 and G2.
   > Scope is the whole pipeline, one specimen at a time, on demand; a record the
   > harness resolves is cleared without a human, and the ten remain the
-  > acceptance cohort, processed in order.
+  > acceptance cohort, processed in order. The deployment stays web only, with
+  > one administrator, which the rate-limit note above depends on.
 - The coordinator runs the read-only cloud inventory after the owner signs
   in.
 - Later the same day: the whole collection tree is bootstrapped in the first

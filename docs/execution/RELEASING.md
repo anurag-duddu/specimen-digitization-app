@@ -35,7 +35,9 @@ first, and the automated gate checks it independently.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. Data and runtime releases now deploy automatically on merge, like
 > Hosting, once the required checks pass and the PR steward approves; no
-> envelope of evidence has to line up first.
+> envelope of evidence has to line up first. The principle stands: no single
+> person or agent deploys by deciding to, because a merge deploys only after
+> the required checks pass and the PR steward approves.
 
 ## The three planes
 

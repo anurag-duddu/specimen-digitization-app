@@ -186,7 +186,8 @@ requires.
   `dataconnect/`, a backup with a verified restore path, an additive-only check
   and a compatible apply that works while the runtime runs; a one-time,
   idempotent hierarchy bootstrap whose identities never reach a log or
-  artifact.
+  artifact. The catalog and evidence stay encrypted to the owner's recipient
+  keys, as today.
 - T4, the owner's list: a read-only script that prints the exact standing IAM
   grants and secrets T2 and T3 need, each bound to a named resource with its
   reason. It also prints the time-bounded windows for the one-time roles (the
