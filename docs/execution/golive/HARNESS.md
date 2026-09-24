@@ -691,6 +691,17 @@ the dataset), the settled input fields with their values, and its checks.
     `stated_date`, rule `one_date_both_ends`).
   - A written range keeps both ends as written.
   - Review's "fill the rest" applies it to a reviewer's date as well.
+- **A copied end** (the coordinator's ruling of 2026-09-24, implementing G41,
+  G44 and G38). The real runs showed that the agent may give the same literal to
+  both ends of an elevation or collecting-date pair, even when the label writes
+  it once.
+  - When both ends carry the same literal and the reading contains that text
+    once, the harness drops the To literal as a copy. G41 or G44 then derives To
+    with its record.
+  - The value and the clearance are unchanged. Only To's layer stays honest:
+    derived, not stated.
+  - When the text occurs twice, both ends stay as stated, and a range keeps
+    both ends.
 
 **Applying derivations** (`apply_derivations`), whoever emitted them:
 - A field the label states is never replaced; its verbatim stays as written.
