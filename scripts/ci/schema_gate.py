@@ -12,12 +12,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[2]
-# The data contract's reasons. A relation field may drop NOT NULL with the named column its @ref covers.
-NAMED_RELAXATIONS = {("SourceAsset", "width"): "raw model responses are assets without pixels",
-                     ("SourceAsset", "height"): "raw model responses are assets without pixels",
-                     ("LabelRegion", "cropAssetId"): "the domain's crop is optional",
-                     ("EvidenceItem", "locator"): "a lookup that found no single match (no_match, ambiguous, an error) has "
-                                                  "nothing to locate, and G26 allows no Google value but a place id"}
+CONTRACT, HEADING = ROOT / "docs/execution/golive/DATA_CONTRACT.md", "### 3.3 Relaxed constraints"
 # Provenance and idempotency keys, TRN-005's included, that no change ever relaxes.
 PROTECTED = frozenset(("ModelObservation", field) for field in ("runId", "regionId", "provider", "modelVersion", "stepKey",
                                                                "rawAssetId", "promptVersion", "inputSha256"))
@@ -216,8 +211,7 @@ def parse_connector(files: dict[str, str]) -> dict[str, dict]:
 def _users(name: str, table: dict, index: str, fields: set[str], operations: dict) -> list[str]:
     """Operations using a unique: a key access naming its fields, an upsert, an onConflict naming it; unclear is a use."""
     rows = {name[:1].lower() + name[1:], *_names(table["directives"]["table"][0], "singular")}
-    keyed = {row + suffix for row in rows for suffix in ("", "_update", "_delete")}
-    users = set()
+    keyed, users = {row + suffix for row in rows for suffix in ("", "_update", "_delete")}, set()
     for operation, value in operations.items():
         tokens = [token for _, token in _tokens(value["body"])]
         for at, token in enumerate(tokens):
@@ -237,12 +231,9 @@ def _users(name: str, table: dict, index: str, fields: set[str], operations: dic
 
 
 def _swaps(name: str, old: dict, new: dict, operations: dict) -> tuple[set[str], list[str]]:
-    """PLAN 4.4's closed @unique exception, create before drop: one merge adds the new unique beside the old one, a later
-    one drops the old one once the new one is live. The text a valid step exempts, and why the others are refused."""
+    """PLAN 4.4's closed @unique exception, create before drop over two merges: what a valid step exempts; refusals."""
     exempt, refusals = set(), []
-    for (table, before, listed), ((after, wider), _) in NAMED_UNIQUE_RELAXATIONS.items():
-        if table != name:
-            continue
+    for (before, listed), ((after, wider), _) in ((k[1:], v) for k, v in NAMED_UNIQUE_RELAXATIONS.items() if k[0] == name):
         was, kept, had, now = ([text for text in value["directives"].get("unique", ()) if _names(text, "indexName") == (index,)]
                                for value, index in ((old, before), (new, before), (old, after), (new, after)))
         old_listed, new_live, new_merged = (len(texts) == 1 and set(_names(texts[0], "fields")) == set(fields)
@@ -267,7 +258,7 @@ def _swaps(name: str, old: dict, new: dict, operations: dict) -> tuple[set[str],
     return exempt, refusals
 
 
-def _table(name: str, old: dict, new: dict, types: dict, operations: dict) -> list[str]:
+def _table(name: str, old: dict, new: dict, types: dict, operations: dict, relaxations: dict) -> list[str]:
     exempt, refusals = _swaps(name, old, new, operations)
     refusals += [f"{name}: @table key or name changed"] if new["directives"]["table"] != old["directives"]["table"] else []
     for kind in ("unique", "index"):
@@ -276,7 +267,7 @@ def _table(name: str, old: dict, new: dict, types: dict, operations: dict) -> li
             refusals.append(f"{name}: type-level @{kind} removed or changed")
         if any(field in old["fields"] for text in set(after - before) - exempt for field in _names(text, "fields")):
             refusals.append(f"{name}: new type-level @{kind} over an existing field")
-    # NOT NULL never drops on a key (id by default) or a field- or type-level @unique field.
+    # NOT NULL never drops on a key (id by default), a @unique field or a PROTECTED key, even when the contract lists it.
     guarded: set[str] = set()
     for table in (old, new):
         guarded |= set(_names(table["directives"]["table"][0], "key", ("id",)))
@@ -296,12 +287,12 @@ def _table(name: str, old: dict, new: dict, types: dict, operations: dict) -> li
         if now["non_null"] and not was["non_null"]:
             refusals.append(f"{where}: NOT NULL added")
         elif was["non_null"] and not now["non_null"]:
-            ref = now["directives"].get("ref")
-            follows = ref is not None and any((name, column) in NAMED_RELAXATIONS and column in new["fields"]
+            ref = now["directives"].get("ref")  # a relation field follows a listed column its @ref covers
+            follows = ref is not None and any((name, column) in relaxations and column in new["fields"]
                                               and not new["fields"][column]["non_null"] for column in _names(ref, "fields"))
             if (name, field) in PROTECTED or field in guarded:
                 refusals.append(f"{where}: NOT NULL dropped on a key, unique or provenance field")
-            elif (name, field) not in NAMED_RELAXATIONS and not follows:
+            elif (name, field) not in relaxations and not follows:
                 refusals.append(f"{where}: NOT NULL dropped outside the named relaxations")
     columns = {_sql(field, value["directives"].get("col")) for field, value in old["fields"].items()}
     for field, now in sorted((field, value) for field, value in new["fields"].items() if field not in old["fields"]):
@@ -312,8 +303,7 @@ def _table(name: str, old: dict, new: dict, types: dict, operations: dict) -> li
             refusals.append(f"{where}: new field over an existing column")
         if foreign and all(column in old["fields"] for column in foreign):
             refusals.append(f"{where}: new foreign key over existing fields only")
-        # Implicit foreign-key columns follow a naming convention and may already exist.
-        elif not foreign and now["type"] in types:
+        elif not foreign and now["type"] in types:  # implicit foreign-key columns may already exist
             refusals.append(f"{where}: new relation without @ref fields over a new field")
     return refusals
 
@@ -336,18 +326,18 @@ def _operations(live: dict, merged: dict) -> list[str]:
     return refusals
 
 
-def check_additive(live_schema: dict[str, str], merged_schema: dict[str, str],
-                   live_connector: dict[str, str], merged_connector: dict[str, str]) -> list[str]:
-    """Refusals for the merged sources against the live ones (RELEASE.md 4.1); an empty list means additive. An empty
-    live schema is the placeholder, which the caller initializes instead; this raises for it, as for unparseable sources."""
+def check_additive(live_schema: dict[str, str], merged_schema: dict[str, str], live_connector: dict[str, str],
+                   merged_connector: dict[str, str], *, relaxations: dict | None = None) -> list[str]:
+    """Refusals for the merged sources against the live ones (RELEASE.md 4.1); empty means additive. The empty placeholder
+    raises (the caller initializes), as unparseable sources do. Relaxations default to the merged tree's contract."""
     live, merged, operations = parse_schema(live_schema), parse_schema(merged_schema), parse_connector(live_connector)
     if not live:
         raise ValueError("the live schema is the empty placeholder; the release initializes instead")
-    refusals = []
+    relaxations, refusals = read_relaxations() if relaxations is None else relaxations, []
     for name, old in sorted(live.items()):
         new = merged.get(name)
         if old["kind"] == "table" and new and new["kind"] == "table":
-            refusals += _table(name, old, new, merged, operations)
+            refusals += _table(name, old, new, merged, operations, relaxations)
         elif new != old:  # a view must stay exactly as it is; a table cannot become a view
             refusals.append(f"{name}: {old['kind']} {'changed' if new and old['kind'] == 'view' else 'removed or renamed'}")
     existing = {_sql(name, value["directives"][value["kind"]][0]) for name, value in live.items()}
@@ -356,19 +346,59 @@ def check_additive(live_schema: dict[str, str], merged_schema: dict[str, str],
     return refusals + _operations(operations, parse_connector(merged_connector))
 
 
-def read_tree(directory: Path) -> dict[str, str]:
-    """The committed *.gql sources of one directory by file name, the paths a release uploads."""
-    if not Path(directory).is_dir():
-        raise ValueError("source directory missing")
+def _read(path: Path) -> str:
     try:
-        return {path.name: path.read_text(encoding="utf-8") for path in sorted(Path(directory).glob("*.gql"))}
+        return path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         raise ValueError("source file is not UTF-8") from None
 
 
+def read_tree(directory: Path) -> dict[str, str]:
+    """The committed *.gql sources of one directory by file name, the paths a release uploads."""
+    if not Path(directory).is_dir():
+        raise ValueError("source directory missing")
+    return {path.name: _read(path) for path in sorted(Path(directory).glob("*.gql"))}
+
+
+def parse_relaxations(text: str) -> dict[tuple[str, str], str]:
+    """The NOT NULL drops that the contract's section 3.3 table names, {(table, field): reason}, read strictly."""
+    lines = [line.strip() for line in text.splitlines()]
+    if lines.count(HEADING) != 1:
+        raise ValueError("relaxed-constraints heading missing or repeated")
+    table: list[list[str]] = []
+    for line in lines[lines.index(HEADING) + 1:]:  # the section's first table, before the next heading
+        if line.startswith("#") or (table and not line.startswith("|")):
+            break
+        if line.startswith("|"):
+            table.append([cell.strip() for cell in re.split(r"(?<!\\)\|", line)[1:-1]])
+    if table[:1] != [["Constraint", "Change", "Why"]] or len(table) < 2 or len(table[1]) != 3 or not all(
+            re.fullmatch(r":?-+:?", cell) for cell in table[1]):
+        raise ValueError("relaxed-constraints table missing or malformed")
+    if any(len(row) != 3 for row in table[2:]):
+        raise ValueError("malformed relaxed-constraints row")
+    relaxed: dict[tuple[str, str], str] = {}
+    for constraint, _, why in (row for row in table[2:] if row[1] == "drop `NOT NULL`"):  # the unique swap is closed
+        names = [re.fullmatch(r"`([A-Z][A-Za-z0-9]*)\.([a-z][A-Za-z0-9]*)`", part)
+                 for part in re.split(r",\s*and\s+|,\s*|\s+and\s+", constraint)]
+        if not all(names) or not why:
+            raise ValueError("malformed relaxed column name" if not all(names) else "empty relaxation reason")
+        for column in (name.groups() for name in names):
+            if column in relaxed:
+                raise ValueError("duplicate relaxed column")
+            relaxed[column] = why
+    return relaxed
+
+
+def read_relaxations(path: Path | None = None) -> dict[tuple[str, str], str]:
+    """The relaxed constraints of a data contract file, the merged tree's (ROOT) by default."""
+    path = Path(CONTRACT if path is None else path)
+    if not path.is_file():
+        raise ValueError("data contract missing")
+    return parse_relaxations(_read(path))
+
+
 def live_sources(schema: dict, connector: dict | None) -> tuple[dict[str, str], dict[str, str]]:
-    """The source files of Data Connect REST GET responses by path; a missing connector (None) has none. The
-    placeholder schema has no files ({} or {"files": []}): check_additive is not called for it; the caller initializes."""
+    """REST GET responses' source files by path. A missing connector (None) and the placeholder schema have none."""
     found = []
     for resource in (schema, {"source": {}} if connector is None else connector):
         source = resource.get("source") if isinstance(resource, dict) else None
@@ -385,10 +415,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compare live Data Connect sources with a merged tree, offline.")
     for side, part in (("live", "schema"), ("live", "connector"), ("merged", "schema"), ("merged", "connector")):
         parser.add_argument(f"--{side}-{part}", type=Path, required=side == "live", default=ROOT / "dataconnect" / part)
+    parser.add_argument("--contract", type=Path, default=CONTRACT, help="the data contract whose section 3.3 lists relaxations")
     args = parser.parse_args(argv)
     try:
         refusals = check_additive(*(read_tree(getattr(args, f"{side}_{part}")) for part in ("schema", "connector")
-                                    for side in ("live", "merged")))
+                                    for side in ("live", "merged")), relaxations=read_relaxations(args.contract))
     except ValueError as exc:
         raise SystemExit(f"schema gate blocked: {exc}") from None
     print("\n".join(refusals) or "additive")
