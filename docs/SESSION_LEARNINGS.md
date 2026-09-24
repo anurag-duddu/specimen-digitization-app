@@ -11798,6 +11798,22 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: a first draft of the plan specified adjudication behaviour and routing conditions the owner had not asked for; the owner rejected new design decisions, and the plan now quotes the owner's rules and the existing specification instead.
 - Remaining follow-ups: the owner's field list; the owner actions queued in `~/specimen-golive/OWNER_ACTIONS.md`; launching and coordinating the seven sessions.
 
+### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
+
+- Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
+- Branch/worktree: `golive/release-contract-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated "Superseded for the go-live program by PLAN section 2.1 G#" notes beside every superseded clause in eleven contract documents, and a banner on each release and approval document (`PRD.md` and `CONTRACTS.md` carry notes only). The `AGENTS.md` first deployment rule now follows G11: it keeps every safeguard G11 doesn't retire and adds the additive-only schema gate; the never-deploy and never-weaken rules are unchanged. `APPROVED_LOGFIRE_TRACING.md` carries G3's content scope and `APPROVED_RELEASE_BUDGET.md` carries G9's USD 25. The new `docs/execution/golive/RELEASE.md` holds the invariants, the coordinator-confirmed definition of "additive" and the table of code that still enforces superseded clauses. T1b (the runbooks and release histories) follows as its own PR, for size.
+- Commits/PRs: [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76): spec delta `0088a70`, amendments `6bb4064`, this closeout.
+- Validation actually run: pre-commit on the twelve files (all hooks passed); `uv run pytest tests/test_deployment_policy.py -q` (6 passed); `git diff --check` clean; a link and anchor check over the 84 added links (0 broken).
+- Durable learnings:
+  - No document's bytes are pinned by code or tests; `3303d129…` fingerprints the owner's 2026-09-14 message. The pins are code constants (`release_budget.py` `APPROVED_LIMIT_MICROS`, `mint_release_packet.py` `HUMAN_REVIEW_SCOPES`).
+  - `codex/initialize-firebase-placeholder` (`2c0880f7`) is already on `main` as `f9a44543` (PR #29) and assumes an absent database, so T3 needs a new exists-and-empty path.
+  - `roles/run.invoker` on a Cloud Run job is enough to execute it without overrides, and act-as is not needed.
+  - All five WIF providers and the seven release and runtime identities exist, each provider pinned to repository, push, `main` and its environment (read-only inventory).
+  - "Additive" (PLAN 4.4, coordinator 2026-09-23): dropping NOT NULL only on columns the data contract names with a reason, never on provenance or idempotency keys; new connector operations only at `@auth(level: NO_ACCESS)` with the membership `@check`s.
+- Failed approaches: three of four editor subagents' results carried an automatic "Instruction Poisoning" flag. Every added line was audited: each subagent edited only its own files, nothing unsafe was found, and seven overreaching notes were corrected. The worst had misread G7's "existing gateway" as the Logfire AI Gateway, and a note that claimed a non-goal was superseded was removed.
+- Remaining follow-ups: T1b; T2 runtime plane; T3 data plane; T4 owner IAM and secret list; T5 first releases; T6. Owner actions posted to `~/specimen-golive/OWNER_ACTIONS.md`: Maps key, Logfire token, Hugging Face rotation. The owner later withdrew the rotation: the runtime reuses the existing Hugging Face token version, and the existing Logfire token is copied into the writer secret.
+
 ### 2026-09-23 — Go-live program: plan corrections after the review of #72, owner decisions G13 to G18
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -11827,6 +11843,16 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Review round three (the steward's early review of `1163431`): red `eeb77e2`, green `9bf76b8`.
   - Changes: a raw-reading handoff is refused only for the selected reading, so each unselected reader's handoff and note are recorded, as S4's #98 writes them; recorded evidence always has a locator; a Google locator, when set, is a place id, and Google's digest is 64 hex; the Google string is pinned on tool calls too; the call key names its source (agreed with S4); record ids cover each field's resolved candidate and finding ids their evidence; identical readings carry no rationale or note; a region's source asset is its original; an approval is the caller's own; catch-up for a lost human decision; G31, stored reason codes only, and synthetic fixture strings.
   - Learnings: (1) In a `@check`, `cond ? a : b` expresses a rule that flips with a variable, for example the handoff role, in one list query; a separate query per role would need its own message and could not state the exclusive case. (2) A combined vocabulary `@check` on the membership row reports only "permission denied", so run the test once with a copy of `denied()` that prints the message and line, to prove each new refusal fires on its own check.
+### 2026-09-23 — Worker membership bootstrap document (S5 T1b, #96)
+
+- Task: S5 T1b, worker membership; pull request #96, "[golive:data] worker membership bootstrap".
+- Branch/worktree: `golive/data-worker-membership` in `.claude/worktrees/epic-rhodes-d168f3`, from `7e3afb8`; the fixes for the #96 review in the subagent worktree `.claude/worktrees/agent-aa0f7a4d8a4a68f01`. Spec: `docs/execution/golive/WORKER_MEMBERSHIP.md`. Nothing deployed or applied; no uid or UUID committed.
+- Commits: first round `b2b1722` (spec and failing tests) and `dc9e23e` (implementation); the #96 review round `d814122` (spec and failing tests) and `808e981` (implementation).
+- Outcome: per the coordinator's ruling that the worker acts as its own nonsensitive operator account (`LIVE_PROCESSING.md` 62-63), `scripts/data/bootstrap_admin.py` renders one reviewed transaction, `PrepareWorkerMembership`: the worker's organization member, a redacted precondition that the uid holds no collection row in the organization, and an operator, nonsensitive collection member per allow-listed collection. `worker_membership_request` takes no organization or collection identifier: it resolves both from the hash-approved hierarchy artifact, regenerated as `validate_prepared` does, and accepts only the committed allow-list `("insects",)`. The document is applied once, with readback, by the owner's T3e steps or the protected data release.
+- Validation actually run: first round, `scripts/data/test-postgres.sh` with `worker-membership-test.mjs`, 67 PASS, exit 0 (recorded in #96). This round: `uv run pytest tests/test_worker_membership.py tests/test_admin_bootstrap.py -q`, 106 passed; `uv run pytest scripts/ci/test_bootstrap_release.py scripts/ci/test_first_scope_bootstrap.py scripts/ci/test_release_plan_templates.py -q`, 158 passed; `worker-membership-test.mjs` against a private `serve-local.sh` stack (PostgreSQL 18 and the Data Connect emulator), 3 PASS, exit 0. Red checked at `d814122`: the pytest file had 30 failed and 7 passed, and the emulator test exited 1. Before the push, on `a06f9af`: `scripts/data/test-postgres.sh` 67 PASS, exit 0; `uv run pytest scripts/ -q` 1547 passed, 50 skipped; `uv run pytest tests/ -q` 1494 passed, 31 skipped. After merging `main` at `d110d58` (#76, docs only), `uv run pytest scripts/ -q` passed again. Coordinator ruling after that, tightened after the in-turn review's security finding: T3e's bootstrap run itself looks the worker's uid up read-only and refuses unless the account exists, is disabled, and has no email, password, phone or sign-in provider, because production's email-link sign-in allows sign-up and reaches any enabled account that ever held an address; the owner-side lookup is recorded in `OWNER_INPUTS.md` 288. The in-turn review's other fixes: the approved hash is owner-held and apart from the artifact, T3e is the one apply path and runs from a commit whose tree matches `tree_sha256`, G31 is cited directly, and the allow-list test uses `["insects", "mammals"]` so a weakened check would fail.
+- Durable learnings: (1) a membership insert keyed on (organization, uid) makes a replay and "that uid is already a member" the same refusal, so a refusal never shows the rows are right; only an exact readback does. (2) Role and sensitivity as literals make the reviewed bytes carry the security property only if the scope is not a free input; bind it to a committed allow-list resolved from an approved artifact. (3) `CollectionMember` has no foreign key to `OrganizationMember`, so inserting an organization row can make leftover collection rows live. On the emulator, the document without the precondition, applied to a uid holding a leftover `admin` row with sensitive access, committed and left that row live.
+- Failed approaches: the first round's free `organization_id` and `collection_ids` inputs, with "Insects only" kept in prose.
+- Remaining follow-ups: the T3e run with the spec's readback and its own read-only lookup of the worker's account (disabled; no email, password, phone or sign-in provider); S3's switch to `ListDueWorkV2` with `includeSensitive: false`, without which the worker lists no due work.
 
 ### 2026-09-23 — Go-live program: corrections after the review of #74, owner decisions G19 to G22
 
@@ -11871,3 +11897,44 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-3` (PR #104), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Records owner decisions G27 to G29.
+  - Records two coordinator rulings from #88's review: sensitive uploads are never processed by the worker, as the spec requires; `approvedBy` is null unless the caller is a reviewer with sensitive access.
+  - Addresses the steward's merge review of #87 (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5804177173). The worker's membership step is specified. G26 now reaches traces, fixtures, lab folders and the request URL. The two gates that read only the last lookup are named. G21 is standing. The steward no longer updates branches. The TRN-005 keys join the never-drop list. `search.py` gets an owner.
+  - One nit is declined with its reason: a separate lab read token (the owner reuses existing credentials). Docs only.
+  - Adds a coordinator ruling for #88, narrowed in the fix round to one closed exception. `SourceAsset`'s object uniqueness becomes per specimen on (organizationId, collectionId, specimenId, bucket, objectName, generation), because identical bytes share one content-addressed object. The added columns are NOT NULL, and the change takes two applies. The first adds the new constraint beside the old; a later one drops the old. One apply drops before it creates, each statement in autocommit, as S5 measured with statement logging.
+  - The fix round for the security review (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804585044):
+    - the ten's not-sensitive declaration rests on the owner's verified classification (G31);
+    - S4's G20 line points at G27;
+    - the upload-screen notice is part of the ruling;
+    - an unmatched place keeps the place ID with no name and clears under G1 until the owner decides S8's D15 (#94);
+    - "the admin document" wording is fixed;
+    - S5 owns `scripts/data/`.
+  - The second fix round (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804939504):
+    - the NOT NULL rule now also excludes key columns and every unique constraint's columns;
+    - S8's D15 is cited, with option (b) holding under G1;
+    - the old unique is dropped only after a read-back;
+    - the Geocoding URL ban covers logs, exceptions, stored errors and tool-call results;
+    - the worker's membership resolves the committed `insects` key and is applied by the protected release;
+    - the worker account must be disabled, with no email, password, phone or sign-in provider (from #96's security review: email-link sign-in allows sign-up);
+    - citations are re-pointed after #76;
+    - S4's `normalized` rule, "is not processed" for Sensitive uploads, S3's G30 text and the no-pick grounding.
+- Owner decisions (chat, 2026-09-23):
+  - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
+  - G28: taxon names work the same way.
+  - G29: a Roman-numeral month is the month. The harness works through every reading a notation allows and settles with evidence; each subcollection has its own harness, Insects first.
+  - G30: production model calls may spend USD 5 of the USD 25; the lab's USD 5 is separate. The coordinator's mechanism: each call reserves its worst case and settles to its cost, since counting reservations alone would stop the pilot near 48 runs instead of about 238.
+  - G31: the owner checked the ten pilot slides and classified them not sensitive.
+- Durable learnings:
+  - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
+  - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 44 and HAR-013 made explicit, so check a new format question against it before asking the owner.
+  - (3) An owner can answer a narrow question with a broader principle (G27, G29). Record the answer verbatim, then write the engineering reading separately, so reviewers can check one against the other.
+  - (4) A rule that relaxes a safety property must be a closed exception. "No existing operation uses it" cannot see idempotency uniques enforced by plain inserts (`ModelObservation` (runId, stepKey), `Checkpoint`, `OutboxEvent`). A column added to a unique constraint must also be NOT NULL.
+  - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
+  - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
+- Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.

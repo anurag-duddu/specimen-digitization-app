@@ -18,9 +18,9 @@ functional one comes first (G6).
    row).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
-3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (322-340), QUE-001 to
-   QUE-005 (386-390), section 12.4 (484-564) and the failure table (673-685);
-   `docs/execution/CONTRACTS.md` 210-260; `docs/GBIF.md`;
+3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (323-341), QUE-001 to
+   QUE-005 (387-391), section 12.4 (487-567) and the failure table (676-688);
+   `docs/execution/CONTRACTS.md` 210-270; `docs/GBIF.md`;
    `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` and
    `HARNESS_OPTIONS.md`.
 4. Code: `prompts.py`, `application/harness.py`, `evidence_harness.py`,
@@ -61,8 +61,26 @@ functional one comes first (G6).
   lookups on each reader's raw reading; fields that resolve clear on their own
   evidence, and a field still left with conflicting readings goes to needs human
   review. G20: when the readers disagree and a lookup confirms exactly one
-  reader's literal, that literal is used with its provenance and the field can
-  clear; it counts as a resolved critical disagreement for QUE-002.
+  reader's literal, that settles the disagreement, with its provenance, and the
+  field can clear; it counts as a resolved critical disagreement for QUE-002.
+  For places and taxon names that literal does not become the verbatim (G27,
+  G28, below).
+- G27 and G28: for places and taxon names the verbatim keeps the text as written
+  and the final value is what the lookup settled; both are stored. When the
+  first pass picked no reading and the readers' literals differ, each reader's
+  reading is kept as captured, none is chosen, and the field clears on the
+  settled value with a success outcome. S5's contract has the shape. For a
+  place, the final value's name (`FieldValue.normalized`) is only a reader's
+  literal the lookup matched exactly; otherwise the final value is the place ID
+  and the outcome with no name (G26), and the field clears under G1 until the
+  owner decides S8's D15 (#94). For a taxon it is GBIF's settled name.
+- G29: a Roman numeral I to XII in the month position is that month. The
+  harness works through every reading a notation allows, for dates (month
+  names, Roman numerals, both day and month orders, two-digit years under G24)
+  and for every other field, and settles the one the evidence supports; what
+  it cannot settle goes to needs human review with the candidates. The
+  notations go in the Insects harness's system prompt; each subcollection gets
+  its own.
 - G22: the four elevation fields stay mandatory and nothing is derived.
 - G5: when the specification is silent or contradictory, ask the coordinator.
 
@@ -70,7 +88,8 @@ functional one comes first (G6).
 
 Each starts with its spec delta in `docs/execution/golive/HARNESS.md` and
 failing tests (fakes for Hugging Face and HTTP; recorded real responses as
-fixtures), then the implementation.
+fixtures, a Google geocoding response first reduced to the place ID, the
+outcome and the fingerprint, G26), then the implementation.
 
 **T1. Hugging Face routes (G7).** The first pass sees the label crop, so it
 needs a vision model; the harness needs reliable tool calling or structured
@@ -79,7 +98,10 @@ Providers, measure them on real crops (the acceptance lab has crops;
 `specimen-huggingface-preflight` makes paid preflight calls; a local Hugging
 Face token exists, never print it), and register them in `model_gateway.py` like
 the existing routes. Report the choice and the measurements to the coordinator
-before building on them.
+before building on them. Approved 2026-09-23: `first-pass-glm`
+(zai-org/GLM-5.3-Flash on deepinfra, text and image) and, provisionally until
+the lab re-measures it with the real harness and G29's prompt,
+`harness-deepseek` (deepseek-ai/DeepSeek-V4.1-Flash on deepinfra, text only).
 
 **T2. The first pass (stage 6).** Persist the decision and the per-reader
 records into S5's contract.
@@ -97,13 +119,20 @@ today's adapter: `lookup.py` 105-118 returns `success` for an exact synonym and
 for geography (G10; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
-`PRD.md` 679; keep only the place ID, the outcome and the response digest,
-everywhere including traces, and drop Google's names, address parts and
-coordinates (G26)); the deterministic validators for catalog numbers and dates
-(a Roman numeral I to XII in the month position is the month; a date clears at
-the precision written, and a two-digit year reads as 19xx for Insects,
-recorded as the profile's rule (G24); date-shaped slide-preparation codes on
-the pilot slides are not collection dates, PLAN section 3). No Parties tool: `identified_by_irn` is optional for the
+`PRD.md` 682; keep only the place ID, the outcome and the response digest,
+everywhere including traces, fixtures and lab folders, and drop Google's names,
+address parts and coordinates (G26); the tool hands the agent only those, and no
+span, log line, exception text, stored error or tool-call result records the
+request URL, which carries the key); the deterministic validators for catalog numbers and dates
+(a Roman numeral I to XII in the month position is the month (G29); the date
+tool returns every reading a literal's notation allows, both day and month
+orders for an all-numeric date, and the harness settles the one the evidence
+supports or sends the field to needs human review with the candidates (G29);
+a date clears at the precision written, and a two-digit year reads as 19xx for
+Insects, recorded as the profile's rule (G24); an uncertain date (a written
+"?") is outside G24 and keeps the existing date gate; date-shaped
+slide-preparation codes on the pilot slides are not collection dates, PLAN
+section 3). No Parties tool: `identified_by_irn` is optional for the
 slide pilot (G16), and the other fields outside taxonomy and geography are
 transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
 encodes them (`domain.py` 43-54); add none. Phases as the specification lists
@@ -132,13 +161,26 @@ G15) satisfies it, and a failed check sends the record to needs human review.
 action in `api.py` 1940-1967 stays; the queue decision may also return deferred
 under QUE-004. Validate the separately parsed date, not the verbatim text
 (`policy.py` 119-126 parses the literal today): a date clears at the precision
-written, and a two-digit year reads as 19xx for Insects (G24). Keep the
+written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral
+in the month position is that month (G29). Keep the
 elevation gate (99-106): the four elevation fields stay mandatory and nothing is
 derived (G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to
-needs human review. Tests cover every path: all mandatory fields resolved, cleared;
+needs human review. When the first pass picked no reading, the non-empty check
+reads the settled value with a success outcome, since no verbatim was chosen
+(G27, G28), and the grounding check (75, `field.literal in excerpt`, which
+raises on that None literal) tests each reader's reading against its own
+evidence. The taxonomy
+gate (140-157) and finalize's operational check (163) read only
+`run.lookups[-1]`, which is arbitrary once G19 and G20 add a lookup per reader:
+the taxonomy gate reads the lookup that settled the taxon field, and the
+operational check catches an operational failure, not recovered by a retry, in
+any lookup the decision depends on. G23's flag and the readers' spelling
+difference under G27 are findings, never reasons for review. Tests cover every
+path: the G19 and G20 paths with several lookups per run; all mandatory fields
+resolved, cleared;
 no data for a mandatory field, needs human review with the reason; no data for
 an optional field, still cleared; a failed coverage check, needs human review;
 capability limit, deferred; transient error, retried, then an operational block.
