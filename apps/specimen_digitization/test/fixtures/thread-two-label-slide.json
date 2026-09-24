@@ -183,7 +183,7 @@
       "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
       "input_source": "decided_transcript", "region_id": "region-right", "observation_id": null,
       "attempt": 2, "arguments": {"query": "GUATEMALA Zacapa Sa. de las Minas"}, "outcome": "success",
-      "result": {"candidates": [{"place_id": "fixture-place-id-zacapa"}]}, "error": null, "retry_after": null,
+      "result": {"place_ids": ["fixture-place-id-zacapa"]}, "error": null, "retry_after": null,
       "evidence_id": "evidence-geo-1",
       "started_at": "2026-09-23T14:31:45Z", "completed_at": "2026-09-23T14:31:46Z"
     },

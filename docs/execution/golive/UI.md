@@ -162,6 +162,22 @@ a null the screen names.
   accepted name may be shown, G28). Its evidence names each source's
   relation to the value: decides, supports or contradicts (G23). The
   decision carries its findings, hard, warning or info (#88 at `6b97508`).
+- The thread API, S5's #171 at `a73b323`, adds to section 8, and the model
+  reads each part:
+  - a region's `reviewer_decision` (its decided text, whether it left the
+    region unresolved, its rationale), beside the model's own first pass,
+    which a later layer never erases (G38);
+  - a field's `layer` (verbatim, settled or derived; unknown keeps the
+    server's word), `derived_from`, `authority_identity` (name, source,
+    record id, credit; a Google value has no name, G26) and its own
+    `findings`, such as G45's value-shape check;
+  - the `review` input source, with a call's `review_decision_id`;
+  - an evidence entry's `observation_ids`, the readings it quotes;
+  - a Google call's result as `place_ids` only (G26).
+  S5's `thread-example.json` from #171 is now the canonical fixture
+  (`test/fixtures/thread-example.json`, byte for byte), so the client and
+  the server test one file. The synthetic two-label fixture stays for the
+  screen tests that change its values.
 
 ### T2.2 Readings: one section per label region
 
