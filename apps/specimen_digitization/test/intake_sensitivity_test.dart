@@ -11,6 +11,8 @@ import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/widgets/caveat_text.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'intake_harness.dart';
 
@@ -151,7 +153,7 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        await selectSensitivity(tester, 'Not sensitive');
+        await selectSensitivity(tester, 'Not sensitive: processed');
         await choose(tester);
         await submit(tester);
         expect(items, 0);
@@ -195,10 +197,13 @@ void main() {
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
     expect(
-      find.descendant(of: sensitivityControl, matching: find.text('Sensitive')),
+      find.descendant(
+        of: sensitivityControl,
+        matching: find.text('Sensitive: not processed'),
+      ),
       findsOneWidget,
     );
-    await selectSensitivity(tester, 'Not sensitive');
+    await selectSensitivity(tester, 'Not sensitive: processed');
     await choose(tester);
     await submit(tester);
     expect(bodies.map((body) => body['sensitive']), [false, false]);
@@ -235,11 +240,11 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    await selectSensitivity(tester, 'Not sensitive');
+    await selectSensitivity(tester, 'Not sensitive: processed');
     await choose(tester);
     await submit(tester);
     expect(accepted, 0);
-    await selectSensitivity(tester, 'Sensitive');
+    await selectSensitivity(tester, 'Sensitive: not processed');
     await choose(tester);
     await submit(tester);
     expect(bodies.map((body) => body['sensitive']), [
@@ -281,7 +286,8 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        if (sensitive) await selectSensitivity(tester, 'Not sensitive');
+        if (sensitive)
+          await selectSensitivity(tester, 'Not sensitive: processed');
         await choose(tester);
         await submit(tester);
         expect(accepted, 1);
@@ -289,4 +295,59 @@ void main() {
       },
     );
   }
+
+  group('a Sensitive upload is not processed (UI.md T3.1)', () {
+    ApiSpecimenRepository unused() => repository(
+      (request) async => fail('nothing is sent before an upload: $request'),
+    );
+
+    testWidgets('each option names its consequence, Sensitive preselected', (
+      tester,
+    ) async {
+      final repo = unused();
+      addTearDown(repo.close);
+      await mount(tester, repo, onComplete: () {});
+      final UiSegmented<bool> control = tester.widget<UiSegmented<bool>>(
+        sensitivityControl,
+      );
+      expect(control.value, isTrue);
+      expect(control.segments.map((UiSegment<bool> s) => s.label), <String>[
+        'Sensitive: not processed',
+        'Not sensitive: processed',
+      ]);
+    });
+
+    testWidgets('the consequence is said before anything is sent', (
+      tester,
+    ) async {
+      final repo = unused();
+      addTearDown(repo.close);
+      await mount(tester, repo, onComplete: () {});
+      expect(
+        find.text(
+          'Applies to photographs you add next. Sensitive photographs are '
+          'stored and never processed automatically.',
+        ),
+        findsOneWidget,
+      );
+      // The way round a choice that cannot be undone sits with the caveat
+      // that says it cannot, behind its "Why" (02 sections 1.8 and 4.15).
+      final CaveatText permanence = tester.widget<CaveatText>(
+        find.byWidgetPredicate(
+          (Widget w) =>
+              w is CaveatText &&
+              w.label ==
+                  'Sensitivity cannot be changed after an upload starts.',
+        ),
+      );
+      expect(
+        permanence.why,
+        endsWith(
+          'To have a sensitive photograph processed, upload it again as not '
+          'sensitive.',
+        ),
+      );
+      expect(find.textContaining('wait'), findsNothing);
+    });
+  });
 }

@@ -307,3 +307,37 @@ dependency for it on 2026-09-23 (22:07 UTC, in the message confirming the
 four placements: "Adding `url_launcher` as a dependency for the real 'Open
 trace' link is fine"). On the web it is a real link that opens in a new
 tab, and elsewhere it opens the system browser.
+
+## T3 Queue and processing
+
+Brief T3. The coordinator ruled on two T3 questions on 2026-09-24, and a
+later part of T3 builds both. The reasons to filter the review queue by
+come from the collection configuration's `reason_codes`, which S3 publishes
+from S4's policy. Today's status chips stay, and the filter sheet picks any
+one run state.
+
+### T3.1 A Sensitive upload is not processed
+
+PLAN section 2.2: an upload declared Sensitive, the intake default, is never
+processed by the lane's worker, whose membership cannot see sensitive data,
+and a Sensitive upload is never reclassified (`CONTRACTS.md` 137, 161). The
+app says so where an upload's sensitivity is chosen and on the record (brief
+T3; the coordinator's correction of 2026-09-23: it is not processed, never
+"waiting").
+
+- Where sensitivity is chosen, each option names its consequence
+  (`design/01` H2.6): "Sensitive: not processed" and "Not sensitive:
+  processed". Sensitive stays preselected.
+- The line under the control says what the choice does before anything is
+  sent (`design/03` section 1.7): "Applies to photographs you add next.
+  Sensitive photographs are stored and never processed automatically."
+- The caveat beside the upload action keeps "Sensitivity cannot be changed
+  after an upload starts", and its "Why" ends with the way round it, in
+  neutral words (`design/02` section 1.8): "To have a sensitive photograph
+  processed, upload it again as not sensitive."
+- On the record, a run the lane stops with `sensitive_record_not_processed`
+  (S3's blocker, status `processing_blocked`) reads "Blocked: sensitive
+  record not processed" wherever a blocker is named. The Processing
+  disclosure explains it: "This record was uploaded as sensitive, so it is
+  not processed automatically. To have it processed, upload the photograph
+  again as not sensitive."
