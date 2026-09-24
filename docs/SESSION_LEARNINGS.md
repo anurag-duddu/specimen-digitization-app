@@ -12014,3 +12014,20 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) Load a dump once per worker process. It costs about 2 s and 150 MB for the Philippines, and a search is then cheap.
 - Failed approaches: none.
 - Remaining follow-ups: NGA GNS and Getty TGN (2c), history (task 3), and the tool (task 4) with PLAN 4.8's request filter and its tests.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 3 of the brief: history
+
+- Task: brief task 3, answering the owner's tier-1 question "historical name + date active" (G35) for a gazetteer place.
+- Branch and worktree: `golive/geo-history` in `.claude/worktrees/geo-build`, stacked on #152. PR #154.
+- Outcome: `georef_history.py`, a pure module that sends no request, provides:
+  - `use_on`, which reads a label date and a place's start and end as intervals at their written precision (G24) and returns `in_use`, `partly`, `ended` (with the gap in days), `not_started` or `undated`;
+  - `role`;
+  - `parents_on`, which applies the start and end qualifiers on P131 links;
+  - `modern_successors`, which follows P1366 and stops on a cycle.
+- Validation: 12 tests on #139's recorded Wikidata items; `uv run pytest tests/ -q` (1,613 passed, 31 skipped); `uv run pytest scripts/ -q` (1,547 passed, 50 skipped); pre-commit.
+- Durable learnings:
+  - (1) Both sides of the validity question are intervals. A place counts as in use only when its start certainly precedes the label's first day and its end certainly follows the last. The Davao province (from 1914-09-01) is therefore only `partly` in use for a label reading "1914".
+  - (2) With D5 held, a name used after its place ended ("P.I." on labels of September 1946, 59 days after the Commonwealth ended) stays `ended`, and its gap is a finding. The Philippines itself (Wikidata Q928, earliest inception 1565) is `in_use`, so the country field does not depend on label lag.
+  - (3) Mount Apo's Wikidata item carries no dates. A feature's validity is then `undated`, and history cannot exclude a same-named feature. The hierarchy and the itinerary (task 4) have to.
+- Failed approaches: none.
+- Remaining follow-ups: NGA GNS and Getty TGN (task 2), curated entries (task 4), then the tool.
