@@ -24,7 +24,8 @@ DATABASE = f"{INSTANCE}/databases/{D.DATABASE}"
 RULESET = f"projects/{D.PROJECT}/rulesets/0f6e2a57-1c3b-4d8e-9a70-5b2c4d6e8f10"
 UPDATED = "2026-09-23T08:00:00.123456789Z"
 KEYS = {"version", "source_sha", "run_id", "run_attempt", "phase", "schema_etag", "schema_update_time",
-        "connector_etag", "storage_ruleset", "source_sha_label", "backup_id", "first_restore", "tables", "views"}
+        "connector_etag", "storage_ruleset", "source_sha_label", "backup_id", "first_restore", "tables", "views",
+        "bootstrap"}
 PITR = "point-in-time recovery is off on the SQL instance"
 # Private-looking values a live resource may carry; none may reach a receipt, a step output or the log.
 CANARIES = ("canary-uid-7f3a", "canary-account@example.invalid", "canary-fingerprint", "canary-address")
@@ -143,7 +144,8 @@ def release(tmp_path, monkeypatch, capsys):
 def receipt(phase, connector="connector-etag", ruleset=RULESET, **facts):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": connector,
-            "storage_ruleset": ruleset, **dict.fromkeys(("source_sha_label", "backup_id", "first_restore", "tables", "views")),
+            "storage_ruleset": ruleset,
+            **dict.fromkeys(("source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap")),
             **facts}
 
 
@@ -314,17 +316,23 @@ def test_only_a_data_gate_record_releases_and_nothing_is_read_or_written_otherwi
     assert google.error and google.calls == [] and value is None and outputs == ""
 
 
-def test_a_present_bootstrap_artifact_is_announced_never_decoded_printed_or_written(release, monkeypatch):
+def test_on_initialize_a_present_bootstrap_artifact_waits_unread_for_the_initialized_plane(release, monkeypatch):
+    """RELEASE.md 4.5: the bootstrap runs after verify or apply only; initialize leaves the artifact unread."""
     artifact = "not base64 at all: canary-bootstrap-row"
     monkeypatch.setenv("DATA_BOOTSTRAP_ARTIFACT_B64", artifact)
     for module, name in ((base64, "b64decode"), (base64, "standard_b64decode"), (base64, "urlsafe_b64decode"),
                          (base64, "decodebytes"), (binascii, "a2b_base64")):
-        monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("the bootstrap arrives with T3e"))
+        monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("the artifact stays unread"))
     google, value, outputs = release(state(rules=None))
-    assert google.error is None and outputs == "phase=initialize\ninit_step=initialize\n" and "T3e" in google.log
-    assert artifact not in google.log + json.dumps(value) + outputs and "canary" not in google.log
+    assert google.error is None and outputs == "phase=initialize\ninit_step=initialize\n"
+    assert ("A bootstrap artifact is present; the bootstrap waits for the initialized plane, so this release leaves it "
+            "unread.") in google.log
+    assert value == receipt("initialize", connector=None, ruleset=None, bootstrap="deferred")
+    assert artifact not in google.log + json.dumps(value) + outputs and "canary" not in google.log and "T3e" not in google.log
+    # GitHub renders an unset secret as "": that is no artifact.
     monkeypatch.setenv("DATA_BOOTSTRAP_ARTIFACT_B64", "")
-    assert "T3e" not in release(state(rules=None))[0].log
+    google, value, _ = release(state(rules=None))
+    assert "bootstrap" not in google.log.lower() and value["bootstrap"] is None
 
 
 def test_the_committed_sources_are_exactly_what_the_envelope_path_sends():
@@ -344,7 +352,7 @@ def command_line(tmp_path, monkeypatch):
     monkeypatch.setattr(D, "materialize_inputs", lambda *args: None)
     monkeypatch.setattr(D, "read_bound_plan", lambda *args: pytest.fail("a gate record has no plan"))
     monkeypatch.setattr(D, "deploy", lambda *args: pytest.fail("a gate record never takes the envelope path"))
-    monkeypatch.setattr(D, "deploy_released_data", lambda *args: calls.append(args) or output.write_text("{}\n"))
+    monkeypatch.setattr(D, "deploy_released_data", lambda *args, **kwargs: calls.append(args) or output.write_text("{}\n"))
 
     def run(*arguments):
         monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(tmp_path / "packet.json"), *arguments,
