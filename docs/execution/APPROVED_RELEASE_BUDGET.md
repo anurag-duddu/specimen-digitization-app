@@ -30,9 +30,10 @@ are still required. No historical packet, capture time or consumed fence changes
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. Releases need no packet, independent review report or cost reservation;
-> they deploy on merge after the required checks pass and the PR steward
-> approves.
+> G11. Releases need no packet, independent review report or release cost
+> reservation; they deploy on merge after the required checks pass and the PR
+> steward approves. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 ## Release inputs
 
@@ -40,7 +41,8 @@ are still required. No historical packet, capture time or consumed fence changes
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. The release packet, `shared-release-reservations/v2`,
 > `release-cost-ledger/v3` and the coordinator snapshot retire with the
-> envelopes and cost ledgers.
+> envelopes and the release cost ledgers. G30's per-call reservations stand
+> (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The outer `protected-release/v1` packet and its three evidence keys remain
 unchanged. The approved budget explicitly selects
@@ -87,8 +89,10 @@ unqualified copy from an ambient environment is insufficient.
 
 > 2026-09-23: This section is superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1 and G11. `cohort-budget/v2` and its review evidence retire with the cost
-> ledgers. Both `human-review-release-scope` artifacts carry
+> G1 and G11. `cohort-budget/v2` and its review evidence retire with the
+> release and cohort cost ledgers. G30's per-call reservations stand (PLAN
+> 4.3; the coordinator's ruling on the mechanism). Both
+> `human-review-release-scope` artifacts carry
 > `"automated_clearance": "deferred"`, which G1 replaces: a record the harness
 > resolves is cleared without a human.
 
@@ -133,7 +137,8 @@ Platform. PLAN section 4.3 says how it is held: the pipeline records every paid
 call's cost on its run and refuses a paid step whose estimate would cross the
 configured model allowance, and a Cloud Billing budget alert watches the whole
 project. Release runs reserve and reconcile no cost, because the release
-ledgers retire under G11.
+ledgers retire under G11. G30's per-call reservations stand (PLAN 4.3; the
+coordinator's ruling on the mechanism).
 
 Until the release workstream retires the envelope admission, the old figures are
 still enforced in code: `APPROVED_LIMIT_MICROS` and the v3 ledger checks in
