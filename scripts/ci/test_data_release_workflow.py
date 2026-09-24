@@ -176,9 +176,10 @@ def test_the_release_job_outlasts_the_gate_records_window_so_that_deadline_ends_
 def test_the_deployment_contract_describes_the_apply_and_the_checks_the_release_job_runs():
     section = (ROOT / "docs/DEPLOYMENT.md").read_text().split("## Data release on merge (go-live program)")[1].split("\n## ")[0]
     release = section.split("2. **Release**")[1].split("\n3. ")[0]
-    assert "fails closed until T3d" not in release
+    assert "fails closed until T3d" not in release and "until its restore check lands" not in release
     for fact in ("catalog", "supplemental index inventory", "`apply`", "`source-sha`", "point-in-time recovery", "7 days",
-                 "`firebaseowner`", "`COMPATIBLE`", "first apply"):
+                 "`firebaseowner`", "`COMPATIBLE`", "first apply", "`first-production-restore.json`", "create-only",
+                 "`specimen-digitization-restore-20260908-r1`", "deletes"):
         assert fact in release, fact
 
 

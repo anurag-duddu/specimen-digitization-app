@@ -24,8 +24,8 @@ DATABASE = f"{INSTANCE}/databases/{D.DATABASE}"
 RULESET = f"projects/{D.PROJECT}/rulesets/0f6e2a57-1c3b-4d8e-9a70-5b2c4d6e8f10"
 UPDATED = "2026-09-23T08:00:00.123456789Z"
 KEYS = {"version", "source_sha", "run_id", "run_attempt", "phase", "schema_etag", "schema_update_time",
-        "connector_etag", "storage_ruleset", "source_sha_label", "backup_id", "tables", "views"}
-FIRST = "the first apply's clone arrives with the next pull request"
+        "connector_etag", "storage_ruleset", "source_sha_label", "backup_id", "first_restore", "tables", "views"}
+PITR = "point-in-time recovery is off on the SQL instance"
 # Private-looking values a live resource may carry; none may reach a receipt, a step output or the log.
 CANARIES = ("canary-uid-7f3a", "canary-account@example.invalid", "canary-fingerprint", "canary-address")
 MERGED_SCHEMA = "type Specimen @table {\n  id: UUID!\n  label: String\n}\n"
@@ -143,7 +143,8 @@ def release(tmp_path, monkeypatch, capsys):
 def receipt(phase, connector="connector-etag", ruleset=RULESET, **facts):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": connector,
-            "storage_ruleset": ruleset, **dict.fromkeys(("source_sha_label", "backup_id", "tables", "views")), **facts}
+            "storage_ruleset": ruleset, **dict.fromkeys(("source_sha_label", "backup_id", "first_restore", "tables", "views")),
+            **facts}
 
 
 def gets(*resources):
@@ -240,11 +241,11 @@ def test_verify_requires_a_persistent_schema_and_a_reconciled_connector(release,
     state({"schema.gql": "type Specimen @table {\n  id: UUID!\n}\n"}, OPS),
     state(MERGED, OPS, rules="rules_version = '2';\n"), state(MERGED, OPS, rules=None),
 ], ids=["new-nullable-field", "changed-rules", "no-rules-release"])
-def test_an_additive_change_to_an_unlabelled_schema_is_the_first_apply_which_stops_before_any_effect(release, live):
-    """RELEASE.md 4.4: a schema without the source-sha label is the first apply after T3c; its clone arrives with T3d's
-    second pull request. The fake refuses every request but a GET."""
+def test_an_additive_change_chooses_apply_and_reads_its_preconditions_before_any_effect(release, live):
+    """RELEASE.md 4.4: a schema without the source-sha label is the first apply after T3c, and the instance here reports
+    no point-in-time recovery. The fake refuses every request but a GET."""
     google, value, outputs = release(live)
-    assert google.error == FIRST and outputs == "phase=apply\n"
+    assert google.error == PITR and outputs == "phase=apply\n"
     assert value == receipt("apply", ruleset=RULESET if ("rules", RULESET) in live else None)
 
 
