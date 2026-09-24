@@ -1022,9 +1022,12 @@ def migrate_initialized(google, directory, output):
     try:
         require_database(google)
         receipt = initializer_receipt(record)
-        post = initializer.native(directory, SOURCE, "post", files=initializer.fingerprints(), deadline=record["expires_at_unix"],
-                                  gate_sha=record["source_sha"])["postconditions"]
-        if initializer.sha(post) != receipt["postconditions_sha256"]:
+        # Read-only, as the catalog check at the end reads them. The initializer's own post mode would also refuse any
+        # other client session, which a re-run after the schema apply meets once Data Connect serves the schema.
+        initialized = gate_sql("migrated", directory, record["source_sha"])
+        if not isinstance(initialized, dict):
+            raise blocked("the initialized catalog could not be read")
+        if initializer.sha(initialized.get("postconditions")) != receipt["postconditions_sha256"]:
             raise blocked("the database's postconditions changed since this run's initializer")
         if initializer.own_principal(google) is not None:
             raise blocked("the initializer's SQL principal still exists; dispose of it, then re-run")
