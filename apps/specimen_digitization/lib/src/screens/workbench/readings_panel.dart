@@ -21,6 +21,7 @@ import '../../thread/thread.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
+import 'reader_name.dart';
 
 /// The width below which two reading cards stack instead of sitting side by
 /// side. Two literals need a measure each; below this they get one.
@@ -200,19 +201,9 @@ class WorkbenchReadings extends StatelessWidget {
     );
   }
 
-  /// The name a reader goes by here: the model its reading names, from the
-  /// workspace or else from the thread.
-  String _readerName(String? observationId) {
-    const String fallback = 'A reader';
-    if (observationId == null) return fallback;
-    for (final Json o in specimen.observations) {
-      if (textOf(o['id'], textOf(o['observation_id'], '')) == observationId) {
-        return textOf(o['model_id'], fallback);
-      }
-    }
-    final ThreadReading? reading = thread?.readingOf(observationId);
-    return reading?.model ?? reading?.routeId ?? fallback;
-  }
+  /// The name a reader goes by here.
+  String _readerName(String? observationId) =>
+      readerName(specimen, thread, observationId);
 
   /// The route and the prompt version a reading records, as one line.
   String? _identity(Json o) {

@@ -125,8 +125,9 @@ class ReviewWorkbench extends StatefulWidget {
   });
   final Specimen specimen;
 
-  /// The record's processing thread, when one has loaded (UI.md T2.2). The
-  /// Readings segment draws each region's comparison and decision from it.
+  /// The record's processing thread, when one has loaded (UI.md T2.2 and
+  /// T2.3). The Readings segment draws each region's comparison and decision
+  /// from it, and the Fields segment who wrote each text and what settled it.
   final SpecimenThread? thread;
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
@@ -1085,6 +1086,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       children: <Widget>[
         WorkbenchFields(
           specimen: widget.specimen,
+          thread: widget.thread,
           anchors: <String, GlobalKey>{
             for (final Json f in widget.specimen.fields)
               textOf(f['field_key'], ''): _anchor(

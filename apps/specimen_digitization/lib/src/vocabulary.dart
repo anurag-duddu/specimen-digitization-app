@@ -54,6 +54,13 @@ const Map<String, String> userFacingTerms = <String, String>{
   'classification_correction': 'Correct classification',
   // Environments (section 3, "synthetic").
   'synthetic': 'Test data',
+  // Lookup sources, by the names the services go by, from the ids the
+  // thread carries (DATA_CONTRACT.md section 8; UI.md T2.3).
+  'google-maps-geocoding': 'Google Maps',
+  'gbif': 'GBIF',
+  'gnv': 'Global Names Verifier',
+  'col': 'Catalogue of Life',
+  'label-coverage-check': 'Label coverage check',
 };
 
 /// Single retired words, applied to any value the table above does not name.
