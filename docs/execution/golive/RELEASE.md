@@ -430,6 +430,16 @@ for Data Connect, `specimenDataStorageRules` for the rules, and
 instance condition. `specimenDataInventoryProjectRead` never grows, because
 the runtime identities hold it too.
 
+Each apply's backup (T3d, section 4.4) also reads the backup back:
+`cloudsql.backupRuns.get`, beside `specimenDataSourceBackup`'s
+`cloudsql.backupRuns.create`. The newer backup resource's create and get map
+to those two permissions (`docs/execution/FINITE_RECOVERY_BACKUP.md`). The
+backup's Cloud SQL operation is polled with the instance read above. Whether
+the inventory binding's instance condition admits that operation read is
+unconfirmed. If it doesn't, the first apply fails closed after its backup and
+before its migration, and the list gains `cloudsql.instances.get` for
+`specimenDataSourceBackup` through a pull request.
+
 Only the roles automatic applies need are standing. The inventory roles
 `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead` are
 already standing and keep their conditions unchanged. The rest stay
