@@ -1,6 +1,7 @@
 """The Geocoding key never reaches a trace or a log (docs/execution/golive/LANE.md, T5d)."""
 
 import logging
+import re
 
 import httpx
 import logfire
@@ -74,8 +75,11 @@ def test_log_records_lose_the_key(records, caplog):
             'HTTP Request: %s %s "%s %d %s"', "GET", httpx.URL(URL), "HTTP/1.1", 403, "Forbidden"
         )
     [record] = caplog.records
-    assert KEY not in record.getMessage()
-    assert SCRUBBED in record.getMessage()
+    message = record.getMessage()
+    assert KEY not in message
+    # The URL keeps its shape. The geography tool's own httpx filter (S4, #113)
+    # marks the value "[redacted]" when it runs after the factory's "[Scrubbed]".
+    assert re.search(r"json\?address=Davao&key=\[(Scrubbed|redacted)\]", message)
 
 
 def test_installing_twice_scrubs_once(records):
