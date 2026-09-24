@@ -927,14 +927,29 @@ every push to `main` without an envelope. The specification is
    Storage rules equal the merged files; the job checks that the schema is
    persistent and both are reconciled, and succeeds. `apply` fails closed
    until T3d, and names each change the additive-only gate refuses.
-   `initialize`, the empty placeholder schema without a connector, fails the
-   run until T3c, so the runtime gate, which waits for this run to succeed
-   (D3), never passes over an uninitialized database. Any other combination
-   fails and asks to reconcile. The job uploads the `data-released/v1` receipt
-   on every exit after admission and attests it when the deploy step succeeds.
+   `initialize`, the empty placeholder schema without a connector, first
+   reads the application database's catalog and outputs `init_step`
+   ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.3). Any other
+   combination fails and asks to reconcile. The job uploads the
+   `data-released/v1` receipt on every exit after admission and attests it
+   when the deploy step succeeds.
+3. **Initialize**, in `data-initialization-production`, only when
+   `init_step` is `initialize`. It re-admits through the gate's
+   `data-initialization` plane and authenticates as
+   `specimen-data-initialize`. It publishes a signed creation intent, then
+   creates its own one-time SQL principal and runs the reviewed initializer
+   SQL and its postconditions in one transaction on the existing database. It
+   uploads and attests a `data-initializer/v1` receipt. The owner's setup
+   window must be open for this job.
+4. **Dispose**, in `data-production`, whenever `initialize` ran. It revokes
+   and deletes only the principal this run's attested intent names. It holds
+   no concurrency lock, so a queued disposal is never cancelled.
+5. **Migrate** fails the run until T3c2, so the runtime gate, which waits
+   for this run to succeed (D3), never passes over an uninitialized database.
 
-The release job shares the `specimen-protected-mutation` concurrency group
-with the runtime release job, so the two never run at the same time. The
+The release and initialize jobs share the `specimen-protected-mutation`
+concurrency group with the runtime release job, so none of them run at the same
+time. The
 workflow reads no secret and no configuration variable. After a failure,
 re-run the failed jobs: the release job re-admits on its own. A runtime
 release of the same commit fails when this run fails, so re-run it after the
