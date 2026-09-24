@@ -565,13 +565,16 @@ ruling of 2026-09-23). T2b and T2c build it:
 - An unknown outcome (a timeout, a transport error, a 5xx, or a response
   without usage) stays reserved at its full amount, recorded as
   `cost_basis: reserved`. A retry reserves again.
-- The run's own budget keeps its rule: its reservations are never refunded
-  (`domain.py` 222-227). With no allowance configured, the ledger is not
-  consulted.
+- The run's own budget settles the same way (the coordinator's ruling of
+  2026-09-24). A paid step's reservation is released to its settled cost when
+  every call reported usage or a billed amount; an unknown outcome stays
+  reserved in full. The run's limit stays 500,000. With no allowance
+  configured, the ledger is not consulted, and the run's budget still
+  settles.
 
 Every reservation bounds its step's worst case, so no call can cross the
-allowance, except in the one case the last item describes. The worst cases
-behind the pilot's reservations, at the pinned prices (T2c):
+allowance (PLAN 4.3; the coordinator's ruling of 2026-09-24). The pilot's, at
+the pinned prices (T2c):
 
 - `segment` 45,000: at 136 micro-dollars a second (4 vCPU and 16 GiB at Cloud
   Run's request-based rates). Cloud Run bills a request-based instance while it
@@ -581,21 +584,32 @@ behind the pilot's reservations, at the pinned prices (T2c):
   10 s grace period. (300 s + 10 s) × 136 plus the request is about 42,161.
   The rest is margin for anything else billed at start, such as an image
   pull, which the pages do not mention.
-- Each reader 20,000: at most two requests. `run_agent_bounded` caps each
-  answer at 4,096 tokens and at what is left of the 16,000-token limit. The
-  second request resends the first with its answer, and goes only while the
-  first stayed under the limit. The costliest mix is about 19,700 input and
-  8,200 output tokens, plus the retry's short message: about 16,000 at the
-  muse route's price and 10,000 at qwen's.
-- `parse` 20,000: today's extraction agent has the same limits on the qwen
-  route, about 10,000. The harness (S4) replaces it with its own route and up
-  to three geocodes; its reservation moves with it, bounded the same way. The
-  first pass joins with its own bounded reservation.
-- The limit counts a request's input only once the answer is back, so a first
-  request is bounded by its prompt and image alone. At the muse route's price,
-  only an image of about 50,000 tokens would cross 20,000. Such a call gets no
-  second request, reports no usage and stays reserved, so its cost above
-  20,000 would go uncounted.
+- A model call that sends a crop reserves, before it starts, for each
+  request it may make. A reading makes at most two, and its retry resends the
+  crop with the first answer and at most 8,192 bytes of feedback (HARNESS.md
+  section 15). Each request reserves the lesser of:
+  - (a) the route's context length at the input price, plus the answer's cap
+    (4,096 tokens) at the output price;
+  - (b) where the route documents its image-token rule, the crop's tokens
+    under that rule, plus the prompt and the answer's cap.
+
+  A route without a documented rule reserves (a). The stage's reservation,
+  20,000, is the floor.
+  - The readers document their rules (T2c lists them), so (b) applies, and
+    it is far below (a): 29,082 a request on qwen and 44,237 on muse. For
+    every crop up to a source image's 40,000,000 pixels, the two requests
+    come to at most 16,284 on qwen and 18,391 on muse. Both readers reserve
+    the 20,000 floor.
+  - The first pass's route (GLM-5.3-Flash) documents no image rule: not on
+    DeepInfra's page, zai-org's model card or Z.ai's documentation. It will
+    reserve (a) when it lands: with its 1,048,576-token context and 1,024-token
+    answers, 157,799 a request, 315,598 for two. First passes run one at a
+    time, and the run's budget settles, so a run's 500,000 holds.
+- `parse` 20,000: today's extraction agent sends text only, with the same
+  request and answer limits on the qwen route, about 10,000 at most. The
+  harness (S4) replaces it with its own route and up to four geocoding
+  requests, each with at most three attempts (HARNESS.md section 11); its
+  reservation moves with it, bounded the same way.
 
 Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread
