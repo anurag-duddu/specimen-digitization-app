@@ -624,6 +624,7 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
                 # G20 inside G32: a decided label settled through a raw reading of its region.
                 or (
                     entry_source == "decided_transcript"
+                    and regions.get(reading) is not None
                     and any(o != reading and regions.get(o) == regions.get(reading) for o in named)
                 )
             }
