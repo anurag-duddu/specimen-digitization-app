@@ -640,7 +640,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
       "decided_text": "…", "unresolved": false, "rationale": "…",
       "model_call": {"observation_id": "…", "route_id": "…", "model": "…", "provider": "…",
         "prompt_version": "…", "outcome": "…", "raw_response": {"asset_id": "…", "sha256": "…"}},
-      "handoffs": [{"observation_id": "…", "role": "decided_transcript", "handed_text": "…", "note": null}]}
+      "handoffs": [{"observation_id": "…", "role": "decided_transcript", "handed_text": "…", "note": null}]},
+    "reviewer_decision": null
   }],
   "tool_calls": [{"call_key": "…", "phase": "lookup", "tool": "geocode", "tool_version": "…",
     "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
@@ -701,9 +702,16 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     is `cross_check_detection_outside_labels`, or none.
   - A check's `passed` is true exactly when its `reason_codes` is empty. The
     values come from S3's `Run.coverage_check` (#111), agreed with S6.
-- `first_pass` is null for a region with no recorded decision; the run's
-  `stage` and `blocker` say why. Its `unresolved` follows the rule in section
-  4.2.
+- `first_pass` is the model's own decision for the region (`decision_kind`
+  `first_pass` or `identical_readings`) with its call and handoffs, and it stays
+  after a reviewer decides: what each reader returned to the harness is kept
+  (coordinator ruling, 2026-09-23). It is null for a region with no model
+  decision; the run's `stage` and `blocker` say why. Its `unresolved` follows
+  the rule in section 4.2.
+- `reviewer_decision` is a reviewer's decision on the region beside it,
+  `{decided_text, unresolved, rationale}`, null until a reviewer decides that
+  region. A later layer never erases an earlier one (G38's layers: image,
+  transcription, verbatim, harness-settled, derived).
 - Each field's `verbatim` has one entry per candidate: one for a single verbatim
   (the decided transcript's literal, or the one text every reader has); one per
   reader when the first pass selected no reading and the readers differ (G27,
@@ -745,8 +753,14 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   passes the ids the snapshot's run yields for them, from the writer's own
   functions in `application/projection.py`, and the operation reads only those:
   the thread shows the run as the snapshot has it, also after a change back to
-  an earlier state. Regions, readings, comparisons, handoffs, evidence and tool
-  calls are read whole, in the order they were written, regions by `ordinal`.
+  an earlier state. Regions, readings, comparisons, evidence and tool calls are
+  read whole, in the order they were written, regions by `ordinal`.
+- **Decisions.** The run's model decisions (`first_pass`, `identical_readings`)
+  are read whole with their handoffs, newest first. A region's `first_pass` is
+  the one the snapshot's decision names when it is of those kinds, and
+  otherwise, after a reviewer's decision, the region's latest by `createdAt`.
+  `reviewer_decision` is the `human` decision the snapshot names, when its row
+  is written.
 - **Method.** `SqlConnectRepository.run_thread(scope, specimen_id, run_id,
   keys)` runs the operation, and `application/thread.py` assembles the response
   from the snapshot and those rows. The route reuses the workspace route's
@@ -772,9 +786,10 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
   the one the writer records from the check.
 - **Bounds.** Every list has a fixed limit: 100 regions, 400 model outputs, 100
-  comparisons, 400 handoffs, 1,000 evidence items, 1,000 tool calls, 64 evidence
-  links per candidate, 500 resolved fields and 200 findings; the ids passed are
-  at most 100 decisions, 500 candidates and one record version. A run at a limit
+  comparisons, 400 model decisions with 64 handoffs each, 1,000 evidence items,
+  1,000 tool calls, 64 evidence links per candidate, 500 resolved fields and 200
+  findings; the ids passed are at most 100 decisions, 500 candidates and one
+  record version. A run at a limit
   is refused with 413 `thread_limit_exceeded` rather than shown in part.
 - **Trace link.** `SPECIMEN_TRACE_URL_TEMPLATE` is an `https` URL holding
   `{trace_id}` exactly once, read when the API starts; a malformed value stops

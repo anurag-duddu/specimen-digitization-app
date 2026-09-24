@@ -36,7 +36,7 @@ from specimen_digitization.application.thread import (
 )
 
 from test_projection import locate, size
-from test_projection_decisions import ToolCallRecord, TracedField
+from test_projection_decisions import Handoff, ToolCallRecord, TracedField
 from thread_fixtures import TRACE, fixed, hexid, rows, synthetic_run
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -233,7 +233,96 @@ def test_a_region_without_a_recorded_decision_has_no_first_pass():
     s.run.transcripts = s.run.transcripts[:1]
     regions = thread(s)["regions"]
     assert regions[0]["first_pass"] is not None
-    assert regions[1]["first_pass"] is None
+    assert (regions[1]["first_pass"], regions[1]["reviewer_decision"]) == (None, None)
+
+
+def reviewed(s, index=0, *, text="Chicago, Ill. VII-46 Cook Co.", reason="Read under the microscope."):
+    """A reviewer's decision on one region, as the snapshot then records it."""
+    transcript = s.run.transcripts[index]
+    s.run.transcripts[index] = transcript.model_copy(
+        update={
+            "decision_kind": "human",
+            "actor": "reviewer-uid",
+            "resolved": True,
+            "text": text,
+            "reason": reason,
+            "selected_observation_id": None,
+            "first_pass_call": None,
+            "handoffs": [],
+        }
+    )
+    return s
+
+
+def test_a_reviewers_decision_goes_beside_the_first_pass_and_never_replaces_it():
+    s = synthetic_run()
+    history = written(s)
+    before = thread(s, history=history)["regions"]
+    # Only a first pass so far: no reviewer's decision on either region.
+    assert [r["reviewer_decision"] for r in before] == [None, None]
+    reviewed(s)
+    after = thread(s, history=history + written(s))["regions"]
+    # The model's decision stays, with its call and what each reader handed the harness.
+    assert after[0]["first_pass"] == before[0]["first_pass"]
+    assert after[0]["first_pass"]["decision_kind"] == "first_pass"
+    assert len(after[0]["first_pass"]["handoffs"]) == 2
+    assert after[0]["reviewer_decision"] == {
+        "decided_text": "Chicago, Ill. VII-46 Cook Co.",
+        "unresolved": False,
+        "rationale": "Read under the microscope.",
+    }
+    assert after[1] == before[1]
+    # Until a reviewer's save writes its row, the thread shows no reviewer's decision.
+    worker_only = history + writes(s, locate, size, "worker-uid")
+    region = thread(s, history=worker_only)["regions"][0]
+    assert (region["first_pass"], region["reviewer_decision"]) == (before[0]["first_pass"], None)
+
+
+def test_after_a_review_the_first_pass_is_the_regions_latest_model_decision():
+    s = synthetic_run()
+    history = written(s)
+    # The first pass decided the region again before the reviewer did.
+    s.run.transcripts[0] = s.run.transcripts[0].model_copy(update={"reason": "A second look: a lowercase l."})
+    history += written(s)
+    reviewed(s)
+    history += written(s)
+    first = thread(s, history=history)["regions"][0]["first_pass"]
+    assert (first["decision_kind"], first["rationale"]) == ("first_pass", "A second look: a lowercase l.")
+    assert [h["role"] for h in first["handoffs"]] == ["decided_transcript", "raw_reading"]
+
+
+def test_identical_readings_are_the_models_decision_with_no_call_and_no_notes():
+    s = synthetic_run()
+    qwen, muse = s.run.observations[:2]
+    s.run.observations[1] = muse.model_copy(update={"literal_text": qwen.literal_text, "unreadable_spans": []})
+    s.run.transcripts[0] = s.run.transcripts[0].model_copy(
+        update={
+            "decision_kind": "identical_readings",
+            "first_pass_call": None,
+            "reason": None,
+            "differences": [],
+            "disagreement_ratio": 0.0,
+            "alignment_status": "identical",
+            "alignment_reasons": [],
+            "handoffs": [
+                Handoff(observation_id=qwen.id, role="decided_transcript", handed_text=qwen.literal_text),
+                Handoff(observation_id=muse.id, role="raw_reading", handed_text=qwen.literal_text),
+            ],
+        }
+    )
+    region = thread(s)["regions"][0]
+    first = region["first_pass"]
+    assert (first["decision_kind"], first["selected_observation_id"], first["unresolved"]) == (
+        "identical_readings",
+        qwen.id,
+        False,
+    )
+    assert (first["decided_text"], first["rationale"], first["model_call"]) == (qwen.literal_text, None, None)
+    assert [(h["role"], h["observation_id"], h["note"]) for h in first["handoffs"]] == [
+        ("decided_transcript", qwen.id, None),
+        ("raw_reading", muse.id, None),
+    ]
+    assert region["reviewer_decision"] is None
 
 
 def test_a_no_pick_decision_hands_every_raw_reading_and_each_reader_keeps_its_verbatim():

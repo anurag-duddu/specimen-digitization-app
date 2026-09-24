@@ -221,8 +221,6 @@ def rows(written, specimen_id: str, run_id: str, keys: dict) -> dict:
                     "id": hexid(row["id"]),
                     "regionId": hexid(row["regionId"]),
                     "decisionKind": row["decisionKind"],
-                    "selectedObservationId": hexid(row["selectedObservationId"]),
-                    "firstPassObservationId": hexid(row["firstPassObservationId"]),
                     "literalText": row["literalText"],
                     "unresolved": row["unresolved"],
                     "rationale": row["rationale"],
@@ -230,16 +228,29 @@ def rows(written, specimen_id: str, run_id: str, keys: dict) -> dict:
                 for row in decisions.values()
                 if row["id"] in current["decisionIds"]
             ],
-            "handoffs": [
+            # Every model decision of the run, newest first, each with its own handoffs.
+            "firstPasses": [
                 {
-                    "transcriptionVersionId": hexid(row["transcriptionVersionId"]),
-                    "observationId": hexid(row["observationId"]),
-                    "role": row["role"],
-                    "handedText": row["handedText"],
-                    "note": row["note"],
+                    "id": hexid(row["id"]),
+                    "regionId": hexid(row["regionId"]),
+                    "decisionKind": row["decisionKind"],
+                    "selectedObservationId": hexid(row["selectedObservationId"]),
+                    "firstPassObservationId": hexid(row["firstPassObservationId"]),
+                    "literalText": row["literalText"],
+                    "unresolved": row["unresolved"],
+                    "rationale": row["rationale"],
+                    "handoffs": [
+                        {
+                            "observationId": hexid(handoff["observationId"]),
+                            "role": handoff["role"],
+                            "handedText": handoff["handedText"],
+                            "note": handoff["note"],
+                        }
+                        for handoff in table("AppendHarnessInputV1", transcriptionVersionId=row["id"])
+                    ],
                 }
-                for row in table("AppendHarnessInputV1", runId=run_id)
-                if row["transcriptionVersionId"] in current["decisionIds"]
+                for row in reversed(decisions.values())
+                if row["decisionKind"] in ("first_pass", "identical_readings")
             ],
             "evidence": [
                 {
