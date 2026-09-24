@@ -10,6 +10,41 @@ sys.path.insert(0, str(Path(__file__).parent))
 M = importlib.import_module("schema_gate")
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA, CONNECTOR = M.read_tree(ROOT / "dataconnect/schema"), M.read_tree(ROOT / "dataconnect/connector")
+# The data contract's section 3.3 in #88's shape: three NOT NULL drops and the closed unique exception, after a table
+# of another section that the parser must pass over.
+CONTRACT = """# Go-live data contract
+
+### 3.2 New nullable columns
+
+| Table | Columns |
+|---|---|
+| `PipelineRun` | `traceId` (32 lowercase hex, recorded once) |
+
+### 3.3 Relaxed constraints
+
+Each relaxation only admits rows the old constraint refused. S2's schema gate reads the same list, with these reasons.
+
+| Constraint | Change | Why |
+|---|---|---|
+| `SourceAsset.width`, `SourceAsset.height` | drop `NOT NULL` | Raw provider responses are assets without pixels. |
+| `LabelRegion.cropAssetId` | drop `NOT NULL` | SAM regions carry no crop. |
+| `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match has nothing to locate. |
+| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object`, in two applies | The blob store is content-addressed. |
+
+## 4. Domain fields the writer reads
+"""
+
+
+def contract(*rows):
+    """Section 3.3 whose table holds these rows."""
+    return "### 3.3 Relaxed constraints\n\n| Constraint | Change | Why |\n|---|---|---|\n" + "".join(f"| {row} |\n" for row in rows)
+
+
+def gate(*sources):
+    """The gate with the fixture contract's relaxations; the real contract has a test of its own."""
+    return M.check_additive(*sources, relaxations=M.parse_relaxations(CONTRACT))
+
+
 BASE = r'''# A comment with { braces } and "quotes" never counts.
 type SourceAsset @table(name: "source_asset", key: ["organizationId", "id"])
   @unique(indexName: "asset_object", fields: ["bucket", "generation"])
@@ -116,7 +151,7 @@ def drop(text, pattern):
 
 
 def check(schema=BASE, connector=OPS):
-    return M.check_additive({"schema.gql": BASE}, {"schema.gql": schema}, {"ops.gql": OPS}, {"ops.gql": connector})
+    return gate({"schema.gql": BASE}, {"schema.gql": schema}, {"ops.gql": OPS}, {"ops.gql": connector})
 
 
 ACCEPTED = {
@@ -223,23 +258,76 @@ def test_connector_changes_outside_the_rules_are_refused_by_name(connector, expe
     assert check(connector=connector) == expected
 
 
-def test_keys_uniques_and_provenance_keys_keep_not_null_even_when_named(monkeypatch):
-    assert set(M.NAMED_RELAXATIONS) == {("SourceAsset", "width"), ("SourceAsset", "height"), ("LabelRegion", "cropAssetId"),
-                                        ("EvidenceItem", "locator")}
-    assert all(isinstance(reason, str) and reason for reason in M.NAMED_RELAXATIONS.values())
+LOCATOR = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], "  locator: String!", "  locator: String")}
+
+
+def test_protected_keys_are_fixed_and_only_a_listed_column_drops_not_null():
     assert M.PROTECTED == {("ModelObservation", f) for f in ("runId", "regionId", "provider", "modelVersion", "stepKey",
                                                              "rawAssetId", "promptVersion", "inputSha256")}
-    types = M.parse_schema(SCHEMA)  # every named and protected field is a NOT NULL field of the committed schema
-    assert all(types[table]["fields"][field]["non_null"] for table, field in M.PROTECTED | set(M.NAMED_RELAXATIONS))
-    locator = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], "  locator: String!", "  locator: String")}
-    assert M.check_additive(SCHEMA, locator, CONNECTOR, CONNECTOR) == []
-    named = {("SourceAsset", "id"), ("SourceAsset", "bucket"), ("ModelObservation", "code"), ("ModelObservation", "provider")}
-    monkeypatch.setattr(M, "NAMED_RELAXATIONS", {**M.NAMED_RELAXATIONS, **dict.fromkeys(named, "test")})
-    merged = BASE
-    for old in ("  id: UUID! @default", "  bucket: String!", "  code: String!", "  provider: String!"):
-        merged = edit(merged, old, old.replace("!", ""))
-    assert check(merged) == [f"{field}: NOT NULL dropped on a key, unique or provenance field" for field in (
-        "ModelObservation.code", "ModelObservation.provider", "SourceAsset.bucket", "SourceAsset.id")]
+    types = M.parse_schema(SCHEMA)  # every protected and listed field is a NOT NULL field of the committed schema
+    assert all(types[table]["fields"][field]["non_null"] for table, field in M.PROTECTED | set(M.parse_relaxations(CONTRACT)))
+    assert gate(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR) == []
+    assert M.check_additive(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR, relaxations={}) == [
+        "EvidenceItem.locator: NOT NULL dropped outside the named relaxations"]
+
+
+@pytest.mark.parametrize(("column", "old"), [
+    ("SourceAsset.id", "  id: UUID! @default"), ("SourceAsset.bucket", "  bucket: String!"),
+    ("ModelObservation.code", "  code: String!"), ("ModelObservation.provider", "  provider: String!"),
+], ids=["key column", "type-level @unique column", "field-level @unique column", "PROTECTED column"])
+def test_a_contract_listing_a_key_unique_or_protected_column_is_refused_anyway(column, old):
+    listed = M.parse_relaxations(contract(f"`{column}` | drop `NOT NULL` | a reason the gate never accepts here"))
+    assert list(listed) == [tuple(column.split("."))]
+    merged = {"schema.gql": edit(BASE, old, old.replace("!", ""))}
+    assert M.check_additive({"schema.gql": BASE}, merged, {"ops.gql": OPS}, {"ops.gql": OPS}, relaxations=listed) == [
+        f"{column}: NOT NULL dropped on a key, unique or provenance field"]
+
+
+def test_the_contract_table_names_each_relaxed_column_with_its_reason():
+    assert M.parse_relaxations(CONTRACT) == {
+        ("SourceAsset", "width"): "Raw provider responses are assets without pixels.",
+        ("SourceAsset", "height"): "Raw provider responses are assets without pixels.",
+        ("LabelRegion", "cropAssetId"): "SAM regions carry no crop.",
+        ("EvidenceItem", "locator"): "A lookup that found no single match has nothing to locate."}
+    for names in ("`A.b` and `C.d`", "`A.b`, `C.d`", "`A.b`, and `C.d`", "`A.b`,`C.d`"):
+        assert set(M.parse_relaxations(contract(f"{names} | drop `NOT NULL` | why"))) == {("A", "b"), ("C", "d")}
+    assert M.parse_relaxations(contract("`A.b` | add a check | why")) == {}
+
+
+@pytest.mark.parametrize(("text", "message"), [
+    (CONTRACT.replace("### 3.3 Relaxed constraints", "### 3.3 Relaxations"), "relaxed-constraints heading missing or repeated"),
+    (CONTRACT + "\n### 3.3 Relaxed constraints\n", "relaxed-constraints heading missing or repeated"),
+    (contract().replace("| Constraint", "Leak prose.\n\n## 4. Next\n\n| Constraint") + "| `A.b` | drop `NOT NULL` | why |\n",
+     "relaxed-constraints table missing or malformed"),
+    (CONTRACT.replace("| Constraint | Change | Why |", "| Column | Change | Why |"), "relaxed-constraints table missing or malformed"),
+    (CONTRACT.replace("|---|---|---|\n| `Source", "| `Source"), "relaxed-constraints table missing or malformed"),
+    (contract("`A.b` | drop `NOT NULL`"), "malformed relaxed-constraints row"),
+    (contract("`leak.b` | drop `NOT NULL` | why"), "malformed relaxed column name"),
+    (contract("Leak.b | drop `NOT NULL` | why"), "malformed relaxed column name"),
+    (contract("`Leak.b` `C.d` | drop `NOT NULL` | why"), "malformed relaxed column name"),
+    (contract("`Leak.b` | drop `NOT NULL` |  "), "empty relaxation reason"),
+    (contract("`Leak.b` | drop `NOT NULL` | why", "`C.d` and `Leak.b` | drop `NOT NULL` | why"), "duplicate relaxed column"),
+], ids=["no heading", "a second heading", "no table in the section", "another header", "no separator row", "a short row",
+        "lower-case table", "unquoted name", "names without a separator", "empty reason", "duplicate column"])
+def test_a_malformed_contract_section_fails_closed_without_values(text, message):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        M.parse_relaxations(text)
+
+
+def test_the_gate_reads_the_merged_trees_contract_by_default(tmp_path, monkeypatch):
+    assert M.CONTRACT == M.ROOT / "docs/execution/golive/DATA_CONTRACT.md"
+    monkeypatch.setattr(M, "CONTRACT", tmp_path / "DATA_CONTRACT.md")
+    with pytest.raises(ValueError, match="^data contract missing$"):
+        M.check_additive(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR)
+    (tmp_path / "DATA_CONTRACT.md").write_text(CONTRACT)
+    assert M.check_additive(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR) == []  # T3b1's call, without a keyword
+    assert M.read_relaxations(tmp_path / "DATA_CONTRACT.md") == M.parse_relaxations(CONTRACT)
+
+
+def test_the_real_contract_relaxes_exactly_these_four_columns():
+    # Red on this branch until #88, which adds section 3.3's table to the contract, is on main.
+    assert set(M.read_relaxations()) == {("SourceAsset", "width"), ("SourceAsset", "height"), ("LabelRegion", "cropAssetId"),
+                                         ("EvidenceItem", "locator")}
 
 
 # PLAN 4.4's one closed @unique exception (#104): create before drop, over two merges.
@@ -283,10 +371,10 @@ def test_the_one_unique_exception_is_closed_and_takes_two_merges():
     by_key = {**CONNECTOR, "key.gql": "query GetAsset($organizationId: UUID!, $collectionId: UUID!, $id: UUID!) @auth(level: "
               "NO_ACCESS) {\n  sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) { id }\n}\n"}
     for connector in (CONNECTOR, by_key):
-        assert M.check_additive(SCHEMA, STEP1, connector, connector) == []
-        assert M.check_additive(STEP1, STEP2, connector, connector) == []
+        assert gate(SCHEMA, STEP1, connector, connector) == []
+        assert gate(STEP1, STEP2, connector, connector) == []
     lookup = {**CONNECTOR, "uses.gql": USES["a key lookup by its fields"]}  # a use matters only to the drop
-    assert M.check_additive(SCHEMA, STEP1, lookup, lookup) == []
+    assert gate(SCHEMA, STEP1, lookup, lookup) == []
 
 
 @pytest.mark.parametrize(("live", "merged", "expected"), [
@@ -309,21 +397,21 @@ def test_the_one_unique_exception_is_closed_and_takes_two_merges():
         "step two changing the new unique", "unlisted replacement", "another new uniqueness", "primary key in step one",
         "primary key in step two", "nullable added column", "brand-new added column"])
 def test_everything_else_about_the_unique_exception_stays_refused(live, merged, expected):
-    assert M.check_additive(live, merged, CONNECTOR, CONNECTOR) == expected
+    assert gate(live, merged, CONNECTOR, CONNECTOR) == expected
 
 
 @pytest.mark.parametrize(("column", "live", "merged", "standard"), [
     ("generation", SCHEMA, STEP1, NEW_OVER), ("specimenId", STEP1, STEP2, REMOVED)], ids=["step one", "step two"])
 def test_the_unique_exception_never_covers_a_protected_key(monkeypatch, column, live, merged, standard):
     monkeypatch.setattr(M, "PROTECTED", M.PROTECTED | {("SourceAsset", column)})
-    assert M.check_additive(live, merged, CONNECTOR, CONNECTOR) == [
+    assert gate(live, merged, CONNECTOR, CONNECTOR) == [
         f"SourceAsset: @unique specimen_unique_1 to source_asset_specimen_object covers protected key {column}", standard]
 
 
 @pytest.mark.parametrize("operation", USES.values(), ids=USES)
 def test_the_old_unique_is_not_dropped_while_an_existing_operation_uses_it(operation):
     connector = {**CONNECTOR, "uses.gql": operation}
-    assert M.check_additive(STEP1, STEP2, connector, connector) == [WHY + "is used by existing operation FindAsset", REMOVED]
+    assert gate(STEP1, STEP2, connector, connector) == [WHY + "is used by existing operation FindAsset", REMOVED]
 
 
 def test_schema_parser_keeps_values_and_normalizes_layout():
@@ -381,7 +469,7 @@ def test_unknown_constructs_fail_closed_without_content(parse, text, message):
 
 
 def test_committed_tree_is_additive_against_itself():
-    assert M.check_additive(SCHEMA, SCHEMA, CONNECTOR, CONNECTOR) == []
+    assert gate(SCHEMA, SCHEMA, CONNECTOR, CONNECTOR) == []
     types = {name for text in SCHEMA.values() for name in re.findall(r"^type (\w+) @(?:table|view)", text, re.M)}
     operations = {name for text in CONNECTOR.values() for name in re.findall(r"^(?:query|mutation) (\w+)", text, re.M)}
     assert types and set(M.parse_schema(SCHEMA)) == types
@@ -396,9 +484,9 @@ def test_representative_change_from_pull_request_88_is_additive_but_not_with_a_p
                      ("  unresolved: Boolean!\n", "  unresolved: Boolean!\n" + TRANSCRIPTION)):
         text = edit(text, old, new)
     merged, connector = {**SCHEMA, "schema.gql": text + COMPARISON}, {**CONNECTOR, "projection.gql": PROJECTION}
-    assert M.check_additive(SCHEMA, merged, CONNECTOR, connector) == []
+    assert gate(SCHEMA, merged, CONNECTOR, connector) == []
     merged["schema.gql"] = edit(merged["schema.gql"], "  stepKey: String!\n  provider:", "  stepKey: String\n  provider:")
-    assert M.check_additive(SCHEMA, merged, CONNECTOR, connector) == [
+    assert gate(SCHEMA, merged, CONNECTOR, connector) == [
         "ModelObservation.stepKey: NOT NULL dropped on a key, unique or provenance field"]
 
 
@@ -410,7 +498,7 @@ def test_sources_from_rest_responses_and_committed_directories(tmp_path):
     for placeholder in ({"source": {}}, {"source": {"files": []}}):
         assert M.live_sources(placeholder, None) == ({}, {})
     with pytest.raises(ValueError, match="placeholder"):
-        M.check_additive({}, SCHEMA, {}, CONNECTOR)
+        gate({}, SCHEMA, {}, CONNECTOR)
     for invalid in (None, {}, {"source": {"files": [{"path": "connector.yaml", "content": ""}]}},
                     {"source": {"files": [{"path": "a.gql", "content": 1}]}}, {"source": {"files": [{"path": "a.gql", "content": ""}] * 2}}):
         with pytest.raises(ValueError):
@@ -426,7 +514,8 @@ def test_sources_from_rest_responses_and_committed_directories(tmp_path):
 
 
 def test_cli_compares_live_directories_with_the_committed_tree(tmp_path, capsys):
-    arguments = []
+    (tmp_path / "contract.md").write_text(CONTRACT)
+    arguments = ["--contract", str(tmp_path / "contract.md")]
     for kind, files in (("schema", SCHEMA), ("connector", CONNECTOR)):
         (tmp_path / kind).mkdir()
         for name, text in files.items():
@@ -436,4 +525,6 @@ def test_cli_compares_live_directories_with_the_committed_tree(tmp_path, capsys)
     (tmp_path / "schema" / "extra.gql").write_text(COMPARISON)
     assert M.main(arguments) == 1 and capsys.readouterr().out == "ReadingComparison: table removed or renamed\n"
     with pytest.raises(SystemExit, match="placeholder"):
-        M.main(["--live-schema", str(tmp_path), "--live-connector", str(tmp_path / "connector")])
+        M.main([*arguments[:2], "--live-schema", str(tmp_path), "--live-connector", str(tmp_path / "connector")])
+    with pytest.raises(SystemExit, match="data contract missing"):
+        M.main(["--contract", str(tmp_path / "missing.md"), *arguments[2:]])
