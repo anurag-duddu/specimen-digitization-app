@@ -11,7 +11,7 @@ endpoint.
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`, especially sections 4.4 and 4.7.
+1. `docs/execution/golive/PLAN.md`, especially sections 4.4, 4.7 and 4.8.
 2. `~/specimen-golive/research/03-data-model-and-persistence.md` (all),
    `01-backend-pipeline-stages.md` stage 4, and `05-flutter-client.md` sections
    2 and 4.
@@ -34,10 +34,11 @@ endpoint.
   `source_asset_specimen_object` on (organizationId, collectionId, specimenId,
   bucket, objectName, generation) beside `specimen_unique_1`, which keeps
   governing; your writer PR (T2a) removes it from the schema and adds one fixed
-  statement in `dataconnect/sql/` dropping exactly that unique index, because a
-  `COMPATIBLE` apply never drops an object the schema stops declaring; S2's
-  release runs it only after its own read-back of the live database shows the
-  new constraint in place.
+  statement in `dataconnect/sql/` dropping exactly that unique index, because the
+  migration allowlist admits no drop, whatever the diff carries; S2's release
+  runs it before it computes the diff, and only after its own read-back of the
+  live database shows the new constraint in place, over its six columns and
+  valid.
 - G30's ledger is S3's `worker_cursor` document (`AuxiliaryDocument`), written
   through `SaveDocumentV2` only at the revision it was checked against;
   `cost_basis` is `computed`, `billed` or `reserved`, the last for a call whose
@@ -45,9 +46,8 @@ endpoint.
 - G38: each field value records its layer, verbatim, settled or derived, and
   a derived value what it came from; a reviewer's value is the review
   decision; the thread shows every layer, with the first pass beside any
-  reviewer decision; the "fill the rest" route runs S4's `derive_rest` and
-  returns the derived values, unsaved, for the reviewer to edit and approve.
-  G37 revises G22 in the contract. A field without a lookup whose readers all
+  reviewer decision; the "fill the rest" route follows PLAN section 4.8
+  (T6). G37 and G41 revise G22 in the contract. A field without a lookup whose readers all
   read the same text takes that text as its verbatim and its value, on one
   label as on several (coordinator reading of G27 and G32). G39: no
   georeference fields for the pilot.
@@ -115,11 +115,18 @@ exists. `FieldValue.layer` (verbatim, settled or derived) and `derived_from`,
 agreed with S4; additive SQL under PLAN section 4.4 (`FieldCandidate.derivation`
 takes `derived`; a nullable `derivedFromFieldKeys` written by a new
 `AppendFieldCandidateV3`, with V2 unchanged); the writer maps them; the
-contract's elevation rules follow G37 and G41; and the "fill the rest" route,
-a POST on the specimen with the field the reviewer filled and the expected
-revision, which runs S4's `derive_rest` and returns the derived values with
-their evidence, unsaved, for the reviewer to edit and approve through the
-existing decision route.
+contract's elevation rules follow G37 and G41; a derived candidate stores
+its settled inputs, its dataset or authority with version, and its tool-call
+id or `apply_derivations` rule, with a test that a value without them is not
+a derived value; the contract change for the single-label agreement (a
+no-pick single-label field whose readers agree keeps the shared text as its
+literal and value, which `DATA_CONTRACT.md` 295-304 and 321-323 do not allow
+today); and the "fill the rest" route, a POST on the specimen with the field
+the reviewer filled and the expected revision, which refuses a record
+declared Sensitive, requires review rights, and enqueues a derivation job
+that S3's worker runs with S4's `derive_rest`, reserving each paid call under
+G30. The job stores a proposal, read when the job ends, which the reviewer
+edits and approves through the existing decision route (PLAN section 4.8).
 
 **T5. Reason-code search, last.** A new view beside the search view carrying
 each reason's code, and `SearchSpecimensV2` matching a code with its own

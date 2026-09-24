@@ -98,7 +98,8 @@ apply, the
 supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); before step two of the one unique
 exception, the release reads the live database itself and runs S5's fixed drop
-statement only if `source_asset_specimen_object` is in place, since the gate
+statement only if `source_asset_specimen_object` is in place, over its six
+columns and valid, before it computes the migration diff, since the gate
 compares committed text only; a
 one-time, idempotent hierarchy bootstrap from the private artifacts, followed in
 the same window (T3e) by the worker's membership from S5's reviewed document

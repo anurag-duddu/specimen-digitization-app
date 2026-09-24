@@ -89,9 +89,11 @@ Record every run's cost in its report and keep the program within G9; the
 lab's share is USD 5, reserved and settled under PLAN section 4.3's mechanism
 with the lab's own ledger; until that ledger exists, your tally counts each
 run's worst case before it and every unknown outcome at its full bound
-(coordinator, 2026-09-24). Expected outcomes follow G35 to G40: the six
+(coordinator, 2026-09-24). Expected outcomes follow G35 to G42: the six
 McKinley slides go to needs human review until a curator confirms their place
-(G36), a filled field carries its layer and evidence (G37, G38), and no Google
+(G36), a filled field carries its layer and evidence (G37, G38), a stated
+elevation fills both ends and the other unit by the exact factor, as derived
+values (G41; the Guatemala slides' "4800 ft"), and no Google
 coordinate appears in any row, trace, log or lab folder (G35). Your expected label boxes for the ten are the ground
 truth for the lane's automatic coverage check (G15): report its hits and misses
 per subject. Where the specification is silent or contradictory, stop and ask

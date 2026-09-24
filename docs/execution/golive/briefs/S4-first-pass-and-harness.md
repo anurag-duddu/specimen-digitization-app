@@ -93,8 +93,11 @@ functional one comes first (G6).
 - A field without a lookup whose readers all read the same text takes that
   text as its verbatim and its value and clears, on one label as on several
   (coordinator reading of G27 and G32, matching your #131).
-- Outside requests carry place text only, and every credential follows the
-  Maps key's rules (PLAN section 4.8). `derive_rest` runs in the worker's
+- The place tool's outside requests carry place text only, built from the
+  named place fields and never from agent text, with a test that a collector,
+  a date and a catalogue number never leave; taxonomy requests carry the
+  taxon name and ranks (`GBIF.md` 107-114); every credential follows the Maps
+  key's rules (PLAN section 4.8). `derive_rest` runs in the worker's
   derivation job, never in the API.
 - G33: the numeric dates of every reading, the decided transcript's and the raw
   readings', are the evidence for an all-numeric date's day and month order;
@@ -105,7 +108,7 @@ functional one comes first (G6).
   the long name of Google's component at the field's levels, never a short
   name or code, is within one edit of the folded literal, is the only such
   component, and every other admin field of
-  the reading, at least one, matches by fold or alias; it carries a
+  the reading, all of them and at least one, matches by fold or alias; it carries a
   `near_spelling` warning finding that never routes the record. Otherwise it
   goes to review with the candidate. S8 builds the retrospective
   georeferencing tool behind your T3a interface (G34).
@@ -196,6 +199,15 @@ the harness. Share the tool interface with S8 when it exists. The pilot's
 localities are in the Philippines (1946) and Guatemala (1948); assume no
 country.
 
+**T3d. Layers and derivations (G37, G38, G41; #144).** `apply_derivations`
+fills only fields the label leaves out, from settled inputs; G41's conversion
+(both ways, 1 ft = 0.3048 m) and single-value endpoint fill; S8's geographic
+derivations through `ToolResult.derivations`; and `derive_rest` for the
+worker's "fill the rest" job (PLAN section 4.8). A derived value counts only
+with its record: its settled inputs, its dataset or authority with version,
+and its tool call or `apply_derivations` rule, with a test that a value the
+model asserts without one does not count.
+
 **T4. The queue decision (stage 8).** The policy applies G1. For the lane,
 remove the gates that contradict it: `policy.py` 31-34 (institutional approval
 and semantics) and 138-139 (`human_approval_required`). Keep
@@ -208,8 +220,9 @@ under QUE-004. Validate the separately parsed date, not the verbatim text
 (`policy.py` 119-126 parses the literal today): a date clears at the precision
 written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral
 in the month position is that month (G29). Keep the
-elevation gate (99-106), which accepts elevation values filled with authority
-and evidence (G37 and G41, revising G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
+elevation gate (99-106), which reads `field.literal` today (`policy.py`
+101-110) and must instead read a derived elevation's value, counting it only
+with its derivation record (G37 and G41, revising G22; PLAN section 4.8). `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to
