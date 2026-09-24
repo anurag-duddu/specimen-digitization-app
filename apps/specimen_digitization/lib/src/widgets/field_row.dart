@@ -111,9 +111,10 @@ class FieldRow extends StatelessWidget {
   /// source in place of [asWritten] (UI.md T2.3).
   final List<AttributedText> writtenBy;
 
-  /// One line under the "As written" value saying where a value settled
-  /// from when it was not that text, such as another reader's raw reading
-  /// a lookup confirmed (UI.md T2.3 part three).
+  /// Under the "As written" value, or under its attributed texts, where a
+  /// value settled from when it was not one of those texts, such as another
+  /// reader's raw reading a lookup confirmed: one line per such reading
+  /// (UI.md T2.3 part three).
   final String? asWrittenNote;
 
   /// One line under the "Read as" value saying how a derived part of it was
@@ -336,7 +337,7 @@ class _Layer extends StatelessWidget {
                     color: ui.color.inkSecondary,
                   ),
                 ),
-                if (written.isNotEmpty)
+                if (written.isNotEmpty) ...<Widget>[
                   // Each text under its source, one node apiece, so a reader
                   // hears who wrote it with what they wrote.
                   for (final (int index, AttributedText item)
@@ -356,8 +357,18 @@ class _Layer extends StatelessWidget {
                           ],
                         ),
                       ),
-                    )
-                else if (text == null)
+                    ),
+                  // The note is about all the texts, not the last one, so it
+                  // is a node of its own under them.
+                  if (note case final String said)
+                    Padding(
+                      padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+                      child: Semantics(
+                        container: true,
+                        child: Text(said, style: secondary),
+                      ),
+                    ),
+                ] else if (text == null)
                   // A missing layer shows the field's own abstention, never a
                   // blank, so absence is a value the reviewer can read.
                   _Abstention(state: state)

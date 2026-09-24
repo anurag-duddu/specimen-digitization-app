@@ -933,8 +933,9 @@ in `bodyMedium`, Normalized in `bodyMedium` or `mono.identifier`; an `EvidenceSo
 trailing `Symbols.edit` action. From the processing thread (UI.md T2.3): when no single reading was
 chosen, Literal lists each reader's text under its source in secondary `bodySmall`, each label's
 text first naming its label when the field spans labels, and an entry whose reading settled the
-value ends by saying so; a single Literal settled from another reading carries one secondary line
-naming that reading; a Parsed value whose century a rule set carries one secondary line saying so;
+value ends by saying so; a Literal settled from a reading it does not show carries one secondary
+line per such reading under its texts, naming the reading and, when the field spans labels, its
+label; a Parsed value whose century a rule set carries one secondary line saying so;
 and the authority line becomes one line per source, naming how it bears on the value.
 States: default flush inside the card, `radius.none`; hover `onSurface` 8% across the full row;
 focus ring around the row; pressed 10%; disabled edit action uses `disabled.content` and a tooltip

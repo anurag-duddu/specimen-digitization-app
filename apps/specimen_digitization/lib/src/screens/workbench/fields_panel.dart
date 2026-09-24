@@ -408,27 +408,41 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     ].join(' · ');
   }
 
-  /// Where a single decided transcript's value came from, when a fallback
-  /// lookup settled it from another reader's raw reading instead (G20): that
-  /// reading is in `settled_observation_ids` but not among the texts.
+  /// Where a decided transcript's value came from, when a fallback lookup
+  /// settled it from another reader's raw reading instead (G20): that
+  /// reading is in `settled_observation_ids` but not among the texts. One
+  /// line per such reading, led by its label where the field spans labels
+  /// (G32; UI.md T2.3 part three).
   String? _settledElsewhere(ThreadField? run) {
     final List<ThreadVerbatim> written =
         run?.verbatim ?? const <ThreadVerbatim>[];
     if (run == null ||
-        written.length != 1 ||
-        written.single.inputSource == ThreadInputSource.rawReading) {
+        written.isEmpty ||
+        (written.length == 1 &&
+            written.single.inputSource == ThreadInputSource.rawReading)) {
       return null;
     }
-    final String? shown = written.single.observationId;
-    for (final String reading in run.settledObservationIds) {
-      if (reading == shown) continue;
-      return <String>[
-        readerName(widget.specimen, widget.thread, reading),
-        FirstPassSummary.sourceWords(ThreadInputSource.rawReading, null),
-        settledWords,
-      ].join(' · ');
-    }
-    return null;
+    final Set<String?> shown = <String?>{
+      for (final ThreadVerbatim item in written) item.observationId,
+    };
+    final bool perLabel =
+        written.map((ThreadVerbatim item) => item.regionId).toSet().length > 1;
+    final List<String> lines = <String>[
+      for (final String reading in run.settledObservationIds)
+        if (!shown.contains(reading))
+          <String>[
+            if (perLabel)
+              ?labelName(
+                widget.specimen,
+                widget.thread,
+                regionOfReading(widget.specimen, widget.thread, reading),
+              ),
+            readerName(widget.specimen, widget.thread, reading),
+            FirstPassSummary.sourceWords(ThreadInputSource.rawReading, null),
+            settledWords,
+          ].join(' · '),
+    ];
+    return lines.isEmpty ? null : lines.join('\n');
   }
 
   /// What an entry whose reading settled the value adds to its source line.
