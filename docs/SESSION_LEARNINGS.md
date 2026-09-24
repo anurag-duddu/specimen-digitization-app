@@ -12031,3 +12031,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) Mount Apo's Wikidata item carries no dates. A feature's validity is then `undated`, and history cannot exclude a same-named feature. The hierarchy and the itinerary (task 4) have to.
 - Failed approaches: none.
 - Remaining follow-ups: NGA GNS and Getty TGN (task 2), curated entries (task 4), then the tool.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 4 of the brief: curated entries
+
+- Task: brief task 4. Hold the places and itineraries only the museum's records know, drafted with their sources, settling a field only once confirmed (G36, PLAN 4.8).
+- Branch and worktree: `golive/geo-curated` in `.claude/worktrees/geo-build`, stacked on #154. PR #156.
+- Outcome: `georef_curated.py` holds the entries and the rules for using them.
+  - One drafted place entry: "Mt. McKinley" in Davao, Mindanao, with Mount Talomo as S8's proposal.
+  - Two drafted itineraries, from Hoogstraal 1951: the McKinley camps of 1946 and the Mount Apo camps of October to November 1946.
+  - `settles` is true only for a confirmed entry. A `Confirmation` carries a role, an ISO date and the owner's record, never a name.
+  - `curated_place` finds an entry by key within its country.
+  - `matching_camps` fits a label by collector surname, date overlap (G24), and elevation and slope when stated.
+- Validation: 9 tests on the pilot labels' collectors, dates and elevations; `uv run pytest tests/ -q` (1,622 passed, 31 skipped); `uv run pytest scripts/ -q` (1,547 passed, 50 skipped); pre-commit.
+- Durable learnings:
+  - (1) Match a camp by overlap, not containment. A label written to the month ("XI.'46") falls wholly inside no single camp's dates, so it must fit every camp of that month. The georeference then covers those camps, not one of them.
+  - (2) An itinerary's work for the Apo slide is to name which Mount Apo: the massif (Wikidata Q455963), whose lowest November camp is at 2,800 ft, not the "Mount Apo" near Malita at 640 m. This is how the owner's "no wrong conclusions" (G36) is met without a gazetteer that dates features.
+  - (3) Keep curator review in the data: entries carry their sources and a nullable confirmation. Confirming one is then a small, reviewable pull request that cites the owner's record.
+- Failed approaches: a first draft required the label date to fall wholly inside a camp's dates, and it matched nothing for month-precision labels.
+- Remaining follow-ups: the curator's answers on the three review sheets, each becoming a confirmation PR; Getty TGN and NGA GNS (task 2); tier 2 (task 5).

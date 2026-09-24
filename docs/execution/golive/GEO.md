@@ -352,3 +352,56 @@ section 2 and checks:
   Sur and Davao Oriental.
 - A successor chain is followed and a cycle is stopped.
 - Units are selected by the dates of their links.
+
+## 6. Curated entries: places and itineraries only the museum's records know
+
+The owner ruled (G36): "Curator confirms". S8 drafts each place and itinerary
+entry with its sources. The Insects collection manager, or a curator they name,
+confirms it. A confirmed entry settles a field, an unconfirmed one never does,
+and the owner added "We cant make wrong conclusions". `georef_curated.py` holds
+the entries. The curated entries feed tier 1 (G35).
+
+**Confirmation.** An entry becomes confirmed only in a pull request that cites
+the owner's recorded confirmation (PLAN 4.8 in #124). That pull request adds a
+`Confirmation` to the entry, with the confirming role, the ISO date and the
+owner's record. It never names a person (G36). `settles(entry)` is true only for
+a confirmed entry. Every entry drafted here is unconfirmed, and the curator's
+review sheets are with the owner.
+
+**Place entries.** A place entry covers names no gazetteer holds for one
+country, together with the units the name must lie within, the modern place S8
+proposes, that place's gazetteer ids, and the sources.
+`curated_place(country, written)` finds the entry by section 1's key.
+- The one entry drafted so far is "Mt. McKinley" in Davao, Mindanao: Hoogstraal
+  (1951, p. 40) reports that the name appears on no map. S8 proposes Mount
+  Talomo (Wikidata Q31472786, GeoNames 1683778). The Denali that Wikidata
+  returns first is excluded, because the entry is scoped to the Philippines.
+
+**Itineraries.** An itinerary lists an expedition's dated camps on one
+mountain, from a published narrative: each camp's elevation in feet, its dates,
+and the slope where the narrative states one. `matching_camps(itinerary,
+collector, date, elevation, slope)` returns the camps a label fits:
+- a collector the itinerary names, matched on the surname within the
+  collector's literal;
+- a label date whose interval (G24) overlaps the camp's dates, so that a label
+  written to the month fits every camp that month;
+- when the label states them, the camp's elevation in feet, and a slope the
+  camp shares or leaves unstated.
+
+S8 drafts two itineraries:
+- the McKinley camps, August to October 1946 (Hoogstraal 1951, pp. 23 and
+  41-42);
+- the Mount Apo camps of October and November 1946 (p. 24), on the massif
+  (Wikidata Q455963), not the "Mount Apo" near Malita.
+
+**Tests.** `tests/test_georef_curated.py` checks:
+- An unconfirmed entry never settles.
+- A confirmation records a role, a date and the owner's record, and a
+  confirmation without them is refused.
+- The Davao "Mt. McKinley" entry is found, and neither a US "Mount McKinley" nor
+  Mount Apo matches it.
+- The McKinley labels fit their camps, taking collector, date and elevation
+  from the pilot labels: 105526321 and 105526322 fit the 6,400-foot camp, and
+  105526324 fits the base camp. Another collector, or a later date, fits none.
+- The Apo label fits the six camps of November 1946 whose slope is east or
+  unstated.
