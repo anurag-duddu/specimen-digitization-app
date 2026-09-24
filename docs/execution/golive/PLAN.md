@@ -436,8 +436,11 @@ The place tool follows these coordinator rulings, from #124's reviews:
     profile's notations name, wherever the marker sits in it; every token that
     carries a digit; the month names and abbreviations the profile's date
     notations list; and a Roman numeral I to XII, in any case, in the month
-    position, that is, beside a digit-bearing token in the same clause, so
-    "VIII" in "3 VIII 1946" goes while the "I" of "P.I." stays. The readings'
+    position, that is, whose neighbouring token before or after it, across
+    separators, is a date number, a day or a year, so "VIII" goes in "3 VIII
+    1946" and in "Mindanao, VIII, 1946", while "Camp IV" and the "I" of
+    "P.I." stay (coordinator ruling, replacing the earlier cut of every I to
+    XII). The readings'
     non-place literals do not cut the reviewer's own place value, since the
     reviewer's correction is the authority there.
   - Expansion, after the cuts: a surviving notation token that the table
@@ -459,8 +462,8 @@ The place tool follows these coordinator rulings, from #124's reviews:
     filter applies to every request the place tool makes, tier 1, tier 2 and
     "fill the rest" alike.
   - Tests show exactly what it guarantees: "H. Hoogstraal leg.", "3 Sept.
-    '46", "3 VIII 1946", "3 viii 1946", "Mindanao, P.I.", "Davao Prov., leg.
-    Hoogstraal", every full form the table lists, a reviewer's corrected
+    '46", "3 VIII 1946", "3 viii 1946", "Mindanao, VIII, 1946", "Camp IV",
+    "Mindanao, P.I.", "Davao Prov., leg. Hoogstraal", every full form the table lists, a reviewer's corrected
     collector spelling that matches no reading literal, a reviewer's place
     value that a reading's non-place literal would otherwise cut, the fixed
     parts and the User-Agent carrying no label text, and a place value with a
