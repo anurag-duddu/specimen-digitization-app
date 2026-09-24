@@ -1,6 +1,7 @@
 """The stage 7 field harness (HARNESS.md section 11)."""
 
 import json
+import time
 from functools import partial
 
 import pytest
@@ -430,6 +431,22 @@ def test_geocoding_is_one_budget_for_the_agent_and_the_final_lookups():
     # The final lookup on 1A's answer would be a fifth request: refused, and
     # a refused paid request blocks the run (QUE-005).
     assert outcome.blocker == "harness_geography_lookup_policy_blocked"
+
+
+def test_two_identical_calls_in_one_response_make_one_request():
+    # pydantic-ai runs a response's tool calls in parallel threads unless told
+    # otherwise. The harness runs them one at a time, so the ledger's record of
+    # the first answers the second, and the caps count exactly.
+    class Slow(Fakes):
+        def verify_taxon(self, literal):
+            time.sleep(0.05)  # Both calls would be in flight together.
+            return super().verify_taxon(literal)
+
+    twice = [("verify_taxon", {"reading": "2A", "literal": "Epipsocus"})] * 2
+
+    _, fakes = harness(twice, FULL, fakes=Slow())
+
+    assert len([c for c in fakes.calls if c[0] == "taxon"]) == 1
 
 
 def test_tool_calls_past_the_run_cap_are_refused_without_a_lookup():

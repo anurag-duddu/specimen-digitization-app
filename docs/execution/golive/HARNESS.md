@@ -512,7 +512,9 @@ reading.
 - `check_catalog_number`.
 
 Geography arguments are in field order, so the agent's check and the final
-call on the same literals are one request.
+call on the same literals are one request. The agent's tool calls run one at a
+time, even several in one response, so a repeated call is answered from the
+ledger's record and the caps count exactly.
 
 **Deciding.** After the agent answers, every field is resolved by section 9 from
 the ledger's records, and any tool call the agent did not make on its final
