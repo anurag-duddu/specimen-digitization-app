@@ -233,21 +233,35 @@
           "ledger_collection": "insects"
         },
         "price_list": {
-          "version": "pilot-prices-2026-09-23",
-          "as_of": "2026-09-23",
+          "version": "pilot-prices-2026-09-24",
+          "as_of": "2026-09-24",
           "sources": [
             "https://router.huggingface.co/v1/models",
+            "https://huggingface.co/Qwen/Qwen3-VL-30B-A3B-Instruct/blob/main/preprocessor_config.json",
+            "https://huggingface.co/meta-models/Muse-Glimmer-30B/blob/main/processor_config.json",
             "https://cloud.google.com/run/pricing",
             "https://developers.google.com/maps/billing-and-pricing/pricing"
           ],
           "models": {
             "handwriting-qwen": {
               "input_micros_per_million": 200000,
-              "output_micros_per_million": 700000
+              "output_micros_per_million": 700000,
+              "context_tokens": 131072,
+              "image_tokens": {
+                "pixels_per_token": 32,
+                "max_tokens": 16384,
+                "source": "https://huggingface.co/Qwen/Qwen3-VL-30B-A3B-Instruct/blob/main/preprocessor_config.json"
+              }
             },
             "handwriting-muse": {
               "input_micros_per_million": 300000,
-              "output_micros_per_million": 1200000
+              "output_micros_per_million": 1200000,
+              "context_tokens": 131072,
+              "image_tokens": {
+                "pixels_per_token": 28,
+                "max_tokens": 4096,
+                "source": "https://huggingface.co/meta-models/Muse-Glimmer-30B/blob/main/processor_config.json"
+              }
             }
           },
           "segmentation": {

@@ -50,8 +50,9 @@ def tool_cost(prices, tool_id, requests):
 
 
 def _reservation(run, step):
-    reservations = run.profile.execution.stage_cost_reservations
-    return reservations.for_step(step) if reservations else None
+    from .lane_reservations import step_reservation
+
+    return step_reservation(run, step)
 
 
 def _record(run, step, kind, usage, cost, outcome, billed_micros, basis=None, **name):
@@ -160,7 +161,7 @@ def step_outcome(run, step):
 
 
 def settle_step(repository, principal, specimen, step, reserved, clock=None):
-    """Settle the program ledger to what the step's calls cost.
+    """Settle the run's budget and the program ledger to what the step's calls cost.
 
     Only when every call recorded for the attempt reported usage or a billed
     amount. A reserved call, or a step whose calls nobody recorded, stays fully
@@ -170,11 +171,16 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
 
     run = specimen.run
     policy = run.profile.execution
-    if policy.program_allowance_micros is None or not reserved:
+    if not reserved:
         return
     attempt = run.attempts.get(step, 1)
     calls = [c for c in run.paid_calls if c["step"] == step and c["attempt"] == attempt]
     if not calls or any(c["cost_basis"] == "reserved" for c in calls):
+        return
+    cost = sum(c["cost_micros"] for c in calls)
+    # The run's own budget settles like the ledger (the coordinator, 2026-09-24).
+    run.usage.reserved_cost_micros += cost - reserved
+    if policy.program_allowance_micros is None:
         return
     ledger = ProgramLedger(
         repository,
@@ -187,7 +193,7 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
     position = ledger.settle(
         policy.program_allowance_micros,
         reserved,
-        sum(c["cost_micros"] for c in calls),
+        cost,
         specimen_id=specimen.id,
         run_id=run.id,
         step=step,

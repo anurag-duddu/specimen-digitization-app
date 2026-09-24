@@ -19,6 +19,7 @@ from specimen_digitization.application.domain import (
     LookupStatus,
     Principal,
     Profile,
+    Region,
     Run,
     Scope,
 )
@@ -36,6 +37,7 @@ from specimen_digitization.application.lane_costs import (
     segmentation_cost,
     settle_step,
 )
+from specimen_digitization.application.lane_reservations import step_reservation
 from specimen_digitization.application.profile_runtime import published_risk_registry
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs
@@ -91,6 +93,13 @@ def priced_run(prices=PRICES):
             "stage_cost_reservations": STAGE_COSTS,
         }
     )
+    # The crop QWEN reads, so a reading's reservation can be sized (PLAN 4.3).
+    run.regions = [
+        Region(
+            id="region-1", asset_id="asset-1", x=0, y=0, width=1, height=1,
+            order=0, method="test", version="1",
+        )
+    ]
     return run
 
 
@@ -123,7 +132,9 @@ def test_a_model_call_costs_its_tokens_at_the_route_price():
     assert call["cost_basis"] == "computed"
     assert (call["kind"], call["route_id"]) == ("model", "handwriting-qwen")
     assert call["usage"] == {"input_tokens": 1_000, "output_tokens": 500}
-    assert (call["step"], call["attempt"], call["reserved_micros"]) == (QWEN, 1, 2_000)
+    # What the reading reserved: its worst case, the stage's 2,000 at least.
+    assert (call["step"], call["attempt"]) == (QWEN, 1)
+    assert call["reserved_micros"] == step_reservation(run, QWEN) >= 2_000
     assert call["outcome"] == "completed"
     assert call["price_list"] == {"version": "lane-test-prices-1", "as_of": "2026-09-23"}
     assert run.usage.actual_cost_micros == 550
@@ -313,10 +324,10 @@ def test_a_settled_step_gives_back_the_rest_of_its_reservation(tmp_path):
     app, principal, row = lab(tmp_path)
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert "parse" in run.completed_steps, run.blocker
-    # SAM 3 and two readings reserved 45,000 + 2 x 20,000, then settled to
-    # what their calls cost.
-    assert run.usage.reserved_cost_micros == 85_000
-    assert ledger_total(app) == run.usage.actual_cost_micros < 85_000
+    # SAM 3 and two readings reserved 45,000 + 2 x 20,000, then the run's
+    # budget and the ledger alike settled to what their calls cost.
+    assert run.usage.reserved_cost_micros == run.usage.actual_cost_micros < 85_000
+    assert ledger_total(app) == run.usage.actual_cost_micros
     assert run.program_allowance["reserved_total_micros"] == ledger_total(app)
 
 

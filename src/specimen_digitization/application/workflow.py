@@ -179,14 +179,13 @@ class Workflow:
             step.startswith("transcribe:") or step in {"parse", "segment", "classify"}
         )
         reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
+        from .lane_reservations import step_reservation
+
+        # A reading reserves its worst case, the stage's amount at least (PLAN 4.3).
         cost = (
             0
             if run.profile.synthetic or not billable
-            else (
-                policy.stage_cost_reservations.for_step(step)
-                if policy.stage_cost_reservations is not None
-                else policy.request_cost_reservation_micros
-            )
+            else step_reservation(run, step)
         )
         issue = None
         if run.usage.steps >= policy.max_steps:

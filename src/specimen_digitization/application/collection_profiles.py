@@ -124,11 +124,30 @@ class DateRules(FrozenRecord):
     roman_numeral_months: bool = False
 
 
+class ImageTokens(FrozenRecord):
+    """A route's documented image-token rule (LANE.md T2b; PLAN 4.3)."""
+
+    # One token per square this many pixels a side.
+    pixels_per_token: int = Field(ge=1, le=1024)
+    # The model's documented maximum for one image; the provider downsamples above it.
+    max_tokens: int | None = Field(default=None, ge=1)
+    # Where the rule is documented.
+    source: str = Field(min_length=1, max_length=500)
+
+
 class ModelPrice(FrozenRecord):
     """A route's price in micro-dollars per million tokens (LANE.md T2c)."""
 
     input_micros_per_million: int = Field(ge=0, le=10**12)
     output_micros_per_million: int = Field(ge=0, le=10**12)
+    # The route's context length: no request's input can exceed it (PLAN 4.3).
+    context_tokens: int | None = Field(
+        default=None, ge=1, le=10**8, exclude_if=lambda value: value is None
+    )
+    # The route's documented image-token rule, when it has one.
+    image_tokens: ImageTokens | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ServicePrice(FrozenRecord):
@@ -281,6 +300,11 @@ class CollectionProfile(FrozenRecord):
         routes = {*self.model_routes, self.first_pass_route, self.harness_route} - {None}
         if prices and (not routes <= set(prices.models) or prices.segmentation is None):
             raise ValueError("the price list must price every route and the segmentation")
+        crop_routes = {*self.model_routes, self.first_pass_route} - {None}
+        if prices and any(prices.models[r].context_tokens is None for r in crop_routes):
+            raise ValueError(
+                "the price list must give the context length of every route that reads crops"
+            )
         return self
 
 

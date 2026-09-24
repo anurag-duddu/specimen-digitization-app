@@ -675,14 +675,24 @@ How T2c builds it:
 - **Price list.** `processing.price_list` in a published profile holds its
   `version`, the date it was read (`as_of`), its `sources`, and whole
   micro-dollar prices:
-  - `models`: per route, per million input tokens and per million output tokens;
+  - `models`: per route, per million input tokens and per million output
+    tokens. Each also carries the route's `context_tokens` and, where the
+    route documents one, its `image_tokens` rule: pixels per token, the
+    maximum tokens for one image, and the rule's source. Both size a reading's
+    reservation (PLAN 4.3, above);
   - `segmentation`: SAM 3's service, its vCPUs and memory in GiB, and the price
     per million vCPU-seconds, GiB-seconds and requests;
   - `tools`: per request, for the tools that are paid.
 
-  Every route the profile names, and its segmentation, must be priced. At
-  request time the run copies the list with the rest of the collection's
-  allowance.
+  Every route the profile names, and its segmentation, must be priced, and
+  every route that reads crops needs its context length. At request time the
+  run copies the list with the rest of the collection's allowance.
+- **The reservation.** `lane_reservations.step_reservation` gives a paid
+  step's reservation: the stage's amount, or for a reading its PLAN 4.3 worst
+  case with the stage's amount as the floor. The workflow reserves it, and
+  the cost record reports it, so the two never differ. A reading whose route
+  has no context length, or whose crop the run does not have, cannot be sized
+  and blocks before the call (`approved_cost_budget_unavailable`).
 - **Records.** `lane_costs.record_model_usage`, `record_segmentation` and
   `record_tool_usage` append one entry per paid call to `Run.paid_calls`:
   - the step, the attempt, and the step's reservation;
@@ -710,7 +720,16 @@ How T2c builds it:
   `reserved` call, or whose calls nobody recorded, stays fully reserved. A
   step's next attempt reserves again, and no call starts if its reservation
   would cross the allowance, however little has been spent.
-- **Pilot prices, read on 2026-09-23.**
+- **Pilot prices, read on 2026-09-23 and again on 2026-09-24, unchanged**
+  (`pilot-prices-2026-09-24`, which adds the context lengths and image rules).
+  - Context lengths, from the Hugging Face router's `/v1/models` for each
+    route's pinned provider: 131,072 for both readers.
+  - Image rules, from each model's processor configuration:
+    `handwriting-qwen` (Qwen3-VL-30B-A3B-Instruct) makes one token per 32 by
+    32 pixels (a 16-pixel patch, merged two by two) and at most 16,384 for
+    one image (its `max_pixels`, 16,777,216); `handwriting-muse`
+    (Muse-Glimmer-30B) one per 28 by 28 pixels (a 14-pixel patch, merged two
+    by two) and at most 4,096 (`max_image_tokens`).
   - Readers, from the Hugging Face router's `/v1/models` pricing for their
     pinned providers: `handwriting-qwen` (novita) 200,000 input and 700,000
     output per million tokens; `handwriting-muse` (deepinfra) 300,000 and
