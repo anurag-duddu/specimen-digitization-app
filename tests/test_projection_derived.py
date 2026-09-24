@@ -244,3 +244,34 @@ def test_every_candidate_and_call_uses_the_t2c_operations():
     operations = {w.operation for w in writes(s, locate, size, "worker-uid")}
     assert {"AppendFieldCandidateV3", "AppendToolCallV2"} <= operations
     assert not {"AppendFieldCandidateV2", "AppendToolCallV1"} & operations
+
+
+def test_a_derived_date_keeps_its_precision():
+    """G44: a single collecting date fills Date Visited To, derived, at the From date's precision."""
+    s = first_pass(base())
+    decides = rule(s)
+    century = "date-rules-v1:two_digit_year_century=1900"
+    s.run.fields = {
+        "date_visited_from": TracedField(
+            state=ValueState.SUPPORTED,
+            literal="VII-46",
+            parsed="1946-07",
+            precision="month",
+            century_rule=century,
+            input_source="decided_transcript",
+            source_region_id=s.run.regions[0].id,
+        ),
+        "date_visited_to": DerivedField(
+            state=ValueState.SUPPORTED,
+            parsed="1946-07",
+            precision="month",
+            century_rule=century,
+            layer="derived",
+            derived_from=["date_visited_from"],
+            evidence_ids=[decides.id],
+            evidence_relations={decides.id: "decides"},
+        ),
+    }
+    (candidate,) = candidate_of(writes(s, locate, size, "worker-uid"), "date_visited_to")
+    assert candidate["parsedValue"] == {"value": "1946-07", "precision": "month", "century_rule": century}
+    assert (candidate["derivation"], candidate["derivedFromFieldKeys"]) == ("derived", ["date_visited_from"])
