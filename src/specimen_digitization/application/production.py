@@ -303,6 +303,32 @@ class SqlConnectRepository:
             raise Missing(ident)
         return self._snapshot(row)
 
+    def oldest_due(self, scope, cutoff, limit=1):
+        """Due, non-sensitive work, oldest request first (LANE.md T2, G13)."""
+        if not 1 <= limit <= 100:
+            raise ValueError("Invalid page size")
+        rows = self.execute(
+            "ListDueWorkV2",
+            dict(
+                self.variables(scope),
+                cutoff=cutoff,
+                afterAt="1970-01-01T00:00:00Z",
+                afterId="",
+                limit=limit,
+                includeSensitive=False,
+            ),
+        ).get("items", [])
+        return [
+            WorkItem(
+                specimen_id=str(UUID(row["id"])),
+                revision=row["revision"],
+                state=row["state"],
+                work_available_at=row["workAvailableAt"],
+                created_at=row["createdAt"],
+            )
+            for row in rows
+        ]
+
     def due_page(self, scope, cutoff, after_id=None, limit=50):
         if not 1 <= limit <= 100:
             raise ValueError("Invalid page size")

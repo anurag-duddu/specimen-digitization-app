@@ -86,11 +86,13 @@ class RepositoryCircuitStore:
         state = CircuitState.model_validate(state).model_dump(mode="json")
         state = _stored_state(state)  # Reject integers the transport cannot retain.
         try:
+            # Not sensitive: provider availability only, and the lane's worker
+            # membership cannot write sensitive documents (LANE.md T2).
             result = self.repository.put_document(
                 self.scope,
                 "worker_cursor",
                 key,
-                {"circuit_state": state},
+                {"sensitive": False, "circuit_state": state},
                 expected,
             )
         except Conflict as exc:
