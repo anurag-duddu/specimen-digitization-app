@@ -176,18 +176,20 @@ def test_the_release_job_outlasts_the_gate_records_window_so_that_deadline_ends_
 def test_the_deployment_contract_describes_the_apply_and_the_checks_the_release_job_runs():
     section = (ROOT / "docs/DEPLOYMENT.md").read_text().split("## Data release on merge (go-live program)")[1].split("\n## ")[0]
     release = section.split("2. **Release**")[1].split("\n3. ")[0]
-    assert "fails closed until T3d" not in release
+    assert "fails closed until T3d" not in release and "until its restore check lands" not in release
     for fact in ("catalog", "supplemental index inventory", "`apply`", "`source-sha`", "point-in-time recovery", "7 days",
-                 "`firebaseowner`", "`COMPATIBLE`", "first apply"):
+                 "`firebaseowner`", "`COMPATIBLE`", "first apply", "`first-production-restore.json`", "create-only",
+                 "`specimen-digitization-restore-20260908-r1`", "deletes"):
         assert fact in release, fact
 
 
-def test_the_receipt_is_attested_on_success_and_retained_on_every_exit():
+def test_the_receipt_is_attested_and_retained_on_every_exit():
     deploy = index("release", lambda step: step.get("id") == "deploy")
     attest = index("release", uses("actions/attest"))
     upload = index("release", uses("actions/upload-artifact"))
     assert deploy < attest < upload
-    assert steps("release")[attest]["if"] == "success() && steps.deploy.outcome == 'success'"
+    # Every exit: a later attempt reads a failed first apply's restore check (RELEASE.md 4.4, the coordinator's ruling).
+    assert steps("release")[attest]["if"] == "always() && steps.deploy.outcome != 'skipped'"
     assert steps("release")[attest]["with"] == {"subject-path": RECEIPT}
     # A failed admission writes no receipt, so a missing file only warns.
     assert steps("release")[upload]["if"] == "always()"

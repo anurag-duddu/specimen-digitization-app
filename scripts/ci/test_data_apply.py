@@ -14,12 +14,14 @@ from types import SimpleNamespace
 import pytest
 
 import deploy_data as D
+import deploy_runtime
+import release_clone
 import release_google
 import release_initialize as I
 from release_diagnostics import HTTPFailure
 from test_data_first_initialization import RELEASE_PG, error, inventory, node, release_sql
-from test_data_released_deploy import (CANARIES, FIRST, INSTANCE, KEYS, MERGED, MERGED_CATALOG, MERGED_SCHEMA, OPS, RULES,
-                                       RULESET, SCHEMA, SHA, UPDATED, record, state, tree)
+from test_data_released_deploy import (CANARIES, INSTANCE, KEYS, MERGED, MERGED_CATALOG, MERGED_SCHEMA, OPS, RULES, RULESET,
+                                       SCHEMA, SHA, UPDATED, record, state, tree)
 
 NOW, OLD, WEEK = 1790165000, "b" * 40, 7 * 86400  # inside record()'s window; the commit the plane last applied
 
@@ -40,33 +42,91 @@ UNFINISHED = "this attempt's backup did not reach SUCCESSFUL"
 NUMBER = record()["identity"]["project_number"]  # the project's numeric alias
 APPLIED = {"schema_etag": "schema-etag-2", "connector_etag": "connector-etag-2", "storage_ruleset": NEW,
            "source_sha_label": SHA, "backup_id": BACKUP_ID, "tables": 1, "views": 0}
+# The first apply (D1): its claim, the fixed clone restored from this attempt's backup, checked and deleted, then the rest.
+CLONED, GENERATION, DEADLINE = f"projects/{D.PROJECT}/instances/{D.CLONE}", "1790165000000001", record()["expires_at_unix"]
+FIRST_ORDER = ["backup", "claim", "clone-create", "clone-restore", "restored", "clone-delete", *ORDER[1:]]
+CLAIMED = "the first production restore is already claimed; the coordinator decides"
+UNKNOWN = "the restore claim failed or its outcome is unknown; the coordinator decides"
+RECIPE = "the SQL instance does not fit the restore clone's recipe"
+NOT_OURS = "the restore clone is not provably this run's; the coordinator deletes it"
+SPENT = ("an earlier attempt spent the first production restore's claim without checking the clone; "
+         "the coordinator decides")
+IAM = {"name": "cloudsql.iam_authentication", "value": "on"}
+
+
+def unlabelled(cloud):
+    cloud.live["data", SCHEMA]["labels"].pop("source-sha")
+
+
+def operation(kind, target, name, status="DONE"):
+    return {"kind": "sql#operation", "name": name, "status": status, "operationType": kind, "targetId": target,
+            "targetProject": D.PROJECT, "user": ACTOR}
 
 
 class Cloud:
     """The live data plane behind the release job's gate record: by default an additive change over the commit it last
-    applied, OLD. Each effect and each Node run is one ordered event; `fail` names the one that fails."""
+    applied, OLD. Each effect and each Node run is one ordered event; `fail` names the one that fails, and each operation
+    named in `pending` never finishes."""
 
     def __init__(self, schema=LIVE, label=OLD, rules="rules_version = '2';\n"):
         self.plane, self.packet, self.events, self.fail, self.status = "data", record(), [], None, "ahead"
         self.live = state(schema, OPS, rules=rules)
         self.live["data", SCHEMA]["labels"] = {"team": "specimen", **({"source-sha": label} if label else {})}
-        self.live["sql", INSTANCE]["settings"] = {"dataDiskSizeGb": "10", "backupConfiguration": {
-            "enabled": True, "pointInTimeRecoveryEnabled": True}}
+        self.live["sql", INSTANCE].update(databaseVersion="POSTGRES_18", settings={
+            "dataDiskSizeGb": "10", "edition": "ENTERPRISE", "databaseFlags": [IAM],
+            "backupConfiguration": {"enabled": True, "pointInTimeRecoveryEnabled": True}})
         self.diff, self.backup, self.compared, self.patches = [ADD] if schema == LIVE else [], {}, [], []
-        self.catalog, self.indexes = copy.deepcopy(MERGED_CATALOG), inventory()
+        self.catalog, self.indexes, self.restored = copy.deepcopy(MERGED_CATALOG), inventory(), copy.deepcopy(MERGED_CATALOG)
+        self.claims, self.response, self.clone, self.pending, self.swap = [], {}, lambda clone: None, set(), False
+        self.earlier = {}  # this run's earlier attempts' data receipts: attempt -> (receipt, attested)
 
     def effect(self, name):
         self.events.append(name)
         if name == self.fail:
             raise HTTPFailure(503)
 
+    def operation(self, kind, target, name):
+        """A Cloud SQL operation of the release identity; a pending one stays pending on every read."""
+        value = operation(kind, target, name, "PENDING" if name in self.pending else "DONE")
+        self.live["sql", f"projects/{D.PROJECT}/operations/{name}"] = value
+        return value
+
+    def claim_restore(self, payload, directory):
+        """The fixed key's create-only insert: the first wins, every later one finds it (HTTP 412)."""
+        self.effect("claim")
+        self.claims.append(json.loads(payload))
+        if len(self.claims) > 1 or isinstance(self.response, Exception):
+            raise self.response if isinstance(self.response, Exception) else HTTPFailure(412)
+        return {"kind": "storage#object", "bucket": release_clone.BUCKET, "name": release_clone.KEY, "generation": GENERATION,
+                "metageneration": "1", "size": str(len(payload)), "temporaryHold": True, "contentType": "application/json",
+                "md5Hash": release_clone.checksum(payload), **self.response}
+
     def request(self, api, method, resource, *, body=None, params=None, missing=False, diff=False):
         if method == "GET":
             if (api, resource) not in self.live:
                 return None if missing else pytest.fail("unexpected read")
+            if isinstance(self.live[api, resource], Exception):
+                raise self.live[api, resource]
             return copy.deepcopy(self.live[api, resource])
+        gate, claim = getattr(self, "_gate_effect", None), getattr(self, "_gate_claim", None)
+        if api == "sql" and method == "DELETE":
+            assert resource == CLONED
+            self.effect("clone-delete")
+            del self.live["sql", CLONED]
+            return self.operation("DELETE", D.CLONE, "delete-operation")
+        if api == "sql" and resource == f"projects/{D.PROJECT}/instances":
+            assert (gate, claim) == ("clone-create", GENERATION)
+            self.effect("clone-create")
+            self.cloned, self.live["sql", CLONED] = body, {**copy.deepcopy(body), "createTime": utc(NOW - 1)}
+            self.clone(self.live["sql", CLONED])
+            return self.operation("CREATE", D.CLONE, "create-operation")
+        if api == "sql" and resource == f"{CLONED}/restoreBackup":
+            assert (gate, claim) == ("clone-restore", GENERATION)
+            self.effect("clone-restore")
+            self.restore = body
+            return self.operation("RESTORE_VOLUME", D.CLONE, "restore-operation")
         if api == "sql":
-            assert (method, resource, getattr(self, "_gate_effect", None)) == ("POST", f"projects/{D.PROJECT}/backups", "backup")
+            assert (method, resource, gate) == ("POST", f"projects/{D.PROJECT}/backups", "backup")
             self.effect("backup")
             self.sent, shared = body, {"type": "ON_DEMAND", "instance": D.SOURCE, "description": body["description"],
                                        "location": "us-east4", "maxChargeableBytes": "1048576", **self.backup}
@@ -100,18 +160,24 @@ class Cloud:
 
 
 def node_sql(cloud):
-    """release_sql.mjs as the release identity for the admitted commit on the source: each mode one event; `fail` exits 1."""
+    """release_sql.mjs as the release identity for the admitted commit, on the source but for the restored clone: each
+    mode one event; `fail` exits 1."""
     def run(command, **kwargs):
-        assert command[:2] == ["node", "scripts/ci/release_sql.mjs"] and command[3] == D.SOURCE
+        assert command[:2] == ["node", "scripts/ci/release_sql.mjs"]
+        assert command[3] == (D.CLONE if command[2] == "restored" else D.SOURCE)
+        assert command[4].endswith(f"{command[3]}-{command[2]}.json")
         assert kwargs["env"]["RELEASE_GATE_SHA"] == SHA and 0 < kwargs["timeout"] <= 300
         cloud.events.append(command[2])
         if command[2] == cloud.fail:
             return subprocess.CompletedProcess(command, 1, b"", b"")
         if command[2] == "migrate":
             cloud.diff = []  # committed: Data Connect's next diff finds nothing
+        if command[2] == "restored" and cloud.swap:
+            cloud.live["sql", CLONED]["createTime"] = utc(NOW)  # another clone of the same name replaced this run's
         cloud.indexes = inventory() if command[2] == "indexes" else cloud.indexes
-        answer = {"migrated": cloud.catalog, "indexed": cloud.indexes, "indexes": inventory(),
-                  "migrate": {"version": "data-migration/v1", "statements": 1, "committed": True}}[command[2]]
+        count = len(json.loads(Path(command[5]).read_text())["statements"]) if command[2] == "migrate" else 0
+        answer = {"migrated": cloud.catalog, "indexed": cloud.indexes, "indexes": inventory(), "restored": cloud.restored,
+                  "migrate": {"version": "data-migration/v1", "statements": count, "committed": True}}[command[2]]
         Path(command[4]).write_text(json.dumps(answer))
         Path(command[4]).chmod(0o600)
         return subprocess.CompletedProcess(command, 0, b"", b"")
@@ -121,13 +187,34 @@ def node_sql(cloud):
 @pytest.fixture
 def released(tmp_path, monkeypatch, capsys):
     """deploy_released_data at a fixed instant; every exit keeps the receipt, the step output and the log public."""
-    output, steps = tree(tmp_path, monkeypatch)
-    monkeypatch.setattr(time, "time", lambda: NOW)
+    output, steps, clock = *tree(tmp_path, monkeypatch), [NOW]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
     monkeypatch.setattr(time, "sleep", lambda seconds: pytest.fail("every operation here completes at once"))
 
     def run(cloud, directory="release"):
         monkeypatch.setattr(D, "Google", lambda path, plane: cloud)
-        monkeypatch.setattr(D, "gh_json", lambda path: cloud.compared.append(path) or {"status": cloud.status})
+        def gh_json(path):
+            if path.startswith(f"repos/{D.REPOSITORY}/actions/runs/456/artifacts"):
+                items = [{"name": f"data-receipt-{SHA}-{attempt}", "expired": False, "workflow_run": {"id": 456}}
+                         for attempt in cloud.earlier]
+                return {"total_count": len(items), "artifacts": items}
+            cloud.compared.append(path)
+            return {"status": cloud.status}
+
+        def download(command, **kwargs):
+            assert command[:8] == ["gh", "run", "download", "456", "--repo", D.REPOSITORY, "--name", command[7]]
+            attempt = int(command[7].rsplit("-", 1)[1])
+            Path(command[9], "data-receipt.json").write_text(json.dumps(cloud.earlier[attempt][0]))
+
+        def verified(path, sha256, source, workflow):
+            attested = {json.dumps(value): ok for value, ok in cloud.earlier.values()}
+            assert (source, workflow) == (SHA, "data-release.yml")
+            if not attested[Path(path).read_text()]:
+                raise ValueError("no attestation")
+            return Path(path).read_bytes()
+        monkeypatch.setattr(D, "gh_json", gh_json)
+        monkeypatch.setattr(deploy_runtime, "checked", download)
+        monkeypatch.setattr(deploy_runtime, "verified_receipt_bytes", verified)
         monkeypatch.setattr(D.subprocess, "run", node_sql(cloud))
         (tmp_path / directory).mkdir(exist_ok=True)
         steps.write_text("")
@@ -141,6 +228,7 @@ def released(tmp_path, monkeypatch, capsys):
         assert set(value) == KEYS and not any(canary in text for canary in CANARIES
                                               for text in (output.read_text(), steps.read_text(), cloud.log))
         return value, steps.read_text()
+    run.clock = clock
     return run
 
 
@@ -148,7 +236,8 @@ def receipt(phase="apply", **facts):
     """Public facts only, each as last observed: stopped before any effect unless facts say otherwise."""
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": "connector-etag",
-            "storage_ruleset": RULESET, "source_sha_label": OLD, "backup_id": None, "tables": None, "views": None, **facts}
+            "storage_ruleset": RULESET, "source_sha_label": OLD, "backup_id": None, "first_restore": None, "tables": None,
+            "views": None, **facts}
 
 
 def test_an_additive_apply_backs_up_then_migrates_and_releases_the_merged_files_labelled_with_the_merged_commit(released):
@@ -170,14 +259,25 @@ def test_an_additive_apply_backs_up_then_migrates_and_releases_the_merged_files_
 @pytest.mark.parametrize("change,message,label", [
     (lambda cloud: setattr(cloud, "status", "behind"), NEWER, OLD),
     (lambda cloud: setattr(cloud, "status", "diverged"), NEWER, OLD),
-    (lambda cloud: cloud.live["data", SCHEMA]["labels"].pop("source-sha"), FIRST, None),
     (lambda cloud: cloud.live["data", SCHEMA]["labels"].update({"source-sha": "main"}), LABELS, None),
     (lambda cloud: cloud.live["data", SCHEMA]["labels"].update(team=7), LABELS, OLD),
     (lambda cloud: cloud.live["sql", INSTANCE]["settings"]["backupConfiguration"].update(pointInTimeRecoveryEnabled=False),
      PITR, OLD),
     (lambda cloud: cloud.live["sql", INSTANCE]["settings"].pop("backupConfiguration"), PITR, OLD),
     (lambda cloud: (setattr(cloud, "status", "behind"), cloud.live["sql", INSTANCE].pop("settings")), NEWER, OLD),
-], ids=["behind", "diverged", "no-label", "not-a-commit", "malformed-labels", "pitr-off", "no-backups", "guard-first"])
+    # The first apply's own: the recipe fits the source, and the fixed clone is absent.
+    (lambda cloud: (unlabelled(cloud), cloud.live.update({("sql", CLONED): {"name": D.CLONE}})),
+     "the restore clone already exists; the coordinator decides", None),
+    # The clone roles are time-bounded: while the owner's window is closed the clone cannot even be read.
+    (lambda cloud: (unlabelled(cloud), cloud.live.update({("sql", CLONED): HTTPFailure(403)})),
+     "the restore clone cannot be read; the first apply needs the owner's window open", None),
+    (lambda cloud: (unlabelled(cloud), cloud.live["sql", INSTANCE]["settings"]["databaseFlags"].clear()), RECIPE, None),
+    (lambda cloud: (unlabelled(cloud), cloud.live["sql", INSTANCE]["settings"].update(edition="ENTERPRISE_PLUS")),
+     RECIPE, None),
+    (lambda cloud: (unlabelled(cloud), cloud.live["sql", INSTANCE].pop("databaseVersion")), RECIPE, None),
+    (lambda cloud: (unlabelled(cloud), cloud.live["sql", INSTANCE]["settings"]["backupConfiguration"].clear()), PITR, None),
+], ids=["behind", "diverged", "not-a-commit", "malformed-labels", "pitr-off", "no-backups", "guard-first", "clone-exists",
+        "window-closed", "no-iam-authentication", "another-edition", "no-version", "first-pitr-off"])
 def test_each_precondition_stops_before_any_effect_with_its_fixed_reason(released, change, message, label):
     cloud = Cloud()
     change(cloud)
@@ -314,6 +414,200 @@ def test_the_gate_transport_sends_the_applys_one_backup_and_no_other_recovery_ef
     assert sent == [release_google.ORIGINS["sql"] + backups]
 
 
+def test_the_first_apply_claims_restores_its_backup_into_the_clone_checks_and_deletes_it_then_applies(released):
+    cloud = Cloud(label=None)
+    value, outputs = released(cloud)
+    assert cloud.error is None and outputs == "phase=apply\n" and cloud.events == FIRST_ORDER and cloud.compared == []
+    assert value == receipt(**APPLIED, first_restore="checked") and ("sql", CLONED) not in cloud.live
+    # The claim binds the gate record's commit, this run and attempt, this attempt's backup, the clone and the source,
+    # for a window from the claim to the gate record's deadline.
+    assert cloud.claims == [{"version": "clone-allowance-claim/v2", "source_sha": SHA, "run_id": 456, "run_attempt": 2,
+                             "backup_id": BACKUP_ID, "clone": D.CLONE, "source": D.SOURCE, "issued_at_unix": NOW,
+                             "expires_at_unix": DEADLINE}]
+    # The envelope's recipe at its smallest tier, on the source's region, version and disk; no backups, no point-in-time
+    # recovery; labelled with this run and attempt. The restore reads this attempt's backup of the source.
+    assert cloud.cloned == {"name": D.CLONE, "region": "us-east4", "databaseVersion": "POSTGRES_18", "settings": {
+        "tier": "db-f1-micro", "edition": "ENTERPRISE", "availabilityType": "ZONAL", "dataDiskSizeGb": "10",
+        "dataDiskType": "PD_SSD", "storageAutoResize": False, "backupConfiguration": {"enabled": False,
+                                                                                      "pointInTimeRecoveryEnabled": False},
+        "ipConfiguration": {"ipv4Enabled": True, "sslMode": "ENCRYPTED_ONLY"}, "databaseFlags": [IAM],
+        "userLabels": {"release-run": "456", "release-attempt": "2", "source-sha": SHA,
+                       "purpose": "isolated-restore-rehearsal"}}}
+    assert cloud.restore == {"restoreBackupContext": {"backupRunId": BACKUP_ID, "instanceId": D.SOURCE, "project": D.PROJECT}}
+
+
+def test_the_clone_is_checked_against_the_live_schema_its_backup_holds_and_the_source_against_the_merged_one(released):
+    (D.ROOT / "dataconnect/schema/schema.gql").write_text(MERGED_SCHEMA + "type Note @table {\n  id: UUID!\n}\n")
+    cloud = Cloud(label=None)
+    cloud.diff.append('CREATE TABLE "public"."note" ("id" uuid NOT NULL, PRIMARY KEY ("id"))')
+    cloud.catalog["tables"] = ["public.note", "public.specimen"]
+    assert released(cloud)[0]["tables"] == 2 and cloud.error is None and cloud.events == FIRST_ORDER
+    cloud = Cloud(label=None)
+    cloud.restored["tables"] = ["public.note", "public.specimen"]
+    released(cloud, "merged-tables")
+    assert cloud.error == "the restored clone's tables differ from the live schema's"
+
+
+@pytest.mark.parametrize("change,message", [
+    (lambda catalog: catalog["tables"].append("public.canary_table"), "tables differ from the live schema's"),
+    (lambda catalog: catalog["owners"].append("cloudsqlsuperuser"), "relations are not all owned by the owner role"),
+    (lambda catalog: catalog["extensions"].append("vector"), "extensions are not exactly plpgsql and uuid-ossp"),
+    (lambda catalog: catalog["postconditions"].update(schema_owner="cloudsqlsuperuser"),
+     "public schema is not owned by the owner role"),
+], ids=["extra-table", "foreign-owner", "extension", "schema-owner"])
+def test_a_clone_that_fails_its_catalog_check_is_deleted_as_this_runs_and_stops_the_first_apply(released, change, message):
+    """The clone is checked as the source is, with messages that name it."""
+    message = f"the restored clone's {message}"
+    cloud = Cloud(label=None)
+    change(cloud.restored)
+    value, outputs = released(cloud)
+    assert cloud.error == message and cloud.events == FIRST_ORDER[:6] and ("sql", CLONED) not in cloud.live
+    assert value == receipt(source_sha_label=None, backup_id=BACKUP_ID, first_restore="claimed")
+
+
+@pytest.mark.parametrize("response,message", [
+    (HTTPFailure(412), CLAIMED), (HTTPFailure(403), UNKNOWN), (TimeoutError(), UNKNOWN), ({"temporaryHold": False}, UNKNOWN),
+    ({"generation": "0"}, UNKNOWN),
+], ids=["claimed", "refused", "unknown", "not-held", "no-generation"])
+def test_an_existing_or_unproven_claim_stops_the_first_apply_before_its_clone(released, response, message):
+    cloud = Cloud(label=None)
+    cloud.response = response
+    value, _ = released(cloud)
+    assert cloud.error == message and cloud.events == ["backup", "claim"] and ("sql", CLONED) not in cloud.live
+    assert value == receipt(source_sha_label=None, backup_id=BACKUP_ID)
+
+
+def test_a_re_run_after_the_claim_finds_it_and_stops_since_deleting_a_claim_never_refunds_it(released):
+    cloud = Cloud(label=None)
+    cloud.fail = "clone-create"
+    released(cloud)
+    assert cloud.events == ["backup", "claim", "clone-create"] and len(cloud.claims) == 1
+    cloud.events, cloud.fail, cloud.packet = [], None, record(release_run_attempt=3)
+    value, _ = released(cloud, "rerun")
+    assert cloud.error == CLAIMED and cloud.events == ["backup", "claim"] and cloud.claims[1]["run_attempt"] == 3
+    assert value["backup_id"] == BACKUP_ID and value["first_restore"] is None
+
+
+@pytest.mark.parametrize("left,claims", [(1800, False), (1801, True)], ids=["too-late", "in-time"])
+def test_the_claim_needs_half_an_hour_of_the_gate_records_window_and_ends_at_its_deadline(released, left, claims):
+    released.clock[0] = DEADLINE - left
+    cloud = Cloud(label=None)
+    value, _ = released(cloud)
+    if not claims:
+        assert cloud.error == "too little of the gate record's hour remains for the restore check; re-run the job"
+        assert cloud.events == ["backup"] and cloud.claims == []
+        return
+    assert cloud.error is None and cloud.events == FIRST_ORDER
+    assert (cloud.claims[0]["issued_at_unix"], cloud.claims[0]["expires_at_unix"]) == (DEADLINE - left, DEADLINE)
+
+
+@pytest.mark.parametrize("change", [
+    lambda cloud: setattr(cloud, "clone", lambda clone: clone["settings"]["userLabels"].update({"release-attempt": "1"})),
+    lambda cloud: setattr(cloud, "clone", lambda clone: clone.update(createTime="2026-09-23T00:00:00Z")),
+    lambda cloud: setattr(cloud, "swap", True),
+], ids=["another-attempts-labels", "created-before-this-record", "replaced-after-the-check"])
+def test_only_the_clone_this_run_created_and_proved_it_owns_is_ever_deleted(released, change):
+    cloud = Cloud(label=None)
+    change(cloud)
+    released(cloud)
+    assert cloud.error == NOT_OURS and ("sql", CLONED) in cloud.live and "clone-delete" not in cloud.events
+
+
+@pytest.mark.parametrize("fail,message,events,left", [
+    ("clone-create", "the restore clone could not be created; the coordinator decides", FIRST_ORDER[:3], False),
+    ("clone-restore", "the backup could not be restored into the clone", [*FIRST_ORDER[:4], "clone-delete"], False),
+    ("clone-delete", "the restore clone's deletion was not confirmed; the coordinator deletes it", FIRST_ORDER[:6], True),
+], ids=["create-refused", "restore-refused", "delete-refused"])
+def test_a_refused_clone_request_stops_with_its_fixed_reason_and_an_owned_clone_is_still_deleted(
+        released, fail, message, events, left):
+    cloud = Cloud(label=None)
+    cloud.fail = fail
+    value, _ = released(cloud)
+    assert cloud.error == message and f"Data release blocked: {message}." in cloud.log and cloud.events == events
+    assert (("sql", CLONED) in cloud.live) is left and value["first_restore"] == "claimed"
+
+
+def test_every_clone_wait_ends_early_enough_to_delete_the_clone_within_the_gate_records_deadline(released, monkeypatch):
+    monkeypatch.setattr(time, "sleep", lambda seconds: released.clock.__setitem__(0, released.clock[0] + seconds))
+    cloud = Cloud(label=None)
+    cloud.pending = {"create-operation"}
+    released(cloud)
+    # A clone still being created cannot be proved this run's, so the coordinator deletes it.
+    assert cloud.error == ("the restore clone's creation did not complete in time; the coordinator deletes the clone if "
+                           "it exists")
+    assert cloud.events == ["backup", "claim", "clone-create"] and released.clock[0] <= DEADLINE - 600
+    released.clock[0] = NOW
+    cloud = Cloud(label=None)
+    cloud.pending = {"restore-operation"}
+    released(cloud, "restore")
+    assert cloud.error == "the backup was not restored into the clone in time" and released.clock[0] <= DEADLINE - 600
+    assert cloud.events == ["backup", "claim", "clone-create", "clone-restore", "clone-delete"]
+    assert ("sql", CLONED) not in cloud.live
+
+
+def test_the_gate_transport_sends_the_first_applys_clone_and_restore_only_after_its_claim(monkeypatch, tmp_path):
+    google = object.__new__(release_google.Google)
+    google.path, google.plane, google.packet = tmp_path / "packet.json", "data", record(expires_at_unix=int(time.time()) + 3000)
+    monkeypatch.setattr(release_google, "admit", lambda path, plane: google.packet)
+    sent = []
+    google.session = SimpleNamespace(request=lambda method, url, **kwargs: sent.append((method, url)) or SimpleNamespace(
+        status_code=200, json=lambda: {"name": "operation"}))
+    effects = {"clone-create": f"projects/{D.PROJECT}/instances", "clone-restore": f"{CLONED}/restoreBackup"}
+    for name, resource in effects.items():
+        google._gate_effect = name
+        with pytest.raises(ValueError, match="claim"):
+            google.request("sql", "POST", resource, body={})
+    google._gate_claim = GENERATION
+    for name, resource in effects.items():
+        google._gate_effect = name
+        assert google.request("sql", "POST", resource, body={}) == {"name": "operation"}
+        with pytest.raises(ValueError, match="replayed"):
+            google.request("sql", "POST", resource, body={})
+    # Of the instances, only the clone is ever deleted.
+    with pytest.raises(ValueError, match="clone"):
+        google.request("sql", "DELETE", f"projects/{D.PROJECT}/instances/{D.SOURCE}")
+    assert google.request("sql", "DELETE", CLONED) == {"name": "operation"}
+    assert sent == [("POST", release_google.ORIGINS["sql"] + resource) for resource in effects.values()] + [
+        ("DELETE", release_google.ORIGINS["sql"] + CLONED)]
+
+
+def test_the_gate_claim_is_bounded_by_its_own_window(monkeypatch, tmp_path):
+    google = object.__new__(release_google.Google)
+    google.path, google.plane, google.packet = tmp_path / "packet.json", "data", record(expires_at_unix=int(time.time()) + 3000)
+    monkeypatch.setattr(release_google, "admit", lambda path, plane: google.packet)
+    monkeypatch.setenv("RELEASE_SERVICE_ACCOUNT", release_clone.ACTOR)
+    sent = []
+    google.session = SimpleNamespace(request=lambda *args, **kwargs: sent.append(args) or SimpleNamespace(
+        status_code=200, headers={}, close=lambda: None, iter_content=lambda **kw: iter([b'{"kind": "storage#object"}'])))
+    near = release_clone.canonical({"version": "clone-allowance-claim/v2", "expires_at_unix": int(time.time()) + 1700})
+    with pytest.raises(ValueError, match="claim authority"):
+        google.claim_restore(near, tmp_path)
+    assert sent == []
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    google.path = fresh / "packet.json"
+    window = release_clone.canonical({"version": "clone-allowance-claim/v2", "expires_at_unix": int(time.time()) + 2000})
+    assert google.claim_restore(window, fresh) == {"kind": "storage#object"} and len(sent) == 1
+
+
+def test_node_reads_the_restored_clones_catalog_read_only_for_a_gate_records_commit_on_the_clone_alone(tmp_path):
+    catalog = {key: value for key, value in MERGED_CATALOG.items() if key != "postconditions"}
+    answers = [["$postconditions$", [{"command": "DO"}, {"command": "SELECT", "rows": [{"postconditions": {"x": 1}}]}]],
+               ["AS extensions", {"rows": [catalog]}], ["AS name", {"rows": [{"name": D.DATABASE}]}]]
+    env = {"DEPLOYMENT_ENVIRONMENT": "data-production", "RELEASE_GATE_SHA": SHA}
+    code, value, trace = node(tmp_path, "scripts/ci/release_sql.mjs", "restored", env, answers, I.CLONE, pg=RELEASE_PG)
+    texts = [json.loads(line)[0] for line in trace[2:]]
+    assert (code, value) == (0, {**catalog, "postconditions": {"x": 1}})
+    assert json.loads(trace[0]) == ["pool", I.MAINTENANCE, D.DATABASE]
+    assert texts[0] == "BEGIN TRANSACTION READ ONLY" and texts[-1] == "COMMIT"
+    # Gate-only and clone-only; migrate and migrated stay on the source.
+    for mode, instance, shas in (("restored", D.SOURCE, {"RELEASE_GATE_SHA": SHA}),
+                                 ("restored", I.CLONE, {"RELEASE_AUTHORIZED_SHA": SHA}),
+                                 ("migrated", I.CLONE, {"RELEASE_GATE_SHA": SHA}), ("migrate", I.CLONE, {"RELEASE_GATE_SHA": SHA})):
+        assert node(tmp_path, "scripts/ci/release_sql.mjs", mode, {"DEPLOYMENT_ENVIRONMENT": "data-production", **shas}, [],
+                    instance, pg=RELEASE_PG) == (1, None, [])
+
+
 def test_node_reads_the_index_inventory_read_only_for_a_gate_records_commit_on_the_source_alone(tmp_path):
     rows = [{"name": "specimen_text_cursor", "valid": True}]
     code, value, trace = release_sql(tmp_path, "indexed", answers=json.dumps([["AS definition", {"rows": rows}]]))
@@ -324,3 +618,52 @@ def test_node_reads_the_index_inventory_read_only_for_a_gate_records_commit_on_t
     for env, instance in (({"RELEASE_AUTHORIZED_SHA": SHA}, D.SOURCE), ({"RELEASE_GATE_SHA": SHA}, I.CLONE)):
         assert node(tmp_path, "scripts/ci/release_sql.mjs", "indexed", {"DEPLOYMENT_ENVIRONMENT": "data-production", **env}, [],
                     instance, pg=RELEASE_PG) == (1, None, [])
+
+
+def earlier(first_restore="checked", attested=True, **changes):
+    """Attempt 1's data receipt, as the release job uploads and attests it on every exit."""
+    return {1: ({**receipt(source_sha_label=None, backup_id=BACKUP_ID, first_restore=first_restore), "run_attempt": 1,
+                 **changes}, attested)}
+
+
+def test_a_re_run_after_a_failure_past_the_claim_applies_without_a_second_clone_on_the_earlier_attested_check(released):
+    """The coordinator's ruling of 2026-09-24: attempt 1 claimed, checked the clone and then failed; its attested receipt is
+    D1's one restore proof, so attempt 2 needs no clone role, sends no claim and applies with this attempt's own backup."""
+    cloud = Cloud(label=None)
+    cloud.earlier = earlier()
+    cloud.live["sql", CLONED] = HTTPFailure(403)  # the owner's window has closed again: the clone is never read
+    value, _ = released(cloud)
+    assert cloud.error is None and cloud.events == ORDER and cloud.claims == []
+    assert value == receipt(**APPLIED, first_restore="proven")
+    assert "An earlier attempt of this run claimed and checked the first restore" in cloud.log
+
+
+def test_an_earlier_attempt_that_only_claimed_stops_the_first_apply_before_any_effect(released):
+    """A claim spent without a checked clone proves nothing: the apply stops before its backup, for the coordinator."""
+    cloud = Cloud(label=None)
+    cloud.earlier = earlier("claimed")
+    value, _ = released(cloud)
+    assert cloud.error == SPENT and cloud.events == [] and cloud.claims == []
+    assert value == receipt(source_sha_label=None)
+
+
+@pytest.mark.parametrize("found", [
+    {}, earlier(attested=False), earlier(source_sha="c" * 40), earlier(run_id=789), earlier(run_attempt=3),
+    earlier(None), earlier("proven"),
+], ids=["another-commit", "unattested", "other-commit-receipt", "other-run", "other-attempt", "no-restore", "proven"])
+def test_nothing_else_proves_the_restore_and_the_spent_claim_stops_the_first_apply(released, found):
+    """Anything but an earlier attempt's attested "checked" for this commit, this run and that attempt proves nothing: a
+    different commit's first apply, an unattested or mismatched receipt, or any other value meets the spent claim."""
+    cloud = Cloud(label=None)
+    cloud.earlier, cloud.response = found, HTTPFailure(412)
+    value, _ = released(cloud)
+    assert cloud.error == CLAIMED and cloud.events == ["backup", "claim"] and ("sql", CLONED) not in cloud.live
+    assert value == receipt(source_sha_label=None, backup_id=BACKUP_ID)
+
+
+def test_a_labelled_apply_never_reads_earlier_receipts(released):
+    """Only a first apply looks for an earlier attempt's check; every later apply has its label."""
+    cloud = Cloud()
+    cloud.earlier = earlier("claimed")
+    value, _ = released(cloud)
+    assert cloud.error is None and value == receipt(**APPLIED)

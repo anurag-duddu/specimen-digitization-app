@@ -196,7 +196,7 @@ MEMBER = ('CREATE TABLE "public"."organization_member" ("organization_id" uuid N
 UNIQUE = 'CREATE UNIQUE INDEX "organization_name_uidx" ON "public"."organization" ("name")'
 
 
-def release_sql(postgres, tmp_path, mode, *statements):
+def release_sql(postgres, tmp_path, mode, *statements, instance='specimen-digitization-instance'):
     assert PG_MODULE.joinpath('package.json').is_file(), 'the pg module of firebase-tools 15.8.0 is required, not skipped'
     modules = tmp_path / 'node_modules'
     for name in ('firebase-tools', '@google-cloud/cloud-sql-connector'):
@@ -214,7 +214,7 @@ def release_sql(postgres, tmp_path, mode, *statements):
            'GITHUB_SHA': 'a' * 40, 'RELEASE_GATE_SHA': 'a' * 40, 'GITHUB_EVENT_NAME': 'push', 'GITHUB_REF': 'refs/heads/main',
            'GITHUB_WORKFLOW_REF': 'anurag-duddu/specimen-digitization-app/.github/workflows/data-release.yml@refs/heads/main',
            'DEPLOYMENT_ENVIRONMENT': 'data-production', 'RELEASE_NODE_ROOT': str(tmp_path), 'TEST_PG_HOST': postgres.socket}
-    result = subprocess.run(['node', 'scripts/ci/release_sql.mjs', mode, 'specimen-digitization-instance', str(output), str(plan)],
+    result = subprocess.run(['node', 'scripts/ci/release_sql.mjs', mode, instance, str(output), str(plan)],
                             cwd=initialization.ROOT, env=env, capture_output=True, timeout=60)
     return result.returncode, json.loads(output.read_text()) if output.exists() else None
 
@@ -261,6 +261,18 @@ def test_pg18_the_index_inventory_reads_each_index_definition_read_only(postgres
         {'name': 'organization_pkey', 'table_name': 'organization', 'method': 'btree', 'valid': True, 'unique': True,
          'predicate': None, 'keys': ['id'], 'includes': [],
          'definition': 'CREATE UNIQUE INDEX organization_pkey ON public.organization USING btree (id)'}]
+
+
+def test_pg18_the_restored_clone_is_read_as_the_source_is_and_only_as_the_clone(postgres, tmp_path):
+    """RELEASE.md 4.4 item 1 (D1): release_sql.mjs restored reads the clone's catalog exactly as migrated reads the
+    source's. The connector stand-in reaches this one cluster by either name."""
+    assert transaction(postgres).returncode == 0
+    assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION)[0] == 0
+    clone = 'specimen-digitization-restore-20260908-r1'
+    code, restored = release_sql(postgres, tmp_path, 'restored', instance=clone)
+    assert code == 0 and restored == release_sql(postgres, tmp_path, 'migrated')[1]
+    assert restored['tables'] == ['public.organization'] and restored['postconditions']['schema_owner'] == OWNER
+    assert release_sql(postgres, tmp_path, 'restored') == (1, None)
 
 
 def test_pg18_one_failing_statement_rolls_the_whole_migration_back(postgres, tmp_path):

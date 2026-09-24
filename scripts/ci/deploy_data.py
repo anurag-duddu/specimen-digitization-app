@@ -40,6 +40,8 @@ OWNER = APPLICATION_ROLES["owner"]
 # how far Cloud SQL's readback of that expiry may differ from the request.
 LABEL, BACKUP_SECONDS, EXPIRY_SLACK_SECONDS = "source-sha", 7 * 86400, 60
 ACTOR = f"specimen-data-release@{PROJECT}.iam.gserviceaccount.com"
+# The first apply's restore check (D1): the gate record's time a claim needs left, and the time kept for the clone's deletion.
+CLAIM_SECONDS, DISPOSAL_SECONDS = 1800, 600
 # RELEASE.md 4.3 step 3 reads a diff statement as tokens: ASCII space, a quoted identifier, a string, a word, a number,
 # punctuation, an operator run or any other character. A backslash or an "other" token refuses it, so no escape string
 # or dollar quote can move a statement boundary. release_sql.mjs reads each statement the same way before it runs.
@@ -777,7 +779,7 @@ def deploy_released_data(path, output):
         # T3e reads the artifact; until then this release never decodes, prints or writes its value.
         print("A bootstrap artifact is present; the bootstrap arrives with T3e, so this release leaves it unread.")
     facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset",
-                           "source_sha_label", "backup_id", "tables", "views"))
+                           "source_sha_label", "backup_id", "first_restore", "tables", "views"))
 
     def choose(phase):
         facts["phase"] = phase
@@ -1010,15 +1012,15 @@ def initializer_receipt(record):
     return receipt
 
 
-def gate_sql(mode, directory, source_sha, *inputs, deadline=None):
-    """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit; None when it fails or
-    outlasts five minutes or the deadline, the gate record's (RELEASE.md 4.4)."""
-    target = directory / f"{SOURCE}-{mode}.json"
+def gate_sql(mode, directory, source_sha, *inputs, instance=SOURCE, deadline=None):
+    """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit, on the source unless the
+    mode reads the restored clone; None when it fails or outlasts five minutes or the deadline (RELEASE.md 4.4)."""
+    target = directory / f"{instance}-{mode}.json"
     seconds = 300 if deadline is None else min(300, deadline - time.time())
     if seconds < 1:
         return None
     try:
-        result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, SOURCE, str(target), *map(str, inputs)],
+        result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, instance, str(target), *map(str, inputs)],
                                 cwd=ROOT, env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True,
                                 timeout=seconds)
     except subprocess.TimeoutExpired:
@@ -1129,6 +1131,12 @@ def rollback_guard(schema, merged):
     return applied
 
 
+def sql_operation(operation, kind, target):
+    """Whether a Cloud SQL operation is this release identity's `kind` on the `target` instance."""
+    return isinstance(operation, dict) and all(operation.get(key) == value for key, value in {
+        "kind": "sql#operation", "operationType": kind, "targetId": target, "targetProject": PROJECT, "user": ACTOR}.items())
+
+
 def take_backup(google, directory, source):
     """RELEASE.md 4.4 item 1: this attempt's one on-demand backup of the source instance, the apply's first effect. It
     expires 7 days after it is sent and must reach SUCCESSFUL holding at most the source disk's bytes. A write-once
@@ -1150,9 +1158,7 @@ def take_backup(google, directory, source):
         operation = google.request("sql", "POST", f"projects/{PROJECT}/backups", body=body)
     finally:
         google._gate_effect = None
-    if not (isinstance(operation, dict) and all(operation.get(key) == value for key, value in {
-            "kind": "sql#operation", "operationType": "BACKUP_VOLUME", "targetId": SOURCE, "targetProject": PROJECT,
-            "user": ACTOR}.items())):
+    if not sql_operation(operation, "BACKUP_VOLUME", SOURCE):
         raise blocked("the backup operation is not this release's")
     context = wait_sql(google, operation, maximum_seconds=900).get("backupContext", {})
     backup_id = context.get("backupId")
@@ -1174,24 +1180,25 @@ def take_backup(google, directory, source):
     return backup_id
 
 
-def check_catalog(catalog, tables, views):
-    """RELEASE.md 4.4 item 5 and Verify, read-only through release_sql.mjs migrated: the initializer's postconditions hold
-    with the public schema owned by the owner role, exactly the declared tables and persisted views, one owner of every
-    relation, and the extensions plpgsql and uuid-ossp."""
+def check_catalog(catalog, tables, views, *, where="the catalog", schema="the merged schema"):
+    """RELEASE.md 4.4 item 5 and Verify, read-only through release_sql.mjs migrated (restored for the clone): the
+    initializer's postconditions hold with the public schema owned by the owner role, exactly the declared tables and
+    persisted views, one owner of every relation, and the extensions plpgsql and uuid-ossp. where and schema name the
+    database read and the schema that declares them, in fixed text."""
     if not (isinstance(catalog, dict) and catalog.get("expected_database") is True and catalog.get("expected_actor") is True
             and isinstance(catalog.get("postconditions"), dict)
             and all(isinstance(catalog.get(key), list) for key in ("tables", "views", "owners", "extensions"))):
-        raise blocked("the catalog could not be read")
+        raise blocked(f"{where} could not be read")
     if catalog["postconditions"].get("schema_owner") != OWNER:
-        raise blocked("the catalog's public schema is not owned by the owner role")
+        raise blocked(f"{where}'s public schema is not owned by the owner role")
     if sorted(catalog["tables"]) != sorted(f"public.{name}" for name in tables):
-        raise blocked("the catalog's tables differ from the merged schema's")
+        raise blocked(f"{where}'s tables differ from {schema}'s")
     if sorted(catalog["views"]) != sorted(f"public.{name}" for name in views):
-        raise blocked("the catalog's views differ from the merged schema's")
+        raise blocked(f"{where}'s views differ from {schema}'s")
     if catalog["owners"] != [OWNER]:
-        raise blocked("the catalog's relations are not all owned by the owner role")
+        raise blocked(f"{where}'s relations are not all owned by the owner role")
     if catalog["extensions"] != ["plpgsql", "uuid-ossp"]:
-        raise blocked("the catalog's extensions are not exactly plpgsql and uuid-ossp")
+        raise blocked(f"{where}'s extensions are not exactly plpgsql and uuid-ossp")
 
 
 def indexes_match(inventory):
@@ -1215,21 +1222,206 @@ def verified(record, directory, merged_schema, facts):
     return indexes_match(inventory)
 
 
+def clone_recipe(google, source):
+    """The first apply's clone (D1), read before any effect: the envelope's recipe (clone_body) at its smallest tier,
+    db-f1-micro, on the source's region, database version and disk, without backups or point-in-time recovery, labelled
+    with this run and attempt. The fixed clone must not exist."""
+    record, disk = google.packet, release_gate.field(source, "settings", "dataDiskSizeGb")
+    try:
+        require(isinstance(source.get("databaseVersion"), str) and isinstance(disk, str)
+                and re.fullmatch(r"[1-9][0-9]{0,5}", disk), "unreadable source recipe")
+        body = clone_body(source, {"tier": "db-f1-micro", "source_version": source["databaseVersion"],
+                                   "source_edition": "ENTERPRISE", "source_disk_gb": int(disk)}, record["release_run_id"],
+                          run_attempt=record["release_run_attempt"], source_sha=record["source_sha"])
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise blocked("the SQL instance does not fit the restore clone's recipe") from None
+    try:
+        existing = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True)
+    except HTTPFailure:
+        # Only the time-bounded clone roles read the clone (RELEASE.md 1): the owner opens them for this run.
+        raise blocked("the restore clone cannot be read; the first apply needs the owner's window open") from None
+    if existing is not None:
+        raise blocked("the restore clone already exists; the coordinator decides")
+    return body
+
+
+def claim_first_restore(google, directory, backup_id):
+    """RELEASE.md 4.4 item 1: claim the single-use restore allowance of CLONE_ALLOWANCE.md at its fixed key, create-only
+    (ifGenerationMatch=0). The claim binds the gate record's commit, this run and attempt, this attempt's backup, the
+    clone, the source and a window from now to the gate record's deadline, at most two hours. Any claim already there
+    stops the apply, for the coordinator: deleting a claim never refunds it."""
+    import release_clone
+    record, now = google.packet, int(time.time())
+    require(record["issued_at_unix"] <= now and record["expires_at_unix"] - now <= 7200, "claim window beyond two hours")
+    if record["expires_at_unix"] - now <= CLAIM_SECONDS:
+        raise blocked("too little of the gate record's hour remains for the restore check; re-run the job")
+    payload = release_clone.canonical({"version": "clone-allowance-claim/v2", "source_sha": record["source_sha"],
+                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
+                                       "backup_id": backup_id, "clone": CLONE, "source": SOURCE, "issued_at_unix": now,
+                                       "expires_at_unix": record["expires_at_unix"]})
+    try:
+        claimed = google.claim_restore(payload, directory)
+        release_clone.validate_response(claimed, payload)
+    except HTTPFailure as failure:
+        if failure.http_status == 412:
+            raise blocked("the first production restore is already claimed; the coordinator decides") from None
+        raise blocked("the restore claim failed or its outcome is unknown; the coordinator decides") from None
+    except (ValueError, OSError):
+        raise blocked("the restore claim failed or its outcome is unknown; the coordinator decides") from None
+    google._gate_claim = claimed["generation"]
+
+
+def send_effect(google, directory, name, send, refused):
+    """One recovery effect of this attempt: its write-once intent (release_initialize.once), then the one request the gate
+    transport admits for it. A refused request, or one whose outcome is unknown, stops with the fixed reason `refused`."""
+    from release_initialize import once
+    google._gate_effect = name
+    try:
+        return once(directory, f"release-{name}", send)
+    except (ValueError, OSError):
+        raise blocked(refused) from None
+    finally:
+        google._gate_effect = None
+
+
+def finished(google, operation, kind, target):
+    """Whether this release's Cloud SQL operation completed, waiting at most until DISPOSAL_SECONDS before the gate
+    record's deadline, so that the clone's deletion can still be admitted."""
+    try:
+        return sql_operation(operation, kind, target) and bool(wait_sql(
+            google, operation, maximum_seconds=google.packet["expires_at_unix"] - DISPOSAL_SECONDS - time.time()))
+    except (ValueError, OSError):
+        return False
+
+
+def owned(clone, body, created):
+    """Whether the clone is the one this attempt created: its name, exactly this attempt's labels, and the createTime this
+    attempt observed after creating it."""
+    return (isinstance(clone, dict) and clone.get("name") == CLONE and isinstance(created, str)
+            and clone.get("createTime") == created
+            and release_gate.field(clone, "settings", "userLabels") == body["settings"]["userLabels"])
+
+
+def created_clone(google, operation, body):
+    """The clone this attempt's create operation made, proved by its labels and a createTime inside the gate record's
+    window; returns that createTime, which its deletion checks again."""
+    if not finished(google, operation, "CREATE", CLONE):
+        raise blocked("the restore clone's creation did not complete in time; the coordinator deletes the clone if it exists")
+    clone = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True)
+    created = clone.get("createTime") if isinstance(clone, dict) else None
+    try:
+        inside = google.packet["issued_at_unix"] <= stamp(created) <= time.time() + 60
+    except ValueError:
+        inside = False
+    if not (owned(clone, body, created) and inside):
+        raise blocked("the restore clone is not provably this run's; the coordinator deletes it")
+    return created
+
+
+def delete_clone(google, directory, body, created):
+    """Delete the clone only as this attempt's (owned), after a write-once intent; its wait may use the rest of the gate
+    record's window, which DISPOSAL_SECONDS kept for it. A clone already gone needs nothing."""
+    from release_initialize import once
+    clone = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True)
+    if clone is None:
+        return
+    if not owned(clone, body, created):
+        raise blocked("the restore clone is not provably this run's; the coordinator deletes it")
+    try:
+        operation = once(directory, "release-clone-delete", lambda: google.request(
+            "sql", "DELETE", f"projects/{PROJECT}/instances/{CLONE}"))
+        deleted = sql_operation(operation, "DELETE", CLONE) and bool(wait_sql(
+            google, operation, maximum_seconds=google.packet["expires_at_unix"] - time.time()))
+    except (ValueError, OSError):
+        deleted = False
+    if not deleted or google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True) is not None:
+        raise blocked("the restore clone's deletion was not confirmed; the coordinator deletes it")
+
+
+def restore_check(google, directory, body, backup_id, live_schema, facts):
+    """RELEASE.md 4.4 item 1 (D1), the first apply's restore check, after its backup: the claim, then the fixed clone,
+    this attempt's backup restored into it, its catalog checked read-only as the source's is, against the live schema the
+    backup holds, and the clone deleted as this attempt's, whatever the check found."""
+    record = google.packet
+    claim_first_restore(google, directory, backup_id)
+    facts["first_restore"], created = "claimed", None
+    try:
+        operation = send_effect(google, directory, "clone-create", lambda: google.request(
+            "sql", "POST", f"projects/{PROJECT}/instances", body=body),
+            "the restore clone could not be created; the coordinator decides")
+        created = created_clone(google, operation, body)
+        operation = send_effect(google, directory, "clone-restore", lambda: google.request(
+            "sql", "POST", f"projects/{PROJECT}/instances/{CLONE}/restoreBackup",
+            body={"restoreBackupContext": {"backupRunId": backup_id, "instanceId": SOURCE, "project": PROJECT}}),
+            "the backup could not be restored into the clone")
+        if not finished(google, operation, "RESTORE_VOLUME", CLONE):
+            raise blocked("the backup was not restored into the clone in time")
+        tables, views, _ = schema_gate.declared_sql(live_schema, relaxations())
+        check_catalog(gate_sql("restored", directory, record["source_sha"], instance=CLONE,
+                               deadline=record["expires_at_unix"] - DISPOSAL_SECONDS),
+                      tables, views, where="the restored clone", schema="the live schema")
+    finally:
+        if created is not None:
+            delete_clone(google, directory, body, created)
+    facts["first_restore"] = "checked"
+
+
+def earlier_first_restore(record):
+    """The coordinator's ruling of 2026-09-24 on a re-run after a spent claim (RELEASE.md 4.4 item 1). The claim stays
+    unreadable to the data identity (CLONE_ALLOWANCE.md), so the evidence is this run's earlier attempts' attested
+    data-released/v1 receipts for this commit: "checked" when one of them checked the clone, which is D1's one restore
+    proof; "claimed" when one spent the claim without that check; None otherwise. An unattested or mismatched receipt
+    proves nothing."""
+    from deploy_runtime import checked, verified_receipt_bytes
+    found = None
+    for attempt in sorted(run_artifacts(record, "data-receipt")):
+        if attempt >= record["release_run_attempt"]:
+            continue
+        with tempfile.TemporaryDirectory() as folder:
+            try:
+                checked(["gh", "run", "download", str(record["release_run_id"]), "--repo", REPOSITORY,
+                         "--name", f"data-receipt-{record['source_sha']}-{attempt}", "--dir", folder])
+                path = Path(folder) / "data-receipt.json"
+                receipt = strict_json(verified_receipt_bytes(path, hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                             record["source_sha"], "data-release.yml"))
+            except (ValueError, OSError, subprocess.TimeoutExpired):
+                continue
+        if not (isinstance(receipt, dict) and receipt.get("version") == "data-released/v1"
+                and receipt.get("source_sha") == record["source_sha"] and receipt.get("run_id") == record["release_run_id"]
+                and receipt.get("run_attempt") == attempt):
+            continue
+        if receipt.get("first_restore") == "checked":
+            return "checked"
+        if receipt.get("first_restore") == "claimed":
+            found = "claimed"
+    return found
+
+
 def apply_released(google, directory, schema, connector, ruleset, merged, facts):
-    """RELEASE.md 4.4 while the runtime runs, after the additive-only gate. The rollback guard and point-in-time recovery
-    stop with a fixed reason before any effect; so does the first apply, whose restore check (D1) arrives with T3d's
-    second pull request. Then this attempt's backup, Data Connect's diff run client-side as the owner role, the schema
-    COMPATIBLE on the live etag carrying the merged commit as its source-sha label, the supplemental indexes, the
+    """RELEASE.md 4.4 while the runtime runs, after the additive-only gate. The rollback guard, point-in-time recovery
+    and, for the first apply, the clone's recipe and absence stop with a fixed reason before any effect. Then this
+    attempt's backup; the first apply's restore check (D1); Data Connect's diff run client-side as the owner role; the
+    schema COMPATIBLE on the live etag carrying the merged commit as its source-sha label; the supplemental indexes, the
     connector and the Storage rules. The released files must equal the merged ones and the catalog the merged schema.
     merged: the merged schema, connector and Storage rules files; facts: the receipt's, updated as they are observed."""
     record = google.packet
     sha, deadline = record["source_sha"], record["expires_at_unix"]
-    if rollback_guard(schema, sha) is None:
-        raise blocked("the first apply's clone arrives with the next pull request")
+    first = rollback_guard(schema, sha) is None
     source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
     if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
         raise blocked("point-in-time recovery is off on the SQL instance")
+    earlier = earlier_first_restore(record) if first else None
+    if earlier == "claimed":
+        raise blocked("an earlier attempt spent the first production restore's claim without checking the clone; "
+                      "the coordinator decides")
+    clone = clone_recipe(google, source) if first and earlier is None else None
     facts["backup_id"] = take_backup(google, directory, source)
+    if clone is not None:
+        restore_check(google, directory, clone, facts["backup_id"], schema_gate.live_sources(schema, connector)[0], facts)
+    elif earlier == "checked":
+        facts["first_restore"] = "proven"
+        print("An earlier attempt of this run claimed and checked the first restore; this attempt applies without a "
+              "second clone.")
     tables, views, relaxed = schema_gate.declared_sql(merged[0], relaxations())
     body, connector_body = data_bodies({"schema_mode": "validate_existing", "schema_etag": revision(schema),
                                         "connector_etag": revision(connector)})

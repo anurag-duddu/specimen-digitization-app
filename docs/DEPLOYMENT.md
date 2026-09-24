@@ -937,14 +937,19 @@ every push to `main` without an envelope. The specification is
    `source-sha` label, creates the supplemental indexes, applies the
    connector and the Storage rules, and checks the catalog
    ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.4). A schema
-   without the label is the first apply, which stops before any effect
-   until its restore check lands.
+   without the label is the first apply. After its backup, it claims the
+   single-use restore allowance create-only, as the object
+   `first-production-restore.json` under `application/release-control/`;
+   an existing claim stops it for the coordinator. It then restores the
+   backup into the short-lived clone
+   `specimen-digitization-restore-20260908-r1`, checks the clone's catalog
+   read-only, and deletes only the clone it created, before it migrates.
    `initialize`, the empty placeholder schema without a connector, first
    reads the application database's catalog and outputs `init_step`
    ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.3). Any other
-   combination fails and asks to reconcile. The job uploads the
-   `data-released/v1` receipt on every exit after admission and attests it
-   when the deploy step succeeds.
+   combination fails and asks to reconcile. The job uploads and attests the
+   `data-released/v1` receipt on every exit after admission, so a re-run can
+   read a failed first apply's restore check.
 3. **Initialize**, in `data-initialization-production`, only when
    `init_step` is `initialize`. It re-admits through the gate's
    `data-initialization` plane and authenticates as
