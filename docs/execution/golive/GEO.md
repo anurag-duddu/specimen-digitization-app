@@ -100,9 +100,9 @@ elevation forms, and the comparison rules.
 The owner's tier 1 (G35) asks gazetteers for "the historical name and when it
 was in use", returning modern equivalents. `georef_places.py` holds the record
 that every gazetteer returns. `georef_wikidata.py` builds Wikidata's requests
-and reads the answers into those records. It sends nothing itself: the tool
-(section 4) sends each request with retries, and records its provenance as a
-sub-call (G23).
+and reads the answers into those records. It sends nothing itself: the tool,
+specified in a later section, sends each request with retries, and records its
+provenance as a sub-call (G23).
 
 **The record.** A `Place` holds:
 - the source and its record id;
@@ -252,3 +252,52 @@ proves the bytes are the reviewed ones.
 - that a point outside the manifest's tiles has no tile;
 - the two GeoNames pins, marked as the only copy;
 - that bytes of the wrong size or digest are refused.
+
+## 4. Tier 1: the GeoNames dumps
+
+`georef_geonames.py` reads the GeoNames country dumps pinned in section 3. The
+caller passes a pinned dump's bytes after `verified` has checked them, so nothing
+is sent to GeoNames (PLAN 4.8). The rows stay as the dump gives them, and a
+search returns its matches as the shared `Place` records of section 2.
+
+**Reading a dump.** `read_dump(country, bytes)` opens the zip's `<country>.txt`,
+which is 19 tab-separated columns per row, as the dump's readme lists them. It
+indexes every name a row carries by section 1's comparison key: the name, the
+ASCII name and each alternate name.
+
+| Dump | Outcome |
+|---|---|
+| empty | `empty_response` |
+| not a zip, missing the country's file, or a row without 19 columns | `malformed_response` |
+
+**A place.**
+- Its **parents** are the administrative units its codes name (the ADM3, the
+  ADM2, then the ADM1), taken from the same dump's rows, nearest first.
+- Its **country** is the dump's ISO code, with the name of the dump's country row.
+- A **country row** carries the ISO code itself.
+- Its **kind** is the feature class and code, such as `A.ADM2` or `T.MT`.
+- It carries **no dates**. GeoNames gives none, so history (a later section)
+  leans on Wikidata.
+
+**Finding a reading.** `find(dump, reading, kinds)` returns:
+- the places whose names have the reading's key, limited to feature classes
+  ("A") or to a class and code ("A.ADM2");
+- the places one letter off (G34), but only when there are no such places and
+  the reading is a full name. Such a place qualifies only through a name that is
+  itself a full name, never a code or an abbreviation.
+
+Uniqueness and the fit with the other place fields are the tool's to test.
+
+**Tests.** `tests/test_georef_geonames.py` reads 23 rows copied from the pinned
+Philippines and Guatemala dumps of 2026-09-24. The fixtures' README credits
+them under CC BY 4.0. The tests check:
+- "Davao Province" names modern Davao del Norte, the 1967 successor, which is
+  #94's trap. Without its level, the key also names the region and the city.
+- "Chimaltenago" is one letter from both the department and the municipio of
+  Chimaltenango.
+- Three features are called Mount Apo, each in a different province.
+- There is no Philippine Mount McKinley.
+- "Mindanao" is an island in one dump and a village in the other.
+- Yepocapa's town lies inside its municipio and department.
+- Codes never reach the one-letter gate.
+- Every row of the outcome table.
