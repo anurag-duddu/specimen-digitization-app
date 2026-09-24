@@ -597,6 +597,25 @@ def _named_links(evidence: list, readings: list, settled: set, names: dict, regi
     return links
 
 
+def settled_entries(value, regions: dict) -> set:
+    """The readings of a verbatim map's entries that settle (section 4.3): each one that
+    `settled_observation_ids` names, and a decided entry of a region whose raw reading it names
+    (G20 inside G32). The thread reads "settled" through this too, so the two never differ."""
+    verbatim = getattr(value, "verbatim_by_observation", None) or {}
+    sources = getattr(value, "input_source_by_observation", None) or {}
+    named = set(getattr(value, "settled_observation_ids", None) or [])
+    return {
+        reading
+        for reading in verbatim
+        if reading in named
+        or (
+            sources.get(reading, "raw_reading") == "decided_transcript"
+            and regions.get(reading) is not None
+            and any(o != reading and regions.get(o) == regions.get(reading) for o in named)
+        )
+    }
+
+
 def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[Write]:
     """A candidate per verbatim value; the settled ones carry the value, and each candidate
     links the evidence that names it."""
@@ -612,22 +631,11 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
         if verbatim:
             # G27, G28, G32: each reader's, or each label's, verbatim is kept as written.
             sources = getattr(value, "input_source_by_observation", None) or {}
-            named = set(getattr(value, "settled_observation_ids", None) or [])
             entries = [
                 (text, sources.get(reading, "raw_reading"), reading)
                 for reading, text in verbatim.items()
             ]
-            settled = {
-                reading
-                for _, entry_source, reading in entries
-                if reading in named
-                # G20 inside G32: a decided label settled through a raw reading of its region.
-                or (
-                    entry_source == "decided_transcript"
-                    and regions.get(reading) is not None
-                    and any(o != reading and regions.get(o) == regions.get(reading) for o in named)
-                )
-            }
+            settled = settled_entries(value, regions)
             links = _named_links(evidence, [r for _, _, r in entries], settled, names, regions)
         elif value.literal is not None:
             reading = getattr(value, "source_observation_id", None)

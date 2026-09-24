@@ -21,7 +21,7 @@ from specimen_digitization.application.domain import (
     Transcript,
     ValueState,
 )
-from specimen_digitization.application.projection import derived_id, writes
+from specimen_digitization.application.projection import derived_id, settled_entries, writes
 from specimen_digitization.application.storage import digest
 
 from test_projection import TracedRun, locate, pinned, read, reading, size, specimen
@@ -1108,3 +1108,15 @@ def test_an_entry_of_no_known_reading_never_settles_by_region():
     }
     unknown, known = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV2")
     assert (unknown["normalizedValue"], known["normalizedValue"]) == (None, "Chicago")
+
+
+def test_settled_entries_is_the_writers_rule_for_the_thread():
+    s, picked, _, left = two_labels()
+    confirmed = s.run.observations[0]
+    regions = {o.id: o.region_id for o in s.run.observations}
+    sources = {picked.id: "decided_transcript", left.id: "raw_reading"}
+    by_fallback = TracedField(verbatim_by_observation={picked.id: "a", left.id: "b"}, input_source_by_observation=sources, settled_observation_ids=[confirmed.id])
+    assert settled_entries(by_fallback, regions) == {picked.id}
+    both = by_fallback.model_copy(update={"settled_observation_ids": [picked.id, left.id]})
+    assert settled_entries(both, regions) == {picked.id, left.id}
+    assert settled_entries(TracedField(literal="a"), regions) == set()
