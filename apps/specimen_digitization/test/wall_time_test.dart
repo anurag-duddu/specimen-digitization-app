@@ -22,8 +22,20 @@ void main() {
   group('the suite pins Central time', () {
     test('an instant prints in CDT on any machine', () {
       expect(
-        absoluteTime(DateTime.utc(2026, 9, 13, 19, 32)),
+        absoluteWallTime(DateTime.utc(2026, 9, 13, 19, 32)),
         '13 Sep 2026, 14:32 CDT',
+      );
+      expect(
+        absoluteTime(DateTime.utc(2026, 9, 13, 19, 32).toLocal()),
+        '13 Sep 2026, 14:32 CDT',
+        reason: 'an instant in the host zone reads on the pinned clock',
+      );
+    });
+
+    test('an instant in UTC still prints in UTC, as it always has', () {
+      expect(
+        absoluteTime(DateTime.utc(2026, 9, 14, 10, 22)),
+        '14 Sep 2026, 10:22 UTC',
       );
     });
 
@@ -80,10 +92,10 @@ void main() {
   group('the app reads a zone through one seam', () {
     tearDown(() => debugWallTimeOverride = centralWallTime);
 
-    test('absoluteTime prints what the seam reads', () {
+    test('the wall-clock form prints what the seam reads', () {
       debugWallTimeOverride = (DateTime _) =>
           (year: 2001, month: 2, day: 3, hour: 4, minute: 5, zone: 'ZZZ');
-      expect(absoluteTime(DateTime.utc(2026)), '3 Feb 2001, 04:05 ZZZ');
+      expect(absoluteWallTime(DateTime.utc(2026)), '3 Feb 2001, 04:05 ZZZ');
     });
 
     test('unpinned, the seam reads the host zone', () {

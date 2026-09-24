@@ -16,10 +16,9 @@ const int relativeWindowHours = 24;
 String relativeInstant(Object? value) {
   final DateTime? parsed = DateTime.tryParse(textOf(value, ''));
   if (parsed == null) return 'Not recorded';
-  final DateTime moment = parsed.toLocal();
-  final Duration delta = moment.difference(DateTime.now());
+  final Duration delta = parsed.difference(DateTime.now());
   final Duration size = delta.abs();
-  if (size.inHours >= relativeWindowHours) return absoluteTime(moment);
+  if (size.inHours >= relativeWindowHours) return absoluteWallTime(parsed);
   final String span = size.inMinutes < 1
       ? 'less than a minute'
       : size.inHours < 1
@@ -33,8 +32,7 @@ String relativeInstant(Object? value) {
 String citedInstant(Object? value) {
   final DateTime? parsed = DateTime.tryParse(textOf(value, ''));
   if (parsed == null) return 'Not recorded';
-  final DateTime moment = parsed.toLocal();
-  final Duration size = moment.difference(DateTime.now()).abs();
-  if (size.inHours >= relativeWindowHours) return absoluteTime(moment);
-  return '${relativeInstant(value)} (${absoluteTime(moment)})';
+  final Duration size = parsed.difference(DateTime.now()).abs();
+  if (size.inHours >= relativeWindowHours) return absoluteWallTime(parsed);
+  return '${relativeInstant(value)} (${absoluteWallTime(parsed)})';
 }
