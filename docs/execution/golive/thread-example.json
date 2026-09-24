@@ -19,39 +19,62 @@
     },
     "paid_calls": [
       {
+        "step": "segment",
+        "attempt": 1,
+        "kind": "service",
+        "service": "sam3",
+        "reserved_micros": 20000,
+        "usage": {
+          "seconds": 4.5,
+          "vcpus": 4,
+          "memory_gib": 16
+        },
+        "outcome": "completed",
+        "cost_micros": 600,
+        "cost_basis": "computed",
+        "price_list": {
+          "version": "prices-v1",
+          "as_of": "2026-09-01"
+        },
+        "at": "2026-09-23T12:01:00+00:00"
+      },
+      {
         "step": "transcribe:00000000-0000-4000-8000-000000000010:handwriting-qwen",
         "attempt": 1,
+        "kind": "model",
+        "route_id": "handwriting-qwen",
         "reserved_micros": 20000,
         "usage": {
           "input_tokens": 1200,
           "output_tokens": 40
         },
-        "outcome": "validated_output",
+        "outcome": "completed",
         "cost_micros": 2600,
         "cost_basis": "computed",
         "price_list": {
           "version": "prices-v1",
           "as_of": "2026-09-01"
-        }
+        },
+        "at": "2026-09-23T12:03:00+00:00"
       },
       {
-        "step": "transcribe:00000000-0000-4000-8000-000000000011:handwriting-qwen",
+        "step": "transcribe:00000000-0000-4000-8000-000000000011:handwriting-muse",
         "attempt": 1,
+        "kind": "model",
+        "route_id": "handwriting-muse",
         "reserved_micros": 20000,
-        "usage": {
-          "input_tokens": 1180,
-          "output_tokens": 38
-        },
-        "outcome": "validated_output",
-        "cost_micros": 2600,
-        "cost_basis": "computed",
+        "usage": null,
+        "outcome": "unknown",
+        "cost_micros": 20000,
+        "cost_basis": "reserved",
         "price_list": {
           "version": "prices-v1",
           "as_of": "2026-09-01"
-        }
+        },
+        "at": "2026-09-23T12:03:00+00:00"
       }
     ],
-    "actual_cost_micros": 5200
+    "actual_cost_micros": 23200
   },
   "trace": {
     "trace_id": "0af70af70af70af70af70af70af70af7",
@@ -98,7 +121,7 @@
         }
       }
     ],
-    "evidence_id": "00000000-0000-4000-8000-000000000034",
+    "evidence_id": "f8569a3b-b1f1-5721-8a17-7894ebb6bf4e",
     "checked_at": "2026-09-23T12:01:00+00:00"
   },
   "regions": [
@@ -183,6 +206,12 @@
             "role": "decided_transcript",
             "handed_text": "Chicago, Ill. VII-46 Cook Co.",
             "note": null
+          },
+          {
+            "observation_id": "00000000-0000-4000-8000-000000000021",
+            "role": "raw_reading",
+            "handed_text": "Chicago, Il1. VII-46 Cook Co.",
+            "note": "Reads the l as a one."
           }
         ]
       }
@@ -204,7 +233,7 @@
           "model": "model/handwriting-qwen",
           "provider": "fixture-provider",
           "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
-          "literal_text": "Aedes aegypti L.",
+          "literal_text": "Aedes aegypti L. Chicago",
           "unreadable_spans": [],
           "outcome": "validated_output",
           "raw_response": {
@@ -218,7 +247,7 @@
           "model": "model/handwriting-muse",
           "provider": "fixture-provider",
           "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
-          "literal_text": "Aedes aegypti Linn.",
+          "literal_text": "Aedes aegypti Linn. Chicago",
           "unreadable_spans": [],
           "outcome": "validated_output",
           "raw_response": {
@@ -232,9 +261,9 @@
           "left_observation_id": "00000000-0000-4000-8000-000000000022",
           "right_observation_id": "00000000-0000-4000-8000-000000000023",
           "algorithm": "bounded-levenshtein-fraction-v1",
-          "ratio": 0.15789473684210525,
+          "ratio": 0.1111111111111111,
           "edit_distance": 3,
-          "length_basis": 19,
+          "length_basis": 27,
           "status": "difference",
           "reasons": [],
           "calibration": "uncalibrated review priority"
@@ -262,13 +291,13 @@
           {
             "observation_id": "00000000-0000-4000-8000-000000000022",
             "role": "raw_reading",
-            "handed_text": "Aedes aegypti L.",
+            "handed_text": "Aedes aegypti L. Chicago",
             "note": "Reads the authority as L."
           },
           {
             "observation_id": "00000000-0000-4000-8000-000000000023",
             "role": "raw_reading",
-            "handed_text": "Aedes aegypti Linn.",
+            "handed_text": "Aedes aegypti Linn. Chicago",
             "note": "Reads the authority as Linn."
           }
         ]
@@ -392,6 +421,36 @@
       "evidence_id": "00000000-0000-4000-8000-000000000033",
       "started_at": "2026-09-23T12:04:00.000000Z",
       "completed_at": "2026-09-23T12:05:00.000000Z"
+    },
+    {
+      "call_key": "lookup:geocode:raw_reading:00000000-0000-4000-8000-000000000011:00000000-0000-4000-8000-000000000022:82567034c145747a:1",
+      "phase": "lookup",
+      "tool": "geocode",
+      "tool_version": "geocode-1",
+      "source": "google-maps-geocoding",
+      "field_keys": [
+        "city"
+      ],
+      "input_source": "raw_reading",
+      "region_id": "00000000-0000-4000-8000-000000000011",
+      "observation_id": "00000000-0000-4000-8000-000000000022",
+      "attempt": 1,
+      "arguments": {
+        "query": "Chicago"
+      },
+      "outcome": "success",
+      "result": {
+        "candidates": [
+          {
+            "place_id": "fixture-place"
+          }
+        ]
+      },
+      "error": null,
+      "retry_after": null,
+      "evidence_id": "00000000-0000-4000-8000-000000000034",
+      "started_at": "2026-09-23T12:04:00.000000Z",
+      "completed_at": "2026-09-23T12:05:00.000000Z"
     }
   ],
   "fields": [
@@ -432,7 +491,19 @@
           "text": "Chicago",
           "input_source": "decided_transcript",
           "region_id": "00000000-0000-4000-8000-000000000010",
-          "observation_id": null
+          "observation_id": "00000000-0000-4000-8000-000000000020"
+        },
+        {
+          "text": "Chicago",
+          "input_source": "raw_reading",
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_id": "00000000-0000-4000-8000-000000000022"
+        },
+        {
+          "text": "Chicago",
+          "input_source": "raw_reading",
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_id": "00000000-0000-4000-8000-000000000023"
         }
       ],
       "parsed": null,
@@ -441,11 +512,19 @@
       "normalized": null,
       "authority_id": "fixture-place",
       "settled_observation_ids": [
-        "00000000-0000-4000-8000-000000000020"
+        "00000000-0000-4000-8000-000000000020",
+        "00000000-0000-4000-8000-000000000022"
       ],
       "evidence": [
         {
           "evidence_id": "00000000-0000-4000-8000-000000000030",
+          "relation": "supports",
+          "source": "google-maps-geocoding",
+          "locator": "place/fixture-place",
+          "outcome": "success"
+        },
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000034",
           "relation": "supports",
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",

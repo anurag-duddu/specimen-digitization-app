@@ -67,22 +67,6 @@ class Allowance(Part):
     at: str | None
 
 
-class PriceList(Part):
-    version: str | None
-    as_of: str | None
-
-
-class PaidCall(Part):
-    step: str | None
-    attempt: int | None
-    reserved_micros: int | None
-    usage: dict[str, Any]
-    outcome: str | None
-    cost_micros: int | None
-    cost_basis: str | None
-    price_list: PriceList | None
-
-
 class RunState(Part):
     run_id: str
     status: str
@@ -91,7 +75,8 @@ class RunState(Part):
     next_retry_at: str | None
     profile: ProfileRef
     allowance: Allowance | None
-    paid_calls: list[PaidCall]
+    # Each entry as S3 records it (LANE.md T2c), keys it adds later included (section 8).
+    paid_calls: list[dict[str, Any]]
     actual_cost_micros: int | None
 
 
@@ -404,24 +389,8 @@ def _run_state(run, status: str) -> RunState:
         allowance=Allowance(**{name: allowance.get(name) for name in Allowance.model_fields})
         if allowance
         else None,
-        paid_calls=[_paid_call(_plain(call)) for call in getattr(run, "paid_calls", None) or []],
+        paid_calls=[_plain(call) for call in getattr(run, "paid_calls", None) or []],
         actual_cost_micros=getattr(usage, "actual_cost_micros", None),
-    )
-
-
-def _paid_call(call: dict) -> PaidCall:
-    prices = _plain(call.get("price_list"))
-    return PaidCall(
-        step=call.get("step"),
-        attempt=call.get("attempt"),
-        reserved_micros=call.get("reserved_micros"),
-        usage={name: _whole(amount) for name, amount in (call.get("usage") or {}).items()},
-        outcome=call.get("outcome"),
-        cost_micros=call.get("cost_micros"),
-        cost_basis=call.get("cost_basis"),
-        price_list=PriceList(version=prices.get("version"), as_of=prices.get("as_of"))
-        if prices
-        else None,
     )
 
 
@@ -443,11 +412,10 @@ def _coverage(run, evidence: list[dict]) -> CoverageCheck:
         return CoverageCheck(status="not_run", checks=[], evidence_id=evidence_id, checked_at=None)
     codes = list(check.get("reason_codes") or [])
     cross = check.get("cross_check") or {}
-    settings = (run.profile_snapshot or {}).get("segmentation_settings") or {}
-    rule = settings.get("coverage") or {}
 
     def bound(name):
-        return _whole(check[name] if check.get(name) is not None else rule.get(name))
+        # The profile's range as the check recorded it; null when it did not (section 8).
+        return _whole(check.get(name))
 
     counted = [code for code in codes if code in REGION_COUNT_CODES]
     outside = [code for code in codes if code in FULL_IMAGE_CODES]
@@ -624,8 +592,10 @@ def _fields(run, row: dict, current: dict, evidence: list[dict], tool_calls: lis
         field = resolved.get(key)
         if not present and field is None:
             continue
-        # Only a candidate carrying the settled value carries these (section 11); with two
-        # labels settled alike (G32), each label's candidate does.
+        # A per-label or per-reader map (G27, G28, G32), rather than one decided transcript.
+        mapped = bool(getattr(value, "verbatim_by_observation", None))
+        # Only the settled entries' candidates carry these (section 4.3); with labels settled
+        # alike (G32), each label's candidate does, with its own call's evidence.
         links, seen = [], set()
         for found in present:
             for link in found.get("links") or []:
@@ -645,7 +615,7 @@ def _fields(run, row: dict, current: dict, evidence: list[dict], tool_calls: lis
                         text=found.get("literalValue"),
                         input_source=found.get("inputSource"),
                         region_id=_region_of(found, "sourceTranscription", "sourceObservation"),
-                        observation_id=_id(found.get("sourceObservationId")),
+                        observation_id=_reading(found) if mapped else _id(found.get("sourceObservationId")),
                     )
                     for found in present
                 ],
@@ -654,7 +624,7 @@ def _fields(run, row: dict, current: dict, evidence: list[dict], tool_calls: lis
                 century_rule=stated.get("century_rule"),
                 normalized=_first(present, "normalizedValue"),
                 authority_id=_first(present, "authorityId"),
-                settled_observation_ids=settled_observation_ids(present, tool_calls),
+                settled_observation_ids=settled_observation_ids(present, tool_calls, mapped=mapped),
                 evidence=[
                     FieldEvidence(
                         evidence_id=_id(link["evidenceId"]),
@@ -674,53 +644,52 @@ def _first(rows: list[dict], name: str):
     return next((row[name] for row in rows if row.get(name) is not None), None)
 
 
-def settled_observation_ids(candidate_rows: list[dict], tool_calls: list[dict]) -> list[str]:
-    """The readings a field's settled value rests on, in verbatim order (G32; section 8).
+def _reading(candidate: dict) -> str | None:
+    """A map entry's reading: a raw reading's own, or its label's selected reading (G32)."""
+    if candidate.get("inputSource") == "decided_transcript":
+        return _id((candidate.get("sourceTranscription") or {}).get("selectedObservationId"))
+    return _id(candidate.get("sourceObservationId"))
+
+
+def settled_observation_ids(
+    candidate_rows: list[dict], tool_calls: list[dict], *, mapped: bool
+) -> list[str]:
+    """The readings whose own literal settled the field's value, in verbatim order (section 8).
 
     `candidate_rows` are the field's current candidates in verbatim order and `tool_calls` the
-    run's, as GetRunThreadV1 returns them. Each candidate carrying the settled value names its
-    reading: its own for a raw reading, its decision's selected reading for the decided
-    transcript. A single decided-transcript candidate that a raw-reading lookup confirmed, by
-    evidence that decides or supports it, names that lookup's reading instead (G20's fallback).
+    run's, as GetRunThreadV1 returns them; `mapped` says the field is a per-label or per-reader
+    map. With a map, each settled entry, the candidates carrying `normalizedValue` or
+    `authorityId`, names its reading (G20, G32). With a single decided transcript, the raw
+    readings a fallback lookup confirmed, by evidence that decides or supports the value.
+    Otherwise the list is empty.
     """
     carrying = [
         c
         for c in candidate_rows
         if c.get("normalizedValue") is not None or c.get("authorityId") is not None
     ]
-    if (
-        len(candidate_rows) == 1
-        and carrying
-        and carrying[0].get("inputSource") == "decided_transcript"
-    ):
-        confirming = {
-            _id(link["evidenceId"])
-            for link in carrying[0].get("links") or []
-            if link["relation"] in ("decides", "supports")
-        }
-        fallback = []
-        for call in tool_calls:
-            reading = _id(call.get("observationId"))
-            if (
-                _id(call.get("evidenceId")) in confirming
-                and call.get("inputSource") == "raw_reading"
-                and reading is not None
-                and reading not in fallback
-            ):
-                fallback.append(reading)
-        if fallback:
-            return fallback
-    result = []
-    for candidate in carrying:
-        if candidate.get("inputSource") == "raw_reading":
-            reading = candidate.get("sourceObservationId")
-        elif candidate.get("inputSource") == "decided_transcript":
-            reading = (candidate.get("sourceTranscription") or {}).get("selectedObservationId")
-        else:
-            reading = None
-        if reading is not None:
-            result.append(_id(reading))
-    return result
+    if mapped:
+        return [reading for c in carrying if (reading := _reading(c)) is not None]
+    if len(candidate_rows) != 1 or not carrying:
+        return []
+    if carrying[0].get("inputSource") != "decided_transcript":
+        return []
+    confirming = {
+        _id(link["evidenceId"])
+        for link in carrying[0].get("links") or []
+        if link["relation"] in ("decides", "supports")
+    }
+    fallback = []
+    for call in tool_calls:
+        reading = _id(call.get("observationId"))
+        if (
+            _id(call.get("evidenceId")) in confirming
+            and call.get("inputSource") == "raw_reading"
+            and reading is not None
+            and reading not in fallback
+        ):
+            fallback.append(reading)
+    return fallback
 
 
 def _decision(row: dict, current: dict) -> DecisionThread | None:
