@@ -11962,7 +11962,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-23 — Go-live lane T2b: the program's model allowance (G9, G30)
 
 - Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the allowance part of topic T2 of `docs/execution/golive/LANE.md`. Per-call costs follow as T2c.
-- Branch/worktree: `golive/lane-program-allowance` from `golive/lane-drain-worker`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Branch/worktree: `golive/lane-program-allowance` from `golive/lane-drain-cli`, in `.claude/worktrees/elated-bun-0d9b24`.
 - Outcome:
   - The published pilot profile carries `processing.program_allowance`: 5,000,000 micro-dollars (the owner's USD 5, G30), with its ledger in the `insects` collection. Every profile that carries an allowance must carry the same one.
   - At request time the run copies the allowance and the ledger's collection, resolved through the private bindings. A ledger key bound to anything but exactly one collection refuses the request with `program_allowance_unavailable`.
