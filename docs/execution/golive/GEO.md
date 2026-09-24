@@ -7,10 +7,11 @@ Its plan is `docs/product-requirements/GEOREFERENCING.md` (#94), and the owner s
 its design the same day (G35 to G40): three tiers (historical gazetteers with
 curator-confirmed entries, Google given the modernized name, the in-house
 point-radius), fields derived with evidence when the label leaves them out, and
-a layer for every value. The coordinator ruled that the tool replaces the Google
-module behind the same interface once the acceptance lab shows it resolves the
-pilot slides at least as well; until then the Google module stays in production
-(G6). Each pull request adds its section here before its tests and
+a layer for every value. The tool replaces the Google module behind the same
+interface only once two gates pass: the owner accepts the plan as G35 to G42
+revise it (G12), and the acceptance lab shows the tool matches or beats the
+Google module (coordinator ruling). Until then the Google module stays in
+production (G6). Each pull request adds its section here before its tests and
 implementation.
 
 ## 1. Reading locality text
