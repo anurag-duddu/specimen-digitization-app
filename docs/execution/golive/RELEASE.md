@@ -34,16 +34,26 @@ traded for a passing release:
 - Runtime images are immutable, attested and built from `main`; every deploy
   verifies readiness before it reports success; missing evidence fails closed.
 - The data plane applies additive schema changes only, as PLAN section 4.4
-  defines them: new tables; new nullable columns; dropping NOT NULL, but only
-  on columns the data contract names with a reason and never on provenance or
-  idempotency keys (`ModelObservation.runId`, `regionId`, `provider`,
-  `modelVersion`, `stepKey`), the gate reading a checked-in list of the
-  allowed columns; new indexes, unique constraints and foreign keys
-  over new columns only; and new connector operations, each
-  `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73). The
-  gate refuses everything else: dropped or renamed tables and columns, type
-  changes, adding NOT NULL, key changes, uniqueness over existing columns,
-  changed or removed operations, and operations at any other auth level.
+  defines them:
+  - new tables and new nullable columns;
+  - dropping NOT NULL only on columns the data contract names with a reason.
+    Never on a key column, a column of any unique constraint, or the
+    provenance and idempotency keys: `ModelObservation.runId`, `regionId`,
+    `provider`, `modelVersion` and `stepKey`, and TRN-005's `rawAssetId`,
+    `promptVersion` and `inputSha256`. The gate refuses these even when the
+    list names them;
+  - one closed exception: `SourceAsset`'s `specimen_unique_1` gives way to
+    `source_asset_specimen_object` in two applies, create before drop. The
+    drop comes only after a read-back of the live database shows the new
+    constraint in place;
+  - new indexes, unique constraints and foreign keys over new columns only;
+  - new connector operations, each `@auth(level: NO_ACCESS)` with the
+    membership `@check`s (`DATA.md` 73).
+
+  The gate refuses everything else: dropped or renamed tables and columns,
+  type changes, adding NOT NULL, key changes, new or changed uniqueness over
+  existing columns other than that exception, changed or removed
+  operations, and operations at any other auth level.
 - Branch protection and the repository's visibility stay as they are
   ([DEPLOYMENT.md, branch and repository protection](../../DEPLOYMENT.md#branch-and-repository-protection)).
 - IAM writes and secret creation are owner actions, taken from a reviewed list
