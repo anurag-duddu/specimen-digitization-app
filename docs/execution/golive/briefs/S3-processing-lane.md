@@ -57,8 +57,8 @@ production model calls (G30), with the existing cost fields (`domain.py` 286;
 `program_allowance_exhausted`, an operational block (QUE-005). Each paid call
 reserves its worst-case cost first, bounded per request as PLAN 4.3 states
 (context length at the pinned input price plus the output cap, or the
-documented image-token rule, for each request a call may make, with 20,000 as
-the floor), in one atomic check-and-reserve on the
+documented image-token rule plus the prompt and the output cap, for each
+request a call may make, with 20,000 as the floor), in one atomic check-and-reserve on the
 ledger (your T2b `worker_cursor` document, written only at the revision it was
 checked against), so a step's reservation must bound its worst case (SAM 3's
 startup, its 300-second request timeout and its 10-second shutdown, as #132

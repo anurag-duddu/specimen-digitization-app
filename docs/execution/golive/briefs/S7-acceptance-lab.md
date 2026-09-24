@@ -96,7 +96,8 @@ elevation fills both ends and the other unit by the exact factor, as derived
 values (G41; the Guatemala slides' "4800 ft"), and no Google
 coordinate appears in any row, trace, log or lab folder (G35). All ten still go
 to review, because no label states `date_identified`, which nothing can derive
-(G42); G43 to G45 apply as the expected-outcomes file records. Your expected label boxes for the ten are the ground
+(G42); G43 to G45 apply as `~/specimen-golive/reports/expected-outcomes.md`
+records. Your expected label boxes for the ten are the ground
 truth for the lane's automatic coverage check (G15): report its hits and misses
 per subject. Where the specification is silent or contradictory, stop and ask
 the coordinator; do not decide (G5).

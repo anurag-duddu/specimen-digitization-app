@@ -36,9 +36,12 @@ and `docs/execution/golive/GEO.md`.
 
 Each task starts with its spec delta in `docs/execution/golive/GEO.md` and
 failing tests, on its own branch, merged by the steward. PLAN section 4.8
-governs every outside request: the harness applies its place-request filter
-before any of your tiers is called, so your tiers receive only filtered text,
-and tests show its guarantees (coordinator ruling).
+governs every outside request: every request your tool sends, its
+parameters included, goes through 4.8's place-request filter. Dates are
+compared locally and never sent, so the charter's target-year constraint is
+applied to results, never put in a query; elevation phrases stay as written
+for local parsing and are never sent. Tests show the filter's guarantees on
+your own requests (coordinator ruling).
 
 0. Manifest: pin each dataset file's source, version or dump date, size and
    SHA-256, with its credit text. Keep the GeoNames files in
@@ -75,7 +78,7 @@ and tests show its guarantees (coordinator ruling).
 
 Read before researching, so the plan fits the product that exists:
 
-1. `docs/execution/golive/PLAN.md` (sections 1, 2 and 4.1 row 7) and the S4
+1. `docs/execution/golive/PLAN.md` (sections 1, 2, 4.1 row 7 and 4.8) and the S4
    brief (`briefs/S4-first-pass-and-harness.md`), which defines the harness,
    its typed tools and outcomes, and the owner's rules: never invent values
    (`PRD.md` HAR-019); no data found for a mandatory field goes to the human

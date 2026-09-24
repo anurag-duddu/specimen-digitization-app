@@ -19,7 +19,7 @@ functional one comes first (G6).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
 3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (326-344), QUE-001 to
-   QUE-005 (387-391), section 12.4 (487-567) and the failure table (676-688);
+   QUE-005 (390-394), section 12.4 (490-573) and the failure table (682-694);
    `docs/execution/CONTRACTS.md` 210-270; `docs/GBIF.md`;
    `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` and
    `HARNESS_OPTIONS.md`.
@@ -92,7 +92,8 @@ functional one comes first (G6).
   review with each label's reading kept.
 - A field without a lookup whose readers all read the same text takes that
   text as its verbatim and its value and clears, on one label as on several
-  (coordinator reading of G27 and G32, matching your #131).
+  (coordinator reading of G27 and G32, matching your #131). It still passes
+  G45's kind check first.
 - The place tool's outside requests carry place text only, under PLAN section
   4.8's filter. Your mid-run place-lookup tool (G40) and the deterministic
   final call build requests the same way: from the reading's place fields,
@@ -154,8 +155,8 @@ the lab re-measures it with the real harness and G29's prompt,
 
 **T2. The first pass (stage 6).** Its reservation follows PLAN 4.3: each of
 its up to two requests is bounded by the route's context length at the pinned
-input price plus the output cap, or by the documented image-token rule where
-the route has one, with 20,000 as the floor. Persist the decision and the per-reader
+input price plus the output cap, or by the documented image-token rule plus the
+prompt and the output cap where the route has one, with 20,000 as the floor. Persist the decision and the per-reader
 records into S5's contract.
 
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
@@ -207,9 +208,11 @@ the harness. Share the tool interface with S8 when it exists. The pilot's
 localities are in the Philippines (1946) and Guatemala (1948); assume no
 country.
 
-**T3d. Layers and derivations (G37, G38, G41; #144).** `apply_derivations`
-fills only fields the label leaves out, from settled inputs; G41's conversion
-(both ways, 1 ft = 0.3048 m) and single-value endpoint fill; S8's geographic
+**T3d. Layers and derivations (G37, G38, G41, G44; #144, #167).**
+`apply_derivations` fills only fields the label leaves out, from settled
+inputs; G41's conversion (both ways, 1 ft = 0.3048 m) and single-value
+endpoint fill; G44's single-date fill of Date Visited To, keeping From's
+precision; S8's geographic
 derivations through `ToolResult.derivations`; and `derive_rest` for the
 worker's "fill the rest" job (PLAN section 4.8). A derived value counts only
 with its record: its settled inputs, its dataset or authority with version,
@@ -231,7 +234,10 @@ written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral
 in the month position is that month (G29). Keep the
 elevation gate (99-106), which reads `field.literal` today (`policy.py`
 101-110) and must instead read a derived elevation's value, counting it only
-with its derivation record (G37 and G41, revising G22; PLAN section 4.8). `unresolved_transcription` (46-48) yields to G19 and G20: a
+with its derivation record (G37 and G41, revising G22; PLAN section 4.8). The
+date gate reads a Date Visited To derived under G44 the same way, and the
+fields no lookup checks pass G45's kind check, a mismatch going to review as
+`value_shape_mismatch:{field}` (#167). `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to
