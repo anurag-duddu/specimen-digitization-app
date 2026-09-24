@@ -114,7 +114,8 @@ Some sources are read as files, not asked as services:
 - the source URL and the date the bytes were retrieved;
 - the byte size and the SHA-256 of the exact bytes;
 - the license and its URL;
-- the credit text, taken from the source's own terms.
+- the credit text, taken from the source's own terms;
+- the content type the upload sets.
 
 The credit goes into `georeferenceSources` and into the dataset metadata (G35's
 follow-up, D2).

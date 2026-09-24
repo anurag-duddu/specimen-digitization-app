@@ -48,6 +48,7 @@ def test_the_pilot_needs_three_glo30_tiles():
         "7a9189637a5af9677a92e765b9448bdfe425383fae8e39a6808a96b8fe8f19d0",  # pragma: allowlist secret (public file digest)
     )
     assert all(tile.credit == GLO30_CREDIT and tile.stable_source for tile in tiles.values())
+    assert {tile.content_type for tile in tiles.values()} == {"image/tiff"}
     assert GLO30_CREDIT == (
         "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and "
         "Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; "
@@ -88,6 +89,7 @@ def test_geonames_dumps_are_pinned_as_the_only_copy():
         assert dump.source_url == f"https://download.geonames.org/export/dump/{dump.id[9:11]}.zip"
         assert dump.stable_source is False  # GeoNames keeps no archive
         assert "GeoNames" in dump.credit and dump.license == "CC BY 4.0"
+        assert dump.content_type == "application/zip"
     assert geonames_dump("US") is None
 
 
@@ -104,6 +106,7 @@ def test_only_the_reviewed_bytes_are_read():
         license_url="https://example.org/licence",
         credit="test",
         stable_source=True,
+        content_type="image/tiff",
     )
     assert verified(reviewed, data) == data
     with pytest.raises(DigestMismatch):

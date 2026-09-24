@@ -12556,3 +12556,27 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a line inserted near the top of a cited document moves every citation below it, including those in append-only logs. Keep header edits line-neutral, or re-map the log's citations with an appended correction in the same PR.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 3: the reference-dataset manifest
+
+- Task: pin the files the tool reads from the project's storage, the Copernicus GLO-30 tiles (D11) and the GeoNames dumps (PLAN 4.8), so that S2 can write the owner's upload command from a reviewed manifest.
+- Branch and worktree: `golive/geo-datasets` in `.claude/worktrees/geo-build`, stacked on #139. PR #151.
+- Outcome:
+  - `georef_datasets.py` pins five files by the SHA-256 of their exact bytes, with the source URL, retrieval date, license and credit text for each.
+  - The pinned files are three 1-degree GLO-30 tiles and the Philippines and Guatemala GeoNames dumps of 2026-09-24.
+  - `verified` refuses bytes of the wrong size or digest.
+  - `elevation_tile` finds a point's tile, and `geonames_dump` a country's latest pin.
+  - The manifest names no bucket.
+- Validation: 9 tests; `verified` run against all five held files; `uv run pytest tests/ -q` (1,589 passed, 31 skipped); `uv run pytest scripts/ -q` (1,547 passed, 50 skipped); pre-commit.
+- Durable learnings:
+  - (1) GeoNames regenerates its dumps daily and keeps no archive, so a "download again and check the digest" upload can never match a pin. The coordinator ruled that the pinned bytes are the only copy: kept read-only in `~/specimen-golive/datasets/geonames/<date>/` and uploaded from there. Refreshing a dump means a new manifest PR.
+  - (2) Take a credit from the source's current terms, not from memory. On 2026-09-24:
+    - NGA's GNS pages stated no license and requested no citation (#94, S33), although the plan had said "citation requested".
+    - Copernicus's own site was unreachable, while the Copernicus Data Space page for the DEM gave the exact notice for adapted data.
+  - (3) detect-secrets reads a SHA-256 as a secret. The repository's convention is a trailing `# pragma: allowlist secret (reason)` on each public digest.
+  - (4) A tile's MD5 equalling the S3 ETag of a single-part upload proves a download intact before its SHA-256 is pinned.
+- Failed approaches: a subagent sent to check Getty's access hit the session's usage limit; S8 ran the three anonymous checks itself.
+- Remaining follow-ups:
+  - geoBoundaries' entries, with the derivations;
+  - S2's upload command from the merged manifest;
+  - part 2b, the GeoNames reader, which reads these pinned dumps.
