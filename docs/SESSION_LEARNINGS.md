@@ -12119,12 +12119,11 @@ because the hooks runner hands a native asset hook only `PATH`.
 
     Each effect has a write-once intent, and the gate transport admits each only once, only after this run's claim. `release_google.py` refuses any SQL delete but the clone's.
   - The receipt records `first_restore` as `claimed`, then `checked`.
-- Commits/PRs: red `ec41759`; green `e5f2ea9`; this closeout.
+  - **A re-run after a spent claim** (the coordinator's ruling of 2026-09-24). A first apply first reads this run's earlier attempts' attested receipts for this commit. If one recorded `checked` (D1's one restore proof), it applies without a second claim or clone and records `proven`. If one recorded only `claimed`, it stops before any effect. Anything else meets the spent claim and stops. The release job attests its receipt on every exit, so a failed attempt's check can be read.
+- Commits/PRs: red `ec41759`; green `e5f2ea9`; this closeout; for the ruling, the spec `e6f2e49`, red `7e3fed9` and green `c03f00f`.
 - Validation actually run:
   - the subagent: red 132 failed, 254 passed; green 386 passed; full `scripts/` 2009 passed, 60 skipped; PostgreSQL 46 passed;
-  - this session, at this head: the seven focused files, 389 passed; both PostgreSQL files, 46 passed.
+  - this session: the seven focused files, 389 passed, and both PostgreSQL files, 46 passed. For the ruling: red 3 failed, 102 passed; green, the seven focused files, 399 passed.
 - Durable learnings: a single-use allowance must be spent only after every permission the next effects need is in place. `testIamPermissions` can't prove a name-conditioned create, so the owner's window opens the claim, clone-create and clone-control roles together.
 - Failed approaches: none.
-- Remaining follow-ups:
-  - The drop, after #146 and the steward's word.
-  - The coordinator's rule for a re-run after a spent claim.
+- Remaining follow-ups: the drop, after #146 and the steward's word.
