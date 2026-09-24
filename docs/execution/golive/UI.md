@@ -304,6 +304,29 @@ The guard of part two is unchanged. A field with a verbatim map has no
 record literal, so it matches the record on the settled value (S5 and S4,
 2026-09-24).
 
+Part four names each value's layer. PLAN 4.7 says "The thread marks each
+value's layer, verbatim, settled or derived, with a derived value's evidence
+one step away". The owner's G38 orders the layers. #171 sends
+`fields[].layer` and `derived_from`. The coordinator ruled on 2026-09-24,
+option (b): every value names its own layer.
+
+1. One short label under the field's name, in the same place on every row,
+   so it shows while the Values disclosure is closed on a phone:
+   - "As written" for a value in the verbatim layer. It does not add "not
+     settled": a field no lookup checks clears as written, so those words
+     would read as a fault.
+   - "Settled" for a value a lookup or every label settled (G20, G32).
+   - "Derived from Date visited from" for a value filled from other fields.
+     These are G44's words, naming each field as the record names it: "A
+     and B", "A, B and C" (G37, G41, G44).
+2. The evidence stays one step away, inside the Values disclosure: a settled
+   value's sources and G32's readings as the row shows them now, and a
+   derived value's evidence lines.
+3. A field with no recorded layer shows no label, and an unknown layer keeps
+   the server's word. The label comes from the thread, so the guard of part
+   two applies: a field the record has changed since the run shows none.
+4. A screen reader hears the label right after the field's name.
+
 ### T2.4 The coverage check and the decision's findings
 
 The thread explains what the record states; it never adds a blocker the
