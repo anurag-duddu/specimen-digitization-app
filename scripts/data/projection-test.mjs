@@ -79,8 +79,10 @@ async function chain(specimenId, actorUid) {
   w.comparison = {...v, id: id(), runId: w.run.id, regionId: w.region.id, ...pair(w.left.id, w.right.id), algorithm: 'bounded-levenshtein-fraction-v1', ratio: 1 / 13, editDistance: 1, lengthBasis: 13, status: 'difference', reasons: []};
   w.transcription = {...v, id: id(), runId: w.run.id, literalText: w.left.literalText, spans: [], alternatives: [w.left.literalText, w.right.literalText], unresolved: false, regionId: w.region.id, decisionKind: 'first_pass', selectedObservationId: w.left.id, firstPassObservationId: w.firstPassCall.id, rationale: 'The crop shows a lowercase l.'};
   w.decided = {...v, id: id(), runId: w.run.id, transcriptionVersionId: w.transcription.id, observationId: w.left.id, role: 'decided_transcript', handedText: w.left.literalText, note: null};
+  // Every other reading goes to the harness too, with the first pass's note (S4, #98).
+  w.fallback = {...w.decided, id: id(), observationId: w.right.id, role: 'raw_reading', handedText: w.right.literalText, note: 'Reads the l as a one.'};
   w.evidence = {...v, id: id(), runId: w.run.id, source: 'google-maps-geocoding', sourceVersion: 'v1', adapterVersion: 'a1', query: {address: 'Chicago, Ill.'}, outcome: 'success', locator: 'place/fixture-place', responseSha256: hex('e'), capturedAt: '2026-09-23T12:00:00Z', rawAssetId: w.placeRecord.id};
-  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: `lookup:geocode:decided_transcript:${w.region.domainRegionId}:-:0af70af70af70af7:1`, phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {candidates: [{place_id: 'fixture-place'}]}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
+  w.toolCall = {...v, id: id(), runId: w.run.id, callKey: `lookup:geocode:google-maps-geocoding:decided_transcript:${w.region.domainRegionId}:-:0af70af70af70af7:1`, phase: 'lookup', tool: 'geocode', toolVersion: 't1', source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], inputSource: 'decided_transcript', transcriptionVersionId: w.transcription.id, observationId: null, attempt: 1, arguments: {query: 'Chicago, Ill.'}, outcome: 'success', result: {candidates: [{place_id: 'fixture-place'}]}, evidenceId: w.evidence.id, startedAt: '2026-09-23T12:00:00Z', completedAt: '2026-09-23T12:00:01Z'};
   w.candidate = {...v, id: id(), runId: w.run.id, fieldKey: 'city', state: 'supported', literalValue: 'Chicago', parsedValue: null, normalizedValue: null, authorityId: 'fixture-place', derivation: 'literal', inputSource: 'decided_transcript', sourceTranscriptionId: w.transcription.id, sourceObservationId: null};
   w.link = {...v, id: id(), candidateId: w.candidate.id, evidenceId: w.evidence.id, relation: 'supports'};
   w.record = {...v, id: id(), runId: w.run.id, predecessorId: null, disposition: 'needs_human_review', policyVersion: 'insects-clearance-v1', reasonCodes: ['mandatory_unresolved:county'], summary: 'mandatory_unresolved:county'};
@@ -93,7 +95,7 @@ const writes = [
   ['AppendSourceAssetV2', 'original'], ['AppendSourceAssetV2', 'envelope'], ['AppendSourceAssetV2', 'placeRecord'], ['AppendPipelineRunV2', 'run'],
   ['AppendLabelRegionV2', 'region'], ['AppendModelObservationV2', 'left'], ['AppendModelObservationV2', 'right'], ['AppendModelObservationV2', 'third'],
   ['AppendModelObservationV2', 'firstPassCall'], ['AppendReadingComparisonV1', 'comparison'],
-  ['AppendTranscriptionVersionV2', 'transcription'], ['AppendHarnessInputV1', 'decided'],
+  ['AppendTranscriptionVersionV2', 'transcription'], ['AppendHarnessInputV1', 'decided'], ['AppendHarnessInputV1', 'fallback'],
   ['AppendEvidenceItemV2', 'evidence'], ['AppendToolCallV1', 'toolCall'], ['AppendFieldCandidateV2', 'candidate'],
   ['AppendCandidateEvidenceV2', 'link'], ['AppendRecordVersionV2', 'record'], ['AppendResolvedFieldV2', 'resolved'],
   ['AppendValidationFindingV2', 'finding'], ['AppendCheckpointV2', 'checkpoint'],
@@ -120,7 +122,7 @@ same(thread.labelRegions, [{domainRegionId: work.region.domainRegionId, sourceAs
 same(thread.modelObservations.map(o => [o.independent, o.routeId, o.unreadableSpans]), [[false, 'first-pass', []], [true, 'handwriting-muse', ['Il1.']], [true, 'handwriting-qwen', []], [true, 'handwriting-third', []]]);
 same([thread.readingComparisons[0].ratio, thread.readingComparisons[0].editDistance, thread.readingComparisons[0].lengthBasis], [1 / 13, 1, 13]);
 same(thread.transcriptionVersions, [{regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id}]);
-same(thread.harnessInputs.map(h => [h.role, h.observationId]), [['decided_transcript', work.left.id]]);
+same(thread.harnessInputs.map(h => [h.role, h.observationId]), [['decided_transcript', work.left.id], ['raw_reading', work.right.id]]);
 same(thread.toolCalls, [{callKey: work.toolCall.callKey, source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], outcome: 'success', inputSource: 'decided_transcript', evidenceId: work.evidence.id, attempt: 1}]);
 same(thread.fieldCandidates, [{inputSource: 'decided_transcript', sourceTranscriptionId: work.transcription.id}]);
 same(thread.resolvedFields, [{fieldKey: 'city', fieldGroup: 'mandatory'}]);
@@ -161,8 +163,9 @@ console.log('PASS the trace id is recorded once, well formed, and of two concurr
 // An approval claim needs a reviewer or above with sensitive access; the worker writes none.
 const profile = {...scope, profileKey: 'zoology_insects_slides', version: '1.0.1', configObject: '{}', configSha256: hex('c')};
 denied(await op('AppendProfileVersionV2', {...profile, actorUid: 'worker', id: randomUUID(), approvedBy: 'worker'}));
+denied(await op('AppendProfileVersionV2', {...profile, actorUid: 'reviewer', id: randomUUID(), approvedBy: 'another-reviewer'}));
 ok(await op('AppendProfileVersionV2', {...profile, actorUid: 'reviewer', id: randomUUID(), approvedBy: 'reviewer'}));
-console.log('PASS only a sensitive-capable reviewer may claim a profile approval');
+console.log('PASS only a sensitive-capable reviewer may claim a profile approval, and only for themselves');
 
 // Closed vocabularies and image dimensions are enforced.
 denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.firstPassCall.id, role: 'decided'}));
@@ -183,6 +186,7 @@ denied(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), re
 denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), severity: 'fatal'}));
 denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), outcome: 'failed'}));
 denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), evidenceIds: [work.evidence.id, work.evidence.id]}));
+denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), evidenceIds: Array.from({length: 65}, () => randomUUID())}));
 ok(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), severity: 'warning', ruleId: 'taxonomy_source_disagreement', fieldKey: 'taxon', reasonCode: 'taxonomy_source_disagreement'}));
 // A decision other than a reviewer's is unresolved exactly when it selects no reading, and only a
 // first-pass decision names a model call.
@@ -190,9 +194,11 @@ denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: rand
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), selectedObservationId: null, unresolved: false}));
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), unresolved: true}));
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'identical_readings'}));
-// A decided transcript is the decision's selected reading; raw readings are handed only without one.
+denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'identical_readings', firstPassObservationId: null}));
+// A decided transcript is the decision's selected reading; any other reading is a raw reading.
 denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.right.id, handedText: work.right.literalText}));
-denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.right.id, role: 'raw_reading', handedText: work.right.literalText}));
+denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), role: 'raw_reading'}));
+denied(await op('AppendLabelRegionV2', {...work.region, id: randomUUID(), domainRegionId: randomUUID(), sourceAssetId: work.envelope.id}));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), kind: 'originals'}));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), width: 0}));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), width: null}));
@@ -205,8 +211,12 @@ console.log('PASS closed vocabularies, decisions, handoff roles, the fixed pair 
 
 // Google keeps a place id only for a single match, points at an evidence record, and supports (G26).
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: 'lookup/1'}));
-denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: 'place/41.8781,-87.6298'}));
-denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: 'place/Chicago, IL'}));
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: 'place/12.3456,-65.4321'}));
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: 'place/Synthetic Town, ZZ'}));
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), responseSha256: 'not-a-digest'}));
+denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: randomUUID(), source: 'google_geocoding'}));
+denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: randomUUID(), source: 'Google-Maps-Geocoding'}));
+ok(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), outcome: 'recorded'}));
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: null}));
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), outcome: 'ambiguous'}));
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'Google-Maps-Geocoding'}));
@@ -219,11 +229,14 @@ const elsewhere = {...work.candidate, id: randomUUID(), authorityId: 'another-pl
 ok(await op('AppendFieldCandidateV2', elsewhere));
 denied(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), candidateId: elsewhere.id}));
 ok(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), relation: 'contradicts'}));
-// Any lookup has a locator exactly when it succeeded; recorded evidence keeps its own.
+// A lookup has a locator exactly when it succeeded, and recorded evidence always has one.
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'success', locator: null}));
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'no_match', locator: 'gbif/usage/1'}));
 ok(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'no_match', locator: null}));
-ok(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'label-coverage-check', outcome: 'recorded', locator: 'coverage/region-count'}));
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), source: 'label-coverage-check', outcome: 'recorded', locator: null}));
+const coverage = {...work.evidence, id: randomUUID(), source: 'label-coverage-check', outcome: 'recorded', locator: 'coverage/region-count'};
+ok(await op('AppendEvidenceItemV2', coverage));
+ok(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), evidenceId: coverage.id}));
 console.log('PASS a lookup has a locator exactly when it succeeded; Google keeps a place id only, points at an evidence record, and never decides');
 
 // Sensitive specimens: a sensitive-capable reviewer writes the run; the worker and a viewer cannot.
@@ -246,6 +259,7 @@ denied(await op('RecordRunTraceV1', {...scope, actorUid: 'worker', id: kept.run.
 ok(await op('RecordRunTraceV1', {...scope, actorUid: 'reviewer', id: kept.run.id, traceId: trace}));
 ok(await op('AppendReviewDecisionV1', {...scope, actorUid: 'reviewer', id: randomUUID(), specimenId: closed, baseRevision: 1, resultingRevision: 2, reason: 'Checked the label', correction: {kind: 'field', target_id: 'county', after: {literal: 'Cook'}}}));
 denied(await op('AppendReviewDecisionV1', {...scope, actorUid: 'reviewer', id: randomUUID(), specimenId: closed, baseRevision: 2, resultingRevision: 3, reason: 'r', correction: {}}));
+denied(await op('AppendReviewDecisionV1', {...scope, actorUid: 'reviewer', id: randomUUID(), specimenId: closed, baseRevision: 2, resultingRevision: 2, reason: 'r', correction: {}}));
 denied(await op('AppendReviewDecisionV1', {...scope, actorUid: 'worker', id: randomUUID(), specimenId: open, baseRevision: 0, resultingRevision: 1, reason: 'r', correction: {}}));
 denied(await op('AppendModelObservationV2', {...work.left, id: randomUUID(), stepKey: randomUUID(), actorUid: 'viewer'}));
 console.log('PASS sensitive runs need a sensitive-capable member; review decisions need a reviewer and stay within the specimen\'s revision');
@@ -323,7 +337,11 @@ ok(await op('AppendTranscriptionVersionV2', noPick));
 for (const reading of [work.left, work.right]) ok(await op('AppendHarnessInputV1', {...work.decided, id: rid(), transcriptionVersionId: noPick.id, observationId: reading.id, role: 'raw_reading', handedText: reading.literalText}));
 denied(await op('AppendHarnessInputV1', {...work.decided, id: rid(), transcriptionVersionId: noPick.id, observationId: work.third.id, handedText: work.third.literalText}));
 ok(await op('AppendFieldCandidateV2', {...work.candidate, id: rid(), literalValue: 'Chicago, Il1.', authorityId: null, inputSource: 'raw_reading', sourceTranscriptionId: null, sourceObservationId: work.right.id}));
-ok(await op('AppendTranscriptionVersionV2', {...work.transcription, id: rid(), decisionKind: 'identical_readings', firstPassObservationId: null, rationale: null}));
+const identical = {...work.transcription, id: rid(), decisionKind: 'identical_readings', firstPassObservationId: null, rationale: null};
+ok(await op('AppendTranscriptionVersionV2', identical));
+ok(await op('AppendHarnessInputV1', {...work.decided, id: rid(), transcriptionVersionId: identical.id}));
+denied(await op('AppendHarnessInputV1', {...work.fallback, id: rid(), transcriptionVersionId: identical.id}));
+ok(await op('AppendHarnessInputV1', {...work.fallback, id: rid(), transcriptionVersionId: identical.id, note: null}));
 ok(await op('AppendTranscriptionVersionV2', {...work.transcription, id: rid(), decisionKind: 'identical_readings', firstPassObservationId: null, selectedObservationId: null, unresolved: true, rationale: null}));
 const human = {...work.transcription, id: rid(), decisionKind: 'human', firstPassObservationId: null, selectedObservationId: null, unresolved: false, rationale: 'Read under the microscope.'};
 denied(await op('AppendTranscriptionVersionV2', human));

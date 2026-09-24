@@ -51,12 +51,12 @@ reads them.
    (slides 324-328 have two labels). Everything from the readings to the first
    pass is per region, and a field records the region and reading its literal
    came from.
-   - A region row belongs to one run. The domain reuses region ids across runs:
-     SAM's id is a UUIDv5 of the manifest, specimen and index with no run
-     (`sam3_server.py` 390), a region correction resends the ids it keeps, and a
-     region a person adds is `new-{microseconds}`. So the row's id is derived
-     from the run and the domain id (section 5), and `domainRegionId` keeps the
-     domain id.
+   - A region row belongs to one run. A domain region id can recur across runs:
+     a region correction resends the ids it keeps, a region a person adds is
+     `new-{microseconds}`, and the lab's segmenter derives ids without the run
+     (`sam3_server.py` 390; production's seeds them with the run id, #105). So
+     the row's id is derived from the run and the domain id (section 5), and
+     `domainRegionId` keeps the domain id.
    - A segmentation correction starts a new run (`classification.py` 180). The
      new run's `supersedesRunId` names the run it replaces, and its regions are
      new rows. `supersedesRegionId` links regions within one run only.
@@ -68,11 +68,14 @@ reads them.
    - The stored record behind a Google `EvidenceItem` is an `evidence_record`
      asset. It holds only those values: the place id when Google returned
      exactly one place (outcome `success`), the place ids and nothing else when
-     it returned several (`ambiguous`), none for `no_match` or an error.
-     `responseSha256` is the digest of Google's full response.
-   - A Google `EvidenceItem`'s `locator` is `place/{place id}` for `success` and
-     null for every other outcome. The source string is exactly
-     `google-maps-geocoding`.
+     it returned several (`ambiguous`), none for `no_match`. A call that got no
+     response (a timeout, for example) has no stored record and no
+     `EvidenceItem`; its `ToolCall` records the outcome. `responseSha256` is the
+     digest of Google's full response.
+   - A Google `EvidenceItem`'s `locator` is `place/{place id}` when set: always
+     for `success` and for `recorded` evidence, never for any other outcome. The
+     source string is exactly `google-maps-geocoding`, on evidence and on tool
+     calls.
    - A field Google confirmed keeps its derivation from the label (`literal`,
      `parsed` or `normalized`) with Google as supporting evidence; Google never
      decides. Its `authorityId` is at most the place id in that evidence's
@@ -90,7 +93,7 @@ reads them.
 |---|---|---|
 | 1 Image | `Specimen.asset` | `SourceAsset`, kind `original` |
 | 2 Segmentation | `Run.regions[]`; `Run.segmentation` (model revision, settings) | `LabelRegion` per region of the run, with the domain's region id in `domainRegionId`, geometry in the original's pixels with `rotation_quarter_turns`; the settings and revision in `PipelineRun.pinnedVersions.segmentation` |
-| 2 Coverage (G15) | `Run.coverage_check` (S3, section 4.1) | `EvidenceItem` with `source` `label-coverage-check`; a failed check also reaches the queue's reason codes and a hard `ValidationFinding` |
+| 2 Coverage (G15) | `Run.coverage_check` (S3, section 4.1) | `EvidenceItem` with `source` `label-coverage-check`, outcome `recorded` and its own locator; a failed check also reaches the queue's reason codes and a hard `ValidationFinding` |
 | 3, 4 Readings | `Run.observations[]`, raw envelope at `raw_ref` | `ModelObservation` per reading: `independent` true, `stepKey` `transcribe:{region_id}:{route_id}`, `routeId`, `unreadableSpans`; `SourceAsset` kind `raw_response` for the envelope |
 | 5 Disagreement | `Transcript` alignment fields | `ReadingComparison` per pair of readings of a region, with the ratio and its components |
 | 6 First pass | `Transcript` per region, extended by S4 (section 4.2) | `TranscriptionVersion` with region, decision kind, selected reading and rationale; the first pass's model call as a `ModelObservation` with `independent` false and `stepKey` `first_pass:{region_id}`; `HarnessInput` per reading handed over |
@@ -143,8 +146,9 @@ region.
 `ToolCall`: one attempt of one harness tool call.
 - `runId`.
 - `callKey`: unique per run and stable across replays, in the form
-  `{phase}:{tool}:{input_source}:{region_id or "-"}:{observation_id or "-"}:{first 16 hex of the SHA-256 of the arguments' canonical JSON}:{attempt}`.
-  The region keeps identical calls on two regions apart.
+  `{phase}:{tool}:{source or "-"}:{input_source}:{region_id or "-"}:{observation_id or "-"}:{first 16 hex of the SHA-256 of the arguments' canonical JSON}:{attempt}`
+  (agreed with S4). The source keeps one tool's calls to several databases
+  apart, and the region identical calls on two regions.
 - `phase`: one of the HAR-003 phases.
 - `tool` and `toolVersion`.
 - `source`: the database the tool queried; null for local validators.
@@ -187,8 +191,8 @@ the same list, with these reasons.
 |---|---|---|
 | `SourceAsset.width`, `SourceAsset.height` | drop `NOT NULL` | Raw provider responses and check evidence are assets without pixels, and `ModelObservation.rawAssetId` and `EvidenceItem.rawAssetId` point at them. The operation still requires both, positive, for image kinds (`original`, `crop`, `mask`). |
 | `LabelRegion.cropAssetId` | drop `NOT NULL` | SAM regions carry no crop (`Region.crop_ref` is always null from SAM), so a region is written as soon as segmentation finishes. The crop each reader saw is identified by `ModelObservation.inputSha256`. |
-| `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match (`no_match`, `ambiguous`, an error) has nothing to locate, and G26 allows no Google value but a place id (rule 1.6). The operation keeps a lookup's locator set exactly when its outcome is `success`, so it is optional nowhere else. |
-| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: this PR declares the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Two applies, because within one the compatible migration drops the old index before it creates the new one, each statement in its own transaction, so writers running during the apply would meet no constraint; created first, the new constraint cannot fail on existing rows, since it is weaker. |
+| `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match (`no_match`, `ambiguous`, an error) has nothing to locate, and G26 allows no Google value but a place id (rule 1.6). The operation keeps the locator set on every `recorded` row, and on a lookup exactly when its outcome is `success`, so it is optional nowhere else. |
+| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: this PR declares the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Every column the new constraint adds (`organizationId`, `collectionId`, `specimenId`) is `NOT NULL`, as the exception requires. Two applies, because within one the compatible migration drops the old index before it creates the new one, each statement in its own transaction, so writers running during the apply would meet no constraint; created first, the new constraint cannot fail on existing rows, since it is weaker. |
 
 ## 4. Domain fields the writer reads
 
@@ -221,9 +225,12 @@ above do not change.
 
 `ReaderHandoff`: `observation_id: str`, `role: Literal["decided_transcript",
 "raw_reading"]`, `handed_text: str`, `note: str | None`. With a selected
-reading there is one handoff, `decided_transcript`, of that reading; with none,
-every reading is a `raw_reading` handoff. The operation refuses any other
-pairing of role and decision.
+reading, that reading is the `decided_transcript` handoff and every other
+reading a `raw_reading` handoff with the first pass's note on it (null for
+identical readings), so what each reader returned to the harness is recorded
+(PLAN 4.1 stage 6). With none, every reading is a `raw_reading` handoff (G19).
+The operation refuses a `raw_reading` handoff of the selected reading and a
+`decided_transcript` handoff of any other (agreed with S4, #98).
 
 The writer maps `TranscriptionVersion.spans` from `differences`, and
 `alternatives` from the material differences whose verdict is `neither` or
@@ -233,9 +240,8 @@ The writer maps `TranscriptionVersion.spans` from `differences`, and
 region's decision is unresolved when no reading was selected (G19: material
 ambiguity means no pick; the harness then runs on each raw reading, and every
 reading is a `raw_reading` handoff). A selected reading with a material
-difference still `neither` or `uncertain` is resolved; that difference stays in
-`alternatives`, and the fields it touches are handled field by field (G19,
-G20). For decisions other than a reviewer's, unresolved is exactly the negation
+difference still `neither` or `uncertain` is resolved, and that difference is
+stored in `alternatives`. For decisions other than a reviewer's, unresolved is exactly the negation
 of the domain's `resolved` flag, which means a reading was selected (S4, #98).
 For a reviewer's decision, unresolved means the reviewer left it unresolved.
 
@@ -286,8 +292,10 @@ run, not in SQL.
   `normalizedValue`, `authorityId` and the evidence links; each other reader's
   candidate carries its literal and the field's state. `ResolvedField.candidateId`
   points at the confirmed reader's candidate, and is null when no reader was
-  confirmed, so no single verbatim is implied. Place and taxon fields are
-  treated alike.
+  confirmed. The pointer selects the settled value only, never a verbatim:
+  every reader's verbatim stays on its own candidate. When several readers wrote
+  the same literal, the confirmed reader is the one S4 names in
+  `source_observation_id`. Place and taxon fields are treated alike.
 - The settled value stays on the field: `authority_id` (Google's place id, or
   GBIF's usage key) and `normalized` (rule 1.6 for Google; GBIF's accepted name
   for GBIF). Both are set only from a call whose outcome is `success`.
@@ -296,9 +304,8 @@ run, not in SQL.
     the rank the label's name gives (a genus alone `GENUS`, a binomial
     `SPECIES`, a trinomial `SUBSPECIES`), with no live homonym.
   - `FUZZY`, `VARIANT`, `HIGHERRANK` and an exact synonym are `ambiguous`
-    (GBIF.md 127-128). The label name stays the verbatim with no settled value,
-    and the field goes to review with `mandatory_unresolved:taxon` and
-    `taxonomy_unresolved`. For a synonym, S4 appends GBIF's `acceptedUsage` to
+    (GBIF.md 127-128). The label name stays the verbatim with no settled value;
+    the reason codes the queue then records are S4's policy. For a synonym, S4 appends GBIF's `acceptedUsage` to
     that lookup's `candidates`, where the reviewer's `taxonomy_resolution`
     decision can select it: the accepted usage is proposed separately and
     never replaces the verbatim.
@@ -324,10 +331,11 @@ run, not in SQL.
   list[Finding]`, never in `Run.reasons`, because any reason means needs human
   review (`policy.py` 176). Each Finding has `rule_id`, `rule_version`,
   `severity` (`warning` or `info`), `field_key`, `reason_code` and
-  `evidence_ids`. They carry G23's source disagreement (`taxonomy_source_disagreement`)
-  and G27's `spelling_disagreement` check (S8, #94 section 3.3). The writer
-  stores each as a `ValidationFinding` with that severity and its
-  `evidence_ids` in `evidenceIds`, beside the hard finding it writes per reason
+  `evidence_ids`. They carry G23's source disagreement
+  (`taxonomy_source_disagreement:{source}`, #109) and G27's
+  `spelling_disagreement` check (S8, #94 section 3.3). The writer stores each as
+  a `ValidationFinding` with that severity and its recorded `evidence_ids`, each
+  once, in `evidenceIds`, beside the hard finding it writes per reason
   code. Every finding the writer writes records a rule that did not pass, so
   its `outcome` is `fail`; `pass`, `unresolved` and `not_applicable` stay
   available to checks that record passing results, which none does today.
@@ -355,10 +363,10 @@ comparison's fixed order (section 3.1):
 | `ReadingComparison` | `comparison/{run}/{region}/{left}/{right}` |
 | `ToolCall` | `tool-call/{run}/{call_key}` |
 | `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}` |
-| `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings and field states}` |
+| `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings, field states and each field's resolved candidate}` |
 | `ResolvedField` | `{record version}/field/{field key}` |
 | `CandidateEvidence` | `candidate-evidence/{candidate}/{evidence}` |
-| `ValidationFinding` | `{record version}/finding/{severity}/{rule id}/{field key or "-"}/{reason code}` |
+| `ValidationFinding` | `{record version}/finding/{severity}/{rule id}/{field key or "-"}/{reason code}/{digest of its evidence ids}` |
 | `Checkpoint` | `checkpoint/{run}/{step}/{attempt}` |
 
 `CandidateEvidence` and `ReviewDecision` have no natural-key unique constraint,
@@ -401,35 +409,43 @@ On top of that rule:
   `decisionKind` (`identical_readings`, `first_pass`, `human`); handoff `role`;
   `inputSource`; tool-call `phase` (HAR-003) and `outcome` (HAR-008);
   `CandidateEvidence.relation`; finding `severity` (`hard`, `warning`, `info`)
-  and `outcome` (`pass`, `fail`, `unresolved`, `not_applicable`); `fieldGroup`;
-  record `disposition`.
+  and `outcome` (`pass`, `fail`, `unresolved`, `not_applicable`); evidence
+  `outcome` (the 11 HAR-008 values and `recorded`); `fieldGroup`; record
+  `disposition`.
 - **Free text.** `ReadingComparison.algorithm`, alignment `status`, `tool` and
   `source`, except that a source naming Google in any letter case must be
-  exactly `google-maps-geocoding`.
+  exactly `google-maps-geocoding`, on evidence and on tool calls.
 - **Consistency.**
   - An original asset's `sha256` is its specimen's source checksum. Image
-    assets have positive dimensions.
+    assets have positive dimensions. A region's source asset is its
+    specimen's original.
   - A decision other than a reviewer's is unresolved exactly when it names no
     selected reading (section 4.2). A `first_pass` decision names its model
-    call, and no other kind names one.
+    call, and no other kind names one. An `identical_readings` decision has no
+    rationale, and its handoffs no note.
   - A `decided_transcript` handoff is of its decision's selected reading, and a
-    `raw_reading` handoff is of a decision with none.
+    `raw_reading` handoff of any other reading (section 4.2).
   - A call on the decided transcript names no reading, and a call on a raw
     reading names no decision.
   - A reading pair is recorded in its fixed order (section 3.1). The score's
     parts are in bounds. The trace id is well formed.
-  - A lookup's `EvidenceItem.locator` is set exactly when its outcome is
-    `success`; `recorded` evidence that is not a lookup keeps its own.
+  - `EvidenceItem.locator` is always set on `recorded` evidence, and on a
+    lookup exactly when its outcome is `success`.
 - **Human decisions.** A `human` `TranscriptionVersion` needs `reviewer`,
   `manager` or `admin`, and so does `AppendReviewDecisionV1`, as the API's
   decision route does. The reviewer's own save writes them, and a worker's
   projection pass skips them. A review decision's resulting revision is after
   its base revision and no later than the specimen's current revision.
+  - Catch-up (rule 1.1): a human decision lost from its reviewer's pass is
+    written by the next save of a reviewer, manager or admin on that specimen.
+    Until then a worker's pass stops, logged, at the first row that names it (a
+    tool call or field candidate). Nothing is lost, because every pass resends
+    each row its process has not recorded.
 - **Google (G26, rule 1.6).**
-  - An `EvidenceItem` from `google-maps-geocoding` has the locator
-    `place/{place id}`, in place-id characters (`^place/[A-Za-z0-9_-]+$`),
-    exactly when its outcome is `success`, and a null locator otherwise. Its
-    stored record is an `evidence_record` asset.
+  - An `EvidenceItem` from `google-maps-geocoding` has, when its locator is
+    set, `place/{place id}` in place-id characters (`^place/[A-Za-z0-9_-]+$`);
+    a 64-hex `responseSha256`; and an `evidence_record` asset for its stored
+    record.
   - A `CandidateEvidence` link to Google evidence never `decides`, and the
     candidate's `authorityId` is null or the place id in that locator.
   - A Google call's `ToolCall.result` holds place ids only. CEL has no working
@@ -438,11 +454,13 @@ On top of that rule:
 - **Candidate evidence.** Only evidence with outcome `success`, or `recorded`
   evidence that is not a lookup, is linked to a candidate (section 4.3).
 - **Findings.** `AppendValidationFindingV2` takes the run id. The record version
-  and every one of the finding's `evidenceIds` must be of that run.
+  and every one of the finding's `evidenceIds` must be of that run, each named
+  once, at most 64.
 - **Approval claims.** `AppendProfileVersionV2` admits operators, because the
   worker writes the profile snapshot each run used. A non-null `approvedBy` is
   an approval claim and needs `main`'s rule: a reviewer or above with sensitive
-  access. The worker writes null. The published profile's approval stays where
+  access, claiming for themselves (`approvedBy` is the caller). The worker
+  writes null. The published profile's approval stays where
   it happened: the PR review and the release's `collection_profile_bytes` and
   `evidence_profile_sha256`. No client-facing API path passes user input into
   `approvedBy`.
@@ -579,7 +597,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   (CONTRACTS.md "Explicit intake sensitivity"). Sensitive data never goes to an
   unapproved provider (PRD 66, 715), and the worker's membership is
   nonsensitive (OWNER_INPUTS.md 288). So only uploads declared not sensitive run
-  automatically, and G2 and DoD-6 hold for those. `ListDueWorkV2` does not
+  automatically, and G2 and DoD-6 hold for those. The ten pilot slides are not
+  sensitive on the owner's verified classification (G31). `ListDueWorkV2` does not
   change.
 - **Due time.** It is the request time only for work that has not started. A
   scheduled retry is due at its `next_retry_at`, and sorts there.
@@ -611,18 +630,22 @@ against real PostgreSQL and the Data Connect emulator. It checks:
 - a second run of the same specimen writes its own row for a region id the
   first run used, and a new run superseding the first is accepted;
 - the writes the pipeline makes are accepted:
-  - a G19 no-pick `first_pass` decision with its `raw_reading` handoffs;
+  - a picked decision's `raw_reading` handoffs of the other readings, and a G19
+    no-pick `first_pass` decision with its `raw_reading` handoffs;
   - a G27 per-reader `raw_reading` candidate;
   - `identical_readings` and reviewer `human` decisions;
   - a crop with its parent asset, and a region with its crop;
   - a region superseding another of its run;
-  - a Google `no_match` with no locator, and a finding with its evidence;
+  - a Google `no_match` with no locator, recorded evidence linked to a
+    candidate, and a finding with its evidence;
 - the trace is recorded once, and of two concurrent ids exactly one wins;
-- only a sensitive-capable reviewer may claim a profile approval, and only a
-  reviewer may write a `human` decision;
+- only a sensitive-capable reviewer may claim a profile approval, only for
+  themselves, and only a reviewer may write a `human` decision;
 - the closed vocabularies, the consistency rules, the fixed pair order, image
-  dimensions, the original's checksum, the handoff roles, the review
-  revisions and the Google rules of section 6 are enforced;
+  dimensions, the original's checksum, a region's original, the handoff roles,
+  identical readings' rationale and notes, the review revisions, the locator
+  rule, the 64 evidence ids, and the Google rules of section 6 on evidence and
+  tool calls are enforced;
 - `ListDueWorkV2` lists the oldest due time first, with ties by id, pages one
   row at a time across a tie at a microsecond stamp, hides sensitive rows from
   the worker, and skips finished and undated runs; a stuck cursor fails the
