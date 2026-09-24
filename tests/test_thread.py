@@ -15,7 +15,9 @@ import pytest
 
 from specimen_digitization.application.api import summary
 from specimen_digitization.application.domain import (
+    AuditEvent,
     Disposition,
+    Evidence,
     Lookup,
     LookupStatus,
     Run,
@@ -38,7 +40,7 @@ from specimen_digitization.application.thread import (
 
 from test_projection import locate, size
 from test_projection_decisions import Handoff, ToolCallRecord
-from thread_fixtures import TRACE, TracedField, fixed, hexid, rows, synthetic_run
+from thread_fixtures import TRACE, ReviewCall, TracedField, fixed, hexid, rows, synthetic_run
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "docs/execution/golive/thread-example.json"
@@ -745,25 +747,150 @@ def test_each_field_shows_its_layer_and_a_derived_one_the_fields_it_came_from():
         "taxon": ("settled", []),
         "identified_by_irn": (None, []),
     }
-    # G37: a label that leaves the county out has it filled from the settled city (S4's #144).
-    s.run.fields["county"] = TracedField(
+    # G37: a label that leaves the county out has it filled from the settled city (S4's #144),
+    # decided by its stored derivation record.
+    rule = Evidence(
+        kind="derivation",
+        asset_id=s.asset.id,
+        source="fixture-gazetteer",
+        locator="derivation:containment",
+        excerpt="Chicago lies in Cook County",
+        raw_ref=f"{'7' * 64}:7",
+        digest="7" * 64,
+    )
+    s.run.evidence.append(rule)
+    derived = TracedField(
         state=ValueState.SUPPORTED,
         parsed="Cook County",
         authority_id="fixture-county",
+        authority_identity={"name": "Cook County", "source": "fixture-gazetteer", "source_record_id": "fixture-county", "credit": "fixture credit"},
+        evidence_ids=[rule.id],
+        evidence_relations={rule.id: "decides"},
         reason="derived:containment",
         layer="derived",
         derived_from=["city"],
     )
+    s.run.fields["county"] = derived
     s.run.reasons = []
     county = by_key(thread(s)["fields"], "field_key")["county"]
-    # Its value reaches SQL with T6's AppendFieldCandidateV3; until then the record's field row
-    # gives its state, and the snapshot its layer and inputs.
+    # T2c: its derived candidate holds its value, identity and evidence, like any settled field's,
+    # and adds no verbatim, since the label leaves the county out.
     assert (county["layer"], county["derived_from"], county["state"], county["verbatim"]) == (
         "derived",
         ["city"],
         "supported",
         [],
     )
+    assert (county["parsed"], county["authority_id"], county["authority_identity"]["name"]) == (
+        "Cook County",
+        "fixture-county",
+        "Cook County",
+    )
+    assert [(e["evidence_id"], e["relation"], e["source"]) for e in county["evidence"]] == [
+        (rule.id, "decides", "fixture-gazetteer")
+    ]
+    assert county["settled_observation_ids"] == []
+    # derived_from is the candidate's derivedFromFieldKeys when its row is written...
+    data = rows(written(s), s.id, s.run.id, keys(s, s.run))
+    row = next(c for c in data["runs"][0]["candidates"] if c["fieldKey"] == "county")
+    assert row["derivedFromFieldKeys"] == ["city"]
+    row["derivedFromFieldKeys"] = ["city", "province_state"]
+    shown = assemble(s, s.run, data, status="completed").model_dump(mode="json")
+    assert by_key(shown["fields"], "field_key")["county"]["derived_from"] == ["city", "province_state"]
+    # ...else the snapshot's: a derived value without its record has no candidate (PLAN 4.8).
+    s.run.fields["county"] = derived.model_copy(update={"evidence_ids": [], "evidence_relations": {}})
+    uncounted = by_key(thread(s)["fields"], "field_key")["county"]
+    assert (uncounted["derived_from"], uncounted["parsed"], uncounted["evidence"]) == (["city"], None, [])
+
+
+def test_a_settled_value_shows_its_authoritys_identity():
+    fields = by_key(thread(synthetic_run())["fields"], "field_key")
+    # PLAN 4.8: the settled candidate's authorityIdentity; Google's keeps no name (G26).
+    assert fields["city"]["authority_identity"] == {"source": "google-maps-geocoding", "source_record_id": "fixture-place"}
+    assert fields["taxon"]["authority_identity"] == {
+        "name": "Aedes aegypti",
+        "source": "gbif",
+        "source_record_id": "1651891",
+        "credit": "fixture credit",
+    }
+    assert fields["county"]["authority_identity"] is None
+
+
+def test_a_google_identity_that_keeps_a_name_leaves_the_run_without_a_thread():
+    s = synthetic_run()
+    city = s.run.fields["city"]
+    s.run.fields["city"] = city.model_copy(
+        update={"authority_identity": {**city.authority_identity, "name": "fixture-google-name"}}
+    )
+    # T2c: the writer refuses the run (G26, projection.GoogleContentStored), and so the thread does.
+    with pytest.raises(EvidenceIntegrityError) as refused:
+        keys(s, s.run)
+    assert str(refused.value) == "field city keeps a Google name (G26)"
+
+
+def test_a_fields_findings_are_the_records_findings_that_name_it():
+    s = synthetic_run()
+    left, _ = s.run.regions
+    # G45 (the owner, 2026-09-24): a value no lookup checks that does not look like its field's
+    # kind goes to review with S4's reason code.
+    s.run.fields["collector"] = TracedField(
+        state=ValueState.SUPPORTED,
+        literal="VI-24-68-7",
+        input_source="decided_transcript",
+        source_region_id=left.id,
+    )
+    s.run.reasons = ["mandatory_unresolved:county", "value_shape_mismatch:collector"]
+    result = thread(s)
+    fields = by_key(result["fields"], "field_key")
+    # The same rows and shape as decision.findings, each on the field it names.
+    for key, field in fields.items():
+        assert field["findings"] == [f for f in result["decision"]["findings"] if f["field_key"] == key]
+    assert [(f["severity"], f["reason_code"]) for f in fields["collector"]["findings"]] == [
+        ("hard", "value_shape_mismatch:collector")
+    ]
+    assert [(f["severity"], f["reason_code"]) for f in fields["county"]["findings"]] == [
+        ("hard", "mandatory_unresolved:county")
+    ]
+    assert [(f["severity"], f["reason_code"]) for f in fields["taxon"]["findings"]] == [
+        ("warning", "taxonomy_source_disagreement")
+    ]
+    assert fields["city"]["findings"] == []
+    # Before the queue decides there are none.
+    s.run.disposition = None
+    assert all(f["findings"] == [] for f in thread(s)["fields"])
+
+
+def test_a_call_on_a_reviewers_text_names_its_review_decision():
+    s = synthetic_run()
+    # G38's "fill the rest": a reviewer's decision, and a call that ran on the reviewer's text.
+    asked = AuditEvent(
+        actor="reviewer-uid",
+        action="review_fill_the_rest",
+        reason="Filled the county",
+        before={},
+        after={"county": "Cook"},
+    )
+    s.audit.append(asked)
+    s.run.tool_calls.append(
+        ReviewCall(
+            call_key="lookup:geonames:review:1",
+            phase="lookup",
+            tool="geonames",
+            tool_version="g1",
+            source="geonames",
+            field_keys=["county"],
+            input_source="review",
+            arguments={"name": "Cook"},
+            outcome="no_match",
+            result={},
+            review_decision_id=asked.id,
+        )
+    )
+    calls = thread(s)["tool_calls"]
+    review = calls[-1]
+    assert (review["input_source"], review["review_decision_id"]) == ("review", asked.id)
+    assert (review["region_id"], review["observation_id"]) == (None, None)
+    assert [c["review_decision_id"] for c in calls[:-1]] == [None] * (len(calls) - 1)
 
 
 def link(evidence_id, relation):
@@ -978,10 +1105,10 @@ def test_the_keys_are_the_ids_of_the_rows_the_writer_writes():
     s = reviewed(synthetic_run())
     written_rows = written(s)
     ids = {op: [w.variables["id"] for w in written_rows if w.operation == op] for op in (
-        "AppendTranscriptionVersionV2", "AppendFieldCandidateV2", "AppendRecordVersionV2")}
+        "AppendTranscriptionVersionV2", "AppendFieldCandidateV3", "AppendRecordVersionV2")}
     assert keys(s, s.run) == {
         "decisionIds": ids["AppendTranscriptionVersionV2"],
-        "candidateIds": ids["AppendFieldCandidateV2"],
+        "candidateIds": ids["AppendFieldCandidateV3"],
         "recordIds": ids["AppendRecordVersionV2"],
     }
     # The writer refuses a run whose stored calls hold a credential, and so the thread does (rule

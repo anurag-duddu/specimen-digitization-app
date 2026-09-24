@@ -645,7 +645,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   }],
   "tool_calls": [{"call_key": "…", "phase": "lookup", "tool": "geocode", "tool_version": "…",
     "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
-    "input_source": "decided_transcript", "region_id": "…", "observation_id": null, "attempt": 1,
+    "input_source": "decided_transcript", "region_id": "…", "observation_id": null,
+    "review_decision_id": null, "attempt": 1,
     "arguments": {}, "outcome": "success", "result": {"place_ids": ["…"]},
     "error": null, "retry_after": null, "evidence_id": "…",
     "started_at": "…", "completed_at": "…"}],
@@ -654,9 +655,12 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "verbatim": [{"text": "…", "input_source": "decided_transcript", "region_id": "…",
       "observation_id": null}],
     "parsed": null, "precision": null, "century_rule": null,
-    "normalized": null, "authority_id": "…", "settled_observation_ids": [],
+    "normalized": null, "authority_id": "…",
+    "authority_identity": {"source": "google-maps-geocoding", "source_record_id": "…"},
+    "settled_observation_ids": [],
     "evidence": [{"evidence_id": "…", "relation": "supports", "source": "google-maps-geocoding",
-      "locator": "place/…", "outcome": "success", "observation_ids": []}]}],
+      "locator": "place/…", "outcome": "success", "observation_ids": []}],
+    "findings": []}],
   "decision": {"disposition": "needs_human_review", "policy_version": "…",
     "reason_codes": ["…"], "summary": "…",
     "findings": [{"rule_id": "…", "rule_version": "…", "severity": "warning", "outcome": "fail",
@@ -743,7 +747,22 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   success or as the one text every label has (G32), or `derived` for a field
   the label leaves out, filled from others (G37). It is null when the snapshot
   records none. `derived_from` names the fields a derived value came from, and
-  is empty for any other.
+  is empty for any other. A derived field's value, identity and evidence are
+  those of its `derived` candidate, as for any settled field (T2c), and it has
+  no `verbatim`, since the label leaves it out.
+- `authority_identity` is the settled value's authority, `{name, source,
+  source_record_id, credit}` (PLAN 4.8; S4), and null when the value has none.
+  A Google-confirmed value's has no `name` (G26).
+- A field's `findings` are the record's findings that name it (`field_key`), in
+  the order and shape of `decision.findings` and from the same rows: the hard
+  finding of each reason code on the field and its warnings. So a value no
+  lookup checks that does not look like its field's kind shows S4's
+  `value_shape_mismatch:{field}` on the field (G45, the owner's answer of
+  2026-09-24). They are empty until the queue decides.
+- A `tool_calls` entry's `input_source` is `decided_transcript`, `raw_reading`
+  or `review` (T2c). A call on a reviewer's text (G38's "fill the rest") names
+  its review decision in `review_decision_id` and has no `region_id` or
+  `observation_id`; `review_decision_id` is null for every other call.
 - `decision.findings` lists the hard, warning and info findings, each with its
   evidence ids. Warnings and info never change the disposition.
 - `geometry` is in the original raster's pixels (CONTRACTS.md geometry rules).
@@ -785,14 +804,21 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   with empty lists, a null `decision` and the snapshot's trace id.
 - **Status.** `run.status` applies the summary's rule to the run read, so a
   previous run shows the status its last state gives.
-- **Stored credential.** The writer refuses a run whose stored calls hold a
-  credential (rule 1.6, `projection.CredentialStored`), so it has no thread:
-  the route answers 503 `runtime_unavailable`, as for any stored-evidence
-  integrity failure, with a message that names where, never the credential.
-- **Field values.** A field's `normalized`, `authority_id` and `parsed` are the
-  first set on its candidates in verbatim order, since only the settled
-  entries' candidates carry them (section 4.3), and its `evidence` is every
-  candidate's linked evidence, each item once.
+- **Refused content.** The writer refuses a run that holds what no store may
+  keep (`projection.RefusedContent`, rule 1.6 and G26): a credential with a
+  call (`CredentialStored`), or Google content beyond the place id in a call's
+  result or a value's identity (`GoogleContentStored`). Such a run has no
+  thread: the route answers 503 `runtime_unavailable`, as for any
+  stored-evidence integrity failure, with a message that names where, never
+  the content.
+- **Field values.** A field's `normalized`, `authority_id`,
+  `authority_identity` and `parsed` are the first set on its candidates in
+  verbatim order, since only the settled entries' candidates carry them
+  (section 4.3), and its `evidence` is every candidate's linked evidence, each
+  item once. A `derived` candidate, the one with `derivedFromFieldKeys`, has no
+  literal, so it adds no `verbatim` entry.
+- **Findings.** A field's `findings` are the `decision.findings` entries whose
+  `fieldKey` is the field, from the same `ValidationFinding` rows.
 - **Settled readings.** A field is a verbatim map when the snapshot's field has
   `verbatim_by_observation`. A map entry settled exactly when the writer's own
   rule, `projection.settled_entries`, names its reading, read from the
@@ -805,8 +831,9 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     fallback); without one, it lists its selected reading.
   - A single decided transcript lists its fallback readings the same way, or
     none; any other field lists none.
-- **Layers.** `layer` and `derived_from` are read from the snapshot's field;
-  SQL holds neither until T6's `AppendFieldCandidateV3`.
+- **Layers.** `layer` is read from the snapshot's field. `derived_from` is the
+  derived candidate's `derivedFromFieldKeys` when its row is written (T2c's
+  `AppendFieldCandidateV3`), else the snapshot's `derived_from`.
 - **Coverage.** `coverage_check.status` is `passed` for S3's outcome
   `confirmed`, `failed` for any other, and `not_run` without a check.
   `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
@@ -917,8 +944,8 @@ count, the authority identity, the Google refusal and the review call.
 For the thread (T3): `tests/test_thread.py` (the assembly, section 8 field by
 field, and the canonical example) and `tests/test_thread_api.py` (the workspace
 route's authorization, not found for another specimen's run and an unknown one,
-the active run by default, 503 without the credential for a run that holds
-one, no thread on SQLite) run in CI. Both read
+the active run by default, 503 without the content for a run that holds a
+credential or a Google name, no thread on SQLite) run in CI. Both read
 `GetRunThreadV1`'s rows as `tests/thread_fixtures.py` emulates them from the
 writer's writes; `tests/test_sqlconnect_thread.py`, opt-in like the writer's
 emulator test, saves the synthetic run through `SqlConnectRepository` and checks

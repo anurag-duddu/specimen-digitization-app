@@ -56,6 +56,12 @@ class TracedField(DecisionsField):
     derived_from: list[str] = []
 
 
+class ReviewCall(ToolCallRecord):
+    """A call on a reviewer's text and the review decision it ran for (G38; S4's #160)."""
+
+    review_decision_id: str | None = None
+
+
 PROFILE = {
     "id": "zoology_insects_slides",
     "version": "1.0.0",
@@ -139,6 +145,8 @@ def rows(written, specimen_id: str, run_id: str, keys: dict) -> dict:
             "parsedValue": row["parsedValue"],
             "normalizedValue": row["normalizedValue"],
             "authorityId": row["authorityId"],
+            "authorityIdentity": row["authorityIdentity"],
+            "derivedFromFieldKeys": row["derivedFromFieldKeys"],
             "inputSource": row["inputSource"],
             "sourceObservationId": hexid(row["sourceObservationId"]),
             "sourceTranscription": decided(row["sourceTranscriptionId"]),
@@ -288,14 +296,15 @@ def rows(written, specimen_id: str, run_id: str, keys: dict) -> dict:
                     "startedAt": stamp(row["startedAt"]),
                     "completedAt": stamp(row["completedAt"]),
                     "observationId": hexid(row["observationId"]),
+                    "reviewDecisionId": hexid(row["reviewDecisionId"]),
                     "transcriptionVersion": through(decisions, row["transcriptionVersionId"]),
                     "observation": through(observations, row["observationId"]),
                 }
-                for row in table("AppendToolCallV1", runId=run_id)
+                for row in table("AppendToolCallV2", runId=run_id)
             ],
             "candidates": [
                 candidate(row)
-                for row in table("AppendFieldCandidateV2", runId=run_id)
+                for row in table("AppendFieldCandidateV3", runId=run_id)
                 if row["id"] in current["candidateIds"]
             ],
             "records": [
@@ -650,6 +659,8 @@ def synthetic_run(
             },
             settled_observation_ids=[left_qwen.id, right_qwen.id],
             authority_id="fixture-place",
+            # PLAN 4.8: the settled value's authority; Google's keeps no name (G26).
+            authority_identity={"source": "google-maps-geocoding", "source_record_id": "fixture-place"},
             evidence_ids=[place.id, place_right.id, *literals],
             evidence_relations={place.id: "supports", place_right.id: "supports"}
             | {item: "supports" for item in literals},
@@ -685,6 +696,12 @@ def synthetic_run(
             settled_observation_ids=[right_qwen.id],
             normalized="Aedes aegypti",
             authority_id="gbif:1651891",
+            authority_identity={
+                "name": "Aedes aegypti",
+                "source": "gbif",
+                "source_record_id": "1651891",
+                "credit": "fixture credit",
+            },
             evidence_ids=[gbif.id, col.id],
             evidence_relations={gbif.id: "decides", col.id: "contradicts"},
         ),

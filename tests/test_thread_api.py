@@ -22,6 +22,7 @@ from specimen_digitization.application.api import (
 )
 from specimen_digitization.application.domain import (
     Asset,
+    FieldValue,
     Lookup,
     LookupStatus,
     Observation,
@@ -32,8 +33,9 @@ from specimen_digitization.application.domain import (
     Scope,
     Specimen,
     Transcript,
+    ValueState,
 )
-from specimen_digitization.application.projection import CredentialStored, Write, writes
+from specimen_digitization.application.projection import RefusedContent, Write, writes
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
 from specimen_digitization.application.thread import TRACE_URL_SETTING
 from specimen_digitization.application.workflow import SyntheticAdapters
@@ -59,7 +61,7 @@ class ProjectedSQLite(SQLiteRepository):
         saved = super()._commit(principal, specimen, expected, key, request_digest)
         try:
             self.projected += writes(saved, locate, size, principal.user_id, reviewer=True)
-        except CredentialStored:
+        except RefusedContent:
             # As in production: the snapshot is committed, and the projection writes nothing.
             pass
         return saved
@@ -269,6 +271,29 @@ def test_a_run_holding_a_credential_has_no_thread_and_the_answer_never_holds_it(
     )
     assert credential not in response.text
     # Refused before SQL is read.
+    assert s.run.id not in repo.asked
+
+
+def test_a_run_keeping_a_google_name_has_no_thread_and_the_answer_never_holds_it(tmp_path, repo):
+    s = recorded(repo)
+    # G26: a Google-confirmed value's identity keeps its place id and no name (T2c).
+    s.run.fields["city"] = FieldValue(
+        state=ValueState.SUPPORTED,
+        literal="Chicago",
+        authority_id="fixture-place",
+        authority_identity={
+            "source": "google-maps-geocoding",
+            "source_record_id": "fixture-place",
+            "name": "fixture-google-name",
+        },
+    )
+    principal = Principal(user_id=USER, scope=SCOPE, role="reviewer")
+    s = repo.save(principal, s, s.version, "field:" + s.id, digest({"field": s.id}))
+    response = thread(client(tmp_path, repo, [membership()]), s.id)
+    assert response.status_code == 503, response.text
+    error = response.json()["error"]
+    assert (error["code"], error["message"]) == ("runtime_unavailable", "field city keeps a Google name (G26)")
+    assert "fixture-google-name" not in response.text
     assert s.run.id not in repo.asked
 
 
