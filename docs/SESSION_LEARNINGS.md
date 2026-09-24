@@ -11939,3 +11939,16 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: `ListDueWorkV2` cannot look ahead, so anything the next execution must wait for travels in the fence.
 - Failed approaches: tracking retries only in memory. A retry after the window was stranded, because the next execution cannot see it until it is due.
 - Remaining follow-ups: the command line.
+
+### 2026-09-23 — Go-live lane T2a (4 of 4): `specimen-worker --drain`
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the last of four PRs for T2's drain in `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-drain-cli` from `golive/lane-drain-handover`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - `specimen-worker --mode production --drain` runs the drain in the job's own process, with the published registries and the private bindings.
+  - `--max-seconds` is the task deadline, 3600 by default. The command refuses `--once` and the pilot's inputs, and `--check-config` checks the settings.
+  - The fence holder is the Cloud Run execution and task index, and the hand-over starts `SPECIMEN_WORKER_JOB`.
+- Validation actually run: `tests/test_lane_drain_cli.py` (12 passed) and the other lane tests; the full gates as listed in the pull request.
+- Durable learnings: the pilot's supervisor starts its worker in a new session and answers `SIGTERM` with `SIGKILL` for the whole group, so graceful work cannot run under it.
+- Failed approaches: routing the drain through `_supervise`. A stop would kill the group and strand the fence.
+- Remaining follow-ups: S2's settings PR gives the job its arguments, `SPECIMEN_WORKER_JOB` and the checkpoint digest once this merges. T2b (the program allowance) and T2c (per-call costs) follow.

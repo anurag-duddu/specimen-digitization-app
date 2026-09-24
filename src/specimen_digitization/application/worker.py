@@ -605,11 +605,20 @@ def main():
     parser.add_argument("--source-manifest", type=Path)
     parser.add_argument("--evidence-only", action="store_true")
     parser.add_argument("--evidence-profile", type=Path)
-    parser.add_argument("--max-seconds", type=int, default=1500)
+    parser.add_argument(
+        "--drain", action="store_true",
+        help="Drain the processing lane's queue, then exit (LANE.md T2)",
+    )
+    parser.add_argument("--max-seconds", type=int)
     parser.add_argument(
         "--persistence", choices=["sqlite", "sql-emulator"], default="sqlite"
     )
     args = parser.parse_args()
+    if args.drain:
+        _drain_main(parser, args)
+        return
+    if args.max_seconds is None:
+        args.max_seconds = 1500
     if not 1 <= args.max_seconds <= 1500 and not (
         args.mode == "production" and args.max_seconds == 3485 and os.getenv("SPECIMEN_WORKER_TIMING")
     ):
@@ -623,6 +632,86 @@ def main():
     except OperationalBlock as exc:
         print(json.dumps({"status": "blocked", "reason": str(exc)}))
         raise SystemExit(2) from None
+
+
+def _drain_main(parser, args):
+    """`--drain` takes none of the pilot's inputs; max-seconds is the task deadline."""
+    pilot = (args.launch_policy, args.source_manifest, args.evidence_profile)
+    if (
+        args.mode != "production"
+        or args.once
+        or args.evidence_only
+        or args.materialize_config
+        or any(pilot)
+    ):
+        parser.error("--drain runs in production mode, without --once or pilot inputs")
+    if args.max_seconds is None:
+        args.max_seconds = 3600
+    if not 600 < args.max_seconds <= 3600:
+        parser.error("--drain's max-seconds is the task deadline, 601 to 3600")
+    try:
+        _run_drain(args)
+    except OperationalBlock as exc:
+        print(json.dumps({"status": "blocked", "reason": str(exc)}))
+        raise SystemExit(2) from None
+
+
+def _run_drain(args):
+    """The processing lane's worker (docs/execution/golive/LANE.md, T2).
+
+    It runs in the job's own process, not under the pilot's supervisor, which
+    hard-stops its worker group on SIGTERM: the drain finishes its step and
+    releases its fence instead. Each external call keeps its own bounded effect.
+    """
+    import signal
+    from uuid import uuid4
+
+    from .collection_profiles import published_registry
+    from .lane_dispatch import UNCONFIGURED, dispatcher_from_value
+    from .lane_worker import DrainWorker, drain_settings
+    from .profile_runtime import published_risk_registry
+
+    try:
+        settings = drain_settings(os.environ)
+    except ValueError as exc:
+        # The message names the setting, never its value.
+        print(json.dumps({
+            "status": "blocked", "reason": "drain_configuration_invalid", "detail": str(exc),
+        }))
+        raise SystemExit(2) from None
+    if args.check_config:
+        print(json.dumps({"status": "configured", "mode": "drain", "live_services_verified": False}))
+        return
+    from ..observability import configure_observability, CaptureMode
+
+    configure_observability(send_to_logfire=None, capture_mode=CaptureMode.METADATA)
+    stop = threading.Event()
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda signum, frame: stop.set())
+    actor_uid.set(settings.actor_uid)
+    repository = SqlConnectRepository(**sql_endpoint_from_env())
+    blobs = GcsBlobs()
+    workflow = Workflow(
+        repository,
+        blobs,
+        ProductionAdapters(blobs),
+        profile_registry=published_registry(settings.bindings),
+        risk_registry=published_risk_registry(),
+    )
+    dispatcher = dispatcher_from_value(settings.worker_job)
+    # A retried task attempt is the same holder: its predecessor has exited.
+    execution = os.getenv("CLOUD_RUN_EXECUTION")
+    holder = f"{execution}/{os.getenv('CLOUD_RUN_TASK_INDEX', '0')}" if execution else str(uuid4())
+    summary = DrainWorker(
+        repository,
+        workflow,
+        settings.actor_uid,
+        repository.memberships,
+        execution_id=holder,
+        continuation=dispatcher.start if dispatcher else lambda: UNCONFIGURED,
+        deadline_seconds=args.max_seconds,
+    ).run(stop)
+    print(json.dumps(summary))
 
 
 def _supervise(args):
