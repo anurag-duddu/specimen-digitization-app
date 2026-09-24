@@ -73,7 +73,8 @@ then 3, one at a time. Each failure becomes a GitHub issue (label `golive` plus
 the workstream; no secrets or identities) and a message to the owning session
 and the coordinator. Rerun after the fix merges. Offer recorded real responses
 to S4 as test fixtures, never a Google geocoding response beyond the place ID,
-the outcome and the fingerprint (G26). Declare the pilot's import not
+the outcome and the fingerprint (G26), and never a recorded request's URL,
+which carries the key, in a fixture or a lab folder. Declare the pilot's import not
 sensitive, on the owner's verified classification of the ten (G31); the
 worker never sees a record declared Sensitive (PLAN section 2.2).
 
@@ -85,7 +86,18 @@ trace (every stage, prompts visible) and the thread in the app; write the
 report; rerun until the run is flawless; then the next specimen.
 
 Record every run's cost in its report and keep the program within G9; the
-lab's share is USD 5. Your expected label boxes for the ten are the ground
+lab's share is USD 5, reserved and settled under PLAN section 4.3's mechanism
+with the lab's own ledger; until that ledger exists, your tally counts each
+run's worst case before it and every unknown outcome at its full bound
+(coordinator, 2026-09-24). Expected outcomes follow G35 to G42: the six
+McKinley slides go to needs human review until a curator confirms their place
+(G36), a filled field carries its layer and evidence (G37, G38), a stated
+elevation fills both ends and the other unit by the exact factor, as derived
+values (G41; the Guatemala slides' "4800 ft"), and no Google
+coordinate appears in any row, trace, log or lab folder (G35). All ten still go
+to review, because no label states `date_identified`, which nothing can derive
+(G42); G43 to G45 apply as `~/specimen-golive/reports/expected-outcomes.md`
+records. Your expected label boxes for the ten are the ground
 truth for the lane's automatic coverage check (G15): report its hits and misses
 per subject. Where the specification is silent or contradictory, stop and ask
 the coordinator; do not decide (G5).

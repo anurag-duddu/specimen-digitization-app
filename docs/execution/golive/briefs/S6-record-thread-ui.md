@@ -50,7 +50,19 @@ including a failed automatic coverage check (G15); and
 id. Use `specimen_ui` components; there is no timeline component yet, so add one
 to the package with its own tests.
 
-**T3. Queue and processing.** Needs human review (filterable by reason),
+**G38 (owner decision, 2026-09-24; coordinator reading).** The thread marks
+each value's layer, verbatim,
+settled or derived, with a derived value's evidence one step away. In review,
+after a reviewer fills a field, "Fill the rest" derives the remaining fields
+through S5's route; the filled values show as derived and stay editable before
+approval, and the result is announced once. The action enqueues a job and
+shows its progress; the server refuses it for a Sensitive record (PLAN section
+4.8). Coordinator rulings, 2026-09-24: the new run states are picked in the
+filter sheet, with no new status chips; the trace link opens through
+`url_launcher`, flutter.dev's first-party plugin (#122).
+
+**T3. Queue and processing.** Needs human review (filterable by reason; until
+S5's T5, only the codes stored without a suffix, coordinator ruling),
 deferred, cleared, processing and blocked; a record declared Sensitive shows
 that it is not processed, because automated reading never runs on sensitive
 records, and the upload screen says so before submission, with the Sensitive

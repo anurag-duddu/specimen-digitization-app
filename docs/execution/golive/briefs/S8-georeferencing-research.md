@@ -13,22 +13,84 @@ the production harness by itself. Until the owner accepts a plan, the harness
 workstream (S4) keeps geography behind its typed tool interface with the Google
 Maps tool of owner decision G10 as the initial, fully functional version (G6).
 
+G34 (2026-09-24): the owner decided D15 for the Google tool and added: "clear
+with place ID byt I want the harness for location retrospective
+georeferencing fully implemented". So this workstream now also builds the
+retrospective georeferencing tool behind S4's T3a geography interface, spec
+first and test first as PLAN section 7 requires, in modules it owns, merged
+by the steward. The D items stand as PLAN section 2.3 records: the owner
+decided D1, D2, D3, D6, D7 and D9 on 2026-09-24 (G35 to G39, with G40 on the
+harness's job and G41 on stated elevations); D11 (Copernicus GLO-30 tiles
+read from the project's storage, credited) and D13 (the in-house point-radius
+uncertainty engine) are coordinator rulings; D4 and D5 are on hold: D4's
+occurrence check is off and sends nothing, and D5's checks record findings
+only (coordinator rulings); D8, D10 and D12 wait for
+their phase, except Getty TGN (G35). Each part of the build waits for any D
+item that decides it.
+You build the geographic derivations behind S4's interface (coordinator
+ruling). Your modules: `src/specimen_digitization/application/georef_*.py`
+and `georeferencing_tool.py`, their tests, `tests/fixtures/georeferencing/`
+and `docs/execution/golive/GEO.md`.
+
+## Build (G34 to G41)
+
+Each task starts with its spec delta in `docs/execution/golive/GEO.md` and
+failing tests, on its own branch, merged by the steward. PLAN section 4.8
+governs every outside request: every request your tool sends, its
+parameters included, goes through 4.8's place-request filter. Dates are
+compared locally and never sent, so the charter's target-year constraint is
+applied to results, never put in a query; elevation phrases stay as written
+for local parsing and are never sent. Tests show the filter's guarantees on
+your own requests (coordinator ruling).
+
+0. Manifest: pin each dataset file's source, version or dump date, size and
+   SHA-256, with its credit text. Keep the GeoNames files in
+   `~/specimen-golive/datasets/geonames/<dump date>/`. S2 writes the owner's
+   upload command from the merged manifest (PLAN section 4.8).
+1. Locality text: the parts of a locality, label notations and their readings
+   (G29), slope and bearing phrases, elevation phrases kept as written, query
+   variants from each reader's literal (G19, G20, G27), and the one-letter
+   comparison on full names, never codes (G34).
+2. Tier 1 gazetteers (G35): GeoNames, Wikidata, Getty TGN and NGA behind fakes
+   and recorded fixtures, one source call per request, place text only,
+   credited.
+3. History: validity windows, successor chains, and historical and modern
+   roles. The label-lag tolerance waits for D5.
+4. Curated entries (G36): drafted with their sources and confirmed only
+   through a pull request citing the owner-recorded confirmation, with a test
+   that an unconfirmed entry never settles a field.
+5. Tier 2 (G35): Google given the modernized name, or the literal, with the
+   same reading's place fields, keeping only the place ID, the outcome and the
+   fingerprint (G26).
+6. Tier 3 and the geographic derivations (D13, D11, G37, G38, G41): the
+   in-house point-radius engine; containment for county and city against
+   geoBoundaries' open release (CC BY 4.0, credited); elevation from Copernicus
+   GLO-30 where the label states none; a location derived from a settled county
+   at county precision (G38); all as derivation results behind S4's interface,
+   from open-source coordinates only.
+7. The tool as `geography_lookup`, swapped in behind the same interface once
+   both gates hold: the owner accepts your plan as G35 to G42 revise it (G12),
+   and the acceptance lab shows it resolves the pilot slides at least as well
+   as the Google module (coordinator ruling). The georeference stays in the
+   tool result and the trace (G39).
+
 ## Grounding in this repository
 
 Read before researching, so the plan fits the product that exists:
 
-1. `docs/execution/golive/PLAN.md` (sections 1, 2 and 4.1 row 7) and the S4
+1. `docs/execution/golive/PLAN.md` (sections 1, 2, 4.1 row 7 and 4.8) and the S4
    brief (`briefs/S4-first-pass-and-harness.md`), which defines the harness,
    its typed tools and outcomes, and the owner's rules: never invent values
    (`PRD.md` HAR-019); no data found for a mandatory field goes to the human
    queue; errors retry;
    "something that harness was able to resolve is cleared".
-2. `docs/product-requirements/PRD.md` section 12.4 (487-567): the Insects field
+2. `docs/product-requirements/PRD.md` section 12.4 (490-573): the Insects field
    keys `country`, `province_state`, `county`, `city`, `precise_location`
    (verbatim, never replaced by a geocoder result), the four elevation fields
-   (no invented conversions), and the named geography sources; the typed lookup
-   outcomes (HAR-008) and the failure table (676-688).
-3. `docs/GBIF.md` (GADM as supporting evidence only, 256-274) and
+   (filled only with authority and evidence, G37 and G41), and the named geography sources; the typed lookup
+   outcomes (HAR-008) and the failure table (682-694).
+3. `docs/GBIF.md` 256-274 (its GADM use is superseded: GADM is not used,
+   PLAN section 4.8) and
    `docs/execution/CONTRACTS.md` 210-270 (field value states; only `supported`
    satisfies a mandatory field).
 4. `docs/product-requirements/COLLECTION_HIERARCHY.md`: the collections span
@@ -64,8 +126,8 @@ Read before researching, so the plan fits the product that exists:
    `scripts/research/georeferencing/` exercising the public endpoints read-only
    on the pilot labels' place names, with its results summarized in the plan.
    No production code, no secrets in the repository, no paid calls without the
-   coordinator's go-ahead. GeoNames needs a free account username; if you need
-   one, put that request in `~/specimen-golive/OWNER_ACTIONS.md`.
+   coordinator's go-ahead. GeoNames is read from its pinned dumps, so no account
+   is needed (PLAN section 4.8).
 3. One docs pull request through the PR steward, following PLAN section 7.
 
 ## Research charter (supplied by the owner, verbatim)
