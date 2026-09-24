@@ -11945,3 +11945,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   - part 3, historical units;
   - part 4, the tool itself (after #109 and #113);
   - the owner's answers on D1 to D7 and D9 for the tiers they gate.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 2a: tier 1 Wikidata
+
+- Task: tier 1 of the owner's design (G35). Wikidata's Action API requests and answers are read into one gazetteer record, `Place`, which every tier-1 source will share.
+- Branch and worktree: `golive/geo-wikidata` in `.claude/worktrees/geo-build`, stacked on #130 for GEO.md. PR #139.
+- Outcome:
+  - `georef_places.py` defines `Place` and `Ref`.
+  - `georef_wikidata.py` builds the `wbsearchentities` and `wbgetentities` parameters (50 items a request) and reads each answer into places.
+  - Each answer maps to one outcome.
+  - Deprecated statements are ignored, dates keep their precision, and only points on Earth count.
+  - The module sends no request itself.
+- Validation: 22 tests on the probe's recorded searches for the nine pilot names and on the pilot places' items, reduced to the fields read (CC0); `uv run pytest tests/ -q` (1,580 passed, 31 skipped); `uv run pytest scripts/ -q` (1,547 passed, 50 skipped); pre-commit.
+- Durable learnings:
+  - (1) Wikidata's Action API (`wbgetentities`) carries every statement the tiers need: validity, successors, containment with qualifiers, and points. It avoids the query service, which throttled after two requests in the research.
+  - (2) A Wikidata item can hold several inception dates. The Philippines has 1565, 1901, 1935 and 1946, so "earliest start" answers "did it exist then", and history (part 3) must not read it as the date of the current state.
+  - (3) Aliases mix codes with names: the Philippines' aliases include "RP". Section 1's full-name test is what keeps the one-letter gate off such codes.
+  - (4) A labels-only `wbgetentities` call for the referenced items is small (31 items, about 3 KB). Items already read name themselves, so the second call asks only for the rest.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - part 2b, the GeoNames dumps;
+  - part 2c, NGA GNS and Getty TGN. TGN works anonymously today through its reconciliation service and its SPARQL endpoint (checked 2026-09-24), while its new gateway needs a token that Getty publishes no process for.

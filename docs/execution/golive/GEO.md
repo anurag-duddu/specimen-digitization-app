@@ -148,7 +148,8 @@ after two (HTTP 429, a 120 s `Retry-After`) (#94, S15 and S16).
 - **Name.** A place's name is its English label, else the multilingual one, else
   the Spanish one, else its id. Its other labels and aliases follow, without
   repeats.
-- **Dates.** A date keeps the precision Wikidata states: day, month or year.
+- **Dates.** A date keeps the precision Wikidata states: day, month or year. A
+  coarser date keeps the year Wikidata stores.
 - **Point.** A point is read only on Earth.
 - **Missing items.** An item Wikidata reports as missing is skipped.
 
