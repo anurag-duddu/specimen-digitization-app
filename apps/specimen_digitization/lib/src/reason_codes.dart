@@ -72,20 +72,27 @@ List<String> configuredReasonCodes(List<Json?> documents) {
 
 /// The machine's reasons [specimen] is in the review queue, in plain words.
 ///
-/// Read from the `reason_codes` the specimen payload publishes. A qualified
-/// code such as `mandatory_unresolved:country` keeps its subject, so the chip
-/// reads "Mandatory unresolved: country" rather than losing which field it
-/// was about.
+/// Read from the `reason_codes` the specimen payload publishes, each through
+/// [reasonLabel].
 List<String> recordReasonCodes(Specimen specimen) {
   final List<String> codes = _stringsOf(specimen.data['reason_codes']);
   return <String>[
     for (final String code in codes)
-      if (_readable(code) case final String phrase when phrase.isNotEmpty)
+      if (reasonLabel(code) case final String phrase when phrase.isNotEmpty)
         phrase,
   ];
 }
 
-String _readable(String code) {
+/// One reason code in words, the one spelling every screen that shows a
+/// reason uses: the queue's rows, the blockers list, a field's findings and
+/// the reason sheet (UI.md T3.2).
+///
+/// A qualified code such as `mandatory_unresolved:country` keeps its
+/// subject, so it reads "Required field has no supported value: country"
+/// rather than losing which field it was about. A subject that is an
+/// identifier is left out, and a code the vocabulary does not name reads as
+/// its own words.
+String reasonLabel(String code) {
   final int colon = code.indexOf(':');
   if (colon < 0) return _sentence(vocabularyLabel(code));
   final String head = vocabularyLabel(code.substring(0, colon));

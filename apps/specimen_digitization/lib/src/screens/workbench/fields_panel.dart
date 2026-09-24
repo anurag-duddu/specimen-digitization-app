@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
 import '../../models.dart';
+import '../../reason_codes.dart';
 import '../../review_context.dart';
 import '../../thread/thread.dart';
 import '../../vocabulary.dart';
@@ -449,7 +450,7 @@ class _Finding extends StatelessWidget {
     final Color error = ui.color.status.blocked.content;
     final String message = textOf(
       finding['message'],
-      vocabularyLabel(textOf(finding['reason_code'], 'Validation finding')),
+      reasonLabel(textOf(finding['reason_code'], 'Validation finding')),
     );
     return Semantics(
       liveRegion: true,
@@ -504,7 +505,7 @@ class _Noted extends StatelessWidget {
     final Color tone = warning
         ? ui.color.status.needsReview.content
         : ui.color.inkSecondary;
-    final String words = vocabularyLabel(
+    final String words = reasonLabel(
       finding.reasonCode ?? finding.ruleId ?? 'finding',
     );
     return Semantics(
@@ -526,9 +527,8 @@ class _Noted extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                // A reason code read as words starts a sentence here.
                 Text(
-                  '${words[0].toUpperCase()}${words.substring(1)}',
+                  words,
                   style: ui.type.bodySmall.copyWith(
                     color: warning ? tone : ui.color.ink,
                   ),
