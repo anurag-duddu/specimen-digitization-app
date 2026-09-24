@@ -13,7 +13,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 DROP = ROOT / "dataconnect/sql/drop-specimen-unique-1.sql"
-READ_BACK = "indexname = 'source_asset_specimen_object'"
+READ_BACK_FILE = ROOT / "scripts/data/source-asset-read-back.sh"
+READ_BACK = "bash scripts/data/source-asset-read-back.sh"
+SIX_COLUMNS = "ARRAY['organization_id', 'collection_id', 'specimen_id', 'bucket', 'object_name', 'generation']"
 APPLY = "-f dataconnect/sql/drop-specimen-unique-1.sql"
 INDEX_FILES = ["dataconnect/sql/paging-indexes.sql", "dataconnect/sql/search-indexes.sql"]
 TEXT = {".py", ".mjs", ".js", ".sh", ".yml", ".yaml", ".json", ".sql", ".toml"}
@@ -38,6 +40,23 @@ def test_the_schema_declares_only_the_per_specimen_constraint():
         '@unique(indexName: "source_asset_specimen_object", fields: '
         '["organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation"])'
     ) in source_asset
+
+
+def test_the_read_back_checks_the_new_unique_over_its_six_columns_and_valid():
+    """PLAN 4.4 (#124): the drop waits for the new constraint in place, over its six columns and valid."""
+    script = READ_BACK_FILE.read_text()
+    body = re.search(r"<<'SQL'\n(.*?)\nSQL\n", script, re.S).group(1)
+    for clause in (
+        "t.relname = 'source_asset'",
+        "x.relname = 'source_asset_specimen_object'",
+        "i.indisunique",
+        "i.indisvalid",
+        "i.indpred IS NULL",
+        "i.indexprs IS NULL",
+        f") = {SIX_COLUMNS}",
+    ):
+        assert clause in body, clause
+    assert len(statements(body)) == 1
 
 
 def test_the_local_runners_drop_only_after_reading_the_new_constraint_back():
