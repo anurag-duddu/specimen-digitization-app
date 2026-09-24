@@ -69,7 +69,7 @@ String queueReason(Specimen specimen) {
   final Object? reasons = data['reason_codes'];
   if (reasons is List && reasons.isNotEmpty) {
     return reasons
-        .map((Object? code) => vocabularyLabel(code.toString()))
+        .map((Object? code) => reasonLabel(code.toString()))
         .join(', ');
   }
   final Object? stage = data['stage'];

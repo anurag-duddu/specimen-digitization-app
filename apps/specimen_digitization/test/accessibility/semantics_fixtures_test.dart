@@ -640,7 +640,7 @@ void main() {
       // And the label carries the state and the reason too, so two rows in
       // the same queue are told apart without opening either.
       expect(row.label, contains('needs review'));
-      expect(row.label, contains('human approval required'));
+      expect(row.label, contains('Reviewer approval needed'));
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
     });

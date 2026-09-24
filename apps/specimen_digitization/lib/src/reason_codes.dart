@@ -72,20 +72,50 @@ List<String> configuredReasonCodes(List<Json?> documents) {
 
 /// The machine's reasons [specimen] is in the review queue, in plain words.
 ///
-/// Read from the `reason_codes` the specimen payload publishes. A qualified
-/// code such as `mandatory_unresolved:country` keeps its subject, so the chip
-/// reads "Mandatory unresolved: country" rather than losing which field it
-/// was about.
+/// Read from the `reason_codes` the specimen payload publishes, each through
+/// [reasonLabel].
 List<String> recordReasonCodes(Specimen specimen) {
   final List<String> codes = _stringsOf(specimen.data['reason_codes']);
   return <String>[
     for (final String code in codes)
-      if (_readable(code) case final String phrase when phrase.isNotEmpty)
+      if (reasonLabel(code) case final String phrase when phrase.isNotEmpty)
         phrase,
   ];
 }
 
-String _readable(String code) {
+/// The policy's codes a run stores with a suffix, such as
+/// `mandatory_unresolved:taxon` (S3's list of 2026-09-24).
+///
+/// The search API matches a reason code exactly until S5's T5, so a picked
+/// base code would find nothing; until then the filter does not offer these
+/// (the coordinator's ruling (b), 2026-09-24). Empty this when T5 lands.
+const Set<String> suffixedReasonCodes = <String>{
+  'independent_observations_missing',
+  'raw_provenance_missing',
+  'unresolved_transcription',
+  'evidence_lineage_invalid',
+  'mandatory_unresolved',
+  'evidence_missing',
+  'evidence_does_not_support_value',
+  'pixel_lineage_missing',
+  'unsupported_parsed',
+  'unsupported_normalized',
+  'unsupported_authority_id',
+  'elevation_range',
+  'elevation_invalid',
+  'elevation_units_conflict',
+};
+
+/// One reason code in words, the one spelling every screen that shows a
+/// reason uses: the queue's rows, the blockers list, a field's findings and
+/// the reason sheet (UI.md T3.2).
+///
+/// A qualified code such as `mandatory_unresolved:country` keeps its
+/// subject, so it reads "Required field has no supported value: country"
+/// rather than losing which field it was about. A subject that is an
+/// identifier is left out, and a code the vocabulary does not name reads as
+/// its own words.
+String reasonLabel(String code) {
   final int colon = code.indexOf(':');
   if (colon < 0) return _sentence(vocabularyLabel(code));
   final String head = vocabularyLabel(code.substring(0, colon));

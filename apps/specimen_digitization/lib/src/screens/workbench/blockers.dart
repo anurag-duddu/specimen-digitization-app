@@ -10,6 +10,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 import '../../models.dart';
+import '../../reason_codes.dart';
 import '../../review_context.dart';
 import '../../thread/thread.dart';
 import '../../vocabulary.dart';
@@ -87,7 +88,7 @@ List<ClearanceBlocker> blockersFor(
       ClearanceBlocker(
         message: textOf(
           f['message'],
-          vocabularyLabel(textOf(f['reason_code'], 'Validation finding')),
+          reasonLabel(textOf(f['reason_code'], 'Validation finding')),
         ),
         detail: <String>[
           if (field != null && field.isNotEmpty) vocabularyLabel(field),
@@ -113,7 +114,7 @@ List<ClearanceBlocker> blockersFor(
     if (stated.contains(code.toString())) continue;
     blockers.add(
       ClearanceBlocker(
-        message: vocabularyLabel(code.toString()),
+        message: reasonLabel(code.toString()),
         detail: 'Recorded by the server on this version',
         segment: WorkbenchSegment.fields,
       ),

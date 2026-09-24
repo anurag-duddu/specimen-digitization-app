@@ -8,7 +8,7 @@ role=tabBar
   role=tab selected=true enabled=true tap label="Queue"
   role=tab selected=false enabled=true tap label="Intake"
 checked=isFalse enabled=true tap label="Pinned beetle, Chicago 1912"
-button enabled=true tap label="Pinned beetle, Chicago 1912, Queue: needs review, human approval required"
+button enabled=true tap label="Pinned beetle, Chicago 1912, Queue: needs review, Reviewer approval needed"
 selected=true enabled=true tap label="All"
 enabled=true tap label="Needs review"
 enabled=true tap label="Cleared"
