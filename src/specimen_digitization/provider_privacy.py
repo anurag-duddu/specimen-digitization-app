@@ -7,6 +7,10 @@ from pydantic_ai.models.wrapper import WrapperModel
 
 class PrivateProviderModel(WrapperModel):
     async def request(self, messages, model_settings, model_request_parameters):
+        from .application.reliability import bounded_messages
+
+        # Every agent's retries carry bounded feedback (HARNESS.md section 15).
+        messages = bounded_messages(messages)
         try:
             return await self.wrapped.request(
                 messages, model_settings, model_request_parameters

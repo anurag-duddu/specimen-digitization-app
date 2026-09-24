@@ -23,7 +23,7 @@ from ..model_gateway import (
 )
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
-from .domain import Observation, WorkItem, WorkPage, now
+from .domain import LookupStatus, Observation, WorkItem, WorkPage, now
 from .lookup import GbifTaxonomy
 from .storage import (
     compact_history,
@@ -34,7 +34,8 @@ from .storage import (
     work_available_at,
 )
 from .workflow import OperationalBlock, crop_bytes
-from .reliability import run_agent_bounded
+from .reliability import AdapterFailure, run_agent_bounded
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from .worker_deadline import deadline_call, guarded
@@ -735,15 +736,20 @@ class ProductionAdapters:
         )
         image = crop_bytes(self.blobs, specimen, region)
         started = time.monotonic()
-        result = run_agent_bounded(
-            agent,
-            [
-                "Transcribe only the supplied source image.",
-                BinaryContent(data=image, media_type="image/png"),
-            ],
-            timeout_seconds=reader_timeout,
-            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
-        )
+        try:
+            result = run_agent_bounded(
+                agent,
+                [
+                    "Transcribe only the supplied source image.",
+                    BinaryContent(data=image, media_type="image/png"),
+                ],
+                timeout_seconds=reader_timeout,
+                usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+            )
+        except UsageLimitExceeded as exc:
+            # Stopped by its token limits or its reservation: the provider
+            # answered, so the outcome is known (G6; HARNESS.md section 15).
+            raise AdapterFailure("model_usage_limit", LookupStatus.POLICY) from exc
         latency_seconds = time.monotonic() - started
         # Preserve every provider response (including retries), excluding image-bearing requests.
         responses = [m for m in result.all_messages() if m.kind == "response"]

@@ -80,6 +80,7 @@ def test_many_wrong_typed_items_give_bounded_feedback():
     sent = feedback(seen[1])
     assert len(sent.encode()) <= RETRY_FEEDBACK_MAX_BYTES
     assert sent.count('"type": "string_type"') == 20
+    assert '"input": 7' in sent  # A short input keeps its type.
     assert "1980 more errors not shown" in sent
 
 
@@ -95,7 +96,8 @@ def test_a_long_text_feedback_is_cut_to_fit():
     read(agent)
     sent = feedback(seen[1])
     assert len(sent.encode()) <= RETRY_FEEDBACK_MAX_BYTES
-    assert sent.startswith("Validation feedback:\nreread line 1")
+    assert sent.startswith("reread line 1")
+    assert sent.endswith("…\n\nFix the errors and try again.")
 
 
 def test_a_retry_that_would_cross_the_reservation_is_not_sent():
