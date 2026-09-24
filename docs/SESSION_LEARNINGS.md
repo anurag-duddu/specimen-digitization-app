@@ -11967,3 +11967,42 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
 - Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
 - Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.
+
+### 2026-09-24 — Go-live projection writer, stages 6 to 8 (S5 T2b-1)
+
+- Task: S5 T2b, first part, the projection writer for the first pass, the harness, the fields and the record; pull request "[golive:data] The projection writer, stages 6 to 8", stacked on #146. The steward asked for T2b to be split at about 600 lines of code. The seam follows the commit history: this part holds the stage 6 to 8 mapping through #88's third review, and T2b-2 holds G32, the coverage evidence and #88's final review.
+- Branch/worktree: `golive/data-projection-stages` in `.claude/worktrees/epic-rhodes-d168f3`, on #146's `golive/data-projection` at `7647784`.
+- Commits: `2389104` and `923c4ec` (stages 6 to 8, red then green); `61959be` and `deae5db` (the #88 review shapes); `2a3babf` and `aff8bd9` (#88's second review); `8563633` and `d15e94a` (#88's third review); this entry.
+- Outcome:
+  - The first pass: the model call is a `ModelObservation`, the decision a `TranscriptionVersion` (`first_pass`, `identical_readings`, or a reviewer's `human` one, written only on a reviewer's save), and each handoff a `HarnessInput` as S4 writes it.
+  - The harness: an `EvidenceItem` per stored lookup or evidence, and a `ToolCall` per record, naming the decision or reading it ran on.
+  - The fields: a `FieldCandidate` per literal or per verbatim-map entry, and a `CandidateEvidence` per recorded or successful evidence id with its relation.
+  - The record: a `RecordVersion`, a `ResolvedField` per field, and a `ValidationFinding` per reason code and per run finding.
+  - A `ReviewDecision` per review event, on a reviewer's save.
+  - A worker's pass skips the reviewer-only rows but registers their ids.
+- Validation actually run at `d15e94a`: the projection and writer tests, the opt-in SQL tests, and the release pins: 88 passed, 2 skipped. The full `tests/` and `scripts/` suites ran on T3's head, which contains this branch: 1614 passed and 1552 passed.
+- Durable learnings:
+  - (1) A branch can be split along its red/green history rather than by module. A seam at a green commit keeps every pair whole, and the upper part keeps its head, so the branches stacked on it do not move.
+  - (2) Reviewer-only operations must never be attempted on a worker's pass, or the pass stops there for good. The writer skips them and keeps their ids, so a later reviewer's pass writes them in order.
+- Failed approaches: refusing every `raw_reading` handoff on a decision that selected a reading (first #88 review): S4 hands the unselected readers to the harness as raw readings.
+- Remaining follow-ups: T2b-2, stacked on this; S4's domain types in place of the test stand-ins once #131 merges.
+
+### 2026-09-24 — Go-live projection writer: G32, the coverage evidence and #88's final review (S5 T2b-2)
+
+- Task: S5 T2b, second part; pull request "[golive:data] The writer's G32 candidates, coverage evidence and #88's final review", stacked on T2b-1.
+- Branch/worktree: `golive/data-projection-decisions` in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits: `8cd302e` and `a4c8c37` (G32 and the coverage evidence); `5a7cbd3` and `6ce64f3` (#88's final review); `c747934` and `dcd4d12` (a GeoNames username is a credential, PLAN 4.8); `053ef2e` and `e6d2e6e` (the region guard); `3e30a3c` (`settled_entries`); `9ea855e` (`CredentialStored`); the merge of T2b-1; this entry.
+- Outcome:
+  - G32: every label keeps its own candidate, keyed by the entry's own reading.
+  - An entry settles when `settled_observation_ids` names its reading, or, for a decided entry, a raw reading of its region (G20 inside G32). This rule is `projection.settled_entries`, which the thread shares.
+  - Evidence links to the entry it names, whether or not that entry settled.
+  - The coverage check is recorded evidence.
+  - Readers that agree without a pick are one literal (coordinator ruling), and each agreeing reader's literal is its own evidence (agreed with S4).
+  - A no-pick decision's `literalText` is `""`.
+  - Rule 1.6 refusals (`CredentialStored`), raised when a stored call or lookup query holds a key-bearing URL, an API key or a GeoNames username, or when a Google result holds more than place ids.
+- Validation actually run at `9ea855e`: the projection, writer and uniqueness tests, 61 passed and 2 skipped; the opt-in SQL tests against `serve-local.sh`, 2 of 2. The full suites ran on T3's head, which contains this branch.
+- Durable learnings:
+  - (1) The repository logs a refusal raised in `writes()`, so its message names where the key is and never the key. The tests build a fake key at run time and check the message never contains it.
+  - (2) Linking evidence by the source its call ran on misses the G20 fallback, where a raw reading's call settles a decided entry. Link by the reading the evidence names, else by its region.
+  - (3) A rule that settles an entry by its region must guard a reading with no region, or `None == None` settles it.
+- Remaining follow-ups: T2c, stacked on this; S4's domain types in place of the stand-ins once #131 merges.
