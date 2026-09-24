@@ -11990,12 +11990,12 @@ because the hooks runner hands a native asset hook only `PATH`.
   - `golive/RELEASE.md` section 2.1 tracks the `human_review.py` lines that still enforce what G1, G2, G9 and G11 retire:
     - `HUMAN-NO-AUTOMATIC-CLEARANCE`'s automatic-clearance and institutional-approval clause (52, 124);
     - the policy gates and the review block (194-200), keeping the rule that an operational block cannot qualify;
-    - the frozen manifest (103, 168-169, 175, 290), keeping the evidence fields and re-anchoring the original-bytes and scope checks to the ten;
+    - the frozen manifest as the cohort's anchor (103, 168), re-anchoring to the ten what it anchors: no duplicate or outside-cohort record (175), every one of the ten (169, 290), the evidence fields, and the original-bytes and scope checks (corrected by T1d);
     - the manifest digest on SAM receipts, the report and case rows (224; `acceptance.py` 431, 443);
     - COHORT-BUDGET (298-304; `acceptance.py` 512-517).
 
-    The coordinator assigned these to S2, after T3d, on 2026-09-24, and will add `scripts/qa/live/` to PLAN section 6.
-- Commits/PRs: `8772220`, `3926f0d` (the owner) and the review round's commit.
+    The coordinator assigned these to S2, after T3d, on 2026-09-24, and PLAN section 6 names `scripts/qa/live/` as S2's.
+- Commits/PRs: `8772220`, `3926f0d` (the rows' owner) and the review round's commit.
 - Validation actually run: pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check; the acceptance sweep (5 of 5 notes carry the updated sentence).
 - Durable learnings:
   - A replacement named in a note must exist where the reader is, on main. Name what retires, and say what the check compares against now.
@@ -12003,6 +12003,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Tracking rows are a later PR's work order, so each must name exactly what a decision retires and what stays.
 - Failed approaches: none.
 - Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
+
 ### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
