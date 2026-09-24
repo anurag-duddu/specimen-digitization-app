@@ -118,10 +118,10 @@ the wire examples from a non-production app (production disables
 `/openapi.json`, `api.py` 458-461), and update the client's contract-test
 amendments together with the UI workstream (S6).
 
-**T6. Layers and derivations (G37, G38, G41),** once S4's derivation action
+**T6. Layers and derivations (G37, G38, G41, G44),** once S4's derivation action
 exists. `FieldValue.layer` (verbatim, settled or derived) and `derived_from`,
 agreed with S4, whose SQL T2c adds; the
-contract's elevation rules follow G37 and G41; a derived candidate stores
+contract's elevation and date rules follow G37, G41 and G44; a derived candidate stores
 its settled inputs, its dataset or authority with version, and its tool-call
 id or `apply_derivations` rule, with a test that a value without them is not
 a derived value; and the "fill the rest" route, a POST on the specimen with the field
