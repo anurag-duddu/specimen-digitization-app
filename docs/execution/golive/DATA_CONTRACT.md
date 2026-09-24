@@ -37,7 +37,8 @@ reads them.
 
 1. The snapshot stays the workflow's source of truth. The normalized rows are a
    projection of it, written by `SqlConnectRepository` after each successful
-   `SaveSpecimenV3`, and caught up on the next save if a write was lost.
+   `SaveSpecimenV3`, and caught up on the next save if a write was lost, and
+   after a run's final save by the lane's bounded re-projection (section 11).
 2. Additive only: three new tables, new nullable columns, four dropped `NOT
    NULL` constraints, `SourceAsset`'s object uniqueness made per specimen in the
    two applies of section 3.3, new operations. The second apply drops
@@ -753,6 +754,15 @@ per process, and only for raw responses: the original's size is on its asset.
   failed one; it is logged with the specimen, run and operation, and the next
   save retries. The projection never fails a save: the snapshot is committed
   first.
+- Each pass returns a `ProjectionResult`: `complete`, or the step it
+  `stopped_at` (a connector operation, or `not_computed` when the rows could not
+  be computed), never row data. After a run's final save, S3's lane calls
+  `write_projection` again with bounded retries and backoff until a pass is
+  complete. If none completes, the lane logs an error-level event with the
+  specimen and run ids and leaves the disposition unchanged, and the next save
+  catches up (coordinator ruling, 2026-09-24; DoD-4). S7's lab checks that SQL
+  holds every artifact of each run. `SQLiteRepository` writes no normalized
+  rows, so its passes are complete.
 - The repository remembers the rows it wrote in this process, so a save sends
   only rows it has not sent. A new process sends each row once more, and the
   primary keys absorb the repeats.

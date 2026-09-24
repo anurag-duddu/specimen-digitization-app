@@ -7,9 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from specimen_digitization.application import production
 from specimen_digitization.application.domain import Principal
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
-from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.storage import LocalBlobs, ProjectionResult, SQLiteRepository
 
 from test_projection import pinned, read, specimen
 
@@ -180,3 +181,28 @@ def test_cloud_storage_refs_carry_bucket_object_and_generation(tmp_path, actor):
     assert blob.object_name == f"application/sha256/{sha}"
     assert blob.generation == "1700000000000009"
     assert repo.blob_size(f"{sha}:1700000000000009") == 77
+
+
+def test_a_pass_reports_whether_it_wrote_every_row(tmp_path, actor, monkeypatch):
+    """After a run's final save the lane re-projects until a pass completes (coordinator ruling)."""
+    failing = {"AppendModelObservationV2"}
+    session = Session(lambda op: DENIED if op in failing else None)
+    repo, blobs = repository(tmp_path, session)
+    s = stored(blobs, read(pinned(specimen())))
+    assert repo.write_projection(s.scope, s) == ProjectionResult(False, "AppendModelObservationV2")
+    failing.clear()
+    assert repo.write_projection(s.scope, s) == ProjectionResult(True)
+    # A pass with nothing left to write is complete too.
+    assert repo.write_projection(s.scope, s) == ProjectionResult(True)
+
+    def uncomputable(*args, **kwargs):
+        raise ValueError("no rows")
+
+    monkeypatch.setattr(production, "writes", uncomputable)
+    assert repo.write_projection(s.scope, s) == ProjectionResult(False, "not_computed")
+
+
+def test_the_local_repository_has_nothing_to_project(tmp_path):
+    """SQLiteRepository writes no normalized rows (section 11), so every pass is complete."""
+    s = specimen()
+    assert SQLiteRepository(tmp_path / "local.db").write_projection(s.scope, s) == ProjectionResult(True)
