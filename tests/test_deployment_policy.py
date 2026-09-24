@@ -120,5 +120,13 @@ def test_backend_workflows_have_main_push_and_separate_environments() -> None:
             allowed = {f'{plane}-production'}
             if plane == 'runtime':
                 allowed.add('runtime-build-production')
+            if plane == 'data' and name == 'initialize':
+                # The one-time initializer only (RELEASE.md 4.3), re-admitted as its own gate plane before its credential.
+                allowed = {'data-initialization-production'}
+                assert job['needs'] == 'release' and "needs.release.outputs.init_step == 'initialize'" in job['if']
+                assert job['env']['RELEASE_SERVICE_ACCOUNT'] == 'specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com'
+                gate = next(i for i, step in enumerate(job['steps']) if '--plane data-initialization ' in step.get('run', ''))
+                auth = next(i for i, step in enumerate(job['steps']) if step.get('uses', '').startswith('google-github-actions/auth@'))
+                assert gate < auth
             assert environment in allowed
             assert job.get('needs'), 'Cloud credentials cannot precede admission'
