@@ -244,6 +244,16 @@ void main() {
     );
   });
 
+  test("names where each text came from, a reviewer's text included", () {
+    expect(
+      <String>[
+        for (final ThreadInputSource source in ThreadInputSource.values)
+          FirstPassSummary.sourceWords(source, source.wire),
+      ],
+      <String>['decided transcript', 'raw reading', "reviewer's text"],
+    );
+  });
+
   testWidgets('an unresolved decision says so under its title', (
     WidgetTester tester,
   ) async {

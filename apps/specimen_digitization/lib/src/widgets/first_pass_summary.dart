@@ -58,13 +58,14 @@ class FirstPassSummary extends StatelessWidget {
   /// The label over the decided transcript.
   static const String decidedLabel = 'Decided transcript';
 
-  /// The words for where a text came from: the decided transcript, or a
-  /// reader's own raw reading. An input source this client does not know
-  /// keeps the server's word.
+  /// The words for where a text came from: the decided transcript, a
+  /// reader's own raw reading, or a reviewer's text. An input source this
+  /// client does not know keeps the server's word.
   static String sourceWords(ThreadInputSource? source, String? name) =>
       switch (source) {
         ThreadInputSource.decidedTranscript => 'decided transcript',
         ThreadInputSource.rawReading => 'raw reading',
+        ThreadInputSource.review => "reviewer's text",
         null => vocabularyLabel(name ?? 'not recorded'),
       };
 

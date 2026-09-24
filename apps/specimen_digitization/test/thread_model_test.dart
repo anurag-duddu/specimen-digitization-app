@@ -568,4 +568,140 @@ void main() {
       );
     });
   });
+
+  group("S5's canonical example and #171's additions", () {
+    Json canonical() =>
+        jsonDecode(File('test/fixtures/thread-example.json').readAsStringSync())
+            as Json;
+
+    ThreadField fieldOf(SpecimenThread thread, String key) =>
+        thread.fields.firstWhere((ThreadField f) => f.fieldKey == key);
+
+    // The client and the server test one file. The server's copy reaches
+    // this branch when #171 merges; until then there is nothing to compare.
+    final File serverExample = File(
+      '../../docs/execution/golive/thread-example.json',
+    );
+    test(
+      "is S5's example, byte for byte",
+      () {
+        expect(
+          File('test/fixtures/thread-example.json').readAsBytesSync(),
+          serverExample.readAsBytesSync(),
+          reason:
+              'Copy docs/execution/golive/thread-example.json to '
+              'apps/specimen_digitization/test/fixtures/thread-example.json.',
+        );
+      },
+      skip: serverExample.existsSync()
+          ? false
+          : "S5's example reaches this branch with #171",
+    );
+
+    test('the canonical example reads whole', () {
+      final SpecimenThread thread = SpecimenThread.fromJson(canonical());
+      expect(thread.revision, 12);
+      expect(thread.regions, hasLength(2));
+      expect(
+        thread.regions.map((ThreadRegion r) => r.reviewerDecision),
+        everyElement(isNull),
+        reason: 'no reviewer has decided a region',
+      );
+
+      final ThreadField taxon = fieldOf(thread, 'taxon');
+      expect(taxon.layer, ThreadFieldLayer.settled);
+      expect(taxon.authorityIdentity?.name, 'Aedes aegypti');
+      expect(taxon.authorityIdentity?.source, 'gbif');
+      expect(taxon.authorityIdentity?.sourceRecordId, '1651891');
+      expect(taxon.authorityIdentity?.credit, 'fixture credit');
+      expect(taxon.findings.single.severity, 'warning');
+      expect(taxon.findings.single.reasonCode, 'taxonomy_source_disagreement');
+      expect(
+        taxon.evidence.map((ThreadEvidence e) => e.source),
+        <String>['gbif', 'col'],
+        reason: "S4's source ids (S5, #171 at c149115)",
+      );
+
+      final ThreadField city = fieldOf(thread, 'city');
+      expect(
+        city.authorityIdentity?.name,
+        isNull,
+        reason: 'a Google value has no name (G26)',
+      );
+      expect(city.authorityIdentity?.sourceRecordId, 'fixture-place');
+      expect(
+        city.evidence.map((ThreadEvidence e) => e.observationIds.length),
+        <int>[0, 0, 1, 1],
+        reason: 'a lookup quotes no reading; the harness quotes one each',
+      );
+
+      final ThreadField county = fieldOf(thread, 'county');
+      expect(county.layer, ThreadFieldLayer.verbatim);
+      expect(county.findings.single.severity, 'hard');
+      expect(fieldOf(thread, 'identified_by_irn').layer, isNull);
+
+      final List<ThreadToolCall> google = <ThreadToolCall>[
+        for (final ThreadToolCall call in thread.toolCalls)
+          if (call.source == 'google-maps-geocoding') call,
+      ];
+      expect(google.first.placeIds, <String>['fixture-place']);
+      expect(google[1].placeIds, isEmpty);
+      expect(
+        thread.toolCalls.map((ThreadToolCall c) => c.reviewDecisionId),
+        everyElement(isNull),
+      );
+
+      final ThreadFinding hard = thread.decision!.findings.first;
+      expect(hard.ruleVersion, 'insects-clearance-v1');
+      expect(hard.outcome, 'fail');
+      expect(hard.evidenceIds, isEmpty);
+    });
+
+    test("a reviewer's decision sits beside the model's first pass", () {
+      final Json json = canonical();
+      ((json['regions'] as List<dynamic>).first
+          as Json)['reviewer_decision'] = <String, dynamic>{
+        'decided_text': 'Corrected text',
+        'unresolved': false,
+        'rationale': 'The label reads so.',
+      };
+      final ThreadRegion region = SpecimenThread.fromJson(json).regions.first;
+      expect(region.reviewerDecision?.decidedText, 'Corrected text');
+      expect(region.reviewerDecision?.unresolved, isFalse);
+      expect(region.reviewerDecision?.rationale, 'The label reads so.');
+      expect(
+        region.firstPass?.kind,
+        ThreadDecisionKind.firstPass,
+        reason: "the model's own decision stays (G38)",
+      );
+    });
+
+    test('a derived value names the fields it came from', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'elevation_from_m',
+        'layer': 'derived',
+        'derived_from': <String>['elevation_from_ft'],
+        'verbatim': <Json>[],
+      });
+      expect(field.layer, ThreadFieldLayer.derived);
+      expect(field.derivedFrom, <String>['elevation_from_ft']);
+    });
+
+    test('an unknown layer keeps its word and has no layer', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'layer': 'imputed',
+      });
+      expect(field.layer, isNull);
+      expect(field.layerName, 'imputed');
+    });
+
+    test("a call on a reviewer's text names its decision", () {
+      final ThreadToolCall call = ThreadToolCall.fromJson(<String, dynamic>{
+        'input_source': 'review',
+        'review_decision_id': 'decision-1',
+      });
+      expect(call.inputSource, ThreadInputSource.review);
+      expect(call.reviewDecisionId, 'decision-1');
+    });
+  });
 }

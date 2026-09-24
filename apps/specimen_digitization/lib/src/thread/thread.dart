@@ -32,6 +32,11 @@ double? _number(Object? value) =>
 Json? _object(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : null;
 
+/// The strings of a list, as sent; anything else is no list.
+List<String> _strings(Object? value) => value is List
+    ? List<String>.unmodifiable(value.whereType<String>())
+    : const <String>[];
+
 /// One object of the response, read through typed getters.
 @immutable
 abstract class _View {
@@ -50,9 +55,7 @@ abstract class _View {
 
   bool? _b(String key) => _json[key] is bool ? _json[key] as bool : null;
 
-  List<String> _texts(String key) => _json[key] is List
-      ? List<String>.unmodifiable((_json[key] as List).whereType<String>())
-      : const <String>[];
+  List<String> _texts(String key) => _strings(_json[key]);
 
   Json _map(String key) => _object(_json[key]) ?? const <String, dynamic>{};
 
@@ -71,7 +74,10 @@ enum ThreadInputSource {
   decidedTranscript('decided_transcript'),
 
   /// One reader's raw reading, handed over as it was read.
-  rawReading('raw_reading');
+  rawReading('raw_reading'),
+
+  /// A reviewer's text, for a lookup G38's "fill the rest" ran on it.
+  review('review');
 
   const ThreadInputSource(this.wire);
 
@@ -94,6 +100,23 @@ enum ThreadFieldGroup {
   /// The group named by [value], or null for anything else.
   static ThreadFieldGroup? fromWire(Object? value) =>
       values.where((ThreadFieldGroup g) => g.name == value).firstOrNull;
+}
+
+/// The layer a field's value is in (G38). A later layer never erases an
+/// earlier one.
+enum ThreadFieldLayer {
+  /// As written, and not settled.
+  verbatim,
+
+  /// Settled by a lookup's success, or as the one text every label has (G32).
+  settled,
+
+  /// Left out by the label and filled from other fields (G37).
+  derived;
+
+  /// The layer named by [value], or null for anything else.
+  static ThreadFieldLayer? fromWire(Object? value) =>
+      values.where((ThreadFieldLayer l) => l.name == value).firstOrNull;
 }
 
 /// How a region's decided transcript was reached.
@@ -359,6 +382,21 @@ class ThreadFirstPass extends _View {
   List<ThreadHandoff> get handoffs => _each('handoffs', ThreadHandoff.fromJson);
 }
 
+/// A reviewer's decision on a region's transcript. It sits beside the
+/// model's first pass and never replaces it (G38).
+class ThreadReviewerDecision extends _View {
+  const ThreadReviewerDecision._(super.json);
+
+  /// The transcript the reviewer decided on, exactly.
+  String? get decidedText => _verbatim('decided_text');
+
+  /// True when the reviewer left the transcript unresolved.
+  bool? get unresolved => _b('unresolved');
+
+  /// The reviewer's reason.
+  String? get rationale => _t('rationale');
+}
+
 /// One label region: its readings, their comparison and the decision.
 class ThreadRegion extends _View {
   /// The region in [json].
@@ -381,6 +419,12 @@ class ThreadRegion extends _View {
   ThreadFirstPass? get firstPass {
     final Json? pass = _object(_json['first_pass']);
     return pass == null ? null : ThreadFirstPass.fromJson(pass);
+  }
+
+  /// A reviewer's decision on the region, or null until a reviewer decides.
+  ThreadReviewerDecision? get reviewerDecision {
+    final Json? decision = _object(_json['reviewer_decision']);
+    return decision == null ? null : ThreadReviewerDecision._(decision);
   }
 }
 
@@ -407,10 +451,15 @@ class ThreadToolCall extends _View {
   /// not know.
   ThreadInputSource? get inputSource =>
       ThreadInputSource.fromWire(inputSourceName);
+
+  /// The region whose text it ran on; null for a call on a reviewer's text.
   String? get regionId => _t('region_id');
 
   /// The reading whose text it ran on, for a raw-reading call.
   String? get observationId => _t('observation_id');
+
+  /// The reviewer's decision whose text it ran on, for a `review` call.
+  String? get reviewDecisionId => _t('review_decision_id');
 
   /// Which attempt this was, from one.
   int? get attempt => _i('attempt');
@@ -419,6 +468,9 @@ class ThreadToolCall extends _View {
   /// The typed outcome (HAR-008): the `LookupStatus` values.
   String? get outcome => _t('outcome');
   Json? get result => _object(_json['result']);
+
+  /// The place IDs a Google call found. Its result holds nothing else (G26).
+  List<String> get placeIds => _strings(result?['place_ids']);
 
   /// What went wrong. The contract names it at the call; a writer that
   /// follows `LookupResult` puts it in the result.
@@ -470,6 +522,35 @@ class ThreadEvidence extends _View {
 
   /// The lookup's typed outcome.
   String? get outcome => _t('outcome');
+
+  /// The readings this evidence quotes; empty for a lookup.
+  List<String> get observationIds => _texts('observation_ids');
+}
+
+/// The authority record a settled value was settled against (PLAN 4.8).
+class ThreadAuthorityIdentity extends _View {
+  const ThreadAuthorityIdentity._(super.json);
+
+  /// The identity in [json], or null when it names no record.
+  static ThreadAuthorityIdentity? fromJson(Object? json) {
+    final Json? map = _object(json);
+    return map != null && _text(map['source_record_id']) != null
+        ? ThreadAuthorityIdentity._(map)
+        : null;
+  }
+
+  /// The authority's name for the value; null for a Google place, which is
+  /// kept by its ID alone (G26).
+  String? get name => _t('name');
+
+  /// The database, as an identifier (`gbif`).
+  String? get source => _t('source');
+
+  /// The record in that database: a GBIF usage key, a Google place ID.
+  String get sourceRecordId => _t('source_record_id')!;
+
+  /// The credit the source asks for.
+  String? get credit => _t('credit');
 }
 
 /// One profile field's result.
@@ -488,8 +569,19 @@ class ThreadField extends _View {
   /// The value state: supported, unknown, unreadable and the rest.
   String? get state => _t('state');
 
+  /// The layer as sent.
+  String? get layerName => _t('layer');
+
+  /// The value's layer (G38), or null when none is recorded or the server
+  /// sent one this client does not know.
+  ThreadFieldLayer? get layer => ThreadFieldLayer.fromWire(layerName);
+
+  /// The fields a derived value was filled from; empty for any other (G37).
+  List<String> get derivedFrom => _texts('derived_from');
+
   /// What was written: one entry for the decided transcript, or one per
-  /// reader when the first pass chose none (G27, G28).
+  /// reader when the first pass chose none (G27, G28). A derived field has
+  /// none, since the label leaves it out.
   List<ThreadVerbatim> get verbatim => _each('verbatim', ThreadVerbatim._);
 
   /// Read as. The thread sends it as text with the precision and the century
@@ -520,8 +612,18 @@ class ThreadField extends _View {
   /// a GBIF usage and so on.
   String? get authorityId => _t('authority_id');
 
+  /// That record's identity: its name, source, record and credit; null when
+  /// the value has none.
+  ThreadAuthorityIdentity? get authorityIdentity =>
+      ThreadAuthorityIdentity.fromJson(_json['authority_identity']);
+
   /// Each source's evidence and its relation to the value (G23).
   List<ThreadEvidence> get evidence => _each('evidence', ThreadEvidence._);
+
+  /// The queue decision's findings that name this field, in its order: each
+  /// hard finding and warning, such as G45's value-shape check. Empty until
+  /// the queue decides.
+  List<ThreadFinding> get findings => _each('findings', ThreadFinding._);
 
   /// The readings whose own literal settled the value, in verbatim order:
   /// one per label when the field cleared across labels (G32), the reader a
@@ -554,11 +656,18 @@ class ThreadFinding extends _View {
   const ThreadFinding._(super.json);
 
   String? get ruleId => _t('rule_id');
+  String? get ruleVersion => _t('rule_version');
 
   /// `hard`, `warning` or `info`, as sent.
   String? get severity => _t('severity');
+
+  /// How the rule came out, as sent (`fail`).
+  String? get outcome => _t('outcome');
   String? get fieldKey => _t('field_key');
   String? get reasonCode => _t('reason_code');
+
+  /// The evidence the finding rests on.
+  List<String> get evidenceIds => _texts('evidence_ids');
 }
 
 /// One specimen run's whole thread.
