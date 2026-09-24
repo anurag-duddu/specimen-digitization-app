@@ -12104,3 +12104,27 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The drop, after #146 and the steward's word.
   - #119's reads table gains `cloudsql.backupRuns.get` and the Cloud SQL operation read.
   - The coordinator decides how a re-run proceeds after a spent claim.
+
+### 2026-09-24 — Go-live release workstream (S2), T3d: the first apply's restore check
+
+- Task: the S2 session, T3d's second pull request (`docs/execution/golive/RELEASE.md` section 4.4 item 1, D1): the first apply's clone and claim.
+- Branch/worktree: `golive/release-data-apply-clone`, stacked on `golive/release-data-apply`. The subagent wrote the red and green commits.
+- Outcome:
+  - **Before any effect,** the first apply (no `source-sha` label) reads the clone's recipe and checks the clone is absent. A clone that can't be read means the owner's window is closed, and that stops the apply too.
+  - **After its backup, in order:**
+    1. The claim, create-only at the fixed key. It binds the gate record's commit, this run and attempt, the backup, the clone, the source, and a window up to the gate record's deadline (at most two hours, with more than 30 minutes left). An existing claim stops the apply for the coordinator.
+    2. The clone (`db-f1-micro`, with the source's region, version and disk), and this attempt's backup restored into it.
+    3. Its catalog, checked read-only (the new `restored` mode) against the live schema the backup holds.
+    4. Its deletion, only as this attempt's own (name, labels and `createTime`), whatever the check found.
+
+    Each effect has a write-once intent, and the gate transport admits each only once, only after this run's claim. `release_google.py` refuses any SQL delete but the clone's.
+  - The receipt records `first_restore` as `claimed`, then `checked`.
+- Commits/PRs: red `ec41759`; green `e5f2ea9`; this closeout.
+- Validation actually run:
+  - the subagent: red 132 failed, 254 passed; green 386 passed; full `scripts/` 2009 passed, 60 skipped; PostgreSQL 46 passed;
+  - this session, at this head: the seven focused files, 389 passed; both PostgreSQL files, 46 passed.
+- Durable learnings: a single-use allowance must be spent only after every permission the next effects need is in place. `testIamPermissions` can't prove a name-conditioned create, so the owner's window opens the claim, clone-create and clone-control roles together.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - The drop, after #146 and the steward's word.
+  - The coordinator's rule for a re-run after a spent claim.
