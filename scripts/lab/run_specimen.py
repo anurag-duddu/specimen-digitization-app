@@ -27,6 +27,12 @@ SHAPES = re.compile(
     r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
 )
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".log"}
+# Until production's reserve-then-settle ledger lands, a paid model step the app attempted but never
+# completed, on a run left at external_outcome_unknown, stays reserved at the full per-call bound
+# (coordinator, 2026-09-23): the readers' and extraction's usage limit (production.py,
+# total_tokens_limit=16000) at the highest known price. SAM 3 on this workstation is free.
+PAID_STEP = re.compile(r"transcribe:|parse$|first_pass|harness|extract")
+CALL_TOKEN_BOUND = 16_000
 
 
 def subject_id(value):
@@ -118,11 +124,17 @@ def price(snapshot):
             reader_tokens += o["input_tokens"] + o["output_tokens"]
             readings.append({"observation": o["id"], "route": o["route_id"], "usd": round(usd, 6),
                              "input_tokens": o["input_tokens"], "output_tokens": o["output_tokens"]})
+    top = max(max(p) for p in PRICES.values()) / 1e6
     other = max(0, total_tokens - reader_tokens)
-    other_usd = other * max(max(p) for p in PRICES.values()) / 1e6
+    unknown = [step for run in [*(snapshot.get("previous_runs") or []), snapshot["run"]]
+               if run.get("blocker") == "external_outcome_unknown"
+               for step in run.get("attempts") or {}
+               if step not in (run.get("completed_steps") or []) and PAID_STEP.match(step)]
+    unknown_usd = len(unknown) * CALL_TOKEN_BOUND * top
     return {"readings": readings, "readers_usd": readers_usd, "unpriced_routes": unpriced,
-            "other_tokens": other, "other_usd_upper_bound": other_usd,
-            "total_usd": readers_usd + other_usd, "sam3_usd": 0.0}
+            "other_tokens": other, "other_usd_upper_bound": other * top,
+            "unknown_steps": unknown, "unknown_usd_bound": unknown_usd,
+            "total_usd": readers_usd + other * top + unknown_usd, "sam3_usd": 0.0}
 
 
 def timings(snapshot):
@@ -287,7 +299,8 @@ def render(record):
     lines += ["", "## Cost", "", f"Total USD {costs['total_usd']:.6f}: readers "
               f"{costs.get('readers_usd', 0):.6f}, other tokens {costs.get('other_tokens', 0)} "
               f"at most {costs.get('other_usd_upper_bound', 0):.6f}, SAM 3 local 0. Unpriced routes: "
-              f"{costs.get('unpriced_routes', [])}.", "",
+              f"{costs.get('unpriced_routes', [])}. Unknown outcomes held at the full per-call bound: "
+              f"{costs.get('unknown_steps', [])}, USD {costs.get('unknown_usd_bound', 0):.6f}.", "",
               f"Lab spend to date: USD {record['lab_spend_usd']:.6f} of {record['lab_allowance_usd']:.2f}, "
               "the lab's share of G9, kept apart from production's model allowance (G30)."]
     lines += ["", "## Lab actions", ""] + [f"- {cell(a)}" for a in record["actions"] or ["none"]]

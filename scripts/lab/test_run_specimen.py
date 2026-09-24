@@ -158,6 +158,25 @@ def test_the_subject_report_lists_every_run_newest_first(tmp_path):
     assert report.index("20260923T211500Z |") < report.index("20260923T201500Z")
 
 
+def test_a_paid_step_with_an_unknown_outcome_counts_at_its_full_bound():
+    # Until production's reserve-then-settle ledger lands, the lab's tally keeps an unknown outcome
+    # reserved at the full per-call bound (coordinator, 2026-09-23). Local SAM 3 costs nothing.
+    earlier = snapshot()["run"] | {
+        "id": "run-1", "stage": "processing_blocked", "blocker": "external_outcome_unknown",
+        "attempts": {"segment": 1}, "completed_steps": ["classify"], "observations": [],
+    }
+    snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown",
+                    attempts={"transcribe:r1:handwriting-qwen": 1, "parse": 1},
+                    completed_steps=["classify", "segment", "transcribe:r1:handwriting-qwen"])
+    snap["previous_runs"] = [earlier]
+    costs = run_specimen.price(snap)
+    assert costs["unknown_steps"] == ["parse"]
+    assert costs["unknown_usd_bound"] == pytest.approx(16_000 * 1.20e-6)
+    assert costs["total_usd"] == pytest.approx(
+        costs["readers_usd"] + costs["other_usd_upper_bound"] + 16_000 * 1.20e-6
+    )
+
+
 def test_costs_price_each_reading_and_bound_the_remaining_tokens():
     snap = snapshot()
     snap["run"]["usage"]["tokens"] = 2200 + 500
