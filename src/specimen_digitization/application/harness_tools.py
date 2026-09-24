@@ -86,6 +86,8 @@ class PlaceCandidate(Frozen):
     source: str
     source_record_id: str | None = None
     name: str | None = None
+    # The source's exact credit, from S8's manifest (PLAN 4.8); none for Google.
+    credit: str | None = None
     components: dict[str, str] = Field(default_factory=dict)
     role: Literal["historical", "modern"] = "modern"
     valid_from: str | None = None
@@ -98,6 +100,7 @@ class SourceRef(Frozen):
     version: str | None = None
     retrieved_at: str | None = None
     license: str | None = None
+    credit: str | None = None  # The source's exact credit text (PLAN 4.8).
 
 
 class GeoreferenceCandidate(Frozen):
