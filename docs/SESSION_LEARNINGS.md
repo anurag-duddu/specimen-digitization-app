@@ -11916,3 +11916,12 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the derivation tests fail without the module and pass with it; the layer and harness tests pass; the full Python suites and pre-commit pass.
 - Durable learnings: (1) The elevation rules went in, out and back in within a day. The coordinator first read G37 as allowing them, then held them, because they were the G22 option the owner had declined, and G41 then chose them. Keeping them in a separate producer behind one `apply_derivations` meant the hold and the release changed one call, not the design. (2) "Inputs are settled" is not enough: a derivation from a geography request that did not settle names another place. Checking that each input is settled *to the value the derivation names* keeps a raw reading's unsettled lookup from filling a field. (3) A derived value's authority id names its source record (a DEM tile, a boundary unit), so its settled value, when a later derivation names it as an input, is the value itself.
 - Remaining follow-ups: the first pass's G30 output cap, T3c (the `parse` step), T4 (the queue decision, including the elevation gate accepting a derived elevation), T3d part b (`derive_rest` and S8's `derive_geography`), and the geography name-key alignment with S8.
+
+### 2026-09-24 — Go-live S4: the first pass's G30 output cap
+
+- Task: go-live S4: cap each first-pass request's output (G30) so its worst case can be reserved, per the coordinator's reading of G30 on 2026-09-24.
+- Branch/worktree: `golive/harness-first-pass-cap`, stacked on `golive/harness-derived` (#144), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `first_pass.MAX_OUTPUT_TOKENS = 1024`, the agent's `max_tokens`; the two-request limit is unchanged. Spec: `docs/execution/golive/HARNESS.md` section 3.
+- Validation actually run: the new test fails without the cap and passes with it; the full Python suites and pre-commit pass.
+- Durable learnings: `run_agent_bounded` already caps each request at the lower of 4,096 and what the usage limits leave, so a per-agent `max_tokens` is the lever for a measured cap; the worst case S3 reserves is requests × (input + cap).
+- Remaining follow-ups: T3c (the harness in `parse`) and S3's `record_model_usage` once `lane_costs` lands.
