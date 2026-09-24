@@ -21,7 +21,7 @@ from specimen_digitization.application.domain import (
     Transcript,
     ValueState,
 )
-from specimen_digitization.application.projection import derived_id, settled_entries, writes
+from specimen_digitization.application.projection import CredentialStored, derived_id, settled_entries, writes
 from specimen_digitization.application.storage import digest
 
 from test_projection import TracedRun, locate, pinned, read, reading, size, specimen
@@ -1053,7 +1053,7 @@ def test_a_key_with_a_call_refuses_the_projection_and_is_never_logged(where):
     else:
         s.run.lookups = [found.model_copy(update={"query": {"address": "Chicago, Ill.", "key": FAKE_KEY}})]
     s.run.tool_calls = [record]
-    with pytest.raises(ValueError) as refused:
+    with pytest.raises(CredentialStored) as refused:
         writes(s, locate, size, "worker-uid")
     assert FAKE_KEY not in str(refused.value) and "k3y" not in str(refused.value)
 
@@ -1090,7 +1090,7 @@ def test_a_google_call_keeps_only_place_ids(kept, allowed):
         (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV1")
         assert call["result"] == kept
     else:
-        with pytest.raises(ValueError):
+        with pytest.raises(CredentialStored):
             writes(s, locate, size, "worker-uid")
 
 

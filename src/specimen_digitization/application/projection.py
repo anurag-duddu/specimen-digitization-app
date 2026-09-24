@@ -542,6 +542,10 @@ def _derivation(value, relations: dict) -> str:
     return "parsed" if value.parsed else "literal"
 
 
+class CredentialStored(ValueError):
+    """Rule 1.6: a stored call holds a credential; the message names where, never the value."""
+
+
 def _refuse_keys(run: Run) -> None:
     """Rule 1.6: no stored call holds a credential, and a Google call keeps only place ids.
 
@@ -550,7 +554,7 @@ def _refuse_keys(run: Run) -> None:
     for n, record in enumerate(getattr(run, "tool_calls", None) or []):
         where = f"tool call {n} ({record.tool})"
         if KEYS.search(json.dumps([record.arguments, record.result], default=str)):
-            raise ValueError(f"{where} holds a credential (rule 1.6)")
+            raise CredentialStored(f"{where} holds a credential (rule 1.6)")
         if record.source == GOOGLE:
             kept = record.result or {}
             ids = kept.get("place_ids", [])
@@ -559,11 +563,11 @@ def _refuse_keys(run: Run) -> None:
                 or not isinstance(ids, list)
                 or not all(isinstance(i, str) and PLACE_ID.fullmatch(i) for i in ids)
             ):
-                raise ValueError(f"{where} keeps more than place ids (rule 1.6)")
+                raise CredentialStored(f"{where} keeps more than place ids (rule 1.6)")
     for n, found in enumerate(run.lookups):
         stored = found.raw_ref and found.digest
         if stored and KEYS.search(json.dumps(found.query, default=str)):
-            raise ValueError(f"lookup {n} ({found.provider}) holds a credential in its query (rule 1.6)")
+            raise CredentialStored(f"lookup {n} ({found.provider}) holds a credential in its query (rule 1.6)")
 
 
 def _evidence_names(run: Run) -> dict:
