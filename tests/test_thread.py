@@ -1,0 +1,606 @@
+"""The thread's assembly, field by field (docs/execution/golive/DATA_CONTRACT.md 8, S5 T3).
+
+Every thread here is assembled from GetRunThreadV1's rows for what the projection writer wrote,
+so the response is checked against the writer's own rows. Run this file to rewrite the canonical
+example after a deliberate change: `uv run python tests/test_thread.py`.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from specimen_digitization.application.api import summary
+from specimen_digitization.application.domain import (
+    Disposition,
+    Lookup,
+    LookupStatus,
+    Run,
+    ValueState,
+)
+from specimen_digitization.application.projection import derived_id, writes
+from specimen_digitization.application.thread import (
+    CALIBRATION,
+    KEY_LIMITS,
+    LIMITS,
+    NESTED_LIMITS,
+    TRACE_URL_SETTING,
+    ThreadTooLarge,
+    assemble,
+    keys,
+    trace_url_template,
+)
+
+from test_projection import locate, size
+from test_projection_decisions import ToolCallRecord, TracedField
+from thread_fixtures import TRACE, fixed, rows, synthetic_run
+
+ROOT = Path(__file__).resolve().parents[1]
+EXAMPLE = ROOT / "docs/execution/golive/thread-example.json"
+TEMPLATE = "https://logfire.example.test/trace/{trace_id}"
+
+
+def written(specimen):
+    """Everything a reviewer's save writes for the specimen's active run."""
+    return writes(specimen, locate, size, "reviewer-uid", reviewer=True)
+
+
+def thread(specimen, run=None, *, history=None, template=TEMPLATE):
+    """The response for one run: its rows from what was written, and the snapshot."""
+    run = run or specimen.run
+    data = rows(written(specimen) if history is None else history, specimen.id, run.id, keys(run))
+    view = specimen if run is specimen.run else specimen.model_copy(update={"run": run})
+    result = assemble(
+        specimen, run, data, status=summary(view)["status"], trace_url_template=template
+    )
+    return result.model_dump(mode="json")
+
+
+def example_json() -> str:
+    return json.dumps(thread(synthetic_run()), indent=2, ensure_ascii=False) + "\n"
+
+
+def by_key(items, key):
+    return {item[key]: item for item in items}
+
+
+def stored(s, label):
+    """The asset row the writer derives for a stored response (DATA_CONTRACT.md 5)."""
+    return derived_id("asset", s.id, "demo-bucket", f"application/sha256/{label * 64}", "7")
+
+
+def test_the_canonical_example_is_the_assembly_of_its_synthetic_run():
+    # S6 builds against this file; it cannot drift from what the API serves.
+    assert EXAMPLE.read_text() == example_json()
+
+
+def test_the_run_its_image_and_segmentation_come_from_the_snapshot():
+    s = synthetic_run()
+    result = thread(s)
+    assert (result["specimen_id"], result["revision"]) == (s.id, 12)
+    assert result["run"] == {
+        "run_id": s.run.id,
+        "status": "completed",
+        "stage": "finalized",
+        "blocker": None,
+        "next_retry_at": None,
+        "profile": {"key": "zoology_insects_slides", "version": "1.0.0"},
+        # The ledger's revision stays in the snapshot.
+        "allowance": {
+            "allowance_micros": 5000000,
+            "reserved_total_micros": 60000,
+            "remaining_micros": 4940000,
+            "at": "2026-09-23T12:02:00+00:00",
+        },
+        "paid_calls": s.run.paid_calls,
+        "actual_cost_micros": 5200,
+    }
+    assert result["trace"] == {
+        "trace_id": TRACE,
+        "url": f"https://logfire.example.test/trace/{TRACE}",
+    }
+    assert result["image"] == {
+        "asset_id": s.asset.id,
+        "sha256": s.asset.sha256,
+        "width": 4000,
+        "height": 3000,
+        "pixel_basis": "original_pixel_edges",
+    }
+    assert result["segmentation"] == {
+        "model_revision": "sam3-fixture-revision",
+        "settings": {"prompt": "label", "parameters": {"label_threshold": 0.5}},
+    }
+    s.run.stage, s.run.disposition = "processing_blocked", None
+    s.run.blocker, s.run.next_retry_at = "provider_error", "2026-09-23T13:00:00+00:00"
+    blocked = thread(s)["run"]
+    assert (blocked["status"], blocked["stage"], blocked["blocker"], blocked["next_retry_at"]) == (
+        "processing_blocked",
+        "processing_blocked",
+        "provider_error",
+        "2026-09-23T13:00:00+00:00",
+    )
+
+
+def test_the_allowance_and_paid_calls_are_absent_until_the_program_reserves():
+    s = synthetic_run()
+    s.run.program_allowance, s.run.paid_calls = None, []
+    s.run.usage.actual_cost_micros = None
+    run = thread(s)["run"]
+    assert (run["allowance"], run["paid_calls"], run["actual_cost_micros"]) == (None, [], None)
+    # Before S3's fields reach the domain, a run without them reads the same way.
+    plain = synthetic_run()
+    plain.run = Run(id=plain.run.id, profile=plain.run.profile, stage="transcribe")
+    result = thread(plain)
+    assert (result["run"]["allowance"], result["run"]["paid_calls"]) == (None, [])
+    assert result["trace"] == {"trace_id": None, "url": None}
+    assert result["coverage_check"] == {
+        "status": "not_run",
+        "checks": [],
+        "evidence_id": None,
+        "checked_at": None,
+    }
+    assert (result["segmentation"], result["regions"], result["decision"]) == (None, [], None)
+
+
+def test_a_first_pass_decision_shows_its_call_its_rationale_and_its_handoff():
+    s = synthetic_run()
+    left, _ = s.run.regions
+    qwen, muse = s.run.observations[:2]
+    call = s.run.transcripts[0].first_pass_call
+    region = thread(s)["regions"][0]
+    assert (region["region_id"], region["ordinal"], region["rotation_quarter_turns"]) == (left.id, 0, 0)
+    assert region["geometry"] == {"x": 180, "y": 1210, "width": 1320, "height": 640}
+    assert [r["observation_id"] for r in region["readings"]] == [qwen.id, muse.id]
+    reading = region["readings"][1]
+    assert reading == {
+        "observation_id": muse.id,
+        "route_id": "handwriting-muse",
+        "model": "model/handwriting-muse",
+        "provider": "fixture-provider",
+        "prompt_version": "p" * 64,
+        "literal_text": "Chicago, Il1. VII-46 Cook Co.",
+        "unreadable_spans": ["Il1."],
+        "outcome": "validated_output",
+        "raw_response": {"asset_id": stored(s, "d"), "sha256": "d" * 64},
+    }
+    first, second = sorted((qwen.id, muse.id), key=lambda i: i.replace("-", ""))
+    assert region["comparisons"] == [
+        {
+            "left_observation_id": first,
+            "right_observation_id": second,
+            "algorithm": "bounded-levenshtein-fraction-v1",
+            "ratio": 1 / 29,
+            "edit_distance": 1,
+            "length_basis": 29,
+            "status": "difference",
+            "reasons": ["one_substitution"],
+            "calibration": CALIBRATION,
+        }
+    ]
+    assert CALIBRATION == "uncalibrated review priority"
+    decision = region["first_pass"]
+    assert decision["model_call"] == {
+        "observation_id": call.id,
+        "route_id": "first-pass",
+        "model": "model/first-pass",
+        "provider": "fixture-provider",
+        "prompt_version": "p" * 64,
+        "outcome": "validated_output",
+        "raw_response": {"asset_id": stored(s, "f"), "sha256": "f" * 64},
+    }
+    assert {k: v for k, v in decision.items() if k != "model_call"} == {
+        "decision_kind": "first_pass",
+        "selected_observation_id": qwen.id,
+        "decided_text": qwen.literal_text,
+        "unresolved": False,
+        "rationale": "The crop shows a lowercase l.",
+        "handoffs": [
+            {
+                "observation_id": qwen.id,
+                "role": "decided_transcript",
+                "handed_text": qwen.literal_text,
+                "note": None,
+            }
+        ],
+    }
+    # The first pass's call is not a reading of the region.
+    assert call.id not in {r["observation_id"] for r in region["readings"]}
+
+
+def test_a_region_without_a_recorded_decision_has_no_first_pass():
+    s = synthetic_run()
+    s.run.transcripts = s.run.transcripts[:1]
+    regions = thread(s)["regions"]
+    assert regions[0]["first_pass"] is not None
+    assert regions[1]["first_pass"] is None
+
+
+def test_a_no_pick_decision_hands_every_raw_reading_and_each_reader_keeps_its_verbatim():
+    s = synthetic_run()
+    _, right = s.run.regions
+    qwen, muse = s.run.observations[2:]
+    result = thread(s)
+    region = result["regions"][1]
+    assert (region["region_id"], region["rotation_quarter_turns"]) == (right.id, 1)
+    decision = region["first_pass"]
+    assert (decision["selected_observation_id"], decision["unresolved"], decision["decided_text"]) == (None, True, "")
+    assert decision["handoffs"] == [
+        {"observation_id": qwen.id, "role": "raw_reading", "handed_text": qwen.literal_text, "note": "Reads the authority as L."},
+        {"observation_id": muse.id, "role": "raw_reading", "handed_text": muse.literal_text, "note": "Reads the authority as Linn."},
+    ]
+    taxon = by_key(result["fields"], "field_key")["taxon"]
+    assert taxon["verbatim"] == [
+        {"text": "Aedes aegypti L.", "input_source": "raw_reading", "region_id": right.id, "observation_id": qwen.id},
+        {"text": "Aedes aegypti Linn.", "input_source": "raw_reading", "region_id": right.id, "observation_id": muse.id},
+    ]
+    # G20: the reader a lookup confirmed carries the settled value.
+    assert (taxon["normalized"], taxon["authority_id"], taxon["confirmed_observation_id"]) == (
+        "Aedes aegypti",
+        "gbif:1651891",
+        qwen.id,
+    )
+    # With no reader confirmed, no settled value and no single verbatim is implied.
+    field = s.run.fields["taxon"]
+    s.run.fields["taxon"] = field.model_copy(
+        update={"source_observation_id": None, "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
+    )
+    unconfirmed = by_key(thread(s)["fields"], "field_key")["taxon"]
+    assert len(unconfirmed["verbatim"]) == 2
+    assert (unconfirmed["normalized"], unconfirmed["authority_id"], unconfirmed["confirmed_observation_id"], unconfirmed["evidence"]) == (
+        None,
+        None,
+        None,
+        [],
+    )
+
+
+def test_google_keeps_a_place_id_and_a_no_match_appears_only_in_tool_calls():
+    s = synthetic_run()
+    left, _ = s.run.regions
+    place, nowhere = s.run.lookups[:2]
+    result = thread(s)
+    success, no_match = result["tool_calls"][:2]
+    assert success == {
+        "call_key": s.run.tool_calls[0].call_key,
+        "phase": "lookup",
+        "tool": "geocode",
+        "tool_version": "geocode-1",
+        "source": "google-maps-geocoding",
+        "field_keys": ["province_state", "city"],
+        "input_source": "decided_transcript",
+        "region_id": left.id,
+        "observation_id": None,
+        "attempt": 1,
+        "arguments": {"query": "Chicago, Ill."},
+        "outcome": "success",
+        "result": {"candidates": [{"place_id": "fixture-place"}]},
+        "error": None,
+        "retry_after": None,
+        "evidence_id": place.id,
+        "started_at": "2026-09-23T12:04:00.000000Z",
+        "completed_at": "2026-09-23T12:05:00.000000Z",
+    }
+    assert (no_match["outcome"], no_match["evidence_id"], no_match["field_keys"]) == ("no_match", nowhere.id, ["county"])
+    fields = by_key(result["fields"], "field_key")
+    city = fields["city"]
+    assert city["evidence"] == [
+        {
+            "evidence_id": place.id,
+            "relation": "supports",
+            "source": "google-maps-geocoding",
+            "locator": "place/fixture-place",
+            "outcome": "success",
+        }
+    ]
+    # G26: Google confirms the label's own literal; it never supplies the value.
+    assert (city["normalized"], city["authority_id"], city["confirmed_observation_id"]) == (None, "fixture-place", None)
+    assert city["verbatim"] == [
+        {"text": "Chicago", "input_source": "decided_transcript", "region_id": left.id, "observation_id": None}
+    ]
+    county = fields["county"]
+    assert (county["state"], county["evidence"], county["authority_id"]) == ("unresolved", [], None)
+    linked = {e["evidence_id"] for f in result["fields"] for e in f["evidence"]}
+    assert nowhere.id not in linked
+
+
+def test_every_other_outcome_stays_in_tool_calls_with_its_error_and_retry():
+    s = synthetic_run()
+    gbif_call = s.run.tool_calls[2]
+    s.run.tool_calls.append(
+        gbif_call.model_copy(
+            update={
+                "call_key": gbif_call.call_key[:-1] + "2",
+                "attempt": 2,
+                "outcome": "rate_limited",
+                "result": {"error": "rate limited", "retry_after": 30},
+                "evidence_id": None,
+            }
+        )
+    )
+    retried = thread(s)["tool_calls"][-1]
+    assert (retried["attempt"], retried["outcome"], retried["evidence_id"]) == (2, "rate_limited", None)
+    assert (retried["error"], retried["retry_after"]) == ("rate limited", 30)
+    assert retried["result"] == {"error": "rate limited", "retry_after": 30}
+
+
+def test_gbif_decides_and_catalogue_of_life_contradicts():
+    s = synthetic_run()
+    gbif, col = s.run.lookups[2:]
+    taxon = by_key(thread(s)["fields"], "field_key")["taxon"]
+    assert taxon["evidence"] == [
+        {"evidence_id": gbif.id, "relation": "decides", "source": "gbif", "locator": "gbif/species/1651891", "outcome": "success"},
+        {"evidence_id": col.id, "relation": "contradicts", "source": "catalogue-of-life", "locator": "col/taxon/fixture-col-taxon", "outcome": "success"},
+    ]
+    assert (taxon["group"], taxon["state"]) == ("mandatory", "supported")
+
+
+def test_findings_carry_their_severity_and_evidence_ids():
+    s = synthetic_run()
+    col = s.run.lookups[3]
+    decision = thread(s)["decision"]
+    assert {k: v for k, v in decision.items() if k != "findings"} == {
+        "disposition": "needs_human_review",
+        "policy_version": s.run.profile.policy_version,
+        "reason_codes": ["mandatory_unresolved:county"],
+        "summary": "Needs human review under insects-clearance-v1: county unresolved.",
+    }
+    assert decision["findings"] == [
+        {
+            "rule_id": "mandatory_unresolved",
+            "rule_version": s.run.profile.policy_version,
+            "severity": "hard",
+            "outcome": "fail",
+            "field_key": "county",
+            "reason_code": "mandatory_unresolved:county",
+            "evidence_ids": [],
+        },
+        {
+            "rule_id": "taxonomy_source_disagreement",
+            "rule_version": "g23-v1",
+            "severity": "warning",
+            "outcome": "fail",
+            "field_key": "taxon",
+            "reason_code": "taxonomy_source_disagreement",
+            "evidence_ids": [col.id],
+        },
+    ]
+    # Until the queue decides there is no decision.
+    s.run.disposition, s.run.reasons = None, []
+    assert thread(s)["decision"] is None
+
+
+def test_dates_keep_their_precision_and_century_rule():
+    fields = by_key(thread(synthetic_run())["fields"], "field_key")
+    date = fields["date_visited_from"]
+    assert (date["parsed"], date["precision"], date["century_rule"]) == (
+        "1946-07",
+        "month",
+        "date-rules-v1:two_digit_year_century=1900",
+    )
+    assert (fields["city"]["parsed"], fields["city"]["precision"], fields["city"]["century_rule"]) == (None, None, None)
+
+
+def test_every_field_of_the_record_is_listed_in_the_snapshots_order_with_its_group():
+    s = synthetic_run()
+    fields = thread(s)["fields"]
+    assert [f["field_key"] for f in fields] == list(s.run.fields)
+    irn = fields[-1]
+    # G16: identified_by_irn is optional, and without a literal it has no verbatim.
+    assert (irn["field_key"], irn["group"], irn["state"], irn["verbatim"], irn["evidence"]) == (
+        "identified_by_irn",
+        "optional",
+        "unknown",
+        [],
+        [],
+    )
+    # Before the queue decides, a field without a literal has no rows; the rest keep their group.
+    s.run.disposition = None
+    early = thread(s)["fields"]
+    assert "identified_by_irn" not in [f["field_key"] for f in early]
+    assert by_key(early, "field_key")["county"]["group"] == "mandatory"
+
+
+def test_a_value_confirmed_on_a_raw_reading_names_it_after_a_pick():
+    s = synthetic_run()
+    left, _ = s.run.regions
+    muse = s.run.observations[1]
+    confirming = Lookup(
+        provider="google-maps-geocoding",
+        adapter_version="geocode-1",
+        query={"address": "Cook Co."},
+        status=LookupStatus.SUCCESS,
+        metadata={"locator": "place/fixture-county"},
+        raw_ref=f"{'b' * 64}:7",
+        digest="b" * 64,
+        retrieved_at="2026-09-23T12:06:00+00:00",
+    )
+    s.run.lookups.append(confirming)
+    s.run.tool_calls.append(
+        ToolCallRecord(
+            call_key=f"lookup:geocode:raw_reading:{left.id}:{muse.id}:{'0af7' * 4}:1",
+            phase="lookup",
+            tool="geocode",
+            tool_version="geocode-1",
+            source="google-maps-geocoding",
+            field_keys=["county"],
+            input_source="raw_reading",
+            region_id=left.id,
+            observation_id=muse.id,
+            arguments={"query": "Cook Co."},
+            outcome="success",
+            result={"candidates": [{"place_id": "fixture-county"}]},
+            evidence_id=confirming.id,
+        )
+    )
+    # The verbatim stays on the decided transcript; the confirmed reading is the settled value's provenance.
+    s.run.fields["county"] = TracedField(
+        state=ValueState.SUPPORTED,
+        literal="Cook Co.",
+        authority_id="fixture-county",
+        evidence_ids=[confirming.id],
+        evidence_relations={confirming.id: "supports"},
+        input_source="decided_transcript",
+        source_region_id=left.id,
+    )
+    s.run.reasons = []
+    county = by_key(thread(s)["fields"], "field_key")["county"]
+    assert county["verbatim"] == [
+        {"text": "Cook Co.", "input_source": "decided_transcript", "region_id": left.id, "observation_id": None}
+    ]
+    assert (county["authority_id"], county["confirmed_observation_id"]) == ("fixture-county", muse.id)
+    # A value settled on the decided transcript names no reading.
+    assert by_key(thread(s)["fields"], "field_key")["city"]["confirmed_observation_id"] is None
+
+
+def test_the_thread_shows_the_state_the_snapshot_has_after_a_change_back():
+    s = synthetic_run()
+    history = written(s)
+    s.run.disposition, s.run.reasons, s.run.disposition_summary = Disposition.CLEARED, [], "Cleared."
+    s.run.fields["county"] = s.run.fields["county"].model_copy(update={"state": ValueState.SUPPORTED})
+    history += written(s)
+    assert thread(s, history=history)["decision"]["disposition"] == "cleared"
+    # Back to the first state: its rows already exist, and the thread shows them again.
+    first = synthetic_run()
+    result = thread(first, history=history)
+    assert result["decision"]["disposition"] == "needs_human_review"
+    assert by_key(result["fields"], "field_key")["county"]["state"] == "unresolved"
+    assert len(result["fields"]) == len(first.run.fields)
+
+
+def test_each_run_reads_its_own_rows():
+    s = synthetic_run()
+    first = s.run
+    history = written(s)
+    # A new run reuses the region ids (rule 1.5); everything else in it is new.
+    second = synthetic_run(
+        ident=lambda n: fixed(n) if n in (10, 11) else f"00000000-0000-4000-9000-{n:012d}"
+    ).run
+    s.previous_runs, s.run = [first], second
+    history += written(s)
+    newest = thread(s, history=history)
+    older = thread(s, first, history=history)
+    assert newest["run"]["run_id"] == second.id and older["run"]["run_id"] == first.id
+    assert [r["region_id"] for r in newest["regions"]] == [r["region_id"] for r in older["regions"]]
+    assert {o["observation_id"] for r in older["regions"] for o in r["readings"]} == {o.id for o in first.observations}
+    assert {o["observation_id"] for r in newest["regions"] for o in r["readings"]} == {o.id for o in second.observations}
+
+
+def test_a_run_without_rows_yet_reads_from_the_snapshot_alone():
+    s = synthetic_run()
+    result = thread(s, history=[])
+    assert (result["regions"], result["tool_calls"], result["fields"], result["decision"]) == ([], [], [], None)
+    assert result["run"]["run_id"] == s.run.id
+    # The trace id is the run's own until its row records it.
+    assert result["trace"]["trace_id"] == TRACE
+    assert result["coverage_check"]["status"] == "passed"
+    assert result["coverage_check"]["evidence_id"] is None
+
+
+def test_the_coverage_check_reports_each_check():
+    s = synthetic_run()
+    coverage = thread(s)["coverage_check"]
+    assert coverage == {
+        "status": "passed",
+        "checks": [
+            {"name": "region_count", "passed": True, "detail": {"found": 2, "min": 1, "max": 3, "reason_codes": []}},
+            {
+                "name": "full_image",
+                "passed": True,
+                "detail": {"counted": 2, "outside": 0, "threshold": 0.5, "min_inside_fraction": 0.5, "reason_codes": []},
+            },
+        ],
+        "evidence_id": s.run.evidence[0].id,
+        "checked_at": "2026-09-23T12:01:00+00:00",
+    }
+    # A failed check names its own codes; the range comes from the pinned profile when the check
+    # does not record it.
+    check = dict(s.run.coverage_check)
+    check.pop("min_label_regions"), check.pop("max_label_regions")
+    check.update(
+        outcome="unconfirmed",
+        region_count=4,
+        reason_codes=["label_coverage_unconfirmed", "label_region_count_out_of_range", "cross_check_detection_outside_labels"],
+        cross_check=dict(check["cross_check"], counted=3, uncovered_boxes=[[0, 0, 10, 10]]),
+    )
+    s.run.coverage_check = check
+    failed = thread(s)["coverage_check"]
+    assert failed["status"] == "failed"
+    assert failed["checks"] == [
+        {
+            "name": "region_count",
+            "passed": False,
+            "detail": {"found": 4, "min": 1, "max": 3, "reason_codes": ["label_region_count_out_of_range"]},
+        },
+        {
+            "name": "full_image",
+            "passed": False,
+            "detail": {
+                "counted": 3,
+                "outside": 1,
+                "threshold": 0.5,
+                "min_inside_fraction": 0.5,
+                "reason_codes": ["cross_check_detection_outside_labels"],
+            },
+        },
+    ]
+    s.run.profile_snapshot = {k: v for k, v in s.run.profile_snapshot.items() if k != "segmentation_settings"}
+    region_count = thread(s)["coverage_check"]["checks"][0]["detail"]
+    assert (region_count["min"], region_count["max"]) == (None, None)
+    s.run.coverage_check = dict(check, outcome="unconfirmed", reason_codes=["label_coverage_unconfirmed", "zero_regions"], region_count=0)
+    zero = thread(s)["coverage_check"]["checks"]
+    assert (zero[0]["passed"], zero[0]["detail"]["reason_codes"], zero[1]["passed"]) == (False, ["zero_regions"], True)
+    s.run.evidence = []
+    assert thread(s)["coverage_check"]["evidence_id"] is None
+
+
+def test_the_trace_link_is_built_from_the_configured_template():
+    assert trace_url_template({}) is None
+    assert trace_url_template({TRACE_URL_SETTING: ""}) is None
+    assert trace_url_template({TRACE_URL_SETTING: TEMPLATE}) == TEMPLATE
+    for bad in (
+        "http://logfire.example.test/trace/{trace_id}",
+        "https://logfire.example.test/trace",
+        "https://logfire.example.test/{trace_id}/{trace_id}",
+        "https://logfire.example.test/{trace_id}?q={span_id}",
+        "https://someone@logfire.example.test/{trace_id}",
+        "https:///{trace_id}",
+    ):
+        with pytest.raises(ValueError):
+            trace_url_template({TRACE_URL_SETTING: bad})
+    s = synthetic_run()
+    assert thread(s, template=None)["trace"] == {"trace_id": TRACE, "url": None}
+    s.run.trace_id = "0" * 32
+    assert thread(s, history=[])["trace"]["url"] is None
+
+
+def test_a_list_at_its_limit_is_refused_rather_than_shown_in_part():
+    s = synthetic_run()
+    data = rows(written(s), s.id, s.run.id, keys(s.run))
+    region = data["runs"][0]["regions"][0]
+    data["runs"][0]["regions"] = [region] * LIMITS["regions"]
+    with pytest.raises(ThreadTooLarge):
+        assemble(s, s.run, data, status="completed")
+    s.run.fields = {f"field_{n}": TracedField(literal="x") for n in range(KEY_LIMITS["candidateIds"] + 1)}
+    with pytest.raises(ThreadTooLarge):
+        keys(s.run)
+
+
+def test_the_limits_are_the_operations():
+    source = (ROOT / "dataconnect/connector/thread.gql").read_text()
+    limits = dict(re.findall(r"(\w+): \w+_on_\w+\([^)]*limit: (\d+)\)", source))
+    assert {name: int(value) for name, value in limits.items()} == {
+        **LIMITS,
+        **NESTED_LIMITS,
+        "decisions": KEY_LIMITS["decisionIds"],
+        "candidates": KEY_LIMITS["candidateIds"],
+        "records": KEY_LIMITS["recordIds"],
+    }
+    check = re.search(r"size\(vars\.decisionIds\) <= (\d+) && size\(vars\.candidateIds\) <= (\d+) && size\(vars\.recordIds\) <= (\d+)", source)
+    assert tuple(int(n) for n in check.groups()) == tuple(KEY_LIMITS.values())
+
+
+if __name__ == "__main__":
+    EXAMPLE.write_text(example_json())

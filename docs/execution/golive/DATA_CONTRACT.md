@@ -731,6 +731,74 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
 - `trace.url` is built on the server from a configured Logfire base and is null
   when that is unset.
 
+### How T3 serves it
+
+- **Operation.** `GetRunThreadV1` in `dataconnect/connector/thread.gql`,
+  `@auth(level: NO_ACCESS)`, called through `:impersonateQuery`. It admits whom
+  the workspace route admits (`GetSpecimen`): an active organization member, an
+  active collection member of any role, and a specimen that is not sensitive or
+  a member who can view sensitive records. It finds the run with a `where` on
+  both its id and its specimen and reads every other row nested under that run,
+  so a run of another specimen reads as empty.
+- **Current rows.** A decision, a field candidate and a record version are keyed
+  by their content (section 5), so a run can hold several of each. The API
+  passes the ids the snapshot's run yields for them, from the writer's own
+  functions in `application/projection.py`, and the operation reads only those:
+  the thread shows the run as the snapshot has it, also after a change back to
+  an earlier state. Regions, readings, comparisons, handoffs, evidence and tool
+  calls are read whole, in the order they were written, regions by `ordinal`.
+- **Method.** `SqlConnectRepository.run_thread(scope, specimen_id, run_id,
+  keys)` runs the operation, and `application/thread.py` assembles the response
+  from the snapshot and those rows. The route reuses the workspace route's
+  lookup, so authorization and its errors are the same.
+- **Not found.** `run_id` names the active run or one of the snapshot's
+  `previous_runs`. Any other value is refused with 404 `not_found` before SQL is
+  read, the same answer for an unknown run and for another specimen's, so the
+  response never shows that another specimen's run exists. A previous run that
+  history compaction (`storage.compact_history`) moved out of the current
+  snapshot is not found either. A run the snapshot holds but SQL has no rows for
+  yet reads with empty lists, a null `decision` and the snapshot's trace id.
+- **Status.** `run.status` applies the summary's rule to the run read, so a
+  previous run shows the status its last state gives.
+- **Bounds.** Every list has a fixed limit: 100 regions, 400 model outputs, 100
+  comparisons, 400 handoffs, 1,000 evidence items, 1,000 tool calls, 64 evidence
+  links per candidate, 500 resolved fields and 200 findings; the ids passed are
+  at most 100 decisions, 500 candidates and one record version. A run at a limit
+  is refused with 413 `thread_limit_exceeded` rather than shown in part.
+- **Trace link.** `SPECIMEN_TRACE_URL_TEMPLATE` is an `https` URL holding
+  `{trace_id}` exactly once, read when the API starts; a malformed value stops
+  the start. `trace.url` is the template with the run's trace id, from its
+  `PipelineRun` row, else its snapshot, and null when the setting is unset or
+  the id is not 32 lowercase hex.
+- **Cost.** `run.allowance` keeps `Run.program_allowance`'s `allowance_micros`,
+  `reserved_total_micros`, `remaining_micros` and `at`. `run.paid_calls` reads
+  each `Run.paid_calls` entry by section 8's keys, with `usage` as recorded:
+  tokens for a model call, seconds for SAM 3 (LANE.md T2b).
+- **Coverage detail** (coordinator ruling, 2026-09-23), from `Run.coverage_check`
+  as `label_coverage.py` records it (S3):
+  - `status` is `passed` for the outcome `confirmed`, `failed` otherwise, and
+    `not_run` without a check;
+  - `region_count`: `{found, min, max, reason_codes}`, where `found` is the
+    region count, `min` and `max` are the check's `min_label_regions` and
+    `max_label_regions`, else the pinned profile's
+    `segmentation_settings.coverage`, else null, and `reason_codes` are the
+    check's codes among `zero_regions`, `region_out_of_bounds` and
+    `label_region_count_out_of_range`;
+  - `full_image`: `{counted, outside, threshold, min_inside_fraction,
+    reason_codes}` from the cross check, where `outside` counts its uncovered
+    boxes and `reason_codes` is `cross_check_detection_outside_labels` when the
+    check has it;
+  - a check passes exactly when its `reason_codes` is empty;
+  - `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
+    else null, and `checked_at` is the check's.
+- **Local runtime.** `SQLiteRepository` writes no normalized rows (section 11),
+  so the local runtime has no thread: the route answers 404 `not_found`, as a
+  runtime without source configuration has no sources.
+- **Example.** `docs/execution/golive/thread-example.json` is the assembly of a
+  synthetic two-label run (`tests/thread_fixtures.py`). `tests/test_thread.py`
+  fails when the two differ, and `uv run python tests/test_thread.py` rewrites
+  the file.
+
 ## 9. Questions settled while this was in review
 
 - **Sensitive uploads and due work** (coordinator ruling, 2026-09-23). Uploads
@@ -794,7 +862,11 @@ against real PostgreSQL and the Data Connect emulator. It checks:
 - `ListDueWorkV2` lists the oldest due time first, with ties by id, pages one
   row at a time across a tie at a microsecond stamp, hides sensitive rows from
   the worker, and skips finished and undated runs; a stuck cursor fails the
-  test instead of hanging it.
+  test instead of hanging it;
+- `GetRunThreadV1` admits a viewer, refuses a non-member and a member without
+  sensitive access on a sensitive specimen, reads another specimen's run and an
+  unknown run as empty, and reads only the decision, candidates and record
+  version whose ids it is given, none for an empty list.
 
 `scripts/ci/test_data_release.py` pins the table count at 30. CI does not start
 the emulator. It does not compile the GraphQL, run the `@check`s, test replays,
@@ -810,6 +882,15 @@ runs against the emulator (`SPECIMEN_TEST_SQL_EMULATOR=true` with
 replays without duplicates or warnings. `tests/test_projection_derived.py` (T2c)
 checks the derived candidate, that a derived value without its record does not
 count, the authority identity, the Google refusal and the review call.
+
+For the thread (T3): `tests/test_thread.py` (the assembly, section 8 field by
+field, and the canonical example) and `tests/test_thread_api.py` (the workspace
+route's authorization, not found for another specimen's run and an unknown one,
+the active run by default, no thread on SQLite) run in CI. Both read
+`GetRunThreadV1`'s rows as `tests/thread_fixtures.py` emulates them from the
+writer's writes; `tests/test_sqlconnect_thread.py`, opt-in like the writer's
+emulator test, saves the synthetic run through `SqlConnectRepository` and checks
+that the real operation's thread equals the emulated one.
 
 ## 11. Projection writer (S5 T2)
 

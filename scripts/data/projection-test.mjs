@@ -434,3 +434,46 @@ denied(await due('worker', true));
 denied(await due('viewer', false));
 denied(await due('worker', false, {...start, afterId: 'not-a-cursor'}));
 console.log('PASS due work lists the oldest due time first, pages by due time and id, hides sensitive rows from the worker, and skips finished and undated runs');
+
+// The thread of one run (GetRunThreadV1, DATA_CONTRACT.md 8, T3): it admits whom the workspace route
+// admits, finds the run by its id and its specimen, and reads only the decision, candidates and
+// record version whose ids it is given, although the run by now holds several of each.
+const threadOf = (actorUid, specimenId, runId, ids = {}) => query('GetRunThreadV1', {...scope, actorUid, specimenId, runId, decisionIds: [], candidateIds: [], recordIds: [], ...ids});
+const current = {decisionIds: [work.transcription.id], candidateIds: [work.candidate.id], recordIds: [work.record.id]};
+const [read] = ok(await threadOf('worker', open, work.run.id, current)).runs;
+same(read.id, work.run.id);
+same(read.decisions.map(d => [d.id, d.decisionKind, d.selectedObservationId]), [[work.transcription.id, 'first_pass', work.left.id]]);
+same(read.handoffs.map(h => [h.role, h.observationId, h.handedText]), [['decided_transcript', work.left.id, work.left.literalText]]);
+same(read.candidates.map(c => [c.id, c.links.map(l => l.relation)]), [[work.candidate.id, ['supports', 'contradicts']]]);
+same(read.candidates[0].sourceTranscription.region.domainRegionId, work.region.domainRegionId);
+same(read.records.map(r => [r.id, r.fields.map(f => f.fieldKey), r.findings.map(f => f.severity)]), [[work.record.id, ['city'], ['hard', 'warning', 'warning']]]);
+// The run's own four regions: its first, a second label, a superseding one and one with a crop.
+assert.equal(read.regions.length, 4);
+same(read.regions.slice(0, 2).map(r => [r.domainRegionId, r.ordinal]), [[work.region.domainRegionId, 0], [second.domainRegionId, 1]]);
+same(read.observations.filter(o => !o.independent).map(o => [o.id, o.rawAsset.sha256]), [[work.firstPassCall.id, hex('9')]]);
+const geocode = read.toolCalls.find(t => t.callKey === work.toolCall.callKey);
+same([geocode.transcriptionVersion.region.domainRegionId, geocode.observation, geocode.evidenceId], [work.region.domainRegionId, null, work.evidence.id]);
+// Timestamps come back in UTC with six fractional digits, whatever form was written.
+assert.equal(geocode.startedAt, '2026-09-23T12:00:00.000000Z');
+same(read.toolCalls.filter(t => t.inputSource === 'raw_reading').map(t => t.observation.region.domainRegionId), [work.region.domainRegionId]);
+same(read.evidence.filter(e => e.source === 'label-coverage-check').map(e => [e.outcome, e.locator]), [['recorded', 'coverage/region-count']]);
+// With no ids, no decision, candidate or record version is read: an empty list selects none.
+const none = ok(await threadOf('worker', open, work.run.id)).runs[0];
+same([none.decisions, none.handoffs, none.candidates, none.records], [[], [], [], []]);
+assert.ok(none.regions.length > 0 && none.toolCalls.length > 0);
+// A viewer reads what the workspace shows it; a non-member is refused, and so are oversized id lists.
+assert.equal(ok(await threadOf('viewer', open, work.run.id, current)).runs.length, 1);
+denied(await threadOf('stranger', open, work.run.id, current));
+denied(await threadOf('worker', open, work.run.id, {decisionIds: Array.from({length: 101}, () => randomUUID())}));
+denied(await threadOf('worker', open, work.run.id, {recordIds: [work.record.id, randomUUID()]}));
+// A sensitive specimen's thread needs sensitive access; the worker's membership has none.
+denied(await threadOf('worker', closed, kept.run.id));
+assert.equal(ok(await threadOf('reviewer', closed, kept.run.id)).runs.length, 1);
+// Another specimen's run, a sensitive one included, and an unknown run read as empty.
+same(ok(await threadOf('worker', open, b.run.id)).runs, []);
+same(ok(await threadOf('reviewer', open, kept.run.id)).runs, []);
+same(ok(await threadOf('worker', open, randomUUID())).runs, []);
+// A run that reuses a region id reads its own region row only.
+const [later] = ok(await threadOf('worker', open, again.id)).runs;
+same(later.regions.map(r => r.domainRegionId), [work.region.domainRegionId]);
+console.log('PASS the thread admits the workspace route\'s readers, reads a run only through its own specimen, and only the decision, candidates and record version it is given');
