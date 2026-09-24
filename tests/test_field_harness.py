@@ -510,6 +510,47 @@ def test_elevations_the_label_leaves_out_are_derived_with_evidence():
     assert rules == {"derivation:stated_elevation", "derivation:unit_conversion"}
 
 
+def test_a_value_the_model_asserts_without_a_record_does_not_count():
+    # #124: a derived value counts only with its record. The agent can only
+    # propose what a reading says; the metres come from G41's rule alone.
+    reading = Reading("r1", "o-muse", "decided_transcript", "Volcan Fuego, 3937 ft")
+    asserted = answer(
+        **{"1A": {"elevation_from_ft": "3937 ft", "elevation_from_m": "1250 m"}}
+    )
+    seen = []
+
+    outcome, _ = harness(
+        asserted,
+        answer(**{"1A": {"elevation_from_ft": "3937 ft"}}),
+        seen=seen,
+        readings=[reading],
+        plan=ELEVATIONS,
+    )
+
+    retry = [
+        p.content
+        for m in seen[1][0]
+        for p in getattr(m, "parts", [])
+        if type(p).__name__ == "RetryPromptPart"
+    ]
+    assert retry == ["elevation_from_m: copy the literal exactly as reading 1A has it"]
+    metres = outcome.fields["elevation_from_m"]
+    assert (metres.layer, metres.parsed, metres.derived_from) == (
+        "derived",
+        "1200",
+        ["elevation_from_ft"],
+    )
+    (rule,) = [
+        e
+        for e in outcome.evidence
+        if e.id in metres.evidence_ids and e.kind == "derivation"
+    ]
+    assert (rule.source, rule.locator) == (
+        "apply_derivations",
+        "derivation:unit_conversion",
+    )
+
+
 def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():
     # G37: S8's tool derives the county by containment from the settled city.
     class Deriving(Fakes):

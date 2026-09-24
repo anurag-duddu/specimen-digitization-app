@@ -621,7 +621,10 @@ the dataset), the settled input fields with their values, and its checks.
     the label states nothing in that unit (`unit_conversion`);
   - converted values are kept to hundredths, and copied values stay as stated;
   - an elevation literal must state exactly one number, and nothing is derived
-    while any elevation the label states is unsettled.
+    while any elevation the label states is unsettled;
+  - their authority is `apply_derivations` at the rules' version
+    (`derivation-rules-v1`), so a G41 value names its stated field, its rule
+    and `apply_derivations` (#124).
 
 **Applying derivations** (`apply_derivations`), whoever emitted them:
 - A field the label states is never replaced; its verbatim stays as written.
@@ -639,4 +642,8 @@ the dataset), the settled input fields with their values, and its checks.
   derivation itself with the evidence ids of the tool call that returned it. The
   input fields' evidence `supports` it, and so does that call's evidence, which
   links its `ToolCallRecord`. A derived value thus names its settled inputs,
-  the authority with its version, and the tool call (#124, PLAN 4.8).
+  the authority with its version, and the tool call or, for G41's rules,
+  `apply_derivations` (#124, PLAN 4.8).
+- A value counts as derived only with that record. The model can't assert
+  one: the agent proposes only literals its readings contain, and a field the
+  label leaves out is filled only by a derivation that applies.
