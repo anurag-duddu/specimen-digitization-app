@@ -12069,3 +12069,38 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The runtime's D3 wait runs in its lock-free admission job, so it never deadlocks with this job.
 - Failed approaches: none.
 - Remaining follow-ups: T3d, applies while the runtime runs. T3d's read-back and T3e start on the steward's word after #124.
+
+### 2026-09-24 — Go-live release workstream (S2), T3d: the apply while the runtime runs
+
+- Task: the S2 session, T3d's first pull request (`docs/execution/golive/RELEASE.md` section 4.4): the apply without the first apply's clone and without the drop, and verify's SQL checks.
+- Branch/worktree: `golive/release-data-apply`, stacked on #163's branch. S2 wrote the spec commit; an Opus subagent wrote the red and green commits in its own worktree; this session reviewed them and added the expiry tolerance.
+- Outcome:
+  - **The spec (the coordinator's rulings of 2026-09-24):**
+    - every apply's own backup expires after 7 days, and its size must not exceed the source disk;
+    - the rollback guard's record is a `source-sha` label on the Data Connect schema, set by the same PATCH and checked with GitHub's compare API;
+    - the first apply, with no label, restores that backup into the fixed clone and claims the single-use allowance create-only (the second pull request);
+    - verify reads the catalog and the index inventory.
+  - **`deploy_data.py`, the apply**, after the additive gate. Three checks stop before any effect: the rollback guard, point-in-time recovery, and (until the next pull request) the first apply. Then, in order:
+    1. this attempt's backup, behind a write-once intent;
+    2. the client-side migration;
+    3. the schema, `COMPATIBLE` and carrying the label;
+    4. the supplemental indexes;
+    5. the connector and the Storage rules;
+    6. the catalog check.
+
+    The receipt adds the label, the backup id, and the table and view counts.
+  - **verify** reads the catalog (`migrated`) and the index inventory (the new `indexed` mode), read-only. A missing or changed index makes the phase `apply`.
+  - The release job's timeout is 75 minutes.
+- Commits/PRs: the spec `a536c50`; red `637f6c3`; green `08f09e2`; this closeout.
+- Validation actually run:
+  - the subagent: red 107 failed, 250 passed; green 357 passed; PostgreSQL 23 passed;
+  - this session, at this head: the seven focused files, 360 passed; both PostgreSQL files, 45 passed.
+- Durable learnings:
+  - Check a cloud readback with a tolerance where the service may normalize it. An exact-second match on the backup's expiry would stop every apply after it had paid for its backup.
+  - GitHub's compare API reads `base...head`. With the label as base and the merged commit as head, `ahead` means a descendant.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - The first apply's clone and claim (the next pull request).
+  - The drop, after #146 and the steward's word.
+  - #119's reads table gains `cloudsql.backupRuns.get` and the Cloud SQL operation read.
+  - The coordinator decides how a re-run proceeds after a spent claim.

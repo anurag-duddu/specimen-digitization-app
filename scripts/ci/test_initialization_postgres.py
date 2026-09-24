@@ -248,6 +248,21 @@ def test_pg18_the_migration_runs_as_the_owner_and_the_writer_inserts_with_uuid_g
         'views': [], 'owners': [OWNER], 'extensions': ['plpgsql', 'uuid-ossp']}
 
 
+def test_pg18_the_index_inventory_reads_each_index_definition_read_only(postgres, tmp_path):
+    """RELEASE.md 4.4, Verify: release_sql.mjs indexed reads what verify_indexes checks, and no row."""
+    assert transaction(postgres).returncode == 0
+    assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION, UNIQUE)[0] == 0
+    code, value = release_sql(postgres, tmp_path, 'indexed')
+    assert code == 0 and value['version'] == 'native-sql-indexes/v1' and value['instance'] == 'specimen-digitization-instance'
+    assert value['indexes'] == [
+        {'name': 'organization_name_uidx', 'table_name': 'organization', 'method': 'btree', 'valid': True, 'unique': True,
+         'predicate': None, 'keys': ['name'], 'includes': [],
+         'definition': 'CREATE UNIQUE INDEX organization_name_uidx ON public.organization USING btree (name)'},
+        {'name': 'organization_pkey', 'table_name': 'organization', 'method': 'btree', 'valid': True, 'unique': True,
+         'predicate': None, 'keys': ['id'], 'includes': [],
+         'definition': 'CREATE UNIQUE INDEX organization_pkey ON public.organization USING btree (id)'}]
+
+
 def test_pg18_one_failing_statement_rolls_the_whole_migration_back(postgres, tmp_path):
     assert transaction(postgres).returncode == 0
     assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION)[0] == 0

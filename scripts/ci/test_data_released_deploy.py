@@ -24,8 +24,8 @@ DATABASE = f"{INSTANCE}/databases/{D.DATABASE}"
 RULESET = f"projects/{D.PROJECT}/rulesets/0f6e2a57-1c3b-4d8e-9a70-5b2c4d6e8f10"
 UPDATED = "2026-09-23T08:00:00.123456789Z"
 KEYS = {"version", "source_sha", "run_id", "run_attempt", "phase", "schema_etag", "schema_update_time",
-        "connector_etag", "storage_ruleset"}
-T3D = "the additive apply arrives with T3d; this phase fails closed until then"
+        "connector_etag", "storage_ruleset", "source_sha_label", "backup_id", "tables", "views"}
+FIRST = "the first apply's clone arrives with the next pull request"
 # Private-looking values a live resource may carry; none may reach a receipt, a step output or the log.
 CANARIES = ("canary-uid-7f3a", "canary-account@example.invalid", "canary-fingerprint", "canary-address")
 MERGED_SCHEMA = "type Specimen @table {\n  id: UUID!\n  label: String\n}\n"
@@ -41,6 +41,9 @@ EMPTY = {"expected_database": True, "expected_actor": True, "relations": 0, "vie
 INITIALIZED = {**EMPTY, "routines": 10, "extensions": ["uuid-ossp"], "roles": ROLES}
 EARLIER = f"data-initializer-{SHA}-1"
 STOP = "the application database is neither empty nor initialized by this run; adopting it needs a ruling"
+# The catalog release_sql.mjs reads read-only for the merged tree below (RELEASE.md 4.4, Verify).
+MERGED_CATALOG = {"expected_database": True, "expected_actor": True, "tables": ["public.specimen"], "views": [],
+                  "owners": [D.OWNER], "extensions": ["plpgsql", "uuid-ossp"], "postconditions": {"schema_owner": D.OWNER}}
 
 
 def record(plane="data", **changes):
@@ -89,9 +92,8 @@ class FakeGoogle:
         return copy.deepcopy(self.live[api, resource])
 
 
-@pytest.fixture
-def release(tmp_path, monkeypatch, capsys):
-    """Run the release against live resources; every exit keeps the receipt, the step output and the log public."""
+def tree(tmp_path, monkeypatch):
+    """The merged tree as the repository root, and the receipt and step output paths; no bootstrap artifact."""
     root, output, steps = tmp_path / "merged", tmp_path / "data-released.json", tmp_path / "github-output"
     for relative, text in (("dataconnect/schema/schema.gql", MERGED_SCHEMA), ("storage.rules", RULES),
                            ("dataconnect/connector/operations.gql", OPERATIONS),
@@ -102,10 +104,22 @@ def release(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(D, "ROOT", root)
     monkeypatch.setenv("GITHUB_OUTPUT", str(steps))
     monkeypatch.delenv("DATA_BOOTSTRAP_ARTIFACT_B64", raising=False)
+    return output, steps
+
+
+@pytest.fixture
+def release(tmp_path, monkeypatch, capsys):
+    """Run the release against live resources; every exit keeps the receipt, the step output and the log public."""
+    output, steps = tree(tmp_path, monkeypatch)
 
     def run(live, packet=None, summary=EMPTY, listing=()):
+        from test_data_first_initialization import inventory  # that module imports this one
         google = FakeGoogle(live, record() if packet is None else packet)
         monkeypatch.setattr(D, "Google", lambda path, plane: google if plane == "data" else pytest.fail("data only"))
+        # Verify's reads (RELEASE.md 4.4): the catalog and the supplemental index inventory, for the admitted commit.
+        reads = {"migrated": MERGED_CATALOG, "indexed": inventory()}
+        monkeypatch.setattr(D, "gate_sql", lambda mode, directory, sha, *inputs, **kwargs: copy.deepcopy(reads[mode])
+                            if sha == SHA and not inputs else pytest.fail("verify reads only"))
         if summary is not None:
             monkeypatch.setattr(D, "first_catalog", lambda directory, sha: copy.deepcopy(summary) if (directory, sha)
                                 == (tmp_path / "release", SHA) else pytest.fail("the admitted commit reads it"), raising=False)
@@ -126,10 +140,10 @@ def release(tmp_path, monkeypatch, capsys):
     return run
 
 
-def receipt(phase, connector="connector-etag", ruleset=RULESET):
+def receipt(phase, connector="connector-etag", ruleset=RULESET, **facts):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": connector,
-            "storage_ruleset": ruleset}
+            "storage_ruleset": ruleset, **dict.fromkeys(("source_sha_label", "backup_id", "tables", "views")), **facts}
 
 
 def gets(*resources):
@@ -204,7 +218,7 @@ def test_an_unreadable_catalog_or_artifact_listing_stops_with_a_fixed_reason(rel
 
 def test_live_sources_equal_to_the_merged_ones_verify_and_change_nothing(release):
     google, value, outputs = release(state(MERGED, OPS))
-    assert google.error is None and outputs == "phase=verify\n" and value == receipt("verify")
+    assert google.error is None and outputs == "phase=verify\n" and value == receipt("verify", tables=1, views=0)
     assert google.calls == gets(("data", SCHEMA), ("data", CONNECTOR), ("rules", D.RULE_RELEASE), ("rules", RULESET),
                                 ("sql", INSTANCE), ("sql", DATABASE))
 
@@ -226,9 +240,11 @@ def test_verify_requires_a_persistent_schema_and_a_reconciled_connector(release,
     state({"schema.gql": "type Specimen @table {\n  id: UUID!\n}\n"}, OPS),
     state(MERGED, OPS, rules="rules_version = '2';\n"), state(MERGED, OPS, rules=None),
 ], ids=["new-nullable-field", "changed-rules", "no-rules-release"])
-def test_an_additive_change_chooses_apply_which_fails_closed_until_t3d(release, live):
+def test_an_additive_change_to_an_unlabelled_schema_is_the_first_apply_which_stops_before_any_effect(release, live):
+    """RELEASE.md 4.4: a schema without the source-sha label is the first apply after T3c; its clone arrives with T3d's
+    second pull request. The fake refuses every request but a GET."""
     google, value, outputs = release(live)
-    assert google.error == T3D and outputs == "phase=apply\n"
+    assert google.error == FIRST and outputs == "phase=apply\n"
     assert value == receipt("apply", ruleset=RULESET if ("rules", RULESET) in live else None)
 
 

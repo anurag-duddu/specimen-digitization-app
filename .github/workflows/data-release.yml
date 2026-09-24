@@ -48,7 +48,9 @@ jobs:
     needs: admission
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # The gate record's hour, which the re-admission starts, bounds every wait of an apply: the backup, the migration,
+    # and the first apply's clone restore and deletion. Ten more minutes cover the setup and the receipt's upload.
+    timeout-minutes: 75
     environment: data-production
     outputs:
       phase: ${{ steps.deploy.outputs.phase }}

@@ -42,7 +42,8 @@ def test_native_index_catalog_matches_ddl_and_rejects_valid_wrong_same_name(tmp_
                 if statement.strip():
                     sql(statement)
         script = Path(__file__).with_name("release_sql.mjs").read_text()
-        query = re.search(r"const indexes = \(await client.query\(`(.*?)`\)\).rows;", script, re.S).group(1)
+        # The inventory and the indexed mode read the one query (RELEASE.md 4.4, Verify).
+        query = re.search(r"const INDEXES = `(.*?)`;", script, re.S).group(1)
         def inventory():
             return {"indexes": json.loads(sql("SELECT json_agg(x) FROM (" + query + ") x"))}
         observed = inventory()

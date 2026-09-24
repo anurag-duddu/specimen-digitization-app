@@ -925,8 +925,20 @@ every push to `main` without an envelope. The specification is
    release, the SQL instance and the application database without changing
    them, then chooses the phase. `verify`: the live schema, connector and
    Storage rules equal the merged files; the job checks that the schema is
-   persistent and both are reconciled, and succeeds. `apply` fails closed
-   until T3d, and names each change the additive-only gate refuses.
+   persistent and both are reconciled, then reads the catalog and the
+   supplemental index inventory read-only, and succeeds. A missing or
+   changed supplemental index makes the phase `apply`. `apply`: anything
+   else the additive-only gate admits; it names each change it refuses.
+   The merged commit must be the schema's `source-sha` label or a
+   descendant of it, and point-in-time recovery must be on. The job then
+   takes an on-demand backup that expires after 7 days, runs Data
+   Connect's diff as the `firebaseowner` role, applies the schema
+   `COMPATIBLE` on the live etag with the merged commit as its
+   `source-sha` label, creates the supplemental indexes, applies the
+   connector and the Storage rules, and checks the catalog
+   ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.4). A schema
+   without the label is the first apply, which stops before any effect
+   until its restore check lands.
    `initialize`, the empty placeholder schema without a connector, first
    reads the application database's catalog and outputs `init_step`
    ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.3). Any other

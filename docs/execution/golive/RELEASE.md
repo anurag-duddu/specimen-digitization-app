@@ -455,15 +455,52 @@ must still be open for any job that needs a time-bounded role.
 
 ### 4.4 Apply while the runtime runs (T3d)
 
+The coordinator's rulings of 2026-09-24 settle the backup's retention, the
+first apply's claim and the rollback guard's record.
+
 1. Before every apply, an on-demand backup must reach `SUCCESSFUL`, and
    point-in-time recovery must be on. On the first apply after the plane goes
    live, that backup is also restored into a short-lived clone; the clone's
    catalog is checked and the clone is deleted (D1).
+   - **Retention.** The backup expires 7 days after it is sent; Cloud SQL's
+     readback may differ from the request by at most a minute. Its size is
+     read back once it exists, and must not exceed the source disk. Its cost
+     falls under G9's USD 25 and the billing alert; no release reserves it.
+     The daily automated backups and point-in-time recovery stay as they are.
+   - **The first apply** is the one whose live schema carries no
+     `source-sha` label (item 2). Its clone is
+     `specimen-digitization-restore-20260908-r1`. The clone's catalog is
+     checked as item 5 checks the source's, but against the live schema: the
+     backup comes before the migration, so it holds the tables this apply
+     starts from.
+   - **The claim.** Before it creates the clone, the apply claims the
+     single-use restore allowance of `CLONE_ALLOWANCE.md` itself. It writes
+     `application/release-control/first-production-restore.json`
+     create-only (`ifGenerationMatch=0`). The claim binds the gate record's
+     commit, the run id and attempt, the backup id, the clone name, the
+     source instance, and a window of at most two hours inside the gate
+     record's deadline. `baseline_sha256` and `iam_sha256` retire with the
+     coordinator's issuance (G11).
+   - **Single use** rests on three things:
+     - the fixed key;
+     - the data identity having no permission to delete or update the claim;
+     - the time-bounded `specimenDataRestoreAllowanceClaim` role, which the
+       owner opens for that run.
+
+     If a claim already exists, the apply stops and the coordinator decides,
+     because deleting a claim never refunds the allowance.
 2. The gate of section 4.1 must pass, and the merged commit must be the one
    the plane last applied or a descendant of it, checked like the runtime's
    rollback guard against a commit the apply records. A manual re-run of an
    older run could otherwise roll the Storage rules back; the gate already
    refuses a stale schema's apparent removals.
+   - **The record** is a `source-sha` label on the Data Connect schema,
+     holding the merged commit. The apply sets it in the same PATCH that
+     applies the schema.
+   - **The check.** Before any effect, the apply reads the label. GitHub's
+     compare API must report the merged commit `identical` to it or `ahead`
+     of it, as the runtime's guard does (#100).
+   - A schema without the label is the first apply after T3c.
 3. The schema is migrated client-side, exactly as in 4.3 step 3, and applied
    with `schemaValidation: COMPATIBLE`, conditional on the live etag. Before a
    change that drops `specimen_unique_1` (step two of the exception in 4.1),
@@ -479,6 +516,22 @@ must still be open for any job that needs a time-bounded role.
 
 No writer is quiesced and no row hash is compared, because the runtime keeps
 running.
+
+**Verify.** With SQL access, the `verify` phase of section 4.2 also reads, as
+`specimen-data-release` and read-only:
+- the catalog, as item 5 does: the postconditions, exactly the declared
+  tables, one owner, and `plpgsql` and `uuid-ossp`;
+- the supplemental index inventory.
+
+A missing or changed supplemental index makes the phase `apply`.
+
+**Pull requests.** T3d lands in stacked pull requests:
+1. the apply without a clone or a drop: items 1 to 5, the rollback guard, and
+   verify's SQL checks;
+2. the first apply's clone and claim (D1);
+3. step two's drop, which waits for S5's #146 and the PR steward's word.
+
+Until the second pull request lands, a first apply stops before any effect.
 
 ### 4.5 Bootstrap (T3e)
 
