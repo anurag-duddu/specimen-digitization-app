@@ -11982,3 +11982,28 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) A brief can ask for a change the system already makes unnecessary. "Relax the gate" assumed the lane's records had no verified view; asking S3 how the lane stores its view showed they do. The honest deliverable is a test that proves the existing gate is right, not a weaker gate. (2) A test-only PR has no red phase. Say so in the PR, and say what a failure would mean (here: the lane's records not drawing boxes), so the missing red commit reads as design, not omission.
 - Failed approaches: none.
 - Remaining follow-ups: everything left waits on other sessions. `pending`, the Process action and intake's live status wait on #85 (with #136); the lookups timeline on #90; T2f on S5's route; the `reviewer_decision` on S5's T3; G38's derived mark and "Fill the rest" (asynchronous) on S5's T6.
+
+### 2026-09-24 — Go-live S6 T2f part one: the thread model follows #171
+
+- Task: go-live workstream S6, brief T2 ("the thread view"). The model's half of building against S5's thread API, #171 at `a73b323`.
+- Branch/worktree: `golive/ui-thread-model-171`, stacked on `golive/ui-region-boxes` (#142); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.1 lists what #171 adds to section 8, and `lib/src/thread/thread.dart` reads all of it:
+  - a region's `reviewer_decision`, beside the model's first pass;
+  - a field's `layer` (unknown keeps its word), `derived_from`, `authority_identity` (null unless it names a record; a Google value has no name) and its own `findings`;
+  - the finding's `rule_version`, `outcome` and `evidence_ids`;
+  - the `review` input source with `review_decision_id`, named "reviewer's text";
+  - evidence `observation_ids`;
+  - a Google call's `place_ids`.
+  S5's `thread-example.json` is now the canonical fixture, copied byte for byte. A byte-for-byte test compares it with `docs/execution/golive/thread-example.json`, and skips until #171 brings that file.
+- Commits/PRs: red `d6c6039`; green ``bcfb56c``; the pull request opened from this branch depends on #142 and the chain below it.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `check_ui_strings.py` 0 violations; `test/thread_model_test.dart` 39 passed; the full app suite 1,731 passed, 7 skipped, 0 failed, run before the drift test was added; the drift test proven three ways with #171's file placed locally and then removed: skipped when absent (39 passed, 1 skipped), passed when identical, and failed with the copy instruction when one byte differed.
+- Durable learnings: (1) A copied fixture is only "one file" if a test says so. A byte-for-byte test that skips until the source file reaches the branch, and whose failure names the copy command, keeps the client and the server honest without blocking either before the other merges. (2) Adding a value to an enum that an exhaustive `switch` covers is a compile error by design. The words for the new value belong in the same change, with a test that walks `values`, so the next value added fails the same way.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - the reviewer's decision beside the first pass (FirstPassSummary);
+  - the derived mark with `derived_from`;
+  - field findings replacing the per-field filter of `decision.findings`;
+  - the authority identity with its credit;
+  - the per-label fallback settled entry;
+  - words for `catalogue-of-life` and `field_harness`, once S5 says which Catalogue of Life id is real;
+  - the fetch (T2f part two) after S5's T4.
