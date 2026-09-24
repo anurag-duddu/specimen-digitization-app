@@ -99,3 +99,21 @@ def test_the_run_is_not_changed():
     )
 
     assert run.model_dump() == before
+
+
+def test_a_reviewers_date_fills_date_visited_to():
+    # G44 in review's "fill the rest".
+    run = Run(
+        fields={"date_visited_from": FieldValue(), "date_visited_to": FieldValue()}
+    )
+
+    proposal = derive_rest(
+        run,
+        {"date_visited_from": "1946-09-03"},
+        decision_id="d-1",
+        asset_id="a",
+        blobs=Blobs(),
+    )
+
+    to = proposal.fields["date_visited_to"]
+    assert (to.parsed, to.precision, to.layer) == ("1946-09-03", "day", "derived")

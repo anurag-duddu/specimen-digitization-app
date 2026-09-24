@@ -20,6 +20,7 @@ from specimen_digitization.application.domain import LookupStatus as S
 from specimen_digitization.application.domain import ValueState as V
 from specimen_digitization.application.field_harness import FieldPlan, run_harness
 from specimen_digitization.application.field_resolution import Reading
+from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.harness_ledger import ToolLedger
 from specimen_digitization.application.harness_tools import (
     PlaceCandidate,
@@ -179,6 +180,9 @@ def lane_run(by_reading=None, *, texts=None, decided=True, tools=None) -> Run:
             harness_route="harness-test",
             policy_version="insects-clearance-v2",  # As the lane's profile names it.
         ),
+        profile_snapshot={
+            "harness_knowledge": {"id": "insects", "version": insects.KNOWLEDGE_VERSION}
+        },
         regions=[
             Region(
                 id="r1",
@@ -428,4 +432,60 @@ def test_the_approval_gates_stay_for_a_run_the_harness_did_not_decide():
         "institutional_policy_unapproved",
         "mandatory_semantics_unconfirmed",
         "human_approval_required",
+    ]
+
+
+def test_a_single_collecting_date_fills_to_derived_and_the_record_clears():
+    # G44: "Date Visited To gets the same date, marked as derived from Date
+    # Visited From, so the record can clear on it."
+    single = {k: v for k, v in STATED.items() if k != "date_visited_to"}
+
+    run = decided(lane_run({"1A": single}))
+
+    to = run.fields["date_visited_to"]
+    assert (to.layer, to.parsed, to.precision, to.derived_from) == (
+        "derived",
+        "1948-05-14",
+        "day",
+        ["date_visited_from"],
+    )
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+@pytest.mark.parametrize(
+    ("field", "written"),
+    [
+        ("collectors", "VI-24-68-7"),  # The real run on 105526328.
+        ("collection_code", "IV-29-68-a"),  # The real run on 105526330.
+        ("habitat", "♀ legs Sp.#1"),  # The real run on 105526330.
+    ],
+)
+def test_a_value_that_does_not_look_like_its_field_goes_to_review(field, written):
+    # G45: in a field no lookup checks, a value that doesn't look like its
+    # field's kind goes to review with its own reason.
+    label = LABEL + "\n" + written
+
+    run = decided(
+        lane_run(
+            {"1A": STATED | {field: written}}, texts={"o-muse": label, "o-qwen": label}
+        )
+    )
+
+    assert run.reasons == [f"value_shape_mismatch:{field}"]
+
+
+def test_a_preparation_code_in_verbatim_dts_is_a_finding_that_never_routes():
+    # PRD 522 leaves verbatim_dts's meaning unconfirmed (G45, the coordinator).
+    label = LABEL + "\n10-6-78-la"
+    run = lane_run(
+        {"1A": STATED | {"verbatim_dts": "10-6-78-la"}},
+        texts={"o-muse": label, "o-qwen": label},
+    )
+
+    decided(run)
+    decided(run)  # Decided again: the finding is not repeated.
+
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert [(f.field_key, f.reason_code) for f in run.findings] == [
+        ("verbatim_dts", "value_shape_mismatch:verbatim_dts")
     ]
