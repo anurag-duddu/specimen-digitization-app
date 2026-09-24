@@ -242,9 +242,7 @@ OTHER_LITERALS = ["F.G. Werner", "3 sept. '46", "Mossy forest", "6400'"]
 
 
 def test_unassigned_locality_text_is_what_no_reading_assigns_on_the_place_lines():
-    assert unassigned_text(READING_321, PLACE_LITERALS, OTHER_LITERALS) == [
-        "Mindanao"
-    ]
+    assert unassigned_text(READING_321, PLACE_LITERALS, OTHER_LITERALS) == ["Mindanao"]
     # A raw reading's literal counts too.
     assert unassigned_text(READING_321, PLACE_LITERALS, ["Mindanao"]) == []
 

@@ -777,9 +777,7 @@ def test_the_agents_check_cuts_the_literals_it_names_for_the_other_fields():
     ],
     ids=["a-locality-field", "not-a-field", "not-in-the-reading"],
 )
-def test_the_other_fields_literals_are_checked_before_any_place_request(
-    others, retry
-):
+def test_the_other_fields_literals_are_checked_before_any_place_request(others, retry):
     check = [
         (
             "geocode",
@@ -811,7 +809,9 @@ def test_no_cut_token_leaves_the_harness_in_a_place_request():
 
     fields = {**PLACES_1A, "country": "P.I. 3 Sept. '46"}
     check = [("geocode", {"reading": "1A", "fields": fields, "others": OTHERS_1A})]
-    final = answer(**{"1A": {**fields, **OTHERS_1A, "date_visited_from": "3 Sept. '46"}})
+    final = answer(
+        **{"1A": {**fields, **OTHERS_1A, "date_visited_from": "3 Sept. '46"}}
+    )
     reading = Reading("r1", "o-muse", "decided_transcript", PLACE_LABEL)
 
     with httpx.Client(transport=httpx.MockTransport(endpoint)) as client:

@@ -459,9 +459,7 @@ def test_what_leaves_is_what_plan_4_8s_filter_lets_leave():
     ],
     ids=["not-in-the-readings", "no-readings", "no-knowledge", "unknown-knowledge"],
 )
-def test_a_query_the_filter_refuses_is_policy_blocked_and_nothing_leaves(
-    change, code
-):
+def test_a_query_the_filter_refuses_is_policy_blocked_and_nothing_leaves(change, code):
     seen = geocode(QUERY.model_copy(update=change), reply(DAVAO), allow=lambda n: True)
 
     assert seen.requests == [] and seen.reservations == [] and seen.blobs.puts == []

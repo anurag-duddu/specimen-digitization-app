@@ -12013,3 +12013,20 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the copy tests (the real run on 105526321) fail without the guard and pass with it; two equal written dates and a range keep both ends; the harness, queue-decision, derivation and runtime suites pass; the full Python suites and pre-commit.
 - Durable learnings: an instruction in the knowledge reduced the copying but did not stop it. On a rerun, 105526330 gave its elevation once, while 105526321 still copied both its elevation and its date. When an owner rule can be checked from the reading itself ("written once"), a deterministic guard makes it hold whatever the model does. The value and the clearance stay the same; the provenance becomes true.
 - Remaining follow-ups: none for this change.
+
+### 2026-09-24 — Go-live S4: PLAN 4.8's place-request filter
+
+- Task: go-live S4: build the one filter that decides what label text a place request carries, under PLAN 4.8 as #174 left it on main (275b399), with the coordinator's rulings (option c full forms, Roman months cut, nothing-to-send outcome, forms order, profile switch after this PR) and the steward's clarifications of 2026-09-24.
+- Branch/worktree: `golive/harness-place-requests`, stacked on `golive/harness-range-copies` (#172), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `application/place_text.py`.
+  - `place_request_forms` refuses a value not drawn from its sources. It applies the four cuts at token level, plus Roman months, and returns the value as written, then each full-form permutation. `place_request_text` gives the first form. `unassigned_text` gives a reading's unassigned locality text.
+  - Google's tool applies it to every request: a refused query is `policy_blocked` (`place_text_refused`), and an empty one is `no_match` (`place_text_empty`), with no Google call recorded. Google keeps the as-written form.
+  - The agent's `geocode` takes `others`, the reading's literals for its other fields. Every query carries the reading texts, the non-place literals, the knowledge's id and the unassigned text.
+  - Insects knowledge v3 holds the markers, months and full forms. S8's tiers import the same module.
+  - Spec: `docs/execution/golive/HARNESS.md` sections 7, 10, 11, 12, 13 and 14.
+- Validation actually run: the red tests failed on the missing module, symbol and fields. With the filter, the filter, knowledge, geography, ledger, harness, runtime and queue-decision suites pass, including an end-to-end run on the real Google tool against a fake endpoint where no cut token leaves. Then the full Python suites and pre-commit.
+- Durable learnings:
+  - (1) Word-level matching is right for names and wrong for Roman numerals: "P.I." folds to the words "p i", so an "I" cut by word would have cut the Philippines. Roman months are cut only when every word of a token is one.
+  - (2) A marker clause has to be cut from the reading, not only from the text being sent. Otherwise a collector the agent gives to a place field leaves on its own.
+  - (3) Unassigned text as a no-field literal broke two test fakes that built outcomes for every literal; fakes have to model which fields the real tool reports.
+- Remaining follow-ups: S8 imports `place_request_forms` for its tiers once this is on a branch it can stack on. S3's profile switch names v3 and lands after this PR (coordinator ruling). The coordinator's next plan PR (#180) records the Roman-month cut and the key's wording.

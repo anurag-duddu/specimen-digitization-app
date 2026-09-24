@@ -185,7 +185,9 @@ def geocode(query, **kwargs):
         retrieved_at="t",
         outcome=S.RATE_LIMITED,
     )
-    outcomes = {item.field_key: S.RATE_LIMITED for item in query.literals}
+    # Like the real tool, it reports only assigned fields, never the
+    # unassigned locality text ("GUAT." here).
+    outcomes = {i.field_key: S.RATE_LIMITED for i in query.literals if i.field_key}
     return ToolResult(
         tool="geography_lookup",
         tool_version="v1",

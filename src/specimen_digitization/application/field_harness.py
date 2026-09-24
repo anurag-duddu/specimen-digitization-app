@@ -10,7 +10,7 @@ decide nothing and no value is invented (HAR-019).
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from pydantic import Field
@@ -33,7 +33,8 @@ from .field_resolution import (
     choose_reading,
     date_order_evidence,
 )
-from .harness_ledger import ToolLedger, called, served
+from .harness_ledger import PlaceContext, ToolLedger, called, served
+from .place_text import PLACE_FIELDS, unassigned_text
 from .reliability import AdapterFailure, run_agent_bounded
 
 # G30: every request reserves its worst case, so a run is bounded by these caps
@@ -43,7 +44,9 @@ MAX_OUTPUT_TOKENS = 2_048  # Per request, enforced by the provider.
 REQUEST_LIMIT = 8  # Per run.
 INPUT_TOKEN_LIMIT = 60_000  # Per run, checked after each response.
 MAX_PROMPT_BYTES = 12_000  # Instructions, readings and tool definitions.
-TOOL_DEFINITION_BYTES = 2_000  # Allowance for the tools' schemas in the prompt.
+# Allowance for the tools' schemas in the prompt: 2,122 bytes measured with
+# the place check's `others` (PLAN 4.8, 2026-09-24), the output tool included.
+TOOL_DEFINITION_BYTES = 2_400
 MAX_TOOL_CALLS = 12  # The agent's tool calls per run.
 MAX_GEOCODING_REQUESTS = 4  # Per run, the agent's and the final ones together.
 GEOGRAPHY = "geography_lookup"
@@ -170,10 +173,12 @@ def run_harness(
     asset_id: str,
     blobs,
     timeout_seconds: float,
+    knowledge_id: str | None = None,
 ) -> HarnessOutcome:
     """Run the agent within the G30 caps, then decide every field from the
     ledger's records. A harness failure (G6) decides no field; a provider error
-    raises, as an operational block."""
+    raises, as an operational block. `knowledge_id` names the profile's
+    knowledge, which PLAN 4.8's filter reads on every place request."""
     names = labelled(readings)
     agent = Agent(
         model,
@@ -184,7 +189,7 @@ def run_harness(
         retries=2,
     )
     budget = Budget()
-    _register_tools(agent, plan, names, ledger, budget)
+    _register_tools(agent, plan, names, ledger, budget, knowledge_id)
 
     @agent.output_validator
     def complete(output: HarnessOutput) -> HarnessOutput:
@@ -217,11 +222,32 @@ def run_harness(
         if exc.status != LookupStatus.MALFORMED:
             raise  # Provider failures stay operational (QUE-005).
         failure = "harness_malformed_output"
-    return resolve(plan, names, output, ledger, asset_id, blobs, failure, usage, budget)
+    return resolve(
+        plan,
+        names,
+        output,
+        ledger,
+        asset_id,
+        blobs,
+        failure,
+        usage,
+        budget,
+        knowledge_id=knowledge_id,
+    )
 
 
 def resolve(
-    plan, names, output, ledger, asset_id, blobs, failure=None, usage=None, budget=None
+    plan,
+    names,
+    output,
+    ledger,
+    asset_id,
+    blobs,
+    failure=None,
+    usage=None,
+    budget=None,
+    *,
+    knowledge_id=None,
 ) -> HarnessOutcome:
     """Every field decided from recorded outcomes (section 9). Tool calls the
     agent did not make on its final literals are made here, once each."""
@@ -233,6 +259,25 @@ def resolve(
         literals.setdefault(item.field_key, {})[reading.observation_id] = item.literal
         if item.year_literal:
             years[(item.field_key, reading.observation_id)] = item.year_literal
+    # PLAN 4.8: every literal of every reading, year literals included, for
+    # the filter on the final place requests.
+    written = [
+        (item.field_key, text)
+        for item in output.literals
+        for text in (item.literal, item.year_literal)
+        if text
+    ]
+
+    def place(reading: Reading, place_literals: list[str]) -> PlaceContext:
+        return place_context(
+            names,
+            reading,
+            place_literals,
+            [text for key, text in written if key not in PLACE_FIELDS],
+            [text for _, text in written],
+            knowledge_id,
+        )
+
     everyone = {r.observation_id: None for r in names.values()}
     by_id = {r.observation_id: r for r in names.values()}
     _drop_copied_ends(literals, years, by_id)
@@ -265,6 +310,7 @@ def resolve(
                 localities,
                 budget,
                 derivations,
+                place,
             )
             fields[key] = resolver.settle(key, per_reading, call)
     # G37: what the label leaves out, filled from settled fields with evidence:
@@ -373,6 +419,7 @@ def _field_call(
     localities,
     budget,
     derivations: list,
+    place: Callable[[Reading, list[str]], PlaceContext],
 ) -> FieldCall:
     if tool == GEOGRAPHY:
 
@@ -391,7 +438,11 @@ def _field_call(
                 # A request past the run's cap is refused: an operational block.
                 return Called(LookupStatus.POLICY, tool)
             result, evidence = ledger.run(
-                tool, reading, arguments, served(tool, arguments, key)
+                tool,
+                reading,
+                arguments,
+                served(tool, arguments, key),
+                place(reading, [text for _, text in arguments["literals"]]),
             )
             # Each derivation names the call that returned it (#124, 4.8).
             calls = tuple(evidence.values())
@@ -432,6 +483,28 @@ def geography_arguments(fields: Mapping[str, str]) -> dict:
     return {"literals": [[key, fields[key]] for key in sorted(fields)]}
 
 
+def place_context(
+    names: Mapping[str, Reading],
+    reading: Reading,
+    place_literals: Iterable[str],
+    non_place: Iterable[str],
+    assigned: Iterable[str],
+    knowledge_id: str | None,
+) -> PlaceContext:
+    """What PLAN 4.8's filter reads for one reading's place request (HARNESS.md
+    sections 7 and 11): every reading's text, the non-place literals, the
+    knowledge's id, and the reading's unassigned locality text, which is what
+    no `assigned` literal covers on the lines holding its place literals."""
+    return PlaceContext(
+        reading_texts=tuple(dict.fromkeys(r.text for r in names.values())),
+        non_place_literals=tuple(dict.fromkeys(non_place)),
+        knowledge_id=knowledge_id,
+        unassigned=tuple(
+            unassigned_text(reading.text, list(place_literals), list(assigned))
+        ),
+    )
+
+
 @dataclass
 class Budget:
     """The run's tool calls and geocoding requests against their caps (G30)."""
@@ -461,6 +534,7 @@ def _register_tools(
     names: Mapping[str, Reading],
     ledger: ToolLedger,
     budget: Budget,
+    knowledge_id: str | None = None,
 ) -> None:
     """Only the profile's tools, each through the ledger (HAR-007); what the
     agent sees of Google is outcomes only (G26)."""
@@ -498,10 +572,15 @@ def _register_tools(
             }
 
     if served(GEOGRAPHY):
+        named: dict[str, None] = {}  # The other fields' literals, as named.
 
         @agent.tool_plain
-        def geocode(reading: str, fields: dict[str, str]) -> dict:
-            """Check a reading's locality literals together, one per field."""
+        def geocode(
+            reading: str, fields: dict[str, str], others: dict[str, str]
+        ) -> dict:
+            """Check a reading's locality literals together, one per field.
+            `others` gives the reading's literals for its other fields, which
+            never leave."""
             if not budget.tool_call():
                 return REFUSED
             target = reading_for(reading)
@@ -509,13 +588,30 @@ def _register_tools(
                 if key not in served(GEOGRAPHY):
                     raise ModelRetry(f"{key} is not a locality field")
                 reading_for(reading, literal)
+            for key, literal in others.items():
+                if key not in plan.fields:
+                    raise ModelRetry(f"{key} is not a field of this profile")
+                if key in PLACE_FIELDS:
+                    raise ModelRetry(f"{key} is a locality field: give it in fields")
+                reading_for(reading, literal)
+            named.update(dict.fromkeys(others.values()))
             arguments = geography_arguments(fields)
             if not budget.geocode(target, arguments):
                 return {
                     "outcome": "not_checked",
                     "reason": "the run's geocoding requests are used",
                 }
-            result, _ = ledger.run(GEOGRAPHY, target, arguments, sorted(fields))
+            # PLAN 4.8: the same filter as the final call's, with the literals
+            # the agent has named so far for the other fields.
+            place = place_context(
+                names,
+                target,
+                fields.values(),
+                named,
+                [*fields.values(), *named],
+                knowledge_id,
+            )
+            result, _ = ledger.run(GEOGRAPHY, target, arguments, sorted(fields), place)
             return {
                 "outcome": result.outcome.value,
                 "field_outcomes": {

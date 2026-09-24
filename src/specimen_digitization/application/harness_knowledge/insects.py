@@ -6,7 +6,8 @@ allows, for dates and for every other field, and to settle only what the
 evidence supports. Each subcollection's profile names its knowledge by id and
 version; this is the pilot's. It is rendered into the harness's system prompt,
 and its aliases are the only names the geography tool accepts beyond a place's
-own (HARNESS.md section 7).
+own (HARNESS.md section 7). Its markers, months and full forms are what PLAN
+4.8's place-request filter cuts and writes out.
 """
 
 from __future__ import annotations
@@ -14,8 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 KNOWLEDGE_ID = "insects"
-# v2: slide-preparation codes and single written values (coordinator, 2026-09-24).
-KNOWLEDGE_VERSION = "insects-harness-knowledge-v2"
+# v2: slide-preparation codes and single written values (coordinator, 2026-09-24);
+# v3: the tables PLAN 4.8's place-request filter reads (HARNESS.md section 7).
+KNOWLEDGE_VERSION = "insects-harness-knowledge-v3"
 
 
 @dataclass(frozen=True)
@@ -148,6 +150,33 @@ SHAPES = {
 }
 # PRD 522 leaves verbatim_dts's meaning unconfirmed: a finding, never a reason.
 FINDING_ONLY = frozenset({"verbatim_dts"})
+
+# What PLAN 4.8's place-request filter reads (HARNESS.md section 7): the
+# collector and determiner markers the notations name,
+PERSON_MARKERS = ("leg.", "coll.", "Coll.", "det.")
+# the month names, with the abbreviations the date notation lists,
+MONTH_WORDS = (
+    *("January", "February", "March", "April", "May", "June", "July"),
+    *("August", "September", "October", "November", "December"),
+    *("Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept."),
+    *("Oct.", "Nov.", "Dec."),
+)
+# the Roman months, cut too (the coordinator's ruling of 2026-09-24),
+ROMAN_MONTHS = (
+    *("I", "II", "III", "IV", "V", "VI"),
+    *("VII", "VIII", "IX", "X", "XI", "XII"),
+)
+# and the full forms of the notations assigned to place fields alone, each a
+# form a request may carry in its place. "nr." relates a place; it is not part
+# of the place's name.
+FULL_FORMS = {
+    "P.I.": ("Philippine Islands",),
+    "Guat.": ("Guatemala",),
+    "Prov.": ("Province",),
+    "Dept.": ("Department",),
+    "Mt.": ("Mount",),
+    "Is.": ("Island", "Islands"),
+}
 
 
 def render() -> str:

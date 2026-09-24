@@ -76,6 +76,13 @@ class LocalityLiteral(Frozen):
 class GeographyQuery(Frozen):
     literals: list[LocalityLiteral] = Field(min_length=1)
     context: dict = Field(default_factory=dict)
+    # What PLAN 4.8's filter reads beside the literals (HARNESS.md section 7,
+    # agreed with S8): the record's reading texts, every literal any reading
+    # assigns to a non-place field, and the knowledge the profile names, as
+    # `harness_knowledge.KNOWLEDGE[knowledge_id]`.
+    reading_texts: list[str] = Field(default_factory=list)
+    non_place_literals: list[str] = Field(default_factory=list)
+    knowledge_id: str | None = None
 
 
 class PlaceCandidate(Frozen):

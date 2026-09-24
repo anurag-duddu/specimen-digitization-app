@@ -30,6 +30,20 @@ GOOGLE = "google-maps-geocoding"
 
 
 @dataclass(frozen=True)
+class PlaceContext:
+    """What PLAN 4.8's filter reads for one reading's geography request
+    (HARNESS.md sections 7 and 11): the record's reading texts, every literal
+    any reading assigns to a non-place field, the knowledge's id, and the
+    reading's unassigned locality text. It is not part of the request's
+    identity, so the same literals again reuse the recorded request."""
+
+    reading_texts: tuple[str, ...] = ()
+    non_place_literals: tuple[str, ...] = ()
+    knowledge_id: str | None = None
+    unassigned: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Tools:
     """The tool implementations, injected so that tests use fakes. Each takes
     the literal and the text of the reading it was copied from."""
@@ -73,27 +87,32 @@ class ToolLedger:
         reading: Reading,
         arguments: dict,
         field_keys: Sequence[str],
+        place: PlaceContext | None = None,
     ) -> tuple[ToolResult, dict[str, str]]:
         """Run one request, or return its recorded result: the tool's result
-        and the evidence id of each source's final call."""
+        and the evidence id of each source's final call. A geography request's
+        `place` context goes to the tool, not into the request's identity."""
         if tool not in PHASES:
             raise ValueError(f"tool_not_allowed:{tool}")
         key = json.dumps([tool, reading.observation_id, arguments], sort_keys=True)
         if key not in self._done:
             started = self.clock()
-            result = self._dispatch(tool, reading, arguments)
+            result = self._dispatch(tool, reading, arguments, place or PlaceContext())
             evidence = self._record(
                 tool, reading, arguments, field_keys, result, started
             )
             self._done[key] = (result, evidence)
         return self._done[key]
 
-    def _dispatch(self, tool: str, reading: Reading, arguments: dict) -> ToolResult:
+    def _dispatch(
+        self, tool: str, reading: Reading, arguments: dict, place: PlaceContext
+    ) -> ToolResult:
         if tool == "taxonomy_verifier":
             verification = self.tools.verify_taxon(arguments["literal"])
             self.lookups.append(verification.gbif)
             return verification.result
         if tool == "geography_lookup":
+            unassigned = [(None, text) for text in place.unassigned]
             query = GeographyQuery(
                 literals=[
                     LocalityLiteral(
@@ -102,8 +121,11 @@ class ToolLedger:
                         source_observation_id=reading.observation_id,
                         source_region_id=reading.region_id,
                     )
-                    for field_key, literal in arguments["literals"]
-                ]
+                    for field_key, literal in [*arguments["literals"], *unassigned]
+                ],
+                reading_texts=list(place.reading_texts),
+                non_place_literals=list(place.non_place_literals),
+                knowledge_id=place.knowledge_id,
             )
             return self.tools.geocode(query)
         if tool == "date_parser":

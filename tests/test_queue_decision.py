@@ -104,7 +104,9 @@ class Tools(Fakes):
     def geocode(self, query):
         fields = {item.field_key: item.literal for item in query.literals}
         self.calls.append(("geocode", fields))
-        outcomes = {k: S.SUCCESS for k in fields if k != "precise_location"}
+        # Like the real tool: the assigned admin fields only, never the
+        # unassigned locality text (PLAN 4.8).
+        outcomes = {k: S.SUCCESS for k in fields if k not in (None, "precise_location")}
         places = [
             PlaceCandidate(field_key=k, source=GOOGLE, source_record_id=f"place-{k}")
             for k in outcomes
