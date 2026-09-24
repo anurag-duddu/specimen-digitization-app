@@ -561,19 +561,34 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   /// Selects a disposition segment and reloads.
+  ///
+  /// A segment that chooses a run state (Blocked, Processing) and the filter
+  /// sheet's run state choose the same thing, so the one chosen last wins:
+  /// this clears the sheet's (UI.md T3.3).
   Future<void> selectDisposition(String value) {
     _disposition = value;
+    if (_choosesRunState(value)) {
+      _filters = Map<String, String>.from(_filters)..remove('state');
+    }
     _notify();
     return refresh();
   }
 
-  /// Applies the filter sheet's result.
+  /// Applies the filter sheet's result. A run state from the sheet returns a
+  /// segment that chose one to All, because the one chosen last wins.
   Future<void> applyFilters(Map<String, String> values) {
     _filters = Map<String, String>.from(values)
       ..removeWhere((String key, String value) => value.isEmpty);
+    if (_filters.containsKey('state') && _choosesRunState(_disposition)) {
+      _disposition = '';
+    }
     _notify();
     return refresh();
   }
+
+  /// True for a segment that filters by run state rather than by queue.
+  static bool _choosesRunState(String segment) =>
+      segment.isNotEmpty && !queueDispositionValues.contains(segment);
 
   /// Removes one active filter, from its chip.
   Future<void> removeFilter(String key) {

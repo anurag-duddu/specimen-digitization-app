@@ -25,6 +25,7 @@ import 'widgets/widgets.dart';
 
 /// The wire keys this sheet can set, with the words a reviewer reads.
 const Map<String, String> searchFields = <String, String>{
+  'state': 'Run state',
   'stage': 'Processing step',
   'blocker': 'Blocker',
   'reason_code': 'Issue',
@@ -42,6 +43,39 @@ const Map<String, String> searchFields = <String, String>{
 
 /// The reviewer-facing word for one filter key.
 String searchFieldLabel(String key) => searchFields[key] ?? labelOf(key);
+
+/// The run states the search API filters, in the order the picker offers
+/// them (UI.md T3.3). `pending` joins once #85 adds it to the search API,
+/// so the picker never offers a value the server refuses.
+const List<String> runStateChoices = <String>[
+  'running',
+  'completed',
+  'processing_blocked',
+  'retry_scheduled',
+  'paused',
+  'cancelled',
+];
+
+/// A run state in the words the queue's rows use. `completed`, which no row
+/// chip shows (UI.md T1.2), is "Completed", and a state this client does not
+/// know keeps the server's word.
+String runStateLabel(String state) {
+  if (state == 'completed') return 'Completed';
+  final SpecimenStatus status = SpecimenStatus.fromWire(state);
+  return status == SpecimenStatus.unknown
+      ? vocabularyLabel(state)
+      : status.label;
+}
+
+/// A filter's value in words, as the picker and the active filter's chip
+/// both show it (UI.md T3.3): a run state as the rows name it, a reason as
+/// every screen reads it, and anything else as the vocabulary spells it,
+/// which leaves an identifier, a date or a number as typed.
+String searchValueLabel(String key, String value) => switch (key) {
+  'state' => runStateLabel(value),
+  'reason_code' => reasonLabel(value),
+  _ => vocabularyLabel(value),
+};
 
 /// The title the sheet and the dialog both carry.
 const String searchFiltersTitle = 'Filter the queue';
@@ -472,6 +506,7 @@ class SearchFiltersState extends State<SearchFilters> {
           _Group(
             title: 'Status',
             children: <Widget>[
+              _picker('state', runStateChoices),
               for (final String key in <String>[
                 'stage',
                 'blocker',
@@ -582,9 +617,7 @@ class SearchFiltersState extends State<SearchFilters> {
           for (final String choice in choices)
             UiSelectOption<String>(
               value: choice,
-              label: key == 'reason_code'
-                  ? reasonLabel(choice)
-                  : vocabularyLabel(choice),
+              label: searchValueLabel(key, choice),
             ),
         ],
         onChanged: (String value) =>

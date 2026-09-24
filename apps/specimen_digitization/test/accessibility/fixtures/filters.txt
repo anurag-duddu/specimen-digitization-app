@@ -2,6 +2,7 @@ role=form
   label="All filters must match."
     button enabled=true tap label="Why"
   label="Status"
+  button enabled=true tap label="Run state" value="Any"
   textField enabled=true tap label="Processing step"
   textField enabled=true tap label="Blocker"
   textField enabled=true tap label="Issue"

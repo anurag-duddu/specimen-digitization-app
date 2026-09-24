@@ -14,6 +14,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 import '../widget_test.dart' show TestRepository, TestSession;
@@ -448,6 +449,106 @@ void main() {
         reason: 'a covered screen holds no viewport height',
       );
       await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  group('run states in the filter sheet (UI.md T3.3)', () {
+    WorkspaceController controllerOf(WidgetTester tester) =>
+        WorkspaceScope.read(tester.element(find.byType(QueuePane)));
+
+    testWidgets('a run state from the sheet returns a state chip to All', (
+      tester,
+    ) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      final WorkspaceController controller = controllerOf(tester);
+      await controller.selectDisposition('running');
+      await controller.applyFilters(<String, String>{'state': 'paused'});
+      await tester.pump();
+      expect(controller.disposition, isEmpty);
+      expect(repository.requests.last, <String, String>{'state': 'paused'});
+    });
+
+    testWidgets("a state chip clears the sheet's run state", (tester) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      final WorkspaceController controller = controllerOf(tester);
+      await controller.applyFilters(<String, String>{'state': 'paused'});
+      await controller.selectDisposition('processing_blocked');
+      await tester.pump();
+      expect(controller.filters.containsKey('state'), isFalse);
+      expect(repository.requests.last, <String, String>{
+        'state': 'processing_blocked',
+      });
+    });
+
+    testWidgets("a queue chip keeps the sheet's run state", (tester) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      final WorkspaceController controller = controllerOf(tester);
+      await controller.applyFilters(<String, String>{'state': 'paused'});
+      await controller.selectDisposition('needs_human_review');
+      await tester.pump();
+      expect(repository.requests.last, <String, String>{
+        'state': 'paused',
+        'disposition': 'needs_human_review',
+      });
+    });
+
+    testWidgets('an active filter names its value in words', (tester) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      final WorkspaceController controller = controllerOf(tester);
+      await controller.applyFilters(<String, String>{
+        'state': 'retry_scheduled',
+        'reason_code': 'human_approval_required',
+      });
+      // Single frames, not a settle: the header ages its freshness line.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Run state: Retry scheduled'), findsOneWidget);
+      expect(find.text('Issue: Reviewer approval needed'), findsOneWidget);
+      expect(find.textContaining('retry_scheduled'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the sheet offers every run state the search filters', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1000, 2400);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: SingleChildScrollView(
+              child: SearchFilters(initial: <String, String>{}),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final UiSelect<String> state = tester.widget<UiSelect<String>>(
+        find.byWidgetPredicate(
+          (Widget w) => w is UiSelect<String> && w.label == 'Run state',
+        ),
+      );
+      expect(
+        <String, String>{
+          for (final UiSelectOption<String> option in state.options)
+            if (option.value.isNotEmpty) option.value: option.label,
+        },
+        <String, String>{
+          'running': 'Processing',
+          'completed': 'Completed',
+          // The rows' word; the segment chip, with less room, says "Blocked".
+          'processing_blocked': 'Processing blocked',
+          'retry_scheduled': 'Retry scheduled',
+          'paused': 'Paused',
+          'cancelled': 'Cancelled',
+        },
+      );
     });
   });
 }
