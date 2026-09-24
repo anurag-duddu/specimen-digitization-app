@@ -40,8 +40,11 @@ words the Google tool already drops. Other collections add their own tables (G29
 
 A part that is only a unit word joins the part its position points to: "Davao,
 Prov. 3300'" (105526326) reads as one part, "Davao Prov.". A part's readings are
-the full names it can be searched by, most specific first: "Davao Prov." gives
-"Davao Province" and "Davao". A notation outside the table stays as written.
+the full names it is compared by locally, most specific first: "Davao Prov."
+gives "Davao Province" and "Davao". A notation outside the table stays as
+written. Nothing a tier sends comes from these readings: a request carries the
+literal as PLAN 4.8's filter returns it, and the filter expands notations itself,
+after its cuts.
 
 **Slopes and offsets.** A heading (the 16 compass points, abbreviated with or
 without periods, or written as words) followed by "slope", "side" or "flank"

@@ -1,11 +1,13 @@
 """Reading locality text for the retrospective georeferencing tool (GEO.md 1).
 
 One locality literal, exactly as a reading has it, becomes the parts the later
-tiers search: names with their label notations read (G29), the headings of
-slopes and offsets, elevation phrases kept as written (G22) and text that is no
-place. Nothing here makes a request or decides an outcome, and the literal is
-kept verbatim (G27). G34's one-letter gate compares full names only, never codes
-or abbreviations (the coordinator's reading, 2026-09-24).
+tiers compare locally: names with their label notations read (G29), the headings
+of slopes and offsets, elevation phrases kept as written (G22) and text that is
+no place. Nothing here makes a request or decides an outcome, and the literal is
+kept verbatim (G27). The readings built here serve local comparison only: what a
+tier sends is the literal passed through PLAN 4.8's filter, which expands
+notations itself after its cuts. G34's one-letter gate compares full names only,
+never codes or abbreviations (the coordinator's reading, 2026-09-24).
 """
 
 from __future__ import annotations
