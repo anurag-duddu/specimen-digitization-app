@@ -2,8 +2,11 @@
 
 Research prototype for docs/product-requirements/GEOREFERENCING.md (session S8,
 2026-09-23). It reads anonymous public endpoints only (Wikidata, the GeoNames
-country dumps, GBIF and OpenTopoData), needs no key, makes no paid call and
-writes only under --out. It is not production code and nothing imports it.
+country dumps and OpenTopoData), needs no key, makes no paid call and writes
+only under --out. It is not production code and nothing imports it. A default
+run sends no date and no occurrence query: GBIF's occurrence search and its
+GADM reverse geocoder run only with --held-steps, which D4's hold and PLAN 4.8
+leave off (GADM is not used at all).
 
     uv run python scripts/research/georeferencing/pilot_probe.py --out <dir>
 """
@@ -275,7 +278,7 @@ def in_country(hits: list[dict[str, Any]], enriched: dict[str, Any], iso: str, y
             for h in hits if iso and iso in (enriched.get(h["id"], {}).get("countries") or "").split()]
 
 
-async def probe(out: Path) -> dict[str, Any]:
+async def probe(out: Path, held_steps: bool = False) -> dict[str, Any]:
     client, report = Client(out), {}
     parsed = {loc.key: parse(loc) for loc in PILOT}
     countries = {n: await wikidata_search(client, n) for n in sorted({p["country_name"] for p in parsed.values()})}
@@ -298,7 +301,9 @@ async def probe(out: Path) -> dict[str, Any]:
                                     "wikidata_elsewhere": len(searches[name]),
                                     "geonames": geonames_match(dumps.get(code, []), name, feature_class)}
         core = p["feature"].removeprefix("Mount ")
-        entry["gbif_prior"] = await gbif_prior(client, code, loc.year, core) if code else []
+        # Held (D4, PLAN 4.8): the occurrence search sends a year range and facet strings.
+        held = held_steps and code
+        entry["gbif_prior"] = await gbif_prior(client, code, loc.year, core) if held else []
         spread = [c["point"] for c in entry["gbif_prior"]]
         entry["gbif_prior_max_km"] = max((km(a, b) for a in spread for b in spread), default=0.0)
         report[loc.key] = entry
@@ -314,7 +319,12 @@ async def probe(out: Path) -> dict[str, Any]:
             transects[entry["locality"]["key"]] = [(d / 2, destination(start, bearing, d / 2)) for d in range(0, 31)]
     points = sorted({tuple(x["point"]) for _, x in candidates} | {pt for t in transects.values() for _, pt in t})
     dem = await elevations(client, points)
-    context = {pt: await containment(client, pt) for pt in sorted({tuple(x["point"]) for _, x in candidates})}
+    # Held: GBIF's reverse geocoder reads GADM, which the tool never uses (PLAN 4.8).
+    context = (
+        {pt: await containment(client, pt) for pt in sorted({tuple(x["point"]) for _, x in candidates})}
+        if held_steps
+        else {}
+    )
     for entry, candidate in candidates:
         point = tuple(candidate["point"])
         candidate.update(gadm=context.get(point), dem_m=dem.get(point),
@@ -361,9 +371,15 @@ def summary(report: dict[str, Any]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, required=True, help="directory for report.json and raw responses")
+    parser.add_argument(
+        "--held-steps",
+        action="store_true",
+        help="also run GBIF's occurrence search and its GADM reverse geocoder; off by default, "
+        "because D4 is held and PLAN 4.8 does not use them",
+    )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    report = asyncio.run(probe(args.out))
+    report = asyncio.run(probe(args.out, held_steps=args.held_steps))
     (args.out / "report.json").write_text(json.dumps(report, indent=2, default=list))
     text = summary(report)
     (args.out / "summary.md").write_text(text + "\n")
