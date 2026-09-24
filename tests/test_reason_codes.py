@@ -29,6 +29,8 @@ def emitted_codes():
 
 def test_the_catalog_lists_exactly_the_codes_the_policy_emits_in_order():
     assert len(REASON_CODES) == len(set(REASON_CODES))
+    # Search matches a code to its `code:detail` reasons at the colon (S5).
+    assert not any(":" in code for code in REASON_CODES)
     assert list(REASON_CODES) == emitted_codes()
 
 
