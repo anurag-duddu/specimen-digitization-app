@@ -386,6 +386,27 @@ def test_the_request_cap_is_a_harness_failure_for_review():
     assert outcome.failure == "harness_usage_limit" and len(seen) == REQUEST_LIMIT
 
 
+@pytest.mark.parametrize(
+    ("turn", "failure", "requests"),
+    [
+        (
+            [("verify_taxon", {"reading": "2A", "literal": "Epipsocus"})],
+            "harness_usage_limit",
+            REQUEST_LIMIT,
+        ),
+        (answer(**{"1A": {"city": "Chimaltenago"}}), "harness_malformed_output", 3),
+    ],
+    ids=["usage cap", "invalid answer"],
+)
+def test_a_stopped_run_reports_what_it_used(turn, failure, requests):
+    # The lane's cost record (S3): a run stopped by a cap or by an answer that
+    # stays invalid still reports the provider's usage up to the stop.
+    outcome, _ = harness(turn)
+
+    assert outcome.failure == failure
+    assert outcome.usage.requests == requests and outcome.usage.input_tokens > 0
+
+
 def test_a_provider_error_stays_an_operational_block():
     error = ModelHTTPError(status_code=429, model_name="fake-harness", body="slow down")
 

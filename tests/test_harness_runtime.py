@@ -17,6 +17,7 @@ from specimen_digitization.application.api import (
 )
 from specimen_digitization.application.domain import (
     FieldValue,
+    HarnessCall,
     Lookup,
     Principal,
     Profile,
@@ -234,6 +235,12 @@ def test_the_child_runs_the_harness_on_the_pinned_route_prompt_and_knowledge(chi
         "geography_lookup",
     }
     assert value["usage"]["requests"] == 1
+    assert value["call"] == {
+        "route_id": ROUTE.route_id,
+        "model_id": ROUTE.model_id,
+        "provider": ROUTE.provider,
+        "geocoding_requests": 1,  # One Google attempt, rate-limited.
+    }
     assert set(value["fields"]) == {"taxon", "city", "identified_by_irn"}
 
 
@@ -290,6 +297,12 @@ def outcome(fields, blocker=None, failure=None):
         "blocker": blocker,
         "failure": failure,
         "usage": {"input_tokens": 1200, "output_tokens": 300, "requests": 2},
+        "call": {
+            "route_id": ROUTE.route_id,
+            "model_id": ROUTE.model_id,
+            "provider": ROUTE.provider,
+            "geocoding_requests": 1,
+        },
     }
 
 
@@ -308,6 +321,39 @@ def test_merge_keeps_the_outcome_and_returns_a_tool_block():
     assert block == "harness_taxonomy_verifier_timeout"
     assert run.fields["taxon"].literal == "Epipsocus" and len(run.lookups) == 1
     assert (run.harness_failure, run.usage.tokens) == ("harness_usage_limit", 1500)
+    # The model call as the lane's cost record reads it (S3's record_step).
+    assert run.harness_calls == [
+        HarnessCall(
+            attempt=1,
+            route_id=ROUTE.route_id,
+            model_id=ROUTE.model_id,
+            provider=ROUTE.provider,
+            requests=2,
+            input_tokens=1200,
+            output_tokens=300,
+            geocoding_requests=1,
+        )
+    ]
+
+
+def test_merge_keeps_unreported_usage_unknown():
+    # Tokens a provider did not report are unknown, not zero, so the lane
+    # keeps the step reserved instead of settling it at nothing.
+    run = run_for([])
+    run.attempts["parse"] = 2
+    fields = {key: FieldValue() for key in ("taxon", "city", "identified_by_irn")}
+    value = outcome(fields)
+    value["usage"] = {"input_tokens": 0, "output_tokens": 0, "requests": 2}
+
+    harness_runtime.merge_harness(run, value)
+
+    (call,) = run.harness_calls
+    assert (call.attempt, call.requests, call.input_tokens, call.output_tokens) == (
+        2,
+        2,
+        None,
+        None,
+    )
 
 
 def test_merge_refuses_fields_the_plan_does_not_name():

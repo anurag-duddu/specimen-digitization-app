@@ -52,6 +52,12 @@ retry), each capped at 1,024 output tokens so that its worst case can be
 reserved (G30; T1's first passes used at most 406), 16000 tokens, and the stage
 cost reservation `first_pass`, one key for every region. Its circuit is the first-pass route's provider.
 
+**A cap hit.** A first pass stopped by a G30 cap selects no reading: its token
+total, or the pre-send check of section 15. G30 makes a cap hit the raw
+fallback, and G19 then decides from the readings. The decision records every
+difference as uncertain. Its call keeps the provider's usage up to the stop
+(`completion_state` `usage_limit`) for the lane's cost record.
+
 **Output**, validated before it is used: the selected reader or none; for every
 numbered difference exactly one verdict (a reader, `neither`, or `uncertain`)
 and whether it is material (more than capitalization); a rationale; one note per
@@ -544,6 +550,9 @@ run. T1's probe used 3 requests and 1,285 output tokens.
   - a prompt over its cap, before any call (`harness_input_too_large`);
   - a run that reaches a usage cap (`harness_usage_limit`);
   - an answer still invalid after its retries (`harness_malformed_output`).
+
+  Either way the run reports the provider's usage up to the stop, since the
+  agent's usage is counted in place.
 - A provider error stays an operational block, as for every model call.
 - An operational tool outcome blocks the run (section 9).
 
@@ -686,6 +695,17 @@ geography, a scientific name to taxonomy (PLAN 4.8).
   else is `external_outcome_unknown`.
 - The evidence, findings, tool calls and lookups are appended to the run, and
   the tokens are counted.
+- The model call is kept as a `HarnessCall` in `Run.harness_calls`, one for
+  each attempt of the step whose child returned. It holds:
+  - the attempt, route, model and provider;
+  - the requests, and the input and output tokens (None when the provider
+    reported no usage);
+  - the attempt's Google geocoding requests.
+
+  S3's `record_step` prices the step from it: the model's tokens on its route,
+  reserved when they're unknown, and the geocoding requests at the
+  `google-maps-geocoding` price. A child that returned nothing leaves no call,
+  so the step stays reserved.
 - A harness failure is kept as `run.harness_failure`; the queue decision sends
   it to review (T4).
 - A harness tool's operational outcome, such as GBIF rate-limited after its

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.usage import RequestUsage
 
 from specimen_digitization.application import first_pass as first_pass_module
 from specimen_digitization.application import workflow as workflow_module
@@ -122,9 +123,12 @@ VALID = {
 INCOMPLETE = dict(VALID, verdicts=VALID["verdicts"][:1])
 
 
-def direct_first_pass(monkeypatch, tmp_path, calls, *answers, settings=None):
-    """first_pass_direct against a fake provider that gives these answers in turn;
-    `settings` collects each request's model settings."""
+def direct_first_pass(
+    monkeypatch, tmp_path, calls, *answers, settings=None, usage=None
+):
+    """first_pass_direct against a fake provider that gives these answers in turn,
+    each reporting `usage` when given; `settings` collects each request's model
+    settings."""
 
     def respond(messages, info):
         calls.append(messages)
@@ -134,6 +138,7 @@ def direct_first_pass(monkeypatch, tmp_path, calls, *answers, settings=None):
         return ModelResponse(
             parts=[ToolCallPart(info.output_tools[0].name, json.dumps(answer))],
             finish_reason="stop",
+            **({"usage": usage} if usage is not None else {}),
         )
 
     class Gateway:
@@ -225,3 +230,23 @@ def test_an_answer_that_stays_invalid_is_a_known_malformed_response(
     assert len(calls) == 2
     assert failure.value.status == LookupStatus.MALFORMED
     assert failure.value.outcome_unknown is False
+
+
+def test_a_first_pass_stopped_by_its_cap_selects_no_reading(monkeypatch, tmp_path):
+    # G30: a cap hit is the raw fallback, and G19 decides from the readings.
+    # The call keeps the provider's usage for the lane's cost record (S3).
+    calls = []
+    usage = RequestUsage(input_tokens=15_500, output_tokens=900)  # Past 16,000.
+
+    decision, (first, second) = direct_first_pass(
+        monkeypatch, tmp_path, calls, VALID, usage=usage
+    )
+
+    assert len(calls) == 1
+    assert decision.selected_observation_id is None
+    assert decision.rationale == first_pass_module.CAP_RATIONALE
+    assert [d.verdict for d in decision.differences] == ["uncertain"] * 3
+    assert all(set(d.spans) == {first.id, second.id} for d in decision.differences)
+    call = decision.call
+    assert (call.input_tokens, call.output_tokens) == (15_500, 900)
+    assert call.completion_state == "usage_limit"
