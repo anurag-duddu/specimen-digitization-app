@@ -185,4 +185,22 @@ void main() {
     expect(find.text('No trace recorded'), findsNothing);
     expect(find.text('Policy'), findsNothing);
   });
+
+  testWidgets('a sensitive record says it is not processed (UI.md T3.1)', (
+    WidgetTester tester,
+  ) async {
+    await pumpDetail(tester, record(blocker: 'sensitive_record_not_processed'));
+    expect(
+      find.text('Blocked: sensitive record not processed'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'This record was uploaded as sensitive, so it is not processed. To '
+        'have it processed, upload the photograph again as not sensitive.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('wait'), findsNothing);
+  });
 }

@@ -76,6 +76,20 @@ class IntakeCaptureCard extends StatelessWidget {
   static const String noCameraHelp =
       'Camera capture runs in the Android and iOS apps. Here, choose a file.';
 
+  /// The two sensitivity options. Named by their consequence they no longer
+  /// fit the control's track in this column and it falls to its icon-only
+  /// rung, two padlocks with no words, so the consequence is the line under
+  /// the control instead (UI.md T3.1).
+  static const String sensitiveLabel = 'Sensitive';
+  static const String notSensitiveLabel = 'Not sensitive';
+
+  /// What the choice does, said under it before anything is sent, in the
+  /// coordinator's words and short enough that the capture card stays above
+  /// the fold on a phone at 200 percent text (13 section 2.5).
+  static const String consequence =
+      'Applies to photographs you add next. Sensitive photographs are not '
+      'processed.';
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
@@ -121,23 +135,27 @@ class IntakeCaptureCard extends StatelessWidget {
               label: 'Sensitivity',
               value: sensitive,
               onChanged: onSensitivityChanged,
+              // What each option does is said directly under the control
+              // (design/01 H2.6; PLAN section 2.2): the lane never processes
+              // a Sensitive upload.
               segments: const <UiSegment<bool>>[
                 UiSegment<bool>(
                   value: true,
-                  label: 'Sensitive',
+                  label: sensitiveLabel,
                   icon: UiIcons.locked,
                 ),
                 UiSegment<bool>(
                   value: false,
-                  label: 'Not sensitive',
+                  label: notSensitiveLabel,
                   icon: UiIcons.unlocked,
                 ),
               ],
             ),
           ),
           SizedBox(height: ui.space.s2),
+          // The consequence, before anything is sent (design/03 section 1.7).
           Text(
-            'Applies to photographs you add next.',
+            consequence,
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
@@ -202,7 +220,8 @@ class IntakeChecks extends StatelessWidget {
                 'Choose Not sensitive only if these photographs and their '
                 'labels are suitable for ordinary collection access. A '
                 'photograph already sent keeps the classification its '
-                'upload was created with.',
+                'upload was created with. To have a sensitive photograph '
+                'processed, upload it again as not sensitive.',
           ),
           SizedBox(height: ui.space.s4),
           const CaveatText(

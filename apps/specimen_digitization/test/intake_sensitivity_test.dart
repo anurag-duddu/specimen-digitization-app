@@ -11,6 +11,8 @@ import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/widgets/caveat_text.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'intake_harness.dart';
 
@@ -289,4 +291,63 @@ void main() {
       },
     );
   }
+
+  group('a Sensitive upload is not processed (UI.md T3.1)', () {
+    ApiSpecimenRepository unused() => repository(
+      (request) async => fail('nothing is sent before an upload: $request'),
+    );
+
+    testWidgets('Sensitive stays preselected, both options in words', (
+      tester,
+    ) async {
+      final repo = unused();
+      addTearDown(repo.close);
+      await mount(tester, repo, onComplete: () {});
+      final UiSegmented<bool> control = tester.widget<UiSegmented<bool>>(
+        sensitivityControl,
+      );
+      expect(control.value, isTrue);
+      // Both drawn as words, not fallen to the icon-only rung: names long
+      // enough to carry the consequence did not fit this column.
+      for (final String option in <String>['Sensitive', 'Not sensitive']) {
+        expect(
+          find.descendant(of: sensitivityControl, matching: find.text(option)),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets('the consequence is said before anything is sent', (
+      tester,
+    ) async {
+      final repo = unused();
+      addTearDown(repo.close);
+      await mount(tester, repo, onComplete: () {});
+      expect(
+        find.text(
+          'Applies to photographs you add next. Sensitive photographs are not '
+          'processed.',
+        ),
+        findsOneWidget,
+      );
+      // The way round a choice that cannot be undone sits with the caveat
+      // that says it cannot, behind its "Why" (02 sections 1.8 and 4.15).
+      final CaveatText permanence = tester.widget<CaveatText>(
+        find.byWidgetPredicate(
+          (Widget w) =>
+              w is CaveatText &&
+              w.label ==
+                  'Sensitivity cannot be changed after an upload starts.',
+        ),
+      );
+      expect(
+        permanence.why,
+        endsWith(
+          'To have a sensitive photograph processed, upload it again as not '
+          'sensitive.',
+        ),
+      );
+      expect(find.textContaining('wait'), findsNothing);
+    });
+  });
 }
