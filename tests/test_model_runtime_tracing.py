@@ -111,7 +111,11 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
         assert attrs["specimen.id"] == row["specimen_id"]
         assert attrs["specimen.run.id"] == work["run"]["id"]
         assert attrs["specimen.model.outcome"] == "completed"
-        assert set(record["telemetry"]) == {"traceparent", "specimen_id", "run_id"}
+        # The parent's capture mode rides along, so the child matches it (T5b).
+        assert set(record["telemetry"]) == {
+            "traceparent", "specimen_id", "run_id", "capture_mode"
+        }
+        assert record["telemetry"]["capture_mode"] == "metadata"
         agent = next(s for s in spans if s["name"].startswith("invoke_agent "))
         chat = next(s for s in spans if s["name"].startswith("chat "))
         assert agent["parent"]["span_id"] == effect["context"]["span_id"]

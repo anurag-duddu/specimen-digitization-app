@@ -276,6 +276,21 @@ def configure_observability(
     return settings
 
 
+def configured_capture_mode() -> CaptureMode:
+    """This process's configured capture mode; metadata when nothing is configured."""
+    if _configured_settings is None:
+        return CaptureMode.METADATA
+    return _configured_settings.capture_mode
+
+
+def _carrier_capture_mode(context: Mapping[str, str]) -> CaptureMode:
+    """The parent's capture mode, from its carrier; metadata when absent or unknown."""
+    try:
+        return CaptureMode(context.get("capture_mode", CaptureMode.METADATA.value))
+    except ValueError:
+        return CaptureMode.METADATA
+
+
 def _model_trace_carrier(context: Mapping[str, str]) -> dict[str, str]:
     """Propagate only the W3C parent, excluding baggage and opaque tracestate."""
     parent = context.get("traceparent", "")
@@ -287,11 +302,13 @@ def _model_trace_carrier(context: Mapping[str, str]) -> dict[str, str]:
 
 
 def model_trace_context(specimen_id: str, run_id: str) -> dict[str, str]:
-    """Carry application-owned correlation IDs, never specimen content."""
+    """Carry application-owned correlation IDs and the parent's capture mode."""
     return {
         **_model_trace_carrier(logfire.get_context()),
         "specimen_id": specimen_id,
         "run_id": run_id,
+        # The child configures the same mode as its parent (LANE.md T5b).
+        "capture_mode": configured_capture_mode().value,
     }
 
 
@@ -303,7 +320,7 @@ def isolated_model_span(
     region_id: str | None = None,
     route_id: str | None = None,
 ) -> Iterator[logfire.LogfireSpan]:
-    """Configure and drain a fresh model child's metadata-only telemetry.
+    """Configure and drain a fresh model child's telemetry, in the parent's mode.
 
     Configuration, model work, and exporter shutdown all remain inside the
     existing run_isolated deadline. The parent can terminate a stalled exporter;
@@ -311,7 +328,7 @@ def isolated_model_span(
     """
     if operation not in {"classify", "transcribe", "extract"}:
         raise ValueError("Unknown trusted model operation")
-    configure_observability(capture_mode=CaptureMode.METADATA)
+    configure_observability(capture_mode=_carrier_capture_mode(context))
     attributes = {"specimen.model.operation": operation}
     for key, value in (
         ("specimen.id", context.get("specimen_id")),

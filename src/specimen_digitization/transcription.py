@@ -10,7 +10,7 @@ from pydantic_ai import Agent, BinaryContent
 
 from .application.reading_declarations import DeclarationCandidates
 from .model_gateway import HuggingFaceModelGateway
-from .provider_privacy import PrivateProviderModel, private_instrumentation
+from .provider_privacy import PrivateProviderModel, agent_instrumentation
 from .prompts import (
     CollectionPromptInputs,
     PromptName,
@@ -72,7 +72,7 @@ def build_literal_transcription_agent(
         output_type=LiteralTranscription,
         instructions=prompt.text,
     )
-    agent.instrument = private_instrumentation()
+    agent.instrument = agent_instrumentation()
     return agent
 
 

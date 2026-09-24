@@ -12012,3 +12012,15 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. The pilot's bounded encoder keeps only allowlisted span names and renames the rest. The new span names appear there as "Specimen processing span". That is harmless for the frozen pilot.
 - Failed approaches: logging the decision right after `finalize`. The phase gate that follows can still add a reason.
 - Remaining follow-ups: T5b (content on for the readers and the old extraction agent's override in `harness.py`, and SAM 3's span on both sides) and T5c (the Geocoding key backstop in Logfire's scrubber and the logging filter, and the settings for S2).
+
+### 2026-09-24 — Go-live lane T5b: content in the run's trace
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the second part of T5 in `docs/execution/golive/LANE.md` (PLAN 4.5, G3).
+- Branch/worktree: `golive/lane-tracing-content` from `golive/lane-tracing`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - `provider_privacy.agent_instrumentation()` replaces the content-off override that the readers and the old extraction agent carried. It follows the process's configured capture mode: in `approved-content`, system prompts, messages and tool calls (and request parameters) are included; in `metadata` or when nothing is configured they are not. Binary content never is. `PrivateProviderModel` still strips provider error bodies.
+  - A model call's isolated child now configures its parent's capture mode, which the parent's trace carrier names. A missing or unknown mode means `metadata`.
+- Validation actually run: `tests/test_lane_tracing_content.py` (3 passed) and the privacy, model and classifier tracing, observability and lane tests (237 passed, 4 skipped). Also the full gates as listed in the pull request.
+- Durable learnings: a per-agent `InstrumentationSettings` wins over `instrument_pydantic_ai`'s global setting. So an override written for privacy silently defeats a later global content mode. Derive the override from the configured mode.
+- Failed approaches: none.
+- Remaining follow-ups: T5c (SAM 3's span on both sides) and T5d (the Geocoding key backstop and the Logfire settings for S2).

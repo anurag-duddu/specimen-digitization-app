@@ -10,7 +10,7 @@ from pydantic_ai.models.instrumented import InstrumentationSettings
 
 from specimen_digitization.provider_privacy import (
     PrivateProviderModel,
-    private_instrumentation,
+    agent_instrumentation,
 )
 
 
@@ -30,7 +30,7 @@ def test_private_provider_sanitizes_errors_before_agent_spans(capfire):
                 PrivateProviderModel(FunctionModel(model)),
                 instructions="private_prompt_canary",
             )
-            agent.instrument = private_instrumentation()
+            agent.instrument = agent_instrumentation()
             with pytest.raises((ModelHTTPError, RuntimeError)):
                 agent.run_sync("private_label_canary")
         trace = json.dumps(capfire.exporter.exported_spans_as_dict(), default=str)

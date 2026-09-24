@@ -21,9 +21,19 @@ class PrivateProviderModel(WrapperModel):
             raise RuntimeError("provider_request_failed") from None
 
 
-def private_instrumentation():
+def agent_instrumentation():
+    """An agent's instrumentation, following the process's capture mode.
+
+    System prompts, messages and tool calls only in the approved-content mode
+    (LANE.md T5b, PLAN 4.5, G3); binary content never. With nothing
+    configured, the metadata mode applies. Provider errors stay sanitized by
+    PrivateProviderModel either way.
+    """
+    from .observability import configured_capture_mode, CaptureMode
+
+    content = configured_capture_mode() is CaptureMode.APPROVED_CONTENT
     return InstrumentationSettings(
-        include_content=False,
+        include_content=content,
         include_binary_content=False,
-        include_model_request_parameters=False,
+        include_model_request_parameters=content,
     )
