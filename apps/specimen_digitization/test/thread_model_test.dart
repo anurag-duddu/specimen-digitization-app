@@ -516,6 +516,32 @@ void main() {
     });
   });
 
+  group('the readings that settled a value (G20, G32)', () {
+    test('are listed in verbatim order', () {
+      final ThreadField field = ThreadField.fromJson(<String, dynamic>{
+        'field_key': 'country',
+        'settled_observation_ids': <String>['obs-left-qwen', 'obs-right-muse'],
+      });
+      expect(field.settledObservationIds, <String>[
+        'obs-left-qwen',
+        'obs-right-muse',
+      ]);
+    });
+
+    test('are none when absent or malformed, never a guess', () {
+      expect(
+        ThreadField.fromJson(<String, dynamic>{}).settledObservationIds,
+        isEmpty,
+      );
+      expect(
+        ThreadField.fromJson(<String, dynamic>{
+          'settled_observation_ids': 'obs-left-qwen',
+        }).settledObservationIds,
+        isEmpty,
+      );
+    });
+  });
+
   group("the program's model allowance (G30)", () {
     test('is read in micro-dollars from the run', () {
       final ThreadRun run = ThreadRun.fromJson(<String, dynamic>{

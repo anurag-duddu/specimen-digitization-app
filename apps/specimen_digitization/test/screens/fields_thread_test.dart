@@ -372,4 +372,136 @@ void main() {
       expect(find.text('Authority sources disagree'), findsNothing);
     });
   });
+
+  group('which readings settled the value (UI.md T2.3 part three)', () {
+    const String qwen = 'Qwen/Qwen2.5-VL-72B-Instruct';
+    const String muse = 'muse-handwriting-fixture';
+
+    /// One verbatim entry, as the thread sends it.
+    Json entry(String text, String source, String region, String? reading) =>
+        <String, dynamic>{
+          'text': text,
+          'input_source': source,
+          'region_id': region,
+          'observation_id': reading,
+        };
+
+    /// The fixture with the country field reshaped.
+    SpecimenThread countryAs({
+      required List<Json> verbatim,
+      required List<String> settled,
+      String state = 'supported',
+    }) {
+      final Json json = fixtureJson();
+      fieldIn(json, 'country')
+        ..['state'] = state
+        ..['verbatim'] = verbatim
+        ..['settled_observation_ids'] = settled;
+      return SpecimenThread.fromJson(json);
+    }
+
+    testWidgets('a field on two labels names each label and what settled it', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = countryAs(
+        verbatim: <Json>[
+          entry(
+            'GUATEMALA',
+            'decided_transcript',
+            'region-left',
+            'obs-left-qwen',
+          ),
+          entry(
+            'Guatemala',
+            'decided_transcript',
+            'region-right',
+            'obs-right-muse',
+          ),
+        ],
+        settled: <String>['obs-left-qwen', 'obs-right-muse'],
+      );
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      for (final String line in <String>[
+        'Label 1 · $qwen · decided transcript · settled the value',
+        'Label 2 · $muse · decided transcript · settled the value',
+      ]) {
+        expect(inRow('country', find.text(line)), findsOneWidget);
+      }
+    });
+
+    testWidgets('a field that went to review marks nothing', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = countryAs(
+        verbatim: <Json>[
+          entry(
+            'GUATEMALA',
+            'decided_transcript',
+            'region-left',
+            'obs-left-qwen',
+          ),
+          entry(
+            'Honduras',
+            'decided_transcript',
+            'region-right',
+            'obs-right-muse',
+          ),
+        ],
+        settled: const <String>[],
+        state: 'unresolved',
+      );
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow('country', find.text('Label 1 · $qwen · decided transcript')),
+        findsOneWidget,
+      );
+      expect(
+        inRow('country', find.text('Label 2 · $muse · decided transcript')),
+        findsOneWidget,
+        reason: "each label's reading stays in view (G32)",
+      );
+      expect(
+        inRow('country', find.textContaining('settled the value')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('a fallback that settled from a raw reading says so', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = countryAs(
+        verbatim: <Json>[
+          entry('GUATEMALA', 'decided_transcript', 'region-right', null),
+        ],
+        settled: <String>['obs-right-qwen'],
+      );
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow('country', find.text('$qwen · raw reading · settled the value')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a no-pick field marks the reading a lookup confirmed', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = countryAs(
+        verbatim: <Json>[
+          entry('GUATEMALA', 'raw_reading', 'region-right', 'obs-right-qwen'),
+          entry('GUATEMALA.', 'raw_reading', 'region-right', 'obs-right-muse'),
+        ],
+        settled: <String>['obs-right-muse'],
+      );
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow('country', find.text('$muse · raw reading · settled the value')),
+        findsOneWidget,
+      );
+      expect(
+        inRow('country', find.text('$qwen · raw reading')),
+        findsOneWidget,
+        reason: 'one label, so no entry names it',
+      );
+    });
+  });
 }
