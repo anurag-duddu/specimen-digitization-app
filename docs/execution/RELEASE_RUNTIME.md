@@ -141,7 +141,8 @@ unresolved readings, no disposition, no invented calibrated risk and no clearanc
 > and this ledger's release and cohort cost reservations are retired for this
 > program. G30's per-call reservations stand: each paid model call reserves
 > its worst-case cost before it starts, is settled once its outcome is known,
-> and stays reserved while its outcome is unknown (PLAN section 4.3).
+> and stays reserved while its outcome is unknown (PLAN section 4.3; the
+> coordinator's ruling on the mechanism).
 
 Actual issued Auth/App Check tokens, production ADC, SQL operations, object
 writes/reads, ten-source model results and deployed restart recovery remain
@@ -153,12 +154,14 @@ those gates.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
-> models together. The release and cohort cost ledgers, including the
-> stage-reservation ledger this section works toward, are retired in favor of
-> automatic deploy on merge. G30's per-call reservations stand: each paid
-> model call reserves its worst-case cost before it starts, is settled once
-> its outcome is known, and stays reserved while its outcome is unknown (PLAN
-> section 4.3).
+> models together. The release and source-cohort cost ledgers, and the
+> `PilotLaunch` copy of the stage-cost reservations with its digest pin, are
+> retired in favor of automatic deploy on merge. The per-stage reservation
+> map itself stays: `ExecutionPolicy.stage_cost_reservations`, which every run
+> copies and every paid step reserves from. G30's per-call reservations stand:
+> each paid model call reserves its worst-case cost before it starts, is
+> settled once its outcome is known, and stays reserved while its outcome is
+> unknown (PLAN section 4.3; the coordinator's ruling on the mechanism).
 
 Public primary sources checked 2026-09-08: [Novita pricing](https://novita.ai/pricing)
 lists Qwen input/output USD 0.20/0.70 per million tokens; [DeepInfra Muse API](https://deepinfra.com/meta-models/Muse-Glimmer-30B/api)
@@ -269,10 +272,12 @@ model/provider change, Temporal selection, push, merge or pruning occurred here.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2, G9 and G11. Specimens are processed one at a time, on demand, instead of
 > one worker execution over an exact ten-specimen cohort; the spending ceiling
-> is USD 25, cumulative; and the release cost-reservation ledger this section
-> implements, along with the authorization artifacts, is retired in favor of
-> automatic deploy on merge. G30's per-call reservations stand (PLAN section
-> 4.3).
+> is USD 25, cumulative; and the `PilotLaunch` copy of the stage-cost
+> reservations this section adds, its digest pin and the source-cohort
+> ledger, along with the authorization artifacts, are retired in favor of
+> automatic deploy on merge. The per-stage reservation map stays
+> (`ExecutionPolicy.stage_cost_reservations`), and G30's per-call reservations
+> stand (PLAN section 4.3; the coordinator's ruling on the mechanism).
 
 Coordinator subsequently confirmed the user's protected runtime/data release
 and bounded Google setup approvals, recorded in `RELEASE_AUTHORIZATION.md` in
@@ -421,7 +426,7 @@ acceptance remains Not confirmed until these receipts exist.
 > deferred, so a harness-resolved record clears without a human; the spending
 > ceiling is USD 25, cumulative; and the release cost ledger this section
 > describes is retired for this program. G30's per-call reservations stand
-> (PLAN section 4.3).
+> (PLAN section 4.3; the coordinator's ruling on the mechanism).
 
 An evidence-only pilot is an intermediate evidence collection step. It does not
 exercise ordinary classification, structured extraction, the complete authority

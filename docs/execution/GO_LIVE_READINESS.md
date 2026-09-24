@@ -150,6 +150,10 @@ release path, with a test.
 - Runtime activation requires a completed data release's attested artifacts,
   and the data plane refuses to run once runtime services exist. The order in
   the runbook follows from this.
+  > 2026-09-23: The data plane's refusal once runtime services exist is superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
+  > The data plane applies additive changes while the runtime runs; the
+  > runtime release still waits for the same commit's data release to succeed
+  > (the coordinator's ruling D3).
 - The production session endpoint reports two permanent blockers and no
   production ingest can finalize a record. Both are intended for the
   human-review release, which does not finalize.
@@ -254,6 +258,10 @@ Checked against platform documentation current in 2026.
   > session is required.
 - The current location of the SAM 3 checkpoint and the ordered catalog the
   manifest is frozen from.
+  > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G2.
+  > No manifest is frozen (PLAN section 4.1 stage 2), and the ten stay the
+  > acceptance cohort, processed in order. The SAM 3 checkpoint is in the
+  > bucket under its pinned digest, uploaded on 2026-09-09.
 - Rotating the Hugging Face token, and confirming data-processing approval
   for paid calls on real museum images.
 - The ongoing budget after the pilot. Logfire stays metadata-only under the
@@ -262,4 +270,5 @@ Checked against platform documentation current in 2026.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G3.
   > G3 is that new approval for the go-live program: system prompts and text
   > inputs and outputs are recorded in Logfire under the amended scope in
-  > APPROVED_LOGFIRE_TRACING.md; images stay excluded.
+  > APPROVED_LOGFIRE_TRACING.md; images stay excluded. In the PR steward's
+  > reading of G11 on #76, the steward's review replaces the privacy review.

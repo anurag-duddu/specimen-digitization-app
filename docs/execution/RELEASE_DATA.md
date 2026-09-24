@@ -241,7 +241,7 @@ primary application source must not be reported as processing every original.
 > models together, replacing the USD 5 ceiling and its USD 4/USD 1/USD 0.75
 > sub-allocations reserved below; release envelopes and the release's
 > cost-gated reservations are retired for this program. G30's per-call
-> reservations stand (PLAN section 4.3).
+> reservations stand (PLAN section 4.3; the coordinator's ruling on the mechanism).
 
 Reuse an already successful, sufficiently fresh native backup when it covers
 the quiesced source checkpoint. Otherwise price and approve one new backup.
@@ -370,10 +370,12 @@ remain excluded from ordinary offset/keyset document lists. The new
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The release's stage-cost and launch-ledger mechanism this connector
-> work supports is retired; data releases deploy automatically once the
-> required checks pass and the PR steward approves. G30's per-call
-> reservations stand (PLAN section 4.3).
+> G11. The `PilotLaunch` copy of the stage-cost reservations, its digest pin
+> and the source-cohort launch ledger this connector work supports are
+> retired; data releases deploy automatically once the required checks pass
+> and the PR steward approves. The per-stage reservation map
+> (`ExecutionPolicy.stage_cost_reservations`) stays, and G30's per-call
+> reservations stand (PLAN section 4.3; the coordinator's ruling on the mechanism).
 
 Actual connector red: `/tmp/specimen-release-pilot-ledger-red-20260908.log` and
 `/tmp/specimen-release-stage-map-connector-isolated-red-20260908.log` (one snapshot

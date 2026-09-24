@@ -129,6 +129,12 @@ source implementation. The cumulative USD 5 cap and exact ten-specimen scope
 remain unchanged. Provider behavior and effective grant success require root's
 native qualification; offline fixtures alone cannot establish them.
 
+> 2026-09-23: The USD 5 cap and the exact ten-specimen scope are superseded
+> for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G2: the spending ceiling is USD 25, cumulative, and specimens are
+> processed one at a time, on demand, with the ten as the acceptance cohort.
+
 Primary provider contracts:
 [objects.insert](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert),
 [preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions),

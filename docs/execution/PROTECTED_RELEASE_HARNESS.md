@@ -163,6 +163,13 @@ Runtime build/preparation still binds its images to the current approved source.
 Any changed data fingerprint or runtime writer during `data-apply/v1` blocks that
 path and requires a separately reviewed migration plan.
 
+> 2026-09-23: A running runtime no longer blocks an apply: superseded for the
+> go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Additive applies run while the runtime runs, through the additive-only
+> gate (`golive/RELEASE.md` section 1); any other change still needs its own
+> reviewed plan.
+
 ## Private input materialization and public receipts
 
 Each environment supplies `RELEASE_AUTHORIZED_SHA`, `RELEASE_PACKET_SHA256`,
@@ -188,6 +195,9 @@ against GitHub's per-secret size limit before configuring the environment.
 > materialize are retired for this program; the public artifacts below are
 > unaffected. Private source data, manifests, profile and launch contents, API
 > error bodies and credentials are still never uploaded as public artifacts.
+> The recipient keys that encrypt the catalog and the evidence
+> (`catalog_recipient`, `evidence_recipient`) stand; they are not release
+> envelopes.
 
 Public artifacts have immutable per-attempt names:
 
@@ -221,7 +231,7 @@ entries. Historical liabilities cannot be removed by a retry or a new date.
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
 > models together, and this cumulative release ledger and its reserved
 > entries are retired for this program. G30's per-call reservations stand
-> (PLAN section 4.3).
+> (PLAN section 4.3; the coordinator's ruling on the mechanism).
 
 The data and runtime workflows have separate non-cancelling run queues. Their
 mutation jobs share `specimen-protected-mutation`; neither waits for the other

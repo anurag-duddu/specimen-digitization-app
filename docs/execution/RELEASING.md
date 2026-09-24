@@ -102,7 +102,9 @@ the gate easier to pass. It makes it possible to pass at all.
 > G2 and G11. The deployment plan, authorization artifact, independent review
 > report, human review scope, budget ledger and cost review inputs below are
 > retired for this program, and specimens are processed one at a time, on
-> demand, rather than as a fixed ten-specimen manifest.
+> demand, rather than as a fixed ten-specimen manifest. The recipient keys
+> that encrypt the catalog and the evidence (`catalog_recipient`,
+> `evidence_recipient`) stand; they are not release envelopes.
 
 The command works out for itself everything that can be observed. You are never
 asked for any of this:
@@ -335,8 +337,9 @@ the guarded planes reject one.
 > transport format and minting scripts, and the authorization artifacts retire
 > for this program. `DEPLOYMENT.md`'s approved contract stays authoritative,
 > amended by the same decisions, and `RELEASE_AUTHORIZATION.md`'s list of what
-> remains forbidden stands: no manual dispatch, no key files and no
-> workstation deploys. The protected-ref and five-check admission moves into
+> remains forbidden stands: workstation deployments, manual dispatch, weaker
+> branch protection, broader Hosting permissions, service-account JSON keys
+> and AWS resources. The protected-ref and five-check admission moves into
 > each plane's gate (`golive/RELEASE.md` section 1). The bounded setup window
 > stands for the time-bounded roles
 > ([`RELEASE_AUTHORIZATION.md`](RELEASE_AUTHORIZATION.md)).
