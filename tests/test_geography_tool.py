@@ -15,8 +15,11 @@ from specimen_digitization.application.geography_tool import (
     GEOCODING_COST_MICROS,
     GEOCODING_URL,
     TOOL_VERSION,
+    comparison_key,
+    fold,
     geocode_locality,
     map_geocoding_response,
+    one_letter_apart,
 )
 from specimen_digitization.application.harness_tools import (
     GeographyQuery,
@@ -200,7 +203,7 @@ def test_one_get_with_the_address_the_environment_key_and_a_ten_second_timeout(
         ("connect", "read", "write", "pool"), 10
     )
     assert seen.reservations == [] and not seen.client_closed
-    assert TOOL_VERSION == "google-geocoding-v1" and GEOCODING_COST_MICROS == 5000
+    assert TOOL_VERSION == "google-geocoding-v2" and GEOCODING_COST_MICROS == 5000
 
 
 def test_one_result_confirms_only_the_fields_whose_component_names_match():
@@ -244,7 +247,7 @@ def test_one_result_confirms_only_the_fields_whose_component_names_match():
 
 
 def test_aliases_let_a_notation_match():
-    seen = geocode(QUERY, reply(DAVAO), aliases={"pi": ["philippines"]})
+    seen = geocode(QUERY, reply(DAVAO), aliases={"p i": ["philippines"]})
 
     assert seen.result.field_outcomes == dict.fromkeys(FIELDS, S.SUCCESS)
     assert [p.field_key for p in seen.result.places] == list(FIELDS)
@@ -262,7 +265,7 @@ ADMIN = (
 
 @pytest.mark.parametrize(
     "options",
-    [{}, {"aliases": {"pi": ["philippines"]}}],
+    [{}, {"aliases": {"p i": ["philippines"]}}],
     ids=["no-aliases", "aliases"],
 )
 @pytest.mark.parametrize(
@@ -342,8 +345,8 @@ def test_a_near_spelling_clears_nothing_unless_every_condition_holds(pairs):
 
 
 def test_a_near_spelling_is_never_measured_against_a_code():
-    # "P.I." folds to "pi", one edit from Google's short name "PH"; a code is
-    # not a name, so only the profile's alias may confirm it.
+    # "P.I." is not a full name, and "PH" is a code, not a name: only the
+    # profile's alias may confirm it (G34).
     geography = query(("city", "DAVAO CITY."), ("country", "P.I."))
     payload = {"status": "OK", "results": [DAVAO]}
 
@@ -378,7 +381,7 @@ def test_a_near_spelling_needs_exactly_one_such_component_at_the_fields_levels()
     ids=["one-place", "two-places", "zero-results", "provider-error"],
 )
 @pytest.mark.parametrize(
-    "aliases", [{}, {"pi": ["philippines"]}], ids=["no-aliases", "aliases"]
+    "aliases", [{}, {"p i": ["philippines"]}], ids=["no-aliases", "aliases"]
 )
 def test_the_precise_location_forms_the_address_but_is_never_settled(answer, aliases):
     seen = geocode(QUERY, answer, aliases=aliases)
@@ -761,8 +764,11 @@ def test_a_field_is_confirmed_only_by_a_component_at_its_own_level(
 @pytest.mark.parametrize(
     "short_name,literals,expected",
     [
-        ("US", ["U.S."], S.SUCCESS),  # The short name counts.
-        ("US", ["United-States"], S.NO_MATCH),  # Punctuation is dropped.
+        ("US", ["US"], S.SUCCESS),  # The short name counts.
+        # Punctuation is a space, as in S8's tool: "U.S." needs an alias, as
+        # "P.I." does, and "United-States" is "united states".
+        ("US", ["U.S."], S.NO_MATCH),
+        ("US", ["United-States"], S.SUCCESS),
         ("US", ["UNITED STATES.", "united  states"], S.SUCCESS),
         ("US", ["United States", "USA"], S.NO_MATCH),  # Every literal must match.
         ("", ["?"], S.NO_MATCH),  # Nothing left to compare never matches.
@@ -807,6 +813,7 @@ NOTATION_WORDS = (
     "dept",
     "department",
     "depto",
+    "departamento",
     "co",
     "county",
     "mun",
@@ -820,16 +827,16 @@ NOTATION_WORDS = (
 
 @pytest.mark.parametrize("word", NOTATION_WORDS)
 def test_notation_words_are_dropped_before_comparing(word):
-    assert geography_tool.fold(f"Davao {word.title()}.") == "davao"
-    assert geography_tool.fold(f"{word.upper()} Davao") == "davao"
+    assert comparison_key(f"Davao {word.title()}.") == "davao"
+    assert comparison_key(f"{word.upper()} Davao") == "davao"
 
 
 def test_only_whole_notation_words_are_dropped():
-    assert geography_tool.fold("Davao Prov.") == "davao"
-    assert geography_tool.fold("Colorado Statehood, Regional") == (
+    assert comparison_key("Davao Prov.") == "davao"
+    assert comparison_key("Colorado Statehood, Regional") == (
         "colorado statehood regional"
     )
-    assert geography_tool.fold("Región") == ""
+    assert comparison_key("Región") == ""
 
 
 @pytest.mark.parametrize(
@@ -862,7 +869,7 @@ def test_only_whole_notation_words_are_dropped():
             "administrative_area_level_1",
             "Provincia de Cusco",
             "Cusco",
-            S.NO_MATCH,
+            S.SUCCESS,  # A link word after a leading unit word goes too.
         ),
         (
             "province_state",
@@ -889,13 +896,13 @@ def test_notations_compare_by_the_name_they_qualify(
     "aliases,expected",
     [
         ({}, S.NO_MATCH),
-        ({"pi": ["philippines"]}, S.SUCCESS),
-        ({"pi": ["republic of the philippines", "ph"]}, S.SUCCESS),
+        ({"p i": ["philippines"]}, S.SUCCESS),
+        ({"p i": ["republic of the philippines", "ph"]}, S.SUCCESS),
         ({"P.I.": ["Philippines"]}, S.SUCCESS),  # Folded here like the literals.
-        ({"pi": "philippines"}, S.SUCCESS),  # A bare string is one name.
-        ({"pi": ["republic of the philippines"]}, S.NO_MATCH),  # Not Google's name.
-        ({"philippines": ["pi"]}, S.NO_MATCH),  # Keyed by the literal.
-        ({"p i": ["philippines"]}, S.NO_MATCH),  # "P.I." folds to "pi".
+        ({"p i": "philippines"}, S.SUCCESS),  # A bare string is one name.
+        ({"p i": ["republic of the philippines"]}, S.NO_MATCH),  # Not Google's name.
+        ({"philippines": ["p i"]}, S.NO_MATCH),  # Keyed by the literal.
+        ({"pi": ["philippines"]}, S.NO_MATCH),  # "P.I." folds to "p i" (S8's fold).
     ],
     ids=[
         "none",
@@ -905,7 +912,7 @@ def test_notations_compare_by_the_name_they_qualify(
         "bare-string",
         "not-a-google-name",
         "reversed",
-        "spaced-key",
+        "unspaced-key",
     ],
 )
 def test_aliases_add_names_that_count_as_matches(aliases, expected):
@@ -961,15 +968,63 @@ def test_the_key_filter_is_installed_once_at_import():
 @pytest.mark.parametrize(
     "a,b,expected",
     [
-        ("chimaltenago", "chimaltenango", True),  # One insertion.
-        ("chimaltenango", "chimaltenago", True),  # One deletion.
-        ("chimaltenaga", "chimaltenago", True),  # One substitution.
-        ("davao", "davao", True),
-        ("chimaltinago", "chimaltenango", False),  # Two edits.
-        ("pi", "philippines", False),
-        ("ab", "ba", False),  # A transposition is two edits.
-        ("", "a", True),
+        ("chimaltenago", "chimaltenango", 1),  # One insertion.
+        ("chimaltenango", "chimaltenago", 1),  # One deletion.
+        ("chimaltenaga", "chimaltenago", 1),  # One substitution.
+        ("davao", "davao", 0),
+        ("chimaltinago", "chimaltenango", 2),  # Two edits.
+        ("pi", "philippines", 2),  # Counted up to two.
+        ("ab", "ba", 2),  # A transposition is two edits.
+        ("", "a", 1),
     ],
 )
-def test_one_edit_is_one_insertion_deletion_or_substitution(a, b, expected):
-    assert geography_tool._one_edit(a, b) is expected
+def test_letters_apart_counts_single_character_edits(a, b, expected):
+    assert geography_tool._letters_apart(a, b) == expected
+
+
+def test_folding_turns_punctuation_into_spaces_as_s8s_tool_does():
+    assert fold("P.I.") == "p i"
+    assert fold("Chimaltenángo,") == "chimaltenango"
+    assert fold("E.slope Volcan  Fuego") == "e slope volcan fuego"
+
+
+@pytest.mark.parametrize(
+    ("written", "key"),
+    [
+        ("Mt. Banahao", "mount banahao"),
+        ("Mount Banahao", "mount banahao"),
+        ("Depto. de Chimaltenango", "chimaltenango"),
+        ("Departamento de Guatemala", "guatemala"),
+        ("Mun. Yepocapa", "yepocapa"),
+        ("Isle of Pines", "isle of pines"),  # "of" links only after a unit word.
+    ],
+)
+def test_the_comparison_key_reads_features_and_drops_unit_words(written, key):
+    assert comparison_key(written) == key
+
+
+@pytest.mark.parametrize(
+    ("literal", "name", "near"),
+    [
+        ("Chimaltenago", "Chimaltenango", True),
+        ("Chimaltenango", "Chimaltenango", False),  # Exactly one letter, not none.
+        ("Chimaltinago", "Chimaltenango", False),  # Two letters.
+        ("P.I.", "PH", False),  # Neither is a full name.
+        ("Guat.", "Guatemala", False),
+        ("RP", "Rp", False),
+    ],
+)
+def test_a_near_spelling_needs_two_full_names_one_letter_apart(literal, name, near):
+    assert one_letter_apart(literal, name) is near
+
+
+def test_a_unit_word_before_the_name_still_matches_googles_component():
+    geography = query(
+        ("province_state", "Depto. de Chimaltenango"), ("country", "GUAT.")
+    )
+    payload = {"status": "OK", "results": [CHIMALTENANGO]}
+
+    _, fields, _, warnings = map_geocoding_response(geography, 200, payload, GUATEMALA)
+
+    assert fields == {"province_state": S.SUCCESS, "country": S.SUCCESS}
+    assert warnings == []
