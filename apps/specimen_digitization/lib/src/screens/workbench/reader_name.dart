@@ -1,5 +1,5 @@
-/// The name a reader goes by on the record screen, in the Readings segment
-/// and the Fields segment alike (UI.md T2.2 and T2.3).
+/// The names a reader and a label region go by on the record screen, in the
+/// Readings segment and the Fields segment alike (UI.md T2.2 and T2.3).
 library;
 
 import '../../models.dart';
@@ -23,4 +23,19 @@ String readerName(
   }
   final ThreadReading? reading = thread?.readingOf(observationId);
   return reading?.model ?? reading?.routeId ?? unnamedReader;
+}
+
+/// The name the label region [regionId] goes by, "Label K", by its place
+/// among the record's regions as the Readings sections number them, or else
+/// among the thread's; null for a region neither lists.
+String? labelName(Specimen specimen, SpecimenThread? thread, String? regionId) {
+  if (regionId == null) return null;
+  final int listed = specimen.regions.indexWhere(
+    (Json region) => region['region_id'] == regionId,
+  );
+  if (listed >= 0) return 'Label ${listed + 1}';
+  final int threaded =
+      thread?.regions.indexWhere((ThreadRegion r) => r.regionId == regionId) ??
+      -1;
+  return threaded >= 0 ? 'Label ${threaded + 1}' : null;
 }

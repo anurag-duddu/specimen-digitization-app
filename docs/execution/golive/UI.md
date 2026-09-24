@@ -250,6 +250,29 @@ not know shows in the server's own word. Corrections are unchanged: every
 layer, the text and the standardized value alike, opens the same editor
 (G27: corrections on both).
 
+Part three marks which readings settled the value. The owner's G32: a
+field found on two labels is settled per label on its own evidence and
+clears when every label settles to the same value; otherwise it goes to
+review with each label's reading kept, and every verbatim stays as written
+(G27). The thread gives `settled_observation_ids` and one verbatim entry
+per label's source reading (#88 at `4f9997a`).
+
+1. When a field's texts come from more than one label, each entry names
+   its label first: "Label 2 · <reader> · decided transcript". In a
+   per-label map a decided-transcript entry names its label's selected
+   reading (S5, 2026-09-24); a single decided transcript still names no
+   reader.
+2. An entry whose reading is in `settled_observation_ids` ends "· settled
+   the value". A field that went to review settled nothing, so no entry is
+   marked, and each label's reading stays in view.
+3. A single decided transcript whose value a fallback lookup settled from
+   another reader's raw reading (G20) says so under the text: "<reader> ·
+   raw reading · settled the value".
+
+The guard of part two is unchanged. A field with a verbatim map has no
+record literal, so it matches the record on the settled value (S5 and S4,
+2026-09-24).
+
 ### T2.4 The coverage check and the decision's findings
 
 The thread explains what the record states; it never adds a blocker the

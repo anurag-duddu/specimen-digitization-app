@@ -280,6 +280,35 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('a note under As written says who settled the value', (
+      WidgetTester tester,
+    ) async {
+      const String note = 'Reader two · raw reading · settled the value';
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.supported,
+            asWritten: 'GUATEMALA',
+            asWrittenNote: note,
+          ),
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text(note)).dy,
+        greaterThan(tester.getTopLeft(find.text('GUATEMALA')).dy),
+      );
+      expect(
+        tester.getSemantics(find.text(note)),
+        matchesSemantics(label: 'GUATEMALA\n$note'),
+        reason: 'the note is heard with the text it explains',
+      );
+      handle.dispose();
+    });
+
     testWidgets('meets the guidelines in both themes', (
       WidgetTester tester,
     ) async {

@@ -50,6 +50,7 @@ class FieldRow extends StatelessWidget {
     this.editBlockedReason,
     this.findings,
     this.writtenBy = const <AttributedText>[],
+    this.asWrittenNote,
     this.readAsNote,
     this.evidence = const <String>[],
   });
@@ -109,6 +110,11 @@ class FieldRow extends StatelessWidget {
   /// When there is any, the "As written" layer shows each text under its
   /// source in place of [asWritten] (UI.md T2.3).
   final List<AttributedText> writtenBy;
+
+  /// One line under the "As written" value saying where a value settled
+  /// from when it was not that text, such as another reader's raw reading
+  /// a lookup confirmed (UI.md T2.3 part three).
+  final String? asWrittenNote;
 
   /// One line under the "Read as" value saying how a derived part of it was
   /// derived, such as a century a rule set.
@@ -225,7 +231,11 @@ class FieldRow extends StatelessWidget {
                   written: layer == FieldLayer.asWritten
                       ? writtenBy
                       : const <AttributedText>[],
-                  note: layer == FieldLayer.readAs ? readAsNote : null,
+                  note: switch (layer) {
+                    FieldLayer.asWritten => asWrittenNote,
+                    FieldLayer.readAs => readAsNote,
+                    FieldLayer.standardized => null,
+                  },
                   state: state,
                   onEdit: onEdit == null ? null : () => onEdit!(layer),
                   editLabel: editSemanticsLabel?.call(layer),

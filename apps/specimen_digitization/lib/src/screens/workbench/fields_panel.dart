@@ -270,6 +270,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           standardized: _layerValue(field, pending, FieldLayer.standardized),
           authority: _authorityLine(field, pending),
           writtenBy: _writtenBy(run),
+          asWrittenNote: _settledElsewhere(run),
           readAsNote: _centuryNote(run),
           evidence: <String>[
             for (final ThreadEvidence item
@@ -368,9 +369,11 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   }
 
   /// Who wrote each text, where that is news: every reader's text when the
-  /// first pass chose none (G27, G28), or the one reader a single text was
-  /// taken from (G20). The decided transcript's text names no reader: the
-  /// Readings segment shows how the transcript was decided.
+  /// first pass chose none (G27, G28), each label's text when the field was
+  /// found on more than one (G32), or the one reader a single text was taken
+  /// from (G20). A single decided transcript names no reader: the Readings
+  /// segment shows how the transcript was decided. An entry whose reading
+  /// settled the value says so (UI.md T2.3 part three).
   List<AttributedText> _writtenBy(ThreadField? run) {
     final List<ThreadVerbatim> written =
         run?.verbatim ?? const <ThreadVerbatim>[];
@@ -378,18 +381,58 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
         written.single.inputSource != ThreadInputSource.rawReading) {
       return const <AttributedText>[];
     }
+    final Set<String> settled = <String>{...?run?.settledObservationIds};
+    // The label leads only where the texts come from more than one.
+    final bool perLabel =
+        written.map((ThreadVerbatim item) => item.regionId).toSet().length > 1;
     return <AttributedText>[
       for (final ThreadVerbatim item in written)
         if (item.text case final String text)
-          (
-            source:
-                '${readerName(widget.specimen, widget.thread, item.observationId)}'
-                ' · '
-                '${FirstPassSummary.sourceWords(item.inputSource, item.inputSourceName)}',
-            text: text,
-          ),
+          (source: _attribution(item, perLabel, settled), text: text),
     ];
   }
+
+  /// One entry's source line: its label where the field spans labels, its
+  /// reader where the entry names one, where the text came from, and
+  /// whether it settled the value.
+  String _attribution(ThreadVerbatim item, bool perLabel, Set<String> settled) {
+    final String? label = perLabel
+        ? labelName(widget.specimen, widget.thread, item.regionId)
+        : null;
+    final String? reading = item.observationId;
+    return <String>[
+      ?label,
+      if (reading != null) readerName(widget.specimen, widget.thread, reading),
+      FirstPassSummary.sourceWords(item.inputSource, item.inputSourceName),
+      if (settled.contains(reading)) settledWords,
+    ].join(' · ');
+  }
+
+  /// Where a single decided transcript's value came from, when a fallback
+  /// lookup settled it from another reader's raw reading instead (G20): that
+  /// reading is in `settled_observation_ids` but not among the texts.
+  String? _settledElsewhere(ThreadField? run) {
+    final List<ThreadVerbatim> written =
+        run?.verbatim ?? const <ThreadVerbatim>[];
+    if (run == null ||
+        written.length != 1 ||
+        written.single.inputSource == ThreadInputSource.rawReading) {
+      return null;
+    }
+    final String? shown = written.single.observationId;
+    for (final String reading in run.settledObservationIds) {
+      if (reading == shown) continue;
+      return <String>[
+        readerName(widget.specimen, widget.thread, reading),
+        FirstPassSummary.sourceWords(ThreadInputSource.rawReading, null),
+        settledWords,
+      ].join(' · ');
+    }
+    return null;
+  }
+
+  /// What an entry whose reading settled the value adds to its source line.
+  static const String settledWords = 'settled the value';
 
   /// A Google locator, `place/{place id}` (DATA_CONTRACT.md rule 1.6).
   static const String _placePrefix = 'place/';
