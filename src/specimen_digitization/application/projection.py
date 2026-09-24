@@ -542,8 +542,16 @@ def _derivation(value, relations: dict) -> str:
     return "parsed" if value.parsed else "literal"
 
 
-class CredentialStored(ValueError):
+class RefusedContent(ValueError):
+    """Content no store may keep; the message names where, never the value."""
+
+
+class CredentialStored(RefusedContent):
     """Rule 1.6: a stored call holds a credential; the message names where, never the value."""
+
+
+class GoogleContentStored(RefusedContent):
+    """G26: Google content beyond the place id, in a call's result or a value's identity."""
 
 
 def _refuse_keys(run: Run) -> None:
