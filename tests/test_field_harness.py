@@ -564,3 +564,36 @@ def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():
     # It names the geography call that returned it (#124, PLAN 4.8).
     (call,) = [r for r in outcome.tool_calls if r.tool == "geography_lookup"]
     assert county.evidence_relations[call.evidence_id] == "supports"
+
+
+def test_a_settled_places_identity_and_credit_reach_the_field():
+    # PLAN 4.8 (#124): the field keeps the open source's name with its credit.
+    class Gazetteer(Fakes):
+        def geocode(self, query):
+            result = super().geocode(query)
+            places = [
+                p.model_copy(
+                    update={
+                        "source": "geonames",
+                        "name": "Chimaltenango",
+                        "credit": "GeoNames credit",
+                    }
+                )
+                if p.field_key == "city"
+                else p
+                for p in result.places
+            ]
+            calls = [
+                *result.sub_calls,
+                result.sub_calls[0].model_copy(update={"source": "geonames"}),
+            ]
+            return result.model_copy(update={"places": places, "sub_calls": calls})
+
+    outcome, _ = harness(FULL, fakes=Gazetteer())
+
+    city = outcome.fields["city"]
+    assert (city.normalized, city.authority_identity["credit"]) == (
+        "Chimaltenango",
+        "GeoNames credit",
+    )
+    assert outcome.fields["country"].authority_identity is None  # Google's (G26).
