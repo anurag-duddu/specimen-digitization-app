@@ -638,7 +638,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     if (batch.isEmpty || _savingLocally || blockedReason('field') != null) {
       return;
     }
-    final List<ClearanceBlocker> outstanding = blockersFor(widget.specimen);
+    final List<ClearanceBlocker> outstanding = blockersFor(
+      widget.specimen,
+      thread: widget.thread,
+    );
     final String? reason = await showReasonSheet(
       context,
       title: 'Save ${pendingChangesLabel(batch.length)}?',
@@ -769,7 +772,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   Future<void> _decide(String kind, String title, String action) async {
     if (blockedReason(kind) != null) return;
-    final List<ClearanceBlocker> outstanding = blockersFor(widget.specimen);
+    final List<ClearanceBlocker> outstanding = blockersFor(
+      widget.specimen,
+      thread: widget.thread,
+    );
     final String? reason = await showReasonSheet(
       context,
       title: title,
@@ -1195,7 +1201,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// Where the record stands, and what is holding a decision up.
   Widget _statusStrip(BuildContext context) => WorkbenchStatusStrip(
     specimen: widget.specimen,
-    blockers: blockersFor(widget.specimen),
+    blockers: blockersFor(widget.specimen, thread: widget.thread),
     pending: _pending,
     staleChanges: _stale,
     onGoToBlocker: _goToBlocker,

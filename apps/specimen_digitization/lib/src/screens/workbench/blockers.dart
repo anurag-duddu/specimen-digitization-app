@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models.dart';
 import '../../review_context.dart';
+import '../../thread/thread.dart';
 import '../../vocabulary.dart';
 import 'workbench_layout.dart';
 
@@ -46,11 +47,18 @@ class ClearanceBlocker {
 
 /// Everything that currently blocks clearance on [specimen].
 ///
-/// Order is the order a reviewer works in: readings first, then fields, then
-/// the operational state, because a run blocker is rarely theirs to fix.
-List<ClearanceBlocker> blockersFor(Specimen specimen) {
+/// Order is the order a reviewer works in: the label regions and readings
+/// first, then fields, then the operational state, because a run blocker is
+/// rarely theirs to fix. The [thread] explains a blocker the record states,
+/// and never adds one (UI.md T2.4).
+List<ClearanceBlocker> blockersFor(
+  Specimen specimen, {
+  SpecimenThread? thread,
+}) {
   final List<ClearanceBlocker> blockers = <ClearanceBlocker>[];
   final Json run = objectOf(specimen.data['run']);
+  final ClearanceBlocker? coverage = _coverageBlocker(specimen, thread);
+  if (coverage != null) blockers.add(coverage);
 
   for (final Json t in objects(specimen.data['transcriptions'])) {
     if (t['resolved'] == true) continue;
@@ -72,6 +80,8 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   }
 
   for (final Json f in specimen.findings) {
+    // The coverage entry above states this one, with what was measured.
+    if (coverage != null && f['reason_code'] == _coverageCode) continue;
     final String? field = f['field_key'] as String?;
     blockers.add(
       ClearanceBlocker(
@@ -96,6 +106,7 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   final Set<String> stated = <String>{
     for (final Json f in specimen.findings)
       if (f['reason_code'] != null) f['reason_code'].toString(),
+    if (coverage != null) _coverageCode,
   };
   for (final Object? code
       in specimen.data['reason_codes'] as List? ?? const <Object?>[]) {
@@ -157,4 +168,88 @@ String _regionName(Specimen specimen, Object? regionId) {
     (Json r) => r['region_id'] == regionId,
   );
   return index < 0 ? 'this record' : 'Label ${index + 1}';
+}
+
+/// The reason a failed label coverage check leaves on the record (G15).
+const String _coverageCode = 'label_coverage_unconfirmed';
+
+/// The thread's failed coverage check, saying what each failed check
+/// measured, while the record still states the check's reason. A reviewer
+/// can confirm coverage after the run, and the thread never brings back a
+/// blocker the record no longer has (UI.md T2.4).
+ClearanceBlocker? _coverageBlocker(Specimen specimen, SpecimenThread? thread) {
+  final ThreadCoverageCheck? check = thread?.coverageCheck;
+  if (check == null || check.status != 'failed') return null;
+  final List<Object?> reasons =
+      specimen.data['reason_codes'] as List? ?? const <Object?>[];
+  final bool stated =
+      reasons.contains(_coverageCode) ||
+      specimen.findings.any((Json f) => f['reason_code'] == _coverageCode);
+  if (!stated) return null;
+  final List<String> measured = <String>[
+    for (final ThreadCheck failed in check.checks)
+      if (failed.passed == false) ..._measured(failed),
+  ];
+  return ClearanceBlocker(
+    message: vocabularyLabel(_coverageCode),
+    detail: measured.isEmpty ? null : measured.join('. '),
+    // Readings, beside the label regions the check judged.
+    segment: WorkbenchSegment.readings,
+  );
+}
+
+/// What one failed check measured, from the detail S5 pins for the thread.
+/// A check, or a reason, this client does not know is named rather than
+/// read into.
+List<String> _measured(ThreadCheck check) {
+  final Json detail = check.detail;
+  final Set<String> reasons = <String>{
+    for (final Object? code
+        in detail['reason_codes'] as List? ?? const <Object?>[])
+      '$code',
+  };
+  int? count(String key) => detail[key] is int ? detail[key] as int : null;
+  final List<String> said = switch (check.name) {
+    'region_count' => <String>[
+      // No regions also fails the range; it is said once.
+      if (reasons.contains('zero_regions'))
+        'Found no label regions'
+      else if (reasons.contains('label_region_count_out_of_range'))
+        _regionCount(count('found'), count('min'), count('max')),
+      if (reasons.contains('region_out_of_bounds'))
+        'A label region lies outside the photograph',
+    ],
+    'full_image' => <String>[
+      if (reasons.contains('cross_check_detection_outside_labels'))
+        _outside(count('counted'), count('outside')),
+    ],
+    _ => const <String>[],
+  };
+  return said.isEmpty
+      ? <String>['Failed: ${vocabularyLabel(check.name ?? 'a check')}']
+      : said;
+}
+
+/// How many label regions were found, against the range the check records.
+/// A range it does not record is not guessed.
+String _regionCount(int? found, int? min, int? max) {
+  if (found == null) {
+    return "The number of label regions is outside the profile's range";
+  }
+  final String regions = found == 1 ? '1 label region' : '$found label regions';
+  if (min == null || max == null) return 'Found $regions';
+  return min == max
+      ? 'Found $regions; the profile allows $min'
+      : 'Found $regions; the profile allows $min to $max';
+}
+
+/// How many of the full image's label-like detections lie outside the label
+/// regions.
+String _outside(int? counted, int? outside) {
+  if (counted == null || outside == null) {
+    return 'A label-like detection lies outside the label regions';
+  }
+  final String verb = outside == 1 ? 'lies' : 'lie';
+  return '$outside of $counted label-like detections $verb outside the '
+      'label regions';
 }

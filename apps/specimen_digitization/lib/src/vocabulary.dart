@@ -37,6 +37,9 @@ const Map<String, String> userFacingTerms = <String, String>{
   // 9.1).
   'hard': 'Blocks clearance',
   'warning': 'Worth checking',
+  'info': 'For information',
+  // The reason a failed label coverage check leaves on the record (G15).
+  'label_coverage_unconfirmed': 'Label coverage not confirmed',
   // Evidence states shown in the correction dialog.
   'supported': 'Supported',
   'unknown': 'Unknown',
