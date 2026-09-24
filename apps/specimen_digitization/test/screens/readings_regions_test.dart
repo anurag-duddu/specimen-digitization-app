@@ -302,6 +302,112 @@ void main() {
     expect(find.textContaining('Resolved by'), findsNothing);
   });
 
+  group("a reviewer's decision (#171)", () {
+    Json withReviewer(int region, Json? decision, {bool noFirstPass = false}) {
+      final Json json = fixtureJson();
+      final Json item = (json['regions'] as List<dynamic>)[region] as Json;
+      item['reviewer_decision'] = decision;
+      if (noFirstPass) item['first_pass'] = null;
+      return json;
+    }
+
+    testWidgets('follows what the readers handed on, the model kept above', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread reviewed = SpecimenThread.fromJson(
+        withReviewer(1, <String, dynamic>{
+          'decided_text': 'GUATEMALA Zacapa Sa. de las Minas.',
+          'unresolved': false,
+          'rationale': 'The label ends with a period.',
+        }),
+      );
+      await pumpReadings(tester, specimenFor(reviewed), thread: reviewed);
+      expect(
+        inSection(
+          'region-right',
+          find.text('The first pass chose muse-handwriting-fixture'),
+        ),
+        findsOneWidget,
+        reason: "the model's own decision stays (G38)",
+      );
+      final Finder title = inSection(
+        'region-right',
+        find.text('Decided by a reviewer'),
+      );
+      expect(title, findsOneWidget);
+      expect(
+        tester.getTopLeft(title).dy,
+        greaterThan(
+          tester
+              .getTopLeft(
+                inSection('region-right', find.text('Handed to the harness')),
+              )
+              .dy,
+        ),
+        reason: 'in the order the thread ran',
+      );
+      expect(
+        find.bySemanticsLabel(
+          'Decided by a reviewer\nDecided transcript\n'
+          'GUATEMALA Zacapa Sa. de las Minas.\nThe label ends with a period.',
+        ),
+        findsOneWidget,
+        reason: 'one announcement',
+      );
+      expect(
+        inSection('region-left', find.text('Decided by a reviewer')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('says so when the reviewer left the region unresolved', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread reviewed = SpecimenThread.fromJson(
+        withReviewer(1, <String, dynamic>{
+          'decided_text': null,
+          'unresolved': true,
+          'rationale': 'Too faint to read.',
+        }),
+      );
+      await pumpReadings(tester, specimenFor(reviewed), thread: reviewed);
+      expect(
+        find.bySemanticsLabel(
+          'Decided by a reviewer\nTranscription not resolved\n'
+          'Too faint to read.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        inSection('region-right', find.text('Transcription not resolved')),
+        findsOneWidget,
+        reason: "the model's first pass left nothing open",
+      );
+    });
+
+    testWidgets('stands alone where the model decided nothing', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread reviewed = SpecimenThread.fromJson(
+        withReviewer(0, <String, dynamic>{
+          'decided_text': '12.v.1978 leg. R. Ortiz',
+          'unresolved': false,
+          'rationale': null,
+        }, noFirstPass: true),
+      );
+      await pumpReadings(tester, specimenFor(reviewed), thread: reviewed);
+      expect(
+        inSection('region-left', find.text('Decided by a reviewer')),
+        findsOneWidget,
+      );
+      expect(
+        inSection('region-left', find.text('No decision recorded')),
+        findsNothing,
+        reason: 'a decision is recorded: the reviewer made it',
+      );
+    });
+  });
+
   testWidgets('a region with no recorded decision names where the run is', (
     WidgetTester tester,
   ) async {

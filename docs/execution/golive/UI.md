@@ -213,6 +213,14 @@ Part two adds, from the thread, to each section:
    transcript, the rationale, the first pass's model and prompt, and "Handed
    to the harness": each reader, whether it handed the decided transcript or
    its own raw reading, and the text it handed.
+5. A reviewer's decision (#171's `reviewer_decision`), after "Handed to the
+   harness", in the order the thread ran. It reads "Decided by a reviewer",
+   then "Transcription not resolved" when the reviewer left the region
+   unresolved, then the transcript the reviewer decided on and the
+   reviewer's reason, all as one announcement. The model's first pass stays
+   above it: a later layer never erases an earlier one (G38). When a
+   reviewer decided a region the model did not, the reviewer's decision
+   stands alone. "No decision recorded" is for a region with neither.
 
 The declarations and the "Differences and resolution" list stay below the
 sections. Where the thread gives a region's comparison, that region's row
