@@ -480,21 +480,41 @@ pilot's worker is unchanged and still needs its launch files.
     queue moves on. Its resume action requests it again.
 - **Retries.** A run that stops with a scheduled retry is waited for, once no
   other run is due, if the retry falls inside the window. Nothing else would
-  start the job for it. Retry delays are at most 300 s plus jitter.
+  start the job for it. Retry delays are at most 300 s plus jitter. A retry
+  after the window is written into the fence when it is released, and the next
+  holder waits for it as it would for its own. `ListDueWorkV2` cannot look
+  ahead, because its cutoff may not pass the database's clock.
 - **Window.** The worker takes no new run 600 s before its task deadline
   (3600 s). It exits 0 when nothing is due and no retry is pending in the
   window. On `SIGTERM` it stops taking work, lets the current step's result
   save, and releases the fence.
+- **Hand-over.** The coordinator approved it on 2026-09-23 with three bounds.
+  - The worker starts the next execution only when requested work is due as
+    its window closes (in a collection it drained, or one it did not reach), or
+    when a retry it hands over through the fence falls within the next
+    execution's window. A drained queue or a stop signal starts none.
+  - It releases its fences first, so the next execution takes them (G13). It
+    uses T1's job start: the job as deployed, with no changed arguments,
+    environment or task count. The worker's service account may run that job
+    only (S2 grants `run.invoker` on it, never overrides or project-wide).
+  - The fence counts consecutive hand-overs without progress. On the third,
+    the worker stops handing over. It blocks the waiting run with
+    `lane_handover_without_progress`, an operational block, and G30 caps model
+    spend but not Cloud Run time.
+
+  A failed start leaves the work queued for the next request, as in T1.
 - **Output.** One JSON summary: the status (`drained`, `window_closed` or
-  `stopped`), the specimens processed, the collections skipped and the retries
-  pending.
-- **Blocks the drain records.** It is an operational block, never a queue
-  outcome (QUE-005). The operator's `retry` or `resume` action requests the
+  `stopped`), the specimens processed, the collections skipped, the
+  collections whose hand-over stopped, the retries pending, and the hand-over's
+  outcome (`requested`, `failed`, `unconfigured` or none).
+- **Blocks the drain records.** Both are operational blocks, never queue
+  outcomes (QUE-005). The operator's `retry` or `resume` action requests the
   run again, as for every operational block.
 
   | Code | What it means | What to check |
   | --- | --- | --- |
   | `lane_run_not_progressing` | The worker stepped this due run and the step changed nothing. | The run's last step in the thread, and the worker's log for that step. Then retry. |
+  | `lane_handover_without_progress` | Three worker executions in a row handed this collection on without making progress. | The worker job's task timeout (more than 600 s) and its logs. Then retry. |
 
 - **Readiness before the first drain.** On 2026-09-23 S2 confirmed, read-only,
   that the production Data Connect schema is the empty placeholder, and the
