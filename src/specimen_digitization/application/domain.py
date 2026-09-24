@@ -486,6 +486,9 @@ class Run(Record):
     human_approved: bool = False
     disposition: Disposition | None = None
     reasons: list[str] = Field(default_factory=list)
+    # QUE-006: one sentence from the rule version and the reason codes (S5's
+    # data contract, #88); none while the run has no disposition.
+    disposition_summary: str | None = None
     findings: list[RunFinding] = Field(default_factory=list)
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     # A harness failure (G6): no field was decided, and the record goes to
