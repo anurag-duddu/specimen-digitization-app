@@ -165,3 +165,23 @@ deadline, so the API's request timeout is 600 s.
 - Runtime configuration parsing for both new variables, and the production
   wiring of the registry, reader and dispatcher.
 - Synthetic-mode tests stay green unchanged.
+
+## Reason codes in the collection configuration
+
+The coordinator ruled on 2026-09-24 that the lane publishes the policy's reason
+codes where S6's queue filter reads them.
+
+- **Where.** Each item of `GET /v1/organizations/{organization_id}/collections`,
+  the collection configuration the client holds, carries `reason_codes`.
+- **What.** Plain code strings, in the order `policy.evaluate` checks them, as
+  agreed with S6. The client writes a reviewer-facing label for each and falls
+  back to the code read as words.
+- **Kept in step.** The catalog `policy.REASON_CODES` sits beside the rules that
+  emit the codes. A test reads the policy's rules and fails when one emits a
+  code the catalog lacks, or when the catalog lists one no rule emits.
+- **Suffixes.** A stored reason may add a `:detail` to its code: a field, a
+  region, a piece of evidence, a unit or an end (`mandatory_unresolved:taxon`).
+  The catalog lists the codes without it. Matching a code to its suffixed
+  reasons in search is S5's contract.
+- **Not included.** Label-language review adds codes from the reading
+  declarations, not from `evaluate`, so they are not in the catalog.
