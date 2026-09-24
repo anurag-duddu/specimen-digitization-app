@@ -597,6 +597,8 @@ def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
         "summary": summary,
         "findings": [_plain(finding) for finding in findings],
         "fields": fields,
+        # A new value with the same state is a new record version too (section 5).
+        "candidates": {key: candidates.get(key) for key in fields},
     }
     record = derived_id("record", run.id, digest(content))
     policy = run.profile.policy_version
@@ -639,7 +641,13 @@ def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
                 "AppendValidationFindingV2",
                 {
                     "id": derived_id(
-                        record, "finding", "hard", rule, rest if rest in run.fields else "-", reason
+                        record,
+                        "finding",
+                        "hard",
+                        rule,
+                        rest if rest in run.fields else "-",
+                        reason,
+                        digest([]),
                     ),
                     "recordVersionId": record,
                     "runId": run.id,
@@ -655,6 +663,10 @@ def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
         )
     # Warnings and info never route the record to review (G23, G27); they sit beside it.
     for finding in findings:
+        # Only evidence the run recorded, each once; the operation checks each is of the run.
+        named = list(
+            dict.fromkeys(e for e in getattr(finding, "evidence_ids", None) or [] if e in recorded)
+        )
         result.append(
             _write(
                 "AppendValidationFindingV2",
@@ -666,14 +678,11 @@ def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
                         finding.rule_id,
                         finding.field_key or "-",
                         finding.reason_code,
+                        digest(named),
                     ),
                     "recordVersionId": record,
                     "runId": run.id,
-                    # Only evidence the run recorded; the operation checks each is of the run.
-                    "evidenceIds": [
-                        e for e in getattr(finding, "evidence_ids", None) or [] if e in recorded
-                    ]
-                    or None,
+                    "evidenceIds": named or None,
                     "ruleId": finding.rule_id,
                     "ruleVersion": finding.rule_version,
                     "severity": finding.severity,
