@@ -34,3 +34,20 @@ def test_the_instructions_are_the_pinned_prompt_then_the_named_knowledge():
         instructions_for("Prompt.", "insects", "v0")
     with pytest.raises(ValueError, match="harness_knowledge_unavailable:beetles"):
         instructions_for("Prompt.", "beetles", insects.KNOWLEDGE_VERSION)
+
+
+def test_slide_preparation_codes_belong_in_no_field():
+    # S8's pilot research; the coordinator's ruling of 2026-09-24. Real runs had
+    # put such codes into the catalogue number, the collectors and the locality.
+    (codes,) = [n for n in insects.NOTATIONS if "IV-29-68-a" in n.written]
+    assert codes.fields == ()
+    assert "belongs in no field" in insects.render()
+    assert insects.KNOWLEDGE_VERSION == "insects-harness-knowledge-v2"
+
+
+def test_a_single_elevation_or_date_is_given_once_as_from():
+    # G41 derives the rest of an elevation. A single date's To stays empty for
+    # review until the owner rules (the coordinator's rulings of 2026-09-24).
+    text = insects.render()
+    assert "A single elevation written once is given once" in text
+    assert "leave Date Visited To empty" in text

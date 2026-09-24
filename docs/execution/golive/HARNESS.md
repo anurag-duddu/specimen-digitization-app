@@ -600,7 +600,7 @@ variable with its default in code, pinned on the run. It states:
 - the copy rule: never invent, complete, correct, expand or translate a literal.
 
 **The Insects knowledge** (`harness_knowledge/insects.py`, id `insects`, version
-`insects-harness-knowledge-v1`) is the pilot's. S3's profile names it. It lists
+`insects-harness-knowledge-v2`) is the pilot's. S3's profile names it. It lists
 the label notations and every reading each allows, each with the fields it can
 belong to:
 - "P.I.", "Guat.", "Prov.", "Dept.", "Mt.", "Is.", "nr." and the directions
@@ -609,12 +609,23 @@ belong to:
   specimen;
 - a Roman or named month, both orders of a numeric date, and a two-digit year
   under the profile's century rule;
-- "?" marking an uncertain value.
+- "?" marking an uncertain value;
+- slide-preparation codes at a label's top edge, such as IX-17-66-2,
+  IV-29-68-a, VI-24-68-7 and 10-6-78-la. Each is the date the slide was made,
+  with a serial: never a collection date, and no field's value. The source is
+  S8's pilot research, under the coordinator's ruling of 2026-09-24; real runs
+  had put such codes into the catalogue number, the collectors and the
+  locality.
 
 Reading a notation assigns what is written to the field it names. "m", "ft.",
 "'", "alt." and "el." give the unit of the elevation written, and "ca." marks a
 value as approximate. The knowledge never fills or converts a value; derived
-values are section 13's.
+values are section 13's. Two rules follow from that (coordinator rulings of
+2026-09-24):
+- A single written elevation is given once, as From in its unit. G41's rules
+  then derive the other end and the other unit, with their record.
+- A single written date is given once, as Date Visited From. Date Visited To
+  stays empty for review until the owner rules whether one date fills both.
 
 Its place aliases, written as the geography tool folds them, are the only extra
 names that tool accepts ("P.I." as the Philippines).
