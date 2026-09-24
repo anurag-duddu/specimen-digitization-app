@@ -11800,7 +11800,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
-- Task: the same S2 session as the T1a entry above, second half of brief item T1.
+- Task: the same S2 session as the T1a entry, second half of brief item T1.
 - Branch/worktree: `golive/release-runbook-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
 - Outcome: dated notes and banners in `GO_LIVE_RUNBOOK.md`, `GO_LIVE_READINESS.md`, `RELEASING.md`, `RELEASE_RUNTIME.md`, `RELEASE_DATA.md` and `PROTECTED_RELEASE_HARNESS.md`. At the coordinator's request, two more notes in `PRD.md`: G14 beside section 9.2 steps 1-2 (the intake collection chooses the profile; no classification stage), and G16 beside the 12.4 rule that clearance needs every mandatory field and after the 12.4 mandatory-field table (`identified_by_irn` does not block clearance until EMu Parties is connected). Notes that keep a safeguard say so: post-merge reconciliation, the protected-branch and five-check admission, and the time-bounded initializer.
 - Commits/PRs: [PR #78](https://github.com/anurag-duddu/specimen-digitization-app/pull/78): amendments `7a83c61` and this closeout. It depends on [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76).
@@ -11808,6 +11808,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: a documents-only amendment still needs a size budget. At about 1,060 lines, T1 exceeded the program's 600-line review limit, so it was split along the line other sessions care about: the contracts they code against first, the runbooks and histories second.
 - Failed approaches: none beyond those in the T1a entry.
 - Remaining follow-ups: as in the T1a entry.
+
 ### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
 
 - Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
@@ -11923,11 +11924,14 @@ because the hooks runner hands a native asset hook only `PATH`.
   - D1 is labelled as the coordinator's ruling.
   - Retention stays open in the Logfire approval.
   - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
-- Commits/PRs: `876fc53` and this closeout, on #78.
+- Commits/PRs: `876fc53` and this closeout, on #78. Later on #78:
+  - `8f04330`: RELEASE.md section 1 states PLAN 4.4 as #104 merged it;
+  - the two review-fix commits for #78's review, `ccb8fad` and the round-2 commit.
 - Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
 - Durable learnings: a note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
 - Failed approaches: none.
 - Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
+
 ### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.

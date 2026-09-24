@@ -31,9 +31,10 @@ workstation deployment, or deployment through the Hosting identity.
 > 2026-09-23: The "Data admission" row is superseded for the go-live program
 > by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. Review here means the PR steward's review of the pull request; private
-> input pins and the cumulative budget it checked belong to the retired
-> envelope.
+> G11. Admission now checks only the protected branch and the five required
+> checks on the merged commit; the PR steward's review happens before the
+> merge, not in admission. The private input pins and the cumulative budget
+> it checked belong to the retired envelope.
 
 The two entry scripts are `scripts/ci/deploy_data.py` and
 `scripts/ci/deploy_runtime.py`. Their CLI guards deliberately reject workstation,
@@ -52,7 +53,10 @@ deploy; the release paths never change IAM or database users/passwords.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. The reviewed packet is retired; the release workstream's runtime and
 > data pull requests make these provider IDs fixed workflow configuration, as
-> Hosting's already is, instead of values read from an envelope.
+> Hosting's already is, instead of values read from an envelope. Runtime
+> identities stay separate from every release identity, build credentials
+> still cannot deploy, and the release paths still never change IAM or
+> database users or passwords.
 
 ## Sequence without circular readiness prerequisites
 
@@ -95,6 +99,12 @@ deploy; the release paths never change IAM or database users/passwords.
    makes these mutually exclusive. Both validate-only and apply use the same
    source-bound body. A missing application database and unproven initial schema
    ownership remain a separate gate; this harness does not create that database.
+   > 2026-09-23: For additive applies, proving runtime writers absent is
+   > superseded for the go-live program by
+   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G11, as [`DEPLOYMENT.md`](../DEPLOYMENT.md)'s note on quiescing explains:
+   > uniqueness is never absent during an additive apply, so writers keep
+   > running.
 4. Assemble separate build/runtime packets after those run IDs and receipt hashes
    are known. `runtime-prepare/v1` can prepare only the API with `sam: null` and
    `worker: null`; the three signed immutable images are retained for activation.
@@ -176,7 +186,8 @@ against GitHub's per-secret size limit before configuring the environment.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. These `RELEASE_*` secrets and variables and the envelope they
 > materialize are retired for this program; the public artifacts below are
-> unaffected.
+> unaffected. Private source data, manifests, profile and launch contents, API
+> error bodies and credentials are still never uploaded as public artifacts.
 
 Public artifacts have immutable per-attempt names:
 

@@ -17,9 +17,10 @@ remain required. This contract does not issue authority or qualify native setup.
 > G11 and the coordinator's ruling D1, this allowance guards only the first
 > apply's single restore clone. The on-demand backup before every apply needs
 > no claim. `authority_sha256` and `manifest_sha256` below bind the retired
-> action packet and its manifest, so the release workstream's T3d, specified
-> in [`golive/RELEASE.md`](golive/RELEASE.md), states what the first apply's
-> claim binds instead.
+> action packet and its manifest, so the first apply's claim needs new
+> bindings. The release workstream's T3d, which applies while the runtime
+> runs ([`golive/RELEASE.md`](golive/RELEASE.md)), will define them; until it
+> does, no gate-path release makes this claim.
 
 ## Typed authority and baseline
 

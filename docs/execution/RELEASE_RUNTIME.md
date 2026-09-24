@@ -532,6 +532,13 @@ not established non-sensitive classification of the actual cohort. These tests
 demonstrate a guarded capability; they do not classify real source images,
 elevate the administrator, or substitute local fixture records for the frozen ten.
 
+> 2026-09-23: The open item here, the classification of the actual cohort, is
+> closed for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G31: the owner checked the ten pilot slides against `PRD.md`'s sensitivity
+> criteria and classified them not sensitive on 2026-09-23, so their import
+> declares them not sensitive on that verified classification.
+
 ## Worker graph reconstruction and supplied SQL sessions
 
 Delivery raised a possible graph-storage gap at production worker construction.

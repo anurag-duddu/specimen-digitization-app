@@ -191,8 +191,9 @@ the shared content-addressed object prefix is not per-collection IAM isolation.
    > 2026-09-23: Superseded for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
    > G2 and G11. Specimens are processed one at a time, on demand, instead of
-   > freezing an exact ten-record manifest before any read; the whole-test cost
-   > reservation this step describes is retired.
+   > freezing an exact ten-record manifest before any read (PLAN section 4.1
+   > stage 2); the whole-test cost reservation this step describes is retired
+   > with the cost ledgers.
 4. After authorized data delivery and successful recovery rehearsal, lookup only
    the approved email in Firebase Auth for this project. Privately export UID,
    email, emailVerified and disabled; require exact verified/enabled identity and
@@ -218,7 +219,8 @@ the shared content-addressed object prefix is not per-collection IAM isolation.
    > 2026-09-23: Superseded for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
    > G2. Specimens are processed one at a time, on demand, instead of freezing
-   > and pinning one ready-manifest for the whole cohort before launch.
+   > and pinning one ready-manifest for the whole cohort before launch (PLAN
+   > section 4.1 stage 2).
 8. Verify denial for anonymous/unverified/wrong-collection identities and
    restart/reload persistence. Preserve the original denominator of ten even
    if a specimen needs review or is blocked. Structural manifest validation
@@ -258,6 +260,14 @@ supplemental index definitions/validity; `IF NOT EXISTS` does not repair a
 wrong or invalid index. Resume only the verified runtime revision. Preserve
 recovery proof before removal of the temporary target; cleanup of this new
 target alone now has user authority, without source deletion or retention changes.
+
+> 2026-09-23: For additive applies, quiescing writers is superseded for the
+> go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11, as [`DEPLOYMENT.md`](../DEPLOYMENT.md)'s note on this item explains:
+> the uniqueness the pause protects is never absent during an additive
+> apply, so writers keep running. The backup, the supplemental index checks
+> and the catalog comparison stay.
 
 The current planning allocation is **USD 1 for incremental backup/restore**
 inside the shared USD 5 ceiling; ordinary reservations target USD 4 and leave
@@ -412,6 +422,13 @@ was corrected after direct filesystem verification. The raw JSON and original
 script provide the surviving source-order evidence. Metadata freeze and current
 cost packet are being prepared; no actual source sensitivity classification is
 established merely by public acquisition provenance.
+
+> 2026-09-23: The classification this paragraph leaves open is closed for the
+> go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G31: the owner checked the ten pilot slides against `PRD.md`'s sensitivity
+> criteria and classified them not sensitive on 2026-09-23, so their import
+> declares them not sensitive on that verified classification.
 
 The user now requires a complete ten-specimen human-review journey, deferring
 automated classification and clearance. Initial administrator sensitive access

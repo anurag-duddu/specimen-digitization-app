@@ -21,10 +21,12 @@ each owner-supplied value are in
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. `DEPLOYMENT.md`'s gates, `RELEASING.md`'s release envelope and
 > `RELEASE_AUTHORIZATION.md`'s approval are amended: once the required
-> checks pass and the PR steward approves, a merge to `main` deploys data
-> and runtime releases automatically, and envelopes and authorization
-> artifacts are retired. The prohibition on deploying from a workstation or
-> agent shell is unchanged.
+> checks pass and the PR steward approves, a merge to `main` deploys runtime
+> code and additive schema changes automatically. Branch protection, the
+> required checks, keyless identities and main-only environments stay.
+> Envelopes, cost ledgers, independent-review reports and authorization
+> artifacts retire for this program. The prohibition on deploying from a
+> workstation or agent shell is unchanged.
 
 ## What "live" means for this release
 
@@ -49,11 +51,13 @@ classification and automated clearance are out of scope.
 
 > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1. The full pipeline of PLAN section 1 is in scope, including the LLM
-> first pass, the agentic harness's lookups (GBIF among them) and the queue
-> decision; a record the harness resolves is cleared without a human. EMu,
-> native apps, BYOK and Temporal stay out of scope, and new uploads beyond
-> the ten are processed on demand under G2.
+> G1 and G14. The full pipeline of PLAN section 1 is in scope, including the
+> LLM first pass, the agentic harness's lookups (GBIF among them) and the
+> queue decision; a record the harness resolves is cleared without a human.
+> EMu, native apps, BYOK and Temporal stay out of scope, and so does
+> automated classification: under G14 there is no classification stage, and
+> the profile comes from the collection a specimen was uploaded or imported
+> into. New uploads beyond the ten are processed on demand under G2.
 
 ## Where things stood on 2026-09-22
 
@@ -223,6 +227,10 @@ Owner and coordinator, before any envelope is minted.
 > reservations stand: each paid model call reserves its worst-case cost
 > before it starts, is settled once its outcome is known, and stays reserved
 > while its outcome is unknown (PLAN section 4.3).
+> The "Pilot manifest of the ten, frozen" row is superseded by G2: each run
+> is authorized on its own instead of per frozen manifest (PLAN section 4.1
+> stage 2), so no manifest is frozen or pinned into a release; the ten stay
+> the acceptance cohort, processed in order.
 > The "Recipient keys for the catalog and evidence envelopes" row stands:
 > those are encryption envelopes for what the public workflow publishes
 > (`catalog_recipient`, `evidence_recipient`), not release envelopes.
@@ -356,9 +364,10 @@ execution outcome, and the per-specimen receipts in Storage.
 4. Independent reconciliation of deployed source, results and cleanup.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
    > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-   > G11. The reconciliation stays; the PR steward's post-merge deploy check
-   > performs it instead of a separate independent reviewer, whose report is
-   > retired.
+   > G11. The reconciliation stays, and the separate independent reviewer's
+   > report is retired. In S2's reading, the PR steward's post-merge deploy
+   > check performs it; PLAN sections 6 and 8 split this work between S1, S2
+   > and S7.
 5. Append the closeout to `docs/SESSION_LEARNINGS.md` with the commit,
    pull request, run ids, marker and smoke results.
 

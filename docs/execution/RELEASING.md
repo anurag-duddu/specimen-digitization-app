@@ -335,7 +335,9 @@ the guarded planes reject one.
 > amended by the same decisions, and `RELEASE_AUTHORIZATION.md`'s list of what
 > remains forbidden stands: no manual dispatch, no key files and no
 > workstation deploys. The protected-ref and five-check admission moves into
-> each plane's gate (`golive/RELEASE.md` section 1).
+> each plane's gate (`golive/RELEASE.md` section 1). The bounded setup window
+> stands for the time-bounded roles
+> ([`RELEASE_AUTHORIZATION.md`](RELEASE_AUTHORIZATION.md)).
 
 - [DEPLOYMENT.md](../DEPLOYMENT.md) — the authoritative release contract
 - [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md) — the USD 12 amendment

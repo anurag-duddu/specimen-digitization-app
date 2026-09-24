@@ -262,7 +262,8 @@ approval and a privacy review.
 > prompts or tool arguments, and scrubbing is only the backstop. The accessor
 > grant keeps its exact-version condition, and only the runtime expiration is
 > superseded (G11). For this program, the PR steward's review replaces the
-> privacy review under G11. The amended scope is in
+> privacy review (the PR steward's reading of G11 on #76). The amended scope
+> is in
 > [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md).
 
 The owner also asked for the IAM setup to proceed and offered approval. The

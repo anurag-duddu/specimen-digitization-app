@@ -109,9 +109,11 @@ In the order they must be cleared.
    > record.
 3. The private artifacts in Phase 3, including a version 3 ledger with
    reserved rows and a manifest re-frozen from the owner's ordered catalog.
-   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
-   > Cost ledgers and authorization artifacts, including this manifest freeze,
-   > retire for this program.
+   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G2 and G11.
+   > The version 3 ledger retires with the cost ledgers (G11). The manifest
+   > freeze retires because each run is authorized on its own instead of per
+   > frozen manifest (G2, PLAN section 4.1 stage 2); the ten stay the
+   > acceptance cohort, processed in order.
 4. Fresh envelopes per environment, bound to the merged readiness commit and
    the failed run they will re-run.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.

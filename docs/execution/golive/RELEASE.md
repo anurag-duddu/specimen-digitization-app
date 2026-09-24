@@ -42,13 +42,14 @@ traded for a passing release:
     `provider`, `modelVersion` and `stepKey`, and TRN-005's `rawAssetId`,
     `promptVersion` and `inputSha256`. The gate refuses these even when the
     contract's list names them;
-  - one closed exception: `SourceAsset`'s `specimen_unique_1` on (bucket,
-    objectName, generation) gives way to `source_asset_specimen_object` on
-    (organizationId, collectionId, specimenId, bucket, objectName,
-    generation). Every added column is an existing NOT NULL column. It takes
-    two applies, create before drop, and the drop comes only after a
-    read-back of the live database shows the new constraint in place. The
-    gate admits exactly these two steps from its checked-in list;
+  - one closed exception, by coordinator ruling (#88): `SourceAsset`'s
+    `specimen_unique_1` on (bucket, objectName, generation) gives way to
+    `source_asset_specimen_object` on (organizationId, collectionId,
+    specimenId, bucket, objectName, generation). Every added column is an
+    existing NOT NULL column. It takes two applies, create before drop, and
+    the drop comes only after a read-back of the live database shows the new
+    constraint in place. The gate admits exactly these two steps from its
+    checked-in list;
   - new indexes, unique constraints and foreign keys over new columns only;
   - new connector operations, each `@auth(level: NO_ACCESS)` with the
     membership `@check`s (`DATA.md` 73).
@@ -168,7 +169,7 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/policy.py` 31-34 and 138-139, for the lane | The institutional-approval and semantics gates, and the human-approval gate | G1 | S4 |
 | `scripts/ci/worker_trace_setup.py` `grant` | A worker-only writer-secret binding that expires within 24 hours | G3, G11 | S2 T4 (standing grants per identity and secret) |
 | `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
-| `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews three of the standing roles (`specimenDataSchemaPublish`, `specimenDataSourceBackup`, `specimenDataStorageRules`) together with the time-bounded ones, for 120 minutes (the initializer role for 75, `specimenDataInitializerDisposal` for 115), and refuses any untimed binding | G11 | S2 T4c (narrows the renewals to the time-bounded roles) |
+| `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews three of the standing roles (`specimenDataSchemaPublish`, `specimenDataSourceBackup`, `specimenDataStorageRules`) together with the time-bounded ones, for 120 minutes (the initializer role for 75, `specimenDataInitializerDisposal` for 115), and refuses any untimed binding | G11 | S2 T4c, PR #123 (narrows the renewals to the time-bounded roles) |
 
 ## 3. Next pull requests
 

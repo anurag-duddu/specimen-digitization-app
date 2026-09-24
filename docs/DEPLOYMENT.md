@@ -765,8 +765,11 @@ expansion requires user review and approval of end-to-end results.
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G11. The uniqueness this item protects is never absent during an additive
   > apply. Every unique constraint is declared in the schema (for example
-  > `specimen_scope_checksum`), the gate refuses any change to an existing one,
-  > and the supplemental SQL indexes are non-unique. So writers keep running.
+  > `specimen_scope_checksum`), the gate refuses any change to an existing one
+  > except PLAN section 4.4's closed `SourceAsset` exception, which adds the new
+  > constraint in one apply and drops the old one in a later apply only after
+  > a live read-back, and the supplemental SQL indexes are non-unique. So
+  > writers keep running.
   > The supplemental indexes are still restored and checked by definition
   > after every apply, and a backup with a verified restore path still precedes
   > it. The isolated restore proof is now done once, on the first apply (the
