@@ -12050,3 +12050,22 @@ because the hooks runner hands a native asset hook only `PATH`.
   - PostgreSQL shows another role's `backend_type` as NULL unless the reader has that role's privileges or `pg_read_all_stats`, so a count of sessions depends on who counts.
 - Failed approaches: my first red fixture failed every migration before its output existed. I caught it at green and amended the red commit.
 - Remaining follow-ups: T3c2b wires the job. T3d reuses this step for applies while the runtime runs.
+
+### 2026-09-24 — Go-live release workstream (S2), T3c2b: the migrate job
+
+- Task: the S2 session, T3c's first initialization, the workflow half of steps 3 to 5 (`docs/execution/golive/RELEASE.md` section 4.3, Jobs).
+- Branch/worktree: `golive/release-data-migrate-job`, stacked on `golive/release-data-migrate-step`. The subagent wrote the red and green commits.
+- Outcome: `data-release.yml`'s `migrate` job replaces T3c1b's fail-closed placeholder.
+  - It runs in `data-production` under the `specimen-protected-mutation` lock, after a successful `dispose-initializer` or when `init_step` is `migrate`.
+  - It installs the pinned connector, re-admits, and authenticates as `specimen-data-release`. Then it runs `deploy_data.py --migrate`, attests `data-initialized.json` on success, and uploads it on every exit.
+  - `DEPLOYMENT.md`'s item 5 describes the migration, and the job joins the lock.
+  - A run over the initialize phase now succeeds only after the migration, the release of the merged files and the catalog check, so the runtime's wait (D3) passes only then.
+- Commits/PRs: red `d3d1f94`; green `1f76b55`; this closeout.
+- Validation actually run:
+  - the subagent: red 8 failed, 13 passed; green 302 passed; full `scripts/` 1,930 passed (1,964 with PostgreSQL enabled); `tests/` 1,457 passed; pre-commit with actionlint;
+  - this session, at this head: the first-initialization, released-deploy, workflow and deployment-policy tests, 197 passed.
+- Durable learnings:
+  - The migrate job must hold the mutation lock, unlike the disposal. A queued migrate cancelled by a newer job fails the run closed, and "Re-run failed jobs" resumes from the earlier attempt's initializer receipt.
+  - The runtime's D3 wait runs in its lock-free admission job, so it never deadlocks with this job.
+- Failed approaches: none.
+- Remaining follow-ups: T3d, applies while the runtime runs. T3d's read-back and T3e start on the steward's word after #124.
