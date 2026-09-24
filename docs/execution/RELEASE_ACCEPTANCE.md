@@ -48,28 +48,27 @@ Required before live execution:
   and actual release receipts, combined immutable SHA, public API/App Check
   configuration and exact resource/cost qualification remain required.
   > 2026-09-23: Superseded for the go-live program by
-  > [`docs/execution/golive/PLAN.md` section
-  > 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
   > models together, replacing the shared USD 5 ceiling. The protected
   > runtime/data amendment this bullet describes is retired: envelopes, cost
-  > ledgers, independent-review reports and authorization artifacts retire,
-  > and a merge deploys automatically after the required checks and the PR
-  > steward's approval. G30's per-call reservations stand (PLAN 4.3; the
-  > coordinator's ruling on the mechanism). The rest of the bullet stands,
-  > including the public API/App Check configuration and the combined
-  > immutable SHA this release still verifies.
+  > ledgers, independent-review reports and authorization artifacts retire, and
+  > a merge deploys automatically after the required checks and the PR steward's
+  > approval. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+  > ruling on the mechanism). The exact resource and cost qualification the
+  > envelope's packet carried retires with it. The rest of the bullet stands,
+  > including the implementation and actual release receipts, the combined
+  > immutable SHA and the public API and App Check configuration.
 - Data owner provides the approved private ready first-ten manifest and its
   independently supplied SHA-256, authorized identity/scope, original generations,
   and approved local intake inputs. Keep all identity/object/receipt details private.
   > 2026-09-23: Superseded for the go-live program by
-  > [`docs/execution/golive/PLAN.md` section
-  > 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G2. No manifest is frozen; each of the ten is authorized on its own
-  > instead (PLAN section 4.1 stage 2). The ten pilot specimens remain the
-  > acceptance cohort, processed in order, and new uploads may enter
-  > processing too, never the acceptance cohort. The rest of the bullet
-  > stands, including the authorized identity/scope, original generations and
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G2. No manifest is frozen: each run is authorized on its own instead of per
+  > frozen manifest (PLAN section 4.1 stage 2). The ten pilot specimens remain
+  > the acceptance cohort, processed in order, and new uploads may enter
+  > processing too, never the acceptance cohort. The rest of the bullet stands,
+  > including the authorized identity and scope, original generations and
   > approved local intake inputs this release still needs, kept private.
 - Real sign-in, App Check, SQL/Storage readiness, deployed runtime/worker/SAM pins
   and restore/restart execution must be demonstrated. Google reauthentication is
@@ -142,16 +141,16 @@ This is reviewable evidence, not institutional quality qualification. The broade
 ## Shared cost evidence contract
 
 > 2026-09-23: Superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section
-> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2, G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure
-> and models together, in place of this section's `cohort-budget/v1` ledger
-> and its USD 5 (`5000000` micro-USD) total (G9); no frozen manifest SHA
-> binds a run, since each of the ten is authorized on its own, in order (PLAN
-> section 4.1 stage 2, G2); and this cohort cost ledger, its eleven reconciled
-> categories, its private authorization reference and the independent
-> reviewer's role retire for this program (G11). G30's per-call reservations
-> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together, in place of this section's `cohort-budget/v1` ledger and its
+> USD 5 (`5000000` micro-USD) total (G9). No frozen manifest SHA binds a run:
+> each run is authorized on its own instead of per frozen manifest (PLAN section
+> 4.1 stage 2), and the ten are processed in order (G2). This cohort cost
+> ledger, its eleven reconciled categories, its private authorization reference
+> and the independent reviewer's role retire for this program (G11). G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 
 The ledger's `budget` uses `cohort-budget/v1`, USD, the same frozen manifest SHA,
 private authorization reference and scope
@@ -282,11 +281,12 @@ call was made during this independent follow-up. Runtime owner canonical checks
 and exact integrated release checks remain separate from this focused review.
 
 > 2026-09-23: Superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section
-> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9. The spending ceiling is USD 25, cumulative, infrastructure and models
-> together, replacing this shared USD 5 budget. G30's per-call reservations
-> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together, replacing this shared USD 5 budget (G9). The cohort ledger
+> this section names retires with the other cost ledgers (G11), and the
+> per-stage reservation map stays. G30's per-call reservations stand (PLAN 4.3;
+> the coordinator's ruling on the mechanism).
 
 ## Approved human-review release projection
 
@@ -365,15 +365,16 @@ in every human-checker output. Only the coordinator's independent actual release
 review may make a release decision for the approved human scope.
 
 > 2026-09-23: Superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section
-> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The coordinator's independent actual release review is retired: the
-> PR steward's fresh-swarm review of the pull request replaces the
-> independent review, and a merge deploys automatically after the required
-> checks and the PR steward's approval. The rest of the paragraph stands,
-> including that `full_prd_qualified` and `release_accepted` remain false in
-> every human-checker output and that PRD-04/07/08/10/11/14/15/16/17/19/20 are
-> not wholesale waived.
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G11. The approved human scope this paragraph names retires: a record
+> the harness resolves is cleared without a human (G1), and the scope artifacts
+> retire with the other authorization artifacts (G11). G11 retires the
+> independent-review reports, not the decision: the evidence-based acceptance
+> harness and the coordinator still make the final acceptance decision, on the
+> checker's evidence and through PLAN section 8's per-specimen loop. The rest of
+> the paragraph stands, including that `full_prd_qualified` and
+> `release_accepted` remain false in every human-checker output and that
+> PRD-04/07/08/10/11/14/15/16/17/19/20 are not wholesale waived.
 
 ### Retained record evidence
 
@@ -407,12 +408,32 @@ Both the deployment and every retained SAM region must use the existing approved
 revision cannot qualify. JSON evidence is parsed from the same bounded bytes
 whose SHA-256 was checked, so a file replacement between reads is rejected.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G2. The ten, in order, stand in place of the frozen ten, and no frozen
+> manifest is pinned (G2). Fewer than ten human records, where the harness
+> clears a record, is G1's change. The rest stands, including one record per
+> specimen with every artifact listed above, no duplicate or outside-cohort
+> record, a partially supplied list never becoming complete, and every check in
+> the paragraph above.
+
 The current pilot intentionally retains `processing_blocked` with
 `pilot_evidence_review_required`, false institutional/human approval flags and
 null disposition. This is eligible for human evidence checking **only after**
 actual SAM and both validated readers exist for every retained region and the
 human review/save/reload checks pass. A cost/provider/output-limit failure, empty
 result, incomplete reading pair or setup screen cannot qualify.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1. The pilot no longer holds every record at `processing_blocked` with
+> `pilot_evidence_review_required`, false approval flags and a null disposition:
+> a record the harness resolves is cleared without a human, and human evidence
+> checking covers what the queue sends to human review. The rest of the
+> paragraph stands, including that a cost, provider or output-limit failure, an
+> empty result, an incomplete reading pair or a setup screen cannot qualify.
+> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 
 Raw response artifacts preserve provider responses without image-bearing request
 messages. The independent PROVIDER-ACTUAL case must also verify the real blind
