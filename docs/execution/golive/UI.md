@@ -171,7 +171,8 @@ a null the screen names.
     server's word), `derived_from`, `authority_identity` (name, source,
     record id, credit; a Google value has no name, G26) and its own
     `findings`, such as G45's value-shape check;
-  - the `review` input source, with a call's `review_decision_id`;
+  - the `review` input source, with a call's `review_decision_id`; where a
+    source is named, its words are "reviewer's text", the contract's own;
   - an evidence entry's `observation_ids`, the readings it quotes;
   - a Google call's result as `place_ids` only (G26).
   S5's `thread-example.json` from #171 is now the canonical fixture

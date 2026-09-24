@@ -577,6 +577,27 @@ void main() {
     ThreadField fieldOf(SpecimenThread thread, String key) =>
         thread.fields.firstWhere((ThreadField f) => f.fieldKey == key);
 
+    // The client and the server test one file. The server's copy reaches
+    // this branch when #171 merges; until then there is nothing to compare.
+    final File serverExample = File(
+      '../../docs/execution/golive/thread-example.json',
+    );
+    test(
+      "is S5's example, byte for byte",
+      () {
+        expect(
+          File('test/fixtures/thread-example.json').readAsBytesSync(),
+          serverExample.readAsBytesSync(),
+          reason:
+              'Copy docs/execution/golive/thread-example.json to '
+              'apps/specimen_digitization/test/fixtures/thread-example.json.',
+        );
+      },
+      skip: serverExample.existsSync()
+          ? false
+          : "S5's example reaches this branch with #171",
+    );
+
     test('the canonical example reads whole', () {
       final SpecimenThread thread = SpecimenThread.fromJson(canonical());
       expect(thread.revision, 12);
