@@ -91,18 +91,37 @@ misses per subject. Slides 324 to 328 are from Mindanao with right-hand labels;
 328 to 330 are from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
 top edge are slide-preparation codes, not collection dates.
 
-### Expected outcome for the ten (G22)
+### Expected outcome for the ten (G22, G35 to G37)
 
-G22 keeps all four elevation fields mandatory and derives nothing. Every pilot
-label gives its elevation in feet only, with no metres and no range, so every
-one lacks at least one mandatory field. The correct outcome for each of the ten
-is therefore needs human review, with the right reasons: each mandatory field
-the label does not carry is unresolved, and no field the label does carry is.
-`identified_by_irn` is never on a label and does not block (G16). Most slides
-also lack a taxon and a determiner; only 328 names a taxon. What each label
-carries is tabled in `~/specimen-golive/reports/field-coverage.md`, outside the
-repository. Once the lane reaches the queue decision, a run that clears one of
-the ten, or sends it to review for a wrong or missing reason, fails stage 8.
+All ten go to needs human review, with the right reasons. No label carries a
+determination date and none can be derived, so no slide can clear. A run that
+clears one of the ten, or sends it to review for a wrong or missing reason,
+fails stage 8 once the lane reaches the queue decision. What counts as a right
+reason changed on 2026-09-24:
+
+- **Derived fields count (G37, revising G22).** A field the label does not
+  state, such as the county, the city or an elevation, may be derived from
+  fields that have final values, with its authority and evidence recorded, and
+  it then counts, mandatory fields included. A derived value without recorded
+  evidence, or derived from unsettled inputs, is a failure.
+- **Unconfirmed places never settle (G36).** Slides 321 to 326 name a
+  "Mt. McKinley" in Davao Province, Mindanao, that no gazetteer holds; it is
+  not Denali. Their place stays unsettled until a curator confirms an entry,
+  and a run that settles it from Denali or any unconfirmed entry fails.
+- **No Google coordinates stored (G35, keeping G26).** Only Google's place ID,
+  its outcome and a fingerprint are kept. Stored coordinates come only from
+  credited open sources. Google's coordinates in any row, trace, log or lab
+  folder are a failure.
+- **Findings only for D4 and D5.** Checks against the museum's published GBIF
+  points (D4) and check limits (D5) record findings and never change a
+  verdict, until the owner decides them.
+- **`identified_by_irn`** is never on a label and does not block (G16). Only
+  328 names a taxon, which may settle at genus (G25). Dates settle as written
+  (G24).
+
+What each label carries is tabled in `~/specimen-golive/reports/field-coverage.md`,
+and the expected outcome per slide is in
+`~/specimen-golive/reports/expected-outcomes.md`, both outside the repository.
 
 ### Files
 
