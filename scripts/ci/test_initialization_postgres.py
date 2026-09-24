@@ -74,6 +74,34 @@ def test_pg18_fixed_transaction_preserves_owner_and_removes_initializer_dependen
     assert result.returncode == 0, 'ordinary postconditions still pass after exact initializer deletion'
 
 
+def summary(postgres):
+    """The release identity's value-free catalog summary (RELEASE.md 4.3 step 1), as psql prints its one row."""
+    result=postgres((initialization.ROOT/'scripts/ci/release_sql_summary.sql').read_text(),
+                    actor=initialization.MAINTENANCE,database=initialization.DATABASE)
+    assert result.returncode == 0, result.stderr.decode()
+    return next(line for line in result.stdout.decode().splitlines() if '|' in line)
+
+
+def test_pg18_transaction_adds_exactly_uuid_ossp_for_the_writer_and_the_summary_sees_both_states(postgres):
+    assert summary(postgres) == 't|t|0|0|0|0|{}|{}'
+    result=transaction(postgres)
+    assert result.returncode == 0, result.stderr.decode()
+    result=postgres("SELECT pg_get_userbyid(extowner),extnamespace::regnamespace FROM pg_extension WHERE extname='uuid-ossp';",
+                    database=initialization.DATABASE)
+    assert result.stdout.decode().strip() == 'cloudsqlsuperuser|public'
+    result=postgres('SELECT public.uuid_generate_v4() IS NOT NULL;',actor=initialization.AGENT,database=initialization.DATABASE)
+    assert result.stdout.decode().strip() == 't', result.stderr.decode()
+    roles=','.join(f'firebase{role}_{initialization.DATABASE}_public' for role in ('owner','reader','writer'))
+    assert summary(postgres) == f't|t|0|0|10|0|{{uuid-ossp}}|{{{roles}}}'
+
+
+def test_pg18_a_preexisting_uuid_ossp_is_never_adopted(postgres):
+    assert postgres('CREATE EXTENSION "uuid-ossp" SCHEMA public;',database=initialization.DATABASE).returncode == 0
+    result=transaction(postgres)
+    assert result.returncode != 0 and 'unreviewed user objects' in result.stderr.decode()
+    assert postgres("SELECT count(*) FROM pg_roles WHERE rolname LIKE 'firebase%';").stdout.decode().strip() == '0'
+
+
 @pytest.mark.parametrize('change', [
     'ALTER ROLE cloudsqliamserviceaccount CREATEDB;',
     'ALTER ROLE cloudsqliamserviceaccount LOGIN;',

@@ -23,6 +23,8 @@ DEPLOY = f'uv run python scripts/ci/deploy_data.py --deploy --packet {PACKET} --
 RECEIPT = "${{ runner.temp }}/data-receipt.json"
 READ = {"contents": "read", "actions": "read", "pull-requests": "read"}
 LOCK = {"group": "specimen-protected-mutation", "cancel-in-progress": "false"}
+NODE = ["actions/setup-node", 'npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts '
+        "firebase-tools@15.8.0"]
 
 
 def steps(job):
@@ -74,8 +76,9 @@ def test_every_action_is_pinned_to_a_full_commit_sha():
 
 
 def test_the_workflow_reads_no_secret_no_variable_and_no_envelope():
+    # The gate record's commit reaches the Node connector only from the admitted record, never from the workflow.
     for retired in ("secrets.", "vars.", "RELEASE_INPUTS_B64", "RELEASE_INPUTS_SHA256", "RELEASE_AUTHORIZED_SHA",
-                    "RELEASE_PACKET_SHA256", "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_CLEANUP_PERMIT",
+                    "RELEASE_GATE_SHA", "RELEASE_PACKET_SHA256", "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_CLEANUP_PERMIT",
                     "INITIALIZATION_RECEIPT_SHA256", "--prepare-", "--cleanup", "--initialize",
                     "--complete-initialization", "--dispose-initializer"):
         assert retired not in TEXT
@@ -84,7 +87,8 @@ def test_the_workflow_reads_no_secret_no_variable_and_no_envelope():
 def test_each_job_runs_exactly_its_reviewed_steps_in_order():
     setup = ["actions/checkout", "astral-sh/setup-uv", "uv sync --frozen"]
     assert shape("admission") == [*setup, ADMIT]
-    assert shape("release")[:-1] == [*setup, READMIT, "google-github-actions/auth", DEPLOY,
+    # The pinned connector is installed before the gate, so no credential exists while npm runs.
+    assert shape("release")[:-1] == [*setup, *NODE, READMIT, "google-github-actions/auth", DEPLOY,
                                      "actions/attest", "actions/upload-artifact"]
     assert "continue-on-error" not in TEXT
 
@@ -110,12 +114,14 @@ def test_the_release_re_admits_then_authenticates_with_the_gate_provider_and_its
                                               "service_account": IDENTITY}
 
 
-def test_the_release_deploys_through_the_approved_entrypoint_and_exposes_its_phase():
+def test_the_release_deploys_through_the_approved_entrypoint_and_exposes_its_phase_and_first_step():
     deploy = steps("release")[index("release", lambda step: "deploy_data.py" in step.get("run", ""))]
-    assert deploy["id"] == "deploy" and deploy["run"] == DEPLOY
-    assert "env" not in deploy and "if" not in deploy
-    assert JOBS["release"]["outputs"] == {"phase": "${{ steps.deploy.outputs.phase }}"}
-    assert "gcloud" not in TEXT and "firebase" not in TEXT
+    assert deploy["id"] == "deploy" and deploy["run"] == DEPLOY and "if" not in deploy
+    assert deploy["env"] == {"RELEASE_NODE_ROOT": "${{ runner.temp }}/firebase-release"}
+    assert JOBS["release"]["outputs"] == {"phase": "${{ steps.deploy.outputs.phase }}",
+                                          "init_step": "${{ steps.deploy.outputs.init_step }}"}
+    # The pinned connector library is the only Firebase code the workflow installs; nothing deploys with a CLI.
+    assert "gcloud" not in TEXT and re.sub(r"firebase-(tools@15\.8\.0|release)", "", TEXT).count("firebase") == 0
 
 
 def test_the_receipt_is_attested_on_success_and_retained_on_every_exit():

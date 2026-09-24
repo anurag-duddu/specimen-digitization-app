@@ -7,6 +7,7 @@ import binascii
 import copy
 import hashlib
 import json
+import subprocess
 import sys
 
 import pytest
@@ -32,6 +33,13 @@ OPERATIONS = ("query ListSpecimens($organizationId: UUID!, $actorUid: String!) @
               ' @check(expr: "this != null") { uid }\n  specimens { id }\n}\n')
 RULES = "rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    allow read, write: if false;\n  }\n}\n"
 MERGED, OPS = {"schema.gql": MERGED_SCHEMA}, {"operations.gql": OPERATIONS}
+# The first initialization's catalog summary (RELEASE.md 4.3 step 1), as the Node connector returns it.
+ROLES = [f"firebase{role}_{D.DATABASE}_public" for role in ("owner", "reader", "writer")]
+EMPTY = {"expected_database": True, "expected_actor": True, "relations": 0, "views": 0, "routines": 0, "types": 0,
+         "extensions": [], "roles": []}
+INITIALIZED = {**EMPTY, "routines": 10, "extensions": ["uuid-ossp"], "roles": ROLES}
+EARLIER = f"data-initializer-{SHA}-1"
+STOP = "the application database is neither empty nor initialized by this run; adopting it needs a ruling"
 
 
 def record(plane="data", **changes):
@@ -94,9 +102,16 @@ def release(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("GITHUB_OUTPUT", str(steps))
     monkeypatch.delenv("DATA_BOOTSTRAP_ARTIFACT_B64", raising=False)
 
-    def run(live, packet=None):
+    def run(live, packet=None, summary=EMPTY, listing=()):
         google = FakeGoogle(live, record() if packet is None else packet)
         monkeypatch.setattr(D, "Google", lambda path, plane: google if plane == "data" else pytest.fail("data only"))
+        if summary is not None:
+            monkeypatch.setattr(D, "first_catalog", lambda directory, sha: copy.deepcopy(summary) if (directory, sha)
+                                == (tmp_path / "release", SHA) else pytest.fail("the admitted commit reads it"), raising=False)
+        artifacts = [{"name": name, "expired": False, "workflow_run": {"id": 456}} for name in listing]
+        monkeypatch.setattr(D, "gh_json", lambda path: listing if isinstance(listing, dict) else {
+            "total_count": len(artifacts), "artifacts": artifacts} if path == f"repos/{D.REPOSITORY}/actions/runs/456/"
+            "artifacts?per_page=100" else pytest.fail("only this run's artifacts are listed"), raising=False)
         try:
             D.deploy_released_data(tmp_path / "release" / "packet.json", output)
         except ValueError as error:
@@ -122,10 +137,68 @@ def gets(*resources):
 
 def test_the_placeholder_without_a_connector_initializes_and_changes_nothing(release):
     google, value, outputs = release(state(rules=None))
-    assert google.error is None and outputs == "phase=initialize\n"
+    assert google.error is None and outputs == "phase=initialize\ninit_step=initialize\n"
     assert value == receipt("initialize", connector=None, ruleset=None)
     assert google.calls == gets(("data", SCHEMA), ("data", CONNECTOR), ("rules", D.RULE_RELEASE), ("sql", INSTANCE),
                                 ("sql", DATABASE))
+
+
+@pytest.mark.parametrize("summary,listing,step", [
+    (EMPTY, (), "initialize"), (INITIALIZED, (EARLIER,), "migrate"),
+    ({**EMPTY, "roles": ROLES}, (EARLIER, f"data-initializer-{SHA}-2"), "migrate"),
+], ids=["empty", "initialized-earlier", "roles-and-earlier-receipt"])
+def test_step_one_initializes_an_empty_database_or_migrates_after_this_runs_earlier_initializer(release, summary, listing, step):
+    google, value, outputs = release(state(rules=None), summary=summary, listing=listing)
+    assert google.error is None and outputs == f"phase=initialize\ninit_step={step}\n"
+    assert value == receipt("initialize", connector=None, ruleset=None)
+    assert f"First initialization step: {step}." in google.log
+
+
+@pytest.mark.parametrize("summary,listing", [
+    ({**EMPTY, "relations": 1}, ()), ({**EMPTY, "views": 1}, ()), ({**EMPTY, "routines": 1}, ()), ({**EMPTY, "types": 1}, ()),
+    ({**EMPTY, "extensions": ["uuid-ossp"]}, ()), ({**EMPTY, "roles": ROLES[:1]}, (EARLIER,)), (INITIALIZED, ()),
+    (INITIALIZED, (f"data-initializer-{SHA}-2",)), (INITIALIZED, (f"data-initializer-{'b' * 40}-1",)),
+    (INITIALIZED, (f"initializer-intent-{SHA}-1",)),
+], ids=["relation", "view", "routine", "type", "extension", "one-role", "roles-without-receipt", "only-this-attempt",
+        "another-commit", "intent-is-no-receipt"])
+def test_step_one_stops_on_anything_else_and_prints_only_the_value_free_summary(release, summary, listing):
+    google, value, outputs = release(state(rules=None), summary=summary, listing=listing)
+    assert google.error == STOP and outputs == "phase=initialize\n"
+    assert value == receipt("initialize", connector=None, ruleset=None) and "First initialization step" not in google.log
+    assert len([line for line in google.log.splitlines() if line.startswith("Application database: ")]) == 1
+
+
+def test_the_stopped_summary_is_one_fixed_line(release):
+    log = release(state(rules=None), summary={**INITIALIZED, "roles": ROLES[1:]})[0].log
+    assert ("Application database: 0 relations, 0 views, 10 routines, 0 types, 1 extension(s) besides plpgsql "
+            "(uuid-ossp); Data Connect roles: owner absent, writer present, reader present.\n") in log
+
+
+@pytest.mark.parametrize("change", [
+    lambda s: s.update(owner=CANARIES[1]), lambda s: s.pop("types"), lambda s: s.update(relations=-1),
+    lambda s: s.update(views=True), lambda s: s.update(expected_actor=False), lambda s: s.update(expected_database=None),
+    lambda s: s.update(extensions=["uuid-ossp\n::error::" + CANARIES[0]]), lambda s: s.update(extensions=["plpgsql"]),
+    lambda s: s.update(extensions=["uuid-ossp", "uuid-ossp"]), lambda s: s.update(roles=[CANARIES[1]]),
+    lambda s: s.update(roles=ROLES[:1] * 2), lambda s: s.update(roles=[{"name": CANARIES[3]}]),
+])
+def test_a_malformed_summary_stops_without_printing_any_of_it(release, change):
+    summary = copy.deepcopy(EMPTY)
+    change(summary)
+    google, value, outputs = release(state(rules=None), summary=summary)
+    assert google.error == "the application database's catalog summary is malformed" and outputs == "phase=initialize\n"
+    assert "Application database" not in google.log
+
+
+def test_an_unreadable_catalog_or_artifact_listing_stops_with_a_fixed_reason(release, monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(D.subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs["env"]["RELEASE_GATE_SHA"]))
+                        or subprocess.CompletedProcess(command, 1, b"", CANARIES[0].encode()))
+    google, value, outputs = release(state(rules=None), summary=None)
+    assert google.error == "the application database's catalog could not be read" and outputs == "phase=initialize\n"
+    assert calls == [(["node", "scripts/ci/release_sql.mjs", "summary", D.SOURCE,
+                       str(tmp_path / "release" / "first-catalog.json")], SHA)]
+    google = release(state(rules=None), summary=INITIALIZED, listing={"total_count": 101, "artifacts": []})[0]
+    assert google.error == "incomplete run artifact listing"
 
 
 def test_live_sources_equal_to_the_merged_ones_verify_and_change_nothing(release):
@@ -230,7 +303,7 @@ def test_a_present_bootstrap_artifact_is_announced_never_decoded_printed_or_writ
                          (base64, "decodebytes"), (binascii, "a2b_base64")):
         monkeypatch.setattr(module, name, lambda *args, **kwargs: pytest.fail("the bootstrap arrives with T3e"))
     google, value, outputs = release(state(rules=None))
-    assert google.error is None and outputs == "phase=initialize\n" and "T3e" in google.log
+    assert google.error is None and outputs == "phase=initialize\ninit_step=initialize\n" and "T3e" in google.log
     assert artifact not in google.log + json.dumps(value) + outputs and "canary" not in google.log
     monkeypatch.setenv("DATA_BOOTSTRAP_ARTIFACT_B64", "")
     assert "T3e" not in release(state(rules=None))[0].log

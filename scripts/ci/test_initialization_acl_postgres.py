@@ -19,6 +19,9 @@ CASES={
  'reader_extra_insert':f'SET LOCAL ROLE "{OWNER}"; CREATE TABLE public.review_probe(id integer); GRANT INSERT ON public.review_probe TO "{READER}"; SET LOCAL ROLE cloudsqlsuperuser;',
  'writer_extra_references':f'SET LOCAL ROLE "{OWNER}"; CREATE TABLE public.review_probe(id integer); GRANT REFERENCES ON public.review_probe TO "{WRITER}"; SET LOCAL ROLE cloudsqlsuperuser;',
  'reader_global_delete':f'ALTER DEFAULT PRIVILEGES FOR ROLE "{OWNER}" GRANT DELETE ON TABLES TO "{READER}";',
+ 'second_extension':'CREATE EXTENSION pgcrypto SCHEMA public;',
+ 'extension_missing':'DROP EXTENSION "uuid-ossp";',
+ 'routine_outside_extension':'CREATE FUNCTION public.review_probe() RETURNS integer LANGUAGE sql AS $$SELECT 1$$;',
 }
 
 def test_valid_contract_passes(postgres):
@@ -51,6 +54,7 @@ def test_unreviewed_application_role_recipient_is_rejected(postgres,role):
     f'SET ROLE cloudsqlsuperuser; GRANT "{OWNER}" TO cloudsqlsuperuser WITH INHERIT FALSE, SET FALSE; RESET ROLE;',
     f'GRANT "{OWNER}" TO "{init.MAINTENANCE}" WITH ADMIN FALSE, INHERIT TRUE, SET TRUE;',
     f'GRANT "{WRITER}" TO "{init.AGENT}" WITH ADMIN FALSE, INHERIT TRUE, SET TRUE;',
+    'CREATE SCHEMA extensions; ALTER EXTENSION "uuid-ossp" SET SCHEMA extensions;',
 ])
 def test_unreviewed_grantor_or_managed_membership_options_are_rejected(postgres,drift):
     # Superuser injection emulates externally introduced catalog drift; the
