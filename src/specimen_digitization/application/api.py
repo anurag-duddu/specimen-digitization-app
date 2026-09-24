@@ -46,6 +46,7 @@ from .active_graph import (
 from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .lane import (
+    PENDING,
     LaneConflict,
     processable,
     queue,
@@ -1069,6 +1070,13 @@ def create_app(
         inventory, entries = load(repository, p.scope, source, blobs)
         sensitivity_access(user, p, inventory.sensitive)
         # Importing is intake: outside synthetic mode each new specimen is queued.
+        queued = []
+
+        def intake(specimen):
+            queue_on_intake(specimen, registry, user)
+            if specimen.run.stage == PENDING:
+                queued.append(specimen.id)
+
         result = import_objects(
             principal=p,
             user=user,
@@ -1082,11 +1090,10 @@ def create_app(
             sensitive=body.sensitive,
             synthetic=mode == "synthetic",
             duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
-            on_intake=None
-            if mode == "synthetic"
-            else lambda specimen: queue_on_intake(specimen, registry, user),
+            on_intake=None if mode == "synthetic" else intake,
         )
-        if mode != "synthetic" and result["imported"]:
+        # Only a queued record wants the worker; a Sensitive one never does (#104).
+        if queued and result["imported"]:
             start_worker()
         return result
 

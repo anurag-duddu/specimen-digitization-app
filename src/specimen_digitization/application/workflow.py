@@ -179,14 +179,13 @@ class Workflow:
             step.startswith("transcribe:") or step in {"parse", "segment", "classify"}
         )
         reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
+        from .lane_reservations import step_reservation
+
+        # A reading reserves its worst case, the stage's amount at least (PLAN 4.3).
         cost = (
             0
             if run.profile.synthetic or not billable
-            else (
-                policy.stage_cost_reservations.for_step(step)
-                if policy.stage_cost_reservations is not None
-                else policy.request_cost_reservation_micros
-            )
+            else step_reservation(run, step)
         )
         issue = None
         if run.usage.steps >= policy.max_steps:
@@ -304,6 +303,7 @@ class Workflow:
         previous_tokens = sum(
             o.input_tokens + o.output_tokens for o in run.observations
         )
+        observed = len(run.observations)
         try:
             if step == "pin_dependencies":
                 run.dependencies = (
@@ -618,6 +618,20 @@ class Workflow:
             sum(o.input_tokens + o.output_tokens for o in run.observations)
             - previous_tokens,
         )
+        if billable and not run.profile.synthetic:
+            from .lane_costs import record_step
+
+            # Each paid call's cost, and the program ledger settled (LANE.md T2c).
+            record_step(
+                self.repository,
+                principal,
+                specimen,
+                step,
+                run.observations[observed:],
+                elapsed,
+                cost,
+                self.clock,
+            )
         if external and run.blocker != "external_outcome_unknown":
             run.lease_until = None
             run.usage.reserved_active_seconds = max(

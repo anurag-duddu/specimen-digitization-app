@@ -108,6 +108,8 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
         ledger = ledgers[0]
     limits["program_allowance_micros"] = allowance and allowance.allowance_micros
     limits["program_ledger_collection"] = ledger
+    # The prices the run's calls are costed at (T2c), cleared when there are none.
+    limits["price_list"] = policy.price_list and policy.price_list.model_dump(mode="json")
     run.profile.execution = run.profile.execution.model_copy(
         update={
             "approved_cost_limit_micros": policy.run_cost_limit_micros,

@@ -144,7 +144,8 @@ def test_production_app_passes_the_lane_wiring(monkeypatch):
     assert captured["source_reader"] is None
 
 
-def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
+def source_client(tmp_path, dispatcher):
+    """Two objects under the registered source, captured and listed."""
     objects = tmp_path / "objects"
     for index, colour in enumerate(("white", "black")):
         source_fixtures.write_object(
@@ -153,7 +154,6 @@ def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
             source_fixtures.jpeg_bytes(colour),
             source_fixtures.FIRST_GENERATION,
         )
-    dispatcher = RecordingDispatcher()
     blobs = LocalBlobs(tmp_path / "blobs")
     app = create_app(
         mode="emulator",
@@ -176,7 +176,12 @@ def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
     )
     c = TestClient(app, raise_server_exceptions=False)
     source_fixtures.capture(c)
-    rows = source_fixtures.listed(c)["items"]
+    return c, source_fixtures.listed(c)["items"]
+
+
+def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
+    dispatcher = RecordingDispatcher()
+    c, rows = source_client(tmp_path, dispatcher)
     batch = source_fixtures.open_batch(c, sensitive=False)
     imported = source_fixtures.import_objects(c, batch, rows, sensitive=False)
     assert imported.status_code == 200, imported.text
@@ -192,3 +197,21 @@ def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
     again = source_fixtures.import_objects(c, batch, rows, sensitive=False)
     assert again.json()["duplicates"] == 2
     assert dispatcher.calls == 1
+
+
+def test_a_sensitive_import_is_never_due_and_starts_no_worker(tmp_path):
+    # Processing starts on intake only for records declared not sensitive (#104).
+    dispatcher = RecordingDispatcher()
+    c, rows = source_client(tmp_path, dispatcher)
+    batch = source_fixtures.open_batch(c, sensitive=True)
+    imported = source_fixtures.import_objects(c, batch, rows, sensitive=True)
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["imported"] == 2
+    assert due_ids(tmp_path) == []
+    assert dispatcher.calls == 0
+    for item in imported.json()["items"]:
+        run = stored(tmp_path, item["specimen_id"]).run
+        assert (run.stage, run.blocker) == (
+            "processing_blocked",
+            "sensitive_record_not_processed",
+        )

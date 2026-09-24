@@ -11974,3 +11974,32 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: the reservation must come after the provider circuit's admission. During an outage the circuit refuses call after call, and reserving first would spend the allowance on calls that never happen.
 - Failed approaches: none.
 - Remaining follow-ups: T2c records each paid call's usage and computed cost (`Run.paid_calls`) from a pinned price list, with `record_tool_usage` for geocoding. The pilot's `parse` reservation rises to 30,000 there, with S4's harness.
+
+### 2026-09-23 — Go-live lane T2c: the cost of every paid call, and settlement (G9, G30)
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the per-call cost part of topic T2 of `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-call-costs` from `golive/lane-program-allowance`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - The published pilot profile pins a price list read on 2026-09-23:
+    - the reader routes at the Hugging Face router's prices for their pinned providers;
+    - SAM 3 at Cloud Run's request-based rates with S2's 4 vCPU and 16 GiB, which is 136 micro-dollars a second;
+    - Geocoding at USD 5 per 1,000.
+  - Every route and the segmentation must be priced, and a run copies the list when requested.
+  - `lane_costs` records one entry per paid call on `Run.paid_calls` and adds the cost to `usage.actual_cost_micros`. An entry holds the usage, the outcome, the cost rounded up, and its basis (`computed`, `billed` or `reserved`) with the list's version and date. The workflow records readings and SAM 3; the harness will record its own calls through `record_model_usage` and `record_tool_usage`.
+  - Following the coordinator's G30 ruling, a paid step settles on the program ledger to what its recorded calls cost when each reported usage or a billed amount. A cost above the reservation counts in full. A call that reported nothing (a failed reading, SAM 3's busy answer, a 5xx or a timeout) is recorded as `reserved` at the step's full reservation and stays reserved. A call without a price is a configuration error.
+  - Source import starts the worker only when it queued a record, so a Sensitive import starts none (#104). A new test found this.
+- Validation actually run: `tests/test_lane_costs.py` (16 passed) and the lane, application and profile tests (264 passed, 5 skipped). `tests/test_lane_documents_sqlconnect.py` against `scripts/data/serve-local.sh`: the ledger settles through the real connector (4 passed). Also the full gates as listed in the pull request.
+- Durable learnings:
+  1. Price the worst case into every reservation, because the allowance is enforced on reservations. SAM 3's 240 s deadline at 136 micro-dollars a second needs 33,000, not the 15,000 the pilot started with.
+  2. Pinning prices in integer micro-dollars per million units keeps every rate exact: USD 0.0000025 per GiB-second becomes 2,500,000 per million GiB-seconds. Decimal seconds keep the rounding honest.
+- Failed approaches: none.
+- Remaining follow-ups: S4's harness records its model requests and geocodes in `parse` (T3c), and `parse` rises to 30,000 with it. The first pass is priced and reserved when its route joins the pilot.
+
+### 2026-09-24 — Go-live S3: G30's reservations follow PLAN 4.3, and the run's budget settles (#132, #135)
+
+- Task: go-live S3, aligning T2b and T2c with PLAN 4.3 and the coordinator's rulings of 2026-09-24: a call that sends a crop reserves, for each request it may make, the lesser of its route's context length at the input price plus the answer's cap and, where the route documents an image-token rule, the crop plus the prompt and the cap; 20,000 stays the floor; the run's own budget settles like the program ledger.
+- Branch/worktree: `golive/lane-program-allowance` (#132, the spec) and `golive/lane-call-costs` (#135, the code), aligned in one push and merged up the stack, from S3's scratchpad worktree `align`.
+- Outcome: `lane_reservations.py` (`image_tokens`, `call_micros`, `reading_reservation`, `step_reservation`); `ModelPrice.context_tokens` and `ImageTokens` in the price list, required for every route that reads crops; the workflow and the cost record share `step_reservation`; `settle_step` settles `run.usage.reserved_cost_micros` as it settles the ledger, with or without an allowance. The pilot list is `pilot-prices-2026-09-24`: prices re-read, unchanged, plus the readers' context lengths (131,072) and documented rules (qwen 32 px a token, at most 16,384; muse 28 px, at most 4,096). Spec: `docs/execution/golive/LANE.md` T2b and T2c.
+- Validation actually run: the new tests fail without the change and pass with it; two older tests that pinned the flat reservation and the never-refunded run budget now pin the new behaviour; the full Python suite and pre-commit pass.
+- Durable learnings: (1) With documented caps, every pilot crop up to 40,000,000 pixels reserves the floor on both readers (at most 16,284 on qwen, 18,391 on muse), so the bound changes nothing today and binds a future route or price. (2) GLM-5.3-Flash documents no image rule anywhere (DeepInfra, zai-org, Z.ai), so its first pass will reserve its 1,048,576-token context: about 315,598 for two requests; the run's budget holds only because it now settles. (3) One reservation function for the workflow and the record keeps a dynamic reservation from being reported as the table's.
+- Remaining follow-ups: the first pass's reservation (its `first_pass:` steps and `domain.Profile.first_pass_route` come with S4's chain) in the route wiring PR; `record_step` marking a stopped reading's call `failed` once #153 meets this chain.

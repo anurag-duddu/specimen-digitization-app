@@ -155,15 +155,16 @@ def test_each_paid_step_reserves_on_the_program_ledger(tmp_path):
     specimen = app.state.workflow.drain(principal(), uploaded(app))
     run = specimen.run
     assert "parse" in run.completed_steps, run.blocker
-    # The ledger adds every paid step's reservation, as the run's budget does.
+    # Every paid step reserved on the ledger, then settled to what its calls
+    # cost once it completed (T2c).
     assert run.usage.reserved_cost_micros > 0
     stored = ProgramLedger(repository, SCOPE).read()
-    assert stored["reserved_total_micros"] == run.usage.reserved_cost_micros
+    assert stored["reserved_total_micros"] == run.usage.actual_cost_micros
     assert stored["sensitive"] is False
     position = run.program_allowance
     assert position["allowance_micros"] == 5_000_000
-    assert position["reserved_total_micros"] == run.usage.reserved_cost_micros
-    assert position["remaining_micros"] == 5_000_000 - run.usage.reserved_cost_micros
+    assert position["reserved_total_micros"] == run.usage.actual_cost_micros
+    assert position["remaining_micros"] == 5_000_000 - run.usage.actual_cost_micros
     assert position["ledger_revision"] == stored["revision"]
 
 
@@ -212,9 +213,13 @@ def test_a_retry_reserves_again(tmp_path):
     specimen = workflow.drain(principal(), specimen.id)
     assert specimen.run.attempts["segment"] == 2
     total = ProgramLedger(repository, SCOPE).read()["reserved_total_micros"]
+    # The failed attempt stays reserved; the retry reserved again and, like the
+    # rest of the run, settled to its cost once it completed (T2c).
     assert first == 45_000
-    assert total == specimen.run.usage.reserved_cost_micros
-    assert total - first >= 45_000  # The retry's segment was reserved again.
+    completed = sum(
+        c["cost_micros"] for c in specimen.run.paid_calls if c["outcome"] == "completed"
+    )
+    assert total == first + completed
 
 
 def test_without_an_allowance_the_ledger_is_not_consulted(tmp_path):

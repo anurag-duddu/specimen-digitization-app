@@ -669,3 +669,80 @@ SAM 3 is priced by its measured request seconds times the service's configured
 vCPUs and memory at the pinned Cloud Run rates. A price changes only through a
 reviewed profile edit. The run's `usage.actual_cost_micros` is the sum of its
 calls' costs.
+
+How T2c builds it:
+
+- **Price list.** `processing.price_list` in a published profile holds its
+  `version`, the date it was read (`as_of`), its `sources`, and whole
+  micro-dollar prices:
+  - `models`: per route, per million input tokens and per million output
+    tokens. Each also carries the route's `context_tokens` and, where the
+    route documents one, its `image_tokens` rule: pixels per token, the
+    maximum tokens for one image, and the rule's source. Both size a reading's
+    reservation (PLAN 4.3, above);
+  - `segmentation`: SAM 3's service, its vCPUs and memory in GiB, and the price
+    per million vCPU-seconds, GiB-seconds and requests;
+  - `tools`: per request, for the tools that are paid.
+
+  Every route the profile names, and its segmentation, must be priced, and
+  every route that reads crops needs its context length. At request time the
+  run copies the list with the rest of the collection's allowance.
+- **The reservation.** `lane_reservations.step_reservation` gives a paid
+  step's reservation: the stage's amount, or for a reading its PLAN 4.3 worst
+  case with the stage's amount as the floor. The workflow reserves it, and
+  the cost record reports it, so the two never differ. A reading whose route
+  has no context length, or whose crop the run does not have, cannot be sized
+  and blocks before the call (`approved_cost_budget_unavailable`).
+- **Records.** `lane_costs.record_model_usage`, `record_segmentation` and
+  `record_tool_usage` append one entry per paid call to `Run.paid_calls`:
+  - the step, the attempt, and the step's reservation;
+  - the usage and the outcome;
+  - the cost and its basis, with the price list's version and date.
+
+  They add the cost to `usage.actual_cost_micros`. Costs round up to whole
+  micro-dollars. A provider's billed amount, when given, is recorded instead as
+  `billed`. A call that reported no usage is recorded by `record_reserved` at
+  its step's full reservation, as `reserved`. A call with no price is a
+  configuration error: the step fails and keeps its reservation.
+- **Where.** After each reading and SAM 3 step, the workflow records the
+  reader's tokens from its observation, or a completed SAM 3 call's measured
+  seconds, which include waiting for a cold start. It records the step's
+  outcome with them: `completed`, `failed`, or `unknown` when the outcome of
+  the call is unknown. A reading that failed before reporting tokens, and a
+  SAM 3 call that did not complete (a busy 409 or 429, a 5xx, a timeout), are
+  recorded as `reserved`. The harness records its own model
+  requests and tool calls in `parse` (S4, T3c). A run without a price list
+  records nothing.
+- **Settlement (G30).** After a paid step, the ledger settles the attempt to
+  the cost of the calls recorded for it, giving back the rest of the
+  reservation. It does so only when every call reported usage or a billed
+  amount; a settled cost above the reservation counts in full. A step with a
+  `reserved` call, or whose calls nobody recorded, stays fully reserved. A
+  step's next attempt reserves again, and no call starts if its reservation
+  would cross the allowance, however little has been spent.
+- **Pilot prices, read on 2026-09-23 and again on 2026-09-24, unchanged**
+  (`pilot-prices-2026-09-24`, which adds the context lengths and image rules).
+  - Context lengths, from the Hugging Face router's `/v1/models` for each
+    route's pinned provider: 131,072 for both readers.
+  - Image rules, from each model's processor configuration:
+    `handwriting-qwen` (Qwen3-VL-30B-A3B-Instruct) makes one token per 32 by
+    32 pixels (a 16-pixel patch, merged two by two) and at most 16,384 for
+    one image (its `max_pixels`, 16,777,216); `handwriting-muse`
+    (Muse-Glimmer-30B) one per 28 by 28 pixels (a 14-pixel patch, merged two
+    by two) and at most 4,096 (`max_image_tokens`).
+  - Readers, from the Hugging Face router's `/v1/models` pricing for their
+    pinned providers: `handwriting-qwen` (novita) 200,000 input and 700,000
+    output per million tokens; `handwriting-muse` (deepinfra) 300,000 and
+    1,200,000.
+  - SAM 3, from cloud.google.com/run/pricing for a request-based service in
+    us-east4, with S2's shape of 4 vCPU and 16 GiB. The rates are
+    24,000,000 per million vCPU-seconds, 2,500,000 per million GiB-seconds and
+    400,000 per million requests: USD 0.000024, 0.0000025 and 0.40 per
+    million. That comes to 136 micro-dollars a second.
+  - `geography_lookup`, from developers.google.com/maps/billing-and-pricing:
+    the Geocoding API's Essentials price after the free 10,000 requests a
+    month, USD 5.00 per 1,000, so 5,000 per request. The free tier is ignored,
+    which errs on the safe side.
+- **Sensitive intake.** Processing starts on intake only for records declared
+  not sensitive (#104). A Sensitive upload or import creates no due run and
+  never holds a collection's queue. A test now covers the import path.

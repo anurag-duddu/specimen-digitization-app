@@ -102,6 +102,47 @@ class ProgramLedger:
             )
         return Reservation(UNAVAILABLE, None)
 
+    def settle(self, allowance_micros, reserved, spent, *, specimen_id, run_id, step, attempt):
+        """Replace a call's reservation with what it cost (T2c, G30).
+
+        The program's position, or None when the ledger stays busy or cannot be
+        read; the reservation then stays counted.
+        """
+        for _ in range(ATTEMPTS):
+            try:
+                current = self.read()
+            except Conflict:
+                return None
+            at = self.clock().isoformat()
+            total = max(0, current["reserved_total_micros"] - reserved + spent)
+            last = {
+                "specimen_id": specimen_id,
+                "run_id": run_id,
+                "step": step,
+                "attempt": attempt,
+                "reserved_micros": reserved,
+                "settled_micros": spent,
+                "at": at,
+            }
+            try:
+                stored = self.repository.put_document(
+                    self.scope,
+                    LEDGER_KIND,
+                    self.ident,
+                    {"sensitive": False, "reserved_total_micros": total, "last": last},
+                    current["revision"],
+                )
+            except Conflict:
+                continue
+            return {
+                "allowance_micros": allowance_micros,
+                "reserved_total_micros": total,
+                "remaining_micros": max(0, allowance_micros - total),
+                "ledger_revision": stored["revision"],
+                "at": at,
+            }
+        return None
+
 
 def reserve_step(repository, principal, specimen, step, cost, clock=None) -> str | None:
     """Reserve a paid step on the program's ledger; an issue blocks the run.
