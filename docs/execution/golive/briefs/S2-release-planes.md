@@ -105,8 +105,8 @@ collection only, resolved from the committed key `insects` against the approved
 hierarchy artifact, role `operator`, `canViewSensitive: false`, with the UID
 from the temporary environment secret `DATA_WORKER_ACTOR_UID`, which the owner
 sets for that run and deletes afterwards. First a read-only account lookup that
-refuses unless the account exists, is disabled or has no sign-in provider, and
-has no email; then write, read back, skip if identical, fail if different. Never the admin membership document of
+refuses unless the account exists, is disabled, and has no email, password,
+phone or sign-in provider; then write, read back, skip if identical, fail if different. Never the admin membership document of
 `scripts/data/bootstrap_admin.py`, which hard-codes role `admin`. Retire the
 envelope admission for this plane, but keep the checks that live inside it:
 `GITHUB_REF_PROTECTED=true` and the five required checks successful on the

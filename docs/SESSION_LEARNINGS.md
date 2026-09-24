@@ -11893,6 +11893,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - the old unique is dropped only after a read-back;
     - the Geocoding URL ban covers logs, exceptions, stored errors and tool-call results;
     - the worker's membership resolves the committed `insects` key and is applied by the protected release;
+    - the worker account must be disabled, with no email, password, phone or sign-in provider (from #96's security review: email-link sign-in allows sign-up);
     - citations are re-pointed after #76;
     - S4's `normalized` rule, "is not processed" for Sensitive uploads, S3's G30 text and the no-pick grounding.
 - Owner decisions (chat, 2026-09-23):
