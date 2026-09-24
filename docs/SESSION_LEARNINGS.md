@@ -12014,20 +12014,20 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Task: the S5 T3 follow-ups the coordinator relayed after the entry above: G32's `settled_observation_ids`, the rebase onto `8ebd25da`, the reviewer-decision ruling, then the rebase onto T2b's head `0f3acca` (#88's final review) and its settle and link rules.
 - Branch/worktree: `golive/data-thread-api` in `.claude/worktrees/agent-a6de9727be50c7412`, now on `0f3acca` through `git rebase --onto 0f3acca 8ebd25da`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
 - Correction, 2026-09-23, to the entry above ("Go-live thread API (S5 T3): GetRunThreadV1, the assembly, the route and the canonical example"):
-  - Its commits are now `624eac32` (red), `1a51ed22` (green) and `55cde7ff` (closeout). `17297d7` and `fcf8a6e` predate the two rebases.
+  - Its commits are now `11ce0db5` (red), `2c712f35` (green) and `e0032394` (closeout), after the rebase onto `b6a6226` (next entry). `17297d7` and `fcf8a6e` predate the rebases.
   - `application/projection.py` no longer exposes the writer's keys and equals `0f3acca`. The thread takes the current ids from `projection.writes` itself (below).
   - Its gitleaks identifier `54623f3…` is gone. `thread.gql` changed since, and its identifier is `592164baade33957e7da97ea64e5875cf49a1ceb`, the fifth in `SECRET_SCAN_REVIEW.md`.
   - Two of its open questions are settled. A region shows the model's `first_pass` and the reviewer's decision beside it (`regions[].reviewer_decision`, coordinator ruling). Since `8ebd25da` the writer records the coverage check's `EvidenceItem`, and the thread finds it.
-- Commits since, oldest first: `375f00ae`/`927beb43` (G32, red/green), `adcef0d1`/`815f1218` (`8ebd25da`'s writer and G32 fields), `f00a8009`/`83dfe1f0` (the reviewer's decision), `2fd7ae4f`/`18d6c511` (`0f3acca`'s settle and link rules), `ebe0d9b8` (the emulator checks), and this closeout.
+- Commits since, oldest first, with their ids after the rebase onto `b6a6226`: `e82e6036`/`690365e3` (G32, red/green), `127528c5`/`38dddac6` (`8ebd25da`'s writer and G32 fields), `14442141`/`91abd95a` (the reviewer's decision), `e072454a`/`2323a56f` (`0f3acca`'s settle and link rules), `0d33d824` (the emulator checks), and this closeout, `244d2499`.
 - Outcome:
-  - Rebase conflicts: `projection.py` resolved to T2b's `_fields`, `_evidence_names`, `_named_links` and `_refuse_keys`. The thread's key helpers were first rebuilt from T2b's code below them, so the intermediate commits import, then dropped in `18d6c511`. `DATA_CONTRACT.md` sections 1.6, 1.7, 4.3, 5, 8 and 11 are T2b's, with the thread's deltas on top: `reviewer_decision`, the evidence entry's `observation_ids` and the "How T3 serves it" subsection.
+  - Rebase conflicts: `projection.py` resolved to T2b's `_fields`, `_evidence_names`, `_named_links` and `_refuse_keys`. The thread's key helpers were first rebuilt from T2b's code below them, so the intermediate commits import, then dropped in `2323a56f`. `DATA_CONTRACT.md` sections 1.6, 1.7, 4.3, 5, 8 and 11 are T2b's, with the thread's deltas on top: `reviewer_decision`, the evidence entry's `observation_ids` and the "How T3 serves it" subsection.
   - Current rows: `thread.current` runs `projection.writes` on the snapshot's run with no storage and keeps the ids and order of the decisions, candidates and record version it writes. `keys(specimen, run)` passes them to `GetRunThreadV1`.
   - Settled: a candidate settled exactly when it carries `normalizedValue`, `authorityId` or `parsedValue`, since evidence now links to the entry it names whether or not it settled. A settled raw entry lists its reading. A settled decided entry lists the raw readings its fallback lookup confirmed, else its selected reading in a map and none alone.
   - Each `evidence` entry carries `observation_ids` from the domain `Evidence.observation_ids`, empty for a lookup. A test shows two agreeing readers as one verbatim with each reader's literal evidence.
   - Google tool-call results are `{"place_ids": [...]}` in every fixture and the example; `_refuse_keys` refuses anything more.
   - G38's `fields[].layer` and `derived_from` are left out until S4's domain fields exist.
 - Validation actually run:
-  - Red `2fd7ae4f`: 30 thread tests failed as intended.
+  - Red `e072454a`: 30 thread tests failed as intended.
   - Green: `tests/test_thread.py` 31, `test_thread_api.py` 13, `test_projection.py` 11 and `test_projection_decisions.py` 32: 87 passed, 3 opt-in skipped. `scripts/ci/test_release_plan_templates.py` and `test_data_release.py`: 75 passed.
   - `uv run pytest tests/ -q`: 1589 passed, 34 skipped. `uv run pytest scripts/ -q`: 1550 passed, 50 skipped. Both started at a one-minute load below 6.
   - A fresh cluster and emulator on 5597/9597, from a copy of the scratchpad's `exp5/run.sh` with its ports changed: `projection-test.mjs` printed 13 PASS lines. A second one, seeded as `serve-local.sh` seeds: `SPECIMEN_TEST_SQL_EMULATOR=true` with `tests/test_sqlconnect_thread.py` and `test_sqlconnect_projection.py`, 3 passed. Each stopped through its trap and deleted its directory.
@@ -12042,4 +12042,27 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Open questions and follow-ups:
   - A run whose stored tool calls hold a key: `writes` refuses it (rule 1.6), so the thread route answers 422 `invalid_input` for it rather than a thread.
   - A settled map entry of a field with no normalized, authority or parsed value carries nothing, so the thread cannot list its reading. The domain's `settled_observation_ids` names it, if the thread may read that from the snapshot.
+  - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
+### 2026-09-24 — Go-live thread API (S5 T3), update: T2b's head `b6a6226` and the coordinator's answers
+
+- Task: the coordinator's next S5 T3 round: the rebase onto T2b's head `b6a6226` (T2b rebased onto T2a's #146 head `7bddf00`, plus two commits), the answers to the two open questions of the entry above, and G38's layers, now in T3.
+- Branch/worktree: `golive/data-thread-api` in `.claude/worktrees/agent-a6de9727be50c7412`, now on `b6a6226` through `git rebase --onto b6a6226 0f3acca5`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
+- Commits: the thirteen above, rebased, with the ids the two entries above now cite; `64b87c45` (red), `cb57710e` (green), and this closeout.
+- Outcome:
+  - The rebase stopped on no conflict. `.gitattributes`' `merge=union` driver joined this file with T2a's closeout entry first and this session's after it. `projection.py`, `scripts/ci/test_source_asset_uniqueness.py`, `scripts/data/source-asset-read-back.sh`, `serve-local.sh` and `DATA_CONTRACT.md` section 3.3 equal `b6a6226`'s.
+  - Settled readings, the answer to the first question: a map entry settled exactly when `projection.settled_entries(value, regions)` names its reading, read from the snapshot. A candidate's values and links no longer decide it. The writer writes one candidate per map entry, in the map's order, so each candidate pairs with its entry's reading. Section 8's output rule is unchanged, and a test lists a settled entry whose candidate carries no value.
+  - A stored credential, the answer to the second: `thread.current` catches exactly `projection.CredentialStored` around `writes` and raises `EvidenceIntegrityError` with its message. The route answers 503 `runtime_unavailable`, naming where, never the credential. The route test builds the credential at run time and checks that the body never holds it.
+  - G38: `fields[].layer` and `fields[].derived_from` come from the snapshot's field with `getattr`, null and `[]` when absent (S4's #144). The `TracedField` stand-in in `tests/thread_fixtures.py` has both, and the synthetic run's fields carry the layers HARNESS.md section 13 gives them. The SQL side is T6's `AppendFieldCandidateV3`.
+- Validation actually run:
+  - Red `64b87c45`: 5 tests failed as intended: the valueless settled entry, the layers, the rule function's `settled` argument, `keys()` raising `CredentialStored`, and the route answering 422.
+  - Green: `tests/test_thread.py` 33, `test_thread_api.py` 14, `test_projection.py` 11 and `test_projection_decisions.py` 35: 93 passed, 3 opt-in skipped. `scripts/ci/test_release_plan_templates.py`, `test_data_release.py` and `test_source_asset_uniqueness.py`: 80 passed.
+  - `uv run pytest tests/ -q`: 1595 passed, 34 skipped, started at a one-minute load of 10.9 after waiting for it to fall below 12. `uv run pytest scripts/ -q`: 1552 passed, 50 skipped.
+  - Fresh stacks on 5597/9597: `projection-test.mjs` printed 13 PASS lines. Seeded as `serve-local.sh` now seeds, with T2a's read-back before the drop, the opt-in SQL Connect thread and projection tests: 3 passed. Each stopped through its trap and deleted its directory.
+  - `thread.gql` did not change: its digest still matches the plan templates, so no refresh.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) Rebasing onto a branch that also appends to this file needs no hand resolution: the union driver keeps the upstream entry first. Check the order afterwards, and fix the commit ids the entries cite, since a rebase changes every one.
+  - (2) A settle rule shared by name (`settled_entries`) keeps the reader and the writer from disagreeing. Inferring it from the writer's output, the values on candidates, missed an entry settled on a value with no normalized, authority or parsed form.
+- Open questions and follow-ups:
+  - Until T6, a derived field has no candidate row: without a literal the writer writes none. The thread shows its state, layer and `derived_from`, but no `parsed`, `authority_id` or evidence. Should the thread read those from the snapshot meanwhile?
   - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
