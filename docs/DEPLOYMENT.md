@@ -15,6 +15,8 @@ new release inputs must explicitly select the approved additive contracts.
 > trace content follows G3
 > ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
 > and data and runtime releases deploy on merge without release inputs (G11).
+> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) lists the code
 > that still enforces a superseded clause until a later go-live pull request
 > changes it.
@@ -816,8 +818,24 @@ expansion requires user review and approval of end-to-end results.
   > 2026-09-23: The full-cohort product evidence is superseded for the go-live
   > program by
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G1 and G2. Product acceptance is the per-specimen loop of PLAN section 8,
-  > through the full pipeline; the workflow, marker and revision evidence stay.
+  > G1 and G2. Each specimen is checked through the full pipeline as it is
+  > processed (PLAN section 8), and the workflow, marker and revision evidence
+  > stay. The rest of product acceptance stands, including every case the
+  > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten
+  > UI cases of [`RELEASE_ACCEPTANCE.md`](execution/RELEASE_ACCEPTANCE.md)
+  > (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
+  > UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN, UI-SEARCH-QUEUE,
+  > UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and UI-NO-SYNTHETIC-FALLBACK) and
+  > the fifteen live cases of [`LIVE_QA.md`](execution/LIVE_QA.md)
+  > (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP, AUTH-REVOKE,
+  > AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE, PROVIDER-ACTUAL,
+  > COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART, DEPLOY-IDENTITY and
+  > BROWSER-E2E), with UI-SIGN-IN's unverified and no-role denial,
+  > UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+  > cross-collection, viewer-write and revoked-access denials, in which stale
+  > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+  > and with the ten, in order and beside new uploads, in place of a frozen
+  > manifest (G2) and the gate record in place of a release packet (G11).
 
 The coordinator may perform only the approved, independently reviewed setup
 actions after live inventory and recording the exact bounded action packet.

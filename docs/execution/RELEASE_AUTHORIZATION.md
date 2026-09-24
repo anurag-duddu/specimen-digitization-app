@@ -227,7 +227,9 @@ the first-scope bootstrap.
   > G2 and G9. The ten specimens are now the acceptance cohort, processed one
   > at a time on demand alongside new uploads, and the budget this bullet points
   > back to is replaced by the cumulative USD 25 ceiling, infrastructure and
-  > models together. The memberships and sensitive access (off) stand.
+  > models together. G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism). The memberships and sensitive
+  > access (off) stand.
 
 Everything else in this record, including the protected data lane, the
 evidence recipient, the independent review and the private identity rule,

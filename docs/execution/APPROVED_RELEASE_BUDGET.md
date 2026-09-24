@@ -137,7 +137,8 @@ Platform. PLAN section 4.3 says how it is held: the pipeline records every paid
 call's cost on its run and refuses a paid step whose estimate would cross the
 configured model allowance, and a Cloud Billing budget alert watches the whole
 project. Release runs reserve and reconcile no cost, because the release
-ledgers retire under G11.
+ledgers retire under G11. G30's per-call reservations stand (PLAN 4.3; the
+coordinator's ruling on the mechanism).
 
 Until the release workstream retires the envelope admission, the old figures are
 still enforced in code: `APPROVED_LIMIT_MICROS` and the v3 ledger checks in

@@ -169,8 +169,9 @@ release path, with a test.
   contract specifies, so this is a follow-up for the 1,000-image scope, not a
   go-live blocker.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G2.
-  > Wiring source import in production is in scope for the go-live program now,
-  > not deferred; intake starts processing on upload and on request.
+  > Wiring source import in production is in scope for the go-live program now
+  > (PLAN section 4.1 stage 1), not deferred; intake starts processing on
+  > upload and on request (G2).
 - The API has no per-principal rate limit and accepts large decodes inside a
   1 GiB container. Acceptable for one administrator behind App Check and a
   domain allowlist; a follow-up before any wider audience.
@@ -230,11 +231,11 @@ Checked against platform documentation current in 2026.
 - Make the repository public to restore branch protection.
 - Release by the book, with defect fixes only; no contract simplification.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G11.
-  > The release contract is simplified for this program: envelopes, cost
-  > ledgers, independent-review reports and authorization artifacts retire.
-  > G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on
-  > the mechanism). A merge deploys automatically once required checks pass
-  > and the PR steward approves.
+  > The release contract is simplified: "Envelopes, cost ledgers,
+  > independent-review reports and authorization artifacts retire for this
+  > program." G30's per-call reservations stand (PLAN 4.3; the coordinator's
+  > ruling on the mechanism). A merge deploys automatically once required checks
+  > pass and the PR steward approves.
 - Scope is the first-ten human-review pilot, web only, one administrator.
   > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1 and G2.
   > Scope is the whole pipeline, one specimen at a time, on demand; a record the

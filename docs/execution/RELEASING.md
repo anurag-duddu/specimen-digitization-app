@@ -339,7 +339,10 @@ the guarded planes reject one.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The USD 12 budget amendment, the release envelopes with their
 > transport format and minting scripts, and the authorization artifacts retire
-> for this program. `DEPLOYMENT.md`'s approved contract stays authoritative,
+> for this program; G9's ceiling of USD 25, cumulative, infrastructure and
+> models together, replaces the USD 12 one, and G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism). `DEPLOYMENT.md`'s
+> approved contract stays authoritative,
 > amended by the same decisions, and `RELEASE_AUTHORIZATION.md`'s list of what
 > remains forbidden stands: workstation deployments, manual dispatch, weaker
 > branch protection, broader Hosting permissions, service-account JSON keys

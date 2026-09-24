@@ -11926,11 +11926,14 @@ because the hooks runner hands a native asset hook only `PATH`.
   - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
 - Commits/PRs: `876fc53` and this closeout, on #78. Later on #78:
   - `8f04330`: RELEASE.md section 1 states PLAN 4.4 as #104 merged it;
-  - the review-fix commits for #78's four review rounds: `ccb8fad`, `7690f5b`, `c47984a`, `2d499b4` and the round-4 commit. Round 4 swept every dated note that retires a ledger, cost or reservation. Before the sweep, 0 of 36 carried the exact G30 sentence (9 had a variant wording); after it, 37 of 37 do.
+  - the review-fix commits for #78's five review rounds: `ccb8fad`, `7690f5b`, `c47984a`, `2d499b4`, `ac43a1b` and the round-5 commit. Round 4 swept every dated note that retires a ledger, cost or reservation. Before the sweep, 0 of 36 carried the exact G30 sentence (9 had a variant wording); after it, 37 of 37 do.
+  - Round 5 added `budget` to that sweep: six more notes, and two undated #76 lines, now carry the sentence. It also swept acceptance. Five notes made PLAN section 8's loop the whole of acceptance. Each now carries one sentence that keeps the rest, naming all 25 UI and live cases the human-review checker requires.
 - Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
 - Durable learnings:
   - A note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
-  - When a review finding recurs across files, sweep every sibling with a script before fixing any. Three rounds of fixing the named instances still left 27 of 36 notes without the G30 sentence; one regex over the dated notes found them all.
+  - When a review finding recurs across files, sweep every sibling with a script before fixing any. Three rounds of fixing the named instances still left 27 of 36 notes without the G30 sentence, and one regex over the dated notes found those 27.
+  - A sweep is only as good as its vocabulary. The round-4 pattern missed the notes that say "budget", and it also skipped undated amendment paragraphs.
+  - A note that states what now holds must not read as a closed list. "The checks stand: A, B" retires everything unnamed; "the rest stands, including A, B" keeps it.
 - Failed approaches: none.
 - Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
 

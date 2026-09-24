@@ -44,6 +44,8 @@ attempt and day; this approval is neither a new budget nor a complete price quot
 > G9. The spending ceiling is USD 25, cumulative, infrastructure and models
 > together, and Logfire usage counts against it
 > ([budget amendment](APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9)).
+> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 
 ## Destination and permitted content
 
@@ -219,9 +221,24 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2 and G11. The PR steward's review of each pull request replaces the separate
 > independent review; all five checks on the exact merged commit and the
-> separate protected workflows stay; acceptance is the ten pilot specimens run
-> one at a time, in order (PLAN section 8). Retention admission is not settled
-> by G2 or G11 and stays open.
+> separate protected workflows stay; and the ten pilot specimens are checked one
+> at a time, in order (PLAN section 8), with matching deployed revisions still
+> required. The rest of acceptance stands, including every case the human-review
+> checker (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2) and the gate record in place of a release packet (G11).
+> Retention admission is not settled by G2 or G11 and stays open.
 
 ## Go-live amendment, 2026-09-23 (G3)
 
@@ -255,7 +272,9 @@ specimen record." PLAN section 4.5 describes the instrumentation.
   SAM 3 and API runtime identities hold a standing
   `roles/secretmanager.secretAccessor` on it (G11), bound to its exact
   version; no other identity does.
-- Bounds and cost: the bounded transport's ceilings and reservation ledger
-  retire; Logfire usage counts against the USD 25 ceiling (G9).
+- Bounds and cost: the bounded transport's ceilings and its reservation ledger
+  retire; Logfire usage counts against the USD 25 ceiling (G9), and G30's
+  per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+  mechanism).
 - Lab runs: local acceptance runs use the same instrumentation with
   `environment=lab`.

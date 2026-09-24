@@ -31,10 +31,12 @@ workstation deployment, or deployment through the Hosting identity.
 > 2026-09-23: The "Data admission" row is superseded for the go-live program
 > by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. Admission now checks only the protected branch and the five required
-> checks on the merged commit; the PR steward's review happens before the
-> merge, not in admission. The private input pins and the cumulative budget
-> it checked belong to the retired envelope.
+> G9 and G11. Admission now checks only the protected branch and the five
+> required checks on the merged commit; the PR steward's review happens before
+> the merge, not in admission. The private input pins and the cumulative release
+> budget it checked belong to the retired envelope; the spending ceiling is USD
+> 25, cumulative, infrastructure and models together (G9), and G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The two entry scripts are `scripts/ci/deploy_data.py` and
 `scripts/ci/deploy_runtime.py`. Their CLI guards deliberately reject workstation,
@@ -130,7 +132,8 @@ deploy; the release paths never change IAM or database users/passwords.
    > including new uploads, instead of through a single batch intake of all
    > ten; the ten remain the acceptance cohort, processed in order. Original
    > generations, scoped membership, profile versions, the stage budgets and
-   > the offline SAM 3 file-map and cache pins stand.
+   > the offline SAM 3 file-map and cache pins stand. G30's per-call
+   > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 7. `runtime-activate/v1` consumes the signed preparation receipt and exact images,
    current compatible data receipt, real imported-record readback, and bound
    private inputs. It verifies API source/readiness and anonymous denial, then
@@ -142,9 +145,11 @@ deploy; the release paths never change IAM or database users/passwords.
    > 2026-09-23: Superseded for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
    > G2 and G11. The worker drains due work one specimen at a time instead of
-   > starting one bounded cohort execution, and SAM 3 scales to zero instead
-   > of expiring after an hour; bound private inputs belong to the retired
-   > envelope.
+   > starting one bounded cohort execution, and SAM 3 scales to zero instead of
+   > expiring after an hour; bound private inputs belong to the retired
+   > envelope. The rest of the step stands, including the API's source,
+   > readiness and anonymous-denial checks and the observed SAM 3 revision,
+   > image, configuration and worker-only invocation binding.
 8. Independently verify retained native receipts and the public product for all
    ten: authenticated read, actual SAM and both readers, correction, save and
    reopen. Human review remains distinct from automated classification/clearance.
@@ -152,10 +157,25 @@ deploy; the release paths never change IAM or database users/passwords.
    to the evidence-based acceptance harness and coordinator.
    > 2026-09-23: Superseded for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-   > G1, G2 and G11. Each specimen is checked through the full pipeline as it
-   > is processed, in order, by the per-specimen acceptance loop of PLAN
-   > section 8, not as one verification pass for all ten; the authorization
-   > artifacts are retired.
+   > G1, G2 and G11. Each specimen is checked through the full pipeline as it is
+   > processed, in order, by the per-specimen loop of PLAN section 8, not as one
+   > verification pass for all ten; the authorization artifacts are retired. The
+   > rest of this step stands, including every case the human-review checker
+   > (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+   > [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+   > UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+   > UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+   > UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+   > [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+   > AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+   > PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+   > DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+   > denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+   > cross-collection, viewer-write and revoked-access denials, in which stale
+   > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent
+   > save, and with the ten, in order and beside new uploads, in place of a
+   > frozen manifest (G2) and the gate record in place of a release packet
+   > (G11).
 
 If a later Hosting-only main merge changes the source SHA, `data-verify/v1` can
 publish a current-source compatibility receipt without replaying the rehearsal.
@@ -327,12 +347,29 @@ No wider cleanup authority is inferred from owned-clone disposal.
   > spending ceiling is USD 25, cumulative, infrastructure and models
   > together. G30's per-call reservations stand (PLAN 4.3; the coordinator's
   > ruling on the mechanism), and so do the strict per-stage and provider
-  > bounds and SAM 3's cache staging and file hashes.
+  > bounds, SAM 3's cache staging and file hashes, and the real native timings
+  > and actual reader evidence.
 - Successful exact-source protected workflows, matching public Hosting marker,
   application smoke, and independent all-ten human-review acceptance.
   > 2026-09-23: Superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G2 and G11. Acceptance is checked one specimen at a time as each is
-  > processed, not as one independent all-ten human-review pass.
+  > G2 and G11. Each specimen is checked as it is processed, not in one
+  > independent all-ten human-review pass. The bullet's exact-source protected
+  > workflows, matching public Hosting marker and application smoke stand, and
+  > so does the rest of acceptance, including every case the human-review
+  > checker (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+  > [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+  > UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+  > UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+  > UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+  > [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+  > AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+  > PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+  > DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+  > denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+  > cross-collection, viewer-write and revoked-access denials, in which stale
+  > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+  > and with the ten, in order and beside new uploads, in place of a frozen
+  > manifest (G2) and the gate record in place of a release packet (G11).
 
 Local tests and a successful build do not satisfy any missing live observation.

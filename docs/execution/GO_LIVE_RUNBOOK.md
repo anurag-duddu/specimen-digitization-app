@@ -364,14 +364,25 @@ execution outcome, and the per-specimen receipts in Storage.
    four manual subcriteria ([`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)).
    > 2026-09-23: Items 1 and 2 are superseded in part for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-   > G1 and G2. Acceptance is the ten pilot specimens, processed one at a time,
-   > in order (PLAN section 8); a record the harness resolves is cleared
-   > without a human, so the administrator reviews only what the queue sends
-   > to human review. The security acceptance checks stand: the
-   > administrator's history, denial and stale-save checks, and the 45-case
-   > gate's denial cases (unauthenticated, cross-collection, viewer-write and
-   > revoked access) and its stale concurrent save
-   > ([`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)).
+   > G1 and G2. The ten pilot specimens are processed one at a time, in order
+   > (PLAN section 8), and a record the harness resolves is cleared without a
+   > human, so the administrator reviews only what the queue sends to human
+   > review. The rest of items 1 and 2 stands, including every case the
+   > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten
+   > UI cases of [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN,
+   > UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY,
+   > UI-SAVE-REOPEN, UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY
+   > and UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+   > [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+   > AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+   > PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+   > DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+   > denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+   > cross-collection, viewer-write and revoked-access denials, in which stale
+   > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent
+   > save, and with the ten, in order and beside new uploads, in place of a
+   > frozen manifest (G2) and the gate record in place of a release packet
+   > (G11).
 3. Reconcile cost: every reservation category closed with an artifact, the
    ledger appended, the cumulative total inside USD 12.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`

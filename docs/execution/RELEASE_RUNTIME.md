@@ -155,11 +155,11 @@ those gates.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2, G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure
-> and models together. The release and source-cohort cost ledgers, and the
-> `PilotLaunch` copy of the stage-cost reservations with its digest pin (G2),
-> are retired in favor of automatic deploy on merge. The per-stage reservation
-> map itself stays: `ExecutionPolicy.stage_cost_reservations`, which every run
+> G2, G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together (G9). The release and source-cohort cost ledgers retire (G11),
+> and the `PilotLaunch` copy of the stage-cost reservations with its digest pin
+> retires with the single cohort execution (G2). The per-stage reservation map
+> itself stays: `ExecutionPolicy.stage_cost_reservations`, which every run
 > copies and every paid step reserves from. G30's per-call reservations stand
 > (PLAN 4.3; the coordinator's ruling on the mechanism): each paid model call
 > reserves its worst-case cost before it starts, is settled once its outcome
@@ -485,12 +485,13 @@ only against the actual evidence and authorized reviewer decisions.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2, G9, G11 and G14. There is no classification stage (G14), so no
-> classifier configuration is bound; specimens are processed on demand rather
-> than in one execution (G2); and the USD 5 packet, its exact stage map and
-> the cohort ledger retire (G9, G11). The per-stage reservation map stays, and
-> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
-> mechanism).
+> G2, G9, G11 and G14. There is no classification stage (G14), so no classifier
+> configuration is bound. Specimens are processed on demand rather than in one
+> execution, so the packet's exact stage map retires (G2); the packet and the
+> cohort ledger retire (G11); and G9's USD 25 ceiling, cumulative,
+> infrastructure and models together, replaces the shared USD 5 this paragraph
+> names. The per-stage reservation map stays, and G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 ## Explicit sensitivity through intake, persistence and human review
 
